@@ -109,7 +109,7 @@ jobs:
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
 
   check:
-    name: typecheck, lint, format, test, build
+    name: local checks
     needs: [gate]
     runs-on: ubuntu-latest
     steps:
