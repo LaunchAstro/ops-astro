@@ -38,6 +38,14 @@ be verified on the hosted repository; a local checkpoint alone cannot enforce
 merging behaviour.
 
 Refreshing that evidence is an edit to the pull request body rather than
-another commit: the workflow listens for the `edited` pull request event, so
+another commit, and the edit comes last: review the new head and rerun the
+affected checks first, then paste the new checkpoint block and the new
+review outcome. The workflow listens for the `edited` pull request event, so
 the check runs again against the new body without moving the head it is
-bound to.
+bound to. Replacing the recorded head while keeping the old outcome is not a
+refresh. The checker cannot tell a refresh from a swap; this procedure is
+what keeps them apart.
+
+The reviewer is a frontier model from a different company than the
+builder's, chosen by opposition: a change written under one vendor is
+reviewed under another.
