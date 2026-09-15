@@ -36,3 +36,8 @@ A subsequent commit invalidates stale review evidence. Required security
 review refers to that same revision. The ruleset and check's existence must
 be verified on the hosted repository; a local checkpoint alone cannot enforce
 merging behaviour.
+
+Refreshing that evidence is an edit to the pull request body rather than
+another commit: the workflow listens for the `edited` pull request event, so
+the check runs again against the new body without moving the head it is
+bound to.
