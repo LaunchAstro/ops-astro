@@ -35,3 +35,7 @@ they do not replace that digest or its verdicts.
 candidate manifests, local results, and independent review reports belong
 beside the candidate, outside the bytes they describe. They establish only
 the properties each check actually tested.
+
+Hosted enforcement is established on this repository as of 15 September 2026;
+[the ruleset procedure](ruleset.md) records what is intended and the roadmap
+repository records what was actually observed.
