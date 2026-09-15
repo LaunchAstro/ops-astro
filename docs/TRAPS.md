@@ -10,3 +10,5 @@ the bounded review procedure that covers it.
 
 There are no active entries in this file. This is not a claim that the
 repository has no defects or that all verification is complete.
+
+R2 fixture.
