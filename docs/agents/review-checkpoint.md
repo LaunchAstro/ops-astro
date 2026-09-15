@@ -36,3 +36,5 @@ A subsequent commit invalidates stale review evidence. Required security
 review refers to that same revision. The ruleset and check's existence must
 be verified on the hosted repository; a local checkpoint alone cannot enforce
 merging behaviour.
+
+A review of one revision is not a review of another.
