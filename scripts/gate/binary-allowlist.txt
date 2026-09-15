@@ -1,0 +1,10 @@
+# Binary and undecodable files this repository has deliberately approved.
+#
+# The gate fails closed: anything it cannot read as UTF-8 text is a violation,
+# because a scanner that skips what it cannot parse is not a scanner. A file
+# only leaves that rule by being written here, on purpose, with a reason.
+#
+# One glob per line, matched against the repository-relative path and against
+# the bare file name.
+#
+# No binary paths are currently approved. Unlisted non-UTF-8 content is rejected.

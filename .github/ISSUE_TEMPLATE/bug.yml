@@ -1,0 +1,51 @@
+name: Bug report
+description: Something that is built does not work
+labels: ['needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Nothing in this repository is built yet.** There is no application,
+        no engine and no release, so there is very little that can have a bug
+        in it. A workflow or a configuration file can.
+
+        Never report a security vulnerability here. See `SECURITY.md`.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you file
+      options:
+        - label: This is not a security vulnerability
+          required: true
+        - label: I searched the existing issues
+          required: true
+        - label: If a model helped me write this, I have reproduced it myself and say so below
+          required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce it
+      description: Numbered steps. The smallest case that still shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node version, commit hash.
+    validations:
+      required: true
+  - type: textarea
+    id: ai
+    attributes:
+      label: AI disclosure
+      description: Which tool, if any, helped write this report, and what you verified yourself. Write "None" if none.
+    validations:
+      required: true

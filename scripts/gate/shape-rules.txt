@@ -1,0 +1,36 @@
+# Shape rules for the contamination gate.
+#
+# Regular expressions that describe the *shape* of something that must never
+# be published, without naming anything real. They ship in the clear because
+# they contain no identifier: that is the whole point of a shape rule, and it
+# is why they can do work the hashed denylist cannot.
+#
+# The list comes from the contamination audit of the other codebase, which
+# found two fixture files carrying a real-looking contact card that no term
+# on any denylist covered. A hashed list only catches what somebody thought
+# to add. These catch a class.
+#
+# Format: category|regex|what it is
+# Categories: pii, provenance, infra
+# Comments and blank lines are ignored. Matching is case-insensitive.
+#
+# The synthetic fixture tests/gate/shape-canary.txt carries one example of
+# each, so the self-test can prove every rule still fires.
+
+pii|\(0[2-8]\)\s?\d{4}\s?\d{4}|an Australian landline in brackets-and-spaces form
+pii|\b04\d{2}\s?\d{3}\s?\d{3}\b|an Australian mobile number
+pii|\bABN\b\s*:?\s*\d{2}\s?\d{3}\s?\d{3}\s?\d{3}|an Australian Business Number
+pii|\bACN\b\s*:?\s*\d{3}\s?\d{3}\s?\d{3}|an Australian Company Number
+pii|\b\d{1,4}[a-z]?\s+[a-z][a-z'-]+\s+(?:street|st|road|rd|avenue|ave|drive|dr|court|ct|parade|pde|crescent|cres|highway|hwy)\b,?\s+[a-z][a-z\s'-]+\b\s+(?:nsw|vic|qld|sa|wa|tas|nt|act)\b|an Australian street address
+
+provenance|/Users/[A-Za-z0-9._-]+|a macOS home directory, which names a person and a machine
+provenance|/home/[a-z_][a-z0-9_-]*|a Linux home directory, which names a person and a machine
+provenance|[A-Z]:\\Users\\[A-Za-z0-9._-]+|a Windows home directory, which names a person and a machine
+provenance|[a-z0-9._-]+@[a-z0-9-]+\.ts\.net|a tailnet host, which names a private network member
+provenance|\b[a-z0-9._-]+\.ts\.net\b|a tailnet domain
+provenance|com\.[a-z0-9-]+\.[a-z0-9.-]+\.plist|a macOS launch agent label, which names an organisation
+
+infra|\b[a-z]{20}\.supabase\.co\b|a Supabase project reference
+infra|\bpub-[a-f0-9]{32}\.r2\.dev\b|an R2 public bucket
+infra|\b[a-f0-9]{32}\.r2\.cloudflarestorage\.com\b|an R2 account endpoint
+infra|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|a JSON web token

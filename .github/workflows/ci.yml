@@ -1,0 +1,202 @@
+name: ci
+
+# Every action below is pinned to a full commit hash. A tag can be moved; a
+# hash cannot. The comment beside each one says which release it was, so a
+# human can read the file and a bot can bump it.
+
+on:
+  pull_request:
+    # A label change must rerun the checks. Without `labeled` and `unlabeled`,
+    # adding a size waiver leaves the old red result standing and removing one
+    # leaves the old green result standing, so the waiver means whatever it
+    # meant at the last push. Round four found it.
+    # `edited` matters as much as the rest: the review-evidence check reads
+    # the pull request body, so changing or removing that evidence must
+    # refresh the result. Without it, a passing check keeps standing over a
+    # body that no longer says what it said. Round five found it.
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+  push:
+    branches: [main]
+
+# Read-only by default. A job that needs more says so itself.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # First job, and deliberately first: a repository with client material in
+    # it is not made acceptable by passing its type checks.
+    name: contamination gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Required scanner runtime
+        run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
+      - name: Self-test, before anything is believed
+        run: python3 scripts/gate/sweep.py --self-test
+      - name: The cases the gate once missed
+        run: bash tests/gate/gate-cases.sh
+      - name: The pre-push hook's exit-code policy, under Husky's shell
+        run: bash tests/gate/hook-exit-cases.sh
+      - name: Every action pinned to a hash, and every pin recorded
+        run: node scripts/pins-check.mjs
+      - name: Every skill reference resolves
+        run: node scripts/skill-refs-check.mjs
+      - name: The session check passes on a clean checkout
+        run: bash scripts/agent-session-check.sh
+      - name: The session check's own scope cases
+        run: bash tests/agents/session-check-cases.sh
+      - name: Nothing merges itself
+        run: node scripts/merge-policy-check.mjs
+      - name: Sweep every blob in the incoming commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/gate/sweep.py --range "$BASE_SHA..$HEAD_SHA"
+      - name: Sweep every tracked file
+        run: python3 scripts/gate/sweep.py
+      - name: Public content and metadata in every incoming commit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/public-content-check.mjs --repo "$PWD" --range "$BASE_SHA..$HEAD_SHA"
+      - name: Public content and metadata from the root
+        if: github.event_name == 'push'
+        run: node scripts/public-content-check.mjs --repo "$PWD" --range HEAD
+
+  secrets:
+    name: gitleaks over the full history
+    # Nothing runs before the gate. A repository with client material in it is
+    # not made acceptable by passing its other checks, and dependency install
+    # executes third-party code, so it waits too. YAML order is not execution
+    # order; only `needs` is.
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks, verified before it is extracted
+        env:
+          # Pinned by version and by digest. The digest is the one published
+          # in the release's own checksums file, and it was checked against a
+          # downloaded archive on 6 September 2026 before being written here.
+          # Piping a download straight into tar runs whatever arrives.
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -sSL --fail -o "$archive" "${base}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum -c -
+          # Only now, with the bytes proved, is anything unpacked.
+          tar -xzf "$archive" gitleaks
+          rm -f "$archive"
+          ./gitleaks version
+      - name: Scan every commit, not just the diff
+        run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
+
+  check:
+    name: typecheck, lint, format, test, build
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Required local toolchain
+        run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
+      - run: pnpm check
+      - name: Public content in the actual checked-out snapshot
+        run: node scripts/public-content-check.mjs --repo "$PWD"
+
+  licences:
+    name: OSI licence allowlist
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The checker's own negative cases
+        run: bash tests/licences/licence-cases.sh
+      - run: pnpm run licences
+
+  commits:
+    name: commit messages and provenance
+    needs: [gate]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Every commit in the pull request, not only the tip
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/commit-range-check.mjs
+      - name: The checker's own cases
+        run: bash tests/ci/commit-range-cases.sh
+
+  review-evidence:
+    name: review evidence for this revision
+    needs: [gate]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: The review must cover the head being merged
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/review-evidence-check.mjs
+      - name: The checker's own cases
+        run: bash tests/ci/review-evidence-cases.sh
+
+  pr-size:
+    name: pull request size
+    needs: [gate]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Measure the diff against the size rule
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: node scripts/pr-size.mjs
+      - name: The size gate's own cases
+        run: bash tests/ci/pr-size-cases.sh

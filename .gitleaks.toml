@@ -1,0 +1,32 @@
+# gitleaks configuration.
+#
+# The default rule set is the useful part; this file extends it rather than
+# replacing it, so a new upstream rule arrives with the next version instead
+# of being silently missed.
+
+[extend]
+useDefault = true
+
+[allowlist]
+# Anchored, every one of them. These are regexes matched against the whole
+# path, so an unanchored LICENSE also excludes src/LICENSE-private-config.json
+# from secret scanning, which is a perfectly good place to hide a credential.
+# Round four found it. tests/gate/gate-cases.sh case K keeps it anchored.
+description = "The exact paths that carry no secrets and would otherwise be noisy"
+paths = [
+  '''^LICENSE$''',
+  '''^pnpm-lock\.yaml$''',
+  '''^scripts/gate/denylist\.sha256$''',
+  '''^scripts/gate/shape-rules\.txt$''',
+  '''^tests/gate/canary\.txt$''',
+  '''^tests/gate/shape-canary\.txt$''',
+]
+
+# The canary is an invented business name, not a credential, but it sits in a
+# file whose whole job is to look like something that should not be there.
+# Naming it here keeps gitleaks and the contamination gate from arguing.
+[[rules]]
+id = "launchastro-private-key-file"
+description = "A private key committed as a file"
+regex = '''-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----'''
+tags = ["key", "private"]

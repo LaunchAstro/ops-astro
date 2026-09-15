@@ -1,0 +1,66 @@
+Ops Astro
+Copyright (C) 2026 Nathan Mulligan
+
+This product is licensed under the GNU Affero General Public License,
+version 3 only (SPDX-License-Identifier: AGPL-3.0-only). The full licence
+text is in the file LICENSE.
+
+Legal review remains outstanding. Nathan Mulligan is the named copyright
+holder. No later rights assignment is established by this notice.
+
+Third-party material
+--------------------
+
+Every piece of third-party material in this repository is listed here, with
+its licence and the path it sits at, in the same commit that adds it.
+
+1. Contributor Covenant, version 3.0
+   Path: CODE_OF_CONDUCT.md
+   Steward: Organization for Ethical Source
+   Licence: Creative Commons Attribution-ShareAlike 4.0 International
+            (CC BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+   Source: https://www.contributor-covenant.org/version/3/0/
+   Note: adapted as the upstream text invites, by filling the two
+         placeholders it leaves for a project to complete. The enforcement
+         ladder in it was inspired by the work of Mozilla's code of conduct
+         team.
+
+2. Matt Pocock skills, the official group of twenty-five
+   Path: .claude/skills/, the twenty-five directories listed in
+         .claude/skills/README.md
+   Copyright: 2026 Matt Pocock
+   Licence: MIT, the full text at .claude/skills/LICENSE-mattpocock-skills
+   Source: https://github.com/mattpocock/skills
+   Upstream commit: 3cca18b368ae95cdbdebbff572ccafa662551015
+   Note: installed with `npx skills@latest add mattpocock/skills` at project
+         scope, copied rather than symlinked. The installer writes no licence
+         file, so the upstream MIT licence is copied in by hand.
+         ONE LOCAL MODIFICATION: implement/SKILL.md gains a "Checkpoint before
+         review" section, because upstream reviews before committing and this
+         repository's review reads committed changes only. Marked in the file
+         itself and in the refresh rule at .claude/skills/README.md.
+
+3. Pstack, fifteen skill files from the open-pstack distribution
+   Path: .claude/skills/, the fifteen directories listed in
+         .claude/skills/README.md
+   Copyright: 2026 Lauren Tan; 2026 Cursor; 2025 Jesse Vincent
+   Licence: MIT, three separate texts at
+            .claude/skills/LICENSE-open-pstack (Lauren Tan),
+            .claude/skills/LICENSE-open-pstack-cursor-team-kit (Cursor),
+            .claude/skills/LICENSE-open-pstack-superpowers (Jesse Vincent)
+   Source: https://github.com/ericlitman/open-pstack
+   Version: pstack 1.3.0, marketplace commit
+            56bfd14418fa733e34d98f714f357d28788470e3
+   Note: copied by hand from the checkout, because the three licence files
+         sit at the marketplace root and not inside the plugin directory.
+         THREE LOCAL MODIFICATIONS, each marked in the file itself and in the
+         refresh rule at .claude/skills/README.md:
+         (a) principle-never-block-on-the-human/SKILL.md gains a spend
+             boundary;
+         (b) create-verification-skill and maintain-verification-skill point
+             at .claude/skills/_shared/codex-tools.md, because their upstream
+             link resolved into the excluded poteto-mode router;
+         (c) blast-radius no longer instructs the reader to run three skills
+             this repository does not vendor.
+         .claude/skills/_shared/ is written by this repository and is not
+         third-party material.

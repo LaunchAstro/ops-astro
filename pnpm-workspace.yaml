@@ -1,0 +1,5 @@
+# ARCHITECTURE.md defines the planned package boundaries.
+# Directories contain placeholders only. Packages are added through reviewed tickets.
+packages:
+  - 'packages/*'
+  - 'apps/*'

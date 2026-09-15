@@ -1,0 +1,41 @@
+name: Feature request
+description: Something this project should do
+labels: ['needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This project is pre-alpha and scope is closed.** The roadmap is a
+        frozen register of slices, and one maintainer builds it. A request is
+        welcome as information, and is unlikely to be built soon.
+
+        `docs/adr/` holds the decisions already made. Please check that what
+        you are asking for was not already decided against.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that you cannot do? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: Your proposed shape, if you have one.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: The workaround, and why it is not good enough.
+    validations:
+      required: false
+  - type: textarea
+    id: ai
+    attributes:
+      label: AI disclosure
+      description: Which tool, if any, helped write this request. Write "None" if none.
+    validations:
+      required: true

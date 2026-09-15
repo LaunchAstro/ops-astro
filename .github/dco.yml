@@ -1,0 +1,21 @@
+# Configuration for the DCO GitHub App.
+#
+# It is committed before the first push so the app reads it on the day it is
+# installed, rather than enforcing its defaults on the first pull request.
+#
+# require.members: false exempts organisation members from the sign-off
+# requirement. The exemption applies only to commits GitHub verifies as
+# signed, and the main ruleset requires signed commits, so it costs nothing.
+# It is what lets maintainer commits carry Assisted-by trailers instead of a
+# Signed-off-by an agent must never write. See AI_POLICY.md and
+# CONTRIBUTING.md.
+#
+# allowRemediationCommits lets a contributor who forgot the sign-off add it
+# in a follow-up commit instead of rewriting a branch.
+
+require:
+  members: false
+
+allowRemediationCommits:
+  individual: true
+  thirdParty: true

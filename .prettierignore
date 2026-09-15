@@ -1,0 +1,13 @@
+node_modules
+dist
+pnpm-lock.yaml
+LICENSE
+CODE_OF_CONDUCT.md
+scripts/gate/denylist.sha256
+tests/gate/canary.txt
+
+# Vendored skill files. They are third-party material, kept byte-for-byte as
+# they arrived so a refresh is a readable diff. See .claude/skills/README.md.
+.claude/skills
+.codex
+skills-lock.json

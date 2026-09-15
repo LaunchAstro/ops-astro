@@ -1,0 +1,12 @@
+node_modules
+dist
+*.log
+.DS_Store
+*.local
+
+# Never commit the clear-text contamination list. It lives outside git,
+# on a maintainer machine only. See scripts/gate/README.md.
+scan-terms.txt
+replacements.txt
+**/scan-terms.txt
+**/replacements.txt

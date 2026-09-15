@@ -1,0 +1,9 @@
+# Code owners for this repository.
+#
+# One maintainer owns everything. GOVERNANCE.md is honest about what that
+# means: the bus factor is one, and no successor is named.
+#
+# When a second maintainer exists, this file gains real rows and stops being
+# a single line.
+
+* @Nathan-Mulligan

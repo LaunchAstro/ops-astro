@@ -1,0 +1,161 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# The last check before anything becomes public.
+#
+# Husky runs this as `sh -e "$hook"` (.husky/_/h). Under `sh -e` a command
+# that returns non-zero ends the script on the spot, so a hook that runs a
+# scanner and then reads $? never reaches its own handling. That is exactly
+# what happened to the first version of this file: the scanner's exit 2,
+# which means "the private list is not on this machine", killed the hook
+# instead of being handled by it. Every scanner call below is therefore
+# captured inside an `if`, which `sh -e` does not treat as a failure.
+#
+# Exit codes from the scanner:
+#   0  clean
+#   1  contamination found          -> refuse the push
+#   2  the private list is absent   -> only acceptable for the literal sweep
+#   3  the gate is broken           -> refuse the push, always
+#
+# HUB_GATE_CMD exists so tests/gate/hook-exit-cases.sh can substitute a stub
+# scanner and prove all four codes are handled. Leave it unset in real use.
+
+GATE=${HUB_GATE_CMD:-"python3 scripts/gate/sweep.py"}
+PUBLIC_CONTENT=${HUB_PUBLIC_CONTENT_CMD:-"node scripts/public-content-check.mjs"}
+
+# Runs the gate and puts its exit code in $status. The `if` is what keeps
+# `sh -e` from ending the hook on a non-zero exit, and it leaves the gate's
+# own output on the terminal where a person can read it.
+status=0
+run_gate() {
+  if $GATE "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+}
+
+# 1. Is the gate itself still working? A blind gate that has quietly stopped
+#    working looks exactly like a clean repository.
+run_gate --self-test
+if [ "$status" -ne 0 ]; then
+  echo "pre-push: the gate's self-test failed (exit $status). The gate is broken."
+  echo "pre-push: refusing the push. Nothing is scanned by a scanner that cannot"
+  echo "pre-push: prove itself. Fix the gate, do not bypass this."
+  exit 1
+fi
+
+# 2. Every blob in every outgoing commit, both sides of every change. This is
+#    the check a working-tree sweep cannot do: a file added and later deleted
+#    is still in the history you are about to publish.
+#
+#    Git hands a pre-push hook the refs being pushed on stdin, one per line:
+#    <local ref> <local sha> <remote ref> <remote sha>. Scan exactly those.
+#    Scanning every local branch instead would refuse a clean push because
+#    some unrelated local branch is dirty, and would say nothing about
+#    whether the branch you are actually publishing is clean. A backup branch
+#    kept before a history rewrite is the obvious case.
+#
+#    An all-zero remote sha means the remote has no such branch yet, so the
+#    range is everything reachable from the local ref. That is the first-push
+#    case, and it is the one that matters most.
+ranges=""
+had_input=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_sha:-}" ] && continue
+  had_input=1
+  case "$local_sha" in
+    *[!0]*) ;;            # a real sha
+    *) continue ;;        # all zeros: this is a deletion, nothing to scan
+  esac
+  case "$remote_sha" in
+    *[!0]*) ranges="$ranges $remote_sha..$local_sha" ;;
+    *) ranges="$ranges $local_sha" ;;
+  esac
+done
+
+# A deletion is not the same as no input. With refs on stdin but nothing to
+# publish, there is nothing to scan, and falling back to every outgoing
+# branch would scan things this push does not touch.
+if [ -n "$ranges" ]; then
+  echo "pre-push: scanning what this push would publish:$ranges"
+  # shellcheck disable=SC2086
+  run_gate --range $ranges
+elif [ "$had_input" -eq 1 ]; then
+  echo "pre-push: this push publishes no new commits. Nothing to scan."
+  status=0
+else
+  # No refs on stdin: someone ran the hook by hand. Fall back to every commit
+  # not already on a remote.
+  run_gate --range
+fi
+case "$status" in
+  0) ;;
+  1)
+    echo "pre-push: contamination in the commits you are about to publish."
+    echo "pre-push: refusing the push. Rewrite the history, do not just delete"
+    echo "pre-push: the file: the old blob stays reachable until you do."
+    exit 1
+    ;;
+  *)
+    echo "pre-push: the gate is broken (exit $status) and could not scan the"
+    echo "pre-push: outgoing commits. Refusing the push."
+    exit 1
+    ;;
+esac
+
+# 3. The public-foundation policy also covers commit metadata and every
+# historical blob/path. The test command override follows HUB_GATE_CMD.
+if [ -n "$ranges" ]; then
+  for public_range in $ranges; do
+    if $PUBLIC_CONTENT --repo "$PWD" --range "$public_range"; then
+      :
+    else
+      echo "pre-push: public-content history check failed. Refusing the push."
+      exit 1
+    fi
+  done
+elif [ "$had_input" -eq 0 ]; then
+  if $PUBLIC_CONTENT --repo "$PWD" --outgoing; then
+    :
+  else
+    echo "pre-push: public-content history check failed. Refusing the push."
+    exit 1
+  fi
+fi
+
+# 4. The maintainer-only literal sweep. It needs the clear-text list, which
+#    lives outside git on a maintainer machine. Exit 2 there means it did not
+#    run, and that is allowed to pass: the hashed gate and the shape rules
+#    have already run above, and gitleaks runs in continuous integration.
+# The same revisions, not a different selection. Giving --literal nothing
+# sent it to every outgoing branch, so a contaminated backup branch could
+# block a clean push of main and the two scanners could disagree about what
+# was being published. Round four found it.
+if [ -n "$ranges" ]; then
+  # shellcheck disable=SC2086
+  run_gate --literal $ranges
+elif [ "$had_input" -eq 1 ]; then
+  echo "pre-push: nothing to publish, so the literal sweep has nothing to read."
+  exit 0
+else
+  run_gate --literal
+fi
+case "$status" in
+  0)
+    exit 0
+    ;;
+  1)
+    echo "pre-push: the literal sweep found contamination. Refusing the push."
+    exit 1
+    ;;
+  2)
+    echo "pre-push: the literal sweep did not run on this machine: the private"
+    echo "pre-push: list is not here. Continuing. The hashed gate and the shape"
+    echo "pre-push: rules have already run, and gitleaks runs in CI."
+    exit 0
+    ;;
+  *)
+    echo "pre-push: the literal sweep reported the gate is broken (exit $status)."
+    echo "pre-push: Refusing the push."
+    exit 1
+    ;;
+esac

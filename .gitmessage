@@ -1,0 +1,11 @@
+
+
+# Subject: type(scope): summary, imperative, under 72 characters.
+# Types: feat, fix, docs, chore, refactor, test, build, ci, perf, revert.
+# Body: what changed and why. Wrap at 72 characters.
+#
+# Trailers below are required on every commit in this repository.
+# Never add Signed-off-by unless a human typed it with their own hand.
+Assisted-by: LLM
+Agent-model: <actual-model-id>
+Agent-tool: <actual-tool>

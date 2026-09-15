@@ -1,0 +1,36 @@
+This file is the contamination gate's shape canary.
+
+Every value below is synthetic. None of it belongs to a person, a business,
+a machine or an account. It exists so the gate can prove that each shape rule
+in scripts/gate/shape-rules.txt still fires, without any real identifier ever
+sitting in this repository.
+
+The rules these exercise are the ones that catch what a hashed denylist
+cannot: a hashed list only finds what somebody thought to add, and the
+contamination audit of the other codebase found a real-looking contact card
+that no term on any list covered.
+
+Personal shapes
+  landline    (07) 5555 0100
+  mobile      0400 555 010
+  business    ABN 11 222 333 444
+  company     ACN 222 333 444
+  address     12 Example Street, Faketown QLD
+
+Machine and person shapes
+  macos       /Users/exampleperson
+  linux       /home/exampleperson
+  windows     C:\Users\Exampleperson
+  tailnet     exampleperson@example-tailnet.ts.net
+  tailnet     examplehost.example-tailnet.ts.net
+  launchd     com.example.exampleagent.plist
+
+Infrastructure shapes
+  supabase    abcdefghijklmnopqrst.supabase.co
+  r2 public   pub-0123456789abcdef0123456789abcdef.r2.dev
+  r2 account  0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com
+  token       eyJhbGciOiJIUzI1NiIs.eyJzdWIiOiIxMjM0NTY3
+
+Do not remove this file. Do not put a real value in it. Do not copy a line
+out of it: the content exclusion names this exact path and no other, so the
+same string anywhere else fails the build, which is what it is for.

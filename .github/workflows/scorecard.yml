@@ -1,0 +1,53 @@
+name: scorecard
+
+# OpenSSF Scorecard. It grades this repository's own supply-chain hygiene:
+# branch protection, pinned actions, token permissions, dangerous workflow
+# patterns, and so on. Results are published, so the badge and the score are
+# public and neither can be quietly walked back.
+
+on:
+  branch_protection_rule:
+  schedule:
+    # Weekly, Monday 02:17 UTC. An odd minute, so it is not queued behind
+    # every other repository that picked the top of the hour.
+    - cron: '17 2 * * 1'
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    if: ${{ github.event.repository.visibility == 'public' }}
+    name: analyse and publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload the result to the code-scanning dashboard.
+      security-events: write
+      # Needed for the signed, publishable result.
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        id: scorecard
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publishing is the point. It puts the score on the public
+          # dashboard and lets the badge in README.md resolve.
+          publish_results: true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: results.sarif

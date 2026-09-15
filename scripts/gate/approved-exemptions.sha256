@@ -1,0 +1,43 @@
+# The only contents the contamination gate will skip.
+#
+# Four files exist to contain the thing the gate looks for: two synthetic
+# fixtures, the hashed denylist and the shape rules. The pass two gate
+# exempted them **by path**, which exempted whatever anyone later put in
+# them. Round four demonstrated it: append a denied term to the canary and
+# the gate reported clean.
+#
+# So the exemption is of the approved bytes, not of the name. Each line is
+# the sha256 of the approved contents. If a file's bytes differ from its
+# digest here, the gate scans it like any other file, and the denied terms it
+# legitimately contains will fail the build until somebody updates this line
+# on purpose.
+#
+# Changing a fixture is therefore two deliberate edits, not one:
+#
+#   shasum -a 256 tests/gate/canary.txt
+#
+# and paste the result here. `pnpm gate:selftest` fails if any line is stale,
+# so this cannot drift quietly.
+#
+# Format: <sha256>  <repository-relative path>
+
+# Every approved version, not only the current one. These files legitimately
+# change: a canary gains a phrase, the denylist gains a term. Each edit is an
+# approval, and the old bytes stay approved because they are still in the
+# history the pre-push scan reads. Approving only the current version would
+# make every past fixture a permanent violation.
+#
+# tests/gate/canary.txt
+37134e7ca4353856779420a5b1ea2fb1dccddbaf314bb8d8b5812e54cd1f86f7  tests/gate/canary.txt
+7a5b9489626c5dc8d7f7bae636ea41c87352fe4cf43f1e2a3bbee8cb7c11d829  tests/gate/canary.txt
+
+# tests/gate/shape-canary.txt
+991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18  tests/gate/shape-canary.txt
+
+# scripts/gate/denylist.sha256
+de5418fb31ebf58102f880243ce29bc8dc5486889e7ffd10828a097d1671f94c  scripts/gate/denylist.sha256
+a0cb6fe627c6f861706cc7fda49cd8638c4cf6d1bef657141146d3cad4db15c8  scripts/gate/denylist.sha256
+
+# scripts/gate/shape-rules.txt
+5cfe6d4a19d754a56fd8367dcb04c32f18e14504ecee795c7cbe8671d1921b60  scripts/gate/shape-rules.txt
+8733ecc569497c6d0b1ce26552b449b165a956e05dbeba0603b17cf07beadbe7  scripts/gate/denylist.sha256

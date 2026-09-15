@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# The pre-commit hook. A red hook is a stop, not a nuisance.
+# Never pass --no-verify. If a check is wrong, fix the check.
+
+set -e
+
+# pnpm may only exist through corepack on this machine.
+if command -v pnpm >/dev/null 2>&1; then
+  pm() { pnpm "$@"; }
+else
+  pm() { corepack pnpm "$@"; }
+fi
+
+# 1. Is the gate itself still working? A blind gate that has stopped working
+#    looks exactly like a clean repository, so this runs first.
+python3 scripts/gate/sweep.py --self-test
+
+# 2. Client material, in what is staged.
+python3 scripts/gate/sweep.py --staged
+
+# 3. Secrets, in what is staged.
+gitleaks protect --staged --no-banner --redact --config .gitleaks.toml
+
+# 4. Lint and format, on what is staged.
+pm exec lint-staged
+
+# 5. Types, over everything.
+pm run typecheck

@@ -1,0 +1,52 @@
+# Skills this repository deliberately did not vendor.
+#
+# A vendored skill that tells an agent to run one of these is a dead end: the
+# agent finds nothing and improvises, which is the failure the curated set
+# exists to prevent. scripts/skill-refs-check.mjs fails the build on a
+# reference to any name here.
+#
+# The exclusions are by rule, not by roster: the Pstack router and its
+# playbooks, the personal explainers, anything that spends money, and the
+# Pocock folders outside the official group. See .claude/skills/README.md.
+
+# Pstack: the router and its playbooks
+poteto-mode
+architect
+babysit
+figure-it-out
+arena
+swarm
+interrogate
+deslop
+fix-ci
+fix-merge-conflicts
+get-pr-comments
+make-pr-easy-to-review
+no-comments
+thermo-nuclear-code-quality-review
+what-did-i-get-done
+
+# Pstack: spend. Never run; it stands up a four-model panel.
+setup-pstack
+
+# Pstack: the personal explainers
+how
+why
+bro
+reflect
+recall
+automate-me
+
+# Pocock: outside the official group (in-progress and misc)
+claude-handoff
+implement-spec
+loop-me
+retro
+setup-ts-deep-modules
+writing-beats
+writing-fragments
+writing-shape
+git-guardrails-claude-code
+migrate-to-shoehorn
+scaffold-exercises
+setup-pre-commit

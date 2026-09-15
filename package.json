@@ -1,0 +1,70 @@
+{
+  "name": "@launchastro/hub",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pre-alpha organisational system foundation. Product implementation is pending.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node scripts/build.mjs",
+    "brand:check": "node scripts/product-name.mjs --check",
+    "brand:sync": "node scripts/product-name.mjs --write",
+    "brand:cases": "node --test tests/branding/product-name-cases.mjs",
+    "review:preflight": "node scripts/review-preflight.mjs",
+    "gate:selftest": "python3 scripts/gate/sweep.py --self-test",
+    "gate": "python3 scripts/gate/sweep.py",
+    "gate:cases": "bash tests/gate/gate-cases.sh",
+    "gate:hooks": "bash tests/gate/hook-exit-cases.sh",
+    "commits:cases": "bash tests/ci/commit-range-cases.sh",
+    "size:cases": "bash tests/ci/pr-size-cases.sh",
+    "review:cases": "bash tests/ci/review-evidence-cases.sh",
+    "session:cases": "bash tests/agents/session-check-cases.sh",
+    "receipt": "bash scripts/publication-receipt.sh",
+    "pins": "node scripts/pins-check.mjs",
+    "skills:refs": "node scripts/skill-refs-check.mjs",
+    "merge:policy": "node scripts/merge-policy-check.mjs",
+    "gate:range": "python3 scripts/gate/sweep.py --range",
+    "gate:literal": "python3 scripts/gate/sweep.py --literal",
+    "licences": "node scripts/licences/check.mjs",
+    "licences:cases": "bash tests/licences/licence-cases.sh",
+    "check": "node scripts/check.mjs",
+    "prepare": "husky",
+    "provenance:cases": "node --test tests/ci/provenance-cases.mjs",
+    "candidate:cases": "node --test tests/ci/candidate-cases.mjs",
+    "candidate:snapshot": "node scripts/candidate-snapshot.mjs",
+    "public:content": "node scripts/public-content-check.mjs",
+    "public:history:cases": "node --test tests/ci/public-history-cases.mjs",
+    "spdx": "node scripts/spdx-check.mjs",
+    "spdx:cases": "node --test tests/licences/spdx-cases.mjs"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
+    "@types/node": "24.13.3",
+    "husky": "9.1.7",
+    "lint-staged": "17.5.0",
+    "oxlint": "1.81.0",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,mts,cts}": [
+      "oxlint",
+      "prettier --write"
+    ],
+    "*.{json,md,css,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

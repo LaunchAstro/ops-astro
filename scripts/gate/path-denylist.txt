@@ -1,0 +1,42 @@
+# Paths that must never be committed to this repository.
+#
+# One glob per line, matched against the path relative to the repository root
+# and against the bare file name. Comments and blank lines are ignored.
+
+# The other repository's mirror pipeline. This repository is never seeded
+# from it, and neither of its two lists is ever committed anywhere.
+scan-terms.txt
+replacements.txt
+*/scan-terms.txt
+*/replacements.txt
+scripts/os-mirror/*
+*/os-mirror/*
+
+# The clear-text contamination list, wherever someone is tempted to put it.
+gate-terms.txt
+*/gate-terms.txt
+
+# Keys and credentials, by shape. gitleaks catches the content; this catches
+# the file even when it is empty or encrypted.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+.env
+.env.*
+*.env
+secrets.yaml
+secrets.yml
+service-account*.json
+
+# Material that arrives with client data attached.
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+fixtures/clients/*
+*/client-data/*

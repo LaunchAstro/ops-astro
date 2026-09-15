@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Commit messages are checked. Conventional commits, and the repository's own
+# trailers. See .gitmessage.
+
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm exec commitlint --edit "$1"
+else
+  corepack pnpm exec commitlint --edit "$1"
+fi

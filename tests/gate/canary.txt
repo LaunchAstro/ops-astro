@@ -1,0 +1,23 @@
+This file is the contamination gate's canary.
+
+The term below is invented. It is not a client, not a person, not a company,
+and it appears nowhere on earth except in this repository and in the hashed
+denylist beside it.
+
+  Kwathorne Vessel Co
+
+The gate's self-test reads this file and must flag that term. If it stops
+flagging it, the gate is broken and every clean sweep after that means
+nothing, so the self-test failing is a hard stop.
+
+Four phrases are on the hashed list, which exercises the one, two, three and
+four word cases: kwathorne, kwathorne vessel, kwathorne vessel co, and the
+four word form below.
+
+  Kwathorne Vessel Trading Company
+
+Do not remove this file. Do not put a real name in it. Do not copy a term
+above into any other file: the content exclusion names this exact path and no
+other, so the same word anywhere else fails the build, which is exactly what
+it is meant to do. Path checks are not excluded here at all: a denied path
+inside this directory still fails.
