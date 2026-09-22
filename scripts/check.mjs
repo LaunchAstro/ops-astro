@@ -52,6 +52,7 @@ const STEPS = [
   ['spdx', 'source licence headers'],
   ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
   ['deps:cruise', 'structural dependency rules'],
+  ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
   ['build', 'build'],
 ];
 

@@ -11,10 +11,16 @@
 // repository keeps a record of where each pin came from and how it was
 // checked, and this script fails when a workflow and that record disagree.
 //
-// Two rules:
+// Three rules:
 //   1. Every `uses:` in .github/workflows is pinned to a 40 character commit
 //      hash. A tag can be moved; a hash cannot.
-//   2. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
+//   2. Every `image:` in .github/workflows is pinned to a sha256 digest. A
+//      service container runs code in the job like any action does, and
+//      `postgres:18-alpine` is a tag its publisher can move under us. This
+//      rule arrived with the database conformance job, which was the first
+//      service container in this repository; until then the check read only
+//      `uses:` and a moved image tag would have passed it.
+//   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -26,9 +32,12 @@ const recordPath = join(repoRoot, 'docs', 'supply-chain-pins.md');
 
 const USES = /^\s*-?\s*uses:\s*([^\s#]+)/gmu;
 const PINNED = /^(?<action>[^@]+)@(?<sha>[0-9a-f]{40})$/u;
+const IMAGE = /^\s*-?\s*image:\s*([^\s#]+)/gmu;
+const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
 const failures = [];
 const pins = new Map();
+const images = new Map();
 
 if (!existsSync(workflowDir)) {
   console.error(`pins: no workflow directory at ${workflowDir}`);
@@ -57,9 +66,28 @@ for (const file of workflows) {
     }
     pins.set(ref, `${file}`);
   }
+  for (const match of text.matchAll(IMAGE)) {
+    const ref = match[1];
+    if (ref === undefined) continue;
+    if (ref.startsWith('${{')) continue;
+    const digested = DIGESTED.exec(ref);
+    if (digested?.groups === undefined) {
+      failures.push(
+        `${file}: the container image ${ref} is not pinned to a sha256 digest.\n` +
+          '        A service container runs code in the job. Pin it the way an\n' +
+          '        action is pinned: `image@sha256:<64 hex>`, with the tag it\n' +
+          '        came from in a comment beside it.',
+      );
+      continue;
+    }
+    images.set(ref, file);
+  }
 }
 
-console.log(`pins: ${pins.size} pinned action reference(s) across ${workflows.length} workflow(s)`);
+console.log(
+  `pins: ${pins.size} pinned action reference(s) and ${images.size} pinned image(s) ` +
+    `across ${workflows.length} workflow(s)`,
+);
 
 if (!existsSync(recordPath)) {
   failures.push(
@@ -78,6 +106,15 @@ if (!existsSync(recordPath)) {
       );
     }
   }
+  for (const [ref, where] of images) {
+    const digest = ref.split('@sha256:')[1] ?? '';
+    if (!record.includes(digest)) {
+      failures.push(
+        `${where}: the image ${ref} is not in docs/supply-chain-pins.md.\n` +
+          '        Record the tag it corresponds to and how that was checked.',
+      );
+    }
+  }
 }
 
 if (failures.length > 0) {
@@ -86,4 +123,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('pins: every action is pinned to a hash, and every pin is recorded.');
+console.log('pins: every action and image is pinned to a hash, and every pin is recorded.');

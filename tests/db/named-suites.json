@@ -1,0 +1,14 @@
+{
+  "comment": [
+    "The suites scripts/db-conformance.mjs runs against a real database.",
+    "A part's named invariant suite goes in `invariant`; the conformance suites",
+    "its change affects go in `conformance`. Both are paths from the repository",
+    "root. The runner fails when a named suite is missing, when any test in one",
+    "of them is skipped, and when a run ends with zero tests having executed.",
+    "It is empty because no product invariant or conformance suite exists on",
+    "this tree yet, and an empty manifest is a failure, not a pass. See",
+    "docs/agents/database-conformance.md for why that is deliberate."
+  ],
+  "invariant": [],
+  "conformance": []
+}

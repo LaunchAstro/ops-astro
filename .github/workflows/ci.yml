@@ -126,6 +126,76 @@ jobs:
       - name: Public content in the actual checked-out snapshot
         run: node scripts/public-content-check.mjs --repo "$PWD"
 
+  database-gate:
+    # Proving the gate. These probes start their own throwaway Postgres, run
+    # controlled fixture suites through the enforcement runner and assert what
+    # it refuses: a skipped database test, a named suite that is not on disk,
+    # a run with zero tests, and a suite that passes without touching the
+    # database at all. They prove the runner works. They say nothing about the
+    # product, and they must not be read as saying anything about it.
+    name: database conformance gate
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run db:cases
+
+  database:
+    # Claiming product conformance. This runs the named invariant suite and the
+    # affected conformance suites against a real Postgres, and it fails when a
+    # named suite is missing, when any database test is skipped, when zero
+    # tests ran, or when the suites passed without the database recording a
+    # single transaction.
+    #
+    # On this head it fails, and that is correct rather than broken: no product
+    # invariant or conformance suite exists yet, tests/db/named-suites.json
+    # names none, and an empty manifest is a failure. The alternative is a
+    # green tick beside the words "database conformance" that proves nothing,
+    # which is the one outcome the ticket forbids.
+    #
+    # So: bind `database conformance gate` as a required context now. Do not
+    # bind `database conformance` until the first invariant suite lands and is
+    # named in the manifest. docs/agents/database-conformance.md holds the
+    # reasoning and the binding order.
+    name: database conformance
+    needs: [gate]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Pinned by digest, and recorded in docs/supply-chain-pins.md. The
+        # password is this container's own, it is thrown away with it, and it
+        # reaches nothing outside this job. No repository secret is used here,
+        # and none should be: a check that needs a credential to prove a
+        # database was reached is proving the wrong thing.
+        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run db:conformance
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+
   licences:
     name: OSI licence allowlist
     needs: [gate]

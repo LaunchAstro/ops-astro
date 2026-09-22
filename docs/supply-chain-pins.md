@@ -48,6 +48,27 @@ The workflow downloads the archive to disk, checks it with `sha256sum -c`, and
 only then extracts it. It used to pipe the download straight into `tar`, which
 runs whatever arrives.
 
+## Container images
+
+A service container runs code inside the job exactly as an action does, so it
+is pinned the same way. `scripts/pins-check.mjs` refuses an `image:` that is
+not a sha256 digest, and refuses a digest that is not recorded here.
+
+| Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
+| ---------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres` | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'` |
+
+Reproduce it the same way when raising the pin:
+
+```sh
+docker pull postgres:<tag>
+docker image inspect postgres:<tag> --format '{{index .RepoDigests 0}}'
+```
+
+As with an action hash, this establishes which bytes run and nothing about
+whether those bytes are trustworthy. The database conformance job gives that
+container a throwaway password of its own and no repository secret.
+
 ## npm pins that a check depends on
 
 Every npm dependency is pinned by `pnpm-lock.yaml`. These are recorded here as
