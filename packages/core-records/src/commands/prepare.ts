@@ -15,6 +15,19 @@
 // before the revision comparison, so a stale revision against a record that
 // is not there is `NOT_FOUND` and not `VERSION_STALE` — the first answer tells
 // the caller nothing they did not already present.
+//
+// The read of the target also *locks* it. A review found the revision check
+// reading a row another transaction was already rewriting: two `task.update`
+// calls presenting the same `expectedRevision` both passed the comparison —
+// each against the committed row, neither seeing the other's uncommitted write
+// — and both applied, so the second silently restored the first's old title
+// and the caller who lost was told `applied`. Optimistic concurrency is only
+// as good as the row the comparison reads, so the row is taken `for update`
+// before it is compared: the second transaction waits, re-reads the revision
+// the first committed, and is refused `VERSION_STALE` as the contract says.
+// The lock is here, in the one read every targeted command shares, for the
+// same reason the authority check is — a lock taken by each handler is a lock
+// the next handler forgets.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -108,7 +121,7 @@ export async function prepareCommand(
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
     const recordId = 'recordId' in request ? request.recordId : '';
-    target = await readTask(tx, spine.taskTypeId, recordId);
+    target = await lockTask(tx, spine.taskTypeId, recordId);
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
@@ -123,7 +136,22 @@ export async function prepareCommand(
   return { session, declaration, entryPoint, spine, target };
 }
 
-async function readTask(
+/**
+ * The target, held for the rest of the transaction.
+ *
+ * `for update` is the whole of the lost-update fix. A second caller presenting
+ * the same `expectedRevision` blocks here until the first transaction ends,
+ * and then — read committed being this server's default — re-reads the row as
+ * the first committed it, revision and all. So the comparison in
+ * `prepareCommand` runs against the revision the record is actually at rather
+ * than the one it was at when the second caller started, and the loser is
+ * refused instead of overwriting the winner.
+ *
+ * A row the first transaction deleted no longer matches, the read returns
+ * nothing, and the second caller gets `NOT_FOUND` — which is the same answer
+ * it would have got a moment later anyway.
+ */
+async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
@@ -135,7 +163,8 @@ async function readTask(
   const rows = await tx.query<Omit<TaskRow, 'revision'> & { readonly revision: string }>(
     `select id, revision::text as revision, data, deleted_at, trash_batch_id
        from records
-      where business_id = $1 and record_type_id = $2 and id = $3`,
+      where business_id = $1 and record_type_id = $2 and id = $3
+        for update`,
     [tx.businessId, taskTypeId, recordId],
   );
   const row = rows[0];
