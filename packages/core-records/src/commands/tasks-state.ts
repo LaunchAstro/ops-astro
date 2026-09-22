@@ -32,12 +32,68 @@ import { isRecordsRefusal } from '../records/refusals.ts';
 import { mergeFieldValues } from '../tasks/placement.ts';
 import { setTaskState } from '../tasks/state.ts';
 import type { MachineCategory } from '../tasks/states.ts';
-import { fromRecords, refuseCommand } from './refusal.ts';
+import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from './surface.ts';
 import type { FieldValues } from './requests.ts';
+
+/**
+ * The task fields whose value is a person of this business.
+ *
+ * Named rather than derived, because nothing on a field definition says what a
+ * uuid link points at, and a list here is a visible diff where a silent
+ * derivation would not be. `client` is not in it: a party link resolves against
+ * the party model, which this unit does not carry.
+ */
+const PERSON_LINK_FIELDS: readonly string[] = ['assignee', 'delegate'];
+
+/**
+ * Refuse a person link that names nobody here.
+ *
+ * `values.ts` checks that a uuid is a uuid and says in as many words that
+ * whether it reaches anything is the owning operation's question. This is that
+ * operation answering it. Without this, `task.assign` accepted the identifier
+ * of a person in another business: the row was written, the read joined on the
+ * business and returned no assignee, and the task ended up pointing at someone
+ * who does not exist here -- acceptance case B2's negative, failing.
+ *
+ * The condition is the one `person.list` reads, so the people a screen offers
+ * as assignees and the people the server will accept are one list rather than
+ * two that drift.
+ *
+ * `NOT_FOUND` and not a code that says "wrong business". A person of another
+ * business and an identifier that was never real are the same answer here, for
+ * the reason every other NOT_FOUND in this tree is: the difference between them
+ * is the inference.
+ */
+async function refusePersonNotHere(
+  tx: TenantQuery,
+  fields: FieldValues,
+): Promise<CommandRefusal | undefined> {
+  const named = PERSON_LINK_FIELDS.filter(
+    (key) => typeof fields[key] === 'string' && fields[key] !== null,
+  );
+  if (named.length === 0) return undefined;
+
+  const wanted = named.map((key) => fields[key] as string);
+  const found = await tx.query<{ readonly id: string }>(
+    `select p.id
+       from public.people p
+       join public.memberships m
+         on m.business_id = p.business_id and m.person_id = p.id and m.active
+      where p.business_id = $1 and p.id = any($2::uuid[])`,
+    [tx.businessId, wanted],
+  );
+  const here = new Set(found.map((row) => row.id));
+  const missing = named.filter((key) => !here.has(fields[key] as string)).toSorted();
+  if (missing.length === 0) return undefined;
+  return refuseCommand('NOT_FOUND', missing, [
+    'No person of this business with an active membership carries that identifier.',
+    'Read person.list for the people this business can be assigned work.',
+  ]);
+}
 
 /** The one command that may write a field, from the field's own row. */
 function writerOf(field: FieldDefinition): readonly string[] {
@@ -182,6 +238,9 @@ export async function writeOwnedFields(
 
   const mistyped = refuseWrongValueType(definitions, fields);
   if (mistyped !== undefined) return refused(mistyped);
+
+  const absent = await refusePersonNotHere(tx, fields);
+  if (absent !== undefined) return refused(absent);
 
   const merged = mergeFieldValues(target.data, fields);
   const rows = await tx.query<{ readonly revision: string }>(
