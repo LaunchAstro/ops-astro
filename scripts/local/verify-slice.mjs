@@ -109,6 +109,18 @@ async function call(token, businessKey, path, body, headers = {}) {
 }
 
 const id = () => `verify-${randomUUID()}`;
+
+/** Key order is not part of a JSON value, so it is not part of a comparison. */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => canonical(item)).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .toSorted()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
 const codeOf = (result) => (typeof result.body?.code === 'string' ? result.body.code : undefined);
 
 async function main() {
@@ -181,19 +193,40 @@ async function main() {
   let revision = created.body.revision;
 
   // ------------------------------------------------------------- B2 assign
-  const assigned = await call(mia.token, 'alpha', '/task/assign', {
-    operationId: id(),
-    recordId,
-    expectedRevision: revision,
-    fields: { assignee: noah.person },
-  });
-  record('B2 assign noah', {
-    status: assigned.status,
-    code: codeOf(assigned) ?? 'applied',
-    ok: assigned.status === 200,
-    note: assigned.status === 200 ? `revision=${assigned.body.revision}` : '',
-  });
-  if (assigned.status === 200) revision = assigned.body.revision;
+  // `assignee` is a person link, so the value is a person identifier and the
+  // only way to learn one through the API is `person.list` — which is the
+  // assignee control's own source in the app. Asking the database directly
+  // would prove a path no person can take.
+  const persons = await call(mia.token, 'alpha', '/person/list', {});
+  const chosen = Array.isArray(persons.body?.persons)
+    ? persons.body.persons.find((person) => person.name === noah.person)
+    : undefined;
+
+  if (chosen === undefined) {
+    record('B2 assign noah', {
+      status: persons.status,
+      code: codeOf(persons),
+      ok: undefined,
+      note:
+        persons.status === 404
+          ? 'person.list is not in the surface yet, so no personId can be obtained'
+          : 'person.list returned no person with that name',
+    });
+  } else {
+    const assigned = await call(mia.token, 'alpha', '/task/assign', {
+      operationId: id(),
+      recordId,
+      expectedRevision: revision,
+      fields: { assignee: chosen.personId },
+    });
+    record('B2 assign noah', {
+      status: assigned.status,
+      code: codeOf(assigned) ?? 'applied',
+      ok: assigned.status === 200,
+      note: assigned.status === 200 ? `revision=${assigned.body.revision}` : '',
+    });
+    if (assigned.status === 200) revision = assigned.body.revision;
+  }
 
   // ------------------------------------------------- B3 start, complete, reopen
   for (const [name, path, extra] of [
@@ -250,24 +283,44 @@ async function main() {
 
   // ------------------------------------------------------------- N5 replay
   const identity = id();
-  const first = await call(mia.token, 'alpha', '/task/update', {
+  const payload = {
     operationId: identity,
     recordId,
     expectedRevision: revision,
     fields: { priority: 3 },
-  });
+  };
+  const first = await call(mia.token, 'alpha', '/task/update', payload);
   if (first.status === 200) revision = first.body.revision;
-  const replayed = await call(mia.token, 'alpha', '/task/update', {
-    operationId: identity,
-    recordId,
-    expectedRevision: first.body?.revision === undefined ? revision : revision - 1,
-    fields: { priority: 3 },
-  });
+
+  // The same identity carrying the same payload: the original result, exactly.
+  const replayed = await call(mia.token, 'alpha', '/task/update', payload);
+  // Compared canonically rather than byte for byte. The register stores the
+  // original result as JSONB and a replay is read back out of it, so the keys
+  // come back in a different order carrying the same values. That is worth
+  // knowing about: a caller that compared responses as bytes would see two
+  // different answers to one identity.
+  const same = canonical(first.body) === canonical(replayed.body);
   record('N5 replay operation_id', {
     status: replayed.status,
     code: codeOf(replayed) ?? 'replayed',
-    ok: replayed.status === 200 && replayed.text === first.text,
-    note: replayed.text === first.text ? 'identical body' : 'body differs from the original',
+    ok: replayed.status === 200 && same,
+    note: same
+      ? replayed.text === first.text
+        ? 'identical body'
+        : 'same values, key order differs (the register stores the result as JSONB)'
+      : 'the values differ from the original',
+  });
+
+  // The same identity carrying a different payload is the other half of the
+  // rule, and it is a refusal rather than a second result.
+  const reused = await call(mia.token, 'alpha', '/task/update', {
+    ...payload,
+    fields: { priority: 4 },
+  });
+  record('N5 operation_id reused', {
+    status: reused.status,
+    code: codeOf(reused),
+    ok: codeOf(reused) === 'OPERATION_ID_REUSED',
   });
 
   // -------------------------------------------------------------- N5 stale
@@ -330,9 +383,8 @@ async function main() {
       expectedRevision: revision,
       fields: { title: 'crossing the barrier' },
     });
-    const same =
-      foreign.status === nowhere.status &&
-      JSON.stringify(foreign.body) === JSON.stringify(nowhere.body);
+    const indistinguishable =
+      foreign.status === nowhere.status && canonical(foreign.body) === canonical(nowhere.body);
     record("N1 B writes A's real task", {
       status: foreign.status,
       code: codeOf(foreign),
@@ -348,8 +400,8 @@ async function main() {
     record('N1 the two are indistinguishable', {
       status: foreign.status,
       code: codeOf(foreign),
-      ok: same,
-      note: same ? 'same status and body' : 'they differ',
+      ok: indistinguishable,
+      note: indistinguishable ? 'same status and body' : 'they differ',
     });
   }
 
