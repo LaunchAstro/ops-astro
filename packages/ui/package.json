@@ -1,0 +1,11 @@
+{
+  "name": "@launchastro/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared interface package: tokens, primitives and the first slice's surfaces.",
+  "license": "AGPL-3.0-only",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
