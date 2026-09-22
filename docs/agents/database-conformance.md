@@ -18,6 +18,8 @@ throwaway Postgres of their own, run controlled fixture suites through
 - a manifest naming a suite that is not on disk fails;
 - a run in which zero tests executed fails;
 - a suite that passes without the database recording a transaction fails;
+- a named suite vitest never discovered fails, and the path is named;
+- a run vitest itself reported as failed fails, with every counted test passing;
 - an empty manifest fails;
 - a missing `DATABASE_URL` is refused rather than skipped.
 
@@ -89,12 +91,37 @@ No other sequencing conflict remains between this job and the ticket.
 4. more than zero tests executed;
 5. no test was skipped or marked todo;
 6. no test failed;
-7. the database's own transaction counter moved while the suites ran.
+7. the database's own transaction counter moved while the suites ran;
+8. every suite the manifest names appears in vitest's report, matched on the
+   resolved file path, with tests of its own that ran and none skipped;
+9. vitest itself reported nothing wrong: its process exited zero without a
+   signal, and the report's `success`, its errors and each file's `message`
+   are clean.
 
 Rule 7 is the one worth explaining. A suite can pass with every database
 assertion deleted, and rules 4 to 6 will not notice. The runner reads
 `pg_stat_database` before and after, and measures what its own reads cost
 first, so the threshold is calibrated on that database rather than guessed.
+
+Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because those
+three read aggregates and an aggregate has no idea which file it came from or
+how the run ended. Both were observed, not theorised: the runner returned exit
+0 on each.
+
+Rule 8 is the named-but-undiscovered suite. A manifest can name a file that
+exists on disk and sits outside vitest's discovery — the runner's disk check
+passes, vitest never loads the file however loudly the manifest names it, the
+other named suites supply the counts, and the summary reads "2 named suite(s),
+1 test(s): 1 passed". So every manifest path must now be bound to an entry in
+`testResults`, and a suite absent from the report is a failure naming the path.
+Aggregate counts never satisfy this on their own.
+
+Rule 9 is vitest's own verdict. An unhandled rejection fails the run and exits
+the process non-zero while every test vitest counted still passes, so
+`numFailedTests` stays 0 and rule 6 sees nothing: "2 passed, 0 failed", exit 0.
+The runner now reads the process status and signal as well as the report's own
+error fields, and any of them exits 1 naming what vitest reported, whatever
+the counts say.
 
 ## Credentials
 

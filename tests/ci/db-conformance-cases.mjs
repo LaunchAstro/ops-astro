@@ -14,6 +14,14 @@
 // it is the one a reader will not think of: a suite that passes without
 // touching the database at all fails too.
 //
+// Two more were found by running the runner adversarially rather than by
+// reading it, and both were green before they were cases. A manifest can name
+// a file that exists on disk but sits outside vitest's discovery: it is never
+// loaded, its siblings supply the test counts, and the aggregate looks whole.
+// And vitest can end a run in failure while every test it counted passed --
+// an unhandled rejection does exactly that -- so no count moves and only the
+// process exit status says anything is wrong.
+//
 // They are skipped, loudly, when Docker is not available, because a probe
 // that silently passes without a database would be the exact failure the
 // runner refuses. `pnpm db:cases` prints why it skipped and exits 0; CI runs
@@ -155,6 +163,34 @@ test('a database test with its database assertions gone', () => {
 });
 `;
 
+// Exists on disk, throws the moment it is loaded, and is not a `.test.ts`, so
+// vitest's discovery never picks it up however loudly the manifest names it.
+const NAMED_BUT_UNDISCOVERED = `// SPDX-License-Identifier: AGPL-3.0-only
+throw new Error('this named suite must not be ignored');
+`;
+
+const UNHANDLED_REJECTION = `// SPDX-License-Identifier: AGPL-3.0-only
+import { expect, test } from 'vitest';
+import pg from 'pg';
+
+test('the database answers', async () => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const { rows } = await client.query('select 1 as one');
+    expect(rows[0].one).toBe(1);
+  } finally {
+    await client.end();
+  }
+});
+
+test('a passing test beside an unhandled rejection', async () => {
+  Promise.reject(new Error('intentional unhandled probe'));
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  expect(true).toBe(true);
+});
+`;
+
 const skipUnlessDocker = (t) => {
   if (dockerUp()) return false;
   console.error(
@@ -233,6 +269,41 @@ test('a suite that passes without touching the database fails', async (t) => {
         const run = cruise(m, url);
         assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
         assert.match(run.stderr, /without the database recording a single transaction/u);
+      },
+    ),
+  );
+});
+
+test('a named suite vitest never discovered fails', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      { 'reaches.test.ts': REACHES_DATABASE, 'not-a-test.ts': NAMED_BUT_UNDISCOVERED },
+      { invariant: ['reaches.test.ts'], conformance: ['not-a-test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        assert.match(run.stderr, /cannot be bound to a result/u);
+        assert.match(run.stderr, /not-a-test\.ts/u);
+        assert.match(run.stderr, /vitest never reported this file/u);
+      },
+    ),
+  );
+});
+
+test('a run vitest itself reported as failed fails', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      { 'unhandled.test.ts': UNHANDLED_REJECTION },
+      { invariant: ['unhandled.test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        // Every counted test passed, so only vitest's own verdict shows it.
+        assert.match(run.stdout, /2 passed, 0 failed/u);
+        assert.match(run.stderr, /vitest reported the run as failed/u);
+        assert.match(run.stderr, /vitest exited with status 1/u);
       },
     ),
   );

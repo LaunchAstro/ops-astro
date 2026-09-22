@@ -18,7 +18,19 @@
 //   5. no test was skipped or marked todo;
 //   6. no test failed;
 //   7. the database's own transaction counter moved while they ran, so the
-//      suites reached it rather than passing beside it.
+//      suites reached it rather than passing beside it;
+//   8. every suite the manifest names appears in vitest's report, with tests
+//      of its own that ran;
+//   9. vitest itself reported nothing wrong: its process exited zero without a
+//      signal, and its report carries no error of its own.
+//
+// Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because both
+// read aggregates. A manifest can name a file that exists on disk and sits
+// outside vitest's discovery: it is never loaded, the other named suites
+// supply the counts, and the run is green over a suite that did not run. And
+// vitest can end a run in failure -- an unhandled rejection is the plain case
+// -- while every test it counted passed, so the counts say nothing is wrong
+// and the process exit status says otherwise.
 //
 // Rule 7 is the one that catches the interesting case. A suite can pass with
 // every database assertion commented out, and rules 4 to 6 will not notice.
@@ -92,6 +104,12 @@ if (missing.length > 0) {
       '        not happen must not report green.',
   );
 }
+
+/** The first line of a message, for a failure list that stays readable. */
+const firstLine = (value) =>
+  String(value ?? '')
+    .split('\n')[0]
+    .trim();
 
 /** The database's committed and rolled-back transaction count. */
 const readCounter = async (client) => {
@@ -199,6 +217,89 @@ if (failures.length === 0) {
     if (ran.failed > 0) {
       failures.push(`${String(ran.failed)} database test(s) failed. Their output is above.`);
     }
+
+    // 8. Bind each named suite to its entry in the report. Counting tests in
+    // aggregate cannot tell which file they came from, so a named suite vitest
+    // never discovered is invisible: its siblings supply the total, and the run
+    // reports green over a suite that was never loaded.
+    const reported = new Map();
+    for (const file of report.testResults ?? []) {
+      reported.set(resolve(repoRoot, String(file.name ?? '')), file);
+    }
+
+    const unbound = [];
+    for (const suite of named) {
+      const file = reported.get(resolve(repoRoot, suite));
+      if (file === undefined) {
+        unbound.push(`${suite}\n            vitest never reported this file, so it did not run.`);
+        continue;
+      }
+      const assertions = Array.isArray(file.assertionResults) ? file.assertionResults : [];
+      if (assertions.length === 0) {
+        unbound.push(`${suite}\n            vitest reported this file with no test in it.`);
+        continue;
+      }
+      const notRun = assertions.filter(
+        (t) => t.status === 'skipped' || t.status === 'pending' || t.status === 'todo',
+      );
+      if (notRun.length > 0) {
+        unbound.push(
+          `${suite}\n            ${String(notRun.length)} of its ${String(assertions.length)} ` +
+            'test(s) did not run.',
+        );
+      }
+    }
+
+    if (unbound.length > 0) {
+      failures.push(
+        `${String(unbound.length)} named suite(s) cannot be bound to a result:\n` +
+          unbound.map((u) => `          ${u}`).join('\n') +
+          '\n        Every suite the manifest names must appear in the report with\n' +
+          '        tests of its own that ran. A path that exists on disk but sits\n' +
+          "        outside vitest's discovery is never loaded, and the totals are\n" +
+          '        made up by the suites that were. Aggregates alone never satisfy\n' +
+          '        this check.',
+      );
+    }
+  }
+
+  // 9. What vitest itself said, which the counts do not carry. An unhandled
+  // rejection is the plain case: vitest fails the run and exits non-zero while
+  // every test it counted passed, so numFailedTests is 0 and rule 6 sees
+  // nothing. Read the process result and the report's own status instead.
+  const reportedErrors = [];
+  if (run.error !== undefined && run.error !== null) {
+    reportedErrors.push(`vitest could not be started: ${String(run.error)}`);
+  }
+  if (typeof run.signal === 'string') {
+    reportedErrors.push(`vitest was killed by signal ${run.signal}`);
+  } else if (run.status !== 0) {
+    reportedErrors.push(`vitest exited with status ${String(run.status)}`);
+  }
+  if (report !== undefined) {
+    if (report.success === false) {
+      reportedErrors.push('the report says the run did not succeed (success: false)');
+    }
+    for (const error of Array.isArray(report.errors) ? report.errors : []) {
+      reportedErrors.push(`the report carries an error: ${firstLine(error?.message ?? error)}`);
+    }
+    for (const file of report.testResults ?? []) {
+      const message = String(file.message ?? '').trim();
+      if (message !== '') {
+        reportedErrors.push(`${String(file.name ?? 'unnamed file')}: ${firstLine(message)}`);
+      }
+    }
+  }
+
+  if (reportedErrors.length > 0) {
+    failures.push(
+      'vitest reported the run as failed, whatever the test counts say:\n' +
+        reportedErrors.map((e) => `          ${e}`).join('\n') +
+        '\n        A run that ends in error is not a pass, and an error vitest\n' +
+        '        raises outside a test -- an unhandled rejection is the plain\n' +
+        '        case -- leaves every counted test passing. The process status\n' +
+        '        and the report are the only places it shows.',
+    );
   }
 
   try {
