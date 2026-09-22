@@ -14,9 +14,13 @@
 // row already in the database cannot make a case pass.
 //
 // Run: node tests/browser/slice-acceptance.mjs
+//
+/* eslint-disable no-await-in-loop -- every loop here steps one browser page and
+   one record through an ordered sequence: each step reads the revision the step
+   before it left. Running them together would not be the same evidence. */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
@@ -27,8 +31,16 @@ const SHOTS =
   process.env.SHOT_DIR ??
   `${root}../ops-astro-roadmap/.local/ops-astro-build-run-2026-09-23/parent-observations/local-slice`;
 const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
+// The application modules the page imports for the cases that must run through
+// the app's own code. They are served by Vite to the browser, not resolvable
+// from here, so they travel into `page.evaluate` as data rather than standing in
+// this file as import specifiers.
+const IN_PAGE = {
+  client: ['/src', 'operations', 'client.ts'].join('/'),
+  submit: ['/src', 'records', 'submit.ts'].join('/'),
+  authorisedRead: ['/src', 'data', 'authorised-read.ts'].join('/'),
+};
 const API = process.env.API_URL ?? 'http://127.0.0.1:8790';
-const SESSION_KEY = 'ops-astro.session';
 
 mkdirSync(SHOTS, { recursive: true });
 
@@ -79,40 +91,50 @@ async function signIn(page, email, businessKey) {
  * checklist names for N3; the client is the one the screens use.
  */
 async function throughSubmit(page, request) {
-  return await page.evaluate(async (ask) => {
-    const { OperationsClient } = await import('/src/operations/client.ts');
-    const { submitEdit } = await import('/src/records/submit.ts');
-    const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-    const client = new OperationsClient({
-      base: '/api',
-      businessKey: ask.businessKey ?? session.businessKey,
-      token: session.token,
-      fetch: window.fetch.bind(window),
-    });
-    return await submitEdit(client, ask.request);
-  }, request);
+  return await page.evaluate(
+    async (ask) => {
+      const { OperationsClient } = await import(ask.modules.client);
+      const { submitEdit } = await import(ask.modules.submit);
+      const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
+      const client = new OperationsClient({
+        base: '/api',
+        businessKey: ask.businessKey ?? session.businessKey,
+        token: session.token,
+        fetch: window.fetch.bind(window),
+      });
+      return await submitEdit(client, ask.request);
+    },
+    { ...request, modules: IN_PAGE },
+  );
 }
 
 async function throughClient(page, ask) {
-  return await page.evaluate(async (given) => {
-    const { OperationsClient } = await import('/src/operations/client.ts');
-    const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-    const sent = [];
-    const spy = async (input, init) => {
-      sent.push({ url: String(input), headers: Object.keys(init?.headers ?? {}), body: init?.body });
-      return await window.fetch(input, init);
-    };
-    const client = new OperationsClient({
-      base: '/api',
-      businessKey: session.businessKey,
-      token: session.token,
-      fetch: spy,
-    });
-    const result = given.read
-      ? await client.read(given.name, given.body)
-      : await client.mutate(given.name, given.body, given.options ?? {});
-    return { result, sent };
-  }, ask);
+  return await page.evaluate(
+    async (given) => {
+      const { OperationsClient } = await import(given.modules.client);
+      const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
+      const sent = [];
+      const spy = async (input, init) => {
+        sent.push({
+          url: String(input),
+          headers: Object.keys(init?.headers ?? {}),
+          body: init?.body,
+        });
+        return await window.fetch(input, init);
+      };
+      const client = new OperationsClient({
+        base: '/api',
+        businessKey: session.businessKey,
+        token: session.token,
+        fetch: spy,
+      });
+      const result = given.read
+        ? await client.read(given.name, given.body)
+        : await client.mutate(given.name, given.body, given.options ?? {});
+      return { result, sent };
+    },
+    { ...ask, modules: IN_PAGE },
+  );
 }
 
 /** The outcome a screen settles on. `loading` is where every read starts. */
@@ -130,7 +152,11 @@ async function outcomeOf(page) {
 
 /** The revision the record is actually at, read back through the app's client. */
 async function serverRevision(page, recordId) {
-  const { result } = await throughClient(page, { read: true, name: 'task.read', body: { recordId } });
+  const { result } = await throughClient(page, {
+    read: true,
+    name: 'task.read',
+    body: { recordId },
+  });
   return result.ok === true ? result.value.task.revision : undefined;
 }
 
@@ -145,7 +171,6 @@ const database = connect(fromEnvFile('DATABASE_URL'), { source: 'browser-accepta
 let admin = connectAsAdmin(fromEnvFile('DATABASE_ADMIN_URL'), { source: 'browser-acceptance' });
 let taskKey;
 let taskId;
-let aliveApi = true;
 
 const businessIdOf = async (key) => {
   const rows = await admin.execute('select id from public.businesses where key = $1', [key]);
@@ -245,7 +270,11 @@ try {
       was,
       { timeout: 15_000 },
     );
-    const state = await page.locator('.tpr__crumb .state, .tpr__crumb [class*="state"]').first().innerText().catch(() => '');
+    const state = await page
+      .locator('.tpr__crumb .state, .tpr__crumb [class*="state"]')
+      .first()
+      .innerText()
+      .catch(() => '');
     const sub = await page.locator('.card__sub').first().innerText();
     record({
       case: label,
@@ -331,7 +360,10 @@ try {
   record({
     case: 'N3 ordinary edit still applies',
     action: 'records/submit.ts sent description to task.update',
-    observed: ordinary.ok === true ? `applied at revision ${ordinary.value.revision}` : JSON.stringify(ordinary),
+    observed:
+      ordinary.ok === true
+        ? `applied at revision ${ordinary.value.revision}`
+        : JSON.stringify(ordinary),
     ok: ordinary.ok === true,
     shot: await shot(page, 'N3-ordinary-applies'),
   });
@@ -396,27 +428,30 @@ try {
   });
 
   // ------------------------------------------------------------------ N7
-  const tampered = await page.evaluate(async (given) => {
-    const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-    const response = await window.fetch('/api/b/alpha/task/update', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${session.token}`,
-        'x-forwarded-host': 'bravo.local',
-        'x-actor-id': '00000000-0000-0000-0000-000000000000',
-      },
-      body: JSON.stringify({
-        operationId: crypto.randomUUID(),
-        recordId: given.taskId,
-        expectedRevision: given.revision,
-        businessKey: 'bravo',
-        actorId: '00000000-0000-0000-0000-000000000000',
-        fields: { priority: 6 },
-      }),
-    });
-    return { status: response.status, body: await response.json() };
-  }, { taskId, revision: await serverRevision(page, taskId) });
+  const tampered = await page.evaluate(
+    async (given) => {
+      const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
+      const response = await window.fetch('/api/b/alpha/task/update', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.token}`,
+          'x-forwarded-host': 'bravo.local',
+          'x-actor-id': '00000000-0000-0000-0000-000000000000',
+        },
+        body: JSON.stringify({
+          operationId: crypto.randomUUID(),
+          recordId: given.taskId,
+          expectedRevision: given.revision,
+          businessKey: 'bravo',
+          actorId: '00000000-0000-0000-0000-000000000000',
+          fields: { priority: 6 },
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    },
+    { taskId, revision: await serverRevision(page, taskId) },
+  );
   const sentKeys = (
     await throughClient(page, { read: true, name: 'task.read', body: { recordId: taskId } })
   ).sent;
@@ -449,7 +484,9 @@ try {
   const fresh = await browser.newContext({ viewport: { width: 1480, height: 900 } });
   const freshPage = await fresh.newPage();
   await signIn(freshPage, 'mia@alpha.local', 'alpha');
-  await freshPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+  await freshPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+    waitUntil: 'domcontentloaded',
+  });
   await freshPage.waitForSelector('[data-task]');
   const inFresh = await freshPage.locator('h2.tpr__title').innerText();
   record({
@@ -465,7 +502,9 @@ try {
   const bravo = await browser.newContext({ viewport: { width: 1480, height: 900 } });
   const bravoPage = await bravo.newPage();
   await signIn(bravoPage, 'bea@bravo.local', 'bravo');
-  await bravoPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+  await bravoPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+    waitUntil: 'domcontentloaded',
+  });
   const foreignOutcome = await outcomeOf(bravoPage);
   record({
     case: "N1 B opens A's task",
@@ -474,7 +513,9 @@ try {
     ok: foreignOutcome !== 'ready',
     shot: await shot(bravoPage, 'N1-foreign-task'),
   });
-  await bravoPage.goto(`${WEB}/task/${encodeURIComponent('T-000000')}`, { waitUntil: 'domcontentloaded' });
+  await bravoPage.goto(`${WEB}/task/${encodeURIComponent('T-000000')}`, {
+    waitUntil: 'domcontentloaded',
+  });
   const fabricatedOutcome = await outcomeOf(bravoPage);
   record({
     case: 'N1 B opens a fabricated id',
@@ -509,7 +550,9 @@ try {
     ok: noahBoard === 'denied',
     shot: await shot(noahPage, 'N2-board-denied'),
   });
-  await noahPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+  await noahPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+    waitUntil: 'domcontentloaded',
+  });
   const noahTask = await outcomeOf(noahPage);
   record({
     case: 'N2 detail is denied, not empty',
@@ -541,7 +584,9 @@ try {
   let miaPerson;
   try {
     // ------------------------------------------------------------------ N6
-    await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await page.waitForSelector('[data-task]', { timeout: 20_000 });
     await page.waitForSelector('button:has-text("Save changes")', { timeout: 20_000 });
     const beforeRevoke = await shot(page, 'N6-authorised');
@@ -553,23 +598,29 @@ try {
     // the case is driven through the application's own `authorised-read.ts` in
     // the page, over the real client and the real API, rather than through a
     // second click that cannot exist.
-    const captured = await page.evaluate(async (given) => {
-      const { AuthorisedRead } = await import('/src/data/authorised-read.ts');
-      const { OperationsClient } = await import('/src/operations/client.ts');
-      const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-      const client = new OperationsClient({
-        base: '/api',
-        businessKey: session.businessKey,
-        token: session.token,
-        fetch: window.fetch.bind(window),
-      });
-      const drawn = [];
-      const projection = new AuthorisedRead({ grantKey: 'mia:alpha', onState: (s) => drawn.push(s.outcome) });
-      const older = projection.begin();
-      const authorised = await client.read('task.read', { recordId: given.taskId });
-      window.__n6 = { projection, client, older, authorised, drawn };
-      return { authorised: authorised.ok === true, title: authorised.value?.task?.title ?? null };
-    }, { taskId });
+    const captured = await page.evaluate(
+      async (given) => {
+        const { AuthorisedRead } = await import(given.modules.authorisedRead);
+        const { OperationsClient } = await import(given.modules.client);
+        const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
+        const client = new OperationsClient({
+          base: '/api',
+          businessKey: session.businessKey,
+          token: session.token,
+          fetch: window.fetch.bind(window),
+        });
+        const drawn = [];
+        const projection = new AuthorisedRead({
+          grantKey: 'mia:alpha',
+          onState: (s) => drawn.push(s.outcome),
+        });
+        const older = projection.begin();
+        const authorised = await client.read('task.read', { recordId: given.taskId });
+        window.n6Held = { projection, client, older, authorised, drawn };
+        return { authorised: authorised.ok === true, title: authorised.value?.task?.title ?? null };
+      },
+      { taskId, modules: IN_PAGE },
+    );
 
     miaPerson = (
       await admin.execute(
@@ -590,7 +641,9 @@ try {
     // address being opened again rather than a Save: the write path loads the
     // target through the same task collection, so with `task:read` revoked the
     // mutation is refused before it can ask for a reread.
-    await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await page.waitForSelector('[data-outcome="denied"]', { timeout: 20_000 });
     const deniedText = await page.locator('[data-outcome="denied"]').first().innerText();
     record({
@@ -602,22 +655,25 @@ try {
       extra: { authorised: beforeRevoke },
     });
 
-    const ordering = await page.evaluate(async (given) => {
-      const held = window.__n6;
-      const newer = held.projection.begin();
-      const denied = await held.client.read('task.read', { recordId: given.taskId });
-      const acceptedDenial = held.projection.accept(newer, denied, 'mia:alpha');
-      // The older response, authorised and real, arriving after the denial.
-      const acceptedOlder = held.projection.accept(held.older, held.authorised, 'mia:alpha');
-      return {
-        deniedCode: denied.code ?? null,
-        acceptedDenial,
-        acceptedOlder,
-        outcome: held.projection.state.outcome,
-        value: held.projection.state.value,
-        drawn: held.drawn,
-      };
-    }, { taskId });
+    const ordering = await page.evaluate(
+      async (given) => {
+        const held = window.n6Held;
+        const newer = held.projection.begin();
+        const denied = await held.client.read('task.read', { recordId: given.taskId });
+        const acceptedDenial = held.projection.accept(newer, denied, 'mia:alpha');
+        // The older response, authorised and real, arriving after the denial.
+        const acceptedOlder = held.projection.accept(held.older, held.authorised, 'mia:alpha');
+        return {
+          deniedCode: denied.code ?? null,
+          acceptedDenial,
+          acceptedOlder,
+          outcome: held.projection.state.outcome,
+          value: held.projection.state.value,
+          drawn: held.drawn,
+        };
+      },
+      { taskId, modules: IN_PAGE },
+    );
     record({
       case: 'N6 an older in-flight response cannot restore',
       action: `an authorised task.read taken before the revocation (${captured.authorised ? 'ok' : 'failed'}) was offered to the app's projection after the denial`,
@@ -631,7 +687,6 @@ try {
         ordering.value === null,
       shot: await shot(page, 'N6-older-response-refused'),
     });
-
   } catch (error) {
     record({
       case: 'N6 revocation on the mounted page',
@@ -643,24 +698,24 @@ try {
   }
 
   // Put it back the way the seed says it should be.
-  if (miaPerson !== undefined) await database.withBusiness(alpha, async (tx) => {
-    const actor = (
-      await tx.query(`select id from public.actors where person_id = $1 limit 1`, [miaPerson])
-    )[0]?.id;
-    await issueGrant(tx, [], {
-      subject: { kind: 'person', id: miaPerson },
-      scope: { kind: 'business', id: null },
-      collection: 'task',
-      action: 'read',
-      parentGrantId: null,
-      grantedByActorId: actor,
+  if (miaPerson !== undefined)
+    await database.withBusiness(alpha, async (tx) => {
+      const actor = (
+        await tx.query(`select id from public.actors where person_id = $1 limit 1`, [miaPerson])
+      )[0]?.id;
+      await issueGrant(tx, [], {
+        subject: { kind: 'person', id: miaPerson },
+        scope: { kind: 'business', id: null },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: actor,
+      });
     });
-  });
 
   // ------------------------------------------------------------------ B7
   const apiPid = readFileSync(`${root}.local/api.pid`, 'utf8').trim();
   sh('/bin/kill', [apiPid]);
-  aliveApi = false;
   await new Promise((resolve) => setTimeout(resolve, 1500));
   await page.goto(`${WEB}/projects/`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-outcome]');
@@ -674,13 +729,19 @@ try {
     shot: await shot(page, 'B7-unavailable'),
   });
 
-  sh('/bin/sh', ['-c', `. ./.local/db.env; . ./.local/auth.env; export DATABASE_URL DATABASE_ADMIN_URL SUPABASE_JWT_SECRET GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`]);
+  sh('/bin/sh', [
+    '-c',
+    `. ./.local/db.env; . ./.local/auth.env; export DATABASE_URL DATABASE_ADMIN_URL SUPABASE_JWT_SECRET GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`,
+  ]);
   await new Promise((resolve) => setTimeout(resolve, 3000));
-  aliveApi = true;
   const restoredPid = readFileSync(`${root}.local/api.pid`, 'utf8').trim();
-  await page.getByRole('button', { name: /retry|try again/iu }).first().click().catch(async () => {
-    await page.reload({ waitUntil: 'domcontentloaded' });
-  });
+  await page
+    .getByRole('button', { name: /retry|try again/iu })
+    .first()
+    .click()
+    .catch(async () => {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+    });
   await page.waitForSelector('a[href^="/task/"]', { timeout: 20_000 });
   record({
     case: 'B7 retry after restore',
@@ -698,16 +759,27 @@ try {
   await admin.close();
   sh('/bin/bash', ['scripts/local/db-down.sh']);
   sh('/bin/bash', ['scripts/local/db-up.sh']);
-  sh('/bin/sh', ['-c', `. ./.local/db.env; . ./.local/auth.env; export DATABASE_URL DATABASE_ADMIN_URL SUPABASE_JWT_SECRET GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`]);
+  sh('/bin/sh', [
+    '-c',
+    `. ./.local/db.env; . ./.local/auth.env; export DATABASE_URL DATABASE_ADMIN_URL SUPABASE_JWT_SECRET GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`,
+  ]);
   await new Promise((resolve) => setTimeout(resolve, 6000));
   const postPid = readFileSync(`${root}.local/api.pid`, 'utf8').trim();
   const postContainer = sh(DOCKER, ['inspect', '-f', '{{.Id}}', 'ops-astro-local-pg']).trim();
-  const volume = sh(DOCKER, ['volume', 'inspect', '-f', '{{.CreatedAt}}', 'ops-astro-local-pgdata']).trim();
+  const volume = sh(DOCKER, [
+    'volume',
+    'inspect',
+    '-f',
+    '{{.CreatedAt}}',
+    'ops-astro-local-pgdata',
+  ]).trim();
 
   const afterRestart = await browser.newContext({ viewport: { width: 1480, height: 900 } });
   const restartPage = await afterRestart.newPage();
   await signIn(restartPage, 'mia@alpha.local', 'alpha');
-  await restartPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, { waitUntil: 'domcontentloaded' });
+  await restartPage.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
+    waitUntil: 'domcontentloaded',
+  });
   await restartPage.waitForSelector('[data-task]', { timeout: 20_000 });
   const survived = {
     title: await restartPage.locator('h2.tpr__title').innerText(),
