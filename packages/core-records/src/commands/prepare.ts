@@ -28,6 +28,14 @@
 // The lock is here, in the one read every targeted command shares, for the
 // same reason the authority check is — a lock taken by each handler is a lock
 // the next handler forgets.
+//
+// The authority *target* likewise comes from the declaration and not from the
+// body. It was derived from `request.recordId` whenever the field was present,
+// which meant an untargeted command inherited whatever record the caller named:
+// a record-scoped write grant that is refused a plain `task.create` was allowed
+// one by sending the `recordId` of the record it did hold. A command that
+// targets no record is checked against the business, and a target field that
+// its declaration has no use for is refused rather than ignored.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -95,6 +103,56 @@ function refuseMalformedIdentifier(request: CommandRequest): Refused | undefined
   return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
 }
 
+const BODY_FIXES: readonly string[] = [
+  'Send only the fields this command declares.',
+  'A command that targets no existing record takes no record identifier.',
+];
+
+/**
+ * The identifier fields each *untargeted* command actually declares, written
+ * out for the same reason `IDENTIFIER_FIELDS` is: a request type that grows an
+ * identifier has to be named here rather than being silently covered.
+ *
+ * Only the untargeted commands are listed, because they are the ones with no
+ * record of their own to be confused with the one a body names. A targeted
+ * command's `recordId` *is* its target and is checked by reading it.
+ *
+ * `task.pickup` and `task.handback` take a `recordId` and still declare no
+ * existing target: neither writes the task, and neither has landed. When they
+ * do, what their authority is checked against is a decision for the part that
+ * lands them, not a field this table can infer.
+ */
+const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
+  'task.create': ['parentId', 'board', 'boardSection'],
+  'task.decide': ['gateInstanceId'],
+  'task.handback': ['recordId'],
+  'task.pickup': ['recordId'],
+  'task.purge': [],
+  'task.restore': ['batchId'],
+};
+
+/**
+ * A target field on a command that has no target.
+ *
+ * Refused and not ignored. Ignoring it is what let the field reach the
+ * authority check while reaching nothing else, and a body whose identifier
+ * the server quietly drops is a body the caller believes was honoured.
+ */
+function refuseIrrelevantTarget(
+  request: CommandRequest,
+  declaration: CommandDeclaration,
+): Refused | undefined {
+  if (declaration.targetsExistingRecord) return undefined;
+  const allowed = UNTARGETED_IDENTIFIERS[declaration.name];
+  if (allowed === undefined) return undefined;
+  const named = request as unknown as Record<string, unknown>;
+  const irrelevant = IDENTIFIER_FIELDS.filter(
+    (field) => named[field] !== undefined && !allowed.includes(field),
+  );
+  if (irrelevant.length === 0) return undefined;
+  return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -106,22 +164,29 @@ export async function prepareCommand(
   const malformed = refuseMalformedIdentifier(request);
   if (malformed !== undefined) return malformed;
 
+  const irrelevant = refuseIrrelevantTarget(request, declaration);
+  if (irrelevant !== undefined) return irrelevant;
+
   const spine = await readTaskSpine(tx);
 
+  // The scope comes from the declaration. A command that targets an existing
+  // record is checked against that record; every other command is checked
+  // against the business, whatever identifiers its body happens to carry.
+  const recordId =
+    'recordId' in request && typeof request.recordId === 'string' ? request.recordId : undefined;
   const authorised = await checkAuthority(tx, subjectsOf(session), {
     collection: 'task',
     action: declaration.action,
     scope:
-      'recordId' in request && typeof request.recordId === 'string'
-        ? { kind: 'record', id: request.recordId }
+      declaration.targetsExistingRecord && recordId !== undefined
+        ? { kind: 'record', id: recordId }
         : { kind: 'business', id: null },
   });
   if (!authorised.ok) return refused(fromAuthority(authorised.refusal));
 
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
-    const recordId = 'recordId' in request ? request.recordId : '';
-    target = await lockTask(tx, spine.taskTypeId, recordId);
+    target = await lockTask(tx, spine.taskTypeId, recordId ?? '');
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
