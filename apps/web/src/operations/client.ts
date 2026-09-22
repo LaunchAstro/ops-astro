@@ -15,12 +15,17 @@
 // that could carry one (checklist N7). The actor is likewise absent: the server
 // takes it from the bearer token's subject.
 //
-// **`operation_id` is minted here, per attempt, and a retry reuses it.** That
+// **`operationId` is minted here, per attempt, and a retry reuses it.** That
 // is what makes the register's replay rule reachable from a browser: the same
 // identity with the same payload returns the original result, and the same
 // identity with a changed payload is the conflict `OPERATION_ID_REUSED` names.
 // A client that minted a fresh identity on every retry could never exercise
 // either, so `operationId` is an argument with a default, not a hidden value.
+//
+// The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
+// matching the draft's `commands/requests.ts`. The slice contract named it in
+// prose as `operation_id` and the coordinator ruled on the camelCase spelling
+// at 22:53Z; there is one spelling on the wire and this is it.
 
 import {
   pathOf,
@@ -124,7 +129,7 @@ export class OperationsClient {
   }
 
   /**
-   * A read. No `operation_id` and no `expectedRevision`: a read has no attempt
+   * A read. No `operationId` and no `expectedRevision`: a read has no attempt
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
@@ -132,7 +137,7 @@ export class OperationsClient {
   }
 
   /**
-   * A mutation. `operation_id` is always sent; `expectedRevision` is sent when
+   * A mutation. `operationId` is always sent; `expectedRevision` is sent when
    * the caller has one and omitted when it does not, so that the server's
    * `EXPECTED_REVISION_REQUIRED` stays reachable from this surface rather than
    * being pre-empted by a client-side guess.
@@ -143,22 +148,9 @@ export class OperationsClient {
     options: MutationOptions = {},
   ): Promise<CallResult<CommandOutcome>> {
     const operationId = options.operationId ?? this.newOperationId();
-    const payload: Record<string, unknown> = {
-      ...body,
-      // Both spellings, and this is a deliberate, temporary compatibility
-      // hedge rather than a shape. The slice contract names the envelope
-      // `operation_id` in prose and binds the draft's `commands/requests.ts`,
-      // which spells the same field `operationId`; the API lane is building
-      // from that contract in parallel and only one of the two can be the
-      // wire name. Sending both makes this client correct against either, and
-      // the integrator collapses it to one line once the API's reading is
-      // observed. Recorded in the handback as an open question, not a fact.
-      operationId,
-      operation_id: operationId,
-    };
+    const payload: Record<string, unknown> = { ...body, operationId };
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
-      payload['expected_revision'] = options.expectedRevision;
     }
     return this.#post<CommandOutcome>(name, payload);
   }

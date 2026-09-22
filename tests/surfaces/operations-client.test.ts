@@ -79,6 +79,29 @@ describe('route derivation', () => {
 });
 
 describe('the envelope', () => {
+  it('spells the envelope in camelCase and sends no second spelling', async () => {
+    // The coordinator's 22:53Z ruling: `operationId` and `expectedRevision`,
+    // one spelling on the wire. A client sending both would make either
+    // server reading pass, which is precisely why it cannot stay.
+    const { fetch, calls } = stub({ recordId: 'r1', revision: 2 });
+    await make(fetch).mutate(
+      'task.update',
+      { recordId: 'r1', fields: { title: 'x' } },
+      {
+        expectedRevision: 1,
+      },
+    );
+    const body = calls[0]?.body ?? {};
+    expect(Object.keys(body).toSorted()).toEqual([
+      'expectedRevision',
+      'fields',
+      'operationId',
+      'recordId',
+    ]);
+    expect(body).not.toHaveProperty('operation_id');
+    expect(body).not.toHaveProperty('expected_revision');
+  });
+
   it('sends an operation identity on a mutation and none on a read', async () => {
     const { fetch, calls } = stub({ recordId: 'r1', revision: 2 });
     const client = make(fetch);
