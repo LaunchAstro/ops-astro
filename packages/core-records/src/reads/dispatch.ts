@@ -18,7 +18,7 @@ import { checkAuthority, subjectsOf, type Action } from '../authority/grants.ts'
 import { fromAuthority, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { readTaskSpine } from '../commands/context.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
-import { readBoard, readTaskDetail } from './tasks.ts';
+import { readBoard, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { listPeople } from './people.ts';
 
 /** The collection each read asks the grant model about. */
@@ -39,6 +39,19 @@ export async function runRead(
   session: Session,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
+  // `task.read` names one record and may name it by key, so the identifier is
+  // resolved before the grant check and never after it: a record-scoped grant
+  // is a grant on a record, not on whichever spelling the caller used. The
+  // lookup answers nobody -- a caller with no grant is refused below and
+  // learns nothing from it either way -- and an unresolved name is checked at
+  // business scope, so "there is no such task" is still answered by the read
+  // and never by the authority check.
+  const spine = request.read === 'person.list' ? undefined : await readTaskSpine(tx);
+  const recordId =
+    request.read === 'task.read' && spine !== undefined
+      ? await resolveTaskId(tx, spine.taskTypeId, request.recordId)
+      : undefined;
+
   const authorised = await checkAuthority(tx, subjectsOf(session), {
     collection: collectionOf(request),
     action: READ,
@@ -46,21 +59,21 @@ export async function runRead(
     // targeted command's is. A business-scoped grant covers both, which is
     // what `effectiveGrants` already means by `scope_kind = 'business'`.
     scope:
-      request.read === 'task.read'
-        ? { kind: 'record', id: request.recordId }
-        : { kind: 'business', id: null },
+      recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
   });
   if (!authorised.ok) return fromAuthority(authorised.refusal);
 
   switch (request.read) {
     case 'task.read': {
-      const spine = await readTaskSpine(tx);
-      const task = await readTaskDetail(tx, spine.taskTypeId, request.recordId);
+      const task =
+        recordId === undefined || spine === undefined
+          ? undefined
+          : await readTaskDetail(tx, spine.taskTypeId, recordId);
       // Not there, or there in another business: one answer, deliberately.
       return task === undefined ? refuseNotFound() : { ok: true, task };
     }
     case 'task.board': {
-      const spine = await readTaskSpine(tx);
+      if (spine === undefined) throw new Error('runRead: task.board reached without the spine');
       return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) };
     }
     case 'person.list':

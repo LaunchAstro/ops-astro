@@ -116,6 +116,35 @@ async function historyOf(tx: TenantQuery, recordId: string): Promise<readonly Hi
   }));
 }
 
+/**
+ * The record a caller named, whether they named its identifier or its key.
+ *
+ * A task's address is its key -- `T-14`, the thing a person reads out and
+ * types -- and `routes.ts` says so deliberately. The identifier is what the
+ * record is stored under. Accepting both here is what lets the address in the
+ * bar be the key while the read stays a read of one record, and it is one
+ * lookup rather than a second read declaration.
+ *
+ * Nothing is cast that is not first matched: a value that is not a uuid is
+ * never handed to Postgres as one, and a key that names nothing comes back
+ * undefined, which the caller turns into the same `NOT_FOUND` a wrong business
+ * gets.
+ */
+export async function resolveTaskId(
+  tx: TenantQuery,
+  taskTypeId: string,
+  given: string,
+): Promise<string | undefined> {
+  if (UUID.test(given)) return given;
+  const rows = await tx.query<{ readonly id: string }>(
+    `select r.id from records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.txt_1 = $3
+        and r.deleted_at is null`,
+    [tx.businessId, taskTypeId, given],
+  );
+  return rows[0]?.id;
+}
+
 /** One task with its history, or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
