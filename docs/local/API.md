@@ -7,14 +7,19 @@ is identified, and how to start and check it.
 
 ## Starting it
 
+Run everything from the repository root, with the pinned Node on the path. The
+toolchain lives outside the repository; `TOOLCHAIN` below is wherever the run's
+`ops-astro-implement-readiness-2026-09-22/toolchain` directory is on this
+machine.
+
 ```sh
 export PATH="$TOOLCHAIN/node-v24.21.0-darwin-arm64/bin:$PATH"
-scripts/local/db-up.sh        # SLICE-DATA: Postgres on 127.0.0.1:54390
-scripts/local/auth-up.sh      # GoTrue on 127.0.0.1:54391, writes .local/auth.env
+bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
+bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
 node scripts/local/auth-seed.mjs   # the five synthetic logins
 node scripts/local-seed.mjs        # SLICE-DATA: businesses, persons, logins, grants
-scripts/local/api-up.sh       # the API on 127.0.0.1:8790
+bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```
 

@@ -29,6 +29,15 @@ const LOCAL = join(ROOT, '.local');
  * The contract's five. `business` is the contract's A/B label; `businessKey`
  * is the same business as the path prefix spells it, so the consumer does not
  * have to carry the mapping in its head.
+ *
+ * `grants` is the coordinator's ruling of 22:57Z. An entry that omits it takes
+ * the seed's ordinary grants for its role; `noah@alpha.local` carries an empty
+ * list because he is checklist case N2's other half — an authenticated member
+ * of business A holding no task-collection scope, who must be refused
+ * `SCOPE_NOT_GRANTED` rather than shown an empty list. He is still the person
+ * `task.assign` assigns to, which is deliberate: being assignable and being
+ * able to read are different questions, and N2 is only a real case if the
+ * person in it is otherwise ordinary.
  */
 const PEOPLE = [
   {
@@ -51,6 +60,7 @@ const PEOPLE = [
     businessKey: 'alpha',
     person: 'Noah Patel',
     role: 'member',
+    grants: [],
   },
   {
     email: 'orphan@alpha.local',
