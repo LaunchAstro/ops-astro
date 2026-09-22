@@ -16,7 +16,7 @@ The Matt Pocock workflow in [AGENTS.md](AGENTS.md) is the sole router.
 3. Implement one ticket in an isolated worktree and ticket branch. Write meaningful tests at the agreed boundaries.
 4. Review the actual revision against both the specification and repository standards. A frontier model from a different company than the builder's performs the adversarial review.
 5. Obtain Copilot review on the hosted revision and resolve each finding with evidence or a recorded reason.
-6. Run the required checks against the final revision. Nathan decides whether to merge.
+6. Run the required checks against the final revision. An agent invokes the merge on Nathan's credential once every one of them is green, and notifies him after. The decisions reserved below stay his.
 7. Complete the final verify ticket against the integrated feature.
 
 Small work starts at implementation. The first full loop must be rehearsed

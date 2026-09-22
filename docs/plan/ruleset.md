@@ -76,6 +76,9 @@ result against the effective configuration:
 
 The [seven-question checklist](../../CONTRIBUTING.md) is answered by whoever
 invokes the merge, which from the first product pull request is an agent on
-Nathan's credential. An applicable conformance proof remains a separate
-required condition, and the decisions listed in Contributing as Nathan's own
+Nathan's credential. After it merges, the agent notifies Nathan, naming the
+pull request and the merged revision; that notification records what happened
+and does not ask permission. An applicable conformance proof remains a
+separate required condition, and the decisions listed in
+[Contributing](../../CONTRIBUTING.md#who-invokes-the-merge) as Nathan's own
 are not reachable by a green check.

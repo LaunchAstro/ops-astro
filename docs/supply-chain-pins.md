@@ -63,5 +63,12 @@ the point of it.
 
 The npm dependency tree is pinned by `pnpm-lock.yaml`, which is committed, and
 `pnpm install --frozen-lockfile` refuses to drift from it. Renovate proposes
-updates; they merge like any other change, invoked once every required check
-is green, and never by Renovate itself.
+updates; they merge like any other change, and never by Renovate itself. Like
+any other change, an agent invokes that merge on Nathan's credential, because
+his is the only account with push access, once every required check is green
+on the head being merged, and it notifies him afterwards naming the pull
+request and the merged revision. That notification records what happened; it
+does not ask permission. The decisions
+[Contributing](../CONTRIBUTING.md#who-invokes-the-merge) reserves to Nathan
+are not reachable by a green check, and a reduction of any check's tier is one
+of them, so no pin here is loosened by a dependency update merging.

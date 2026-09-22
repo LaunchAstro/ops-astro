@@ -123,14 +123,51 @@ const fields = (text) => {
 // it, passed. Matching text is not establishing that a review happened. A
 // reviewer states an outcome, and there are only three kinds.
 //
+// Round eight, 23 September, found two halves of one defect. `Code review:
+// not approved` passed, because `approved` was matched as a bare substring
+// with nothing reading the word in front of it, so a rejected review received
+// green evidence. And `Code review: the review found nothing`, the wording
+// the pull request template advertises as passing, failed, because that
+// phrasing was on no list: the template and the parser disagreed about a
+// valid outcome. So the outcome words are an alternation anchored on word
+// boundaries, longest phrase first, a negator in front of one turns it into a
+// rejection, and the template's own advertised wordings are on the list.
+//
 // Refusals and absences come first: a line that says both "not run" and "no
 // findings" is a contradiction, and the safe reading of a contradiction is
 // the one that does not authorise a merge.
 const ABSENT =
   /\b(?:not\s+run|not\s+performed|not\s+done|no[tn]e?\s+yet|skipped?|pending|outstanding|waived|to\s?do|n\/a|deferred|will\s+run)\b/iu;
 const NEGATIVE = /\b(?:failed?|blocked|rejected|findings?\s+open|open\s+findings?|unresolved)\b/iu;
-const POSITIVE =
-  /\b(?:no\s+findings?|findings?\s+closed|all\s+closed|closed\b|passed?|clean|approved)\b/iu;
+
+// The words a reviewer uses for a clean result. The multi-word phrases come
+// first so the longest one wins: `no findings` is read whole, rather than as
+// a negator sitting in front of something else.
+const POSITIVE_WORDS = [
+  String.raw`no\s+(?:open\s+)?(?:findings?|issues?|problems?|blockers?|concerns?)`,
+  String.raw`(?:found|raised|turned\s+up|reported)\s+nothing`,
+  String.raw`nothing\s+(?:was\s+)?(?:found|raised)`,
+  String.raw`findings?\s+(?:are\s+)?(?:all\s+)?closed`,
+  String.raw`all\s+(?:findings?\s+)?closed`,
+  String.raw`(?:is|are)\s+closed`,
+  String.raw`closed`,
+  String.raw`passe[sd]`,
+  String.raw`pass(?:ing)?`,
+  String.raw`clean`,
+  String.raw`approved?`,
+  String.raw`green`,
+].join('|');
+
+// A word that reverses the one after it. `no` is on this list as well, and
+// `no findings` survives it, because that phrase is matched as one positive
+// word before `no` is ever read on its own.
+const NEGATOR = String.raw`(?:not|never|no|isn['\u2019]?t|wasn['\u2019]?t|aren['\u2019]?t|cannot)`;
+
+const NEGATED = new RegExp(String.raw`\b${NEGATOR}[ \t-]{1,3}(?:${POSITIVE_WORDS})\b`, 'iu');
+const POSITIVE = new RegExp(
+  String.raw`(?<!\b${NEGATOR}[ \t-]{1,3})\b(?:${POSITIVE_WORDS})\b`,
+  'iu',
+);
 
 /** 'placeholder' | 'empty' | 'absent' | 'negative' | 'positive' | 'unstated' */
 const outcome = (value) => {
@@ -138,6 +175,7 @@ const outcome = (value) => {
   if (value === '') return 'empty';
   if (ABSENT.test(value)) return 'absent';
   if (NEGATIVE.test(value)) return 'negative';
+  if (NEGATED.test(value)) return 'negative';
   if (POSITIVE.test(value)) return 'positive';
   return 'unstated';
 };
@@ -200,11 +238,9 @@ if (checkpoint === null) {
 
 // --- rule 2: a security review where the surface calls for one -------------
 
+const securityFields = stated.filter((f) => f.name === 'security');
+
 if (sensitive.length > 0) {
-  const securityFields = stated.filter((f) => f.name === 'security');
-  const security = securityFields
-    .map((f) => /\b([0-9a-f]{7,40})\b/u.exec(f.value))
-    .find((m) => m !== null && m !== undefined);
   if (securityFields.length === 0) {
     failures.push(
       'this change touches the sensitive surface and carries no security review:\n' +
@@ -213,19 +249,29 @@ if (sensitive.length > 0) {
         '        tenancy, tool execution, egress, custody or the audit chain.',
     );
   } else {
-    const recorded = security === undefined ? '' : (security[1] ?? '');
-    if (recorded === '') {
-      failures.push(
-        'the security review states no revision, so nothing binds it to this\n' +
-          `        pull request's head ${head}. Record the head it ran against.`,
-      );
-    } else if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
-      failures.push(
-        `the security review records ${recorded}, and this pull request is at\n` +
-          `        ${head}. Run it again against the current head.`,
-      );
-    }
+    // Every security-review line, not the first one carrying a revision.
+    // Round eight found a body holding a review for this head followed by
+    // another for the base passing, because the search stopped at the first
+    // match. A later line naming an older revision is evidence for that older
+    // revision, and this check exists to say exactly that.
     for (const field of securityFields) {
+      const match = /\b([0-9a-f]{7,40})\b/u.exec(field.value);
+      const recorded = match === null ? '' : (match[1] ?? '');
+      if (recorded === '') {
+        failures.push(
+          `a security review line states no revision, so nothing binds it to\n` +
+            `        this pull request's head ${head}:\n` +
+            `          ${field.line}\n` +
+            '        Record the head it ran against.',
+        );
+      } else if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
+        failures.push(
+          `a security review line records ${recorded}, and this pull request is\n` +
+            `        at ${head}:\n` +
+            `          ${field.line}\n` +
+            '        Run it again against the current head.',
+        );
+      }
       const verdict = outcome(field.value);
       if (verdict === 'positive') continue;
       failures.push(
@@ -235,6 +281,23 @@ if (sensitive.length > 0) {
           '        line that mentions one.',
       );
     }
+  }
+} else {
+  // The template ships both outcome lines as the same placeholder and asks
+  // for both to be replaced. Round eight found an unreplaced security
+  // placeholder passing on a change that touched no sensitive path, because
+  // placeholders were read only where a security review was required. An
+  // author who has not replaced the line has not read it, whatever the change
+  // touches. The surface still decides whether a review was needed: saying
+  // plainly that it was not is an answer, and passes here.
+  for (const field of securityFields) {
+    if (outcome(field.value) !== 'placeholder') continue;
+    failures.push(
+      `a security review line ${explain.placeholder}:\n` +
+        `          ${field.line}\n` +
+        '        The template asks for both outcome lines to be replaced. This\n' +
+        '        change touches no sensitive path, so say that on the line.',
+    );
   }
 }
 

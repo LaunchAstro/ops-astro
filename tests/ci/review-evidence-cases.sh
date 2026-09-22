@@ -192,6 +192,63 @@ run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
 
 - **Code review**: not run" "README.md"
 
+# Round eight, 23 September. Four holdings, each with the pair that proves it.
+
+# 1. The outcome words were matched as bare substrings, so `not approved` read
+# as an approval and a rejected review received green evidence.
+run_case "a code review that is not approved fails" 1 "$BARE_BLOCK
+
+Code review: not approved" "README.md"
+run_case "a code review that is approved passes" 0 "$BARE_BLOCK
+
+Code review: approved, no findings" "README.md"
+
+# 2. Only the first security-review revision was read, so a second line naming
+# an older revision was invisible. Evidence for the base is not evidence here.
+run_case "a second security review for an older revision fails" 1 "$GOOD_BLOCK
+
+Security review: run against $HEAD, no findings.
+
+Security review: run against $OTHER, no findings." "packages/core-custody/broker.ts"
+run_case "two security reviews, both for this head, pass" 0 "$GOOD_BLOCK
+
+Security review: first pass against $HEAD, no findings.
+
+Security review: second pass against $HEAD, 1 finding, all closed." "packages/core-custody/broker.ts"
+
+# 3. The security placeholder was read only where the surface required a
+# review, so an untouched line passed on an ordinary change. The template asks
+# for both lines to be replaced.
+run_case "an unreplaced security placeholder fails a non-sensitive change too" 1 "$GOOD_BLOCK
+
+Security review: REPLACE-WITH-OUTCOME" "README.md"
+run_case "a non-sensitive change saying no review was called for passes" 0 "$GOOD_BLOCK
+
+Security review: the surface did not call for one; this change touches docs only." "README.md"
+
+# 4. The template advertises `the review found nothing` as passing wording and
+# the parser refused it, so the two disagreed about a valid outcome.
+run_case "the template's advertised passing wording passes" 0 "$BARE_BLOCK
+
+Code review: the review found nothing" "README.md"
+run_case "the same wording does not rescue a review still pending" 1 "$BARE_BLOCK
+
+Code review: the review is still pending, so it found nothing to report yet" "README.md"
+
+# The template's other advertised wording, read off the file itself so the two
+# cannot drift apart again without this case saying so.
+if [ -f "$TEMPLATE" ]; then
+  case "$(cat "$TEMPLATE")" in
+    *"the review found nothing, or every finding it raised is closed"*)
+      pass "the template still advertises the wording these cases assert" ;;
+    *) fail "the template still advertises the wording these cases assert" \
+      "the template's passing wording moved; the cases above now prove nothing about it" ;;
+  esac
+  run_case "the template's second advertised wording passes" 0 "$BARE_BLOCK
+
+Code review: every finding it raised is closed" "README.md"
+fi
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
