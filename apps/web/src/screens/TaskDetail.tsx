@@ -44,11 +44,27 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   });
 
   return (
-    <RecordState state={state} subject="task" onRetry={reload}>
-      {(value) => (
-        <Loaded client={client} grantKey={props.grantKey} task={value.task} onChanged={reload} />
-      )}
-    </RecordState>
+    <div className="stack">
+      {/*
+        Refresh sits outside the read's own region on purpose. Inside it, the
+        loading rendering replaces the controls, so a person waiting on a slow
+        read has nothing to press and the screen can never have two reads in
+        flight. Out here it stays pressable while a read is running, which is
+        what makes the ordering rule observable in the product rather than only
+        in a unit test: press it twice and the answers may come back in either
+        order, and the older one must not win.
+      */}
+      <div className="btnrow">
+        <button className="btn" type="button" data-refresh="task" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <RecordState state={state} subject="task" onRetry={reload}>
+        {(value) => (
+          <Loaded client={client} grantKey={props.grantKey} task={value.task} onChanged={reload} />
+        )}
+      </RecordState>
+    </div>
   );
 }
 
