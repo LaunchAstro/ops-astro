@@ -59,6 +59,25 @@ falls back to `index.html`, and everything on the page is reread from the API.
 
 There is no path from a failed read to sample data anywhere in this application.
 
+## Tests
+
+```
+pnpm exec vitest run --config tests/surfaces/vitest.config.ts
+```
+
+That config exists only because the root `vitest.config.ts` collects
+`*.test.ts` and the two mounted tests are `*.test.tsx`. When the root config
+gains `tests/**/*.test.tsx`, delete `tests/surfaces/vitest.config.ts` and use
+`pnpm test`.
+
+Four suites. The two `.ts` ones need no browser: route derivation and the
+envelope against a stubbed `fetch`, and the generation/denial ordering in
+`authorised-read.ts`. The two `.tsx` ones mount into jsdom, declared per file
+with a `// @vitest-environment jsdom` docblock.
+
+None of them touches the API, and none discharges a browser acceptance case.
+They prove the wiring; B1–B7 prove the product.
+
 ## Known gaps against the pinned mockup
 
 Recorded rather than closed. The mockup is the visual source; these are the
