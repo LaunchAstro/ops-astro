@@ -76,6 +76,29 @@ table exactly:
 There is no `status` column and no second coarse field: "is this done" is the
 machine category of the state record the task points at.
 
+## What a write is checked against
+
+Two rules, both in `packages/core-records/src/commands/prepare.ts`, because a
+rule held in one handler is a rule the next handler forgets.
+
+**The target is locked before its revision is compared.** A targeted write reads
+its record `for update` and only then compares `expectedRevision`. Without the
+lock two writes presenting the same revision each read the record as it stood
+before the other's uncommitted write, both passed the comparison, and the second
+silently restored what the first had replaced — while telling its caller
+`applied`. With it the second waits, re-reads the committed revision and is
+refused `VERSION_STALE`. Optimistic concurrency is only as good as the row the
+comparison reads.
+
+**The authority target comes from the declaration, not the body.** A command
+with `targetsExistingRecord` is checked against that record; every other command
+is checked against the business, whatever identifiers its body carries. Deriving
+it from `request.recordId` instead let a record-scoped grant turn a refused
+`task.create` into an accepted one by naming the record it did hold. An
+identifier an untargeted command has no use for is now refused
+`COMMAND_BODY_INVALID` naming the field, rather than ignored: a body whose
+identifier the server quietly drops is a body the caller believes was honoured.
+
 ## The reads
 
 Three, declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
