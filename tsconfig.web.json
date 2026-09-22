@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "isolatedDeclarations": false,
+    "paths": { "@launchastro/ui": ["./packages/ui/src/index.ts"] }
+  },
+  "include": [
+    "apps/web/**/*.ts",
+    "apps/web/**/*.tsx",
+    "packages/ui/**/*.ts",
+    "packages/ui/**/*.tsx",
+    "tests/surfaces/**/*.ts",
+    "tests/surfaces/**/*.tsx"
+  ],
+  "exclude": ["**/node_modules", "**/dist"]
+}

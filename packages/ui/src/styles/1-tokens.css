@@ -1,0 +1,251 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 1 of 3. THE LOAD ORDER IS THE CONTRACT and it is not negotiable:
+
+       1-tokens.css  ->  2-primitives.css  ->  3-surfaces.css
+
+   which is the pinned estate's own order (tokens -> hub-ds -> app.css), later
+   wins, and preserving intentional cascade order is a standing rule
+   [ui-reference CONTRACT.md:145]. `main.tsx` imports the three in this order
+   and nothing else imports a stylesheet, so there is one place to read it.
+
+   WHERE THESE VALUES COME FROM. The four token files the ticket names were
+   disposed per-file in [ui-reference CONTRACT.md:157] and all four resolve to
+   "take the Hub's version": across the four, not one changes a value or a rule
+   the mockup renders. So the primitives, the semantic layer, radius, spacing
+   and typography below are the Hub's own `src/design/tokens/` at the pinned
+   revision 2c82bee, and the dark PRIMITIVE bridge at the foot is the mockup's
+   `assets/tokens.css`, which the Hub serves from its application entry instead.
+
+   FOUR STANDING RULES COME WITH THE SET, not optional:
+     - tokens only for colour, never a literal
+     - color-mix() for overlays, never raw rgba()
+     - status is an OUTLINE, a NUMBER or a LINE, never a fill
+     - radius is 0 except pills and circles
+
+   NO @import. The mockup pulls Funnel Sans/Display, Chivo Mono and the
+   Flaticon rounded icon set from two content-delivery networks. Neither route
+   establishes redistribution rights, and the candidate's asset-rights rule
+   says no unresolved asset ships by implication [ui-reference CONTRACT.md:196,
+   issue #32]. So the families are NAMED with real fallbacks and no font file
+   or icon is vendored. Every control that carries an icon in the mockup
+   carries a word or an aria-label here instead, and the icon slot is left.
+   ============================================================================ */
+
+:root {
+  /* -- Grounds and ink. OKLCH, editorial monochrome. ---------------------- */
+  --paper: oklch(1 0 0);
+  --paper-cream: oklch(0.945 0.006 70);
+  --ink: oklch(0 0 0);
+  --ink-muted: oklch(0.505 0.014 62); /* AA about 4.9:1 on paper */
+  --ink-faint: oklch(0.62 0.012 62);
+  --void: oklch(0.145 0.006 285);
+  --void-deep: oklch(0.09 0.004 285);
+  --on-dark: oklch(0.98 0 0);
+  --on-dark-muted: color-mix(in oklch, var(--on-dark) 72%, transparent);
+  --rule: oklch(0 0 0);
+  --rule-faint: oklch(0 0 0 / 0.12);
+
+  /* -- The one interactive signal. Swapping it is a one-line edit. -------- */
+  --accent: oklch(0.58 0.21 285);
+  --accent-ink: oklch(0.98 0 0);
+  --accent-ring: color-mix(in oklch, var(--accent) 35%, transparent);
+  --brand: var(--accent);
+
+  /* -- Semantic neutrals. Feature code reads these, never the primitives. - */
+  --bg: var(--paper);
+  --surface: var(--paper);
+  --surface-2: color-mix(in oklch, var(--ink) 4%, var(--paper));
+  --surface-3: color-mix(in oklch, var(--ink) 8%, var(--paper));
+  --border: var(--rule-faint);
+  --border-strong: color-mix(in oklch, var(--ink) 32%, transparent);
+  --text: var(--ink);
+  --text-2: var(--ink-muted);
+  --text-muted: var(--ink-faint);
+  --text-dim: color-mix(in oklch, var(--ink-faint) 60%, var(--paper));
+  --scheme: light;
+
+  /* -- Buttons. Ink at rest, accent on hover. ---------------------------- */
+  --btn-fill: var(--ink);
+  --btn-text: var(--paper);
+  --btn-hover: var(--accent);
+  --btn-hover-text: var(--accent-ink);
+  --btn-outline: var(--text);
+  --hover-accent: var(--accent);
+
+  /* -- Status. MEANING ONLY: border, text or line. The -soft fills are
+        transparent because a status colour never fills a box. The four light
+        inks are pinned separately so a surface inside a dark scope has a token
+        to reach for rather than re-minting the hex. -------------------------- */
+  --info-light: #009dea;
+  --success-light: #10b981;
+  --warning-light: #f59e0b;
+  --danger-light: #e84a5f;
+  --info: var(--info-light);
+  --success: var(--success-light);
+  --warning: var(--warning-light);
+  --danger: var(--danger-light);
+  --info-soft: transparent;
+  --success-soft: transparent;
+  --warning-soft: transparent;
+  --danger-soft: transparent;
+
+  /* -- Radius. Sharp. The legacy names are kept so primitives cascade. ---- */
+  --radius-none: 0;
+  --radius-pill: 999px;
+  --radius-xs: var(--radius-none);
+  --radius-sm: var(--radius-none);
+  --radius-md: var(--radius-none);
+  --radius-lg: var(--radius-none);
+
+  /* -- Elevation. Shadow is earned: it means an element is lifted. -------- */
+  --shadow-sm: 0 1px 2px rgb(15 18 24 / 5%);
+  --shadow: 0 1px 3px rgb(15 18 24 / 8%), 0 14px 32px -20px rgb(15 18 24 / 24%);
+  --shadow-overlay: 0 24px 60px oklch(0 0 0 / 45%);
+  /* Focus is a SHADOW token rather than an outline, which is why the visual
+     acceptance set captures focus-visible in both themes [13.4]. */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* -- Motion. One ease. prefers-reduced-motion is honoured below. -------- */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 0.12s;
+  --dur: 0.18s;
+  --dur-1: 220ms;
+
+  /* -- Spacing. The 8px rhythm at 4px granularity. ----------------------- */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+
+  /* -- Type. Three families, named and never vendored. ------------------- */
+  --font-display: 'Funnel Display', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Funnel Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Chivo Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --text-h1: 24px;
+  --text-h2: 20px;
+  --text-h3: 16px;
+  --text-body: 14px;
+  --text-sm: 13px;
+  --text-label: 12px;
+  --text-overline: 11px;
+  --fs-mono-sm: 0.75rem;
+  --fs-mono: 0.875rem;
+  --fs-title: clamp(1.5rem, 2.4vw, 1.75rem);
+
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+  --lh-title: 1.1;
+  --tracking-tight: -0.01em;
+  --tracking-label: 0.02em;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* -- Layout. The rail's own ground is a quiet step off the page so the
+        sidebar reads as furniture rather than paper. ---------------------- */
+  --rail-w: 224px;
+  --rail-bg: #f7f7f7;
+  /* The dock's width is written by the shell, and it is the only writer. One
+     number, one place, no second opinion. */
+  --dock-w: 40px;
+  --aip-dock: 380px;
+  /* 224 rail + 836 measured content floor + 380 panel = 1440. The threshold is
+     arithmetic and not taste [app.css:1226]; it is not a fifth breakpoint. */
+  --content-floor: 836px;
+}
+
+/* -- Dark. THE PRIMITIVE BRIDGE, and it is not decoration ----------------
+   Flipping only the semantic aliases would leave --ink literally black, which
+   silently kills anything painted with var(--ink) against the void ground:
+   invisible in review, obvious to a client. So the primitives flip and every
+   alias cascades from them. A custom property's var() references substitute
+   where the property is DECLARED, so the semantic names are re-declared here
+   to re-resolve against the flipped primitives above. */
+[data-theme='dark'] {
+  --paper: oklch(0.145 0.006 285);
+  --paper-cream: oklch(0.19 0.008 285);
+  --ink: oklch(0.98 0 0);
+  --ink-muted: color-mix(in oklch, oklch(0.98 0 0) 66%, transparent);
+  --ink-faint: color-mix(in oklch, oklch(0.98 0 0) 46%, transparent);
+  --rule: oklch(1 0 0 / 24%);
+  --rule-faint: oklch(1 0 0 / 14%);
+
+  --bg: var(--void);
+  --surface: color-mix(in oklch, var(--on-dark) 3%, var(--void));
+  --surface-2: color-mix(in oklch, var(--on-dark) 7%, var(--void));
+  --surface-3: color-mix(in oklch, var(--on-dark) 11%, var(--void));
+  --border: color-mix(in oklch, var(--on-dark) 10%, transparent);
+  --border-strong: color-mix(in oklch, var(--on-dark) 20%, transparent);
+  --text: var(--on-dark);
+  --text-2: var(--on-dark-muted);
+  --text-muted: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  --text-dim: color-mix(in oklch, var(--on-dark) 36%, transparent);
+  --scheme: dark;
+
+  --btn-fill: var(--on-dark);
+  --btn-text: var(--void);
+  --btn-outline: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  /* Outline controls go monochrome on hover in the dark: accent-on-dark
+     contrast is too low. The solid button keeps the accent, on a light fill. */
+  --hover-accent: var(--text);
+  --accent-ring: color-mix(in oklch, var(--accent) 55%, transparent);
+
+  --info: #38b6f1;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 45%);
+  --shadow: 0 1px 3px rgb(0 0 0 / 50%), 0 18px 42px -24px rgb(0 0 0 / 70%);
+  --focus-ring: 0 0 0 2px var(--void), 0 0 0 4px var(--accent);
+  --rail-bg: var(--bg);
+}
+
+/* The resets the Hub serves from its application entry rather than from a
+   stylesheet, carried here because this package has no other entry. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  color-scheme: var(--scheme);
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+}
+img,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+:where(a) {
+  color: inherit;
+}
+:where(button) {
+  font: inherit;
+  color: inherit;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

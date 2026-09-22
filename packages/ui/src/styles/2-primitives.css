@@ -1,0 +1,355 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 2 of 3: the primitive set the first slice actually uses.
+
+   Drawn from the candidate's own list — task layout, actions, fields, menus,
+   status indicators, empty and error states — resolved against the pinned
+   sources [ui-reference CONTRACT.md:179]. It is deliberately NOT a bulk import
+   of a component estate to build one screen [docs/design-system.md].
+
+   TWO DIALECT TRANSLATIONS the transfer has to perform, from the snapshot's own
+   convention map, because carrying either across untranslated produces a
+   silently wrong control: a bare outlined `.btn` becomes `.btn--secondary`,
+   and the mockup's `.chip` becomes the Hub's `.u-pill`.
+
+   THREE ABSENCE VOICES, and they must stay distinct. `.empty` says no rows;
+   `[aria-invalid]` plus `.field__error` says this input is wrong; `.in-dev`
+   says the product has not built this yet. The third is a HUB-ONLY idiom —
+   the string `in-dev` does not occur anywhere in the pinned mockup, which
+   ships populated demonstration data — so it is adopted as the starting point
+   for new work with its own acceptance, not as an inherited authority
+   [ui-reference CONTRACT.md:176].
+   ============================================================================ */
+
+/* -- Actions ------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  height: 32px;
+  padding: 0 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn--sm {
+  height: 27px;
+  padding: 0 0.7rem;
+  font-size: var(--text-label);
+}
+.btn--primary {
+  background: var(--btn-fill);
+  color: var(--btn-text);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--btn-hover);
+  color: var(--btn-hover-text);
+}
+/* A solid button disables to a deep mid-grey, not a faded black: dark enough
+   to read as a real, deliberately-off control. */
+.btn--primary:disabled {
+  background: var(--text-dim);
+  color: var(--surface);
+  opacity: 1;
+}
+.btn--secondary {
+  border-color: var(--btn-outline);
+  color: var(--text);
+}
+.btn--secondary:hover:not(:disabled) {
+  border-color: var(--hover-accent);
+  color: var(--hover-accent);
+}
+.btn--ghost {
+  color: var(--text-muted);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--hover-accent);
+}
+
+/* -- Tabs. Anchors and buttons wear the same dress, so a tab can be opened
+      in a new tab with a modifier click and pick up no browser link dress. -- */
+.tabs {
+  position: relative;
+  display: flex;
+  gap: var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 0 0 0.65rem;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* -- Containers ---------------------------------------------------------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.card > * {
+  min-width: 0;
+}
+.card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.card__title {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+  margin: 0;
+}
+.card__sub {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.card__body {
+  color: var(--text-2);
+}
+.sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.sec__head {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  letter-spacing: var(--tracking-tight);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.grid {
+  display: grid;
+  gap: var(--s-4);
+}
+.g3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (width <= 640px) {
+  .g3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--warning);
+  font-size: var(--text-body);
+}
+.banner--info {
+  border-left-color: var(--info);
+}
+
+/* -- Status. An outline, a number or a line, never a fill. ---------------- */
+/* The pinned mockup has NO base .spill rule: it is five colour declarations
+   and nothing else, which is the anti-fill law drawn rather than described. */
+.spill[data-tone='wait'] {
+  color: var(--text-muted);
+}
+.spill[data-tone='run'] {
+  color: var(--info);
+}
+.spill[data-tone='gate'] {
+  color: var(--warning);
+}
+.spill[data-tone='done'] {
+  color: var(--success);
+}
+.spill[data-tone='bad'] {
+  color: var(--danger);
+}
+.u-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.9em;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.marker {
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: var(--fs-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+.u-mono {
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: var(--fs-mono);
+  letter-spacing: var(--tracking-label);
+  line-height: 1.4;
+}
+/* The count badge is absence-honest at its call site: zero renders nothing at
+   all rather than a zero, because a badge saying 0 is a badge saying look. */
+.cbadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.15rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+}
+.cbadge--plain {
+  background: none;
+  color: inherit;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+}
+.segmented button {
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  cursor: pointer;
+}
+.segmented button:last-child {
+  border-right: 0;
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* -- Voice one: no rows. ------------------------------------------------- */
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 30px 20px;
+  text-align: center;
+}
+.empty__title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+.empty__desc {
+  max-width: 340px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.empty__hint {
+  max-width: 340px;
+  font-size: var(--text-label);
+  color: var(--text-muted);
+}
+.empty__action {
+  margin-top: 8px;
+}
+/* The mockup's own in-pane absence is words and nothing else, and on the ported
+   surfaces it stays that way: precedence governs the drawn surface. */
+.sbempty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* -- Voice two: this input is wrong. Red is legitimate status here, because
+      the field IS in an error state. ------------------------------------- */
+[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+.field__error {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-label);
+  color: var(--danger);
+}
+.field__hint {
+  font-size: var(--text-label);
+  color: var(--text-muted);
+}
+
+/* -- Voice three: the product has not built this yet. --------------------
+   ZERO SPECIFICITY ON PURPOSE. :where() makes this a DEFAULT rather than a
+   fight, so a surface that already owns an absence voice keeps it with a plain
+   class and only a surface with no voice of its own falls back to here. The
+   token is --text-2 rather than --text-dim: --text-dim is documented as
+   non-essential metadata only and measures about 2.07:1 on paper, which fails
+   WCAG 1.4.3 outright, and a low-vision reader would see a blank cell — the
+   broken reading this voice exists to prevent. No colour, no decoration: it
+   states a fact about the product, it is not a status. */
+:where(.in-dev) {
+  color: var(--text-2);
+}
+.empty--in-dev .empty__title {
+  color: var(--text-2);
+}

@@ -1,0 +1,111 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 6. THE LOAD ORDER IS THE CONTRACT: this sheet loads last and it is the
+   only one that may. Layers 1-5 are the ported estate and are not edited here.
+
+   What is in it: the controls the working slice adds that the pinned mockup
+   never drew, because it shipped populated demonstration data and had nothing
+   to submit. A sign-in form, a create form, a lifecycle button row and the five
+   read-state containers. Everything borrows layer 1's tokens; no colour, radius
+   or space literal appears below.
+
+   What is NOT in it: any override of a ported rule. A change to the drawn
+   estate belongs in the layer that drew it, or it is a divergence from the
+   pinned source that nobody can find later.
+   ========================================================================= */
+
+.readstate {
+  padding: var(--sp-4, 1rem) 0;
+}
+
+.signin {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-6, 2rem) var(--sp-4, 1rem);
+}
+
+.signin__form {
+  width: min(28rem, 100%);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  margin-block-end: var(--sp-3, 0.75rem);
+}
+
+.input {
+  width: 100%;
+  padding: var(--sp-2, 0.5rem);
+  border: 1px solid var(--line, #d0d0d0);
+  border-radius: var(--r-1, 4px);
+  background: var(--bg-1, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+/* The focus ring is the one on every control. A form the keyboard cannot see
+   itself moving through is a form the keyboard cannot use. */
+.input:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--focus, #2b6cb0);
+  outline-offset: 2px;
+}
+
+.btn {
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  border: 1px solid var(--line, #d0d0d0);
+  border-radius: var(--r-1, 4px);
+  background: var(--bg-1, #fff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  border-color: var(--accent, #2b6cb0);
+}
+
+.btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.projects__create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3, 0.75rem);
+}
+
+.projects__create .field {
+  flex: 1 1 18rem;
+  margin-block-end: 0;
+}
+
+.topbar__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+}
+
+/* 390: the narrowest pinned comparison width. The create form stacks rather
+   than scrolling sideways, because a horizontal scroll on a form is a control
+   a thumb cannot reach. */
+@media (width <= 480px) {
+  .projects__create {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .projects__create .field {
+    flex: 1 1 auto;
+  }
+}
