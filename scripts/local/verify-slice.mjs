@@ -397,6 +397,33 @@ async function main() {
       ok: codeOf(nowhere) === 'NOT_FOUND',
       note: `${nowhere.elapsedMs.toFixed(1)}ms`,
     });
+    // The same pair as a read, which is the shape the checklist names: a
+    // permitted person in B asking for A's real task and for one that never
+    // existed has to get one answer, not two.
+    const foreignRead = await call(bea.token, 'bravo', '/task/read', { recordId });
+    const nowhereRead = await call(bea.token, 'bravo', '/task/read', { recordId: fabricated });
+    const readsAlike =
+      foreignRead.status === nowhereRead.status &&
+      canonical(foreignRead.body) === canonical(nowhereRead.body);
+    record("N1 B reads A's real task", {
+      status: foreignRead.status,
+      code: codeOf(foreignRead),
+      ok: codeOf(foreignRead) === 'NOT_FOUND',
+      note: `${foreignRead.elapsedMs.toFixed(1)}ms`,
+    });
+    record('N1 B reads a fabricated id', {
+      status: nowhereRead.status,
+      code: codeOf(nowhereRead),
+      ok: codeOf(nowhereRead) === 'NOT_FOUND',
+      note: `${nowhereRead.elapsedMs.toFixed(1)}ms`,
+    });
+    record('N1 the two reads are indistinguishable', {
+      status: foreignRead.status,
+      code: codeOf(foreignRead),
+      ok: readsAlike,
+      note: readsAlike ? 'same status and body' : 'they differ',
+    });
+
     record('N1 the two are indistinguishable', {
       status: foreign.status,
       code: codeOf(foreign),

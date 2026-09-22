@@ -64,12 +64,19 @@ export function isRead(declaration: SurfaceDeclaration): boolean {
   return declaration.kind === 'read';
 }
 
-/** A read, run under the same tenancy wrapper and the same grant path. */
+/**
+ * A read, run under the same tenancy wrapper and the same grant path.
+ *
+ * The request names the read in `read` rather than in `command`, which is the
+ * discriminant `packages/core-records/src/reads/requests.ts` switches on. A
+ * read carries no `operation_id` and no `expected_revision`, because there is
+ * nothing to replay and nothing to be stale against.
+ */
 export type ReadExecutor = (
   database: Database,
   businessId: string,
   presented: VerifiedSubject,
-  request: { readonly command: string } & Readonly<Record<string, unknown>>,
+  request: { readonly read: string } & Readonly<Record<string, unknown>>,
 ) => Promise<unknown>;
 
 export interface ApiOptions {
@@ -127,9 +134,11 @@ export function createApi(options: ApiOptions): Hono {
         if (execute === undefined) {
           return refuse(context, refuseCommand('DEPENDENCY_NOT_LANDED', [declaration.name], READS));
         }
+        // The name comes from the route here too, so a caller cannot post to
+        // one read and have another one run.
         const read = await execute(options.database, businessId, presented, {
           ...body,
-          command: declaration.name,
+          read: declaration.name,
         });
         if (isObject(read) && isCommandRefusal(read)) return refuse(context, read);
         return context.json(read as Record<string, unknown>, 200);

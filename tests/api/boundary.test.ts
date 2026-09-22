@@ -21,7 +21,12 @@ import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { COMMAND_SURFACE, pathOf } from '../../packages/core-records/src/commands/surface.ts';
-import { createApi, type ReadExecutor } from '../../apps/api/app.ts';
+import {
+  createApi,
+  isRead,
+  type ReadExecutor,
+  type SurfaceDeclaration,
+} from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 
 const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
@@ -257,36 +262,67 @@ describe('a body that is not an object', () => {
 });
 
 describe('the read half of the surface', () => {
-  const readDeclaration = { name: 'task.read', kind: 'read' } as const;
+  const declared = (COMMAND_SURFACE as readonly SurfaceDeclaration[]).filter((one) => isRead(one));
 
-  it('runs through the injected executor with the resolved business and subject', async () => {
-    // The surface this branch carries has no read declaration yet, so the
-    // executor is checked directly against the contract the boundary calls it
-    // by. When SLICE-DATA adds the declaration the route appears with no edit
-    // here, which is the claim the first case in this file already checks.
-    const calls: Array<{ businessId: string; presented: VerifiedSubject; command: string }> = [];
+  it('names the read from the route, not from the body', async () => {
+    const first = declared[0];
+    if (first === undefined) {
+      // The read declarations are SLICE-DATA's. On a tree without them there is
+      // no route to drive, and the case says so rather than passing quietly.
+      expect(declared).toHaveLength(0);
+      return;
+    }
+
+    const calls: Array<{ businessId: string; presented: VerifiedSubject; read: string }> = [];
     const executeRead: ReadExecutor = async (_database, businessId, presented, request) => {
-      calls.push({ businessId, presented, command: request.command });
-      return { ok: true, task: { id: 'a-task' } };
+      calls.push({ businessId, presented, read: request.read });
+      return { ok: true, read: request.read };
+    };
+
+    const token = await tokenFor(MIA);
+    const answer = await post(
+      build({ executeRead }),
+      `/api/b/alpha${pathOf(first.name)}`,
+      // A body naming another read, which is exactly what must not be honoured.
+      { read: 'person.list', command: 'task.purge', recordId: 'a-task' },
+      authorised(token),
+    );
+
+    expect(answer.status).toBe(200);
+    expect(calls).toEqual([
+      { businessId: ALPHA, presented: { provider: 'supabase', subject: MIA }, read: first.name },
+    ]);
+  });
+
+  it('refuses a declared read that has no executor, rather than answering 404', async () => {
+    const first = declared[0];
+    if (first === undefined) {
+      expect(declared).toHaveLength(0);
+      return;
+    }
+
+    const token = await tokenFor(MIA);
+    const answer = await post(build(), `/api/b/alpha${pathOf(first.name)}`, {}, authorised(token));
+
+    expect(answer.status).toBe(501);
+    expect(answer.body['code']).toBe('DEPENDENCY_NOT_LANDED');
+  });
+
+  it('passes a read through without an operation identity or a revision', async () => {
+    const seenRequests: Array<Readonly<Record<string, unknown>>> = [];
+    const executeRead: ReadExecutor = async (_database, _businessId, _presented, request) => {
+      seenRequests.push(request);
+      return { ok: true, persons: [] };
     };
 
     const answer = await executeRead(
       stubDatabase([]),
       ALPHA,
       { provider: 'supabase', subject: MIA },
-      {
-        command: readDeclaration.name,
-        recordId: 'a-task',
-      },
+      { read: 'person.list' },
     );
 
-    expect(calls).toEqual([
-      {
-        businessId: ALPHA,
-        presented: { provider: 'supabase', subject: MIA },
-        command: 'task.read',
-      },
-    ]);
-    expect(answer).toEqual({ ok: true, task: { id: 'a-task' } });
+    expect(seenRequests).toEqual([{ read: 'person.list' }]);
+    expect(answer).toEqual({ ok: true, persons: [] });
   });
 });
