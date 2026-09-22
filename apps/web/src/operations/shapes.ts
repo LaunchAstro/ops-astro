@@ -29,7 +29,12 @@ export interface TaskSummary {
   readonly id: string;
   readonly key: string;
   readonly title: string;
-  readonly state: TaskState;
+  /**
+   * Null is a real answer. A task written before the server placed a created
+   * task in a state carries no state link, and the screens draw that rather
+   * than dereferencing it.
+   */
+  readonly state: TaskState | null;
   readonly assignee: TaskPerson | null;
   readonly due: string | null;
   readonly priority: number | null;

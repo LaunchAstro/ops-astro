@@ -272,6 +272,10 @@ function Loaded(props: LoadedProps): ReactElement {
 }
 
 function stateOf(task: Task): DrawnState {
+  // A task with no state is an incomplete record, not a crash and not a
+  // blank cell. It says so, in the vocabulary the projection already has for
+  // a word it cannot place, and the row stays on the screen.
+  if (task.state === null) return { word: 'No state', tone: 'wait', reference: 'unknown' };
   const drawn = drawPinnedStepWord(TONE_BY_CATEGORY[task.state.machineCategory] ?? 'pending');
   return { word: task.state.label, tone: drawn.tone, reference: 'new_behaviour' };
 }

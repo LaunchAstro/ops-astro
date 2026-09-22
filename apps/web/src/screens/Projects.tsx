@@ -134,7 +134,7 @@ function rowOf(task: TaskSummary): BoardRow {
     state: stateOf(task),
     estimate: null,
     actual: null,
-    group: task.state.label,
+    group: groupOf(task),
     href: `/task/${encodeURIComponent(task.key)}`,
   };
 }
@@ -149,6 +149,10 @@ function rowOf(task: TaskSummary): BoardRow {
  * nothing.
  */
 function stateOf(task: TaskSummary): DrawnState {
+  // A task with no state is an incomplete record, not a crash and not a
+  // blank cell. It says so, in the vocabulary the projection already has for
+  // a word it cannot place, and the row stays on the screen.
+  if (task.state === null) return { word: 'No state', tone: 'wait', reference: 'unknown' };
   const drawn = drawPinnedStepWord(TONE_BY_CATEGORY[task.state.machineCategory] ?? 'pending');
   return { word: task.state.label, tone: drawn.tone, reference: 'new_behaviour' };
 }
@@ -162,8 +166,11 @@ const TONE_BY_CATEGORY: Readonly<Record<string, string>> = {
 };
 
 const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
-  ...new Set(tasks.map((task) => task.state.label)),
+  ...new Set(tasks.map((task) => groupOf(task))),
 ];
+
+/** The heading a task sits under. A stateless one gets its own, not somebody else's. */
+const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
 
 const dayOf = (iso: string): string => iso.slice(0, 10);
 
