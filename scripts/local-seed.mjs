@@ -81,15 +81,18 @@ const GRANTS_BY_ROLE = {
 };
 
 function placeholderUsers() {
-  return CAST.map((member) => ({
-    email: member.email,
-    password: `local-${randomUUID().slice(0, 12)}`,
-    subject: randomUUID(),
-    business: member.business,
-    person: member.person,
-    role: member.role,
-    ...(member.grants === undefined ? {} : { grants: member.grants }),
-  }));
+  return CAST.map((member) => {
+    const user = {
+      email: member.email,
+      password: `local-${randomUUID().slice(0, 12)}`,
+      subject: randomUUID(),
+      business: member.business,
+      person: member.person,
+      role: member.role,
+    };
+    if (member.grants !== undefined) user.grants = member.grants;
+    return user;
+  });
 }
 
 function readUsers() {
@@ -232,6 +235,9 @@ async function seedLogin(tx, member, person) {
 async function seedGrants(tx, member, person) {
   const wanted = member.grants ?? GRANTS_BY_ROLE[member.role] ?? [];
   for (const [collection, action] of wanted) {
+    // One grant at a time, on one connection, inside one transaction. These
+    // are sequential because they share it, not because anybody is waiting.
+    // oxlint-disable-next-line no-await-in-loop
     const held = await tx.query(
       `select id from public.grants
         where subject_kind = 'person' and subject_id = $1 and collection = $2
@@ -239,6 +245,7 @@ async function seedGrants(tx, member, person) {
       [person.personId, collection, action],
     );
     if (held[0]) continue;
+    // oxlint-disable-next-line no-await-in-loop
     const issued = await issueGrant(tx, [], {
       subject: { kind: 'person', id: person.personId },
       scope: { kind: 'business', id: null },
@@ -271,11 +278,13 @@ const database = connect(appUrl, { source: 'seed' });
 try {
   const businessIds = {};
   for (const [tag, key] of Object.entries(BUSINESS_KEYS)) {
+    // oxlint-disable-next-line no-await-in-loop
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
+    // oxlint-disable-next-line no-await-in-loop
     await database.withBusiness(businessIds[tag], async (tx) => {
       const spine = await installTaskSpine(tx);
       console.log(
@@ -288,6 +297,9 @@ try {
     const businessId = businessIds[member.business];
     if (businessId === undefined)
       throw new Error(`local-seed: unknown business ${member.business}`);
+    // The whole seed runs on one connection and one business at a time, so
+    // these are sequential by construction rather than by choice.
+    // oxlint-disable-next-line no-await-in-loop
     await database.withBusiness(businessId, async (tx) => {
       const person =
         member.role === 'none' ? { personId: null, actorId: null } : await seedPerson(tx, member);
