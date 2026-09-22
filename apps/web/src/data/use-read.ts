@@ -59,8 +59,13 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
       projection.accept(generation, await runRef.current(), grantKey);
     })();
     return () => {
-      // Nothing in flight can land on a projection nobody holds, and the next
-      // mount gets its own generation counter starting from zero.
+      // Retire it, do not merely forget it. Clearing the reference stops the
+      // next `reload` from finding it and stops nothing else: the read this
+      // effect already started still holds the projection, and the projection
+      // still holds `setState`. A grant change that denies the new read while
+      // the old read is still in flight would then end with the old grant's
+      // rows drawn as `ready` over the denial.
+      projection.dispose();
       readRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.

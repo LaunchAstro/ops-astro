@@ -73,6 +73,7 @@ export interface AuthorisedReadOptions<T> {
 export class AuthorisedRead<T> {
   readonly #options: AuthorisedReadOptions<T>;
   #generation = 0;
+  #disposed = false;
   /** No response minted before this may be accepted. Raised by a denial. */
   #floor = 0;
   #state: ReadState<T>;
@@ -84,6 +85,21 @@ export class AuthorisedRead<T> {
 
   get state(): ReadState<T> {
     return this.#state;
+  }
+
+  /**
+   * Retire this projection. Nothing it started may publish again.
+   *
+   * A projection outlives the read that is in flight when its holder lets it
+   * go: the request is already awaiting, and when it resolves it calls
+   * `accept` on an object nobody is reading from any more. If that object
+   * still owns the screen's setter, a read started under the old grant can
+   * land after the new grant has already been denied and put the old grant's
+   * rows back on the page -- which is the same failure the floor exists to
+   * prevent, arriving by the one door the floor does not watch.
+   */
+  dispose(): void {
+    this.#disposed = true;
   }
 
   /** The generation a caller must hand back with the result it awaited. */
@@ -102,6 +118,9 @@ export class AuthorisedRead<T> {
    * drop rather than infer it from a screen that did not change.
    */
   accept(generation: number, result: CallResult<T>, grantKey: string): boolean {
+    // Retired: its holder has moved on to another grant or another record, and
+    // a result arriving now belongs to a screen that no longer exists.
+    if (this.#disposed) return false;
     // Stale: something newer has already been asked for, or a denial has
     // raised the floor above this response's generation.
     if (generation <= this.#floor) return false;
