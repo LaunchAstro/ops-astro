@@ -163,19 +163,77 @@ const POSITIVE_WORDS = [
 // word before `no` is ever read on its own.
 const NEGATOR = String.raw`(?:not|never|no|isn['\u2019]?t|wasn['\u2019]?t|aren['\u2019]?t|cannot)`;
 
-const NEGATED = new RegExp(String.raw`\b${NEGATOR}[ \t-]{1,3}(?:${POSITIVE_WORDS})\b`, 'iu');
+// Round nine, 23 September, found the negation narrower than the grammar it
+// was meant to reverse. `not all findings are closed` and `not fully
+// approved` both passed, because the negator had to sit directly against the
+// positive word and here it does not: one word of English between them was
+// enough to turn a rejection green. So the negator reaches across up to three
+// words. Punctuation is the boundary, and deliberately: `approved, no
+// findings` is two clauses, and the negator in the second has no business
+// reversing the first.
+const GAP = String.raw`[ \t-]{1,3}(?:\w+[ \t-]{1,3}){0,3}`;
+
+const NEGATED = new RegExp(String.raw`\b${NEGATOR}${GAP}(?:${POSITIVE_WORDS})\b`, 'iu');
 const POSITIVE = new RegExp(
   String.raw`(?<!\b${NEGATOR}[ \t-]{1,3})\b(?:${POSITIVE_WORDS})\b`,
   'iu',
 );
 
-/** 'placeholder' | 'empty' | 'absent' | 'negative' | 'positive' | 'unstated' */
+// The same round found the other half: a disposition that closes some of the
+// findings and not the rest. `2 findings, 1 closed` carries no negator at
+// all, and `closed` read on its own is an approval. A count of closed
+// findings is a clean outcome only when it accounts for every finding raised,
+// so the two numbers are compared rather than the word being taken alone.
+// `3 findings, all closed` says so in words and still passes.
+const COUNT = String.raw`\d{1,4}|zero|one|two|three|four|five|six|seven|eight|nine|ten`;
+const WORD_NUMBERS = new Map(
+  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'].map(
+    (w, i) => [w, i],
+  ),
+);
+const count = (token) => {
+  const text = String(token ?? '').toLowerCase();
+  return /^\d+$/u.test(text) ? Number(text) : (WORD_NUMBERS.get(text) ?? Number.NaN);
+};
+
+// `1 of 3 closed`, and `2 findings ... 1 closed`. The gap between them stops
+// at a sentence boundary so two unrelated sentences are not read as one sum.
+const CLOSED_OF = new RegExp(
+  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT})\b[^.;\n]{0,40}?\bclosed\b`,
+  'iu',
+);
+const RAISED_AND_CLOSED = new RegExp(
+  String.raw`\b(${COUNT})\s+(?:open\s+)?findings?\b[^.;\n]{0,60}?` +
+    String.raw`\b(${COUNT})\s+(?:of\s+\S+\s+)?(?:findings?\s+)?(?:(?:is|are|were)\s+)?closed\b`,
+  'iu',
+);
+// A disposition that says in words that it is incomplete.
+const SOME_CLOSED =
+  /\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[^.;\n]{0,40}?\bclosed\b/iu;
+
+const partial = (value) => {
+  if (SOME_CLOSED.test(value)) return true;
+  for (const pattern of [CLOSED_OF, RAISED_AND_CLOSED]) {
+    const m = pattern.exec(value);
+    if (m === null) continue;
+    const raised = count(pattern === CLOSED_OF ? m[2] : m[1]);
+    const closed = count(pattern === CLOSED_OF ? m[1] : m[2]);
+    if (!Number.isNaN(raised) && !Number.isNaN(closed) && closed < raised) return true;
+  }
+  return false;
+};
+
+/**
+ * 'placeholder' | 'empty' | 'absent' | 'negative' | 'partial' | 'positive' |
+ * 'unstated'
+ */
 const outcome = (value) => {
   if (PLACEHOLDERS.some((p) => value.toLowerCase().includes(p.toLowerCase()))) return 'placeholder';
   if (value === '') return 'empty';
   if (ABSENT.test(value)) return 'absent';
   if (NEGATIVE.test(value)) return 'negative';
   if (NEGATED.test(value)) return 'negative';
+  if (partial(value)) return 'partial';
   if (POSITIVE.test(value)) return 'positive';
   return 'unstated';
 };
@@ -185,6 +243,7 @@ const explain = {
   empty: 'is empty, so it records that someone typed a heading',
   absent: 'says the review was not run',
   negative: 'says the review failed or left findings open',
+  partial: 'closes some of the findings it raised and not the rest',
   unstated: 'states no outcome, so it records that someone typed a heading',
 };
 

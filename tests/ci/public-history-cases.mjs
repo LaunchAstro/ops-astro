@@ -293,6 +293,40 @@ test('an address in a blob or a path fails, including an identity Git may use', 
     assert.match(history.stderr, /contributor-address/u);
   }));
 
+// Round nine, 23 September. The commit-provenance exemption was granted by
+// filename, and `commit-<40 hex>-metadata` is a legal path. The same blob that
+// fails as `contributors.md` passed under that name in both scans, so the
+// scope was spoofable by naming a file. The pair below is that counterexample
+// and the provenance the exemption actually exists for.
+test('a tracked path shaped like commit metadata gets no provenance exemption', () =>
+  fixture(({ repo, git, commit, root, scan }) => {
+    const disguise = `commit-${'a'.repeat(40)}-metadata`;
+    writeFileSync(join(repo, disguise), `author Example <${noReply}> 1758585600 +1000\n`);
+    git('add', '-A');
+    const staged = scan();
+    assert.equal(staged.status, 1, staged.stderr);
+    assert.match(staged.stderr, /contributor-address/u);
+    assert.match(staged.stderr, new RegExp(disguise, 'u'));
+
+    // And the blob stays reachable from the range once it is committed.
+    const head = commit('chore: the disguised blob lands in a commit');
+    const history = scan('--range', `${root}..${head}`);
+    assert.equal(history.status, 1, history.stderr);
+    assert.match(history.stderr, /contributor-address/u);
+    assert.ok(!history.stdout.includes(noReply), 'the value is never echoed');
+  }));
+
+test('a real commit object still carries its provenance exemption', () =>
+  fixture(({ git, commit, root, scan }) => {
+    // The identical address, this time where it is provenance: the commit
+    // header Git wrote itself. Narrowing the exemption must not reach this.
+    git('config', 'user.email', noReply);
+    const head = commit('chore: a commit authored by an enumerated identity');
+    const history = scan('--range', `${root}..${head}`);
+    assert.equal(history.status, 0, history.stderr);
+    assert.doesNotMatch(history.stderr, /contributor-address|unlisted-commit-identity/u);
+  }));
+
 test('the reserved documentation domains pass in a blob, so fixtures stay legible', () =>
   fixture(({ repo, git, scan }) => {
     writeFileSync(

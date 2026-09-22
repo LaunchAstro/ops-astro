@@ -235,6 +235,38 @@ run_case "the same wording does not rescue a review still pending" 1 "$BARE_BLOC
 
 Code review: the review is still pending, so it found nothing to report yet" "README.md"
 
+# Round nine, 23 September. The negation was narrower than the grammar it
+# reversed, so a rejection with one word of English inside it read as green,
+# and a disposition closing some of the findings read as closing all of them.
+
+run_case "a code review that is not all closed fails" 1 "$BARE_BLOCK
+
+Code review: not all findings are closed" "README.md"
+run_case "a code review that is all closed passes" 0 "$BARE_BLOCK
+
+Code review: all findings are closed" "README.md"
+
+run_case "a code review that is not fully approved fails" 1 "$BARE_BLOCK
+
+Code review: not fully approved" "README.md"
+run_case "a code review that is fully approved passes" 0 "$BARE_BLOCK
+
+Code review: fully approved" "README.md"
+
+run_case "a code review closing some of its findings fails" 1 "$BARE_BLOCK
+
+Code review: 2 findings, 1 closed" "README.md"
+run_case "a code review closing every finding it counted passes" 0 "$BARE_BLOCK
+
+Code review: 2 findings, 2 closed" "README.md"
+
+run_case "a security review closing one of three findings fails" 1 "$GOOD_BLOCK
+
+Security review: run against $HEAD, 1 of 3 findings closed" "packages/core-custody/broker.ts"
+run_case "a security review closing all three passes" 0 "$GOOD_BLOCK
+
+Security review: run against $HEAD, 3 of 3 findings closed" "packages/core-custody/broker.ts"
+
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then

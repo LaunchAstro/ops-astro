@@ -57,8 +57,16 @@ const publishedAddresses = [
 ];
 
 // A raw commit object, as `git cat-file commit` prints it, is indexed under
-// this synthetic path by publicHistory. Nothing in a working tree can take
-// that shape, so the scope cannot be spoofed by naming a file.
+// this synthetic path by publicHistory.
+//
+// Round nine, 23 September, found the comment that used to sit here wrong. It
+// said nothing in a working tree can take that shape, and a tracked file
+// named `commit-<40 hex>-metadata` takes it exactly: the filename alone
+// bought the commit-provenance exemption, and a contributor address inside
+// that blob passed both the staged scan and the history scan. A filename is
+// not provenance. The scope now travels with the entry that publicHistory
+// built from a real commit object, and the shape is checked as well, so a
+// tracked path can no longer claim it however it is named.
 const commitMetadataPath = /^commit-[0-9a-f]{40}-metadata$/u;
 
 // A set, not one digest, and for the same reason the gate's exemption file
@@ -98,8 +106,11 @@ export function contentRules(text, scope = 'content') {
 export function scanPublicFiles(entries) {
   const findings = [];
   const decoder = new TextDecoder('utf-8', { fatal: true });
-  for (const { path, bytes } of entries) {
-    const scope = commitMetadataPath.test(path) ? 'commit' : 'content';
+  for (const { path, bytes, scope: declared } of entries) {
+    // Only publicHistory declares this, and only for the raw commit object it
+    // read itself. Everything else -- the index, a candidate directory, every
+    // blob in the history's trees -- is ordinary content.
+    const scope = declared === 'commit' && commitMetadataPath.test(path) ? 'commit' : 'content';
     const pathRules = contentRules(path);
     // A prohibited value can be in the filename itself. Withhold that path.
     const display = pathRules.length ? '<withheld-path>' : path;
@@ -169,7 +180,11 @@ export function publicHistory(repository, range) {
   for (const sha of commits) {
     // Read the raw commit object, including author, committer and message.
     // Reporting uses the object ID only, never metadata or matched values.
-    files.push({ path: `commit-${sha}-metadata`, bytes: git(['cat-file', 'commit', sha]) });
+    files.push({
+      path: `commit-${sha}-metadata`,
+      bytes: git(['cat-file', 'commit', sha]),
+      scope: 'commit',
+    });
     const tree = decoder.decode(git(['ls-tree', '-rz', '--full-tree', sha]));
     for (const line of tree.split('\0').filter(Boolean)) {
       const split = line.indexOf('\t');

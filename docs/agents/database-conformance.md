@@ -20,8 +20,18 @@ throwaway Postgres of their own, run controlled fixture suites through
 - a suite that passes without the database recording a transaction fails;
 - a named suite vitest never discovered fails, and the path is named;
 - a run vitest itself reported as failed fails, with every counted test passing;
+- a suite that reaches the database does not cover a sibling that does not;
 - an empty manifest fails;
 - a missing `DATABASE_URL` is refused rather than skipped.
+
+These probes need Docker. When it is not there they used to skip, and
+`pnpm run db:cases` exited 0 with eight probes unrun — including in CI, where
+that made `database conformance gate` green over a job that had proved
+nothing. A skip is what this file exists to refuse, and skipping the whole
+file is the largest skip available. So the probes now read `CI`: with it set
+and no database reachable they fail, naming the reason, and the job goes red.
+Locally, with `CI` unset, the skip and its message stay, because a developer
+without Docker is not a broken hosted job.
 
 This job is green, and what it proves is that the enforcement works. It
 proves nothing about the product, and it must not be read as if it did.
@@ -91,7 +101,8 @@ No other sequencing conflict remains between this job and the ticket.
 4. more than zero tests executed;
 5. no test was skipped or marked todo;
 6. no test failed;
-7. the database's own transaction counter moved while the suites ran;
+7. the database's own transaction counter moved while **each named suite**
+   ran, measured around that suite's own run;
 8. every suite the manifest names appears in vitest's report, matched on the
    resolved file path, with tests of its own that ran and none skipped;
 9. vitest itself reported nothing wrong: its process exited zero without a
@@ -102,6 +113,15 @@ Rule 7 is the one worth explaining. A suite can pass with every database
 assertion deleted, and rules 4 to 6 will not notice. The runner reads
 `pg_stat_database` before and after, and measures what its own reads cost
 first, so the threshold is calibrated on that database rather than guessed.
+
+That counter used to be read once around the whole run, and a whole-run number
+belongs to no suite in particular. Two named suites, one reaching the database
+and one holding nothing but `expect(1 + 1).toBe(2)`, both passed: the first
+moved the counter and the second was carried by it. So the runner spawns
+vitest once per named suite and reads the counter either side of each, and a
+suite whose own run moved nothing is named on its own line. That is the cost
+of the rule — one vitest process per suite instead of one for the manifest —
+and it is what makes the number belong to a path rather than to a total.
 
 Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because those
 three read aggregates and an aggregate has no idea which file it came from or

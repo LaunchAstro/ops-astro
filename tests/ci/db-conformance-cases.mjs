@@ -22,15 +22,24 @@
 // an unhandled rejection does exactly that -- so no count moves and only the
 // process exit status says anything is wrong.
 //
-// They are skipped, loudly, when Docker is not available, because a probe
-// that silently passes without a database would be the exact failure the
-// runner refuses. `pnpm db:cases` prints why it skipped and exits 0; CI runs
-// with a service container, where the skip cannot trigger.
+// They are skipped, loudly, when Docker is not available and this is not CI,
+// because a probe that silently passes without a database would be the exact
+// failure the runner refuses. Locally `pnpm db:cases` prints why it skipped
+// and exits 0.
+//
+// In CI it refuses instead. Round nine, 23 September, found that with Docker
+// inaccessible and CI set, eight of these probes skipped and the command
+// still exited 0, so the `database conformance gate` job could report green
+// without exercising a single line of database enforcement. A skip is exactly
+// what this file exists to refuse, and a skip of the whole file is the
+// largest one available. CI supplies the service container; if it is not
+// there, that is a broken job, not a passing one.
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
@@ -191,15 +200,55 @@ test('a passing test beside an unhandled rejection', async () => {
 });
 `;
 
+/** CI's own flag, read the way every runner sets it: present and not false. */
+const inCI = () => {
+  const value = (process.env['CI'] ?? '').trim().toLowerCase();
+  return value !== '' && value !== 'false' && value !== '0';
+};
+
+// A nested run of this file, used by the two probes below to observe what a
+// run without Docker does. It must not recurse into them.
+const isChild = (process.env['DB_CONFORMANCE_CASES_CHILD'] ?? '') !== '';
+
 const skipUnlessDocker = (t) => {
   if (dockerUp()) return false;
+  if (inCI()) {
+    // Not t.skip. In CI a skip here is the green this file refuses.
+    assert.fail(
+      'Docker is not available and CI is set, so no database could be started. ' +
+        'These probes prove the database gate, and a skipped probe proves nothing: ' +
+        'the `database conformance gate` job must supply a Postgres service ' +
+        'container. Refusing rather than skipping.',
+    );
+  }
   console.error(
     'db-conformance cases: Docker is not available, so these probes did not run.\n' +
-      'db-conformance cases: they need a real database. In CI the service\n' +
-      'db-conformance cases: container supplies one and this branch cannot be taken.',
+      'db-conformance cases: they need a real database. In CI this is a refusal,\n' +
+      'db-conformance cases: not a skip, because the service container supplies one.',
   );
   t.skip('Docker is not available');
   return true;
+};
+
+/**
+ * This same file, run again with Docker out of reach: PATH is an empty
+ * directory, so the docker binary is not found however the host is set up.
+ */
+const withoutDocker = (ci) => {
+  const empty = mkdtempSync(join(tmpdir(), 'hub-db-cases-nopath-'));
+  const env = { ...process.env, PATH: empty, DB_CONFORMANCE_CASES_CHILD: '1' };
+  if (ci) env['CI'] = 'true';
+  else delete env['CI'];
+  try {
+    return spawnSync(process.execPath, [resolve(import.meta.filename)], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      env,
+    });
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
 };
 
 test('a fixture suite that reaches the database passes', async (t) => {
@@ -318,6 +367,69 @@ test('an empty manifest fails rather than passing vacuously', async (t) => {
       assert.match(run.stderr, /names no suite/u);
     }),
   );
+});
+
+// Round nine, 23 September. Finding 3: the transaction counter was a
+// whole-run number, so a named suite holding no database call at all passed
+// on a sibling's transactions. The pair is two suites in one manifest.
+test('a suite that reaches the database does not cover its sibling', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      { 'reaches.test.ts': REACHES_DATABASE, 'beside.test.ts': NEVER_TOUCHES_THE_DATABASE },
+      { invariant: ['reaches.test.ts'], conformance: ['beside.test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        assert.match(run.stderr, /without the database recording a single transaction/u);
+        // The failure names the suite, not the run.
+        assert.match(run.stderr, /beside\.test\.ts/u);
+        assert.doesNotMatch(run.stderr.split('single transaction')[1] ?? '', /reaches\.test\.ts/u);
+      },
+    ),
+  );
+});
+
+test('two suites that each reach the database pass together', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      { 'first.test.ts': REACHES_DATABASE, 'second.test.ts': REACHES_DATABASE },
+      { invariant: ['first.test.ts'], conformance: ['second.test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+        assert.match(run.stdout, /2 named suite\(s\), 2 test\(s\): 2 passed/u);
+        assert.match(run.stdout, /none of them skipped/u);
+      },
+    ),
+  );
+});
+
+// Finding 4: with Docker out of reach these probes skipped and the command
+// exited 0, so the hosted job could go green over eight probes that never
+// ran. In CI that is now a refusal; locally it is still a skip.
+test('with no database and CI set, this file refuses instead of skipping', (t) => {
+  if (isChild) {
+    t.skip('the nested run is the observation, not the observer');
+    return;
+  }
+  const run = withoutDocker(true);
+  assert.notEqual(run.status, 0, `expected a non-zero exit, got ${String(run.status)}`);
+  const output = run.stdout + run.stderr;
+  assert.match(output, /Docker is not available and CI is set/u);
+  assert.match(output, /no database could be started/u);
+  assert.doesNotMatch(output, /# skip/u);
+});
+
+test('with no database and CI unset, this file still skips locally', (t) => {
+  if (isChild) {
+    t.skip('the nested run is the observation, not the observer');
+    return;
+  }
+  const run = withoutDocker(false);
+  assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+  assert.match(run.stdout + run.stderr, /Docker is not available, so these probes did not run/u);
 });
 
 test('no DATABASE_URL is a refusal, not a skip', () => {
