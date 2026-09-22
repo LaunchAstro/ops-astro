@@ -162,8 +162,15 @@ export function createApi(options: ApiOptions): Hono {
  * review of the draft found both of its own minting a code by hand.
  */
 function refuse(context: Context, refusal: CommandRefusal): Response {
+  // `refused: true` is the flag that makes this a refusal on the wire and not
+  // merely a status code. A caller reading the status alone cannot tell a
+  // decision the server made from a server that fell over, and the mounted
+  // app's client says so in as many words: a non-2xx with no refusal body is
+  // drawn as *unavailable*, because calling it denied would invent an
+  // authority decision nobody made. Without the flag every refusal this
+  // boundary returns arrived there as an outage.
   return context.json(
-    { code: refusal.code, names: refusal.names, fixes: refusal.fixes },
+    { refused: true, code: refusal.code, names: refusal.names, fixes: refusal.fixes },
     statusFor(refusal.code),
   );
 }
