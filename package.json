@@ -43,6 +43,8 @@
     "candidate:cases": "node --test tests/ci/candidate-cases.mjs",
     "candidate:snapshot": "node scripts/candidate-snapshot.mjs",
     "public:content": "node scripts/public-content-check.mjs",
+    "public:content:tree": "node scripts/public-content-check.mjs --repo .",
+    "secrets": "gitleaks dir --redact --config .gitleaks.toml .",
     "public:history:cases": "node --test tests/ci/public-history-cases.mjs",
     "spdx": "node scripts/spdx-check.mjs",
     "spdx:cases": "node --test tests/licences/spdx-cases.mjs"

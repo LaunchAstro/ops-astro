@@ -15,7 +15,9 @@ ticket verifies the integrated feature. Review covers both the specification
 and repository standards. The independent reviewer must be a frontier model
 from a different company than the builder's, because same-vendor models share
 blind spots.
-Copilot reviews the hosted revision and Nathan decides the merge.
+Copilot reviews the hosted revision. An agent then invokes the merge on
+Nathan's credential once every required check is green, and notifies him;
+what stays his decision is listed in [Contributing](../../CONTRIBUTING.md).
 
 Before product code begins, rehearse the complete loop on a throwaway feature,
 including security review, hosted checks, a human merge, and the verify ticket.

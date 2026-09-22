@@ -18,16 +18,27 @@ See docs/agents/review-checkpoint.md.
 ## Review outcomes
 
 <!--
-Both lines are read by the review-evidence check. It requires an outcome, not
-a mention: "not run", "pending", "skipped", "failed" and open findings all
-fail, and so does a heading with nothing after it.
+Replace REPLACE-WITH-OUTCOME on both lines below. The review-evidence check
+reads each line from its first word, so write the outcome on the line itself
+and keep any explanation after it.
+
+It requires an outcome, not a mention. A line that is still the placeholder,
+or that is empty, or that says the review was not run, was pending, was
+skipped, failed, or left findings open, fails the check. Wording that passes:
+the review found nothing, or every finding it raised is closed.
+
+For the security line, record the revision it ran against, and say so plainly
+if the surface did not call for one. Cite the procedure file by path if you
+want to; the check reads fields, not filenames.
+
+What a green check proves: the evidence is bound to this exact head. It reads
+no reviewer identity, so it does not prove that any reviewer read anything.
+That is the seven questions' job, in CONTRIBUTING.md.
 -->
 
-Code review: <!-- no findings | N findings, all closed -->
+Code review: REPLACE-WITH-OUTCOME
 
-Security review: <!-- run against <head sha>, no findings | not required: this
-diff does not touch auth, tenancy, tool execution, egress, custody or the
-audit chain -->
+Security review: REPLACE-WITH-OUTCOME
 
 ## How it was tested
 
@@ -94,7 +105,8 @@ is worth writing down when it is true.
 - [ ] Ticket and acceptance criterion met
 - [ ] Checks green
 - [ ] Evidence present
-- [ ] Review findings closed
+- [ ] The cross-vendor reviewer and Copilot each reviewed this revision, and
+      every finding from both is closed
 - [ ] Security pass, where the surface calls for one
 - [ ] Under the size cap
 - [ ] Which layer should have caught this, answered above, and the answer has

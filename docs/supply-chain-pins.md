@@ -63,4 +63,5 @@ the point of it.
 
 The npm dependency tree is pinned by `pnpm-lock.yaml`, which is committed, and
 `pnpm install --frozen-lockfile` refuses to drift from it. Renovate proposes
-updates; a human merges them.
+updates; they merge like any other change, invoked once every required check
+is green, and never by Renovate itself.

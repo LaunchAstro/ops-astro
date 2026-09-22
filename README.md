@@ -37,7 +37,11 @@ Product implementation waits for the full build-loop rehearsal.
 
 Use the Node major in `.nvmrc`, the pnpm version in `package.json`, Python
 3.11 or newer, Git, and Gitleaks. Install the pinned development dependencies
-in a working checkout, then run `corepack pnpm check`.
+in a working checkout, then run `corepack pnpm check`. Gitleaks is a
+prerequisite because `pnpm check` runs it over the working tree, along with
+the public-content policy; the separate full-history scan stays in continuous
+integration. The public-content step reads the staged tree, so stage your
+changes before running it.
 
 [Local verification](docs/plan/local-verification.md) explains how to check
 and export an exact candidate without creating a commit. Hosted and runtime

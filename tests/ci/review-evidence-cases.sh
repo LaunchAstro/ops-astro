@@ -126,6 +126,72 @@ run_case "a code review with findings closed passes" 0 "$GOOD_BLOCK
 
 Code review: 3 findings, all closed" "README.md"
 
+# Round seven, 17 September. The template byte for byte, with only the
+# checkpoint filled, passed: the parser read the instructional words inside
+# the template's own HTML comment as an outcome. The same substring search
+# failed a correct body that cited the security procedure by path.
+TEMPLATE="$REPO_ROOT/.github/PULL_REQUEST_TEMPLATE.md"
+if [ ! -f "$TEMPLATE" ]; then
+  fail "the template exists" "no file at $TEMPLATE"
+else
+  # The template as shipped, with the one block an author always fills.
+  FILLED_TEMPLATE="$(awk -v head="$HEAD" '
+    /^```$/ { fence = fence + 1; print; if (fence == 1) { print "Review checkpoint"; print "  branch:      work"; print "  base:        main"; print "  head:        " head; print "  commits:     1" } next }
+    { print }
+  ' "$TEMPLATE")"
+
+  run_case "the untouched template, checkpoint filled, fails" 1 "$FILLED_TEMPLATE" "README.md"
+  run_case "the untouched template fails a sensitive change too" 1 "$FILLED_TEMPLATE" "packages/core-custody/broker.ts"
+
+  case "$FILLED_TEMPLATE" in
+    *"head:        $HEAD"*) pass "the template fixture really did carry this head" ;;
+    *) fail "the template fixture really did carry this head" "the checkpoint was not inserted, so the case above proves nothing" ;;
+  esac
+fi
+
+run_case "an unreplaced code-review placeholder fails" 1 "$BARE_BLOCK
+
+Code review: REPLACE-WITH-OUTCOME" "README.md"
+run_case "an unreplaced security placeholder fails" 1 "$GOOD_BLOCK
+
+Security review: REPLACE-WITH-OUTCOME" "packages/core-custody/broker.ts"
+run_case "an empty code-review field fails" 1 "$BARE_BLOCK
+
+Code review:" "README.md"
+
+# Citing the procedure by path is legitimate and must not read as a field.
+run_case "a body citing security-review.md by path passes" 0 "$GOOD_BLOCK
+
+Security review: run against $HEAD, no findings. Procedure:
+.claude/skills/_shared/security-review.md" "packages/core-custody/broker.ts"
+run_case "the procedure path alone is not a security review" 1 "$GOOD_BLOCK
+
+See .claude/skills/_shared/security-review.md for the procedure." \
+  "packages/core-custody/broker.ts"
+run_case "prose mentioning a code review is not an outcome field" 1 "$BARE_BLOCK
+
+I asked for a code review and one is coming." "README.md"
+run_case "a docs change citing security-review.md still passes" 0 "$GOOD_BLOCK
+
+The procedure lives at .claude/skills/_shared/security-review.md." "docs/plan/README.md"
+
+# An outcome inside an HTML comment is instruction to the author, not evidence.
+run_case "an outcome hidden in an HTML comment fails" 1 "$BARE_BLOCK
+
+Code review: <!-- no findings -->" "README.md"
+run_case "a commented-out checkpoint is not a checkpoint" 1 "<!-- Review checkpoint
+  head:        $HEAD -->
+
+Code review: no findings" "README.md"
+
+# Bullets and bold are ordinary Markdown and still read as fields.
+run_case "a bulleted code-review field passes" 0 "$BARE_BLOCK
+
+- **Code review**: no findings" "README.md"
+run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
+
+- **Code review**: not run" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
