@@ -90,6 +90,32 @@ describe.skipIf(serverUrl === undefined)(
       await db?.drop();
     });
 
+    describe('a created task has a state', () => {
+      it('places a task the caller gave no state into the first unstarted one', async () => {
+        const made = await create({ title: 'no state named' });
+        const row = await read(made.recordId ?? '');
+        const stateId = row.data['state'];
+        expect(stateId).toBeTypeOf('string');
+
+        const state = await db.app.withBusiness(business, async (tx) => {
+          const rows = await tx.query<{ readonly key: string; readonly category: string }>(
+            `select txt_1 as key, txt_2 as category from records
+              where business_id = $1 and id = $2`,
+            [business, String(stateId)],
+          );
+          return rows[0];
+        });
+        expect(state?.category).toBe('unstarted');
+        expect(state?.key).toBe('needs_review');
+      });
+
+      it('still takes the state the caller names', async () => {
+        const made = await create({ title: 'state named' }, { stateKey: 'active' });
+        const row = await read(made.recordId ?? '');
+        expect(row.data['state']).toBeTypeOf('string');
+      });
+    });
+
     describe('completion is a projection of the state', () => {
       it('stamps on completion and clears on reopen, keeping the history', async () => {
         const made = await create({ title: 'lifecycle' }, { stateKey: 'active' });

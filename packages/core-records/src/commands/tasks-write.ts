@@ -32,6 +32,7 @@ import { fromRecords, refuseCommand } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
+import type { TaskStateRow } from '../tasks/state.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
 /** The two fields a body can use to claim a provenance it does not have. */
@@ -49,6 +50,25 @@ function refuseSpoof(fields: FieldValues): HandlerOutcome | undefined {
     ]),
     attempted,
   );
+}
+
+/**
+ * Where a task starts when the caller names no state.
+ *
+ * `state` is a protected field: no create body may set it, and the only way in
+ * is `stateKey`, which the application does not send because a person creating
+ * a task is not choosing a status. Leaving it unset wrote a task with no state
+ * at all -- a record the board cannot group and the detail page cannot draw,
+ * and one the read contract says cannot exist, because `TaskSummary.state` is
+ * not optional.
+ *
+ * So the server places it, by the same rule `task.reopen` already uses: the
+ * first installed state in the `unstarted` category. An installation that
+ * seeds none leaves the task stateless rather than inventing a row, and the
+ * reads draw that honestly.
+ */
+function initialStateId(states: readonly TaskStateRow[]): string | undefined {
+  return states.find((state) => state.machineCategory === 'unstarted')?.id;
 }
 
 /**
@@ -85,11 +105,11 @@ export async function createTask(
   });
   if (isRecordsRefusal(placement)) return refused(fromRecords(placement));
 
-  const stateId =
+  const named =
     request.stateKey === undefined
       ? undefined
       : context.spine.states.find((state) => state.key === request.stateKey)?.id;
-  if (request.stateKey !== undefined && stateId === undefined) {
+  if (request.stateKey !== undefined && named === undefined) {
     return refused(
       refuseCommand(
         'NOT_FOUND',
@@ -98,6 +118,7 @@ export async function createTask(
       ),
     );
   }
+  const stateId = named ?? initialStateId(context.spine.states);
 
   const id = randomUUID();
   const data: Record<string, unknown> = {
