@@ -25,7 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import { installTaskSpine } from '../packages/core-records/src/tasks/install.ts';
-import { issueGrant } from '../packages/core-records/src/authority/grants.ts';
+import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -256,7 +256,33 @@ async function seedGrants(tx, member, person) {
     });
     if (!issued.ok) throw new Error(`local-seed: grant refused ${issued.refusal.code}`);
   }
-  return wanted.length;
+
+  // A grant the file does not name is taken back, not left behind.
+  //
+  // Adding only was enough while the file's grants only ever grew, and it is
+  // not enough for the one identity the contract defines by what she has not
+  // got: `noah@alpha.local` carries `"grants": []` so that N2 has a real
+  // member of A with no task scope. A run that defaulted him from his role
+  // before the ruling landed left those grants live, and a seed that could
+  // only add could never say so. Revocation writes a timestamp through the
+  // authority boundary -- the same path a person revoking a grant uses -- and
+  // touches no task, person or membership.
+  const keep = new Set(wanted.map(([collection, action]) => `${collection}:${action}`));
+  const live = await tx.query(
+    `select id, collection, action from public.grants
+      where subject_kind = 'person' and subject_id = $1 and revoked_at is null`,
+    [person.personId],
+  );
+  let revoked = 0;
+  for (const grant of live) {
+    if (keep.has(`${grant.collection}:${grant.action}`)) continue;
+    // Sequential for the reason the issue loop above is: one connection, one
+    // transaction, and nobody waiting.
+    // oxlint-disable-next-line no-await-in-loop
+    await revokeGrant(tx, grant.id);
+    revoked += 1;
+  }
+  return { granted: wanted.length, revoked };
 }
 
 const adminUrl = fromEnvFile('DATABASE_ADMIN_URL');
@@ -304,11 +330,14 @@ try {
       const person =
         member.role === 'none' ? { personId: null, actorId: null } : await seedPerson(tx, member);
       const login = await seedLogin(tx, member, person);
-      const grants = person.personId === null ? 0 : await seedGrants(tx, member, person);
+      const grants =
+        person.personId === null
+          ? { granted: 0, revoked: 0 }
+          : await seedGrants(tx, member, person);
       console.log(
         `local-seed: ${member.email} login ${login.loginId} ` +
           `${login.mapped ? `person ${person.personId} role ${member.role}` : 'no membership'} ` +
-          `grants ${grants}`,
+          `grants ${grants.granted} revoked ${grants.revoked}`,
       );
     });
   }

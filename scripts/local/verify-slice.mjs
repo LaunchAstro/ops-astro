@@ -183,6 +183,8 @@ async function main() {
       'N5 stale expectedRevision',
       'N3 generic write to state',
       'N7 tampered body and headers',
+      'B1 a created task has a state',
+      'B1 task.read takes the key the address carries',
     ]) {
       record(name, { ok: undefined, note: 'no task was created' });
     }
@@ -279,6 +281,29 @@ async function main() {
     code: codeOf(board) ?? 'ok',
     ok: board.status === 404 ? undefined : board.status === 200,
     note: board.status === 404 ? 'task.board is not in the surface yet' : '',
+  });
+
+  // A created task carries a state. `state` is protected, the application
+  // sends no `stateKey`, and until the server placed one every task the app
+  // made arrived stateless -- which the read contract says cannot happen.
+  record('B1 a created task has a state', {
+    status: read.status,
+    code: read.body?.task?.state?.key ?? 'null',
+    ok: read.status === 200 && read.body?.task?.state?.machineCategory === 'unstarted',
+    note: 'created without a stateKey; the server places the first unstarted state',
+  });
+
+  // The address a person reads out is the key, so the read takes one.
+  const taskKey = read.body?.task?.key;
+  const byKey =
+    typeof taskKey === 'string'
+      ? await call(mia.token, 'alpha', '/task/read', { recordId: taskKey })
+      : { status: 0, body: {} };
+  record('B1 task.read takes the key the address carries', {
+    status: byKey.status,
+    code: codeOf(byKey) ?? 'ok',
+    ok: byKey.status === 200 && byKey.body?.task?.id === recordId,
+    note: typeof taskKey === 'string' ? `key=${taskKey}` : 'no key came back',
   });
 
   // ------------------------------------------------------------- N5 replay
@@ -473,9 +498,39 @@ async function main() {
     ok: codeOf(crossed) === 'AUTH_NO_MEMBERSHIP',
   });
 
+  await noahHasNoScope(recordId);
   await orphanAndFabricated();
   console.log(`verify-slice: the task is ${recordId} at revision ${revision}`);
   return finish();
+}
+
+/**
+ * N2's in-business half: a real member of A who holds no task collection scope.
+ *
+ * He is a member, so the membership check passes and the refusal has to come
+ * from authority rather than from identity -- which is the whole point of the
+ * case, and why `.local/synthetic-users.json` gives him `"grants": []` and the
+ * seed revokes anything an earlier run left him.
+ */
+async function noahHasNoScope(recordId) {
+  const noah = await signIn('noah@alpha.local');
+  if (noah.token === undefined) {
+    record('N2 noah login', { status: noah.status, code: 'NO_TOKEN', ok: false });
+    return;
+  }
+  const cases = [
+    ['N2 noah reads the board', '/task/board', { board: null }],
+    ['N2 noah reads the task', '/task/read', { recordId }],
+    ['N2 noah lists people', '/person/list', {}],
+  ];
+  for (const [name, path, body] of cases) {
+    const refused = await call(noah.token, 'alpha', path, body);
+    record(name, {
+      status: refused.status,
+      code: codeOf(refused),
+      ok: codeOf(refused) === 'SCOPE_NOT_GRANTED',
+    });
+  }
 }
 
 /** The two cases that need no task of their own. */
