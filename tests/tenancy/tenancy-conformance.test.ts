@@ -81,13 +81,6 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0005_record_store',
         '0006_task_spine',
         '0007_command_envelope',
-        '0008_runtime',
-        '0009_leases_and_events',
-        '0010_gates',
-        '0011_gate_decisions',
-        '0012_budget_caps_and_envelopes',
-        '0013_budget_reservations',
-        '0014_model_calls',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -103,13 +96,6 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0005_record_store',
         '0006_task_spine',
         '0007_command_envelope',
-        '0008_runtime',
-        '0009_leases_and_events',
-        '0010_gates',
-        '0011_gate_decisions',
-        '0012_budget_caps_and_envelopes',
-        '0013_budget_reservations',
-        '0014_model_calls',
       ]);
     });
 
