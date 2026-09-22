@@ -9,7 +9,7 @@
 // the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
 // — the words and tones a state may print — and not as a source of rows.
 
-import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Shell, type RailEntry } from '@launchastro/ui';
 import { ROUTES, matchRoute } from './routes.ts';
 import { OperationsClient } from './operations/client.ts';
@@ -59,7 +59,17 @@ export function App(props: AppProps): ReactElement {
     [props.apiBase, props.fetch, session],
   );
 
-  const match = matchRoute(props.path);
+  // The root address is not a screen and it is not a mistake either: it is how
+  // a person arrives. It leads to the board when there is a session and to
+  // sign-in when there is not, and the address bar is corrected to say so, so
+  // a reload lands on the same place a link would.
+  const here = props.path === '/' ? (session === null ? '/sign-in' : '/projects/') : props.path;
+  const navigate = props.navigate;
+  useEffect(() => {
+    if (here !== props.path) navigate(here);
+  }, [here, props.path, navigate]);
+
+  const match = matchRoute(here);
   const route = match?.route ?? null;
   const grantKey = grantKeyOf(session);
 
@@ -73,7 +83,7 @@ export function App(props: AppProps): ReactElement {
   // sign-in screen is where a signed-out person lands. Neither is an error.
   const content =
     route === null ? (
-      <NotFound path={props.path} />
+      <NotFound path={here} />
     ) : session === null || !route.authenticated ? (
       session !== null && !route.authenticated ? (
         <SignedInAlready
@@ -100,7 +110,7 @@ export function App(props: AppProps): ReactElement {
     <Shell
       face="agency"
       rail={rail}
-      here={props.path}
+      here={here}
       title={route?.title ?? 'Not found'}
       meta={
         session === null ? null : (
