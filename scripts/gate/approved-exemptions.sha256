@@ -33,6 +33,7 @@
 
 # tests/gate/shape-canary.txt
 991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18  tests/gate/shape-canary.txt
+b6b9ae5cdad61b3087e053e27f87fddb94f0ad205310a55544eca9a6517e5299  tests/gate/shape-canary.txt
 
 # scripts/gate/denylist.sha256
 de5418fb31ebf58102f880243ce29bc8dc5486889e7ffd10828a097d1671f94c  scripts/gate/denylist.sha256

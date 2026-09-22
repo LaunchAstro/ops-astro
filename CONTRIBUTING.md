@@ -20,9 +20,9 @@ The Matt Pocock workflow in [AGENTS.md](AGENTS.md) is the sole router.
 7. Complete the final verify ticket against the integrated feature.
 
 Small work starts at implementation. The first full loop must be rehearsed
-on a throwaway feature before product code begins. The rehearsal includes
-hosted checks, the human merge decision, and a retained CI-checked verify
-command. Local foundation checks do not complete that rehearsal.
+on a throwaway feature before product code begins. That rehearsal included
+hosted checks, a merge Nathan invoked himself, and a retained CI-checked
+verify command. Local foundation checks do not complete that rehearsal.
 
 The [review checkpoint](docs/agents/review-checkpoint.md) binds review to the
 complete change. Authorised local foundation work with commits held uses the

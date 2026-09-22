@@ -27,8 +27,66 @@ const rules = [
   ],
 ];
 
-export function contentRules(text) {
+// Contributor addresses, scoped by where the address sits.
+//
+// The naive rule is "no address anywhere", and it is the case this scope
+// exists to avoid: every commit in this repository is authored by a GitHub
+// no-reply identity, so a blanket rule fails the whole port range on its own
+// provenance and teaches everyone to pass `--no-verify`. The distinction is
+// real. An enumerated identity in a commit's author, committer or trailers is
+// provenance Git put there. The same string inside a file or a path is
+// published contact detail, which is what this policy is about.
+// The final label must be alphabetic. Without that, an npm specifier such as
+// a scoped package at a three-part version reads as an address and every
+// lockfile in the repository becomes a finding.
+const addressPattern = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+
+// Provenance only. Allowed as a commit identity; a finding inside a blob.
+const provenanceIdentities = [
+  /^(?:\d+\+)?[a-z0-9-]+@users\.noreply\.github\.com$/u,
+  /^noreply@github\.com$/u,
+];
+
+// Deliberately published, so allowed wherever they appear: the public
+// security address this project documents, and the reserved documentation
+// domains of RFC 2606 and RFC 6761, which can never reach a mailbox.
+const publishedAddresses = [
+  /^security@launchastro\.com$/u,
+  /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
+];
+
+// A raw commit object, as `git cat-file commit` prints it, is indexed under
+// this synthetic path by publicHistory. Nothing in a working tree can take
+// that shape, so the scope cannot be spoofed by naming a file.
+const commitMetadataPath = /^commit-[0-9a-f]{40}-metadata$/u;
+
+// A set, not one digest, and for the same reason the gate's exemption file
+// keeps one: a history scan reads every version of the fixture the outgoing
+// commits reach, not only the one checked out now.
+const approvedShapeDigests = new Set([
+  '991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18',
+  'b6b9ae5cdad61b3087e053e27f87fddb94f0ad205310a55544eca9a6517e5299',
+]);
+
+export function addressRules(text, scope) {
+  const found = new Set();
+  for (const [address] of text.matchAll(addressPattern)) {
+    const value = address.toLowerCase();
+    if (publishedAddresses.some((allowed) => allowed.test(value))) continue;
+    if (scope === 'commit') {
+      if (provenanceIdentities.some((allowed) => allowed.test(value))) continue;
+      found.add('unlisted-commit-identity');
+      continue;
+    }
+    found.add('contributor-address');
+  }
+  return [...found];
+}
+
+export function contentRules(text, scope = 'content') {
   const found = rules.filter(([, pattern]) => pattern.test(text)).map(([id]) => id);
+  found.push(...addressRules(text, scope));
   const words = text.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   if (
     words.some((word) => excludedTokenHashes.has(createHash('sha256').update(word).digest('hex')))
@@ -41,6 +99,7 @@ export function scanPublicFiles(entries) {
   const findings = [];
   const decoder = new TextDecoder('utf-8', { fatal: true });
   for (const { path, bytes } of entries) {
+    const scope = commitMetadataPath.test(path) ? 'commit' : 'content';
     const pathRules = contentRules(path);
     // A prohibited value can be in the filename itself. Withhold that path.
     const display = pathRules.length ? '<withheld-path>' : path;
@@ -60,10 +119,9 @@ export function scanPublicFiles(entries) {
     // exception covers its path shapes only; every other rule still scans it.
     const approvedShapes =
       path === 'tests/gate/shape-canary.txt' &&
-      createHash('sha256').update(bytes).digest('hex') ===
-        '991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18';
-    for (const rule of contentRules(text)) {
-      if (rule === 'personal-path' && approvedShapes) continue;
+      approvedShapeDigests.has(createHash('sha256').update(bytes).digest('hex'));
+    for (const rule of contentRules(text, scope)) {
+      if ((rule === 'personal-path' || rule === 'contributor-address') && approvedShapes) continue;
       findings.push({ file: display, rule });
     }
   }

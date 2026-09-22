@@ -11,6 +11,16 @@ const source = resolve(import.meta.dirname, '../..');
 const guard = join(source, 'scripts/public-content-check.mjs');
 const prohibited = ['synthetic', 'public', 'client'].join('');
 const zero = '0'.repeat(40);
+// Item 3's fixtures are assembled, not written out, for the reason the rule
+// itself gives: a literal address in this blob is a finding against it.
+const noReply = ['183608168+Exampleperson', '@', 'users.noreply.github.com'].join('');
+const otherNoReply = ['7654321+exampleother', '@', 'users.noreply.github.com'].join('');
+const bareNoReply = ['exampleperson', '@', 'users.noreply.github.com'].join('');
+const githubWebFlow = ['noreply', '@', 'github.com'].join('');
+const securityAddress = ['security', '@', 'launchastro.com'].join('');
+const syntheticFixture = ['fixture', '@', 'example.invalid'].join('');
+const documentationDomain = ['someone', '@', 'example.com'].join('');
+const outside = ['exampleperson', '@', 'mail.example'].join('');
 
 function fixture(run) {
   const dir = mkdtempSync(join(tmpdir(), 'hub-public-history-'));
@@ -200,4 +210,96 @@ test('excluded operational tokens fail staged, exported and removed-history chec
     assert.ok(
       ![staged.stderr, exported.stderr, history.stderr].some((output) => output.includes(token)),
     );
+  }));
+
+// Item 3 of the PG0-product ticket: the address policy is scoped, and the
+// scope is the point. Each case below names the side of it that it proves.
+
+test('enumerated identities pass as commit provenance over a whole range', () =>
+  fixture(({ repo, git, commit, root, scan }) => {
+    // The naive rule this scope exists to avoid: every commit this repository
+    // has is authored by a GitHub no-reply identity, so a blanket address rule
+    // would reject the entire port range on its own provenance.
+    for (const identity of [noReply, bareNoReply, githubWebFlow]) {
+      git('config', 'user.email', identity);
+      writeFileSync(join(repo, `note-${identity.split('@')[0]}.md`), 'A neutral note.\n');
+      commit('chore: a commit carrying an enumerated identity');
+    }
+    git('config', 'user.email', 'fixture@example.invalid');
+    const head = commit('chore: and one synthetic fixture identity');
+    const range = scan('--range', `${root}..${head}`);
+    assert.equal(range.status, 0, range.stderr);
+    assert.doesNotMatch(range.stderr, /unlisted-commit-identity/u);
+  }));
+
+test('the public security address and a trailer identity pass in commit metadata', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', noReply);
+    const head = commit(
+      'chore: a message naming the documented route\n\n' +
+        `Reports go to ${securityAddress}.\n\n` +
+        'Assisted-by: LLM\n' +
+        `Co-authored-by: Example <${otherNoReply}>`,
+    );
+    const range = scan('--range', `${root}..${head}`);
+    assert.equal(range.status, 0, range.stderr);
+  }));
+
+test('an address that is on no list fails in a commit identity and in a trailer', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', outside);
+    const identity = commit('chore: a commit from an outside address');
+    const byIdentity = scan('--range', `${root}..${identity}`);
+    assert.equal(byIdentity.status, 1);
+    assert.match(byIdentity.stderr, /unlisted-commit-identity/u);
+    assert.ok(!byIdentity.stderr.includes(outside), 'the value is never echoed');
+
+    git('config', 'user.email', noReply);
+    const trailer = commit(
+      'chore: a clean identity with an outside trailer\n\n' +
+        `Co-authored-by: Example <${outside}>`,
+    );
+    const byTrailer = scan('--range', `${identity}..${trailer}`);
+    assert.equal(byTrailer.status, 1);
+    assert.match(byTrailer.stderr, /unlisted-commit-identity/u);
+  }));
+
+test('an address in a blob or a path fails, including an identity Git may use', () =>
+  fixture(({ repo, git, commit, root, scan }) => {
+    // The same string that is provenance in a commit header is published
+    // contact detail once it sits in a file. Only the second is a finding.
+    writeFileSync(join(repo, 'contributors.md'), `Ask ${noReply}.\n`);
+    git('add', '.');
+    const staged = scan();
+    assert.equal(staged.status, 1);
+    assert.match(staged.stderr, /contributor-address/u);
+
+    rmSync(join(repo, 'contributors.md'));
+    writeFileSync(join(repo, `${outside}.md`), 'A neutral note.\n');
+    git('add', '-A');
+    const byPath = scan();
+    assert.equal(byPath.status, 1);
+    assert.match(byPath.stderr, /contributor-address/u);
+    assert.match(byPath.stderr, /<withheld-path>/u);
+    assert.ok(!byPath.stdout.includes(outside));
+
+    // Removing it does not help: the blob is reachable from the range.
+    commit('chore: the address lands in a commit');
+    rmSync(join(repo, `${outside}.md`));
+    git('add', '-A');
+    const head = commit('chore: and taking it out again does not remove it');
+    const history = scan('--range', `${root}..${head}`);
+    assert.equal(history.status, 1, history.stderr);
+    assert.match(history.stderr, /contributor-address/u);
+  }));
+
+test('the reserved documentation domains pass in a blob, so fixtures stay legible', () =>
+  fixture(({ repo, git, scan }) => {
+    writeFileSync(
+      join(repo, 'fixtures.md'),
+      `Use ${syntheticFixture}, ${documentationDomain} and ${securityAddress}.\n`,
+    );
+    git('add', '.');
+    const staged = scan();
+    assert.equal(staged.status, 0, staged.stderr);
   }));
