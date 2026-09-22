@@ -159,10 +159,12 @@ jobs:
     # green tick beside the words "database conformance" that proves nothing,
     # which is the one outcome the ticket forbids.
     #
-    # So: bind `database conformance gate` as a required context now. Do not
-    # bind `database conformance` until the first invariant suite lands and is
-    # named in the manifest. docs/agents/database-conformance.md holds the
-    # reasoning and the binding order.
+    # So: after PG0 lands, and before the first port is dispatched, both
+    # `database conformance gate` and `database conformance` are bound as
+    # required contexts on ruleset 23396133. A required context is evaluated
+    # on each pull request's own head, so the first port head, which names
+    # its suites in the manifest, passes this job rather than deadlocking on
+    # it. docs/agents/database-conformance.md holds the order.
     name: database conformance
     needs: [gate]
     runs-on: ubuntu-latest

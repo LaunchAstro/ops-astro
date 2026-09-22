@@ -36,32 +36,48 @@ green tick beside the words "database conformance" that would mean only that
 nothing ran. A check that passes when it did nothing is worse than no check,
 because it is quoted later as evidence.
 
-## The sequencing conflict, stated plainly
+## The sequencing, stated plainly
 
-A job that fails closed on a missing product suite cannot be bound as a
-required context before the first product suite exists: binding it would block
-every pull request until that suite lands, including the pull request that
-lands it.
+An earlier version of this file said that a job failing closed on a missing
+product suite cannot be bound as a required context before the first product
+suite exists, because binding it would block every pull request until that
+suite lands, including the pull request that lands it. That is false. A
+required context is evaluated on each pull request's own head. The pull
+request that adds the first named suite runs `database conformance` against a
+manifest that names that suite, and passes. There is no deadlock, and there is
+no new gate here for anyone to rule on.
 
-This is unresolved and it is the maintainer's call, not a builder's. The two
-context names are exactly:
+The ticket already settles the timing. Its acceptance criterion is that the
+hosted job "is bound as a required context before the first port dispatch"
+(`publication-v2/03-pg0-product.md:36`): before the first port is dispatched,
+not during or after the first port's pull request.
+
+The two context names are exactly:
 
 - `database conformance gate`
 - `database conformance`
 
-The order that resolves it:
+The order:
 
-1. Bind **`database conformance gate`** as a required context on ruleset
-   `23396133` now. It is green, it is real, and it stops the enforcement
-   itself from rotting.
-2. Leave **`database conformance`** unbound while the manifest is empty.
-3. The first ticket that introduces database-backed code adds its invariant
-   suite, names it in `tests/db/named-suites.json`, and that same pull request
-   binds `database conformance` as required. From then on the manifest is
-   never empty and the job never fails for this reason again.
+1. PG0 lands first, through its normal owner merge gates: act 1, the review
+   evidence, and Nathan's merge.
+2. Before the first port is dispatched, Nathan binds `database conformance`
+   and `database conformance gate` as required contexts on ruleset
+   `23396133`. That is owner-only, and nothing in this file authorises it.
+3. The first port head carries its real named invariant and conformance suites
+   in `tests/db/named-suites.json`, and must pass `database conformance` on
+   its own head.
 
-Nothing in this file authorises step 1 or step 3. Both are ruleset changes on
-Nathan's credential.
+### The red on this head
+
+`database conformance` fails here, and that failure does not block PG0:
+neither context is bound on ruleset `23396133` today, so the result is visible
+without being merge-blocking. What the red shows is the runner refusing to
+pass vacuously over an empty manifest. It is not a broken job, and it is not a
+reason to soften either the missing-suite refusal or the empty-manifest
+refusal. Those two refusals are what make step 3 worth anything.
+
+No other sequencing conflict remains between this job and the ticket.
 
 ## What the runner enforces
 
