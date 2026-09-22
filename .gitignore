@@ -10,3 +10,6 @@ scan-terms.txt
 replacements.txt
 **/scan-terms.txt
 **/replacements.txt
+
+# Local working-slice resources: env files, synthetic credentials, receipts.
+.local/
