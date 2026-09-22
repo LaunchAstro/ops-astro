@@ -53,12 +53,29 @@ export type CommandName =
   | 'task.rank'
   | 'task.trash'
   | 'task.restore'
-  | 'task.purge';
+  | 'task.purge'
+  // The reads. They are here because a read is an operation the same surfaces
+  // have to expose, and a table that held only the writes would leave the
+  // route for reading a task to be invented somewhere else.
+  | 'task.read'
+  | 'task.board'
+  | 'person.list';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
-  /** All of them. Nothing in this surface is a read, so nothing is exempt. */
-  readonly mutating: true;
+  /**
+   * Whether this operation writes.
+   *
+   * The draft typed this `mutating: true` and said in a comment that nothing
+   * in the surface is a read. That has stopped being true: the local slice
+   * needs `task.read`, `task.board` and `person.list`, and declaring them
+   * `mutating` so the field could keep its literal type would have made the
+   * table lie about the three rows added for the purpose. A read carries no
+   * `operation_id` and no `expected_revision`, writes no record and no audit
+   * event, and is served by `reads/dispatch.ts` rather than by the command
+   * dispatch.
+   */
+  readonly kind: 'read' | 'write';
   /** Whether it needs an `expected_revision`, which is whether it has a target. */
   readonly targetsExistingRecord: boolean;
   /** The grant action the domain operation checks before it does anything. */
@@ -83,12 +100,29 @@ function declare(
   const waitingOn = options.waitingOn ?? '';
   return {
     name,
-    mutating: true,
+    kind: 'write',
     targetsExistingRecord: options.targetsExistingRecord ?? true,
     action,
     contractNine: options.contractNine ?? false,
     landed: waitingOn === '',
     waitingOn,
+  };
+}
+
+/**
+ * A read. It takes the `read` action on the collection it names, targets no
+ * revision, and is always landed: the records it reads are the ones the
+ * commands above already write.
+ */
+function read(name: CommandName): CommandDeclaration {
+  return {
+    name,
+    kind: 'read',
+    targetsExistingRecord: false,
+    action: 'read',
+    contractNine: false,
+    landed: true,
+    waitingOn: '',
   };
 }
 
@@ -134,6 +168,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.trash', 'write'),
   declare('task.restore', 'write', { targetsExistingRecord: false }),
   declare('task.purge', 'manage', { targetsExistingRecord: false }),
+
+  read('task.read'),
+  read('task.board'),
+  read('person.list'),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -155,15 +193,19 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal
  * version rather than a record revision, `task.pickup` mints a lease without
- * writing the task, and `task.handback` echoes expected versions for
- * everything it touched (minimum contract 4.3).
+ * writing the task, and  `task.handback` echoes expected versions for
+ * everything it touched (minimum contract 4.3). The three reads write nothing,
+ * so there is no revision for them to be writing against.
  */
 export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
+  'person.list',
+  'task.board',
   'task.create',
   'task.decide',
   'task.handback',
   'task.pickup',
   'task.purge',
+  'task.read',
   'task.restore',
 ]);
 
@@ -181,3 +223,8 @@ export const NOT_LANDED: readonly CommandName[] = COMMAND_SURFACE.filter(
 export function pathOf(name: CommandName): string {
   return `/${name.replace('.', '/')}`;
 }
+
+/** The reads, which no caller may reach through the command envelope. */
+export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
+  (command) => command.kind === 'read',
+).map((command) => command.name);

@@ -27,7 +27,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { CommandName } from '../commands/surface.ts';
 
-const DISPATCH_SOURCE = fileURLToPath(new URL('../commands/handlers.ts', import.meta.url));
+/**
+ * The two dispatches: writes, and the reads the local slice added beside them.
+ *
+ * A read is an exported operation on the same three surfaces, so leaving the
+ * read dispatch out here would have let a declared read with nothing behind it
+ * pass parity -- the one thing this file exists to catch.
+ */
+const DISPATCH_SOURCES: readonly string[] = [
+  fileURLToPath(new URL('../commands/handlers.ts', import.meta.url)),
+  fileURLToPath(new URL('../reads/dispatch.ts', import.meta.url)),
+];
 
 /** `case 'task.create':` and nothing looser. */
 const CASE_LABEL = /^\s*case\s+'(?<name>[a-z][a-z_]*\.[a-z][a-z_]*)'\s*:/gmu;
@@ -39,11 +49,12 @@ const CASE_LABEL = /^\s*case\s+'(?<name>[a-z][a-z_]*\.[a-z][a-z_]*)'\s*:/gmu;
  * has no claim to make about parity, and a returned empty set would be a claim.
  */
 export function exportedOperationSurface(): ReadonlySet<CommandName> {
-  const source = readFileSync(DISPATCH_SOURCE, 'utf8');
   const names = new Set<CommandName>();
-  for (const match of source.matchAll(CASE_LABEL)) {
-    const name = match.groups?.['name'];
-    if (name !== undefined) names.add(name as CommandName);
+  for (const path of DISPATCH_SOURCES) {
+    for (const match of readFileSync(path, 'utf8').matchAll(CASE_LABEL)) {
+      const name = match.groups?.['name'];
+      if (name !== undefined) names.add(name as CommandName);
+    }
   }
   if (names.size < MINIMUM_CREDIBLE) {
     throw new Error(
@@ -59,9 +70,10 @@ export function exportedOperationSurface(): ReadonlySet<CommandName> {
 /**
  * The floor that stops a broken reader passing quietly.
  *
- * Nine from the minimum contract plus the eight owning operations the task
- * type's field definitions name. The three trash-family commands are above it
- * deliberately: this is a floor, not a count, and a count here would be a
- * second hand-maintained list of the kind this file exists to avoid.
+ * Nine from the minimum contract, the eight owning operations the task type's
+ * field definitions name, and the three reads the local slice contract fixes.
+ * The three trash-family commands are above it deliberately: this is a floor,
+ * not a count, and a count here would be a second hand-maintained list of the
+ * kind this file exists to avoid.
  */
-const MINIMUM_CREDIBLE = 17;
+const MINIMUM_CREDIBLE = 20;

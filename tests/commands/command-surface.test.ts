@@ -28,6 +28,7 @@ import {
   COMMAND_SURFACE,
   CONTRACT_NINE,
   NOT_LANDED,
+  READS,
   declarationOf,
   pathOf,
   type CommandName,
@@ -70,7 +71,23 @@ describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
-    expect(paths.every((path) => path.startsWith('/task/'))).toBe(true);
+    // Every path is a collection and an operation. `person.list` is the first
+    // row whose collection is not `task`, so the shape is what is asserted
+    // rather than the one prefix that happened to be true of the writes.
+    expect(paths.every((path) => /^\/(?:task|person)\/[a-z_]+$/u.test(path))).toBe(true);
+  });
+
+  it('declares the three reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual(['person.list', 'task.board', 'task.read']);
+    for (const command of COMMAND_SURFACE) {
+      expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
+      // A read has nothing to be stale against and takes the read action.
+      if (command.kind === 'read') {
+        expect(command.targetsExistingRecord, command.name).toBe(false);
+        expect(command.action, command.name).toBe('read');
+        expect(command.landed, command.name).toBe(true);
+      }
+    }
   });
 
   // A case asserting that every action is one of the seven a grant can carry
@@ -85,6 +102,7 @@ describe('the surface as a table', () => {
       'comment',
       'decide',
       'manage',
+      'read',
       'share',
       'write',
     ]);
