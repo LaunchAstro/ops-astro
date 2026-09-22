@@ -50,6 +50,8 @@ const STEPS = [
   ['licences', 'licence compatibility'],
   ['spdx:cases', 'source licence header rejection cases'],
   ['spdx', 'source licence headers'],
+  ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
+  ['deps:cruise', 'structural dependency rules'],
   ['build', 'build'],
 ];
 

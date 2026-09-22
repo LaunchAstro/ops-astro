@@ -47,12 +47,16 @@
     "secrets": "gitleaks dir --redact --config .gitleaks.toml .",
     "public:history:cases": "node --test tests/ci/public-history-cases.mjs",
     "spdx": "node scripts/spdx-check.mjs",
-    "spdx:cases": "node --test tests/licences/spdx-cases.mjs"
+    "spdx:cases": "node --test tests/licences/spdx-cases.mjs",
+    "deps:cruise": "node scripts/deps-cruise.mjs",
+    "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
+    "@swc/core": "1.16.2",
     "@types/node": "24.13.3",
+    "dependency-cruiser": "18.4.0",
     "husky": "9.1.7",
     "lint-staged": "17.5.0",
     "oxlint": "1.81.0",

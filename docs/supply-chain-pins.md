@@ -48,6 +48,46 @@ The workflow downloads the archive to disk, checks it with `sha256sum -c`, and
 only then extracts it. It used to pipe the download straight into `tar`, which
 runs whatever arrives.
 
+## npm pins that a check depends on
+
+Every npm dependency is pinned by `pnpm-lock.yaml`. These are recorded here as
+well, because a check's behaviour depends on the exact version and a reader
+comparing this page with the lockfile should find them agreeing.
+
+| Package              | Version | Why the version matters                                                                                                   |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `dependency-cruiser` | 18.4.0  | The structural dependency check. Its own TypeScript path supports `typescript >=2.0.0 <7.0.0`.                            |
+| `typescript`         | 7.0.2   | Ahead of that range, so dependency-cruiser cannot use the project compiler to read `.ts` sources.                         |
+| `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin. |
+
+**The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
+7.0.2 and **no alternative parser installed**, `depcruise` pointed at a tree of
+three TypeScript modules printed `no dependency violations found (0 modules, 0
+dependencies cruised)` and **exited 0**. Over a mixed tree it cruised the
+JavaScript, skipped the TypeScript, printed nothing on stderr and exited 0.
+This was measured against 18.4.0 rather than assumed fixed from the 18.3.0 the
+ticket named, and it is not fixed.
+
+With `@swc/core` installed, dependency-cruiser reads the whole tree, and a
+source it cannot parse stops the cruise: it exits 1 and writes no report at
+all. `@swc/core` is therefore load bearing, not a convenience, and
+`tests/ci/deps-cruise-cases.mjs` asserts the pin is present and exact.
+
+A green that means "read nothing" is worse than a red, so the check is
+`scripts/deps-cruise.mjs` and not `depcruise` directly. It fails when
+dependency-cruiser returned no readable report, when zero modules were
+cruised, when any source in scope was not cruised, or when any rule at
+severity `error` was violated. **There is no list of files exempt from being
+read, and one must not be added.** An earlier revision of the runner carried
+one, and a syntactically invalid file placed at a listed path was skipped
+while the runner reported that the tree had been read.
+
+Raising `dependency-cruiser` is an ordinary reviewed change, like any other
+dependency bump: it merges once every required check is green, and the
+notification rules above apply to it unchanged. When a release supports
+TypeScript 7, `@swc/core` may become removable; the cases above are what will
+tell whoever tries.
+
 ## Raising a pin
 
 1. Resolve the new tag to its commit with the commands above.

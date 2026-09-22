@@ -3,3 +3,10 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+# @swc/core ships a postinstall script and a prebuilt native binary in a
+# platform package. The binary is what dependency-cruiser needs, and it loads
+# without the script running, so the script does not run here. An install-time
+# script is code executing on every machine that clones this repository; it
+# needs a reason, and this one has none.
+allowBuilds:
+  '@swc/core': false
