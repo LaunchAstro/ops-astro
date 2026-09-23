@@ -97,15 +97,16 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
     // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
     // Three kinds, and the difference between them is the point: a field an
     // operation owns names that operation, a derived field names nobody
-    // because no operation takes it as an input, and the two provenance
-    // fields are a claim of authority rather than a write.
+    // because no operation takes it as an input, and `source` is a claim of
+    // authority rather than a write. `intake_state` on update names
+    // `task.triage` (the root's D03 ruling; it is `SOURCE_SPOOFED` on create).
     const EXPECTED: Readonly<Record<string, string>> = {
       assignee: 'TRANSITION_PROTECTED',
       client: 'TRANSITION_PROTECTED',
       client_visible: 'TRANSITION_PROTECTED',
       completed_at: 'FIELD_NOT_WRITABLE',
       delegate: 'TRANSITION_PROTECTED',
-      intake_state: 'SOURCE_SPOOFED',
+      intake_state: 'TRANSITION_PROTECTED',
       key: 'FIELD_NOT_WRITABLE',
       parent: 'TRANSITION_PROTECTED',
       source: 'SOURCE_SPOOFED',
