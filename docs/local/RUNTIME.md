@@ -713,7 +713,15 @@ direct SQL.
   `DELEGATION_NOT_LIVE`, and the same agent can pick up a restarted lineage
   (`tests/runtime/lifecycle-cancel.test.ts`). A handback that commits between
   discovery and the locks leaves a smaller set, and the cancellation goes on
-  with it (`tests/runtime/lifecycle-cancel-race.test.ts`).
+  with it (`tests/runtime/lifecycle-cancel-race.test.ts`). A set that grew (a
+  pickup committed its lease in between) rolls back with nothing written and
+  raises `AffectedSetChanged` (`recovery.ts`), as do recovery replay and
+  authority loss. The person command entry retries it once, in a fresh
+  transaction that discovers again (`isRetryableViolation`,
+  `register-store.ts`), so the first request answers with the applied cancel;
+  a second loss surfaces as a fault and is recorded as one
+  (`tests/runtime/cancel-rediscover.test.ts`). Startup recovery does not
+  retry: a changed set there fails the start.
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
   (`commands/surface.ts:305-306`, `authorisedOn: 'record'`;

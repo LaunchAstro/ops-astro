@@ -15,6 +15,7 @@
 // trip through `jsonb` unchanged.
 
 import { randomUUID } from 'node:crypto';
+import { AffectedSetChanged } from '../../../core-runtime/src/recovery.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isCommandRefusal, type CommandRefusal } from './refusal.ts';
 import type { CommandName } from './surface.ts';
@@ -98,14 +99,20 @@ export async function registerAttempt(
 }
 
 /**
- * The two unique claims a caller can lose a race on while still asking the
- * right question, named rather than "any unique violation".
+ * What a caller can lose a race on while still asking the right question, each
+ * named rather than "any unique violation" or "any error".
  *
- * `record_unique_values_claim_idx` is a counted `key` two creates picked at
- * once. `operations_identity_key` is two callers presenting one identity at
- * once. Anything else — a unique field a later part adds, say — is a fault
- * that should surface as one rather than be retried into a second failure,
- * which is what a blanket retry on 23505 did before a review pointed it out.
+ * Two unique claims, and one rollback. `record_unique_values_claim_idx` is a
+ * counted `key` two creates picked at once. `operations_identity_key` is two
+ * callers presenting one identity at once. `AffectedSetChanged` is a
+ * cancellation or revocation whose discovered set grew under its locks (a
+ * pickup committed a lease in between), so it rolled back, writing nothing,
+ * rather than extend its lock set; the retry discovers again and takes the
+ * right locks (TRANSACTION-CONTRACT TC11: a concurrent schedule is not an
+ * infrastructure failure). Anything else — a unique field a later part adds,
+ * say — is a fault that should surface as one rather than be retried into a
+ * second failure, which is what a blanket retry on 23505 did before a review
+ * pointed it out.
  */
 const RETRYABLE_CONSTRAINTS: ReadonlySet<string> = new Set([
   'record_unique_values_claim_idx',
@@ -113,6 +120,7 @@ const RETRYABLE_CONSTRAINTS: ReadonlySet<string> = new Set([
 ]);
 
 export function isRetryableViolation(cause: unknown): boolean {
+  if (cause instanceof AffectedSetChanged) return true;
   if (typeof cause !== 'object' || cause === null) return false;
   const error = cause as { readonly code?: unknown; readonly constraint_name?: unknown };
   if (error.code !== '23505') return false;

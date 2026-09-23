@@ -27,6 +27,18 @@ import { revokeDelegation } from '../../core-records/src/authority/delegations.t
 import { acquire, type LockRequest, type LockSet } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
+/**
+ * The affected set changed between the unlocked discovery and the locks, so
+ * this transaction holds the wrong lock set and rolls back rather than extend
+ * it. Nothing was written. It is a schedule, not a fault: the person command
+ * entry retries it once in a fresh transaction, which discovers again
+ * (`isRetryableViolation`). Startup recovery does not retry, and fails
+ * visibly with the message.
+ */
+export class AffectedSetChanged extends Error {
+  override readonly name = 'AffectedSetChanged';
+}
+
 /** The durable causes that make an exact attempt nonclaimable. Nothing else is one. */
 export type NonclaimableCause =
   | 'handback_completed'
@@ -444,7 +456,7 @@ async function lockAndClassify(
   const locks = await acquire(tx, [...locksFor(before), ...extraLocks]);
   const after = await discover();
   if (!SAME_SET(before, after)) {
-    throw new Error(
+    throw new AffectedSetChanged(
       'recovery: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }
@@ -647,7 +659,7 @@ export async function cancelAndClassify(
     (!SAME_SET(before, after) || !SAME_SET(workBefore, workAfter)) &&
     !COVERED(locks, [...locksFor(after), ...liveWorkLocks(workAfter)])
   ) {
-    throw new Error(
+    throw new AffectedSetChanged(
       'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }
@@ -767,7 +779,7 @@ export async function classifyAuthorityLoss<T>(
   const workAfter = await discoverWork();
   const heldAfter = await discoverHeld();
   if (!SAME_SET(workBefore, workAfter) || !SAME_SET(heldBefore, heldAfter)) {
-    throw new Error(
+    throw new AffectedSetChanged(
       'authority loss: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }

@@ -56,6 +56,7 @@ export {
   type SuccessorRequest,
 } from './handback.ts';
 export {
+  AffectedSetChanged,
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
