@@ -18,6 +18,7 @@ import {
   shot,
   signIn,
   throughSubmit,
+  users,
 } from './harness.mjs';
 
 /** B1-B4, on the signed-out page the entry point opened. */
@@ -64,17 +65,43 @@ export async function casesB1toB4(run) {
   await contentEdit(run);
 }
 
+/**
+ * Noah's person, found through the login the seed made for noah's subject.
+ *
+ * Not by display name: the seed takes the name from `.local/synthetic-users.json`,
+ * and a database seeded under an older file still carries the older name. The
+ * login's subject is what the seed and the sign-in share, so the person it
+ * links to is the one the assignee control offers, whatever it is called.
+ */
+async function noahPerson(admin) {
+  const noah = users.find((user) => user.email === 'noah@alpha.local');
+  const rows = await admin.execute(
+    `select p.id, p.display_name as name
+       from public.logins l
+       join public.person_logins pl on pl.login_id = l.id and pl.active
+       join public.people p on p.id = pl.person_id
+       join public.businesses b on b.id = p.business_id
+      where l.provider = 'supabase' and l.subject = $1 and b.key = 'alpha'`,
+    [noah?.subject],
+  );
+  if (rows.length !== 1) {
+    throw new Error(`B2: noah's subject links to ${rows.length} alpha person(s), not one`);
+  }
+  return rows[0];
+}
+
 async function assign(run) {
   const { page, admin, state } = run;
+  const noah = await noahPerson(admin);
   const before2 = await revisionOn(page);
-  await page.selectOption('select[aria-label="Assignee"]', { label: 'Noah Alpha' });
+  await page.selectOption('select[aria-label="Assignee"]', { value: noah.id });
   await pastRevision(page, before2);
   const assignee = await page.locator('select[aria-label="Assignee"]').inputValue();
   record({
     case: 'B2 assign',
-    action: 'chose Noah Alpha in the assignee control (task.assign)',
+    action: `chose ${noah.name} (noah's person ${noah.id}) in the assignee control (task.assign)`,
     observed: `revision ${before2} -> ${await revisionOn(page)}, assignee ${assignee}`,
-    ok: assignee !== '',
+    ok: assignee === noah.id,
     shot: await shot(page, 'B2-assigned'),
   });
 
