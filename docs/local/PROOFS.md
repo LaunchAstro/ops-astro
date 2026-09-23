@@ -289,7 +289,7 @@ Case (k) drives the three operations the old rows only described:
   the sibling and for another purpose. Under the first credential it hands
   back the sibling's lease at that lease's own fence. The answer is
   `DELEGATION_OUT_OF_PURPOSE` 403, because `subjectTaskId` reads the task from
-  the lease (`agent-envelope.ts:363-378`). The sibling lease has no
+  the lease (`agent-envelope.ts:428-446`). The sibling lease has no
   `handback_reports` row afterwards. This is the (i) `task.handback` row. The
   old text expected `LEASE_NOT_OWNED`, which is the answer for a stale fence
   on a lease in the same purpose.
@@ -457,7 +457,7 @@ as observed. Four are fixed on this head, and the cases now assert the fix.
    expired code.
 4. **Fixed: an agent could reach `task.comment` by the surface and not by the
    server.** `serve` has a `task.comment` branch
-   (`commands/agent-envelope.ts:460`). The matrix's case (i) asserts the saved
+   (`commands/agent-envelope.ts:522`). The matrix's case (i) asserts the saved
    comment on the agent's own task, and `AUDIENCE_NOT_PERMITTED` for a
    `client` comment.
 5. **Open: the command line cannot report a fault.** `apps/cli/client.ts:91`

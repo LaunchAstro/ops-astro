@@ -353,7 +353,7 @@ fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately; it cannot settle the replacement's work.
 
 A handback names a lease, not a task. The agent envelope reads the task from
-the lease before the delegation check (`commands/agent-envelope.ts:405-421`), so
+the lease before the delegation check (`subjectTaskId`, `commands/agent-envelope.ts:418-446`), so
 a handback naming a lease on another task is outside the one-task purpose and
 is refused `DELEGATION_OUT_OF_PURPOSE` before any handback write (matrix case
 (i), `tests/acceptance/role-case-matrix.test.ts:430-449`). `LEASE_NOT_OWNED`
@@ -755,7 +755,7 @@ under a dedicated delegation credential key (`credentialEncoding`,
   `['task.pickup', 'delegation credential key <id>']`. A derived token whose
   digest does not match answers `DEPENDENCY_NOT_LANDED`
   `['task.pickup', 'delegation credential integrity']`. Neither rewrites the
-  receipt or mints a replacement (`commands/agent-envelope.ts:827-856`).
+  receipt or mints a replacement (`commands/agent-envelope.ts:840-858`).
 
 **The pickup replay.** A lost pickup response is retried with the identical
 operation id and body and no delegation credential. It returns the original
@@ -765,14 +765,14 @@ reservation, attempt and approved version are still bound, live and current.
 Otherwise it gives the current refusal (`DELEGATION_NOT_LIVE`,
 `DELEGATION_NARROWED`, `LEASE_NOT_OWNED`, `LEASE_EXPIRED`,
 `RESERVATION_NOT_CLAIMABLE`) and no receipt content (`replayPickup`,
-`commands/agent-envelope.ts:760-858`). The register keeps the handles with a
-null credential (`storable`, `:720-723`).
+`commands/agent-envelope.ts:762-861`). The register keeps the handles with a
+null credential (`storable`, `:722-725`).
 
 **The legacy limit.** Delegations minted before migration 0022 are
 `credential_scheme = 'legacy-random'`. Their random credentials cannot be
 recovered from their SHA-256 digests. Tokens already delivered stay valid. A
 lost response on a legacy pickup replays its handles with `credential: null`
-and `CREDENTIAL_NOT_REPLAYED` (`agent-envelope.ts:822-826`). Recovery is
+and `CREDENTIAL_NOT_REPLAYED` (`agent-envelope.ts:824-829`). Recovery is
 `task.cancel`, or a new pickup once the old lease has expired. No migration or
 code path relabels a legacy row as derivable, and 0022's trigger forbids it.
 

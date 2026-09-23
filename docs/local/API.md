@@ -110,7 +110,7 @@ list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`). On the agent
 prefix, `task.read` does not go through `reads/dispatch.ts`: the agent
 envelope reads `recordId` itself, and under a live delegation an absent one is
-`NOT_FOUND` 404 (`commands/agent-envelope.ts:421-422`, `:557-570`).
+`NOT_FOUND` 404 (`commands/agent-envelope.ts:444-445`, `:579-592`).
 
 ## Who is calling
 
@@ -513,12 +513,12 @@ The five support controls, with their owning functions:
 | `delegation.revoke` | `/api/b/:key/delegation/revoke`                             | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:296` | `commands/handlers.ts:95` → `commands/authority-controls.ts:283` `revokeDelegationAsManager` | `authority/delegations.ts:453` `revokeDelegation`                                                           |
 | `task.cancel`       | `/api/b/:key/task/cancel`                                   | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:305` | `commands/handlers.ts:97` → `commands/tasks-controls.ts:87` `cancelOnTask`                   | `core-runtime/src/recovery.ts:602` `cancelAndClassify`                                                      |
 | `task.restart`      | `/api/b/:key/task/restart`                                  | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:306` | `commands/handlers.ts:99` → `commands/tasks-controls.ts:120` `restartOnTask`                 | `core-runtime/src/restart.ts:38` `restart` → `propose.ts:100` `propose` (`refuseRestart`, `propose.ts:339`) |
-| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease (`handlers.ts:109`) | `/api/a/b/:key/task/heartbeat`          | `surface.ts:309` | `commands/agent-envelope.ts:560` → `commands/tasks-controls.ts:156` `heartbeatLease`         | `core-runtime/src/heartbeat.ts:75` `heartbeat`                                                              |
+| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease (`handlers.ts:109`) | `/api/a/b/:key/task/heartbeat`          | `surface.ts:309` | `commands/agent-envelope.ts:562` → `commands/tasks-controls.ts:156` `heartbeatLease`         | `core-runtime/src/heartbeat.ts:75` `heartbeat`                                                              |
 
 The other thirty. The person-prefix handler is the case in
 `commands/handlers.ts` (writes) or `reads/dispatch.ts` (reads). Agent-prefix
 cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
-(`:119-128`) is refused at `:197-213`.
+(`:119-128`) is refused at `:196-212`.
 
 | Operation                          | Declared         | Person prefix: handler → owning function                                           | Agent prefix                                                                       |
 | ---------------------------------- | ---------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -526,11 +526,11 @@ cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
 | `task.update`                      | `surface.ts:221` | `handlers.ts:40` → `tasks-write.ts:180` `updateTask`                               | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.complete`                    | `surface.ts:222` | `handlers.ts:43` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.reopen`                      | `surface.ts:223` | `handlers.ts:45` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `task.comment`                     | `surface.ts:224` | `handlers.ts:71` → `tasks-comment.ts:52` `commentOnTask`                           | served under a live delegation, `internal` audience only (`:520`, audience `:553`) |
+| `task.comment`                     | `surface.ts:224` | `handlers.ts:71` → `tasks-comment.ts:52` `commentOnTask`                           | served under a live delegation, `internal` audience only (`:522`, audience `:555`) |
 | `task.propose`                     | `surface.ts:227` | `handlers.ts:88` → `tasks-runtime.ts:148` `proposeOnTask`                          | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `task.decide`                      | `surface.ts:228` | `handlers.ts:90` → `tasks-runtime.ts:254` `decideOnGate`                           | refused `DELEGATION_EXCLUDES_DECISION` (`:363-365`, `:389-398`)                    |
-| `task.pickup`                      | `surface.ts:232` | `handlers.ts:107` → `tasks-runtime.ts:394` `pickupAsPerson`                        | served before a pickup (`:116`, `:488`)                                            |
-| `task.handback`                    | `surface.ts:237` | `handlers.ts:111` → `tasks-runtime.ts:619` `handbackOwnLease`                      | served under a live delegation (`:498`)                                            |
+| `task.decide`                      | `surface.ts:228` | `handlers.ts:90` → `tasks-runtime.ts:254` `decideOnGate`                           | refused `DELEGATION_EXCLUDES_DECISION` (`:363-365`, `:389-400`)                    |
+| `task.pickup`                      | `surface.ts:232` | `handlers.ts:107` → `tasks-runtime.ts:394` `pickupAsPerson`                        | served before a pickup (`:116`, `:490`)                                            |
+| `task.handback`                    | `surface.ts:237` | `handlers.ts:111` → `tasks-runtime.ts:619` `handbackOwnLease`                      | served under a live delegation (`:500`)                                            |
 | `task.start`                       | `surface.ts:243` | `handlers.ts:47` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.assign`                      | `surface.ts:244` | `handlers.ts:50` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.triage`                      | `surface.ts:245` | `handlers.ts:51` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
@@ -543,13 +543,13 @@ cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
 | `task.trash`                       | `surface.ts:253` | `handlers.ts:64` → `tasks-trash.ts:34` `trashTask`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.restore`                     | `surface.ts:254` | `handlers.ts:66` → `tasks-trash.ts:51` `restoreTasks`                              | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.purge`                       | `surface.ts:255` | `handlers.ts:68` → `tasks-trash.ts:82` `purgeTasks`, window `:89`, read at `:111`  | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `task.read`                        | `surface.ts:257` | `dispatch.ts:329` → `reads/tasks.ts:209` `readTaskDetail`, `:251` `readSharedTask` | served under a live delegation (`:577`)                                            |
+| `task.read`                        | `surface.ts:257` | `dispatch.ts:329` → `reads/tasks.ts:209` `readTaskDetail`, `:251` `readSharedTask` | served under a live delegation (`:579`)                                            |
 | `task.board`                       | `surface.ts:258` | `dispatch.ts:350` → `reads/tasks.ts:286` `readBoard`                               | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `task.queue`                       | `surface.ts:263` | `dispatch.ts:385` → `reads/queue.ts:31` `readQueue`                                | served before a pickup (`:116`, `:486`)                                            |
+| `task.queue`                       | `surface.ts:263` | `dispatch.ts:385` → `reads/queue.ts:31` `readQueue`                                | served before a pickup (`:116`, `:488`)                                            |
 | `person.list`                      | `surface.ts:264` | `dispatch.ts:368` → `reads/people.ts:18` `listPeople`                              | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `preset.plan`                      | `surface.ts:268` | `dispatch.ts:390` → `records/preset-plan.ts:191` `planPresetSync`                  | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `settings.read`                    | `surface.ts:273` | `dispatch.ts:379` → `reads/settings.ts:61` `readSettings`                          | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `session.capabilities`             | `surface.ts:279` | `dispatch.ts:370` → `reads/capabilities.ts:106` `readCapabilities`                 | served under a live delegation (`:378`, `:453`)                                    |
+| `session.capabilities`             | `surface.ts:279` | `dispatch.ts:370` → `reads/capabilities.ts:106` `readCapabilities`                 | served under a live delegation (`:378`, `:455`)                                    |
 | `settings.set_four_eyes_threshold` | `surface.ts:281` | `handlers.ts:78` → `settings-write.ts:86` `setBusinessSetting`                     | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `settings.set_client_sign_off`     | `surface.ts:285` | `handlers.ts:79` → `settings-write.ts:86` `setBusinessSetting`                     | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 
@@ -691,16 +691,17 @@ payload, stored in the register row and compared by a digest.
 
 An agent login **confers nothing at all**. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
-`commands/agent-envelope.ts:114`) and nothing else: `task.decide` answers
+`commands/agent-envelope.ts:116`) and nothing else: `task.decide` answers
 `DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
 `session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
-(`:349-358`, minimum contract 8.2 case 9). A credential that is presented and
+(`:357-366`, minimum contract 8.2 case 9). A credential that is presented and
 answers to no live delegation is `DELEGATION_NOT_LIVE` 401, one answer for
 unknown, expired, revoked and settled, deliberately: telling them apart tells a
 caller holding a stolen credential which of those it is
 (`authority/delegations.ts:302-309`). A name outside `AGENT_SURFACE`
-(`:117-126`) is refused `DELEGATION_EXCLUDES_OPERATION` before any of this,
-credential or not (`:194-210`). After a pickup every call is intersected with
+(`commands/agent-envelope.ts:119-128`) is refused
+`DELEGATION_EXCLUDES_OPERATION` before any of this, credential or not
+(`:196-212`). After a pickup every call is intersected with
 the delegation on the spot: the collection, the action, and a `scope` that
 must be **exactly** the one task it was minted for.
 
@@ -838,7 +839,7 @@ there is no parameter to point at somebody else.
 On the **agent prefix** the same name answers only under a live delegation.
 Before a pickup it is refused `DELEGATION_EXCLUDES_OPERATION` 403, and a
 presented credential that is not live is `DELEGATION_NOT_LIVE` 401
-(`commands/agent-envelope.ts:349-365`). Under a live delegation it answers the
+(`commands/agent-envelope.ts:362-368`). Under a live delegation it answers the
 agent's own capabilities and not the delegating person's: `agentActorId`,
 `businessKey`, the delegation's `purposeScope`, `{ kind: 'record', id }`, and
 `grants`, which is the authority the two pre-pickup operations take
@@ -851,7 +852,7 @@ and `businessKey` and `grants` sit at the same level on both:
 | Prefix                     | Body on success                                                 | Code                                                          |
 | -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
 | person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | `reads/dispatch.ts:260-268`                                   |
-| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `commands/agent-envelope.ts:433-465`, flattened at `:179-184` |
+| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `commands/agent-envelope.ts:455-487`, flattened at `:181-186` |
 
 The agent handler still stores the answer as the handle every agent command is
 stored as, `{ recordId: null, revision: null, detail }`, so a replay reads the

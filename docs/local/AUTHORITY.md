@@ -220,8 +220,8 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
 it, not `checkDelegatedAuthority`, for an operation an agent may not call
 whatever it holds: anything outside `AGENT_SURFACE`
-(`commands/agent-envelope.ts:117-126`, refused at `:194`), and anything in that
-set with no agent branch, which falls to the default (`:572-580`). It is 403 and
+(`commands/agent-envelope.ts:119-128`, refused at `:196-212`), and anything in that
+set with no agent branch, which falls to the default (`:594-601`). It is 403 and
 not `DELEGATION_NOT_LIVE` 401 because a live credential would not change the
 answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it over
 every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts:394-396`).
@@ -234,21 +234,21 @@ decision is still named as one. `session.capabilities` is in `AGENT_SURFACE`
 but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way.
 After a pickup it answers that delegation's purpose only while the delegation
 and the delegating person's current grants intersect on the purpose record
-(`read`); otherwise it is `DELEGATION_NARROWED` (`:371-385`). A credential
+(`read`); otherwise it is `DELEGATION_NARROWED` (`:378-385`). A credential
 that is presented but not live stays `DELEGATION_NOT_LIVE` (`:367-368`, from
 `resolveDelegation`).
 
 The same holds on replay. A bare agent replay of a handback, with no
 credential, answers `DELEGATION_EXCLUDES_OPERATION` without receipt content,
 and a presented credential that is not live stays `DELEGATION_NOT_LIVE`
-(`authoriseReplay`, `:877-897`). A pickup replay is the one exception to "no
+(`authoriseReplay`, `:879-907`). A pickup replay is the one exception to "no
 credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)):
-`task.comment` has an agent branch (`agent-envelope.ts:460`), and the matrix's
+`task.comment` has an agent branch (`agent-envelope.ts:522`), and the matrix's
 case (i) asserts the saved comment identity. The agent may write in the
-`internal` audience only (`AGENT_AUDIENCES`, `:127`); a `client` comment is
+`internal` audience only (`AGENT_AUDIENCES`, `:133`); a `client` comment is
 `AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
 lane L3-CONTROLS's choice and awaits root or owner confirmation.
 
