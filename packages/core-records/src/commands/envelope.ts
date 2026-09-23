@@ -80,7 +80,14 @@ export async function runCommand(
 
   // The identity first, because an attempt with no identity is not an attempt
   // the register can hold, and it is still an attempt the chain records.
-  if (!OPERATION_ID.test(request.operationId)) {
+  // `typeof` first, and it is not belt and braces. `RegExp.prototype.test`
+  // coerces its argument to a string, so an omitted `operationId` -- the field
+  // an ordinary HTTP caller leaves out most easily -- arrives as `undefined`,
+  // coerces to the nine-character `"undefined"`, and passes the pattern. The
+  // real `undefined` then reaches `lookupAttempt`'s bound parameter and the
+  // driver raises `UNDEFINED_VALUE`, which the boundary shows as a plain 500.
+  // `null` and `''` were always refused correctly; the absent field was not.
+  if (typeof request.operationId !== 'string' || !OPERATION_ID.test(request.operationId)) {
     return await settle(tx, session, request, digest, {
       refusal: refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES),
       withoutIdentity: true,

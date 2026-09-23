@@ -107,8 +107,8 @@ there is no route written out for any of them.
 | ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422          |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`)                                         | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
-| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean)                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                   |
+| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                   |
 
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
@@ -135,11 +135,23 @@ claiming one key cannot both be created, and a plan promising something the
 apply cannot do would be worse than a refusal. Nothing is written, as with
 every other refusal here and with every success.
 
-The two settings commands take no `expectedRevision`: `business_settings`
-carries no revision column, so there is nothing for a caller to write against.
-That is a schema gap rather than a decision and it is recorded as one. The
-column is **queued** for a later lane; nothing in this part adds it, and
-`settings.read` carries no `revision` for the same reason — see below.
+The two settings commands take an **optional** `expectedRevision`, which
+migration `0020_business_settings_revision.sql` made possible: `business_settings`
+now carries a revision, `settings.read` projects it on every setting, and a
+write naming a revision the row has moved past is refused `VERSION_STALE` 409
+with `names = ['revision=<current>']` and the stored value unchanged. It is
+optional rather than required because a caller who has not read the setting is
+still allowed to set it; omitting it is a last-writer-wins write, and naming it
+is the optimistic check. The applied result carries the `revision` the row is
+now at, which is the one the next write names.
+
+**`OPERATION_ID_REQUIRED` 422 covers the omitted field too.** `null` and `''`
+were always refused; an absent `operationId` was not, because
+`RegExp.prototype.test` coerces `undefined` to the string `"undefined"` and the
+pattern accepted it. The real `undefined` then reached the driver and the
+caller was answered a plain-text 500. The envelope now checks the type before
+the pattern, so every way of not sending an operation identity gets the one
+answer this table promises.
 
 ## The operations L4's runtime made possible
 
@@ -151,8 +163,15 @@ column is **queued** for a later lane; nothing in this part adds it, and
 | `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                |
 | `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
 | `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                                                   |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                           |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                            |
 | `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                |
+
+`task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
+constrain, **before** the write rather than at it: a `purpose` outside
+`^[a-z][a-z0-9_]{0,62}$` names `purpose`, and a `step` that is not
+`{ kind, payload }` with a non-empty `kind` and an object `payload` names
+`step`. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
+503, which tells a caller their server is broken when their request was.
 
 `task.propose` writes a proposal beside the task and leaves the task's own
 revision alone, so a caller may keep writing against the revision they hold.
@@ -184,6 +203,28 @@ be honest, and any non-null value is `ACTUAL_EXPENDITURE_UNSUPPORTED` 422
 naming the key; `null` and leaving it out are the same request. Its result
 carries `reportId`, the identity of the durable handback report, because a
 report nobody can name is a report nobody can read.
+
+`task.handback` takes an **optional** `successor`, which is how a worker that
+has finished one piece of work proposes the next without a person having to
+open the task again. Its caller-supplied half is
+`{ purpose, maximumMinor, currency, payload, step: { kind, payload }, expiresAt? }`.
+`expiresAt` is optional and, when sent, is an ISO-8601 instant in the future;
+leaving it out takes the same week `task.propose` defaults to.
+`proposedByActorId` is **not** a body field: it is the agent actor of the
+session, and a caller who sends it — under either spelling — is refused
+`FIELD_NOT_WRITABLE` naming `successor.proposedByActorId`, with the attempted
+value going to the audit row and never to the response, exactly as every other
+system-owned field is refused. The result carries four handles —
+`successorVersionId`, `successorGateId`, `successorRunId`, `successorStepId` —
+all four null together when no successor was asked for.
+
+The settlement and the successor **commit together or not at all**: a handback
+that opens a successor is one transaction, so a reader that sees the report
+sees the pending gate, and a fault in either takes both with it.
+`SUCCESSOR_OUT_OF_BOUNDS` 409 is the exception that settles **nothing** — the
+lease is still live and the hold still held, so the caller may retry with a
+successor that fits, or hand back without one. That is the opposite of the two
+stale-fence refusals below, which do write their retained report.
 
 **One refusal in this surface commits.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
 on `task.handback` are answered _after_ the runtime has written an append-only
@@ -341,10 +382,10 @@ comments in the fields the catalogue marks `shared` (`id`, `audience`,
 `author`, `body`, `comment_type`, `posted_at`). External is the default, so a
 role nobody classified sees the client view rather than everything.
 
-| Read                   | Route                   | Body                     | Answer                                                                             | Refusals it can answer                                                         |
-| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401    |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`            | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                         |
+| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401    |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401, `AUTH_SESSION_EXPIRED` 401 |
 
 `settings.read` takes **`read` on `settings`** while the two settings commands
 take `manage` on the same collection. That asymmetry is the decision: a setting
@@ -353,14 +394,14 @@ four-eyes band cannot tell a refusal from a bug when their own work stops at a
 second approver — and changing one is an authority change. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
-**`settings.read` carries no revision, because there is none.**
-`business_settings` has no revision column at all, so the projection has
-nothing to be stale against and offers a caller no number to send back. It
-carries `updatedAt` and `updatedByActorId` instead, which say when the value
-last changed and which actor changed it — null on a value nobody has written
-since it shipped. The column is queued for a later lane and this part adds no
-migration for it; inventing a number here would let a client believe in an
-optimistic-concurrency check the server cannot make.
+**`settings.read` carries a `revision` on every setting.** It is the number
+migration 0020 gave `business_settings`, and it is the number the two settings
+commands take back as `expectedRevision`, so a screen that read a value can
+write it back against the version it actually saw. Alongside it the row still
+carries `updatedAt` and `updatedByActorId`, which say when the value last
+changed and which actor changed it — both null on a value nobody has written
+since it shipped. A `revision` in a read a caller then writes against is the
+whole of the optimistic check: there is no other watermark.
 
 `session.capabilities` is the one read that **asks the grant model nothing**.
 It reports what the caller already holds, so a grant in front of it could only
