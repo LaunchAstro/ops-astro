@@ -35,6 +35,7 @@ import {
   chainHash,
   decidedAtText,
   decisionLink,
+  decisionPayload,
   digestOf,
   sign,
   type SigningKey,
@@ -328,21 +329,6 @@ export async function decide(
     if (!room.ok) return room;
   }
 
-  // `link` says which fields the chain link covers, inside what is signed, so
-  // a row cannot be relabelled to an older link without breaking its
-  // signature (`signing.ts`, `LinkVersion`).
-  const payload = {
-    gate: gate.id,
-    version: gate.version_id,
-    decision: request.decision,
-    by: request.decidedByPersonId,
-    note: request.note,
-    evidence: pack.rendered_digest,
-    link: LINK_VERSION,
-  };
-  const payloadDigest = digestOf(payload);
-  const signature = sign(request.signingKey, payloadDigest);
-
   // R10, second half. `seq::text as seq` made `order by seq desc` resolve to
   // the *output* column, so the chain head was chosen lexically: with ten
   // decisions in a business, '9' sorted above '10' and the next decision
@@ -357,16 +343,40 @@ export async function decide(
   const prevHash = previous[0]?.hash ?? CHAIN_GENESIS;
   const seq = Number(previous[0]?.at ?? 0) + 1;
 
-  // The link covers `decided_at`, so the time is fixed before the hash and
-  // written as the value the hash saw, in the one spelling a read renders it
-  // back in. It is the database's clock, as the column default was. It goes
-  // in as text: a parameter typed `timestamptz` is serialised through a
-  // JavaScript `Date`, which keeps milliseconds and drops the microseconds the
-  // hash saw.
+  // The payload and the link cover `decided_at`, so the time is fixed before
+  // either and written as the value they saw, in the one spelling a read
+  // renders it back in. It is the database's clock, as the column default
+  // was. It goes in as text: a parameter typed `timestamptz` is serialised
+  // through a JavaScript `Date`, which keeps milliseconds and drops the
+  // microseconds the signature and hash saw.
   const clock = await tx.query<{ readonly at: string }>(`select ${decidedAtText('now()')} as at`);
   const decidedAt = clock[0]?.at ?? '';
 
+  // v3 (`signing.ts`, `decisionPayload`): everything the row shows or links
+  // is inside what is signed, including its place in the chain, so a writer
+  // who recomputes the unkeyed links still cannot change any of it. The
+  // version is `link: 3` inside the payload, so a row cannot be relabelled to
+  // an older format without breaking its signature.
   const decisionId = randomUUID();
+  const payload = decisionPayload({
+    id: decisionId,
+    seq,
+    prev: prevHash,
+    gate: gate.id,
+    version: gate.version_id,
+    lineage: gate.lineage_id,
+    round: gate.round,
+    decision: request.decision,
+    by: request.decidedByPersonId,
+    actor: request.decidedByActorId,
+    decidedAt,
+    note: request.note,
+    evidence: pack.rendered_digest,
+    key: request.signingKey.id,
+  });
+  const payloadDigest = digestOf(payload);
+  const signature = sign(request.signingKey, payloadDigest);
+
   const hash = chainHash(
     prevHash,
     decisionLink(LINK_VERSION, {

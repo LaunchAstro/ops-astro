@@ -75,10 +75,36 @@ export interface DecisionLink {
    * Which fields the link covers (`signing.ts`, `LinkVersion`). A `1` is a
    * decision written before the link covered its round, time, lineage, acting
    * actor, evidence digest and key id: it verifies, and those fields on it are
-   * not covered by the chain.
+   * not covered by the chain. A `3` is a decision whose signed payload also
+   * carries those fields and its place in the chain (`signedFields`).
    */
   readonly linkVersion: number;
+  /**
+   * The fields of this item the decision's signature covers, in this item's
+   * names. The read has already checked each of them against the signed
+   * payload. A field shown and not listed is covered only by the unkeyed
+   * chain link, which a writer who recomputes every later link can change: on
+   * a v1 or v2 decision that is its round, time and place in the chain. The
+   * signature and hash are the proof itself and are never listed.
+   */
+  readonly signedFields: readonly string[];
 }
+
+/** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
+const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
+  1: ['decision', 'decidedByPersonId', 'signingKeyId'],
+  2: ['decision', 'decidedByPersonId', 'signingKeyId'],
+  3: [
+    'id',
+    'seq',
+    'decision',
+    'round',
+    'decidedByPersonId',
+    'decidedAt',
+    'signingKeyId',
+    'prevHash',
+  ],
+};
 
 export interface ReservationView {
   readonly id: string;
@@ -286,6 +312,7 @@ export async function readTaskProposals(
           prevHash: row.prev_hash,
           hash: row.hash,
           linkVersion: row.link_version,
+          signedFields: SIGNED_FIELDS[row.link_version] ?? [],
         })),
       reservations: reservations
         .filter((row) => row.lineage_id === lineageId)
