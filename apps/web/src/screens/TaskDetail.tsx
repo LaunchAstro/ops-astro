@@ -35,7 +35,7 @@
 // disabled for the length of a save, and a settlement clears only the exact
 // draft generation it submitted, so a slow response cannot delete newer typing.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty, Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
 import {
   isRefusal,
@@ -194,6 +194,9 @@ function Loaded(props: LoadedProps): ReactElement {
   const [because, setBecause] = useState<string | null>(null);
   const [conflict, setConflict] = useState<WireRefusal | null>(null);
   const [busy, setBusy] = useState(false);
+  // The details form itself, so the resolve bar's Save can ask it whether the
+  // edit it is about to send is a legal one.
+  const fields = useRef<HTMLFormElement>(null);
   const saved = { title: task.title, due: task.due === null ? '' : task.due.slice(0, 10) };
   const [title, setTitle] = useState(props.draft?.title ?? saved.title);
   const [due, setDue] = useState(props.draft?.due ?? saved.due);
@@ -281,9 +284,28 @@ function Loaded(props: LoadedProps): ReactElement {
     );
   };
 
+  /**
+   * The one way a detail edit leaves this screen. Both Save controls arrive
+   * here: the form's own submit button, and the resolve bar's, which is
+   * associated with the form by `form="task-fields"` even though it is drawn
+   * outside it. A control that called `saveFields` directly would be a second
+   * path with none of the form's checks on it, and Title is `required` — the
+   * previous direct call sent `title: ''` for a cleared title, which the core's
+   * text check accepts and the board then draws as a task with a blank link.
+   *
+   * `reportValidity` is the reporting half, not a duplicate of the browser's
+   * own: it says which field is wrong instead of failing silently, and it makes
+   * the single path hold in any environment rather than only where interactive
+   * validation runs.
+   */
+  const submitFields = (): void => {
+    if (fields.current?.reportValidity() === false) return;
+    saveFields();
+  };
+
   const onFields = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    saveFields();
+    submitFields();
   };
 
   const onAssign = (personId: string): void => {
@@ -354,10 +376,10 @@ function Loaded(props: LoadedProps): ReactElement {
           <div className="btnrow">
             <button
               className="btn btn--primary"
-              type="button"
+              type="submit"
+              form="task-fields"
               data-draft-resolve="save"
               disabled={busy}
-              onClick={saveFields}
             >
               Save changes
             </button>
@@ -441,7 +463,7 @@ function Loaded(props: LoadedProps): ReactElement {
         </RecordState>
       </section>
 
-      <form className="sb__sect taskform" onSubmit={onFields}>
+      <form id="task-fields" className="sb__sect taskform" ref={fields} onSubmit={onFields}>
         <div className="sb__sh">
           <span className="sb__k">Details</span>
         </div>

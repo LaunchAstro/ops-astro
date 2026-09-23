@@ -227,6 +227,15 @@ async function choose(host: HTMLElement, selector: string, value: string): Promi
 const valueOf = (host: HTMLElement, selector: string): string =>
   (host.querySelector(selector) as HTMLInputElement).value;
 
+/** Every `invalid` event the title reports, which is the form saying why. */
+const watchInvalid = (host: HTMLElement): { readonly count: () => number } => {
+  let seen = 0;
+  host.querySelector('#task-title')?.addEventListener('invalid', () => {
+    seen += 1;
+  });
+  return { count: () => seen };
+};
+
 const disabledOf = (host: HTMLElement, selector: string): boolean => {
   const found = host.querySelector(selector) as HTMLInputElement | null;
   if (found === null) throw new Error(`nothing matches ${selector}`);
@@ -441,6 +450,76 @@ describe('an unsaved edit is resolved, not merged', () => {
     await view.render(<TaskDetailScreen client={held} grantKey="alpha:mia" taskKey={TASK.id} />);
     await tick();
     expect(valueOf(view.host, '#task-title')).toBe(TASK.title);
+
+    await view.unmount();
+  });
+});
+
+/**
+ * Review finding 1. The resolve bar's Save was `type="button"` outside the
+ * details form and called the save directly, so it skipped the `required` on
+ * Title that the form's own submit had always enforced. A cleared title went out
+ * as `title: ''`, the core's text check accepted it, and the board drew the task
+ * as a blank link. Both controls now submit the one form, so the check is the
+ * same check whichever one is pressed.
+ */
+describe("a cleared title is refused by both Save controls, not just the form's", () => {
+  for (const control of [
+    { what: 'the resolve bar', selector: 'button[data-draft-resolve="save"]' },
+    { what: "the form's own submit", selector: 'form#task-fields button[type="submit"]' },
+  ]) {
+    it(`sends nothing and reports why, from ${control.what}`, async () => {
+      const api = server();
+      const view = await mount(
+        <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+      );
+      await tick();
+
+      await view.type('#task-title', '');
+      // The edit is unsaved, so the bar is on the screen and both controls exist.
+      expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+      const invalid = watchInvalid(view.host);
+
+      await view.click(control.selector);
+      await tick();
+
+      // Nothing left the screen, so nothing can have reached the board.
+      expect(api.updates).toHaveLength(0);
+      expect(api.task.title).toBe(TASK.title);
+      expect(api.task.revision).toBe(TASK.revision);
+      // The form said which field is wrong rather than failing silently.
+      expect(invalid.count()).toBeGreaterThan(0);
+      expect((view.find('#task-title') as HTMLInputElement).validity.valueMissing).toBe(true);
+      expect((view.find('form#task-fields') as HTMLFormElement).checkValidity()).toBe(false);
+      // The edit is still the person's to fix: it was refused, not discarded.
+      expect(valueOf(view.host, '#task-title')).toBe('');
+      expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+
+      await view.unmount();
+    });
+  }
+
+  it('lets the edit through once a title is put back', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+
+    await view.type('#task-title', '');
+    await view.click('button[data-draft-resolve="save"]');
+    await tick();
+    expect(api.updates).toHaveLength(0);
+
+    await view.type('#task-title', 'A title somebody put back');
+    expect((view.find('form#task-fields') as HTMLFormElement).checkValidity()).toBe(true);
+    await view.click('button[data-draft-resolve="save"]');
+    await tick();
+
+    expect(api.updates).toHaveLength(1);
+    expect(api.task.title).toBe('A title somebody put back');
+    expect(api.task.revision).toBe(TASK.revision + 1);
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
 
     await view.unmount();
   });
