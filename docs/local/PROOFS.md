@@ -33,7 +33,7 @@ the local database (the live one still stands at migration 0020, so 0021 to
 | `pnpm test`                                                                  | 5,102 passed, 19 skipped                                       | tested (merge trial, `cca3c89`) |
 | `tests/acceptance`                                                           | 3,846 passed, 11 skipped                                       | tested (merge trial, `cca3c89`) |
 | `db:conformance`                                                             | 78 named suites (74 invariant, 4 conformance), 865 of 865      | tested (merge trial, `cca3c89`) |
-| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,705 of 3,705: 2,900 for `d06-generated`, 805 for `d06-agent` | tested (lane run on `cca3c89`)  |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent` | tested (lane run on `a3d0afe`)  |
 | `role-case-matrix.test.ts` (item 2)                                          | 363 rows: 336 pass, 27 named exceptions, none missing coverage | tested (lane run on `cca3c89`)  |
 | `verify:browser`, including the in-flight, R4 and surface-final rows         | none at `cca3c89`                                              | implemented; not run            |
 | The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run)) | skipped in the counts above                                    | not run at `cca3c89`            |
@@ -45,14 +45,21 @@ restart cases, which skip without their disposable container. The named-suite
 list and why those stay unnamed are in
 [database-conformance.md](../agents/database-conformance.md).
 
-`d06-generated.test.ts` executes 2,898 cells and two plain tests. The cells are
+`d06-generated.test.ts` executes 2,898 cells and three plain tests. The cells are
 35 operations × 27 top-level keys × API, CLI and web (2,835: the 22
 `SYSTEM_OWNED_FIELDS` plus the installed system fields, from `TOP_LEVEL_FIELDS`
 in `d06-cases.ts`), plus 7 `fields` operations × 3 installed system fields on
-each of the three surfaces (63). The two plain tests read the installed field
+each of the three surfaces (63). The first two plain tests read the installed field
 metadata and list the operations whose bodies carry record fields. That is the
 old 2,375 against 2,373 settled: at `9221c29` the file ran 2,373 cells and the
-same two tests, 2,375 in all. `d06-agent.test.ts` holds the contract and
+same two tests, 2,375 in all. Every one of the 2,898 cells runs between a
+succeeding positive control and a succeeding clean retry on the same work,
+and a third plain test asserts that from the executed tally. Person
+`task.pickup`, `task.heartbeat` and `task.handback` included: they run on
+the person's own work (EX-01, `handlers.ts:102-112`), a fresh approved
+reservation or a lease the person's own pickup took, where until
+PROOF-CLOSURE their 243 cells sent fabricated ids with no control and no
+retry. `d06-agent.test.ts` holds the contract and
 exclusion cells for the agent route, including the top-level system-field
 keys, which the agent route now refuses `FIELD_NOT_WRITABLE` too.
 
@@ -273,7 +280,12 @@ her would be a wrong answer. The two real rows for each such operation are
 elsewhere in the matrix:
 
 - `noah`, a member holding nothing, is refused `SCOPE_NOT_GRANTED` on every
-  exported operation, so every operation keeps a true no-grant actor.
+  exported operation, so every operation keeps a true no-grant actor. Each of
+  those 35 refusals is audited in `audit-per-operation.test.ts` (one refused
+  `audit_events` row in alpha naming actor, command, operation and code,
+  digest only, no domain change). For `task.pickup`, `task.heartbeat` and
+  `task.handback` he names real work: an approved reservation, and a live
+  lease and fence `ada` holds.
 - The new case (e) member positive drives `mia` on each pair she holds, with
   case (a)'s minimal body. All twenty-three return 200, `task.pickup`,
   `task.handback` and `task.heartbeat` included.

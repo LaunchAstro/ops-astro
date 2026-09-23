@@ -102,27 +102,6 @@ export const FIELDS_PAYLOAD_OPERATIONS: readonly CommandName[] = [
   'task.update',
 ];
 
-/**
- * The operations a person may call and never succeeds at, with the reason.
- *
- * The injection is still sent for each of these. The system-field check runs
- * before anything that would refuse them for being a person, so the typed
- * refusal is still the answer; what is missing is only the positive control,
- * and that is said here rather than left as a gap in a count.
- */
-export const PERSON_NOT_APPLICABLE: Readonly<Partial<Record<CommandName, string>>> = {
-  'task.pickup': 'person path refuses by design (handlers.ts); an agent picks up (d06-agent)',
-  'task.handback': 'person path refuses by design (handlers.ts); an agent hands back (d06-agent)',
-  'task.heartbeat': 'person path refuses by design (handlers.ts); an agent renews (d06-agent)',
-};
-
-/** The body an inapplicable operation's injection rides in, well formed and otherwise inert. */
-export function inertBody(name: CommandName): Record<string, unknown> {
-  if (name === 'task.pickup') return { reservationId: randomUUID() };
-  if (name === 'task.heartbeat') return { leaseId: randomUUID(), fence: 1 };
-  return { leaseId: randomUUID(), fence: 1, outcome: 'completed' };
-}
-
 /** A value of the key's own kind, distinctive enough to look for in an answer. */
 export function probeValue(key: string): unknown {
   if (key === 'revision') return 7;
@@ -339,23 +318,65 @@ export function expectUnchanged(
   expect(audit['refusal_code']).toBe(expected.code);
 }
 
+interface Row {
+  run: number;
+  refused: number;
+  na: string[];
+  controls: number;
+  retries: number;
+}
+
 /** Executed counts: operation, then surface, then what the cell observed. */
 export class Tally {
-  readonly #rows = new Map<string, { run: number; refused: number; na: string[] }>();
+  readonly #rows = new Map<string, Row>();
+
+  #row(operation: string, surface: string): Row {
+    const key = `${operation}\t${surface}`;
+    const row = this.#rows.get(key) ?? { run: 0, refused: 0, na: [], controls: 0, retries: 0 };
+    this.#rows.set(key, row);
+    return row;
+  }
 
   count(operation: string, surface: string, refused: boolean, notApplicable?: string): void {
-    const key = `${operation}\t${surface}`;
-    const row = this.#rows.get(key) ?? { run: 0, refused: 0, na: [] };
+    const row = this.#row(operation, surface);
     row.run += 1;
     if (refused) row.refused += 1;
     if (notApplicable !== undefined && !row.na.includes(notApplicable)) row.na.push(notApplicable);
-    this.#rows.set(key, row);
+  }
+
+  /** A positive control that succeeded before the cell's injection. */
+  control(operation: string, surface: string): void {
+    this.#row(operation, surface).controls += 1;
+  }
+
+  /** The injected request, without the field, that succeeded after the refusal. */
+  retry(operation: string, surface: string): void {
+    this.#row(operation, surface).retries += 1;
+  }
+
+  /** Every cell counted, whichever operation and surface. */
+  total(): number {
+    return [...this.#rows.values()].reduce((sum, row) => sum + row.run, 0);
+  }
+
+  /** Cells that ran without both a succeeding positive control and a succeeding clean retry. */
+  unproved(): readonly string[] {
+    return [...this.#rows]
+      .filter(([, row]) => row.controls !== row.run || row.retries !== row.run)
+      .map(
+        ([key, row]) =>
+          `${key}\trun=${String(row.run)}\tcontrols=${String(row.controls)}` +
+          `\tretries=${String(row.retries)}`,
+      );
   }
 
   print(title: string): void {
     const lines = [...this.#rows.entries()].map(
       ([key, row]) =>
         `${key}\trun=${String(row.run)}\trefused=${String(row.refused)}` +
+        (row.controls + row.retries > 0
+          ? `\tcontrols=${String(row.controls)}\tretries=${String(row.retries)}`
+          : '') +
         (row.na.length > 0 ? `\tpositive n/a: ${row.na.join('; ')}` : ''),
     );
     const bySurface = new Map<string, number>();

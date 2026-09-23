@@ -6,9 +6,11 @@
 // Two recipes are added here beside `role-case-bodies.ts`'s, for the two
 // controls that recipe file leaves to other cases: `grant.revoke` revokes a
 // grant minted for this cell, and `delegation.revoke` revokes the delegation a
-// fresh agent pickup just opened. With those, every operation a person may
-// call has a positive control in this file, and the three it may not call are
-// named in `PERSON_NOT_APPLICABLE` with the reason.
+// fresh agent pickup just opened. With those, every exported operation has a
+// positive control in this file. That includes the person's own lease work
+// (EX-01, `handlers.ts`): `task.pickup` claims a fresh approved reservation,
+// and `task.heartbeat` and `task.handback` name a lease the person's own
+// pickup of fresh approved work just took (`role-case-bodies.ts` `ownLease`).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,7 +20,6 @@ import { grantTo } from '../commands/fixture.ts';
 import {
   FIELDS_PAYLOAD_OPERATIONS,
   PAYLOAD_CELLS,
-  PERSON_NOT_APPLICABLE,
   SYSTEM_PAYLOAD_FIELDS,
   TOP_LEVEL_CELLS,
   Tally,
@@ -26,7 +27,6 @@ import {
   durableProbe,
   roomToApprove,
   expectUnchanged,
-  inertBody,
   lastAudit,
   probeValue,
   surfacesOf,
@@ -64,9 +64,8 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     await harness?.close();
   });
 
-  /** A valid body for one operation, as ada, or `undefined` when a person has none. */
-  async function positive(name: CommandName): Promise<Record<string, unknown> | undefined> {
-    if (PERSON_NOT_APPLICABLE[name] !== undefined) return undefined;
+  /** A valid body for one operation, as ada, on work of its own: nothing is shared between cells. */
+  async function positive(name: CommandName): Promise<Record<string, unknown>> {
     const operationId = randomUUID();
     if (name === 'grant.revoke') {
       const { world } = harness;
@@ -98,23 +97,20 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     code: string,
   ): Promise<void> {
     const value = probeValue(cell.key);
-    const notApplicable = PERSON_NOT_APPLICABLE[cell.operation];
 
     // First, a valid request succeeds, so a refusal below is not a refusal of everything.
-    if (notApplicable === undefined) {
-      const first = await positive(cell.operation);
-      const control = await send(cell.surface, cell.operation, first ?? {});
-      expect(control.code, `positive control for ${cell.operation}`).toBe('ok');
-    }
+    const control = await send(cell.surface, cell.operation, await positive(cell.operation));
+    expect(control.code, `positive control for ${cell.operation}`).toBe('ok');
+    tally.control(cell.operation, cell.surface);
 
-    const body = (await positive(cell.operation)) ?? {
-      operationId: randomUUID(),
-      ...inertBody(cell.operation),
-    };
+    // The injected request is prepared the same way, on work of its own (a
+    // fresh reservation, a fresh lease), so nothing but the field stands
+    // between it and a success, and the clean retry below reaches that work.
+    const body = await positive(cell.operation);
     const before = await durable();
     const answer = await send(cell.surface, cell.operation, inject(body, value));
     // Counted on the answer, so a cell that goes red is still a cell that ran.
-    tally.count(cell.operation, cell.surface, answer.code === code, notApplicable);
+    tally.count(cell.operation, cell.surface, answer.code === code);
     expect(answer.code).toBe(code);
     expect(answer.names).toStrictEqual([cell.key]);
     if (typeof value === 'string') expect(JSON.stringify(answer.body)).not.toContain(value);
@@ -128,11 +124,10 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
 
     // And the same request without the field succeeds, under a fresh identity:
     // the refused one is registered and replays its refusal.
-    if (notApplicable === undefined) {
-      const retry = attempt ? { ...body, operationId: randomUUID() } : body;
-      const clean = await send(cell.surface, cell.operation, retry);
-      expect(clean.code, `the injected request, without the field`).toBe('ok');
-    }
+    const retry = attempt ? { ...body, operationId: randomUUID() } : body;
+    const clean = await send(cell.surface, cell.operation, retry);
+    expect(clean.code, `the injected request, without the field`).toBe('ok');
+    tally.retry(cell.operation, cell.surface);
   }
 
   it('reads the installed field metadata the payload cells are generated from', async () => {
@@ -156,7 +151,7 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
       if (['preset.plan', 'grant.revoke', 'delegation.revoke'].includes(cell.operation)) continue;
       // eslint-disable-next-line no-await-in-loop -- one recipe at a time, as a person would
       const body = await positive(cell.operation);
-      const fields = body?.['fields'];
+      const fields = body['fields'];
       if (typeof fields === 'object' && fields !== null && !Array.isArray(fields)) {
         carrying.push(cell.operation);
       }
@@ -196,4 +191,11 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     },
     60_000,
   );
+
+  // Last in the file, so it reads the tally of every cell above. Under a `-t`
+  // filter it is filtered out with the rest and asserts nothing.
+  it('ran every cell between a succeeding positive control and a succeeding clean retry', () => {
+    expect(tally.total()).toBe(TOP_LEVEL_CELLS.length + PAYLOAD_CELLS.length);
+    expect(tally.unproved()).toStrictEqual([]);
+  });
 });

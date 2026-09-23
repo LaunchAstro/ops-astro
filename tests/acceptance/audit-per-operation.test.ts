@@ -7,8 +7,10 @@
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) wherever R2 has
-// one; the three lease operations are refused the agent's own way.
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 35. For
+// the three lease operations he names real work in his own business: an
+// approved reservation, and a live lease and its fence held by ada. The agent's
+// own refusals of those three are a case of their own below.
 //
 // **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). An agent's call draws on
 // its approver's grant (`tasks-runtime.ts:354`, `delegations.ts:365-372`); once
@@ -62,6 +64,8 @@ const LEASE_WORK: readonly CommandName[] = ['task.pickup', 'task.handback', 'tas
 describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operation', () => {
   let w: IdentWorld;
   const covered = { applied: new Set<string>(), refused: new Set<string>() };
+  /** The operations whose refused cell was R2's, `noah` with no grant. */
+  const r2 = new Set<string>();
 
   beforeAll(async () => {
     w = await createIdentWorld('audit_per_op');
@@ -182,8 +186,46 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     }
   }
 
+  /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
+  async function adaLease(title: string): Promise<{ leaseId: string; fence: number }> {
+    const reservationId = await reservationBy(w.h.world.ada, title);
+    const picked = await w.person(w.h.world.ada, 'task.pickup', { reservationId });
+    const detail = picked.body['detail'] as Record<string, unknown> | undefined;
+    if (picked.code !== 'ok' || detail === undefined) {
+      throw new Error(`audit: ada's pickup refused ${picked.code}`);
+    }
+    return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+  }
+
   async function refused(declaration: CommandDeclaration): Promise<Cell> {
     const { name } = declaration;
+    const noah = w.h.world.noah;
+    switch (name) {
+      // R2 against work that exists and would admit its owner, so the refusal
+      // is authority's and not a missing reservation's or a stranger's lease.
+      case 'task.pickup': {
+        const reservationId = await reservationBy(w.h.world.ada, 'work noah may not pick up');
+        return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
+      }
+      case 'task.heartbeat':
+      case 'task.handback': {
+        const lease = await adaLease(`ada's lease noah may not ${name}`);
+        const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
+        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
+      }
+      default: {
+        // `session.capabilities` included: contract 8.2 case 3 names every
+        // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
+        // the membership-only answer is to be repaired, not waived.
+        const { operationId: _identity, ...probe } = w.h.probeBody(declaration);
+        return personCell(noah, name, probe, 'SCOPE_NOT_GRANTED');
+      }
+    }
+  }
+
+  /** The agent's own refusal of a lease operation: a claim it cannot make, a lease not its own. */
+  async function refusedAgent(name: CommandName): Promise<Cell> {
     switch (name) {
       case 'task.pickup':
         return agentCell(
@@ -202,13 +244,8 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
-      default: {
-        // `session.capabilities` included: contract 8.2 case 3 names every
-        // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
-        // the membership-only answer is to be repaired, not waived.
-        const { operationId: _identity, ...probe } = w.h.probeBody(declaration);
-        return personCell(w.h.world.noah, name, probe, 'SCOPE_NOT_GRANTED');
-      }
+      default:
+        throw new Error(`audit: ${name} is not lease work`);
     }
   }
 
@@ -263,6 +300,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           // eslint-disable-next-line no-await-in-loop
           problems.push(...(await check(`${way} ${declaration.name}`, declaration.name, cell)));
           covered[way].add(declaration.name);
+          if (way === 'refused' && cell.actorId === w.h.world.noah.actorId) {
+            r2.add(declaration.name);
+          }
         }
         expect(problems).toStrictEqual([]);
       },
@@ -275,7 +315,20 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     expect(names).toHaveLength(35);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
+    // R2 (`noah`, no grant) is the refused caller on every one of the 35.
+    expect([...r2].toSorted()).toStrictEqual(names);
   });
+
+  it('audits the agent-path refusal of the three lease operations', async () => {
+    const problems: string[] = [];
+    for (const name of LEASE_WORK) {
+      // eslint-disable-next-line no-await-in-loop -- one operation at a time; the chain is shared
+      const cell = await refusedAgent(name);
+      // eslint-disable-next-line no-await-in-loop
+      problems.push(...(await check(`agent ${name} (${String(cell.code)})`, name, cell)));
+    }
+    expect(problems).toStrictEqual([]);
+  }, 120_000);
 
   it('audits the person-path refusal of the three lease operations', async () => {
     // PERSON-WORK serves these to a person (8c08ccb). A handback carries the
