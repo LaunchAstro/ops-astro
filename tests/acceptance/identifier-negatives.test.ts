@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
 import { READS } from '../../packages/core-records/src/commands/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
+import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import {
   auditMark,
@@ -241,145 +242,184 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     }
   }, 300_000);
 
-  it('refuses foreign and fabricated control identifiers alike', async () => {
-    const own = await w.propose('a lineage of alpha’s own');
-    const f = w.foreign;
-    const lineage = (recordId: string, lineageId: string, op: CommandName): Body =>
-      op === 'task.cancel' ? { recordId, lineageId, reason: NOBODY } : { recordId, lineageId };
-    const cells: [CommandName, ReturnType<typeof pair>][] = [];
-    for (const op of ['task.cancel', 'task.restart'] as const) {
+  it(
+    CASE.control,
+    async () => {
+      const own = await w.propose('a lineage of alpha’s own');
+      const f = w.foreign;
+      const lineage = (recordId: string, lineageId: string, op: CommandName): Body =>
+        op === 'task.cancel' ? { recordId, lineageId, reason: NOBODY } : { recordId, lineageId };
+      const cells: [CommandName, ReturnType<typeof pair>][] = [];
+      for (const op of ['task.cancel', 'task.restart'] as const) {
+        cells.push(
+          [op, pair('lineageId', f.proposal.lineageId, (id) => lineage(own.task.id, id, op))],
+          [op, pair('recordId', f.proposal.task.id, (id) => lineage(id, own.lineageId, op))],
+        );
+      }
       cells.push(
-        [op, pair('lineageId', f.proposal.lineageId, (id) => lineage(own.task.id, id, op))],
-        [op, pair('recordId', f.proposal.task.id, (id) => lineage(id, own.lineageId, op))],
+        ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
+        ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        [
+          'delegation.revoke',
+          pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
+        ],
       );
-    }
-    cells.push(
-      ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
-      ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
-      [
-        'delegation.revoke',
-        pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
-      ],
-    );
-    for (const [op, { operand, forms }] of cells) {
-      // eslint-disable-next-line no-await-in-loop
-      await refuses(op, operand, ada, 'NOT_FOUND', forms);
-    }
-  }, 300_000);
+      for (const [op, { operand, forms }] of cells) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    300_000,
+  );
 
-  it('refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it', async () => {
-    // Green at 403267f, RED at 74d583c (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`
-    // with the foreign and fabricated bodies identical byte for byte.
-    const decision = { decision: 'approve', note: NOBODY };
-    const { gateId, versionId } = w.foreign.proposal;
-    await refuses('task.decide', 'gateId', ada, 'NOT_FOUND', {
-      foreign: { gateId, versionId, ...decision },
-      fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
-    });
-  }, 120_000);
-
-  it('refuses a board read on a foreign or fabricated board, never an empty success', async () => {
-    // Green at 403267f. RED at 74d583c: `task.board` takes a board identifier
-    // (`reads/dispatch.ts:241-243`) and answers 200 `{ tasks: [] }` for one
-    // that is not alpha's. Case 1 asks `NOT_FOUND`, and case 3 says a denied
-    // list is never empty. `task.move` refuses the same identifier
-    // `NOT_FOUND` (`commands/tasks-place.ts:113-122`).
-    await refuses('task.board', 'board', ada, 'NOT_FOUND', {
-      foreign: { board: w.foreign.task.id },
-      fabricated: { board: randomUUID() },
-    });
-  }, 120_000);
-
-  it('refuses the agent alike on foreign, fabricated and in-business operands', async () => {
-    // RED at 403267f on bytes alone (root ruling 2): the refusal text echoes
-    // the presented id, so the forms differ. DELEGATION_OUT_OF_PURPOSE at
-    // `authority/delegations.ts:360`; LEASE_NOT_OWNED at
-    // `core-runtime/src/heartbeat.ts:82` and `core-runtime/src/handback.ts:147`.
-    const own = await w.pickUp(w.h.world.agent, 'the agent’s own work');
-    const agent: Presenter = {
-      kind: 'agent',
-      identity: w.h.world.agent,
-      credential: own.credential,
-    };
-    const sibling = await w.h.freshTask('a sibling outside the delegation');
-    const f = w.foreign;
-    const other = w.otherPicked;
-    const byRecord: readonly [CommandName, Body][] = [
-      ['task.read', {}],
-      ['task.comment', { body: NOBODY, audience: 'internal' }],
-    ];
-    for (const [op, extra] of byRecord) {
-      // eslint-disable-next-line no-await-in-loop
-      await refuses(op, 'recordId', agent, 'DELEGATION_OUT_OF_PURPOSE', {
-        foreign: { recordId: f.task.id, ...extra },
-        fabricated: { recordId: randomUUID(), ...extra },
-        'same business': { recordId: sibling.id, ...extra },
+  it(
+    CASE.gate,
+    async () => {
+      // Green at 403267f, RED at 74d583c (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`
+      // with the foreign and fabricated bodies identical byte for byte.
+      const decision = { decision: 'approve', note: NOBODY };
+      const { gateId, versionId } = w.foreign.proposal;
+      await refuses('task.decide', 'gateId', ada, 'NOT_FOUND', {
+        foreign: { gateId, versionId, ...decision },
+        fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
       });
-    }
-    const byLease: readonly [CommandName, Body][] = [
-      ['task.heartbeat', {}],
-      ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
-    ];
-    for (const [op, extra] of byLease) {
-      const forms = {
-        foreign: { leaseId: f.picked.leaseId, fence: f.picked.fence, ...extra },
-        fabricated: { leaseId: randomUUID(), fence: 1, ...extra },
-        'same business': { leaseId: other.leaseId, fence: other.fence, ...extra },
+    },
+    120_000,
+  );
+
+  it(
+    CASE.board,
+    async () => {
+      // Green at 403267f. RED at 74d583c: `task.board` takes a board identifier
+      // (`reads/dispatch.ts:241-243`) and answers 200 `{ tasks: [] }` for one
+      // that is not alpha's. Case 1 asks `NOT_FOUND`, and case 3 says a denied
+      // list is never empty. `task.move` refuses the same identifier
+      // `NOT_FOUND` (`commands/tasks-place.ts:113-122`).
+      await refuses('task.board', 'board', ada, 'NOT_FOUND', {
+        foreign: { board: w.foreign.task.id },
+        fabricated: { board: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.agent,
+    async () => {
+      // RED at 403267f on bytes alone (root ruling 2): the refusal text echoes
+      // the presented id, so the forms differ. DELEGATION_OUT_OF_PURPOSE at
+      // `authority/delegations.ts:360`; LEASE_NOT_OWNED at
+      // `core-runtime/src/heartbeat.ts:82` and `core-runtime/src/handback.ts:147`.
+      const own = await w.pickUp(w.h.world.agent, 'the agent’s own work');
+      const agent: Presenter = {
+        kind: 'agent',
+        identity: w.h.world.agent,
+        credential: own.credential,
       };
-      const apart = { 'same business': 'DELEGATION_OUT_OF_PURPOSE' };
-      // eslint-disable-next-line no-await-in-loop
-      await refuses(op, 'leaseId', agent, 'LEASE_NOT_OWNED', forms, apart);
-    }
-  }, 300_000);
+      const sibling = await w.h.freshTask('a sibling outside the delegation');
+      const f = w.foreign;
+      const other = w.otherPicked;
+      const byRecord: readonly [CommandName, Body][] = [
+        ['task.read', {}],
+        ['task.comment', { body: NOBODY, audience: 'internal' }],
+      ];
+      for (const [op, extra] of byRecord) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, 'recordId', agent, 'DELEGATION_OUT_OF_PURPOSE', {
+          foreign: { recordId: f.task.id, ...extra },
+          fabricated: { recordId: randomUUID(), ...extra },
+          'same business': { recordId: sibling.id, ...extra },
+        });
+      }
+      const byLease: readonly [CommandName, Body][] = [
+        ['task.heartbeat', {}],
+        ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+      ];
+      for (const [op, extra] of byLease) {
+        const forms = {
+          foreign: { leaseId: f.picked.leaseId, fence: f.picked.fence, ...extra },
+          fabricated: { leaseId: randomUUID(), fence: 1, ...extra },
+          'same business': { leaseId: other.leaseId, fence: other.fence, ...extra },
+        };
+        const apart = { 'same business': 'DELEGATION_OUT_OF_PURPOSE' };
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, 'leaseId', agent, 'LEASE_NOT_OWNED', forms, apart);
+      }
+    },
+    300_000,
+  );
 
-  it('refuses a pickup alike on a foreign, a fabricated and a claimed reservation', async () => {
-    // Green at 403267f. RED at 74d583c for the third form: the answer for a reservation another
-    // agent already claimed names the lease that claimed it ("already claimed
-    // by lease <id>"), an alpha identifier this agent was never given. No
-    // delegation is live here, so nothing else would have shown it one.
-    const agent: Presenter = { kind: 'agent', identity: w.h.world.agent };
-    await refuses('task.pickup', 'reservationId', agent, 'RESERVATION_NOT_CLAIMABLE', {
-      foreign: { reservationId: w.foreign.picked.reservationId },
-      fabricated: { reservationId: randomUUID() },
-      'same business': { reservationId: w.otherPicked.reservationId },
-    });
-  }, 120_000);
+  it(
+    CASE.pickup,
+    async () => {
+      // Green at 403267f. RED at 74d583c for the third form: the answer for a reservation another
+      // agent already claimed names the lease that claimed it ("already claimed
+      // by lease <id>"), an alpha identifier this agent was never given. No
+      // delegation is live here, so nothing else would have shown it one.
+      const agent: Presenter = { kind: 'agent', identity: w.h.world.agent };
+      await refuses('task.pickup', 'reservationId', agent, 'RESERVATION_NOT_CLAIMABLE', {
+        foreign: { reservationId: w.foreign.picked.reservationId },
+        fabricated: { reservationId: randomUUID() },
+        'same business': { reservationId: w.otherPicked.reservationId },
+      });
+    },
+    120_000,
+  );
 
-  it('refuses a target a target-free operation has no use for (SC2 reading)', async () => {
-    // The nine that name no identifier: a positive request moves and shows
-    // nothing of bravo's, and a target it would ignore is refused. The
-    // reading (TRANSACTION-CONTRACT line 113) is the root's to accept.
-    const TARGET_FREE: readonly [CommandName, Body][] = [
-      ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
-      ['task.purge', {}],
-      ['settings.set_four_eyes_threshold', { value: 1300 }],
-      ['settings.set_client_sign_off', { value: false }],
-      ['task.queue', {}],
-      ['person.list', {}],
-      ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
-      ['settings.read', {}],
-      ['session.capabilities', {}],
-    ];
-    const caller = w.h.world.ada;
-    const answered: Record<string, string> = {};
-    for (const [op, body] of TARGET_FREE) {
-      /* eslint-disable no-await-in-loop -- one operation at a time */
-      const before = await domainState(w.h, [bravo]);
-      const positive = await w.person(caller, op, body);
-      expect(positive.code, `${op}: ${JSON.stringify(positive.body)}`).toBe('ok');
-      expect(JSON.stringify(positive.body), op).not.toContain(w.foreign.task.id);
-      expect(JSON.stringify(positive.body), op).not.toContain(w.foreign.admin.personId);
-      const aimed = await w.person(caller, op, { ...body, recordId: w.foreign.task.id });
-      expect(await domainState(w.h, [bravo]), `${op}: bravo`).toStrictEqual(before);
-      /* eslint-enable no-await-in-loop */
-      expect(JSON.stringify(aimed.body), op).not.toContain(w.foreign.admin.personId);
-      answered[op] = aimed.code;
-    }
-    // Green at 403267f. RED at 74d583c for the five reads: a read takes a `recordId` it has no
-    // use for and answers as if it had not been sent (the target check,
-    // `commands/prepare.ts:253-266`, runs on the command path only).
-    expect(answered).toStrictEqual(
-      Object.fromEntries(TARGET_FREE.map(([op]) => [op, 'COMMAND_BODY_INVALID'])),
-    );
-  }, 300_000);
+  it(
+    CASE.targetFree,
+    async () => {
+      // The nine that name no identifier (`cd-alternatives.ts`, where the matrix
+      // reads its not-applicable rows from): a positive request moves and shows
+      // nothing of bravo's, and a target it would ignore is refused. The reading
+      // is TRANSACTION-CONTRACT line 113, accepted by root ruling 3. Each aimed
+      // probe is also audited: one refused row in the prober's own business,
+      // alpha, and none in bravo (ledger I03, I13).
+      const caller = w.h.world.ada;
+      const answered: Record<string, string> = {};
+      const audited: string[] = [];
+      for (const [op, body] of TARGET_FREE) {
+        /* eslint-disable no-await-in-loop -- one operation at a time */
+        const before = await domainState(w.h, [bravo]);
+        const positive = await w.person(caller, op, body);
+        expect(positive.code, `${op}: ${JSON.stringify(positive.body)}`).toBe('ok');
+        expect(JSON.stringify(positive.body), op).not.toContain(w.foreign.task.id);
+        expect(JSON.stringify(positive.body), op).not.toContain(w.foreign.admin.personId);
+        const aimedBody = { operationId: randomUUID(), ...body, recordId: w.foreign.task.id };
+        const mark = await auditMark(w.h);
+        const aimed = await w.person(caller, op, aimedBody);
+        const rows = await auditSince(w.h, mark);
+        expect(await domainState(w.h, [bravo]), `${op}: bravo`).toStrictEqual(before);
+        /* eslint-enable no-await-in-loop */
+        expect(JSON.stringify(aimed.body), op).not.toContain(w.foreign.admin.personId);
+        answered[op] = aimed.code;
+        expect(
+          rows.filter((row) => row.business_id === bravo),
+          `${op}: bravo audit`,
+        ).toEqual([]);
+        expectAudited(`${op} aimed at bravo`, rows, {
+          businessId: alpha,
+          actorId: caller.actorId as string,
+          command: op,
+          operationId: READS.includes(op) ? null : aimedBody.operationId,
+          outcome: 'refused',
+          refusalCode: 'COMMAND_BODY_INVALID',
+          body: aimedBody,
+        });
+        audited.push(op);
+      }
+      // Green at 403267f. RED at 74d583c for the five reads: a read takes a `recordId` it has no
+      // use for and answers as if it had not been sent (the target check,
+      // `commands/prepare.ts:253-266`, runs on the command path only).
+      expect(answered).toStrictEqual(
+        Object.fromEntries(TARGET_FREE.map(([op]) => [op, 'COMMAND_BODY_INVALID'])),
+      );
+      // SC2 audit, 9/9: every aimed probe left its one row at home.
+      expect(audited).toStrictEqual(TARGET_FREE.map(([op]) => op));
+      console.log(
+        `identifier-negatives: SC2 audit ${String(audited.length)}/9 in alpha, 0 in bravo`,
+      );
+    },
+    300_000,
+  );
 });
