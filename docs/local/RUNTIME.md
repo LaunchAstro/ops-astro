@@ -467,12 +467,12 @@ partly covered rather than proved.
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.
-- **Restart (W06) is proved outside this package.** Every case here is a
+- **Restart (W06) is tested outside this package, and not yet closed.** Every case here is a
   transaction boundary and a fresh connection to a server that never stopped.
   `pnpm verify:restart` restarts a declared, disposable Postgres and the API
   process and compares the lineage, gate, decision, reservation, lease,
   attempt, delegation, receipt and register identities with their states;
-  the coverage table and what stays open are in `docs/local/PROOFS.md`.
+  the coverage table and the W06 items still open are in `docs/local/PROOFS.md`.
 - **No settlement of actual expenditure.** `handback` refuses any non-null
   `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
   could settle; the settlement path belongs to the later authorised,
