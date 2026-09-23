@@ -83,14 +83,77 @@ SX1–SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real browse
 
 ## Addresses
 
-| Address      | What it draws                                                                          |
-| ------------ | -------------------------------------------------------------------------------------- |
-| `/sign-in`   | Credentials and the business selector                                                  |
-| `/projects/` | `task.board` with `board: null` — the unboarded tasks — and the create form            |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, history, revision |
+| Address      | What it draws                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| `/sign-in`   | Credentials and the business selector                                                            |
+| `/projects/` | `task.board` with `board: null` — the unboarded tasks — and the create form                      |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
+| `/settings`  | The two operation-classified business settings. It reads nothing — see below                     |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
+
+## Comments on a task
+
+`task.read` has carried the task's comments since L3 (`docs/local/API.md`);
+`/task/:key` draws them. Each one is an `article[data-comment-id]` carrying
+`data-audience`, and the audience is printed in words above the body, because
+"who may read this" is the one thing the person writing the next comment needs
+to know and the one thing a colour cannot say.
+
+The form is `form#task-comment`: a required `textarea#comment-body`, a
+`select#comment-audience` (internal or client) and a `select#comment-kind`, with
+`button[data-comment="post"]`. Posting goes through `task.comment` with the
+revision the page holds; that command writes a record beside the task and
+**leaves the task's own revision alone**, so nothing else on the page goes stale
+because somebody said something.
+
+**The list is the server's.** After a post the screen rereads `task.read`; it
+never appends the comment it just sent. A screen that appended would be drawing
+a row that may never have been stored, which is B7's failure in friendlier
+clothes.
+
+**A refusal is quoted and the box is closed.** There is no grant read anywhere
+in this build, so the screen cannot know whether a person holds `comment` before
+it asks. It asks once; on `SCOPE_NOT_GRANTED` it draws the server's own code in
+`p[data-comment="refusal"]`, disables the box and the button, and says why. A
+second press reaches nothing — C2 counts the requests rather than trusting the
+`disabled` attribute. Anything else the server refuses (an empty body, an
+audience it does not have) is reported and the box stays open, because that is
+something the person can fix.
+
+Keyboard: the textarea, the two selects and the button are ordinary controls in
+document order after the details form, each with a `label` bound by `htmlFor`.
+Drawn at 1480, 900 and 390 with the rest of the page.
+
+## The settings screen
+
+`/settings` draws the two settings the model classifies `operation`:
+`four_eyes_threshold` (a number of dollars, or off) and
+`client_sign_off_required` (on or off). Each is written through the command that
+owns it — `settings.set_four_eyes_threshold` and `settings.set_client_sign_off`
+— with an `operationId` and no `expectedRevision`, because `business_settings`
+carries no revision to be stale against.
+
+**Nothing on this screen is read back, and the screen says so on the page.**
+`COMMAND_SURFACE` declares four reads — `task.read`, `task.board`,
+`person.list`, `preset.plan` — and none of them carries `business_settings`.
+So the screen opens on _not known_ and names the absent read in
+`p[data-settings="not-readable"]`. The number beside "Last confirmed by the
+server" is the last write **this browser** had confirmed by the command's own
+`detail` echo, held in `sessionStorage` under `ops-astro.settings.<business>`
+— the same rule the session lives under, never `localStorage`.
+
+Opening on the shipped default (`500`, `false`) was the alternative and it is
+worse: a person would be shown their business's threshold having never asked
+anybody, with no way to tell that number from a real one.
+
+The refusal rule is the comment form's: ask once, quote
+`SCOPE_NOT_GRANTED` verbatim in `p[data-settings="refusal"]`, close both
+controls, change nothing. `/settings` carries a rail entry and the panel
+registry's one entry (`panels.ts`), whose dock tab navigates to the address
+rather than opening a drawer — the surface has a real address, and an address a
+person can quote is worth more than a panel they cannot.
 
 ## What the five read states mean
 
@@ -156,6 +219,8 @@ changed without reading the rest:
 | `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                 |
 | `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail       |
 | `cases-b6-b7.mjs`        | the API down, and the process and database restart          |
+| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once  |
+| `cases-settings.mjs`     | S1 an admin sets the threshold, S2 a member is refused      |
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
@@ -192,7 +257,32 @@ places this build does not yet reach it.
 - No Agent panel, gate or run surfaces, and no dock tab: the records they draw
   are not stored by this build, so the registry is empty rather than carrying a
   tab that opens onto nothing.
-- Comments and subtasks are not built. The task page shows history only.
+- Subtasks are not built. Comments are, and the task page draws them; the
+  mockup's tabbed Internal / Client / All activity conversation is not — the
+  comments are one list with each row's audience on it, and history stays its
+  own section below.
+- **The external comment projection is taken from the API's word, not
+  exercised.** `task.read` gives a non-internal role the client comments in the
+  `shared` fields only (`docs/local/AUTHORITY.md`), and the screen is written to
+  draw whatever subset arrives. No seeded login has a role outside
+  `owner`/`admin`/`member`, so no browser case reads the task as an external
+  reader. The screen's handling of a partial projection is held by
+  `tests/surfaces/task-comments.test.tsx` against a stand-in and by the shape's
+  optional fields; a real external reader would be the proof and there is no
+  identity in this build to be one.
+- **`system` is not offered as a comment kind.** The API takes `note`, `client`
+  and `system`; the form offers the first two. A system comment is one the
+  product writes about itself, and a box letting a person post one by hand makes
+  every system note on a task unreliable evidence of anything.
+- **No settings read exists**, so `/settings` cannot show what a business holds
+  — only what this browser last had confirmed. Named above and in the handback
+  for the lane that owns the read surface.
+- **No seeded identity holds `settings:manage`.** `scripts/local-seed.mjs` grants
+  its admin six `task` actions and `person:read`; the settings commands take
+  `manage` on the `settings` collection, which nobody is granted. `S1` issues
+  that grant through `issueGrant` and revokes it in a `finally`, and restores
+  the threshold it wrote, so the run leaves the business's grants and rows as it
+  found them. The gap belongs to the seed's lane.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
   implying it was kept. Preserving a draft across a sign-in would mean holding
