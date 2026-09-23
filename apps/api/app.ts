@@ -48,6 +48,7 @@ import {
   type CommandDeclaration,
 } from '../../packages/core-records/src/commands/surface.ts';
 import type { CommandRequest } from '../../packages/core-records/src/commands/requests.ts';
+import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { statusFor } from './status.ts';
 
 /**
@@ -166,6 +167,8 @@ export function createApi(options: ApiOptions): Hono {
 
       const body = await readObject(context);
       if (body === undefined) {
+        // An admission refusal: the resolved business, the verified subject (ruling 4).
+        await recordBodyRefusal(options.database, businessId, 'person_login', presented);
         return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
       }
 
@@ -217,6 +220,7 @@ export function createApi(options: ApiOptions): Hono {
         }
         const body = await readObject(context);
         if (body === undefined) {
+          await recordBodyRefusal(options.database, businessId, 'agent_login', presented);
           return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
         }
         const result = await agentExecutor(

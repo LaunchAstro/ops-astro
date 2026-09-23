@@ -15,7 +15,9 @@
 // - the operations are `COMMAND_SURFACE`, which is the table the routes, the
 //   command line and the read dispatch are all generated from;
 // - the top-level fields are `SYSTEM_OWNED_FIELDS`, the classifier
-//   `commands/prepare.ts` and `reads/dispatch.ts` both apply;
+//   `commands/prepare.ts` and `reads/dispatch.ts` both apply, and every
+//   installed `write_mode = 'system'` field key, which both read from
+//   `field_defs` (root ruling 1);
 // - the field-payload fields are the spine's `writeMode: 'system'` fields, and
 //   the proofs check that the installed `field_defs` rows say the same thing,
 //   so a field classified differently in the database fails there.
@@ -44,6 +46,8 @@ import {
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
 import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
+import { COMMENT_SPINE } from '../../packages/core-records/src/tasks/comments.ts';
+import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
@@ -57,6 +61,27 @@ export const SYSTEM_PAYLOAD_FIELDS: readonly string[] = TASK_SPINE.filter(
 )
   .map((field) => field.key)
   .toSorted();
+
+/**
+ * Every installed `write_mode = 'system'` field key, across the three record
+ * types the spine installs: the task's, the comment's and the state's.
+ *
+ * The server refuses these at the top level from the installed `field_defs`
+ * rows (root ruling 1); the list here is what the installer writes those rows
+ * from, and `boundary-system-fields.test.ts` checks it against them.
+ */
+export const INSTALLED_SYSTEM_FIELDS: readonly string[] = [
+  ...new Set(
+    [...TASK_SPINE, ...COMMENT_SPINE, ...TASK_STATE_FIELDS]
+      .filter((field) => field.writeMode === 'system')
+      .map((field) => field.key),
+  ),
+].toSorted();
+
+/** The keys a top-level cell injects: the envelope's own list and the installed ones. */
+export const TOP_LEVEL_FIELDS: readonly string[] = [
+  ...new Set([...SYSTEM_OWNED_FIELDS, ...INSTALLED_SYSTEM_FIELDS]),
+].toSorted();
 
 /**
  * The operations whose body carries a record's `fields`.
@@ -117,7 +142,7 @@ export interface TopCell {
 
 /** Every declared operation, by every classified key, by every surface. */
 export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.flatMap((declaration) =>
-  SYSTEM_OWNED_FIELDS.flatMap((key) =>
+  TOP_LEVEL_FIELDS.flatMap((key) =>
     SURFACES.map((surface) => ({ operation: declaration.name, key, surface })),
   ),
 );

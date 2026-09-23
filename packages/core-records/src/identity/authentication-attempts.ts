@@ -21,7 +21,7 @@
 // forgot it.
 
 import { createHash } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 
 export type AttemptOwner = 'person_login' | 'agent_login' | 'delegation';
@@ -77,6 +77,43 @@ export async function recordAuthenticationAttempt(
       resolved ? null : attempt.refusalCode,
     ],
   );
+}
+
+/**
+ * A body the boundary could not read as a JSON object, recorded as the
+ * admission refusal it is (root ruling 4).
+ *
+ * It arrives after the bearer is verified and the business key is resolved by
+ * the server, and before anyone has asked who the subject is in that
+ * business, so there is no domain actor to write an audit event for and
+ * inventing one would put a name in the chain that nobody acted under. What
+ * is known is exactly what this table holds: the business, which door, the
+ * provider and the subject's digest. The reason is the real one,
+ * `COMMAND_BODY_INVALID`, not a credential failure that did not happen. The
+ * body and the bearer are stored nowhere: the row has no column for either.
+ *
+ * Its own transaction under the tenancy wrapper, because no operation is going
+ * to open one: the request ends here.
+ *
+ * An expired bearer is no verified subject. The agent prefix hands one on to
+ * its executor and so reaches the body check with it; it is refused exactly
+ * as before and nothing is written, because there is nobody to write it for.
+ */
+export async function recordBodyRefusal(
+  database: Database,
+  businessId: BusinessId,
+  owner: Exclude<AttemptOwner, 'delegation'>,
+  presented: VerifiedSubject | 'expired',
+): Promise<void> {
+  if (presented === 'expired') return;
+  await database.withBusiness(businessId, async (tx) => {
+    await recordAuthenticationAttempt(tx, {
+      owner,
+      presented,
+      outcome: 'refused',
+      refusalCode: 'COMMAND_BODY_INVALID',
+    });
+  });
 }
 
 export interface AttemptRow {
