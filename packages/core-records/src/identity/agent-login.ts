@@ -17,7 +17,7 @@
 // from a delegation resolved against it (`authority/delegations.ts`), which is
 // why there is no grant lookup here.
 
-import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
+import type { TenantQuery } from '../tenancy/database.ts';
 import { refuseAgent, type AgentRefusal } from './refusals.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
@@ -98,26 +98,6 @@ export async function resolveAgentLogin(
     actorId: session.actorId,
   });
   return session;
-}
-
-/**
- * The agent equivalent of `withSession`: open the transaction, set the
- * business inside it, resolve, and only then run the work.
- *
- * The body is not called on a refusal, so no path does agent business inside a
- * transaction whose acting identity was never established.
- */
-export async function withAgentSession<T>(
-  database: Database,
-  businessId: BusinessId,
-  presented: VerifiedSubject,
-  run: (tx: TenantQuery, session: AgentSession) => Promise<T>,
-): Promise<T | AgentRefusal> {
-  return await database.withBusiness(businessId, async (tx) => {
-    const resolved = await resolveAgentLogin(tx, presented);
-    if ('refused' in resolved) return resolved;
-    return await run(tx, resolved);
-  });
 }
 
 /**
