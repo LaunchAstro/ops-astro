@@ -90,7 +90,12 @@
     "tests/runtime/authority-loss-person-lease.test.ts",
     "tests/commands/gate-reason-lineage.test.ts",
     "tests/commands/pickup-replay-lost-response.test.ts",
-    "tests/commands/pickup-replay-keys.test.ts"
+    "tests/commands/pickup-replay-keys.test.ts",
+    "tests/acceptance/identifier-negatives.test.ts",
+    "tests/acceptance/audit-per-operation.test.ts",
+    "tests/runtime/authority-loss-narrowed.test.ts",
+    "tests/commands/runtime-residuals.test.ts",
+    "tests/commands/lease-held-reach.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

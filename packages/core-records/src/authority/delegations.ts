@@ -310,31 +310,55 @@ export async function mintDelegation(
  * Looked up by agent and digest together, so a credential minted for one agent
  * cannot be presented by another. Expiry, revocation and settlement are read
  * from the row rather than trusted from the caller's clock.
+ *
+ * I08 (minimum contract 8.2 case 6, root ruling R-B). A delegation revoked
+ * because its person lost the authority it drew on answers
+ * `DELEGATION_NARROWED`, not `DELEGATION_NOT_LIVE`. The cause is the one the
+ * revoking transaction recorded (`revocation_cause`, 0023), never the request
+ * and never the person's grants as they read now. It is reached only through
+ * the row this business, this authenticated agent and this credential digest
+ * already bind, and it permits nothing: the refusal is all it changes.
+ *
+ * Precedence when more than one terminal fact holds: settled, then expired,
+ * then the recorded revocation cause. A settled or naturally expired
+ * credential is `DELEGATION_NOT_LIVE` whatever else happened to it, and so is
+ * an explicit revocation, a retirement by cancellation or supersession, and a
+ * revocation recorded before 0023 with no cause.
  */
 export async function resolveDelegation(
   tx: TenantQuery,
   agentActorId: string,
   credential: string,
 ): Promise<DelegationDecision<Delegation>> {
-  const rows = await tx.query<DelegationRow>(
+  const rows = await tx.query<
+    DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
+  >(
     `select id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-            collections, actions, purpose_scope_kind, purpose_scope_id, expires_at
+            collections, actions, purpose_scope_kind, purpose_scope_id, expires_at,
+            (revoked_at is null and settled_at is null and expires_at > now()) as live,
+            (revoked_at is not null and settled_at is null and expires_at > now()
+             and revocation_cause = 'authority_lost') as narrowed
        from public.delegations
-      where business_id = $1 and agent_actor_id = $2 and credential_hash = $3
-        and revoked_at is null and settled_at is null and expires_at > now()`,
+      where business_id = $1 and agent_actor_id = $2 and credential_hash = $3`,
     [tx.businessId, agentActorId, digestOf(credential)],
   );
   const found = rows[0];
-  if (found === undefined) {
-    // One refusal for unknown, expired, revoked and settled. Telling them
-    // apart tells a caller holding a stolen credential which of those it is.
+  if (found?.live === true) return { ok: true, value: delegationOf(found) };
+  if (found?.narrowed === true) {
+    // A constant: no grant, time or person is named, and the credential is not.
     return refuse(
-      'DELEGATION_NOT_LIVE',
-      'no live delegation answers to that credential',
-      'ask the authorising person for a current delegation',
+      'DELEGATION_NARROWED',
+      'the authority this delegation drew on was removed from its delegating person',
+      'the authority this delegation draws on was revoked or narrowed; ask for it again',
     );
   }
-  return { ok: true, value: delegationOf(found) };
+  // One refusal for unknown, expired, revoked and settled. Telling them
+  // apart tells a caller holding a stolen credential which of those it is.
+  return refuse(
+    'DELEGATION_NOT_LIVE',
+    'no live delegation answers to that credential',
+    'ask the authorising person for a current delegation',
+  );
 }
 
 /**
@@ -381,8 +405,11 @@ export async function checkDelegatedAuthority(
   if (request.scope.kind !== scoped.kind || request.scope.id !== scoped.id) {
     return refuse(
       'DELEGATION_OUT_OF_PURPOSE',
+      // The delegation's own scope only: the presented resource is not echoed,
+      // so a foreign, a fabricated and a same-business id answer alike (root
+      // ruling 2).
       `the purpose ${delegation.purpose} is scoped to ${scoped.kind} ${scoped.id}, ` +
-        `and this call is for ${request.scope.kind} ${request.scope.id ?? 'the whole business'}`,
+        'and this call is for another resource',
       'ask the authorising person for a delegation minted for that record',
     );
   }
@@ -404,20 +431,37 @@ export async function checkDelegatedAuthority(
 }
 
 /**
- * Revocation writes a timestamp. There is no delete path, and the role has no DELETE.
+ * Why a delegation was revoked, recorded by the transaction that revoked it
+ * (0023). `authority_lost` is a `grant.revoke` that left the delegating person
+ * without the authority the delegation draws on; `delegation_revoked` is an
+ * explicit `delegation.revoke`; `work_retired` is cancellation or
+ * supersession ending the work it was issued for. Expiry and settlement are
+ * their own columns and never a revocation.
+ */
+export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_retired';
+
+/**
+ * Revocation writes a timestamp and its cause, once. There is no delete path,
+ * and the role has no DELETE.
  *
- * A settled delegation is already not live, so it is not revoked a second way.
+ * A settled delegation is already not live, so it is not revoked a second way,
+ * and an already revoked one keeps the cause its first revocation recorded:
+ * the first terminal write wins, which is the explicit precedence when two
+ * transitions reach one delegation.
  * The answer is the timestamp this call wrote, or null when it wrote none.
  */
 export async function revokeDelegation(
   tx: TenantQuery,
   delegationId: string,
+  // A direct call with no cause is an explicit revocation: only the two
+  // runtime transitions name another, and each names it.
+  cause: RevocationCause = 'delegation_revoked',
 ): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    `update public.delegations set revoked_at = now()
+    `update public.delegations set revoked_at = now(), revocation_cause = $3
       where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
       returning revoked_at`,
-    [tx.businessId, delegationId],
+    [tx.businessId, delegationId, cause],
   );
   return rows[0]?.revoked_at ?? null;
 }

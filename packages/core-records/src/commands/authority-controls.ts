@@ -320,7 +320,10 @@ export async function revokeDelegationAsManager(
            from public.delegations where business_id = $1 and id = $2`,
         [tx.businessId, delegationId],
       );
-      const revokedAt = live[0]?.live === true ? await revokeDelegation(tx, delegationId) : null;
+      const revokedAt =
+        live[0]?.live === true
+          ? await revokeDelegation(tx, delegationId, 'delegation_revoked')
+          : null;
       return revokedAt === null
         ? { applied: false, value: null }
         : { applied: true, value: revokedAt, lost: [delegationId] };

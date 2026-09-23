@@ -144,7 +144,8 @@ export async function handback(
   if (found === undefined) {
     return refuse(
       'LEASE_NOT_OWNED',
-      `no lease ${request.leaseId} in this business`,
+      // Constant: the presented id is not echoed (root ruling 2).
+      'no such lease in this business',
       'Hand back the lease this claim was issued.',
     );
   }
@@ -212,7 +213,7 @@ export async function handback(
     ) {
       return refuse(
         'LEASE_NOT_OWNED',
-        `lease ${request.leaseId} is not this caller's`,
+        "the named lease is not this caller's",
         'Hand back the lease your own pickup was issued.',
       );
     }

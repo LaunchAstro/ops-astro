@@ -16,16 +16,17 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
-import {
-  cancelAndClassify,
-  heartbeat,
-  MAXIMUM_RENEWAL_SECONDS,
-  restart,
-} from '../../../core-runtime/src/index.ts';
+import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { EXPIRY_FIX, expiryFrom, fromRuntime } from './tasks-runtime.ts';
+import {
+  EXPIRY_FIX,
+  expiryFrom,
+  fromRuntime,
+  renewLease,
+  type RenewalFields,
+} from './tasks-runtime.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
@@ -151,48 +152,15 @@ export async function restartOnTask(
   });
 }
 
-const DEFAULT_RENEWAL_SECONDS = 15 * 60;
-
+/** The agent renews its own lease, under the delegation its credential resolved to. */
 export async function heartbeatLease(
   tx: TenantQuery,
-  fields: { readonly leaseId: unknown; readonly fence: unknown; readonly leaseSeconds?: unknown },
+  fields: RenewalFields,
   holderActorId: string,
   delegationId: string,
 ): Promise<HandlerOutcome> {
-  const seconds = fields.leaseSeconds ?? DEFAULT_RENEWAL_SECONDS;
-  if (
-    typeof seconds !== 'number' ||
-    !Number.isSafeInteger(seconds) ||
-    seconds <= 0 ||
-    seconds > MAXIMUM_RENEWAL_SECONDS
-  ) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['leaseSeconds'],
-        [`Name a whole number of seconds from 1 to ${MAXIMUM_RENEWAL_SECONDS}, or leave it out.`],
-      ),
-    );
-  }
-  if (typeof fields.fence !== 'number' || !Number.isSafeInteger(fields.fence)) {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
-    );
-  }
-  if (typeof fields.leaseId !== 'string' || !UUID.test(fields.leaseId)) {
-    return refused(refuseCommand('LEASE_NOT_OWNED', [], ['Renew the lease this pickup issued.']));
-  }
-  const result = await heartbeat(tx, {
-    leaseId: fields.leaseId,
-    fence: fields.fence,
-    holderActorId,
-    delegationId,
-    renewSeconds: seconds,
-  });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
-  return applied(result.value.taskId, null, {
-    leaseId: result.value.leaseId,
-    fence: result.value.fence,
-    expiresAt: result.value.expiresAt.toISOString(),
-  });
+  return await renewLease(
+    fields,
+    async (lease) => await heartbeat(tx, { ...lease, holderActorId, delegationId }),
+  );
 }

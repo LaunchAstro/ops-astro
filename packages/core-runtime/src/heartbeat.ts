@@ -77,9 +77,12 @@ export async function heartbeat(
   request: HeartbeatRequest | PersonHeartbeatRequest,
 ): Promise<RuntimeResult<Renewed>> {
   const delegationId = 'claimant' in request ? null : request.delegationId;
+  // A constant reason: the presented lease and fence are not echoed, so a
+  // foreign, a fabricated and a same-business lease answer in the same bytes
+  // (root ruling 2).
   const notOwned = refuse(
     'LEASE_NOT_OWNED',
-    `lease ${request.leaseId} is not this caller's at fence ${request.fence}`,
+    "the named lease is not this caller's at the presented fence",
     'Renew the lease this pickup issued, at the fence it handed back.',
   );
   const found = await tx.query<{ readonly delegation_id: string | null }>(
