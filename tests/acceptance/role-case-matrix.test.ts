@@ -155,7 +155,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             'e-no-grant',
             declaration.name,
             `not applicable: holds ${pair}, so not R2 (minimum contract CONTRACT.md:481, ` +
-              `case 3 at :493); noah is refused here; success in e-member-positive`,
+              `case 3 at :493); noah is refused here; own row in e-member-positive`,
           );
           continue;
         }
@@ -250,14 +250,24 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         if (!grants.has(harness.pairFor(declaration))) continue;
         const onAgentPath = agentOnly.get(declaration.name);
         if (onAgentPath !== undefined) {
-          // Held, and still not a person's to call: `handlers.ts` answers
-          // `AUTH_NO_AGENT_IDENTITY` after the grant check has admitted the
-          // caller. That refusal is the real outcome for a granted member,
-          // asserted with a well-formed body so it is not a shape refusal.
+          // Called, and recorded as missing coverage rather than passed. The
+          // product answers `AUTH_NO_AGENT_IDENTITY` to every person
+          // (`handlers.ts:107-119`), but person pickup is required (transaction
+          // contract T3 line 66, minimum contract line 331, ledger line 30),
+          // and the root routes person pickup, heartbeat and handback on the
+          // person's own lease to PERSON-WORK (ROOT-L6-74d583c-DISPOSITION.md
+          // lines 31-35). Asserting today's refusal would pin the gap; the
+          // observed answer goes in the row so the change is visible.
           // eslint-disable-next-line no-await-in-loop
           const answer = await harness.asPerson(declaration.name, onAgentPath, 'alpha', caller);
-          const agentOnlyRefusal = refusal('AUTH_NO_AGENT_IDENTITY');
-          observe(caller.name, 'e-member-positive', declaration.name, answer, agentOnlyRefusal);
+          except(
+            caller.name,
+            'e-member-positive',
+            declaration.name,
+            `missing coverage: observed ${answer.code} ${String(answer.status)}; person ` +
+              'work is required (T3 line 66, minimum contract 331); owner PERSON-WORK',
+          );
+          expect(answer.body['refused'], declaration.name).toBe(true);
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
@@ -516,18 +526,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // person path, driven for real on the sibling delegation now that the table
     // is done with it. First the handback: the person path is refused by design
     // even for the admin, and the lease holder's own handback settles it.
+    // A person naming the agent's lease is refused and writes nothing: the
+    // agent's own handback below still settles it. No code is asserted, because
+    // person handback is PERSON-WORK's to build (see the member-positive case).
     const byPerson = await harness.asPerson('task.handback', {
       leaseId: siblingLease['leaseId'],
       fence: siblingLease['fence'],
       outcome: 'completed',
     });
-    observe(
-      'ada',
-      'k-handback',
-      'task.handback (person path)',
-      byPerson,
-      refusal('AUTH_NO_AGENT_IDENTITY'),
-    );
+    expect(byPerson.body['refused'], 'a person does not settle an agent lease').toBe(true);
     const siblingCredential = String(siblingLease['credential']);
     const handedBack = await harness.asAgent(
       'task.handback',

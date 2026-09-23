@@ -175,18 +175,23 @@ export function createPositiveBody(
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
       case 'task.pickup':
-        // Not a failure and not a pass. `handlers.ts` refuses it on the person
-        // path by design: an agent login picks work up, and a person authorises
-        // it by deciding. Its success is asserted in the agent journey, case (h).
+        // Not a failure and not a pass. `handlers.ts` refuses every person
+        // here, but person pickup is required (transaction contract T3 line
+        // 66, minimum contract line 331, ledger line 30), so this is a missing
+        // implementation rather than an alternative (EX-01, routed to
+        // PERSON-WORK by ROOT-L6-74d583c-DISPOSITION.md lines 31-35). The
+        // agent's pickup is asserted in case (h).
         return {
           exception:
-            'executed alternative: person path refuses by design (handlers.ts); ' +
-            'agent-prefix success asserted in case (h) (ledger task.pickup)',
+            'missing coverage: person pickup is required (T3 line 66, minimum contract 331) ' +
+            'and handlers.ts refuses it; owner PERSON-WORK (EX-01); agent pickup in case (h)',
         };
       case 'task.handback':
-        // Refused on the person path for the same reason, and that refusal is
-        // observed as ada's `k-handback` row. The success is the agent's: the
-        // journey hands back a lease it holds, case (h), `k-handback` rows.
+        // Refused on the person path for the same reason. The handback is the
+        // holder of the delegation minted at pickup (minimum contract line
+        // 332), so the success is the agent's: the journey hands back a lease
+        // it holds, case (h), `k-handback` rows. A person's handback of a
+        // person's own lease is PERSON-WORK's, with person pickup.
         return {
           exception:
             'executed alternative: person path refuses by design (handlers.ts); ' +

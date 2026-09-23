@@ -141,11 +141,11 @@ and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
-**364 rows: 330 pass, 34 named exceptions, zero failures**, as
+**363 rows: 326 pass, 37 named exceptions, zero failures**, as
 `.local/l5-matrix.tsv` recorded them on `slice/matrix-coverage`. At 74d583c it
 was 331 rows, 296 pass and 35 exceptions: 9 executed alternative and 26
-missing coverage. It is now 11 executed alternative, 23 not applicable and
-none missing.
+missing coverage. It is now 10 executed alternative, 23 not applicable and 4
+missing coverage, all four owned by PERSON-WORK.
 
 | Case                                                             | Rows |
 | ---------------------------------------------------------------- | ---- |
@@ -160,7 +160,7 @@ none missing.
 | (h) pre-pickup agent restrictions and successes (I12)            | 35   |
 | (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 44   |
 | (j) agent decision excluded, with the person's success beside it | 2    |
-| (k) real handback, and a delegation revoked through its route    | 10   |
+| (k) real handback, and a delegation revoked through its route    | 9    |
 
 (c) and (d) are asserted to be **indistinguishable** — same status, same code,
 same body shape — which is the half of N1 that a foreign-read test usually
@@ -187,21 +187,20 @@ text starts with one of three labels:
 - **Not applicable**: the role does not fit the case, with the spec line that
   defines the case. The row names where the real rows for that operation are.
 - **Missing coverage**: nothing in this run asserts it. The reason, or the
-  table, names what would. No row carries this label now.
+  table, names what would, and who owns it.
 
-Eleven rows are executed alternatives:
+Ten rows are executed alternatives:
 
-| Rows                                            | What is asserted instead                                                                                   | Spec line                                                                                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| (a) `grant.revoke`                              | the admin's revocation succeeds, case (f)                                                                  | contract ledger line 36, revocation controls                                                                                                              |
-| (a) `delegation.revoke`                         | the admin revokes a live delegation, case (k); the agent's next call is `DELEGATION_NOT_LIVE`              | contract ledger line 36, revocation controls                                                                                                              |
-| (a) `task.pickup`                               | the agent's pickup succeeds, case (h); the person path refuses                                             | contract ledger line 30; minimum contract 8.2 case 9                                                                                                      |
-| (a) `task.handback`                             | the agent hands back its own lease, case (k); the admin's person-path handback is `AUTH_NO_AGENT_IDENTITY` | contract ledger line 31                                                                                                                                   |
-| (a) `task.heartbeat`                            | the agent's own-lease beat succeeds, case (i)                                                              | contract ledger line 38                                                                                                                                   |
-| (i) `task.queue`, `task.pickup`                 | both succeed without a delegation, case (h)                                                                | contract ledger line 62, I12                                                                                                                              |
-| (i) `session.capabilities`                      | 200, `purposeScope` is the picked-up task                                                                  | none in the contract, which has no read of this kind; the rule is API.md, "Reads", and needs the root's ruling                                            |
-| (h) `session.capabilities`                      | 200, `purposeScope` null, grants exactly `BEFORE_PICKUP`'s pairs                                           | none: minimum contract 8.2 case 9 says every other operation is refused. The alternative is `agent-envelope.ts:98-107`'s rule and needs the root's ruling |
-| (e) `session.capabilities` for `noah` and `mia` | 200 with the caller's own grants                                                                           | none: minimum contract 8.2 case 3 says `SCOPE_NOT_GRANTED`. The alternative is `reads/capabilities.ts:20`'s rule and needs the root's ruling              |
+| Rows                                            | What is asserted instead                                                                      | Spec line                                                                                                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (a) `grant.revoke`                              | the admin's revocation succeeds, case (f)                                                     | contract ledger line 36, revocation controls                                                                                                              |
+| (a) `delegation.revoke`                         | the admin revokes a live delegation, case (k); the agent's next call is `DELEGATION_NOT_LIVE` | contract ledger line 36, revocation controls                                                                                                              |
+| (a) `task.handback`                             | the agent hands back its own lease, case (k); person handback is PERSON-WORK's                | contract ledger line 31; minimum contract line 332, the holder of the delegation minted at pickup                                                         |
+| (a) `task.heartbeat`                            | the agent's own-lease beat succeeds, case (i)                                                 | contract ledger line 38                                                                                                                                   |
+| (i) `task.queue`, `task.pickup`                 | both succeed without a delegation, case (h)                                                   | contract ledger line 62, I12                                                                                                                              |
+| (i) `session.capabilities`                      | 200, `purposeScope` is the picked-up task                                                     | none in the contract, which has no read of this kind; the rule is API.md, "Reads", and needs the root's ruling                                            |
+| (h) `session.capabilities`                      | 200, `purposeScope` null, grants exactly `BEFORE_PICKUP`'s pairs                              | none: minimum contract 8.2 case 9 says every other operation is refused. The alternative is `agent-envelope.ts:98-107`'s rule and needs the root's ruling |
+| (e) `session.capabilities` for `noah` and `mia` | 200 with the caller's own grants                                                              | none: minimum contract 8.2 case 3 says `SCOPE_NOT_GRANTED`. The alternative is `reads/capabilities.ts:20`'s rule and needs the root's ruling              |
 
 The four `session.capabilities` rows are unchanged. The root requires that
 behaviour repaired to the contract, and the CAPABILITIES lane owns those rows.
@@ -217,10 +216,19 @@ elsewhere in the matrix:
   exported operation except `session.capabilities` (above), so every
   operation keeps a true no-grant actor.
 - The new case (e) member positive drives `mia` on each pair she holds, with
-  case (a)'s minimal body. Twenty return 200. `task.pickup`, `task.handback`
-  and `task.heartbeat` return `AUTH_NO_AGENT_IDENTITY` 401 after the grant
-  check admits her: the person path refuses them for everyone
-  (`handlers.ts:107-119`), and that is her real outcome.
+  case (a)'s minimal body. Twenty return 200. The other three are the missing
+  coverage below.
+
+Four rows are missing coverage. (a) `task.pickup` is EX-01: the person path
+refuses it and nothing else stands in for a person's pickup. The other three
+are (e) member positive for `mia` on `task.pickup`, `task.handback` and
+`task.heartbeat`. Each is called, and the row records the observed
+`AUTH_NO_AGENT_IDENTITY` 401 without asserting it. The person path refuses
+these three for everyone (`handlers.ts:107-119`).
+Person pickup is required (transaction contract T3 line 66, minimum contract
+line 331, ledger line 30), so that refusal is a missing implementation. The
+root routes person pickup, and heartbeat and handback on the person's own
+lease, to PERSON-WORK (`ROOT-L6-74d583c-DISPOSITION.md` lines 31-35).
 
 Case (k) drives the three operations the old rows only described:
 
@@ -232,8 +240,10 @@ Case (k) drives the three operations the old rows only described:
   `handback_reports` row afterwards. This is the (i) `task.handback` row. The
   old text expected `LEASE_NOT_OWNED`, which is the answer for a stale fence
   on a lease in the same purpose.
-- **Handback.** The sibling's own credential hands its lease back (200, the
-  reservation named). Its next call is `DELEGATION_NOT_LIVE`.
+- **Handback.** A person naming the sibling's lease is refused and settles
+  nothing; no code is asserted, because person handback is PERSON-WORK's. The
+  sibling's own credential then hands its lease back (200, the reservation
+  named), and its next call is `DELEGATION_NOT_LIVE`.
 - **Revocation.** A third pickup. `noah` is refused `delegation.revoke`,
   `SCOPE_NOT_GRANTED`. The admin revokes it through `delegation.revoke`
   (200), and the agent's next read is `DELEGATION_NOT_LIVE`.
