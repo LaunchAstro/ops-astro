@@ -129,6 +129,28 @@ export interface CommandDeclaration {
   readonly collection: string;
   /** Whether it needs an `expected_revision`, which is whether it has a target. */
   readonly targetsExistingRecord: boolean;
+  /**
+   * What the authority check is asked about, separately from revision and
+   * locking (review finding: the one flag used to decide both).
+   *
+   * - `record`: the task the body names in `recordId`, so a record- or
+   *   party-scoped grant on that task answers it. Work control names its task
+   *   without writing it, so it is `record` with no revision.
+   * - `business`: the business as a whole; nothing in the body is the target.
+   * - `target`: the row the command revokes (a grant, a delegation), asked at
+   *   that row's own scope. A business-wide check would refuse a manager whose
+   *   authority is exactly the target's scope; the handler then asks the full
+   *   ceiling against the same row.
+   */
+  readonly authorisedOn: 'record' | 'business' | 'target';
+  /**
+   * Who locks a targeted task. `command`: the envelope locks it and compares
+   * the revision before the handler runs, the ordinary task-write path.
+   * `runtime`: the operation's own ordered lock set takes the task after the
+   * cap and envelope (TRANSACTION-CONTRACT line 9), so the envelope only reads
+   * it, and the handler compares the revision once those locks are held (F1).
+   */
+  readonly targetLock: 'command' | 'runtime';
   /** The grant action the domain operation checks before it does anything. */
   readonly action: Action;
   /** One of the nine the contract names, as opposed to one the model requires. */
@@ -145,16 +167,21 @@ function declare(
   options: {
     readonly collection?: string;
     readonly targetsExistingRecord?: boolean;
+    readonly authorisedOn?: CommandDeclaration['authorisedOn'];
+    readonly targetLock?: CommandDeclaration['targetLock'];
     readonly contractNine?: boolean;
     readonly waitingOn?: string;
   } = {},
 ): CommandDeclaration {
   const waitingOn = options.waitingOn ?? '';
+  const targetsExistingRecord = options.targetsExistingRecord ?? true;
   return {
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
-    targetsExistingRecord: options.targetsExistingRecord ?? true,
+    targetsExistingRecord,
+    authorisedOn: options.authorisedOn ?? (targetsExistingRecord ? 'record' : 'business'),
+    targetLock: options.targetLock ?? 'command',
     action,
     contractNine: options.contractNine ?? false,
     landed: waitingOn === '',
@@ -177,6 +204,8 @@ function read(name: CommandName, collection: string, action: Action = 'read'): C
     kind: 'read',
     collection,
     targetsExistingRecord: false,
+    authorisedOn: 'business',
+    targetLock: 'command',
     action,
     contractNine: false,
     landed: true,
@@ -190,7 +219,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.complete', 'write', { contractNine: true }),
   declare('task.reopen', 'write', { contractNine: true }),
   declare('task.comment', 'comment', { contractNine: true }),
-  declare('task.propose', 'write', { contractNine: true }),
+  // F1. The runtime takes cap, envelope, then task; an envelope lock on the
+  // task first is the other half of a cycle with handback.
+  declare('task.propose', 'write', { contractNine: true, targetLock: 'runtime' }),
   declare('task.decide', 'decide', { targetsExistingRecord: false, contractNine: true }),
   declare('task.pickup', 'write', { targetsExistingRecord: false, contractNine: true }),
   declare('task.handback', 'write', { targetsExistingRecord: false, contractNine: true }),
@@ -243,17 +274,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
-  // head's grants are about. The declaration is the gate the envelope asks;
-  // `authority-controls.ts` then asks the second half, the manager's own
-  // ceiling: it may revoke only a pair it holds itself at a covering scope.
-  declare('grant.revoke', 'manage', { targetsExistingRecord: false }),
-  declare('delegation.revoke', 'manage', { targetsExistingRecord: false }),
-  // Work control is `write` on the task, the authority `task.propose` asks.
-  // Both name the task in `recordId` and the lineage in `lineageId`, and the
-  // handler refuses a lineage opened on another task. They take no
+  // head's grants are about, asked of the revoked row's own scope. The
+  // envelope asks nothing business-wide here; `authority-controls.ts` asks the
+  // manager's ceiling against the target: `manage` and the same action, held
+  // at a scope covering the grant or delegation being revoked.
+  declare('grant.revoke', 'manage', { targetsExistingRecord: false, authorisedOn: 'target' }),
+  declare('delegation.revoke', 'manage', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+  }),
+  // Work control is `write` on the task, the authority `task.propose` asks,
+  // and it is asked of that task: a record-scoped writer controls its own
+  // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
+  // and the handler refuses a lineage opened on another task. They take no
   // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', { targetsExistingRecord: false }),
-  declare('task.restart', 'write', { targetsExistingRecord: false }),
+  declare('task.cancel', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
+  declare('task.restart', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
   // The lease owner's. The person path refuses it as it refuses pickup and
   // handback; the agent path checks the delegation, then the lease.
   declare('task.heartbeat', 'write', { targetsExistingRecord: false }),

@@ -39,7 +39,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
-import { checkAuthority, subjectsOf } from '../authority/grants.ts';
+import { checkAuthority, subjectsOf, type Scope } from '../authority/grants.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
 import { fromAuthority, refuseCommand } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
@@ -265,6 +265,37 @@ function refuseIrrelevantTarget(
   return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));
 }
 
+/**
+ * The scope a `target` command is authorised on: the revoked row's own. A
+ * grant is asked about at the scope it was issued on and a delegation at its
+ * purpose scope, so a manager whose `manage` covers exactly that scope reaches
+ * the handler, which then asks the full ceiling (`authority-controls.ts`).
+ * Read-only and unlocked, like every discovery read. A body naming no such row
+ * is asked at business scope, so a caller holding nothing is still refused
+ * `SCOPE_NOT_GRANTED` rather than told about the shape of its body.
+ */
+async function targetScopeOf(tx: TenantQuery, request: CommandRequest): Promise<Scope> {
+  const named = request as unknown as Record<string, unknown>;
+  const lookups: readonly (readonly [string, string])[] = [
+    [
+      'grantId',
+      'select scope_kind as kind, scope_id as id from public.grants where business_id = $1 and id = $2',
+    ],
+    [
+      'delegationId',
+      'select purpose_scope_kind as kind, purpose_scope_id as id from public.delegations where business_id = $1 and id = $2',
+    ],
+  ];
+  for (const [field, sql] of lookups) {
+    const id = named[field];
+    if (typeof id !== 'string' || !UUID.test(id)) continue;
+    // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
+    const rows = await tx.query<Scope>(sql, [tx.businessId, id]);
+    if (rows[0] !== undefined) return rows[0];
+  }
+  return { kind: 'business', id: null };
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -283,9 +314,11 @@ export async function prepareCommand(
 
   const spine = await readTaskSpine(tx);
 
-  // The scope comes from the declaration. A command that targets an existing
-  // record is checked against that record; every other command is checked
-  // against the business, whatever identifiers its body happens to carry.
+  // The scope comes from the declaration's `authorisedOn`, not from whether
+  // the command revises its target: a command naming a task is checked
+  // against that task, a business command against the business, whatever
+  // identifiers its body happens to carry, and a `target` command is left to
+  // its handler, which asks the resolved row's own ceiling.
   const recordId =
     'recordId' in request && typeof request.recordId === 'string' ? request.recordId : undefined;
   const authorised = await checkAuthority(tx, subjectsOf(session), {
@@ -293,20 +326,28 @@ export async function prepareCommand(
     collection: declaration.collection,
     action: declaration.action,
     scope:
-      declaration.targetsExistingRecord && recordId !== undefined
+      declaration.authorisedOn === 'record' && recordId !== undefined
         ? { kind: 'record', id: recordId }
-        : { kind: 'business', id: null },
+        : declaration.authorisedOn === 'target'
+          ? await targetScopeOf(tx, request)
+          : { kind: 'business', id: null },
   });
   if (!authorised.ok) return refused(fromAuthority(authorised.refusal));
 
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
-    target = await lockTask(tx, spine.taskTypeId, recordId ?? '');
+    // F1. A target the runtime locks in its own order is only read here. The
+    // read takes nothing, and the handler compares the revision under the
+    // runtime's locks; locking it here would be a task lock held before the
+    // cap and envelope the runtime then asks for.
+    target = await lockTask(tx, spine.taskTypeId, recordId ?? '', {
+      forUpdate: declaration.targetLock === 'command',
+    });
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
     }
-    if (expectedRevisionOf(request) !== target.revision) {
+    if (declaration.targetLock === 'command' && expectedRevisionOf(request) !== target.revision) {
       return refused(
         refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
       );
@@ -367,6 +408,7 @@ export async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
+  options: { readonly forUpdate?: boolean } = {},
 ): Promise<TaskRow | undefined> {
   if (!UUID.test(recordId)) return undefined;
   // `revision` is `bigint`, and this driver hands a bigint back as a string.
@@ -376,7 +418,7 @@ export async function lockTask(
     `select id, revision::text as revision, data, deleted_at, trash_batch_id
        from records
       where ${tenantPredicate} and record_type_id = $2 and id = $3
-        for update`,
+        ${options.forUpdate === false ? '' : 'for update'}`,
     [tx.businessId, taskTypeId, recordId],
   );
   const row = rows[0];

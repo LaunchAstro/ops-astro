@@ -15,7 +15,15 @@
 // codes is the coupling the register exists to prevent. `SUGGESTED_STATUS`
 // carries the statuses L3 should give them.
 
-export { propose, roundsUsed, type Proposal, type ProposeRequest } from './propose.ts';
+export {
+  lockProposal,
+  propose,
+  proposeUnderLocks,
+  roundsUsed,
+  type HeldProposal,
+  type Proposal,
+  type ProposeRequest,
+} from './propose.ts';
 export { restart, type Restarted, type RestartRequest } from './restart.ts';
 export {
   heartbeat,

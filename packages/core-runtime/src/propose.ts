@@ -21,8 +21,14 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
-import { acquire } from './locks.ts';
-import { affectedByVersions, classifyVersions } from './recovery.ts';
+import { acquire, type LockSet } from './locks.ts';
+import {
+  affectedByVersions,
+  classifyVersions,
+  discoverLiveWork,
+  liveWorkLocks,
+  retireWork,
+} from './recovery.ts';
 import { writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -74,27 +80,35 @@ interface LineageRow {
   readonly task_id: string;
 }
 
+/**
+ * The ordered lock set a proposal needs, discovered read-only and then taken
+ * in one `acquire` call (TRANSACTION-CONTRACT line 9). Split from the writes
+ * so a command adapter can compare its own expected revision under these
+ * locks rather than taking the task lock itself first (F1): an adapter lock on
+ * the task before this cap and envelope is one half of a cycle with handback,
+ * which takes cap, envelope, then task.
+ */
+export interface HeldProposal {
+  readonly locks: LockSet;
+  readonly lineageId: string | null;
+  readonly restarts: string | null;
+  readonly accounting: { readonly id: string; readonly cap_id: string } | null;
+  readonly openingId: string;
+  readonly liveWork: Awaited<ReturnType<typeof discoverLiveWork>>;
+}
+
 export async function propose(
   tx: TenantQuery,
   request: ProposeRequest,
 ): Promise<RuntimeResult<Proposal>> {
-  // Authority first, and on both actions. `write` is "you may change this
-  // task"; `comment` would not be enough to commit a business to work, and
-  // `decide` is deliberately not asked for — proposing is not deciding.
-  const readable = await requires(tx, request, 'read');
-  if (readable !== null) return readable;
-  const writable = await requires(tx, request, 'write');
-  if (writable !== null) return writable;
+  return await proposeUnderLocks(tx, request, await lockProposal(tx, request));
+}
 
-  if (!Number.isSafeInteger(request.maximumMinor) || request.maximumMinor <= 0) {
-    return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
-      `a bounded proposal needs a finite positive ceiling, and this one asks for ${request.maximumMinor}`,
-      'Name a maximum in minor units greater than zero.',
-    );
-  }
-
-  // The lineage, the task, and — R8 — every parent of the holds this proposal
+export async function lockProposal(
+  tx: TenantQuery,
+  request: ProposeRequest,
+): Promise<HeldProposal> {
+  // The lineage, the task, and -- R8 -- every parent of the holds this proposal
   // is about to make nonclaimable. Supersession that leaves version 1's hold
   // consuming the envelope makes approving version 2 fail for room it is
   // entitled to, and discovering those accounting parents after the lineage
@@ -116,7 +130,7 @@ export async function propose(
   // The task's own accounting parents, when they exist. `writeProposal`
   // requires them because the version it writes is the version a later
   // decision draws on, and `affectedByVersions` above only finds them by way
-  // of a hold that is still live — an envelope whose holds are all terminal is
+  // of a hold that is still live -- an envelope whose holds are all terminal is
   // just as real and just as much the parent of this version. Discovered here,
   // before the locks, and taken in the same ordered call as everything else.
   const envelopes = await tx.query<{ readonly id: string; readonly cap_id: string }>(
@@ -133,6 +147,10 @@ export async function propose(
   // identity is decided here instead, so the whole set is one ordered call and
   // `writeProposal` can require a lineage lock unconditionally.
   const openingId = randomUUID();
+  // F3. The live version's own work -- a picked-up lease and its delegation --
+  // is made obsolete by the version this call writes, so it is retired here
+  // under the same ordered set rather than left able to settle.
+  const liveWork = await discoverLiveWork(tx, { versionIds: liveVersions });
   const locks = await acquire(tx, [
     ...(accounting === null
       ? []
@@ -144,7 +162,42 @@ export async function propose(
     { lockClass: 'lineage', id: lineageId ?? openingId },
     ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
     ...(await affectedByVersions(tx, liveVersions)),
+    ...liveWorkLocks(liveWork),
   ]);
+  // Rechecked under the locks, before the first write. A lease picked up or
+  // released in between is a set this transaction did not lock for.
+  const liveNow = await discoverLiveWork(tx, { versionIds: liveVersions });
+  if (JSON.stringify(liveNow) !== JSON.stringify(liveWork)) {
+    throw new Error(
+      'propose: the live work on the superseded version changed under discovery; roll back and rediscover',
+    );
+  }
+  return { locks, lineageId, restarts, accounting, openingId, liveWork };
+}
+
+/** The proposal's checks and writes, under the set `lockProposal` took. */
+export async function proposeUnderLocks(
+  tx: TenantQuery,
+  request: ProposeRequest,
+  held: HeldProposal,
+): Promise<RuntimeResult<Proposal>> {
+  const { locks, lineageId, restarts, accounting, openingId, liveWork } = held;
+  // Authority, on both actions, read after the locks are held (T4: current
+  // authority is re-read under the complete set). `write` is "you may change
+  // this task"; `comment` would not be enough to commit a business to work,
+  // and `decide` is deliberately not asked for -- proposing is not deciding.
+  const readable = await requires(tx, request, 'read');
+  if (readable !== null) return readable;
+  const writable = await requires(tx, request, 'write');
+  if (writable !== null) return writable;
+
+  if (!Number.isSafeInteger(request.maximumMinor) || request.maximumMinor <= 0) {
+    return refuse(
+      'PROPOSAL_OUT_OF_SCOPE',
+      `a bounded proposal needs a finite positive ceiling, and this one asks for ${request.maximumMinor}`,
+      'Name a maximum in minor units greater than zero.',
+    );
+  }
 
   if (restarts !== null) {
     const refused = await refuseRestart(tx, restarts, request.taskId);
@@ -224,6 +277,7 @@ export async function propose(
   // above. Leaving it for a later unrelated replay is what made the business-
   // wide sweep from cancellation look necessary.
   if (written.value.supersededVersionId !== null) {
+    await retireWork(tx, liveWork, locks);
     await classifyVersions(
       tx,
       [written.value.supersededVersionId],
