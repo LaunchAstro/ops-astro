@@ -12,6 +12,7 @@
     "a pure unit suite and must not be named (it moves the database counter by 0).",
     "L3-SURFACE adds the surface-operations suite (task.comment, preset.plan, settings, audited reads, D06); L4-RUNTIME adds the gate and lease suites (G01-G04, G06, G07, W01-W06, I07).",
     "L2-FIX adds the comment-type upgrade, the login-kind race and the preset family suites.",
+    "L3-PART-B adds the task-runtime suite (propose/decide through the envelope, replay, the G03 recorded refusal, the runtime-refusal rollback, the proposal projection) and the agent-path suite (I12, I07: the pre-pickup pair, the one-task ceiling, the decision exclusion, the handback settlement, the agent-actor audit). runtime-codes.test.ts is a pure unit suite and must not be named.",
     "See docs/agents/database-conformance.md."
   ],
   "invariant": [
@@ -28,7 +29,9 @@
     "tests/runtime/lease.test.ts",
     "tests/tasks/install-upgrade.test.ts",
     "tests/identity/login-kind-race.test.ts",
-    "tests/records/preset-plan-family.test.ts"
+    "tests/records/preset-plan-family.test.ts",
+    "tests/commands/task-runtime.test.ts",
+    "tests/commands/agent-path.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
