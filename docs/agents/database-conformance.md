@@ -76,7 +76,15 @@ named suites ran against a real database and none of them skipped. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.
 
-## The sequencing, stated plainly
+## The sequencing, stated plainly: hosted publication and landing
+
+**Everything in this section is a publication and landing requirement for the
+hosted repository.** It describes what must be true before a port is dispatched
+there, and it is not a prerequisite for building locally: local construction is
+authorised while the public gates stay held, and
+[the local slice](../local/README.md) is the scope of what is being built. Read
+this section when landing a change publicly, not when starting the slice on
+your own machine. Nothing here records that any of it has happened.
 
 An earlier version of this file said that a job failing closed on a missing
 product suite cannot be bound as a required context before the first product
@@ -90,8 +98,7 @@ no new gate here for anyone to rule on.
 The ticket already settles the timing. Its acceptance criterion is that the
 hosted job "is bound as a required context before the first port dispatch"
 (the PG0 product ticket, item 6, held outside this repository): before the
-first port is dispatched,
-not during or after the first port's pull request.
+first port is dispatched, not during or after the first port's pull request.
 
 The two context names are exactly:
 

@@ -187,7 +187,9 @@ you think you are editing. Ask three questions in this order.
 curl -s http://127.0.0.1:8790/api/health   # is anything answering, and is the database reachable
 lsof -nP -iTCP:8790 -sTCP:LISTEN           # which process is actually listening
 lsof -nP -iTCP:5190 -sTCP:LISTEN           # and the web server
-lsof -a -p <pid> -d cwd -Fn                # which checkout that process is serving
+
+api_pid=$(lsof -nP -iTCP:8790 -sTCP:LISTEN -t)
+lsof -a -p "$api_pid" -d cwd -Fn           # which checkout that process is serving
 ```
 
 `/api/health` runs a statement and answers `200` with `database: "reachable"`
@@ -196,8 +198,8 @@ is mounted. It does not say which checkout the process was started from, and
 neither does starting the API again: `scripts/local/api-up.sh` checks
 `/api/health` first and exits `0` with "something is already answering" when it
 gets a reply, so a successful `pnpm api:up` is not evidence that your code is
-being served. The listener's working directory is what settles it: the third
-`lsof` takes the pid the second one gave you and prints that directory on a
+being served. The listener's working directory is what settles it: `-t` gives
+the pid on its own, and the last `lsof` prints that process's directory on a
 line beginning with `n`, on both macOS and Linux. If it is not the checkout you
 are editing, you are reading one tree and testing another.
 
