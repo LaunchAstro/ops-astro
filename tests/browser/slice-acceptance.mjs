@@ -93,6 +93,7 @@ try {
   // holds a read taken before a revocation and cannot have grants churning
   // under it.
   await casesProposals(run);
+  await (await import('./i10-open-page.mjs')).casesI10OpenPage(run);
   await casesB6toB7(run);
   await context.close();
 } catch (error) {
