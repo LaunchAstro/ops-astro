@@ -44,15 +44,26 @@ interface Seen {
  * depend on a schema, and a case that silently started needing one would be a
  * case that had stopped testing the boundary.
  */
-function stubDatabase(seen: Seen[]): Database {
+/**
+ * The one statement the boundary itself writes: a non-object body's admission
+ * refusal (root ruling 4). Recorded here and answered with nothing; every other
+ * statement still throws.
+ */
+const ADMISSION = 'insert into public.authentication_attempts';
+
+function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
   return {
     log: { record: () => undefined, statements: () => [] } as unknown as Database['log'],
     withBusiness: async (businessId, run) => {
       seen.push({ businessId, presented: { provider: 'recorded', subject: businessId } });
       return await run({
         businessId,
-        query: async () => {
-          throw new Error('the stub database has no rows');
+        query: async <Row>(text: string, parameters: readonly unknown[] = []) => {
+          if (!text.trimStart().startsWith(ADMISSION)) {
+            throw new Error('the stub database has no rows');
+          }
+          admissions.push([...parameters]);
+          return [] as readonly Row[];
         },
       });
     },
@@ -254,9 +265,10 @@ describe('the business is named in the path and verified (N7)', () => {
 });
 
 describe('a body that is not an object', () => {
-  it('is refused rather than coerced', async () => {
+  it('is refused rather than coerced, and its admission refusal recorded once', async () => {
     const token = await tokenFor(MIA);
-    const response = await build().fetch(
+    const admissions: unknown[][] = [];
+    const response = await build({ database: stubDatabase([], admissions) }).fetch(
       new Request('http://api.test/api/b/alpha/task/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...authorised(token) },
@@ -267,6 +279,9 @@ describe('a body that is not an object', () => {
     expect(((await response.json()) as Record<string, unknown>)['code']).toBe(
       'COMMAND_BODY_INVALID',
     );
+    expect(admissions).toHaveLength(1);
+    expect(admissions[0]).toContain('COMMAND_BODY_INVALID');
+    expect(admissions[0]).toContain(ALPHA);
   });
 });
 
