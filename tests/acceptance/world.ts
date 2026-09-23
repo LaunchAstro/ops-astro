@@ -53,6 +53,7 @@ import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { InstalledTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
@@ -308,6 +309,38 @@ export async function createWorld(part: string): Promise<World> {
     api,
     close: async () => {
       await db.drop();
+    },
+  };
+}
+
+/**
+ * A second application instance over the same database.
+ *
+ * "A fresh app instance" has to mean a genuinely new one or the restart proof
+ * is a proof about a cache. This opens a new connection pool from the same
+ * credentials and builds a new `createApi` around it, so nothing the first
+ * instance held in memory — a resolved business, a pooled backend, a verifier
+ * — carries across. The caller closes it.
+ */
+export function rebuildApi(world: World): {
+  readonly api: ReturnType<typeof createApi>;
+  close(): Promise<void>;
+} {
+  const database = connect(world.db.appUrl, { source: 'runtime' });
+  const byKey: Readonly<Record<string, BusinessId>> = {
+    alpha: world.alpha,
+    bravo: world.bravo,
+  };
+  return {
+    api: createApi({
+      database,
+      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
+      resolveBusiness: async (key: string) => byKey[key],
+      executeRead: executeRead as unknown as ReadExecutor,
+      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+    }),
+    close: async () => {
+      await database.close();
     },
   };
 }
