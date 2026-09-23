@@ -338,10 +338,16 @@ grant select, insert on public.authentication_attempts to ops_astro_app;
 -- default-deny is a property of the schema a conformance test can read, not of
 -- a shell file somebody ran once.
 --
--- It is granted CONNECT and USAGE on nothing else. No table, no sequence, no
--- function, no schema. A worker connecting as a member of this role and
--- selecting from any table is refused by the server, which is the only form of
--- "restricted" that survives a mistake in application code.
+-- It holds no table, sequence or function privilege, and no membership of the
+-- application role. A worker connecting as a member of it and selecting from
+-- any table is refused by the server, which is the only form of "restricted"
+-- that survives a mistake in application code.
+--
+-- One thing it does hold, and cannot be made not to: USAGE on schema `public`,
+-- which Postgres grants to PUBLIC and which no revoke can take from a single
+-- role. That is reaching the schema, not reaching anything in it, and the
+-- table privileges above are what make the difference. Said here rather than
+-- left for a reader to discover in the catalogue and wonder about.
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'ops_astro_worker') then
     create role ops_astro_worker nologin nosuperuser nocreatedb nocreaterole nobypassrls;
