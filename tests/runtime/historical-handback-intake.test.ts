@@ -26,6 +26,15 @@
 // lease and a wrong fence retain nothing; a same-identity retry retains no
 // second row; altered operands cannot reuse the receipt; a fault after the
 // retained row rolls the row, the receipt and the audit back together.
+//
+// The third path is the narrowed agent nobody revoked (REVIEW-AGENT-BOUNDARY
+// 62307d5 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). The person's write grant is
+// issued with an expiry shorter than the lease, the delegation is minted
+// against it at pickup, and the grant's deadline then passes: no `revoked_at`,
+// no `authority_lost`, a delegation still live and unexpired. The handback
+// answers `DELEGATION_NARROWED` from the authority check rather than the
+// resolver, and the same controls hold. Read stays open, because the person
+// still holds read; only write lapsed.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -41,6 +50,8 @@ import {
 import { PROPOSAL as ROLE_PROPOSAL } from '../acceptance/role-case-bodies.ts';
 import type { Caller } from '../acceptance/world.ts';
 import { createIdentWorld, type IdentWorld } from '../acceptance/ident-audit-cases.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { WHOLE_BUSINESS } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -288,14 +299,41 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
   const count = async (sql: string, parameters: readonly unknown[]): Promise<number> =>
     Number((await admin<{ n: string }>(sql, parameters))[0]?.n);
 
-  /** A person approves their own work and a fresh agent picks it up. */
-  async function work(name: string): Promise<LostWork> {
+  /** The person's only task write, issued through the grant writer to end in five minutes. */
+  async function issueShortWrite(approver: Caller): Promise<void> {
+    const { world } = w.h;
+    const issued = await world.db.app.withBusiness(
+      world.alpha,
+      async (tx) =>
+        await issueGrant(tx, [], {
+          subject: { kind: 'person', id: approver.personId as string },
+          scope: WHOLE_BUSINESS,
+          collection: 'task',
+          action: 'write',
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          parentGrantId: null,
+          grantedByActorId: world.ada.actorId as string,
+        }),
+    );
+    expect(issued.ok).toBe(true);
+  }
+
+  /**
+   * A person approves their own work and a fresh agent picks it up.
+   *
+   * `shortWrite` issues the person's task write as the only one they hold,
+   * through the grant writer, with an expiry five minutes out: shorter than the
+   * default fifteen-minute lease the delegation is minted for, which pickup
+   * does not clamp to it (`pickup.ts`, `delegations.ts` `mintDelegation`).
+   */
+  async function work(name: string, shortWrite = false): Promise<LostWork> {
     const { world } = w.h;
     const approver = await enrolCaller(world.db, world.alpha, 'alpha', name, {
       membership: true,
-      actions: ADMIN_ACTIONS,
+      actions: shortWrite ? ADMIN_ACTIONS.filter((action) => action !== 'write') : ADMIN_ACTIONS,
       collections: ADMIN_COLLECTIONS,
     });
+    if (shortWrite) await issueShortWrite(approver);
     const agent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
     const made = await w.person(approver, 'task.create', { fields: { title: `work ${name}` } });
     const proposed = await w.person(approver, 'task.propose', {
@@ -355,9 +393,62 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
     );
   }
 
+  /**
+   * N1: the person's short-lived write grant reaches its deadline, moved into
+   * the past as `expire` moves a delegation's. Nothing is revoked, and the
+   * delegation and lease stay live and unexpired.
+   */
+  async function lapse(x: LostWork): Promise<void> {
+    const lapsed = await admin<{ id: string }>(
+      `update public.grants set expires_at = now() - interval '1 second'
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and collection = 'task' and action = 'write' and expires_at is not null
+          and revoked_at is null
+        returning id`,
+      [w.h.world.alpha, x.approver.personId],
+    );
+    expect(lapsed).toHaveLength(1);
+    const still = await admin<{ live: boolean; cause: string | null; lease: boolean }>(
+      `select d.revoked_at is null and d.settled_at is null and d.expires_at > now() as live,
+              d.revocation_cause as cause,
+              (select l.expires_at > now() and l.released_at is null
+                 from public.leases l where l.id = $2) as lease
+         from public.delegations d where d.id = $1`,
+      [x.delegationId, x.leaseId],
+    );
+    expect(still[0]).toStrictEqual({ live: true, cause: null, lease: true });
+  }
+
   const PATHS = [
-    { label: 'narrowed', code: 'DELEGATION_NARROWED', status: 403, lose: narrow },
-    { label: 'retired', code: 'DELEGATION_NOT_LIVE', status: 401, lose: expire },
+    {
+      label: 'narrowed',
+      code: 'DELEGATION_NARROWED',
+      status: 403,
+      lose: narrow,
+      shortWrite: false,
+      readCode: 'DELEGATION_NARROWED',
+      otherLeaseCode: 'DELEGATION_NARROWED',
+    },
+    {
+      label: 'retired',
+      code: 'DELEGATION_NOT_LIVE',
+      status: 401,
+      lose: expire,
+      shortWrite: false,
+      readCode: 'DELEGATION_NOT_LIVE',
+      otherLeaseCode: 'DELEGATION_NOT_LIVE',
+    },
+    // Still live, so the one-task ceiling answers first for another task's
+    // lease, and read is still held.
+    {
+      label: 'grant-expired',
+      code: 'DELEGATION_NARROWED',
+      status: 403,
+      lose: lapse,
+      shortWrite: true,
+      readCode: 'ok',
+      otherLeaseCode: 'DELEGATION_OUT_OF_PURPOSE',
+    },
   ] as const;
 
   const retained = async (leaseId: string): Promise<readonly Record<string, unknown>[]> =>
@@ -403,7 +494,7 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
 
   for (const path of PATHS) {
     it(`${path.label}: one retained report, the refusal unchanged, nothing else moved`, async () => {
-      const x = await work(`${path.label}_main`);
+      const x = await work(`${path.label}_main`, path.shortWrite);
       await path.lose(x);
       const before = await protectedState(x);
 
@@ -416,7 +507,7 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
       );
       expect(beat.code, beat.text).toBe(path.code);
       const read = await w.agent(x.agent, 'task.read', { recordId: x.taskId }, x.credential);
-      expect(read.code, read.text).toBe(path.code);
+      expect(read.code, read.text).toBe(path.readCode);
       expect(await retained(x.leaseId)).toHaveLength(0);
 
       const sent = lostBody(x);
@@ -438,12 +529,13 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
       expect(await receipts(sent['operationId'])).toBe(1);
       expect(await refusals(sent['operationId'], path.code)).toBe(1);
       expect(await protectedState(x)).toBe(before);
-      if (path.label === 'narrowed') {
-        const cause = await admin<{ cause: string }>(
+      if (path.label !== 'retired') {
+        // Durable R-B keeps its cause; natural expiry is given none.
+        const cause = await admin<{ cause: string | null }>(
           `select revocation_cause as cause from public.delegations where id = $1`,
           [x.delegationId],
         );
-        expect(cause[0]?.cause).toBe('authority_lost');
+        expect(cause[0]?.cause).toBe(path.label === 'narrowed' ? 'authority_lost' : null);
       }
 
       // The same identity replays its receipt and retains no second row.
@@ -473,8 +565,8 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
     }, 120_000);
 
     it(`${path.label}: another agent, another business, a forged credential, a wrong lease or fence retain nothing`, async () => {
-      const x = await work(`${path.label}_controls`);
-      const other = await work(`${path.label}_other`);
+      const x = await work(`${path.label}_controls`, path.shortWrite);
+      const other = await work(`${path.label}_other`, path.shortWrite);
       await path.lose(x);
       const before = await protectedState(x);
       const stranger = await enrolAgent(
@@ -515,7 +607,8 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
       expect(tries.stranger.code, tries.stranger.text).toBe('DELEGATION_NOT_LIVE');
       expect(tries.forged.code, tries.forged.text).toBe('DELEGATION_NOT_LIVE');
       expect(tries.bravo.code, tries.bravo.text).not.toBe(path.code);
-      for (const key of ['foreign', 'lease', 'unknownLease', 'fence'] as const) {
+      expect(tries.lease.code, tries.lease.text).toBe(path.otherLeaseCode);
+      for (const key of ['foreign', 'unknownLease', 'fence'] as const) {
         expect(tries[key].code, `${key} ${tries[key].text}`).toBe(path.code);
       }
       expect(await retained(x.leaseId)).toHaveLength(0);
@@ -525,7 +618,7 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
     }, 120_000);
 
     it(`${path.label}: a fault after the retained row rolls it back with the receipt and the audit`, async () => {
-      const x = await work(`${path.label}_fault`);
+      const x = await work(`${path.label}_fault`, path.shortWrite);
       await path.lose(x);
       const sent = lostBody(x);
       const marker = String(sent['operationId']);
