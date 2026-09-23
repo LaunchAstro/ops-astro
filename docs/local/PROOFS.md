@@ -7,6 +7,57 @@ other lanes built and ask, through the surfaces a caller actually has, whether
 they hold. Nothing in it is a plan and nothing in it is a count of
 declarations. Where a proof could not be written, this file says so by name.
 
+## Current counts, and what they are
+
+Each count below carries one of three labels:
+
+- **implemented**: the code or test is on the branch, and no run is claimed
+  for it;
+- **tested (merge trial)**: the named command passed on the integration
+  trial of a merge. This is a run, not a review;
+- **accepted**: a review recorded it against a head.
+
+**Nothing below is accepted.** The last evidenced milestone is `74d583c`. Its
+evidence, including the review reports and the source-to-route manifest, is
+kept with the build run under `runs/74d583c`, outside this repository.
+`906613f` has merge-trial evidence only. Its product tree is the merge trial's
+(`36dba27`), plus the named-suite list in `tests/db/named-suites.json`.
+
+| What                                                                         | Count                                                                             | Label                                 |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
+| `pnpm test`                                                                  | 4,209 passed, 10 skipped, 113 files                                               | tested (merge trial, `36dba27`)       |
+| `tests/acceptance`                                                           | 3,234 passed, 10 skipped (the restart cases)                                      | tested (merge trial, `36dba27`)       |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,145 of 3,145: 2,375 reported for `d06-generated`, 770 for `d06-agent`           | tested (merge trial)                  |
+| `role-case-matrix.test.ts` (item 2)                                          | 363 rows: 330 pass, 6 executed alternative, 23 not applicable, 4 missing coverage | tested (lane run; green in the trial) |
+| `statement-capture-full.test.ts`                                             | 81 passed: 35 of 35 operations captured, 35 refused                               | tested (merge trial)                  |
+| `restricted-calls.test.ts`, `restricted-calls-prefixes.test.ts`              | 30 passed                                                                         | tested (merge trial)                  |
+| `schedules-*.test.ts`                                                        | 12 of 12                                                                          | tested (merge trial)                  |
+| `i10-inflight.test.ts`                                                       | 2 passed                                                                          | tested (merge trial)                  |
+| `verified-decisions.test.ts` and the rest of `tests/reads`                   | 16 passed                                                                         | tested (merge trial)                  |
+| `tests/commands`, `tests/reads`, `tests/api` after the replay guard          | 359 passed                                                                        | tested (merge trial)                  |
+| `tests/db/named-suites.json`, `invariant`                                    | 52 suites named                                                                   | implemented; `db:conformance` not run |
+| `verify:browser`, including the three in-flight open-page rows               | none at `906613f`                                                                 | implemented; not run                  |
+| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run)) | skipped in the counts above                                                       | not run at `906613f`                  |
+
+The four missing-coverage rows in the matrix are the admin's `task.pickup` and the
+member's `task.pickup`, `task.handback` and `task.heartbeat`. All four are open. The matrix row
+count comes from `.local/l5-matrix.tsv` on the lane's own stack. The merge
+trial ran the same file green but kept no row count of its own.
+
+`d06-generated.test.ts` executes 2,373 cells: 35 operations × 22
+`SYSTEM_OWNED_FIELDS` × API, CLI and web, plus 7 `fields` operations × 3
+installed system fields on each of the three surfaces. The lane's run reported
+2,375, which is 2 more than the 2,373 that product gives. That difference has
+not been reconciled. `d06-agent.test.ts` holds 154 contract cells
+and 616 exclusion cells.
+
+The in-flight half of I10 is `tests/acceptance/i10-inflight.test.ts`. A read
+is held at admission (after `effectiveGrants`) in its open transaction while
+`grant.revoke` commits over HTTP. The read finishes with its content, and the
+next call is `AUTH_NO_MEMBERSHIP` (R4 on a `shareRecord` share) or
+`SCOPE_NOT_GRANTED` (a member on a record grant). The overlap is shown by
+`pg_stat_activity` and the audit `seq` order.
+
 ## How to run them
 
 ```sh
@@ -55,8 +106,8 @@ every line of product code, and the subject it carries is a real row in
 `logins`. The cast is `scripts/local-seed.mjs`'s cast by name and by role —
 `ada` admin, `mia` member, `noah` member with no grant, `orphan` a verified
 login with no membership, `bea` a member of the other business — with an agent
-actor written the way the seed writes one. The external party (R4) is not in
-the seed: `enrolExternal` in `world.ts` makes one, a person of `alpha` with a
+actor written the way the seed writes one. The suite does not use the seed's
+external party (R4): `enrolExternal` in `world.ts` makes its own, a person of `alpha` with a
 login and no membership, and `shareRecord` gives it its share. The seed itself
 is not imported: it needs GoTrue and it writes into the running slice's
 database.
@@ -463,12 +514,21 @@ Named by item number so the unfinished frontier stays countable.
 
 - **No exported share operation.** R4's share is issued by `shareRecord` from
   the tests; no route calls it ([API.md, "Open items"](API.md#open-items)).
-- **Twenty-six matrix rows are missing coverage**, named with what would cover
-  them under item 2. Four more, the `session.capabilities` rows, are executed
-  alternatives with no contract line behind them and need the root's ruling.
-- **The heartbeat's 8-hour lifetime cap is untested**, and its bounds, like the
-  agent's internal-only comment audience, are lane choices awaiting root or
-  owner confirmation ([RUNTIME.md](RUNTIME.md#the-work-controls)).
+- **Four matrix rows are missing coverage.** All four are person work: the
+  admin's `task.pickup` (EX-01) and the member's `task.pickup`, `task.handback`
+  and `task.heartbeat`, named under item 2.
+- **D06 residual F1.** An installed system field name sent at the top level of
+  a body is silently ignored rather than refused. It stays open until it is
+  ruled on.
+- **The one statement outside a transaction.** The runtime connection's only
+  statement outside a transaction is the `postgres` driver's per-connection
+  `pg_type` array lookup (`fetch_types`), which `statement-capture-full.test.ts`
+  asserts exactly. Turning `fetch_types` off in `tenancy/database.ts` would
+  remove it. That is a product decision nobody has made yet.
+- **The heartbeat's bounds are unconfirmed.** `schedules-heartbeat.test.ts` now
+  tests the 8-hour lifetime total at the boundary and just past it. The bounds
+  themselves, like the agent's internal-only comment audience, are lane choices
+  that still need root or owner confirmation ([RUNTIME.md](RUNTIME.md#the-work-controls)).
 - **Reports are stored**: `public.handback_reports`
   (`migrations/0018_runtime_handback_reports.sql:24`). Which report identities
   the restart proof compares is the restart section's to say, above.

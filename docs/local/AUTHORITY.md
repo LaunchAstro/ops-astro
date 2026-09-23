@@ -205,11 +205,21 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
 it, not `checkDelegatedAuthority`, for an operation an agent may not call
 whatever it holds: anything outside `AGENT_SURFACE`
-(`commands/agent-envelope.ts:113-122`, refused at `:192`), and anything in that
-set with no agent branch, which falls to the default (`:532-535`). It is 403 and
+(`commands/agent-envelope.ts:117-126`, refused at `:194`), and anything in that
+set with no agent branch, which falls to the default (`:572-580`). It is 403 and
 not `DELEGATION_NOT_LIVE` 401 because a live credential would not change the
 answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it over
 every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts:394-396`).
+
+It is also the answer to an agent call that presents no delegation credential,
+which is an agent before any pickup (`agent-envelope.ts:354-358`). Such a call
+reaches `task.queue` and `task.pickup` (`BEFORE_PICKUP`, `:114`) and nothing
+else. `task.decide` without a credential is `DELEGATION_EXCLUDES_DECISION`, so a
+decision is still named as one. `session.capabilities` is in `AGENT_SURFACE`
+but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way, and
+under a live delegation it answers that delegation's purpose (`:365`). A
+credential that is presented but not live stays `DELEGATION_NOT_LIVE`
+(`:359-360`, from `resolveDelegation`).
 
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)):
 `task.comment` has an agent branch (`agent-envelope.ts:460`), and the matrix's
@@ -224,7 +234,7 @@ and reaches a caller as 409 through `task.pickup`.
 `tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
 `tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
 audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
-(`commands/register.ts:394-397`). `tests/commands/runtime-codes.test.ts:113-115`
+(`commands/register.ts:391-394`). `tests/commands/runtime-codes.test.ts:113-115`
 asserts that it stays off, and `:103-107` that it is registered at 409 and
 caller-visible. It is not one of the nineteen runtime codes (`:109-111`): the
 runtime passes it through from the authority layer as `DELEGATION_NOT_LIVE` and
@@ -245,8 +255,9 @@ A person of the business with a login, an acting identity and **no
 membership** is refused `AUTH_NO_MEMBERSHIP` 403 until somebody shares a record
 with them. With a live share and no business grant, the same login resolves as
 an external party, whose session `roleKey` is null
-(`identity/login-resolution.ts:86-96`). Minimum contract 8.1 R4: "that task's
-shared fields and client-audience comments only".
+(`identity/login-resolution.ts:97-120`, standing at `:138-161`). Minimum
+contract 8.1 R4: "that task's shared fields and client-audience comments
+only".
 
 - **The share is a record-scoped grant.** `shareRecord`
   (`authority/shares.ts:74`) issues a root `read` grant at `scope_kind =
@@ -258,7 +269,16 @@ shared fields and client-audience comments only".
   are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
-  rows in the matrix's case (g).
+  rows in the matrix's case (g). `tests/acceptance/i10-inflight.test.ts` holds
+  an admitted shared read open across a `grant.revoke`: the read finishes with
+  its content and the next call is `AUTH_NO_MEMBERSHIP`.
+- **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
+  `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
+  user (`:613-641`, run at `:758-766`). It gets a login and an acting identity,
+  and no membership and no business grant (`:115-118`, `:267-269`). The seed
+  makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
+  naming a task, through `shareRecord` under the admin's own `share` grant
+  (`:652-676`, `:793-797`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -424,8 +444,14 @@ grant/delegation revocation controls" as declared operations
 ([API.md, "The support controls"](API.md#the-support-controls)). The authority
 is the grant manager's, within its own ceiling, and no actor gains a power:
 
-- The declaration asks `manage` on tasks, so a caller who manages nothing is
-  `SCOPE_NOT_GRANTED` before the handler runs.
+- The declaration asks `manage` on tasks at the revoked row's own scope: the
+  grant's scope, or the delegation's purpose scope
+  (`commands/surface.ts:281-285`, `authorisedOn: 'target'`;
+  `commands/prepare.ts:277-297`). A manager whose `manage` covers exactly that
+  scope reaches the handler. A body naming no such row is asked at business
+  scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
+  the handler runs. So is a manager whose `manage` does not cover the revoked
+  row's scope (`tests/commands/control-scope.test.ts`).
 - `commands/authority-controls.ts` then asks the manager's own ceiling. For a
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
@@ -438,15 +464,24 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   delegation. A settled delegation is not revoked a second way.
 - Nothing is cached. The next call re-evaluates through `effectiveGrants` or
   `resolveDelegation` and is refused. A call already admitted finishes in its
-  own transaction (I10, `tests/api/controls-revoke.test.ts`, matrix case (f)).
-  That half is shown before and after, not as a concurrent in-flight read.
+  own transaction (I10). `tests/api/controls-revoke.test.ts` and matrix case
+  (f) show this before and after. `tests/acceptance/i10-inflight.test.ts` holds
+  a read open in its transaction, after `effectiveGrants` admitted it, while
+  `grant.revoke` commits over HTTP. The read finishes with its content, and the
+  next call is `AUTH_NO_MEMBERSHIP` for an external party or
+  `SCOPE_NOT_GRANTED` for a member on a record grant.
+- A revocation that leaves an attempt without work authority releases its
+  lease and classifies its hold `authority_revoked` in the same transaction
+  ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
-runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)). A
-restart of a live, completed or already restarted lineage is
-`TRANSITION_NOT_PERMITTED` 409, the same code a second grant revocation
-answers.
+runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
+`task.cancel` and `task.restart` are authorised on the task named in
+`recordId`, so a record-scoped `write` grant is enough
+(`commands/surface.ts:291-292`). A restart of a live, completed or already
+restarted lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
+grant revocation answers.
 
 ## The restricted worker role
 
@@ -456,6 +491,11 @@ rather than left implied, because a privilege nobody granted and one somebody
 revoked read the same in the catalogue and only one of them was decided (I01
 R6). Work reaches the database through an authorised delegation and the
 application role, never through a privilege the worker holds itself.
+
+`tests/tenancy/restricted-calls.test.ts` and `restricted-calls-prefixes.test.ts`
+call every table and function as `ops_astro_worker`, beside the application
+login, the application group and an outsider, at the full schema and at every
+migration prefix ([DATA.md](DATA.md#what-the-tenancy-proofs-are)).
 
 ## What is not here
 
@@ -473,8 +513,10 @@ all four callers this section used to list as missing are built:
 - **The external comment read.** `task.read` serves the shared view to an
   external party and `externalCommentProjection` to every agent ("Reads" in
   API.md). A real external party is enrolled and read over HTTP
-  ([The external party](#the-external-party-r4)). The seed still enrols none,
-  so no browser case reads a task as an external person
+  ([The external party](#the-external-party-r4)). The seed enrols one and
+  shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK`. The web
+  has no shared view yet, so an external party's task page is blank and no
+  browser case reads a task as an external person
   ([WEB.md](WEB.md#known-gaps-against-the-pinned-mockup)).
 - **The settings commands.** `settings.set_four_eyes_threshold`,
   `settings.set_client_sign_off` and `settings.read` are built and write by

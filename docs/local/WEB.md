@@ -358,6 +358,7 @@ changed without reading the rest:
 | `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
 | `cases-settings.mjs`     | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
 | `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
+| `i10-open-page.mjs`      | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
 
 ### What B6 restarts
 
@@ -402,12 +403,26 @@ before that finds `VERSION_STALE` and neither number.
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
 
+I10 (`i10-open-page.mjs`) differs from N6 in how it revokes. N6 calls the
+internal `revokeGrant`. I10 has a grant manager call `grant.revoke` on the
+running API while a member's `/task/` page is open, and the member's only
+authority is one record grant. It records three rows: the next fetch is denied,
+an authorised response held back from before the revocation does not restore
+the task, and a later read is still denied. It runs after P and before B6/B7
+(`slice-acceptance.mjs:96-99`), because P issues and revokes a grant and B6/B7
+stop the API. Run on its own, it also probes an external party's task page and
+prints `BLOCKED` while the web has no shared view (see the known gaps). The
+lane ran the three rows on its own stack before the merge. `pnpm verify:browser`
+has not run with them in it on this head.
+
 `pnpm verify:browser` exits zero only when **every** row passed. `writeResults`
 returns the rows that did not — failed, pending and unrun together — so a run
 that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
 labels stay in the table, because they are what makes a partial run readable;
-they just no longer buy a zero exit. Nothing is pending or unrun on this head.
+they just no longer buy a zero exit. `verify:browser` has not been run at
+`906613f`, so this head has no browser result, pending or otherwise
+([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 
 ### Cases address controls by attribute, not by text
 
@@ -441,15 +456,20 @@ places this build does not yet reach it.
   mockup's tabbed Internal / Client / All activity conversation is not — the
   comments are one list with each row's audience on it, and history stays its
   own section below.
+- **An external party's task page is blank.** The screen reads `task` from
+  `task.read` (`apps/web/src/operations/shapes.ts:227-230`, passed at
+  `apps/web/src/screens/TaskDetail.tsx:180`). An external party's answer
+  carries `sharedTask` instead ([AUTHORITY.md](AUTHORITY.md#the-external-party-r4)),
+  so `Loaded` throws at `TaskDetail.tsx:250` and nothing is drawn. The seed now
+  enrols an external party and can share a task with it
+  ([DATA.md](DATA.md#the-seed)), so the identity exists; the web has no shared
+  view for it to read.
 - **The external comment projection is taken from the API's word, not
   exercised.** `task.read` gives a non-internal role the client comments in the
-  `shared` fields only (`docs/local/AUTHORITY.md`), and the screen is written to
-  draw whatever subset arrives. No seeded login has a role outside
-  `owner`/`admin`/`member`, so no browser case reads the task as an external
-  reader. The screen's handling of a partial projection is held by
-  `tests/surfaces/task-comments.test.tsx` against a stand-in and by the shape's
-  optional fields; a real external reader would be the proof and there is no
-  identity in this build to be one.
+  `shared` fields only (`docs/local/AUTHORITY.md`). The comment list is written
+  to draw whatever subset arrives, which `tests/surfaces/task-comments.test.tsx`
+  holds against a stand-in and the shape's optional fields. No browser case
+  reads a task as an external reader, because of the blank page above.
 - **`system` is not offered as a comment kind.** The API takes `note`, `client`
   and `system`; the form offers the first two. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
