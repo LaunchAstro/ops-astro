@@ -67,7 +67,21 @@ export async function migrate(
   admin: AdminConnection,
   directory: string,
 ): Promise<MigrationOutcome> {
-  const migrations = readMigrations(directory);
+  return await applyMigrations(admin, readMigrations(directory));
+}
+
+/**
+ * The same run over a list somebody else read.
+ *
+ * It exists so that the prefix harness can apply `0001` through `000k` and
+ * stop, without copying files into a temporary directory to do it. A prefix is
+ * a state an installation is really in between two migrations, and proving
+ * anything about it means being able to stand there.
+ */
+export async function applyMigrations(
+  admin: AdminConnection,
+  migrations: readonly Migration[],
+): Promise<MigrationOutcome> {
   const ledger = await readLedger(admin);
   const applied: string[] = [];
   const alreadyApplied: string[] = [];

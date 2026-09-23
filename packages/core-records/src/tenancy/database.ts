@@ -75,44 +75,6 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
   return { sql, log };
 }
 
-export function connect(url: string, options: DatabaseOptions = {}): Database {
-  const { sql, log } = open(url, options);
-
-  return {
-    log,
-
-    async withBusiness<T>(
-      businessId: BusinessId,
-      run: (tx: TenantQuery) => Promise<T>,
-    ): Promise<T> {
-      if (!isBusinessId(businessId)) {
-        throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
-      }
-      // `begin` unwraps a promise-shaped result in its own types; the cast
-      // restores the caller's type and nothing else.
-      return (await sql.begin(async (tx) => {
-        // Inside the transaction, and nowhere else. `true` is the is_local
-        // argument, which is what makes this SET LOCAL rather than SET.
-        await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
-        return await run({
-          businessId,
-          async query<Row>(
-            text: string,
-            parameters: readonly unknown[] = [],
-          ): Promise<readonly Row[]> {
-            const rows = await tx.unsafe(text, parameters as never[]);
-            return rows as unknown as readonly Row[];
-          },
-        });
-      })) as T;
-    },
-
-    async close(): Promise<void> {
-      await sql.end();
-    },
-  };
-}
-
 async function sendUnsafe<Row>(
   handle: { unsafe: postgres.Sql['unsafe'] },
   text: string,
@@ -120,6 +82,93 @@ async function sendUnsafe<Row>(
 ): Promise<readonly Row[]> {
   const rows = await handle.unsafe(text, parameters as never[]);
   return rows as unknown as readonly Row[];
+}
+
+/**
+ * The wrapper itself, over one pool handle. It is a function of the handle so
+ * that the pool a crossover test watches runs the same `withBusiness` the
+ * application does, rather than a second copy of it that could drift.
+ */
+function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
+  return async function withBusiness<T>(
+    businessId: BusinessId,
+    run: (tx: TenantQuery) => Promise<T>,
+  ): Promise<T> {
+    if (!isBusinessId(businessId)) {
+      throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
+    }
+    // `begin` unwraps a promise-shaped result in its own types; the cast
+    // restores the caller's type and nothing else.
+    return (await sql.begin(async (tx) => {
+      // Inside the transaction, and nowhere else. `true` is the is_local
+      // argument, which is what makes this SET LOCAL rather than SET.
+      await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
+      return await run({
+        businessId,
+        async query<Row>(
+          text: string,
+          parameters: readonly unknown[] = [],
+        ): Promise<readonly Row[]> {
+          const rows = await tx.unsafe(text, parameters as never[]);
+          return rows as unknown as readonly Row[];
+        },
+      });
+    })) as T;
+  };
+}
+
+export function connect(url: string, options: DatabaseOptions = {}): Database {
+  const { sql, log } = open(url, options);
+
+  return {
+    log,
+    withBusiness: withBusinessOn(sql),
+    async close(): Promise<void> {
+      await sql.end();
+    },
+  };
+}
+
+/**
+ * The same pool, plus the one thing the application is deliberately denied: a
+ * statement on the pool's connection outside any `withBusiness` transaction.
+ *
+ * This exists for one proof and should be used for no other. The tenancy law
+ * is about what a *reused physical backend* carries from one tenant's
+ * transaction to the next, and the next transaction's own `SET LOCAL` writes
+ * over whatever was left behind, so asking inside it can only ever return the
+ * right answer. Between the two transactions is the only place the question
+ * can be asked, and `Database` has no door there — by design, which is why
+ * this is a separate factory with a name that says what it is for rather than
+ * a method someone could reach for by accident.
+ *
+ * `connect` is what the application gets, and it returns a `Database` with no
+ * such door on it.
+ */
+export interface ObservedPool extends Database {
+  /**
+   * One statement on the pool's connection with no transaction open and no
+   * tenant set. With `max: 1` this is the backend the wrapper just used.
+   */
+  betweenTransactions<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]>;
+}
+
+export function connectObserved(url: string, options: DatabaseOptions = {}): ObservedPool {
+  const { sql, log } = open(url, options);
+
+  return {
+    log,
+    withBusiness: withBusinessOn(sql),
+    async betweenTransactions<Row>(
+      text: string,
+      parameters: readonly unknown[] = [],
+    ): Promise<readonly Row[]> {
+      return await sendUnsafe<Row>(sql, text, parameters);
+    },
+    async close(): Promise<void> {
+      await sql.end();
+    },
+  };
 }
 
 export function connectAsAdmin(url: string, options: DatabaseOptions = {}): AdminConnection {
