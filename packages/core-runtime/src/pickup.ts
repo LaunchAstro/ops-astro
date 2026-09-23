@@ -126,20 +126,15 @@ export const DECLARED_INCOMPLETENESS: readonly string[] = [
  * `0015_*`, and the extra `DELEGATION_OUT_OF_PURPOSE` refusal when a call's
  * scope is not exactly that record. None of that is this lane's to write.
  *
- * Until that merge reaches this branch the field does not exist on the type, so
- * the call is isolated here behind one cast rather than spread through
- * `pickup`. When L2-FIX lands, this adapter loses the cast and nothing else
- * changes: the call site above already passes the field.
+ * L2-FIX landed the field (migration 0016), so the request below is a plain
+ * `MintRequest` and this adapter only names the pin it satisfies; the call
+ * site passes the field as it always did.
  */
-type MintWithPurposeScope = MintRequest & {
-  readonly purposeScope: { readonly kind: 'record'; readonly id: string };
-};
-
 async function mintForOneTask(
   tx: TenantQuery,
-  request: MintWithPurposeScope,
+  request: MintRequest,
 ): Promise<DelegationDecision<MintedDelegation>> {
-  return await mintDelegation(tx, request as MintRequest);
+  return await mintDelegation(tx, request);
 }
 
 export async function pickup(
