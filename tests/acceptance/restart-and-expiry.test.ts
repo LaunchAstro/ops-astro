@@ -98,30 +98,49 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     }
   });
 
-  it('keeps every identity across a restart of its own Postgres', async () => {
-    const before = await identities(world);
-    const startedBefore = startedAt();
-    restartOwnContainer();
-    const startedAfter = startedAt();
-    // The restart happened. Without this the rest of the case would pass
-    // just as happily against a container that was never touched.
-    expect(startedAfter).not.toBe(startedBefore);
-    report('container restart', [`${startedBefore} -> ${startedAfter}`]);
-    const fresh = rebuildApi(world);
-    try {
-      const read = await asAda(world, fresh.api, '/task/read', {
-        operationId: randomUUID(),
-        recordId: journey.taskId,
-      });
-      expect(read.code).toBe('ok');
-      // Same rows, same identifiers, in the same order. A row recreated rather
-      // than preserved changes this comparison, which is what makes the
-      // assertion about durability rather than about presence.
-      expect(await identities(world)).toStrictEqual(before);
-    } finally {
-      await fresh.close();
-    }
-  }, 120_000);
+  // The one case that cannot share a Postgres server with anything else.
+  //
+  // Restarting the container terminates every connection on it, including the
+  // ones the sibling acceptance suites hold, and they then fail with
+  // `terminating connection due to administrator command` for a reason that
+  // says nothing about the product. Vitest runs files in parallel and its
+  // `fileParallelism` lives in `vitest.config.ts`, which this lane does not
+  // own, so the case asks to be run rather than assuming it may.
+  //
+  // It is `skipIf` rather than a silent branch on purpose: a skipped case is
+  // printed as skipped, and a proof nobody ran must never read as a proof that
+  // passed. `docs/local/PROOFS.md` carries the command and the measured
+  // evidence from the runs that did execute it.
+  const restartAsked = process.env['L5_RESTART_CONTAINER'] === '1';
+
+  it.skipIf(!restartAsked)(
+    'keeps every identity across a restart of its own Postgres',
+    async () => {
+      const before = await identities(world);
+      const startedBefore = startedAt();
+      restartOwnContainer();
+      const startedAfter = startedAt();
+      // The restart happened. Without this the rest of the case would pass
+      // just as happily against a container that was never touched.
+      expect(startedAfter).not.toBe(startedBefore);
+      report('container restart', [`${startedBefore} -> ${startedAfter}`]);
+      const fresh = rebuildApi(world);
+      try {
+        const read = await asAda(world, fresh.api, '/task/read', {
+          operationId: randomUUID(),
+          recordId: journey.taskId,
+        });
+        expect(read.code).toBe('ok');
+        // Same rows, same identifiers, in the same order. A row recreated rather
+        // than preserved changes this comparison, which is what makes the
+        // assertion about durability rather than about presence.
+        expect(await identities(world)).toStrictEqual(before);
+      } finally {
+        await fresh.close();
+      }
+    },
+    120_000,
+  );
 
   it('hands back exactly once on the new instance, and a replayed pickup adds no hold', async () => {
     const fresh = rebuildApi(world);
