@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The acceptance checklist, driven through a real browser against the running
-// slice: B1-B7 and N1-N7, one decisive screenshot each.
+// slice: B1-B7 and N1-N7, plus the two review findings' browser cases, one
+// decisive screenshot each.
 //
 // It is a script rather than a test file because it is evidence, not a check.
 // It restarts the API and the database container, it revokes a live grant and
@@ -15,7 +16,8 @@
 //
 //   - B6 and B7 stop the API and the database container, so they go last.
 //   - N6 revokes a live grant and holds a read taken before it, so nothing
-//     else may churn grants in front of it.
+//     else may churn grants in front of it: D1 does, and so D1 follows it.
+//   - R1 makes the task D1 then edits, so R1 comes first of the two.
 //
 // **Nothing here seeds a task.** Every record it reasons about is one it
 // created during the run, with a title carrying the run's own timestamp, so a
@@ -29,6 +31,8 @@ import { VIEWPORT, closeQuietly, fromEnvFile, record, writeResults } from './har
 import { casesB1toB4, casesB5 } from './cases-b.mjs';
 import { casesN3toN5 } from './cases-n3-n5.mjs';
 import { caseN7, casesN6 } from './cases-n6-n7.mjs';
+import { casesCreateRetry } from './cases-create-retry.mjs';
+import { casesTaskDrafts } from './cases-task-drafts.mjs';
 import { casesN1toN2 } from './cases-n1-n2.mjs';
 import { casesB6toB7 } from './cases-b6-b7.mjs';
 
@@ -65,8 +69,10 @@ try {
   await casesN3toN5(run);
   await caseN7(run);
   await casesB5(run);
+  await casesCreateRetry(run);
   await casesN1toN2(run);
   await casesN6(run);
+  await casesTaskDrafts(run);
   await casesB6toB7(run);
   await context.close();
 } catch (error) {

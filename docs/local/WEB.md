@@ -78,6 +78,44 @@ with a `// @vitest-environment jsdom` docblock.
 None of them touches the API, and none discharges a browser acceptance case.
 They prove the wiring; B1–B7 prove the product.
 
+## The browser checklist, in one command
+
+```
+pnpm verify:browser
+```
+
+That runs `tests/browser/slice-acceptance.mjs` against the stack already
+serving on 5190/8790, writes every case into
+`parent-observations/local-slice/RESULTS.md` with a screenshot each, and exits
+non-zero if any case failed. It is the whole checklist in one place: B1–B7,
+N1–N7 including the real N6 revocation harness, and the two review findings'
+browser cases.
+
+It is evidence, not a check, and it is not cheap: it stops the API, stops and
+restarts the Postgres container (keeping the volume), and revokes and reissues
+a live grant. Run it when you want the table, not on every edit.
+
+The run is made of one module per case group, so a group can be read or
+changed without reading the rest:
+
+| File                     | Cases                                                       |
+| ------------------------ | ----------------------------------------------------------- |
+| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table |
+| `cases-b.mjs`            | B1–B5, the journey and the reload                           |
+| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision        |
+| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`) |
+| `cases-n1-n2.mjs`        | another business, and a member with no grant                |
+| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                 |
+| `cases-task-drafts.mjs`  | D1, unsaved details across assign, state and Refresh        |
+| `cases-b6-b7.mjs`        | the API down, and the process and database restart          |
+
+`n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
+(`node tests/browser/<file>`).
+
+A case written against behaviour a sibling lane is still landing is recorded
+`pending <LANE>` rather than pass or fail: it ran, it says what it saw, and it
+does not fail the command.
+
 ## Known gaps against the pinned mockup
 
 Recorded rather than closed. The mockup is the visual source; these are the

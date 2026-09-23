@@ -52,8 +52,19 @@ export const passwordOf = (email) => users.find((user) => user.email === email)?
 
 export const results = [];
 
-/** A case's verdict, as the console line and the table both spell it. */
-const verdictOf = (entry) => (entry.ok === undefined ? 'unrun' : entry.ok ? 'pass' : 'FAIL');
+/**
+ * A case's verdict. `pending` is a case written against behaviour a sibling
+ * lane is landing: it ran, it says what it saw, and it is neither a pass this
+ * head has earned nor a failure the lane is asked to fix.
+ */
+const verdictOf = (entry) =>
+  entry.pending
+    ? `pending ${entry.pending}`
+    : entry.ok === undefined
+      ? 'unrun'
+      : entry.ok
+        ? 'pass'
+        : 'FAIL';
 
 export function record(entry) {
   results.push(entry);
@@ -218,9 +229,10 @@ export async function closeQuietly(pool) {
  * Returns the number that failed, so the entry point can exit on it.
  */
 export function writeResults(given) {
-  const ran = results.filter((entry) => entry.ok !== undefined);
+  const pending = results.filter((entry) => entry.pending);
+  const ran = results.filter((entry) => !entry.pending && entry.ok !== undefined);
   const failed = ran.filter((entry) => !entry.ok);
-  const unrun = results.length - ran.length;
+  const unrun = results.length - ran.length - pending.length;
   const lines = [
     '# Browser acceptance results',
     '',
@@ -233,10 +245,12 @@ export function writeResults(given) {
         `| ${entry.case} | ${entry.action} | ${entry.observed.replaceAll(/\|/gu, '\\|')} | ${verdictOf(entry)} | ${entry.shot ? entry.shot.replace(`${SHOTS}/`, '') : '—'} |`,
     ),
     '',
-    `${ran.length - failed.length}/${ran.length} passed, ${failed.length} failed, ${unrun} unrun.`,
+    `${ran.length - failed.length}/${ran.length} passed, ${failed.length} failed, ${unrun} unrun, ${pending.length} pending a sibling lane.`,
     '',
   ];
   writeFileSync(`${SHOTS}/RESULTS.md`, `${lines.join('\n')}\n`);
-  console.log(`\nwrote ${SHOTS}/RESULTS.md — ${ran.length - failed.length}/${ran.length} passed`);
+  console.log(
+    `\nwrote ${SHOTS}/RESULTS.md — ${ran.length - failed.length}/${ran.length} passed, ${pending.length} pending`,
+  );
   return failed.length;
 }
