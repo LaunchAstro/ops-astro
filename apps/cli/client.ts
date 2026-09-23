@@ -12,15 +12,17 @@
 // the serving transaction. And it is not the operator tool, which is a separate
 // binary because install, backup, restore and recovery are host control (17.3).
 //
-// **On "delegated actor" (#46), stated rather than implied.** A delegation is
-// minted by `task.pickup`, and `task.pickup` is declared and not landed: the
-// delegations and leases tables belong to no part of this split, which is why
-// T1f routed it to `DEPENDENCY_NOT_LANDED`. So this client sends the credential
-// it is handed; the *delegated* part of "delegated actor" is a seam here and
-// not a mechanism. It proves the parity claim — an agent driving the product
-// through this client reaches the same operations under the same authority as a
-// person in the app — and it does not prove isolation case 9, which needs the
-// table. `DECISIONS.tsv` carries this as a row rather than a footnote.
+// **On "delegated actor" (#46).** A delegation is minted by `task.pickup` and
+// travels as its own credential in the `x-agent-delegation` header, beside the
+// agent's own login bearer, on the agent prefix `/api/a/b/:businessKey`
+// (`apps/api/app.ts`). This client carries both as it was handed them: it
+// chooses the prefix the caller asked for and sends the headers, and the
+// server decides whether the login is an agent's, whether the delegation is
+// live and whether it reaches the operation. Nothing here mints, signs or
+// inspects either credential.
+//
+// `main.ts` beside this file is the runnable entry (`pnpm cli`); this module
+// stays importable so a test can drive it with an injected transport.
 
 import {
   COMMAND_SURFACE,
@@ -28,8 +30,18 @@ import {
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
 
-/** How a caller reaches the API. Injected so a test drives the real Hono app. */
-export type Transport = (path: string, body: string, credential: string) => Promise<Response>;
+/**
+ * How a caller reaches the API. Injected so a test drives the real Hono app.
+ *
+ * `delegation` is the agent's delegation credential, sent as its own header
+ * when present. The person path never passes one.
+ */
+export type Transport = (
+  path: string,
+  body: string,
+  credential: string,
+  delegation?: string,
+) => Promise<Response>;
 
 export interface CliOptions {
   readonly transport: Transport;
@@ -49,7 +61,19 @@ export interface CliOptions {
    * must not, because a client that can tell is a client that can choose.
    */
   readonly credential: string;
+  /**
+   * Which entry point to call. `person` (the default) posts to
+   * `/api/b/:businessKey`; `agent` posts to `/api/a/b/:businessKey`, where the
+   * server checks that the login is an agent's. Choosing the prefix is not
+   * choosing an actor: a person's login on the agent prefix is refused there.
+   */
+  readonly entry?: 'person' | 'agent';
+  /** The delegation credential a pickup returned, sent on the agent prefix only. */
+  readonly delegation?: string;
 }
+
+/** The two prefixes, as the API mounts them. */
+const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
 
 export interface CliAnswer {
   readonly status: number;
@@ -83,11 +107,13 @@ export function createCli(options: CliOptions): {
         // and no operation would ever see. A caller can tell the two apart.
         return { status: 404, body: { code: 'COMMAND_UNKNOWN', names: [verb], fixes: [USAGE] } };
       }
-      const response = await options.transport(
-        `/api/b/${options.businessKey}${pathOf(verb as CommandName)}`,
-        JSON.stringify(payload),
-        options.credential,
-      );
+      const entry = options.entry ?? 'person';
+      const path = `${PREFIX[entry]}${options.businessKey}${pathOf(verb as CommandName)}`;
+      const body = JSON.stringify(payload);
+      const response =
+        entry === 'agent' && options.delegation !== undefined && options.delegation !== ''
+          ? await options.transport(path, body, options.credential, options.delegation)
+          : await options.transport(path, body, options.credential);
       return { status: response.status, body: await response.json() };
     },
   };
