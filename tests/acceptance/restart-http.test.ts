@@ -350,48 +350,98 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   // W06's "cancelled lineage resumes silently" needs a lineage cancelled the
   // way a person cancels one. Ledger lines 37-38 make run cancellation and
   // authorised restart required capabilities through owning production
-  // interfaces, and the coordinator's ruling is that `cancelAndClassify`
-  // called from a fixture is not that. Neither operation has a route at this
-  // head, so both cases are `it.fails`, asserted as the behaviour: each fails
-  // today on the missing route and turns red on the day the route lands,
-  // which is the signal to flip it to `it` and move the cancelled-lineage
-  // fixture onto it. The names `task.cancel` and `task.restart` are this
-  // proof's placeholder until L3-CONTROLS declares the real ones.
-  it.fails('cancels an approved lineage through a production operation over HTTP', async () => {
+  // interfaces; L3-CONTROLS declared both as `task.cancel` and `task.restart`
+  // (merged at 9bf4c69), so both run here over the socket to the new process.
+  it('cancels an approved lineage through task.cancel over HTTP, once', async () => {
     const lineageId = await scalar(
       world,
       'select lineage_id::text as v from public.proposal_versions where business_id = $1 and id = $2',
       [approved.versionId],
     );
-    const cancelled = await asAda(world, api, '/task/cancel', {
+    const body = {
       operationId: randomUUID(),
       recordId: approved.taskId,
       lineageId,
       reason: 'the person withdrew it',
-    });
-    report('http task.cancel', [`${String(cancelled.status)} ${cancelled.code}`]);
+    };
+    const cancelled = await asAda(world, api, '/task/cancel', body);
     // Status too: a missing route answers 404 in plain text, which `call` reads as no refusal.
     expect([cancelled.status, cancelled.code], 'task.cancel').toStrictEqual([200, 'ok']);
+    const detail = cancelled.body['detail'] as Record<string, unknown>;
+    expect(detail['lineageId']).toBe(lineageId);
+    expect(detail['state']).toBe('cancelled');
     expect((await identities(world))['lineages']).toContain(`${lineageId}:cancelled`);
+    const registered = await scalar(
+      world,
+      'select count(*)::text as v from public.operations where business_id = $1 and operation_id = $2',
+      [body.operationId],
+    );
+    expect(registered, 'operations rows for the cancel').toBe('1');
+
+    const settled = await identities(world);
+    const replay = await asAda(world, api, '/task/cancel', body);
+    expect(replay.body, 'byte-identical replay').toStrictEqual(cancelled.body);
+    expect(await identities(world), 'the replay adds nothing').toStrictEqual(settled);
+
+    const leases = await countLeases(world, approved.reservationId);
     const pickup = await asAgent(world, api, '/task/pickup', {
       operationId: randomUUID(),
       reservationId: approved.reservationId,
     });
-    expect(pickup.code).toBe('RESERVATION_NOT_CLAIMABLE');
+    expect([pickup.status, pickup.code]).toStrictEqual([409, 'RESERVATION_NOT_CLAIMABLE']);
+    expect(await countLeases(world, approved.reservationId)).toBe(leases);
+    report('http task.cancel', [
+      `${String(cancelled.status)} ${cancelled.code}`,
+      `operations ${registered}`,
+      `pickup ${String(pickup.status)} ${pickup.code}`,
+    ]);
   });
 
-  it.fails('restarts a cancelled lineage as a new lineage over HTTP', async () => {
-    const restarted = await asAda(world, api, '/task/restart', {
-      operationId: randomUUID(),
-      recordId: approved.taskId,
-      lineageId: lineages.cancelledLineageId,
-    });
-    report('http task.restart', [`${String(restarted.status)} ${restarted.code}`]);
+  it('restarts a cancelled lineage through task.restart over HTTP as a new lineage', async () => {
+    const old = lineages.cancelledLineageId;
+    const body = { operationId: randomUUID(), recordId: lineages.cancelledTaskId, lineageId: old };
+    const restarted = await asAda(world, api, '/task/restart', body);
     expect([restarted.status, restarted.code], 'task.restart').toStrictEqual([200, 'ok']);
-    const detail = restarted.body['detail'] as Record<string, string> | undefined;
-    expect(detail?.['lineageId']).not.toBe(lineages.cancelledLineageId);
-    expect((await identities(world))['lineages']).toContain(
-      `${lineages.cancelledLineageId}:cancelled`,
+    const detail = restarted.body['detail'] as Record<string, unknown>;
+    const fresh = String(detail['lineageId']);
+    expect(fresh).not.toBe(old);
+    expect(detail['restartsLineageId']).toBe(old);
+    expect(detail['version']).toBe(1);
+    const after = await identities(world);
+    expect(after['lineages']).toContain(`${old}:cancelled`);
+    expect(after['gates']).toContain(`${String(detail['gateId'])}:pending`);
+    const decisions = await scalar(
+      world,
+      'select count(*)::text as v from public.gate_decisions where business_id = $1 and gate_id = $2',
+      [detail['gateId']],
     );
+    expect(decisions, 'decisions on the new gate').toBe('0');
+    const holds = await scalar(
+      world,
+      'select count(*)::text as v from public.reservations where business_id = $1 and version_id = $2',
+      [detail['versionId']],
+    );
+    expect(holds, 'holds on the new version').toBe('0');
+
+    const replay = await asAda(world, api, '/task/restart', body);
+    expect(replay.body, 'byte-identical replay').toStrictEqual(restarted.body);
+    const restarts = await scalar(
+      world,
+      'select count(*)::text as v from public.proposal_lineages where business_id = $1 and restarts_lineage_id = $2',
+      [old],
+    );
+    expect(restarts, 'lineages restarting the old one').toBe('1');
+    const pickup = await asAgent(world, api, '/task/pickup', {
+      operationId: randomUUID(),
+      reservationId: lineages.cancelledReservationId,
+    });
+    expect(pickup.code, 'the old hold after the restart').toBe('RESERVATION_NOT_CLAIMABLE');
+    report('http task.restart', [
+      `${String(restarted.status)} ${restarted.code}`,
+      `version ${String(detail['version'])}`,
+      `decisions ${decisions}`,
+      `holds ${holds}`,
+      `restarts ${restarts}`,
+    ]);
   });
 });
