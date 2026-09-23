@@ -22,7 +22,13 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
-import { affectedByVersions, classifyVersions } from './recovery.ts';
+import {
+  affectedByVersions,
+  classifyVersions,
+  discoverLiveWork,
+  liveWorkLocks,
+  retireWork,
+} from './recovery.ts';
 import { writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -133,6 +139,10 @@ export async function propose(
   // identity is decided here instead, so the whole set is one ordered call and
   // `writeProposal` can require a lineage lock unconditionally.
   const openingId = randomUUID();
+  // F3. The live version's own work -- a picked-up lease and its delegation --
+  // is made obsolete by the version this call writes, so it is retired here
+  // under the same ordered set rather than left able to settle.
+  const liveWork = await discoverLiveWork(tx, { versionIds: liveVersions });
   const locks = await acquire(tx, [
     ...(accounting === null
       ? []
@@ -144,7 +154,16 @@ export async function propose(
     { lockClass: 'lineage', id: lineageId ?? openingId },
     ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
     ...(await affectedByVersions(tx, liveVersions)),
+    ...liveWorkLocks(liveWork),
   ]);
+  // Rechecked under the locks, before the first write. A lease picked up or
+  // released in between is a set this transaction did not lock for.
+  const liveNow = await discoverLiveWork(tx, { versionIds: liveVersions });
+  if (JSON.stringify(liveNow) !== JSON.stringify(liveWork)) {
+    throw new Error(
+      'propose: the live work on the superseded version changed under discovery; roll back and rediscover',
+    );
+  }
 
   if (restarts !== null) {
     const refused = await refuseRestart(tx, restarts, request.taskId);
@@ -224,6 +243,7 @@ export async function propose(
   // above. Leaving it for a later unrelated replay is what made the business-
   // wide sweep from cancellation look necessary.
   if (written.value.supersededVersionId !== null) {
+    await retireWork(tx, liveWork, locks);
     await classifyVersions(
       tx,
       [written.value.supersededVersionId],

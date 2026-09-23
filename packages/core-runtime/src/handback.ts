@@ -241,6 +241,51 @@ export async function handback(
     );
   }
 
+  // F3. The lease is live and fenced, and that is still not enough: the work
+  // it holds is bound to one reservation and one approved version, and T4
+  // re-reads "every parent link, active proposal version ... and reservation
+  // eligibility after all locks are held". A version a person has superseded,
+  // or a lineage that is no longer live, is work nobody may settle, and its
+  // successor would supersede the newer proposal from stale work. The report
+  // is retained unaccepted and nothing else is written.
+  const bound = await tx.query<{
+    readonly lease_reservation: string;
+    readonly version_id: string;
+    readonly superseded: boolean;
+    readonly lineage_state: string;
+    readonly lineage_id: string;
+  }>(
+    `select l.reservation_id as lease_reservation, res.version_id,
+            (ver.superseded_at is not null) as superseded, lin.state as lineage_state,
+            lin.id as lineage_id
+       from public.leases l
+       join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+       join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
+       join public.proposal_lineages lin on lin.business_id = ver.business_id and lin.id = ver.lineage_id
+      where l.business_id = $1 and l.id = $2`,
+    [tx.businessId, request.leaseId],
+  );
+  const binding = bound[0];
+  if (
+    binding === undefined ||
+    binding.lease_reservation !== found.reservation_id ||
+    binding.lineage_id !== found.lineage_id
+  ) {
+    throw new Error(
+      'handback: the lease binding changed under discovery; roll back and rediscover rather than extending the lock set',
+    );
+  }
+  if (binding.superseded || binding.lineage_state !== 'live') {
+    await retain('LEASE_NOT_OWNED');
+    return refuse(
+      'LEASE_NOT_OWNED',
+      binding.superseded
+        ? `the version ${binding.version_id} this lease worked has been superseded, so its work cannot settle`
+        : `the lineage this lease worked is ${binding.lineage_state}, so its work cannot settle`,
+      'The report is retained, not accepted. Work the current version under a new pickup.',
+    );
+  }
+
   // R6. This head exports no dispatch, no worker and no provider adapter, so a
   // reported cost -- including zero -- is a number nothing observed. Settling
   // on it would write expenditure the accepted first-head boundary says cannot

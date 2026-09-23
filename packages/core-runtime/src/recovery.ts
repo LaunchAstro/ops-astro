@@ -23,6 +23,7 @@
 // never erase a real liability.
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import { revokeDelegation } from '../../core-records/src/authority/delegations.ts';
 import { acquire, type LockRequest, type LockSet } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -243,18 +244,23 @@ interface Affected {
   readonly run_id: string;
   readonly lineage_id: string;
   readonly lease_id: string | null;
+  /** The delegation the hold's lease was issued under, which the contract locks after the lease. */
+  readonly delegation_id: string | null;
   readonly cause: NonclaimableCause;
   readonly cause_id: string;
 }
 
 const AFFECTED_COLUMNS = `res.id as reservation_id, res.envelope_id, env.cap_id,
-            run.task_id, run.id as run_id, lin.id as lineage_id, res.lease_id`;
+            run.task_id, run.id as run_id, lin.id as lineage_id, res.lease_id,
+            held_lease.delegation_id`;
 
 const AFFECTED_JOINS = `from public.reservations res
        join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_lineages lin on lin.business_id = res.business_id and lin.id = run.lineage_id
-       join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id`;
+       join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
+       left join public.leases held_lease
+         on held_lease.business_id = res.business_id and held_lease.id = res.lease_id`;
 
 /** The complete lock set for a discovered affected set, in `LOCK_ORDER`. `acquire` sorts it. */
 function locksFor(affected: readonly Affected[]): readonly LockRequest[] {
@@ -269,13 +275,91 @@ function locksFor(affected: readonly Affected[]): readonly LockRequest[] {
       { lockClass: 'reservation', id: row.reservation_id },
     );
     if (row.lease_id !== null) requests.push({ lockClass: 'lease', id: row.lease_id });
+    if (row.delegation_id !== null) {
+      requests.push({ lockClass: 'delegation', id: row.delegation_id });
+    }
   }
   return requests;
 }
 
-const SAME_SET = (left: readonly Affected[], right: readonly Affected[]): boolean =>
-  left.length === right.length &&
-  left.every((row, index) => row.reservation_id === right[index]?.reservation_id);
+/**
+ * R1. The same set means the same parents, not only the same reservation ids:
+ * a reservation whose lease, run or envelope changed between discovery and the
+ * locks is a reservation this transaction locked the wrong rows for.
+ */
+const SAME_SET = <T>(left: readonly T[], right: readonly T[]): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+/** A live lease on the work being closed, and the delegation it was issued under. */
+interface LiveWork {
+  readonly lease_id: string;
+  readonly run_id: string;
+  readonly delegation_id: string | null;
+}
+
+/**
+ * Read-only: the live leases on a lineage's runs, or on the runs of a set of
+ * versions. Cancellation and supersession both end the work these leases
+ * authorise, so their leases and delegations belong to the lock set those
+ * operations take, discovered here before any lock (F2, F3).
+ */
+export async function discoverLiveWork(
+  tx: TenantQuery,
+  target: { readonly lineageId: string } | { readonly versionIds: readonly string[] },
+): Promise<readonly LiveWork[]> {
+  const byLineage = 'lineageId' in target;
+  return await tx.query<LiveWork>(
+    `select l.id as lease_id, l.run_id, l.delegation_id
+       from public.leases l
+       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
+      where l.business_id = $1 and l.state = 'live'
+        and ${byLineage ? 'run.lineage_id = $2::uuid' : 'run.version_id = any($2::uuid[])'}
+      order by l.id`,
+    [tx.businessId, byLineage ? target.lineageId : target.versionIds],
+  );
+}
+
+export function liveWorkLocks(work: readonly LiveWork[]): readonly LockRequest[] {
+  return work.flatMap((row) => [
+    { lockClass: 'run' as const, id: row.run_id },
+    { lockClass: 'lease' as const, id: row.lease_id },
+    ...(row.delegation_id === null
+      ? []
+      : [{ lockClass: 'delegation' as const, id: row.delegation_id }]),
+  ]);
+}
+
+/**
+ * End the work authority a transition has made obsolete: fence and release
+ * each live lease, and revoke the delegation it was issued under. T5 names
+ * both halves for cancellation ("releases the live lease and revokes the
+ * delegation"); supersession retires the old version's work the same way, so
+ * a holder of superseded work has nothing left to settle with (F3). Revoked
+ * rather than settled: nothing was handed back, and the next call the agent
+ * makes on that credential re-evaluates it and is refused.
+ *
+ * Under the caller's locks, which must include every row named here.
+ */
+export async function retireWork(
+  tx: TenantQuery,
+  work: readonly LiveWork[],
+  locks: LockSet,
+): Promise<void> {
+  for (const row of work) {
+    locks.require('lease', row.lease_id);
+    if (row.delegation_id !== null) locks.require('delegation', row.delegation_id);
+    // eslint-disable-next-line no-await-in-loop
+    await tx.query(
+      `update public.leases set state = 'released', released_at = now()
+        where business_id = $1 and id = $2 and state = 'live'`,
+      [tx.businessId, row.lease_id],
+    );
+    if (row.delegation_id !== null) {
+      // eslint-disable-next-line no-await-in-loop
+      await revokeDelegation(tx, row.delegation_id);
+    }
+  }
+}
 
 /**
  * Discover, lock, rediscover, classify. The rediscovery is the contract's
@@ -412,7 +496,8 @@ export async function affectedByVersions(
 
 /**
  * The cancellation path's entry point: record the person's cancellation on the
- * lineage, fence and release the live lease, then classify **its own**
+ * lineage, fence and release the live lease, revoke the delegation it was
+ * issued under, end its runs as cancelled (F2), then classify **its own**
  * reservations. Exported because T5 names cancellation as one of the owning
  * transitions, and L3 wires it.
  *
@@ -427,21 +512,21 @@ export async function cancelAndClassify(
   tx: TenantQuery,
   request: { readonly lineageId: string; readonly reason: string },
 ): Promise<RuntimeResult<readonly Classification[]>> {
+  const terminal = refuse(
+    'LINEAGE_TERMINAL',
+    `lineage ${request.lineageId} is not live, so there is nothing to cancel`,
+    'Read its terminal reason. Cancelling twice is not a second cancellation.',
+  );
   const live = await tx.query<{ readonly state: string }>(
     `select state from public.proposal_lineages where business_id = $1 and id = $2`,
     [tx.businessId, request.lineageId],
   );
-  if (live[0]?.state !== 'live') {
-    return refuse(
-      'LINEAGE_TERMINAL',
-      `lineage ${request.lineageId} is not live, so there is nothing to cancel`,
-      'Read its terminal reason. Cancelling twice is not a second cancellation.',
-    );
-  }
+  if (live[0]?.state !== 'live') return terminal;
 
   // Discovery before the locks: every reservation this lineage owns, whatever
   // its version's own state, because cancellation makes all of them
-  // nonclaimable and all of their parents are in this transaction's set.
+  // nonclaimable; and (F2) every live lease on its runs with the delegation it
+  // was issued under, because cancellation ends that authority too.
   const discover = async (): Promise<readonly Affected[]> => {
     const rows = await tx.query<Affected>(
       `select ${AFFECTED_COLUMNS}, 'lineage_cancelled' as cause, lin.id as cause_id
@@ -454,10 +539,23 @@ export async function cancelAndClassify(
   };
 
   const before = await discover();
+  const workBefore = await discoverLiveWork(tx, { lineageId: request.lineageId });
   const locks = await acquire(tx, [
     ...locksFor(before),
+    ...liveWorkLocks(workBefore),
     { lockClass: 'lineage', id: request.lineageId },
   ]);
+
+  // Rechecked under the locks and before the first write: a set that moved
+  // means this transaction holds the wrong rows, and it rolls back rather
+  // than extending its locks backwards.
+  const after = await discover();
+  const workAfter = await discoverLiveWork(tx, { lineageId: request.lineageId });
+  if (!SAME_SET(before, after) || !SAME_SET(workBefore, workAfter)) {
+    throw new Error(
+      'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
+    );
+  }
 
   const updated = await tx.query<{ readonly id: string }>(
     `update public.proposal_lineages
@@ -466,27 +564,16 @@ export async function cancelAndClassify(
       returning id`,
     [tx.businessId, request.lineageId, request.reason],
   );
-  if (updated[0] === undefined) {
-    return refuse(
-      'LINEAGE_TERMINAL',
-      `lineage ${request.lineageId} is not live, so there is nothing to cancel`,
-      'Read its terminal reason. Cancelling twice is not a second cancellation.',
-    );
-  }
+  if (updated[0] === undefined) return terminal;
+
+  await retireWork(tx, workAfter, locks);
+  // Nothing in this head dispatches, so the ordinary cancellation completes as
+  // cancelled (T5). A run already handed back keeps that outcome as history.
   await tx.query(
-    `update public.leases set state = 'released', released_at = now()
-      where business_id = $1 and state = 'live'
-        and run_id in (select id from public.planned_runs
-                        where business_id = $1 and lineage_id = $2)`,
+    `update public.planned_runs set state = 'cancelled'
+      where business_id = $1 and lineage_id = $2 and state in ('planned', 'claimed')`,
     [tx.businessId, request.lineageId],
   );
-
-  const after = await discover();
-  if (!SAME_SET(before, after)) {
-    throw new Error(
-      'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
-    );
-  }
 
   const classified: Classification[] = [];
   for (const row of after) {
