@@ -2,25 +2,17 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13: "each successful/refused production operation
-// emits durable digest-only evidence in own business"). For every one of the
-// 35 `COMMAND_SURFACE` declarations this sends one call that applies and one
-// that is refused, and reads what each wrote to `audit_events` in *every*
-// business: exactly one row, in the caller's own business, naming the actor,
-// the command, the operation identity, the outcome and the refusal code, with
-// the request carried as a digest and none of its content. A refused call must
-// also leave every domain table of both businesses as it found it.
+// **I13** (CONTRACT-LEDGER I13). For each of the 35 `COMMAND_SURFACE`
+// declarations, one call that applies and one that is refused, and what each
+// wrote to `audit_events` in *every* business: one row, in the caller's own,
+// naming actor, command, operation, outcome and code, the request as a digest
+// only. A refused call also leaves both businesses' domain tables alone. The
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) wherever R2 has
+// one; the three lease operations are refused the agent's own way.
 //
-// The refused call is R2's wherever R2 has one: `noah` is a member holding no
-// grant, and minimum contract 8.2 case 3 expects `SCOPE_NOT_GRANTED` from every
-// endpoint. The three lease operations are the agent's, so their refusal is the
-// agent's own — a reservation or lease that is not there.
-//
-// **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). Each operation an agent
-// may call after a pickup draws on one grant of the person who approved the
-// work (`tasks-runtime.ts:354`, `delegations.ts:365-372`). Revoked through
-// `grant.revoke`, the next call must be `DELEGATION_NARROWED`, audited, with no
-// effect; each operation has its own approver so no revocation answers for two.
+// **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). An agent's call draws on
+// its approver's grant (`tasks-runtime.ts:354`, `delegations.ts:365-372`); once
+// `grant.revoke` takes it, the next call is `DELEGATION_NARROWED`, audited.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,6 +22,7 @@ import {
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
+import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import {
@@ -256,29 +249,26 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return problems;
   }
 
-  it('audits one applied call of every operation, own tenant, digest only', async () => {
-    const problems: string[] = [];
-    for (const declaration of COMMAND_SURFACE) {
-      // eslint-disable-next-line no-await-in-loop -- one operation at a time; the chain is shared
-      const cell = await applied(declaration);
-      // eslint-disable-next-line no-await-in-loop
-      problems.push(...(await check(`applied ${declaration.name}`, declaration.name, cell)));
-      covered.applied.add(declaration.name);
-    }
-    expect(problems).toStrictEqual([]);
-  }, 300_000);
-
-  it('audits one refused call of every operation with no domain effect', async () => {
-    const problems: string[] = [];
-    for (const declaration of COMMAND_SURFACE) {
-      // eslint-disable-next-line no-await-in-loop -- one operation at a time; the chain is shared
-      const cell = await refused(declaration);
-      // eslint-disable-next-line no-await-in-loop
-      problems.push(...(await check(`refused ${declaration.name}`, declaration.name, cell)));
-      covered.refused.add(declaration.name);
-    }
-    expect(problems).toStrictEqual([]);
-  }, 300_000);
+  for (const [way, cellOf, title] of [
+    ['applied', applied, 'audits one applied call of every operation, own tenant, digest only'],
+    ['refused', refused, 'audits one refused call of every operation with no domain effect'],
+  ] as const) {
+    it(
+      title,
+      async () => {
+        const problems: string[] = [];
+        for (const declaration of COMMAND_SURFACE) {
+          // eslint-disable-next-line no-await-in-loop -- one operation at a time; the chain is shared
+          const cell = await cellOf(declaration);
+          // eslint-disable-next-line no-await-in-loop
+          problems.push(...(await check(`${way} ${declaration.name}`, declaration.name, cell)));
+          covered[way].add(declaration.name);
+        }
+        expect(problems).toStrictEqual([]);
+      },
+      300_000,
+    );
+  }
 
   it('covered all 35 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
@@ -288,51 +278,65 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   });
 
   it('audits the person-path refusal of the three lease operations', async () => {
-    // Refused on the person path at this head (`handlers.ts`; PERSON-WORK owns
-    // person pickup). Whatever it answers, I13 wants the attempt recorded.
+    // PERSON-WORK serves these to a person (8c08ccb). A handback carries the
+    // outcome it validates first (`tasks-runtime.ts` `settle`), so the refusal
+    // is the lease's. Whatever it answers, I13 wants the attempt recorded.
     const problems: string[] = [];
     for (const name of LEASE_WORK) {
-      // A first call learns the code; the checked one is a distinct attempt.
-      const pick =
+      const lease = { leaseId: randomUUID(), fence: 1 };
+      const pick: Record<string, unknown> =
         name === 'task.pickup'
           ? { reservationId: randomUUID() }
-          : { leaseId: randomUUID(), fence: 1 };
-      // eslint-disable-next-line no-await-in-loop
+          : { ...lease, ...(name === 'task.handback' && { outcome: 'completed', report: {} }) };
+      /* eslint-disable no-await-in-loop -- a first call learns the code, a distinct second is checked */
       const seen = await w.person(w.h.world.ada, name, pick);
       expect(seen.code, name).not.toBe('ok');
-      // eslint-disable-next-line no-await-in-loop
       const cell = personCell(w.h.world.ada, name, pick, seen.code);
-      // eslint-disable-next-line no-await-in-loop
       problems.push(...(await check(`person ${name} (${seen.code})`, name, cell)));
+      /* eslint-enable no-await-in-loop */
     }
     expect(problems).toStrictEqual([]);
   }, 120_000);
 
-  it('audits a body that is not an object, on both prefixes', async () => {
-    // L3-CLEANUP item 2: `COMMAND_BODY_INVALID` fires at `apps/api/app.ts:169`
-    // (person) and `:220` (agent) before any executor. The actor is known on
-    // both, so the attempt belongs in the caller's own chain.
+  it('records a body that is not an object as one admission refusal, on both prefixes', async () => {
+    // Root ruling 4: no domain actor exists yet, so the attempt owner records it
+    // (`recordBodyRefusal`, `identity/authentication-attempts.ts`), subject digest
+    // only, and no `audit_events` row carries an invented actor.
     const world = w.h.world;
-    const problems: string[] = [];
-    for (const [label, path, headers, actorId] of [
-      ['person', personPath('alpha', '/task/create'), bearer(world.ada.token), world.ada.actorId],
-      ['agent', agentPath('alpha', '/task/queue'), bearer(world.agent.token), world.agent.actorId],
+    const attempts = async (): Promise<readonly Record<string, unknown>[]> =>
+      await world.db.admin.execute('select * from public.authentication_attempts order by id');
+    for (const [owner, path, who] of [
+      ['person_login', personPath('alpha', '/task/create'), world.ada],
+      ['agent_login', agentPath('alpha', '/task/queue'), world.agent],
     ] as const) {
-      // eslint-disable-next-line no-await-in-loop
+      /* eslint-disable no-await-in-loop -- each prefix against its own before and after */
+      const before = await attempts();
       const mark = await auditMark(w.h);
-      // eslint-disable-next-line no-await-in-loop
-      const answer = await call(world.api, path, ['not', 'an', 'object'], headers);
-      // eslint-disable-next-line no-await-in-loop
-      const rows = await auditSince(w.h, mark);
-      expect(answer.code, label).toBe('COMMAND_BODY_INVALID');
-      const own = rows.filter(
-        (row) => row.business_id === world.alpha && row.refusal_code === 'COMMAND_BODY_INVALID',
-      );
-      if (own.length !== 1 || own[0]?.actor_id !== actorId) {
-        problems.push(`${label}: ${own.length} audit rows for COMMAND_BODY_INVALID, want 1`);
-      }
+      const state = await domainState(w.h, both());
+      const answer = await call(world.api, path, ['not', 'an', 'object'], bearer(who.token));
+      const known = new Set(before.map((row) => row['id']));
+      const added = (await attempts()).filter((row) => !known.has(row['id']));
+      expect(answer.code, owner).toBe('COMMAND_BODY_INVALID');
+      expect(await auditSince(w.h, mark), `${owner}: audit_events`).toStrictEqual([]);
+      expect(await domainState(w.h, both()), owner).toStrictEqual(state);
+      /* eslint-enable no-await-in-loop */
+      expect(
+        added.map(({ id: _id, at: _at, ...row }) => row),
+        `${owner}: authentication_attempts`,
+      ).toStrictEqual([
+        {
+          business_id: world.alpha,
+          owner,
+          provider: who.presented.provider,
+          subject_digest: subjectDigest(who.presented),
+          outcome: 'refused',
+          refusal_code: 'COMMAND_BODY_INVALID',
+          login_id: null,
+          actor_id: null,
+          person_id: null,
+        },
+      ]);
     }
-    expect(problems).toStrictEqual([]);
   }, 60_000);
 
   describe('I08: the agent narrows with its approving person', () => {
@@ -353,28 +357,22 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         });
         const agent = await freshAgent();
         const p = await pickUpBy(approver, agent, `work narrowed on ${name}`);
-        const bodyFor = (): Record<string, unknown> => {
-          switch (name) {
-            case 'task.read':
-              return { recordId: p.taskId };
-            case 'task.comment':
-              return { recordId: p.taskId, body: 'the agent writes a note', audience: 'internal' };
-            case 'task.heartbeat':
-              return { leaseId: p.leaseId, fence: p.fence };
-            default:
-              return {
-                leaseId: p.leaseId,
-                fence: p.fence,
-                outcome: 'completed',
-                report: { wrote: 'a narrowed draft' },
-              };
-          }
+        const lease = { leaseId: p.leaseId, fence: p.fence };
+        const bodies: Partial<Record<CommandName, Record<string, unknown>>> = {
+          'task.read': { recordId: p.taskId },
+          'task.comment': {
+            recordId: p.taskId,
+            body: 'the agent writes a note',
+            audience: 'internal',
+          },
+          'task.heartbeat': lease,
         };
+        const bodyFor = (): Record<string, unknown> =>
+          bodies[name] ?? { ...lease, outcome: 'completed', report: { wrote: 'a narrowed draft' } };
 
         // The control: the same authority, still held, admits the agent.
         const controlName = name === 'task.handback' ? 'task.heartbeat' : name;
-        const controlBody =
-          name === 'task.handback' ? { leaseId: p.leaseId, fence: p.fence } : bodyFor();
+        const controlBody = name === 'task.handback' ? lease : bodyFor();
         const control = await w.agent(agent, controlName, controlBody, p.credential);
         expect(control.code, `control ${controlName}`).toBe('ok');
 
@@ -391,6 +389,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           expect(revoked.code, 'grant.revoke').toBe('ok');
         }
 
+        // RED for write since 676cf71: authority loss revokes the delegation
+        // (`core-runtime/src/recovery.ts:723`, 9af0262, and `:384` in retireWork),
+        // so heartbeat and handback get DELEGATION_NOT_LIVE, not case 6's code.
         const cell = agentCell(agent, name, bodyFor(), p.credential, 'DELEGATION_NARROWED');
         expect(await check(`narrowed ${name}`, name, cell)).toStrictEqual([]);
       }, 120_000);

@@ -3,22 +3,18 @@
 // The world the identifier negatives and the per-operation audit proofs are
 // driven against, and the questions both of them ask it.
 //
-// It is `role-case-harness.ts`'s world with the identities the matrix does not
-// build, because the matrix's (c) and (d) cells swap one operand kind, a task
-// record, and ledger rows I03, I04 and I13 are about every kind:
+// It is `role-case-harness.ts`'s world plus what ledger rows I03, I04 and
+// I13 need beyond the matrix's one operand kind, the task record:
 //
-// - **bravo's own work in flight.** An admin and an agent of bravo, a task, a
-//   proposal (gate, version, lineage), an approved reservation, a live lease
-//   and delegation, a trash batch and a grant, each made through bravo's own
-//   routes. A foreign identifier is only foreign if it names something that
-//   really exists somewhere else, so every one is read back from bravo's rows.
-// - **a second alpha agent** with a live lease: for an agent operand, the
-//   same-business identifier it may not reach is another agent's lease.
-// - **`rhea`**, a member of alpha whose task grants name one record, because
-//   a business-scoped admin can reach every alpha task.
+// - **bravo's own work in flight**, made through bravo's own routes and read
+//   back from its rows: an admin, an agent, a task, a proposal, an approved
+//   reservation, a live lease and delegation, a trash batch and a grant.
+// - **a second alpha agent** with a live lease: another agent's lease is the
+//   same-business identifier an agent may not reach.
+// - **`rhea`**, whose task grants name one record, since an admin reaches all.
 //
 // Nothing below the boundary is substituted. Fixture grants go through
-// `issueGrant` via `grantTo`; every probe and control goes through `call`.
+// `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
@@ -33,7 +29,6 @@ import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
   agentPath,
   bearer,
-  call,
   personPath,
   type AgentIdentity,
   type Answer,
@@ -44,28 +39,31 @@ type Body = Readonly<Record<string, unknown>>;
 
 /** A pickup's answer: the handles an agent operand names. */
 export type Picked = Readonly<
-  Record<'taskId' | 'leaseId' | 'delegationId' | 'credential' | 'reservationId', string> & {
-    fence: number;
-  }
->;
+  Record<'taskId' | 'leaseId' | 'delegationId' | 'credential' | 'reservationId', string>
+> & { readonly fence: number };
 /** A proposal's handles. */
 export type Proposed = Readonly<
   Record<'gateId' | 'versionId' | 'lineageId', string> & { task: Task }
 >;
+
+/** An answer and the exact bytes it arrived as (root ruling 2 compares those). */
+export interface RawAnswer extends Answer {
+  readonly text: string;
+}
 
 type PersonCall = (
   caller: { readonly token: string },
   name: CommandName,
   body: Body,
   businessKey?: string,
-) => Promise<Answer>;
+) => Promise<RawAnswer>;
 type AgentCall = (
   identity: AgentIdentity,
   name: CommandName,
   body: Body,
   credential?: string,
   businessKey?: string,
-) => Promise<Answer>;
+) => Promise<RawAnswer>;
 
 export interface IdentWorld {
   readonly h: Harness;
@@ -105,24 +103,40 @@ function need(answer: Answer, what: string): Record<string, unknown> {
 /** The actions `rhea` is given on her one record: every record-scoped task action. */
 const RHEA_ACTIONS: readonly Action[] = ['read', 'write', 'comment', 'assign', 'share'];
 
+/** `world.ts` `call` with a fresh operation id, keeping the answer's text too. */
+async function callRaw(
+  api: Harness['world']['api'],
+  path: string,
+  body: Body,
+  headers: Record<string, string>,
+): Promise<RawAnswer> {
+  const response = await api.fetch(
+    new Request(`http://api.test${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({ operationId: randomUUID(), ...body }),
+    }),
+  );
+  const text = await response.text();
+  // A fault answers in plain text; the status assertion reports it.
+  const parsed: Record<string, unknown> = text.startsWith('{') ? JSON.parse(text) : { raw: text };
+  const code = parsed['refused'] === true ? String(parsed['code']) : 'ok';
+  return { status: response.status, body: parsed, code, text };
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, built in one place
 export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const h = await createHarness(part);
   const { world } = h;
 
   const person: PersonCall = async (caller, name, body, businessKey = 'alpha') =>
-    await call(
-      world.api,
-      personPath(businessKey, pathOf(name)),
-      { operationId: randomUUID(), ...body },
-      bearer(caller.token),
-    );
+    await callRaw(world.api, personPath(businessKey, pathOf(name)), body, bearer(caller.token));
 
   const agent: AgentCall = async (identity, name, body, credential, businessKey = 'alpha') =>
-    await call(
+    await callRaw(
       world.api,
       agentPath(businessKey, pathOf(name)),
-      { operationId: randomUUID(), ...body },
+      body,
       credential === undefined
         ? bearer(identity.token)
         : { ...bearer(identity.token), [DELEGATION_HEADER]: credential },
@@ -223,12 +237,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   });
   const rheaTask = await taskOf(world.ada, 'the one task rhea may reach', 'alpha');
   await world.db.app.withBusiness(world.alpha, async (tx) => {
-    const { presented } = rhea;
-    const member = {
-      personId: rhea.personId as string,
-      actorId: rhea.actorId as string,
-      presented,
-    };
+    const member = { ...rhea, personId: rhea.personId as string, actorId: rhea.actorId as string };
     for (const action of RHEA_ACTIONS) {
       // eslint-disable-next-line no-await-in-loop -- a handful of grants, in order
       await grantTo(tx, member, action, { kind: 'record', id: rheaTask.id });
@@ -258,9 +267,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Durable state and the audit chain, read on the administrative connection.
-// ---------------------------------------------------------------------------
 
 /** Evidence of attempts, which a committed refusal writes by contract (T1). */
 const EVIDENCE_TABLES: ReadonlySet<string> = new Set([
@@ -375,21 +382,15 @@ export function expectAudited(
   expect(own, `${label}: audit rows for ${expected.command}`).toHaveLength(1);
   const row = own[0] as AuditRow;
   expect(
-    {
-      actor: row.actor_id,
-      command: row.command,
-      operation: row.operation_id,
-      outcome: row.outcome,
-      code: row.refusal_code,
-    },
-    label,
-  ).toStrictEqual({
-    actor: expected.actorId,
-    command: expected.command,
-    operation: expected.operationId,
-    outcome: expected.outcome,
-    code: expected.refusalCode,
-  });
+    [row.actor_id, row.command, row.operation_id, row.outcome, row.refusal_code],
+    `${label}: actor, command, operation, outcome, code`,
+  ).toStrictEqual([
+    expected.actorId,
+    expected.command,
+    expected.operationId,
+    expected.outcome,
+    expected.refusalCode,
+  ]);
   expect(row.payload_digest, `${label}: digest`).toMatch(/^[0-9a-f]{64}$/u);
   expect(row.attempted, `${label}: attempted`).toBeNull();
   const stored = JSON.stringify(row);

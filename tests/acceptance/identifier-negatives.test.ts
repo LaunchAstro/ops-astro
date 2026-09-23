@@ -4,10 +4,11 @@
 // task record the matrix's (c) and (d) cells swap. Each cell sends one operand
 // in up to three forms (real in bravo, fabricated, and in alpha but outside
 // the caller's reach) through the real HTTP boundary, and asks of each answer:
-// the contract's code (minimum contract 8.2 case 1); the same status and body
-// across the forms once the caller's own presented identifier is blanked
-// (case 2); one refused audit row in alpha and none in bravo, digest only
-// (case 1, I13); and both businesses' tenant tables unchanged (T1).
+// the contract's code (minimum contract 8.2 case 1); the same status and the
+// same body bytes across the forms, with nothing normalised away, not even the
+// identifier the caller sent (case 2, root ruling 2); one refused audit row
+// in alpha and none in bravo, digest only (case 1, I13); and both businesses'
+// tenant tables unchanged (T1).
 //
 // The third form needs a caller whose reach stops short of its business:
 // `rhea`, whose grants name one record, and the agent, whose delegation names
@@ -21,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
 import { READS } from '../../packages/core-records/src/commands/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
-import { serverUrl, type AgentIdentity, type Answer, type Caller } from './world.ts';
+import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import {
   auditMark,
   auditSince,
@@ -29,6 +30,7 @@ import {
   domainState,
   expectAudited,
   type IdentWorld,
+  type RawAnswer,
 } from './ident-audit-cases.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -46,16 +48,6 @@ interface Cell {
   readonly forms: Readonly<Record<string, Body>>;
   /** A form whose answer is its own code rather than the shared one. */
   readonly apart?: Readonly<Record<string, string>>;
-}
-
-const UUID_ANYWHERE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu;
-
-/** The body, with the identifiers this request presented blanked. */
-function blanked(answer: Answer, sent: Body): string {
-  const presented = new Set(JSON.stringify(sent).match(UUID_ANYWHERE) ?? []);
-  return JSON.stringify(answer.body).replace(UUID_ANYWHERE, (id) =>
-    presented.has(id) ? '<presented>' : id,
-  );
 }
 
 const NOBODY = 'text nobody should find in an audit row';
@@ -89,7 +81,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     await w?.close();
   });
 
-  async function send(by: Presenter, op: CommandName, body: Body): Promise<Answer> {
+  async function send(by: Presenter, op: CommandName, body: Body): Promise<RawAnswer> {
     return by.kind === 'person'
       ? await w.person(by.caller, op, body)
       : await w.agent(by.identity, op, body, by.credential);
@@ -97,7 +89,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   /** One cell: every form refused alike, audited at home, and nothing moved. */
   async function probe(cell: Cell): Promise<void> {
-    const seen: { form: string; answer: Answer; body: Body }[] = [];
+    const seen: { form: string; answer: RawAnswer }[] = [];
     for (const [form, shape] of Object.entries(cell.forms)) {
       const label = `${cell.op} ${cell.operand} ${form}`;
       const body = { operationId: randomUUID(), ...shape };
@@ -122,15 +114,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         refusalCode: code,
         body,
       });
-      if (cell.apart?.[form] === undefined) seen.push({ form, answer, body });
+      if (cell.apart?.[form] === undefined) seen.push({ form, answer });
     }
     const [first, ...rest] = seen;
     for (const other of rest) {
       const label = `${cell.op} ${cell.operand}: ${first?.form} against ${other.form}`;
-      expect(other.answer.status, label).toBe(first?.answer.status);
-      expect(blanked(other.answer, other.body), label).toBe(
-        first === undefined ? '' : blanked(first.answer, first.body),
-      );
+      expect.soft(other.answer.status, label).toBe(first?.answer.status);
+      // Raw bytes: a differing echoed id or reason fragment is a difference.
+      expect.soft(other.answer.text, label).toBe(first?.answer.text);
     }
   }
 
@@ -277,9 +268,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   }, 300_000);
 
   it('refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it', async () => {
-    // RED at 74d583c: `task.decide` answers `GATE_NOT_FOUND`, a code case 1
-    // does not name for a foreign gate identifier. The two forms are still
-    // indistinguishable once the presented gate is blanked.
+    // Green at 403267f, RED at 74d583c (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`
+    // with the foreign and fabricated bodies identical byte for byte.
     const decision = { decision: 'approve', note: NOBODY };
     const { gateId, versionId } = w.foreign.proposal;
     await refuses('task.decide', 'gateId', ada, 'NOT_FOUND', {
@@ -289,7 +279,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   }, 120_000);
 
   it('refuses a board read on a foreign or fabricated board, never an empty success', async () => {
-    // RED at 74d583c: `task.board` takes a board identifier
+    // Green at 403267f. RED at 74d583c: `task.board` takes a board identifier
     // (`reads/dispatch.ts:241-243`) and answers 200 `{ tasks: [] }` for one
     // that is not alpha's. Case 1 asks `NOT_FOUND`, and case 3 says a denied
     // list is never empty. `task.move` refuses the same identifier
@@ -301,6 +291,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   }, 120_000);
 
   it('refuses the agent alike on foreign, fabricated and in-business operands', async () => {
+    // RED at 403267f on bytes alone (root ruling 2): the refusal text echoes
+    // the presented id, so the forms differ. DELEGATION_OUT_OF_PURPOSE at
+    // `authority/delegations.ts:360`; LEASE_NOT_OWNED at
+    // `core-runtime/src/heartbeat.ts:82` and `core-runtime/src/handback.ts:147`.
     const own = await w.pickUp(w.h.world.agent, 'the agent’s own work');
     const agent: Presenter = {
       kind: 'agent',
@@ -339,7 +333,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   }, 300_000);
 
   it('refuses a pickup alike on a foreign, a fabricated and a claimed reservation', async () => {
-    // RED at 74d583c for the third form: the answer for a reservation another
+    // Green at 403267f. RED at 74d583c for the third form: the answer for a reservation another
     // agent already claimed names the lease that claimed it ("already claimed
     // by lease <id>"), an alpha identifier this agent was never given. No
     // delegation is live here, so nothing else would have shown it one.
@@ -381,7 +375,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       expect(JSON.stringify(aimed.body), op).not.toContain(w.foreign.admin.personId);
       answered[op] = aimed.code;
     }
-    // RED at 74d583c for the five reads: a read takes a `recordId` it has no
+    // Green at 403267f. RED at 74d583c for the five reads: a read takes a `recordId` it has no
     // use for and answers as if it had not been sent (the target check,
     // `commands/prepare.ts:253-266`, runs on the command path only).
     expect(answered).toStrictEqual(
