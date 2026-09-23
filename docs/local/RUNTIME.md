@@ -381,6 +381,25 @@ superseded, or the lineage is no longer live, it keeps the report as
 (`handback.ts:244-287`). `tests/runtime/lifecycle-stale-handback.test.ts` holds
 four cases, with and without a successor.
 
+**A retired agent's late report is still kept** (T4 lines 76 and 78, runtime
+review C2). Supersession, cancellation, settlement and plain expiry leave the original agent's credential answering to no live delegation,
+so the agent entry refuses its new handback `DELEGATION_NOT_LIVE` before
+`handback` is reached. A delegation revoked for authority loss answers
+`DELEGATION_NARROWED` and keeps nothing, as R-B holds. The refusal stands, and
+the report is kept by an evidence-only intake (`retainLateHandback`,
+`commands/agent-envelope.ts:685`): the credential must name a delegation of this
+business and this authenticated agent that is no longer live
+(`resolveHistoricalDelegation`, `authority/delegations.ts:377`), and the
+presented lease and fence must be that delegation's exactly
+(`retainHistoricalReport`, `handback.ts:518`). Then one `retained` row naming
+the refusal is appended, beside the refused audit row. No lease, delegation,
+run, attempt, reservation, gate, envelope or successor is written, and nothing
+is read back to the caller. A wrong lease, fence or credential, another
+agent's credential and any other refusal retain nothing. A settled handback's
+replay is still answered from its register row; only a new operation id is a
+new late report. `tests/runtime/historical-handback-intake.test.ts` holds it
+over HTTP.
+
 **An abandoned hold is replaced, never revived** (R5). At pickup, a hold that
 ended without settling, because its lease expired or the authority behind it
 was lost, on a version still approved and current on a live lineage, is

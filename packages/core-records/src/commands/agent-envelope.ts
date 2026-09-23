@@ -13,10 +13,11 @@
 // **Asking what it may do.** `session.capabilities` is reachable on this
 // prefix under a live delegation, and its answer is the agent's own, not the
 // delegating person's: its own acting identity, the business key, the purpose
-// its delegation is bounded to and the authority the two pre-pickup operations
-// take. An agent holds no grants of its own -- see below -- so reporting the
-// delegating person's here would be reporting somebody else's authority as the
-// agent's.
+// its delegation is bounded to and the pairs that purpose carries which the
+// delegating person's effective grants still cover on it, read on every call
+// and on every replay (root ruling 5). An agent holds no grants of its own --
+// see below -- so reporting the delegating person's here would be reporting
+// somebody else's authority as the agent's.
 //
 // **The two operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
@@ -58,14 +59,16 @@ import {
   checkDelegatedAuthority,
   digestOf,
   resolveDelegation,
+  resolveHistoricalDelegation,
   type Delegation,
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
+import { retainHistoricalReport } from '../../../core-runtime/src/handback.ts';
 import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
-import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
+import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { writeAuditEvent } from './audit.ts';
 import { payloadDigest } from './digest.ts';
 import { readTaskSpine } from './context.ts';
@@ -258,11 +261,20 @@ async function runAgentCommand(
     // A pickup is the one replay that hands something back beyond the receipt:
     // the credential the lost response carried, derived again once the
     // current rights and the receipt's own lease have been checked.
+    //
+    // A capabilities replay is a read with nothing to repeat and no handle of
+    // its own, and the scope it stored is the delegation's that asked. The
+    // register compares the body, not the credential, so a replay under
+    // another delegation would otherwise be handed the first one's scope. It
+    // is projected again for the credential presented now, which is the same
+    // answer when nothing changed (CA2).
     const released: CommandResult | undefined = isCommandRefusal(replayed)
       ? undefined
       : request.command === 'task.pickup'
         ? await replayPickup(tx, session, replayed)
-        : await authoriseReplay(tx, session, credential, request, replayed);
+        : request.command === 'session.capabilities'
+          ? await replayCapabilities(tx, session, credential, request)
+          : await authoriseReplay(tx, session, credential, request, replayed);
     if (released !== undefined && isCommandRefusal(released)) {
       const visible = asCallerVisible(released);
       await writeAuditEvent(tx, {
@@ -297,7 +309,10 @@ async function runAgentCommand(
   }
 
   const authorised = await authorise(tx, session, credential, request);
-  if (authorised !== undefined) return await settle(tx, session, request, digest, authorised);
+  if (authorised !== undefined) {
+    await retainLateHandback(tx, session, credential, request, operands, authorised);
+    return await settle(tx, session, request, digest, authorised);
+  }
 
   await tx.query('savepoint agent_work');
   const outcome = await serve(tx, session, credential, request, operands);
@@ -369,12 +384,13 @@ async function authorise(
   const delegation = resolved.value;
 
   // Under a live delegation the agent may ask what it may do: the answer is
-  // that delegation's purpose, which is not a grant on any collection. It is
-  // still an assertion that the agent reaches its task, so it is answered only
-  // while the delegation and the delegating person's current grants intersect
-  // on that task (root ruling 5). The check is the least the answer claims:
-  // `read` on the purpose record. When the person has lost it, the agent is
-  // told `DELEGATION_NARROWED` rather than shown a scope it cannot use.
+  // that delegation's purpose and the pairs of it the delegating person still
+  // covers (`capabilitiesOf`). It is an assertion that the agent reaches its
+  // task, so it is answered only while the delegation and the person's current
+  // grants intersect on that task (root ruling 5). The check is the least the
+  // answer claims: `read` on the purpose record. When the person has lost it,
+  // the agent is told `DELEGATION_NARROWED` rather than shown a scope it
+  // cannot use.
   if (request.command === 'session.capabilities') {
     const reach = await checkDelegatedAuthority(tx, delegation, {
       collection: delegation.collections[0] ?? 'task',
@@ -455,35 +471,14 @@ async function serve(
     case 'session.capabilities': {
       // An agent holds no grants of its own -- `identity/agent-login.ts`
       // confers nothing at all -- so this is not the person answer with a
-      // different subject in it. Handing back the delegating person's grants
-      // here would report somebody else's authority as the agent's, which is
-      // the collapse this whole entry point exists to prevent. What the agent
-      // has is a purpose and a floor: the task its delegation is bounded to,
-      // and the two operations it may reach holding nothing.
-      const resolved =
-        credential === undefined || credential === ''
-          ? undefined
-          : await resolveDelegation(tx, session.actorId, credential);
-      const capabilities: AgentCapabilities = {
-        agentActorId: session.actorId,
-        businessKey: await businessKeyOf(tx),
-        purposeScope: resolved !== undefined && resolved.ok ? resolved.value.purposeScope : null,
-        // The authority the pre-pickup pair takes, read off their own
-        // declarations so this list cannot drift from `BEFORE_PICKUP`.
-        grants: [...BEFORE_PICKUP]
-          .toSorted()
-          .map((name) => ({
-            collection: declarationOf(name)?.collection ?? 'task',
-            action: declarationOf(name)?.action ?? 'read',
-          }))
-          .filter(
-            (pair, index, all) =>
-              all.findIndex(
-                (other) => other.collection === pair.collection && other.action === pair.action,
-              ) === index,
-          ),
+      // different subject in it. What the agent has is a purpose, and the
+      // pairs reported are that purpose as the delegating person's grants
+      // still cover it on the picked-up task, read now (`capabilitiesOf`).
+      return {
+        recordId: null,
+        revision: null,
+        detail: { ...(await capabilitiesOf(tx, session, credential)) },
       };
-      return { recordId: null, revision: null, detail: { ...capabilities } };
     }
     case 'task.queue':
       return { recordId: null, revision: null, detail: { queue: await readQueue(tx) } };
@@ -600,6 +595,117 @@ async function serve(
         ),
       };
   }
+}
+
+/**
+ * What an agent may do under the credential it presents, right now.
+ *
+ * The pairs are the intersection root ruling 5 names: each collection and
+ * action the delegation's purpose carries, kept only while the delegating
+ * person's effective grants still cover it on the purpose record
+ * (`checkDelegatedAuthority`, the same check a call makes). So a person who
+ * keeps `read` and loses `write` to expiry leaves an agent told `read` and
+ * not `write`, with no lifecycle write needed to say so. The pre-pickup pair
+ * (`BEFORE_PICKUP`) is not a grant and is not in this list: it is what an
+ * agent login reaches holding nothing, and it is refused this read.
+ */
+async function capabilitiesOf(
+  tx: TenantQuery,
+  session: AgentSession,
+  credential: string | undefined,
+): Promise<AgentCapabilities> {
+  const resolved =
+    credential === undefined || credential === ''
+      ? undefined
+      : await resolveDelegation(tx, session.actorId, credential);
+  const delegation = resolved !== undefined && resolved.ok ? resolved.value : undefined;
+  const grants: Capability[] = [];
+  if (delegation !== undefined) {
+    for (const collection of delegation.collections) {
+      for (const action of delegation.actions) {
+        // Sequential: one transaction, one connection.
+        // oxlint-disable-next-line no-await-in-loop
+        const held = await checkDelegatedAuthority(tx, delegation, {
+          collection,
+          action,
+          scope: delegation.purposeScope,
+        });
+        if (held.ok) grants.push({ collection, action });
+      }
+    }
+  }
+  return {
+    agentActorId: session.actorId,
+    businessKey: await businessKeyOf(tx),
+    purposeScope: delegation?.purposeScope ?? null,
+    grants,
+  };
+}
+
+/**
+ * A capabilities replay: the current rights checked the way a fresh call is,
+ * then the answer projected for them. The stored answer is never released.
+ */
+async function replayCapabilities(
+  tx: TenantQuery,
+  session: AgentSession,
+  credential: string | undefined,
+  request: AgentRequest,
+): Promise<CommandResult> {
+  const refusal = await authorise(tx, session, credential, request);
+  if (refusal !== undefined) return refusal;
+  return {
+    command: request.command,
+    recordId: null,
+    revision: null,
+    detail: { ...(await capabilitiesOf(tx, session, credential)) },
+  };
+}
+
+/**
+ * T4's evidence-only intake for an agent whose delegation has ended.
+ *
+ * Supersession, cancellation, settlement and plain expiry leave the original
+ * agent's credential answering `DELEGATION_NOT_LIVE`, so its new handback is
+ * refused before any lease is read. The refusal stands. A delegation revoked
+ * for authority loss answers `DELEGATION_NARROWED` and is not taken here: R-B
+ * holds that its handback changes nothing, report count included
+ * (`tests/runtime/authority-loss-narrowed.test.ts`).
+ * What this adds is the report: when the credential names a delegation of
+ * this business and this authenticated agent that is no longer live, and the
+ * presented lease and fence are that delegation's exactly, the report is kept
+ * as one unaccepted `handback_reports` row naming the refusal
+ * (`retainHistoricalReport`). Nothing is read back to the caller and nothing
+ * else is written: no settlement, successor, lease, delegation or money.
+ *
+ * Every other refusal, and any binding that does not hold, retains nothing.
+ * A replay never reaches here: a settled handback's replay is answered from
+ * its register row above, and only a new operation id is a new late report.
+ */
+async function retainLateHandback(
+  tx: TenantQuery,
+  session: AgentSession,
+  credential: string | undefined,
+  request: AgentRequest,
+  operands: AgentOperands,
+  refusal: CommandRefusal,
+): Promise<void> {
+  if (request.command !== 'task.handback') return;
+  if (refusal.code !== 'DELEGATION_NOT_LIVE') return;
+  if (credential === undefined || credential === '') return;
+  const leaseId = request['leaseId'];
+  if (typeof leaseId !== 'string' || !UUID.test(leaseId)) return;
+  const historical = await resolveHistoricalDelegation(tx, session.actorId, credential);
+  if (historical === undefined) return;
+  await retainHistoricalReport(tx, {
+    leaseId,
+    delegationId: historical.id,
+    holderActorId: session.actorId,
+    fence: typeof request['fence'] === 'number' ? request['fence'] : Number.NaN,
+    outcome: String(request['outcome'] ?? ''),
+    report: operands.report ?? {},
+    refusalCode: refusal.code,
+  });
 }
 
 /** The register row and the audit row for a refusal, then the caller's version. */

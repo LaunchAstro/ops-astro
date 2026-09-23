@@ -67,22 +67,22 @@ export interface AgentCapabilities {
   /** The picked-up task the delegation is bounded to, or null before a pickup. */
   readonly purposeScope: { readonly kind: 'record'; readonly id: string } | null;
   /**
-   * The authority the two pre-pickup operations take, as the same
-   * `{ collection, action }` pairs the person answer uses.
-   *
-   * `task.queue` and `task.pickup` are the two an agent may reach holding
-   * nothing, and their declarations take `read` and `write` on `task`. The
-   * pairs are what this field carries rather than the operation names, so one
-   * client can read `grants` the same way on both prefixes; the names are in
-   * `agent-envelope.ts`'s `BEFORE_PICKUP` and in `docs/local/API.md`.
+   * What the agent may do on its purpose record now, as the same
+   * `{ collection, action }` pairs the person answer uses, so one client can
+   * read `grants` the same way on both prefixes. Each pair is one the
+   * delegation's purpose carries that the delegating person's effective
+   * grants still cover there (root ruling 5, the intersection); a pair the
+   * person lost, by revocation or by expiry, is absent. The two operations an
+   * agent login reaches holding nothing (`BEFORE_PICKUP` in
+   * `agent-envelope.ts`) are not grants and are not here.
    */
   readonly grants: readonly Capability[];
 }
 
-// The pre-pickup pair itself is `agent-envelope.ts`'s `BEFORE_PICKUP` and it is
-// filled in there rather than imported here. The agent envelope already reads
+// The agent's pairs are computed in `agent-envelope.ts` (`capabilitiesOf`),
+// which already holds the resolved delegation. The envelope already reads
 // `reads/queue.ts` and `reads/tasks.ts`, so a read module reaching back into it
-// would close an import cycle for the sake of one constant.
+// would close an import cycle.
 
 interface CandidateRow {
   readonly collection: string;

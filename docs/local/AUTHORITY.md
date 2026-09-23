@@ -234,14 +234,22 @@ decision is still named as one. `session.capabilities` is in `AGENT_SURFACE`
 but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way.
 After a pickup it answers that delegation's purpose only while the delegation
 and the delegating person's current grants intersect on the purpose record
-(`read`); otherwise it is `DELEGATION_NARROWED` (`:378-385`). A credential
-that is presented but not live stays `DELEGATION_NOT_LIVE` (`:367-368`, from
+(`read`); otherwise it is `DELEGATION_NARROWED` (`:394-401`). Its `grants` are
+that intersection, computed on every call (`capabilitiesOf`, `:612`): each
+collection and action the purpose carries that the person's effective grants
+still cover on the purpose record. A person who keeps `read` and loses
+`write`, by revocation or by expiry, leaves an agent told `read` and not
+`write`. The pre-pickup pair is not a grant and is not reported. A credential
+that is presented but not live stays `DELEGATION_NOT_LIVE` (from
 `resolveDelegation`).
 
 The same holds on replay. A bare agent replay of a handback, with no
 credential, answers `DELEGATION_EXCLUDES_OPERATION` without receipt content,
 and a presented credential that is not live stays `DELEGATION_NOT_LIVE`
-(`authoriseReplay`, `:879-907`). A pickup replay is the one exception to "no
+(`authoriseReplay`). A capabilities replay is authorised as a fresh call and
+projected again for the credential presented now (`replayCapabilities`,
+`:649`), so a replay under another delegation never releases the first
+delegation's `purposeScope`. A pickup replay is the one exception to "no
 credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 

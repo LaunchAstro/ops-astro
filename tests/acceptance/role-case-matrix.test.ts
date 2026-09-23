@@ -31,12 +31,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  COMMAND_SURFACE,
-  declarationOf,
-  pathOf,
-  type CommandDeclaration,
-} from '../../packages/core-records/src/commands/surface.ts';
+import { COMMAND_SURFACE, pathOf } from '../../packages/core-records/src/commands/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
@@ -432,16 +427,18 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           kind: 'record',
           id: subject.id,
         });
-        // The pairs the pre-pickup operations take, read from their own
-        // declarations, and not the delegating person's grants.
+        // EX-35 (root ruling 5): the current intersection of the pickup's
+        // purpose and the delegating person's effective grants on the task,
+        // never the pre-pickup pair and never a pair outside the purpose. The
+        // person here holds what the purpose carries, so it is all of it.
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
-        const owed = [...BEFORE_PICKUP]
-          .map((name) => harness.pairFor(declarationOf(name) as CommandDeclaration))
-          .toSorted();
-        expect(BEFORE_PICKUP.size, 'BEFORE_PICKUP is the two-operation ceiling').toBe(2);
-        expect(reported, declaration.name).toStrictEqual([...new Set(owed)]);
+        expect(reported, declaration.name).toStrictEqual([
+          'task:comment',
+          'task:read',
+          'task:write',
+        ]);
         continue;
       }
       if (declaration.name === 'task.handback') {

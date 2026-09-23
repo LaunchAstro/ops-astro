@@ -322,13 +322,14 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     expect(after['purposeScope']).toStrictEqual({ kind: 'record', id: subject });
     expect(after['agentActorId']).toBe(agentActorId);
     expect(after['businessKey']).toBe('agent-path');
-    // The authority the pre-pickup pair takes -- `task.queue` reads and
-    // `task.pickup` writes -- and not the delegating person's grants wearing
-    // the agent's name. `decider` holds `decide`, `assign` and `comment` on
-    // tasks as well, and none of them is here.
+    // The purpose's pairs as the delegating person's grants cover them now
+    // (root ruling 5), and not the person's grants wearing the agent's name:
+    // `decider` holds `decide` and `assign` on tasks as well, and neither is
+    // here, because the purpose carries neither.
     expect(after['grants']).toStrictEqual([
-      { collection: 'task', action: 'write' },
       { collection: 'task', action: 'read' },
+      { collection: 'task', action: 'comment' },
+      { collection: 'task', action: 'write' },
     ]);
     expect(Object.keys(after).toSorted()).toStrictEqual([
       'agentActorId',

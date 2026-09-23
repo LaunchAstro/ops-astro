@@ -384,6 +384,12 @@ and the handler says which it is rather than a list of codes held somewhere
 else. `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately not one of them — it is
 refused before the first write, so there is nothing to keep.
 
+On the agent prefix a handback refused `DELEGATION_NOT_LIVE` also keeps one
+`retained` row naming that code, when the credential names this agent's own
+ended delegation and the lease and fence are exactly that delegation's. The
+answer is unchanged and nothing else is written
+([RUNTIME.md, "Why the lease is fenced"](RUNTIME.md#why-the-lease-is-fenced)).
+
 **An expired lease is recovered by a new pickup.** A `task.pickup` of a
 reservation whose lease has expired succeeds into a fresh hold with a new
 `reservationId` and `attemptId`, and the projection shows the abandoned hold
@@ -859,8 +865,10 @@ presented credential that is not live is `DELEGATION_NOT_LIVE` 401
 (`commands/agent-envelope.ts:362-368`). Under a live delegation it answers the
 agent's own capabilities and not the delegating person's: `agentActorId`,
 `businessKey`, the delegation's `purposeScope`, `{ kind: 'record', id }`, and
-`grants`, which is the authority the two pre-pickup operations take
-(`task.queue` reads and `task.pickup` writes on `task`).
+`grants`, which is the current intersection of the delegation's purpose and the
+delegating person's effective grants on the purpose record (root ruling 5,
+`capabilitiesOf`). With every grant held that is `task` `read`, `comment` and
+`write`; a pair the person lost, by revocation or expiry, is absent.
 
 **One shape on both prefixes.** Both answers are flattened beside `ok`, and
 neither carries a `detail`. The subject fields differ because the subjects do,
@@ -869,7 +877,7 @@ and `businessKey` and `grants` sit at the same level on both:
 | Prefix                     | Body on success                                                 | Code                                                          |
 | -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
 | person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | `reads/dispatch.ts:260-268`                                   |
-| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `commands/agent-envelope.ts:455-487`, flattened at `:181-186` |
+| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `commands/agent-envelope.ts:471-481`, flattened at `:184-189` |
 
 The agent handler still stores the answer as the handle every agent command is
 stored as, `{ recordId: null, revision: null, detail }`, so a replay reads the
@@ -877,8 +885,11 @@ same register row. `agentAnswer` flattens it at the wire (`apps/api/app.ts:237`)
 for the first answer and a replay alike. Every other agent answer keeps its
 payload under `detail`.
 
-The agent answer's `grants` is always the pre-pickup pair; what a pickup
-changes is `purposeScope`, which names the picked-up task.
+The agent answer's `grants` is read on every call and on every replay: a
+replay is authorised as a fresh call and projected again for the credential
+presented now, so a replay under another delegation answers that delegation's
+scope and never the first one's (`replayCapabilities`).
+`tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
 `tests/api/capabilities-shape.test.ts:83` asserts the one shape on both
 prefixes and on a replay. `tests/acceptance/role-case-matrix.test.ts` asserts
 the person answer flattened with no `detail` and the no-grant refusal in case
