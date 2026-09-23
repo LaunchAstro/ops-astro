@@ -65,6 +65,17 @@ export function operationPath(name: OperationName): string {
 export interface CommandOutcome {
   readonly recordId: string;
   readonly revision: number;
+  /**
+   * Whatever the operation has to say about what it did, in its own words.
+   *
+   * It is the envelope's third field (`commands/outcome.ts`) and the API passes
+   * it through unchanged. `task.comment` puts the new comment's identifier in
+   * it; the two settings commands put the key and the value the row now holds,
+   * which is the only thing in this build that tells a caller what a setting
+   * was set to — there is no settings read. Optional, because most operations
+   * have nothing to add beyond the handle and the revision.
+   */
+  readonly detail?: Readonly<Record<string, unknown>>;
 }
 
 /**
