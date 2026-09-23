@@ -54,6 +54,13 @@
 // asks. What it can do is ask once, quote the server's own code, and then stop
 // offering a control that has already been refused for this reader — so a
 // member without the grant is not invited to be refused over and over.
+//
+// **A reader outside the business gets the shared view, not this page with
+// holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
+// that key alone picks `SharedTaskDetail`: the screen never guesses from a
+// role, never builds a task out of the projection, and never reads anything
+// else to fill it. Refresh and the denied state are shared by both, so a
+// revoked share empties the page the same way a revoked grant does.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty, Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
@@ -75,6 +82,7 @@ import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { describeFailure, describeRefusal, submitEdit } from '../records/submit.ts';
+import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -173,52 +181,56 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
         )}
       </div>
       <RecordState state={state} subject="task" onRetry={reload}>
-        {(value) => (
-          <Loaded
-            client={client}
-            grantKey={props.grantKey}
-            task={value.task}
-            draft={held}
-            note={note}
-            onDecided={(next) => {
-              setDecision(next === null ? null : { identity, note: next });
-            }}
-            onDraft={(next, base) => {
-              if (next === null) {
+        {(value) =>
+          'sharedTask' in value ? (
+            <SharedTaskDetail task={value.sharedTask} />
+          ) : (
+            <Loaded
+              client={client}
+              grantKey={props.grantKey}
+              task={value.task}
+              draft={held}
+              note={note}
+              onDecided={(next) => {
+                setDecision(next === null ? null : { identity, note: next });
+              }}
+              onDraft={(next, base) => {
+                if (next === null) {
+                  setDraft(null);
+                  return;
+                }
+                setDraft((current) =>
+                  current !== null && current.identity === identity
+                    ? {
+                        ...current,
+                        title: next.title,
+                        due: next.due,
+                        generation: current.generation + 1,
+                      }
+                    : { identity, generation: 1, base, title: next.title, due: next.due },
+                );
+              }}
+              onSaved={(generation) => {
+                // Only the generation that was submitted. A save that settles
+                // after further typing has answered a question nobody is asking
+                // any more, and clearing the newer draft here is exactly how the
+                // person's newer text used to disappear.
+                setDraft((current) =>
+                  current !== null &&
+                  current.identity === identity &&
+                  current.generation === generation
+                    ? null
+                    : current,
+                );
+              }}
+              onDiscard={() => {
                 setDraft(null);
-                return;
-              }
-              setDraft((current) =>
-                current !== null && current.identity === identity
-                  ? {
-                      ...current,
-                      title: next.title,
-                      due: next.due,
-                      generation: current.generation + 1,
-                    }
-                  : { identity, generation: 1, base, title: next.title, due: next.due },
-              );
-            }}
-            onSaved={(generation) => {
-              // Only the generation that was submitted. A save that settles
-              // after further typing has answered a question nobody is asking
-              // any more, and clearing the newer draft here is exactly how the
-              // person's newer text used to disappear.
-              setDraft((current) =>
-                current !== null &&
-                current.identity === identity &&
-                current.generation === generation
-                  ? null
-                  : current,
-              );
-            }}
-            onDiscard={() => {
-              setDraft(null);
-              reload();
-            }}
-            onChanged={reload}
-          />
-        )}
+                reload();
+              }}
+              onChanged={reload}
+            />
+          )
+        }
       </RecordState>
     </div>
   );

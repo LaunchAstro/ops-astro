@@ -224,10 +224,40 @@ export interface TaskDetail extends TaskSummary {
   readonly proposals?: readonly ProposalLineage[];
 }
 
-export interface TaskReadResult {
+/**
+ * What a reader outside the business is shown of one task: the server's
+ * shared projection (`SharedTaskView` in `packages/core-records`).
+ *
+ * **It is not a task with parts missing.** There is no title, state, revision,
+ * history or proposal on it because the server never read them on this path,
+ * and the screen does not ask for them anywhere else. `fields` is keyed by the
+ * field's own key and holds only what the catalogue marks `shared`; it is empty
+ * when nothing is. `comments` are the client comments in their shared fields.
+ */
+export interface SharedTask {
+  readonly id: string;
+  readonly fields: Readonly<Record<string, unknown>>;
+  readonly comments: readonly TaskComment[];
+}
+
+/** `task.read` for a reader inside the business: the whole detail. */
+export interface InternalTaskRead {
   readonly ok: true;
   readonly task: TaskDetail;
 }
+
+/**
+ * `task.read` for a reader outside it. Its own key, as on the server, so code
+ * that reads `task` can never be handed the narrower view and draw its absent
+ * fields as empty ones.
+ */
+export interface SharedTaskRead {
+  readonly ok: true;
+  readonly sharedTask: SharedTask;
+}
+
+/** Which of the two arrived is decided by the key, never by the reader's role. */
+export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
 export interface TaskBoardResult {
   readonly ok: true;
