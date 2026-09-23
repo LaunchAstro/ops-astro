@@ -83,6 +83,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0007_command_envelope',
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
+        '0015_login_kind_serialised',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -100,6 +101,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0007_command_envelope',
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
+        '0015_login_kind_serialised',
       ]);
     });
 
