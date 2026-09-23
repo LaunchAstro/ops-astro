@@ -47,7 +47,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, refusedRetaining, type HandlerOutcome } from './outcome.ts';
 import type { RefusalCode } from './register.ts';
 import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
 
@@ -348,6 +348,16 @@ export interface HandbackFields {
 const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
 
 /**
+ * The handback refusals that have already written a report row L4 keeps.
+ *
+ * `core-runtime/src/handback.ts` calls its `retain` helper on exactly these
+ * two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
+ * not among them: R6 refuses that one before the first write, so there is
+ * nothing to keep.
+ */
+const RETAINING_REFUSALS: ReadonlySet<string> = new Set(['LEASE_NOT_OWNED', 'LEASE_EXPIRED']);
+
+/**
  * The hold released, and `actualMinor` is `null` rather than a number.
  *
  * Nothing in this head dispatches, so nothing was spent, and the reservation
@@ -399,7 +409,18 @@ export async function handbackLease(
     report: { ...fields.report },
     actualMinor: null,
   });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) {
+    // R4, behavioural note 8. On these two paths the runtime has already
+    // written the `handback_reports` row that keeps a stale holder's work, and
+    // it says so in the row's `disposition = 'retained'`. The refusal and the
+    // retained report are one fact and have to commit together, so this one
+    // refusal is exempt from the savepoint every other refusal rolls back
+    // through. The codes are named here rather than inferred, because a code
+    // that starts retaining a row later should have to come and say so.
+    return RETAINING_REFUSALS.has(result.refusal.code)
+      ? refusedRetaining(fromRuntime(result.refusal))
+      : refused(fromRuntime(result.refusal));
+  }
 
   const settled = result.value;
   return applied(null, null, {

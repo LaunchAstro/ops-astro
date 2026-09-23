@@ -16,10 +16,19 @@
 // list, because empty and denied are different answers.
 //
 // A read does write an audit event. See `dispatch.ts`.
+//
+// What a read *has* gained is the commands' D06 refusal. A payload naming a
+// fact the server owns -- `actor_id`, `business_id`, `updated_at` and the rest
+// of `prepare.ts`'s `SYSTEM_OWNED_FIELDS` -- used to be ignored here and is
+// now `FIELD_NOT_WRITABLE`, naming the keys. Ignoring it was the answer the
+// accepted ledger rules out: a client that believed it had set `actor_id` got
+// a `200` and no correction, so the bug lived in the client.
 
 import type { PresetPlan } from '../records/preset-plan.ts';
 import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
+import type { SettingView } from './settings.ts';
+import type { Capability } from './capabilities.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -117,11 +126,40 @@ export type ReadRequest =
       readonly recordTypeKey: string;
       readonly presetKey: string;
       readonly fields: readonly PresetFieldRequest[];
-    };
+    }
+  /**
+   * The business's own settings. It takes `read` on `settings` while the two
+   * settings commands take `manage`, which is the asymmetry the model wants:
+   * a setting is a business fact every member works against, and deciding who
+   * must agree before money moves is not.
+   *
+   * It carries **no revision**, because `business_settings` has no revision
+   * column to carry. See `reads/settings.ts`.
+   */
+  | { readonly read: 'settings.read' }
+  /**
+   * What the caller may do here. The one read whose answer is about the caller
+   * rather than about the business, and the one that takes no grant: every
+   * pair it returns is a pair the caller already holds.
+   */
+  | { readonly read: 'session.capabilities' };
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
   | { readonly ok: true; readonly persons: readonly PersonView[] }
   | { readonly ok: true; readonly queue: readonly QueuedWork[] }
-  | { readonly ok: true; readonly plan: PresetPlan };
+  | { readonly ok: true; readonly plan: PresetPlan }
+  | { readonly ok: true; readonly settings: readonly SettingView[] }
+  /**
+   * The capability answer is flat: `personId`, `businessKey` and `grants` sit
+   * beside `ok` rather than under a `capabilities` object, because that is the
+   * shape the surfaces read and one nesting level for three fields buys
+   * nothing.
+   */
+  | {
+      readonly ok: true;
+      readonly personId: string;
+      readonly businessKey: string;
+      readonly grants: readonly Capability[];
+    };

@@ -66,6 +66,16 @@ export type CommandName =
   // other three is the authority it asks for, which is `manage` on presets
   // rather than `read` on a collection of records.
   | 'preset.plan'
+  // The business's own settings, projected. Four landed contracts name a
+  // per-business setting and none of them could read one through a surface,
+  // so the values were writable and invisible. It is a read on the `settings`
+  // collection, which is the same collection the two commands below write.
+  | 'settings.read'
+  // What the caller may do here, from the live grant model. It is the one row
+  // whose answer is about the caller rather than about the business, which is
+  // why it takes no grant beyond membership: every pair in it is a pair the
+  // caller already holds, so returning them confers nothing.
+  | 'session.capabilities'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -144,6 +154,7 @@ function declare(
 
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
+const SESSION_COLLECTION = 'session';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -200,6 +211,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // the family the request names, which `reads/dispatch.ts` reads off the
   // request and `planPresetSync` checks again from its own mapping.
   read('preset.plan', 'preset', 'manage'),
+  // `read` on `settings`, not `manage`: a setting is a business fact every
+  // member works against, and a member who cannot see the four-eyes band
+  // cannot tell a refusal from a bug. The writes stay `manage`, which is the
+  // whole of the asymmetry.
+  read('settings.read', SETTINGS_COLLECTION),
+  // Declared with a collection and an action like every other row, and served
+  // without asking them: `reads/dispatch.ts` answers this one from membership
+  // alone. The declaration still carries the pair because the table is what
+  // the route generator and the parity test read, and a row missing half its
+  // shape would be a special case in three more places than one.
+  read('session.capabilities', SESSION_COLLECTION),
 
   declare('settings.set_four_eyes_threshold', 'manage', {
     collection: SETTINGS_COLLECTION,
@@ -231,12 +253,16 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
  * batch identity and a window, not a record. `task.decide` binds a proposal
  * version rather than a record revision, `task.pickup` mints a lease without
  * writing the task, and  `task.handback` echoes expected versions for
- * everything it touched (minimum contract 4.3). The three reads write nothing,
- * so there is no revision for them to be writing against.
+ * everything it touched (minimum contract 4.3). The reads write nothing, so
+ * there is no revision for any of them to be writing against — including
+ * `settings.read`, where the absence is a schema gap rather than a decision:
+ * `business_settings` carries no revision column at all.
  */
 export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
   'person.list',
   'preset.plan',
+  'session.capabilities',
+  'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
   'task.board',

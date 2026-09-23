@@ -11,11 +11,12 @@
 // against the delegating person's grants as they are right now.
 //
 // **Asking what it may do.** `session.capabilities` is reachable on this
-// prefix and its answer is the agent's own, not the delegating person's: the
-// purpose its delegation is bounded to, or null before a pickup, and the two
-// operations it may reach holding nothing. An agent has no grants to report --
-// see below -- so reporting the person's would be reporting somebody else's
-// authority as the agent's.
+// prefix and its answer is the agent's own, not the delegating person's: its
+// own acting identity, the business key, the purpose its delegation is bounded
+// to (null before a pickup) and the authority the two pre-pickup operations
+// take. An agent holds no grants of its own -- see below -- so reporting the
+// delegating person's here would be reporting somebody else's authority as the
+// agent's.
 //
 // **The two operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
@@ -57,7 +58,7 @@ import {
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
-import type { AgentCapabilities } from '../reads/capabilities.ts';
+import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
 import { writeAuditEvent } from './audit.ts';
 import { payloadDigest } from './digest.ts';
 import { readTaskSpine } from './context.ts';
@@ -228,7 +229,12 @@ async function runAgentCommand(
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(
-    isRefused(outcome) ? 'rollback to savepoint agent_work' : 'release savepoint agent_work',
+    // A refusal rolls back, except the one that kept something on purpose:
+    // `Refused.retains` is set by a handler that wrote a row the contract
+    // retains alongside the refusal, and rolling back would discard it.
+    isRefused(outcome) && outcome.retains !== true
+      ? 'rollback to savepoint agent_work'
+      : 'release savepoint agent_work',
   );
   if (isRefused(outcome)) return await settle(tx, session, request, digest, outcome.refusal);
 
@@ -362,10 +368,25 @@ async function serve(
           ? undefined
           : await resolveDelegation(tx, session.actorId, credential);
       const capabilities: AgentCapabilities = {
+        agentActorId: session.actorId,
+        businessKey: await businessKeyOf(tx),
         purposeScope: resolved !== undefined && resolved.ok ? resolved.value.purposeScope : null,
-        beforePickup: [...BEFORE_PICKUP].toSorted(),
+        // The authority the pre-pickup pair takes, read off their own
+        // declarations so this list cannot drift from `BEFORE_PICKUP`.
+        grants: [...BEFORE_PICKUP]
+          .toSorted()
+          .map((name) => ({
+            collection: declarationOf(name)?.collection ?? 'task',
+            action: declarationOf(name)?.action ?? 'read',
+          }))
+          .filter(
+            (pair, index, all) =>
+              all.findIndex(
+                (other) => other.collection === pair.collection && other.action === pair.action,
+              ) === index,
+          ),
       };
-      return { recordId: null, revision: null, detail: { capabilities } };
+      return { recordId: null, revision: null, detail: { ...capabilities } };
     }
     case 'task.queue':
       return { recordId: null, revision: null, detail: { queue: await readQueue(tx) } };

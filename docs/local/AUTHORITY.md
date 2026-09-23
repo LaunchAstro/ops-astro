@@ -232,8 +232,9 @@ from the body, not hidden in it. The fields are the ones the catalogue marks
 module, so classifying a field is the only way to expose it. The test takes
 `body`'s classification away and watches the value leave with it.
 
-Comments are **stored and not yet projected through the API.** The read that
-serves them is L3's.
+Comments are **stored and projected through the API**: `task.read` carries them,
+in full for an internal reader and through `externalCommentProjection` for every
+other role — see the "Reads" heading in `docs/local/API.md`.
 
 ## preset.plan
 
@@ -317,6 +318,7 @@ application role, never through a privilege the worker holds itself.
   exists and no endpoint serves it.
 - **No grant-control route.** `issueGrant` and `revokeGrant` are internal
   functions, as they were before this lane.
-- **The `settings.*` operations are named, not built.** The two
-  operation-classified settings name the commands that will own them; those
-  commands are L3's.
+- **The `settings.*` operations are built.** The two operation-classified
+  settings have the commands that own them and a `settings.read` beside them;
+  all three are in the table under "The operations L2 made possible" and the
+  "Reads" heading in `docs/local/API.md`.

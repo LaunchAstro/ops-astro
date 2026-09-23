@@ -266,6 +266,52 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect((detail['purposeScope'] as { readonly id: string }).id).toBe(taskId);
     });
 
+    // Behavioural note 10 from lane L4-RUNTIME-FIX: a pickup of a reservation
+    // whose lease expired should *succeed* and hand back a different
+    // reservation and attempt from the ones asked for, with the abandoned hold
+    // shown beside the fresh one.
+    //
+    // It does not, and `it.fails` is how that is recorded rather than hidden.
+    // The second pickup mints a second delegation for a purpose the agent
+    // still holds live, `authority/delegations.ts:192` violates
+    // `delegations_one_live_per_purpose_idx` (migration 0008), and the fault
+    // propagates unhandled through `core-runtime/src/pickup.ts` and
+    // `commands/agent-envelope.ts`. Observed here: **HTTP 500 with the body
+    // `{"raw":"Internal Server Error"}`** -- not a refusal shape at all, no
+    // `refused: true`, no code, and because the serving transaction aborted,
+    // no audit row for the attempt either.
+    //
+    // So L4's R5 recovery is real in the runtime and unreachable through a
+    // command. `authority/**` is not lane L3-PART-B-2's file, so this is
+    // reported rather than fixed. When it is fixed this case will start
+    // failing, which is the point: rewrite it then to the note-10 assertions
+    // (new `reservationId` and `attemptId`, the old hold `abandoned` and the
+    // new one `held` in `task.read`'s projection).
+    it.fails('recovers an expired lease into a fresh hold with new identifiers', async () => {
+      const { reservationId } = await approvedReservation(
+        'work whose lease runs out',
+        'draft_the_reply_expiry',
+      );
+      const first = detailOf(
+        await asAgent('task.pickup', {
+          operationId: randomUUID(),
+          reservationId,
+          leaseSeconds: 1,
+        }),
+      );
+      expect(first['reservationId']).toBe(reservationId);
+
+      // The shortest lease the surface allows, waited out. The expiry is the
+      // server's own clock, so there is nothing to fake here.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+      const again = await asAgent('task.pickup', { operationId: randomUUID(), reservationId });
+      expect(again.status).toBe(200);
+      const second = detailOf(again);
+      expect(second['reservationId']).not.toBe(reservationId);
+      expect(second['attemptId']).not.toBe(first['attemptId']);
+    });
+
     it('refuses a reservation with no approval behind it', async () => {
       const answer = await asAgent('task.pickup', {
         operationId: randomUUID(),
@@ -316,6 +362,117 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(answer.status).toBe(401);
       expect(answer.body['refused']).toBe(true);
       expect(answer.body['code']).toBe('DELEGATION_NOT_LIVE');
+    });
+
+    // Behavioural note 7 from lane L4-RUNTIME-FIX, over HTTP. The unit cases
+    // in tests/commands/handback-expenditure.test.ts prove the guard; this
+    // proves a real caller meets it and that the lease it holds survives.
+    it('refuses a reported expenditure rather than dropping the key', async () => {
+      const { reservationId } = await approvedReservation(
+        'work whose cost is claimed',
+        'draft_the_reply_expenditure',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+
+      const answer = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+          actualMinor: 0,
+          report: { wrote: 'a draft it says cost nothing' },
+        },
+        String(picked['credential']),
+      );
+
+      expect(answer.status).toBe(422);
+      expect(answer.body['code']).toBe('ACTUAL_EXPENDITURE_UNSUPPORTED');
+      expect(answer.body['names']).toEqual(['actualMinor']);
+      // Refused before the first write, so nothing was retained and the lease
+      // the agent holds is still the live one it can hand back under.
+      const kept = await fixture.db.admin.execute<{ readonly reports: string }>(
+        `select count(*)::text as reports from public.handback_reports
+          where business_id = $1 and lease_id = $2`,
+        [fixture.business, picked['leaseId']],
+      );
+      expect(kept[0]?.reports).toBe('0');
+      const proper = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+        },
+        String(picked['credential']),
+      );
+      expect(proper.status).toBe(200);
+    });
+
+    // Behavioural note 8, and the one refusal in the surface that commits.
+    it('keeps the retained report when a stale fence is refused', async () => {
+      const { reservationId } = await approvedReservation(
+        'work handed back on a stale fence',
+        'draft_the_reply_stale_fence',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+      const stale = Number(picked['fence']) + 1;
+
+      const answer = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: stale,
+          outcome: 'completed',
+          report: { wrote: 'work a stale holder really did' },
+        },
+        String(picked['credential']),
+      );
+
+      expect(answer.body['refused']).toBe(true);
+      expect(answer.body['code']).toBe('LEASE_NOT_OWNED');
+
+      // The point of the case. Every other refusal in the surface rolls its
+      // handler's savepoint back; this one releases it, because L4's `handback`
+      // wrote the report *before* refusing and the contract keeps it. Read on
+      // the administrative connection after the serving transaction committed:
+      // if the savepoint had rolled back, this is zero rows.
+      const rows = await fixture.db.admin.execute<{
+        readonly disposition: string;
+        readonly refusal_code: string;
+        readonly fence: string;
+      }>(
+        `select disposition, refusal_code, fence::text as fence
+           from public.handback_reports
+          where business_id = $1 and lease_id = $2`,
+        [fixture.business, picked['leaseId']],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.disposition).toBe('retained');
+      expect(rows[0]?.refusal_code).toBe('LEASE_NOT_OWNED');
+      expect(Number(rows[0]?.fence)).toBe(stale);
+
+      // Retained, not settled: the lease is untouched and the rightful holder
+      // can still hand back under the fence it owns.
+      const proper = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+        },
+        String(picked['credential']),
+      );
+      expect(proper.status).toBe(200);
+      expect(detailOf(proper)['reservationState']).toBe('abandoned');
     });
   });
 

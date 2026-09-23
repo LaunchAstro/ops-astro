@@ -137,7 +137,9 @@ every other refusal here and with every success.
 
 The two settings commands take no `expectedRevision`: `business_settings`
 carries no revision column, so there is nothing for a caller to write against.
-That is a schema gap rather than a decision and it is recorded as one.
+That is a schema gap rather than a decision and it is recorded as one. The
+column is **queued** for a later lane; nothing in this part adds it, and
+`settings.read` carries no `revision` for the same reason — see below.
 
 ## The operations L4's runtime made possible
 
@@ -284,9 +286,10 @@ answer and an internal note is absent from it rather than hidden in it (I09).
 
 ## Reads
 
-`task.read`, `task.board`, `person.list` and `preset.plan` are declared in
-`COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls
-the executor the composition root supplies:
+`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
+`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+with `kind: 'read'`. The boundary branches on that and calls the executor the
+composition root supplies:
 
 ```ts
 executeRead(database, businessId, presented, request) => Promise<unknown>
@@ -304,11 +307,66 @@ comments in the fields the catalogue marks `shared` (`id`, `audience`,
 `author`, `body`, `comment_type`, `posted_at`). External is the default, so a
 role nobody classified sees the client view rather than everything.
 
+| Read                   | Route                   | Body                     | Answer                                                                             | Refusals it can answer                                                         |
+| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401    |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`            | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401, `AUTH_SESSION_EXPIRED` 401 |
+
+`settings.read` takes **`read` on `settings`** while the two settings commands
+take `manage` on the same collection. That asymmetry is the decision: a setting
+is a business fact every member works against — a member who cannot see the
+four-eyes band cannot tell a refusal from a bug when their own work stops at a
+second approver — and changing one is an authority change. The seed gives
+`settings:read` to `admin` and to `member`; the write stays with `admin`.
+
+**`settings.read` carries no revision, because there is none.**
+`business_settings` has no revision column at all, so the projection has
+nothing to be stale against and offers a caller no number to send back. It
+carries `updatedAt` and `updatedByActorId` instead, which say when the value
+last changed and which actor changed it — null on a value nobody has written
+since it shipped. The column is queued for a later lane and this part adds no
+migration for it; inventing a number here would let a client believe in an
+optimistic-concurrency check the server cannot make.
+
+`session.capabilities` is the one read that **asks the grant model nothing**.
+It reports what the caller already holds, so a grant in front of it could only
+hide from a person the list of things they may do, and a caller refused it
+could rebuild the same list by attempting each operation one at a time.
+Membership is its whole authority and membership is established upstream: a
+login that resolves to none is `AUTH_NO_MEMBERSHIP` before any read runs. The
+grants are read live in the caller's own transaction through the same
+`effectiveGrants` the authority check uses, so a grant revoked a moment ago is
+missing from the answer rather than soon. It never carries a secret, and it
+never carries another person's grants: the subjects are the session's own and
+there is no parameter to point at somebody else.
+
+On the **agent prefix** the same name answers the agent's own capabilities and
+not the delegating person's, under the agent envelope's `detail` like every
+other agent answer: `agentActorId`, `businessKey`, the delegation's
+`purposeScope` — `{ kind: 'record', id }`, or `null` before a pickup — and
+`grants`, which is the authority the two pre-pickup operations take
+(`task.queue` reads and `task.pickup` writes on `task`). It is reachable with
+no credential on purpose: refusing it for want of one would refuse the single
+call whose whole subject is that there is none.
+
+**A read payload naming a fact the server owns is refused**
+`FIELD_NOT_WRITABLE` 422, naming the offending keys. It is the commands' own
+rule, applied by `reads/dispatch.ts` from `prepare.ts`'s `SYSTEM_OWNED_FIELDS`
+rather than from a second copy, so `actor_id`, `business_id`, `revision`,
+`updated_at` and the rest are refused on a read exactly as they are on a write
+(D06). This used to be a silent drop with a `200` on top, which is the weaker
+answer the accepted ledger rules out: a client that believed it had set
+`actor_id` got a success and no correction, so the mistake lived in the client
+and the server looked fine. The **attempted values** go to the audit row's
+`attempted` column and never to the response.
+
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable — and the task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
+`settings.read` and `session.capabilities` carry a **null subject**: neither is
+about one record, and naming one would make "who read this record" false.
 
 ## Verifying it
 
