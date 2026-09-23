@@ -70,7 +70,7 @@ database.
 | `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1–N7) | see the matrix below |
 | `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02–D04)     | green, 38 cases      |
 | `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14) | see below            |
-| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09) | green                |
+| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09) | green, 5 cases       |
 
 ## The per-file cap, and why two files are harnesses
 
