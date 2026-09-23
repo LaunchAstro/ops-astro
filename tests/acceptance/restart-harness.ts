@@ -20,7 +20,6 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { expect } from 'vitest';
-import { cancelAndClassify } from '../../packages/core-runtime/src/index.ts';
 import { agentPath, bearer, call, personPath, type World } from './world.ts';
 
 /**
@@ -272,15 +271,16 @@ export async function walkTheJourney(
  *
  * `pending` is proposed and never decided: after a restart it must still have
  * no decision and no reservation, which is "no auto approval". `cancelled` is
- * approved, then cancelled through the runtime's own `cancelAndClassify` —
- * the only cancellation the product has, and it has no HTTP route — so a
- * restart that resumed it would show a live lineage or a claimable hold.
+ * approved, then cancelled the way a person cancels one, through the declared
+ * `task.cancel` operation on the API, so a restart that resumed it would show
+ * a live lineage or a claimable hold.
  * `settled` is walked to a handback before anything restarts, so the handback
  * report (the receipt) and the settled delegation cross the restart as rows
  * rather than being minted after it.
  */
 export interface Lineages {
   readonly pendingGateId: string;
+  readonly cancelledTaskId: string;
   readonly cancelledLineageId: string;
   readonly cancelledReservationId: string;
   readonly settledLeaseId: string;
@@ -315,11 +315,13 @@ export async function walkTheOtherLineages(world: World): Promise<Lineages> {
 
   const toCancel = await walkTheJourney(world, { pickup: false });
   const cancelledLineageId = await lineageOf(world, toCancel.versionId);
-  const cancelled = await world.db.app.withBusiness(
-    world.alpha,
-    async (tx) => await cancelAndClassify(tx, { lineageId: cancelledLineageId, reason: 'w06' }),
-  );
-  expect(cancelled.ok, 'cancelAndClassify').toBe(true);
+  const cancelled = await asAda(world, world.api, '/task/cancel', {
+    operationId: randomUUID(),
+    recordId: toCancel.taskId,
+    lineageId: cancelledLineageId,
+    reason: 'w06',
+  });
+  expect([cancelled.status, cancelled.code], 'task.cancel').toStrictEqual([200, 'ok']);
 
   const toSettle = await walkTheJourney(world);
   const handedBack = await asAgent(
@@ -338,6 +340,7 @@ export async function walkTheOtherLineages(world: World): Promise<Lineages> {
   expect(handedBack.code, 'handback before the restart').toBe('ok');
   return {
     pendingGateId,
+    cancelledTaskId: toCancel.taskId,
     cancelledLineageId,
     cancelledReservationId: toCancel.reservationId,
     settledLeaseId: toSettle.leaseId,

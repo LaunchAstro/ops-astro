@@ -534,9 +534,11 @@ direct SQL.
   process and compares the lineage, gate, decision, reservation, lease,
   attempt, delegation, receipt and register identities with their states. It
   then drives replays, the handback, a gate that lapsed while nothing ran and a
-  Request Changes round over HTTP against the new process. Cancellation and
-  authorised restart have no route yet, so the cancelled-lineage claim stays
-  open. The coverage table and the open items are in `docs/local/PROOFS.md`.
+  Request Changes round over HTTP against the new process, and cancels and
+  restarts a lineage there through the declared `task.cancel` and
+  `task.restart`. The browser leg (B6) carries a gate, lease and attempt across
+  a restart on a lane stack; its run at the integrated candidate is pending.
+  The coverage table and the open items are in `docs/local/PROOFS.md`.
 - **No settlement of actual expenditure.** `handback` refuses any non-null
   `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
   could settle; the settlement path belongs to the later authorised,
