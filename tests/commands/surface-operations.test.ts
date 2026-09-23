@@ -354,6 +354,47 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
       expect(row?.updated_by_actor_id).toBe(mia.actorId);
     });
 
+    it('settings.set_client_sign_off: an injected revision reaches nothing', async () => {
+      const before = await db.app.withBusiness(alpha, async (tx) => {
+        const rows = await tx.query<{ readonly updated_at: Date }>(
+          `select updated_at from business_settings
+            where business_id = $1 and key = 'client_sign_off_required'`,
+          [tx.businessId],
+        );
+        return rows[0]?.updated_at;
+      });
+      const result = await run({
+        command: 'settings.set_client_sign_off',
+        operationId: `spoof-${randomUUID()}`,
+        value: false,
+        ...SYSTEM_FIELDS,
+      } as unknown as Command);
+      const row = await db.app.withBusiness(alpha, async (tx) => {
+        const rows = await tx.query<{
+          readonly value: unknown;
+          readonly updated_by_actor_id: string | null;
+          readonly updated_at: Date;
+        }>(
+          `select value, updated_by_actor_id, updated_at from business_settings
+            where business_id = $1 and key = 'client_sign_off_required'`,
+          [tx.businessId],
+        );
+        return rows[0];
+      });
+      // `revision` and `created_at` are not columns of this table and not
+      // fields of this command, so there is nowhere for them to land; what the
+      // case proves is that the actor and the time stayed the server's.
+      expect(row?.updated_by_actor_id).not.toBe(SYSTEM_FIELDS.actor_id);
+      expect(row?.updated_by_actor_id).toBe(mia.actorId);
+      expect(row?.updated_at.getTime()).toBeGreaterThanOrEqual(before?.getTime() ?? 0);
+      expect(new Date(SYSTEM_FIELDS.created_at).getTime()).toBeLessThan(
+        row?.updated_at.getTime() ?? 0,
+      );
+      // The positive control: the write itself landed.
+      expect(isCommandRefusal(result)).toBe(false);
+      expect(row?.value).toBe(false);
+    });
+
     it('preset.plan: a field carrying system keys still plans nothing into them', async () => {
       const before = await countRows('field_defs');
       const result = await read({
