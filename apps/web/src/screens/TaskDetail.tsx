@@ -35,12 +35,10 @@
 // disabled for the length of a save, and a settlement clears only the exact
 // draft generation it submitted, so a slow response cannot delete newer typing.
 //
-// **Comments are the server's list, and the screen never adds to it.** A post
-// goes out through `task.comment` and the list is reread from `task.read`; a
-// screen that appended the comment it had just sent would be drawing a row that
-// may never have been stored, which is B7's failure in a friendlier costume.
-// The write leaves the task's own revision alone, so nothing else on the page
-// goes stale because somebody said something.
+// **Comments are the server's list, and the screen never adds to it**
+// (`task/Comments.tsx`). A screen that appended the comment it had just sent
+// would be drawing a row that may never have been stored, which is B7's
+// failure in a friendlier costume.
 //
 // **The proposals are one answer, and the decision carries the version out of
 // it.** `task.read` brings the proposal projection with the task, so the
@@ -49,11 +47,8 @@
 // read again, and the refusal text is held here rather than inside the proposals
 // view because the reread unmounts everything under the read state.
 //
-// **A refused comment is asked once.** There is no grant read anywhere in this
-// build, so this screen cannot know whether a person holds `comment` before it
-// asks. What it can do is ask once, quote the server's own code, and then stop
-// offering a control that has already been refused for this reader — so a
-// member without the grant is not invited to be refused over and over.
+// **A refused comment is asked once** (`task/Comments.tsx`), so a member
+// without the grant is not invited to be refused over and over.
 //
 // **A reader outside the business gets the shared view, not this page with
 // holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
@@ -63,20 +58,19 @@
 // revoked share empties the page the same way a revoked grant does.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
-import { PaneEmpty, Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
+import { Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
-import type {
-  PersonListResult,
-  TaskComment,
-  TaskDetail as Task,
-  TaskReadResult,
-} from '../operations/shapes.ts';
+import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal, submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
+import { Comments } from './task/Comments.tsx';
+import { DetailsForm } from './task/DetailsForm.tsx';
+import { History } from './task/History.tsx';
+import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -300,7 +294,7 @@ function Loaded(props: LoadedProps): ReactElement {
     });
   };
 
-  const lifecycle = (command: 'task.start' | 'task.complete' | 'task.reopen'): void => {
+  const lifecycle = (command: LifecycleCommand): void => {
     const body = command === 'task.reopen' ? { reason: 'Reopened from the task page.' } : {};
     run(() =>
       client.mutate(command, { recordId: task.id, ...body }, { expectedRevision: task.revision }),
@@ -440,118 +434,24 @@ function Loaded(props: LoadedProps): ReactElement {
         </section>
       )}
 
-      <section className="sb__sect">
-        <div className="sb__sh">
-          <span className="sb__k">State</span>
-        </div>
-        <div className="btnrow">
-          <button
-            className="btn"
-            type="button"
-            data-lifecycle="start"
-            disabled={busy || dirty}
-            onClick={() => {
-              lifecycle('task.start');
-            }}
-          >
-            Start
-          </button>
-          <button
-            className="btn"
-            type="button"
-            data-lifecycle="complete"
-            disabled={busy || dirty}
-            onClick={() => {
-              lifecycle('task.complete');
-            }}
-          >
-            Complete
-          </button>
-          <button
-            className="btn"
-            type="button"
-            data-lifecycle="reopen"
-            disabled={busy || dirty}
-            onClick={() => {
-              lifecycle('task.reopen');
-            }}
-          >
-            Reopen
-          </button>
-        </div>
-      </section>
+      <Lifecycle disabled={busy || dirty} onLifecycle={lifecycle} />
 
-      <section className="sb__sect">
-        <div className="sb__sh">
-          <span className="sb__k">Assignee</span>
-        </div>
-        <RecordState state={people.state} subject="people" onRetry={people.reload}>
-          {(value) => (
-            <select
-              className="input"
-              aria-label="Assignee"
-              disabled={busy || dirty}
-              value={task.assignee?.personId ?? ''}
-              onChange={(event) => {
-                onAssign(event.target.value);
-              }}
-            >
-              <option value="">Unassigned</option>
-              {value.persons.map((person) => (
-                <option key={person.personId} value={person.personId}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </RecordState>
-      </section>
+      <Assignee
+        people={people.state}
+        onRetry={people.reload}
+        assignee={task.assignee}
+        disabled={busy || dirty}
+        onAssign={onAssign}
+      />
 
-      <form id="task-fields" className="sb__sect taskform" ref={fields} onSubmit={onFields}>
-        <div className="sb__sh">
-          <span className="sb__k">Details</span>
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="task-title">
-            Title
-          </label>
-          {/*
-            Disabled while the save is in flight. An input that stays live
-            during its own request invites the person to type something the
-            response is about to throw away, and no amount of care on the
-            settlement side makes that typing visible to the server.
-          */}
-          <input
-            id="task-title"
-            className="input"
-            type="text"
-            required
-            disabled={busy}
-            value={title}
-            onChange={(event) => {
-              edit({ title: event.target.value });
-            }}
-          />
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="task-due">
-            Due date
-          </label>
-          <input
-            id="task-due"
-            className="input"
-            type="date"
-            disabled={busy}
-            value={due}
-            onChange={(event) => {
-              edit({ due: event.target.value });
-            }}
-          />
-        </div>
-        <button className="btn btn--primary" type="submit" disabled={busy}>
-          Save changes
-        </button>
-      </form>
+      <DetailsForm
+        formRef={fields}
+        busy={busy}
+        title={title}
+        due={due}
+        onEdit={edit}
+        onSubmit={onFields}
+      />
 
       <Comments
         client={client}
@@ -571,221 +471,9 @@ function Loaded(props: LoadedProps): ReactElement {
         revision={task.revision}
       />
 
-      <section className="sb__sect">
-        <div className="sb__sh">
-          <span className="sb__k">History</span>
-        </div>
-        {task.history.length === 0 ? (
-          <PaneEmpty say="Nothing has changed on this one yet." />
-        ) : (
-          <div className="sbact">
-            {task.history.map((entry, index) => (
-              <div className="sbact__row" key={`${entry.at}-${String(index)}`}>
-                <span className="sbact__meta">
-                  {entry.at} · {entry.actorId}
-                </span>
-                <span className="sb__state">{entry.operation}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <History history={task.history} />
     </div>
   );
-}
-
-interface CommentsProps {
-  readonly client: OperationsClient;
-  readonly comments: readonly TaskComment[];
-  readonly recordId: string;
-  /** The revision the comment is written against. `task.comment` does not move it. */
-  readonly revision: number;
-  readonly onPosted: () => void;
-}
-
-/** The two audiences the model has. Who may read it, which is not what it is. */
-const AUDIENCES: readonly { readonly value: string; readonly label: string }[] = [
-  { value: 'internal', label: 'Internal — the business only' },
-  { value: 'client', label: 'Client — the client may read it' },
-];
-
-/**
- * The kinds this screen offers a person.
- *
- * The API accepts a third, `system`. It is not offered here: a system comment
- * is one the product writes about itself, and a box letting a person post one
- * by hand would make every system note on a task unreliable evidence of
- * anything. The gap is recorded in `docs/local/WEB.md` rather than closed.
- */
-const KINDS: readonly { readonly value: string; readonly label: string }[] = [
-  { value: 'note', label: 'Note' },
-  { value: 'client', label: 'Client message' },
-];
-
-function Comments(props: CommentsProps): ReactElement {
-  const [body, setBody] = useState('');
-  const [audience, setAudience] = useState('internal');
-  const [kind, setKind] = useState('note');
-  const { busy, failure, run } = useCommand();
-  const because = failure?.because ?? null;
-  // Set when the server has said this reader may not comment. It disables the
-  // control rather than merely reporting, so the same refusal is not fetched
-  // again on the next press. Only an authority refusal closes the form: a body
-  // the server did not like is something the person can fix and try again.
-  const refusedOutright = failure?.kind === 'closed';
-  const form = useRef<HTMLFormElement>(null);
-
-  const post = (): void => {
-    if (busy || refusedOutright) return;
-    if (form.current?.reportValidity() === false) return;
-    run(
-      () =>
-        props.client.mutate(
-          'task.comment',
-          { recordId: props.recordId, body, audience, commentType: kind },
-          { expectedRevision: props.revision },
-        ),
-      (settlement) => {
-        if (settlement.kind !== 'ok') return;
-        // Emptied because it has been stored, and the list is reread rather
-        // than appended to: what is on the screen is what the server has.
-        setBody('');
-        props.onPosted();
-      },
-    );
-  };
-
-  return (
-    <section className="sb__sect" data-comments="section">
-      <div className="sb__sh">
-        <span className="sb__k">Comments</span>
-        <span className="sbact__meta">{props.comments.length} on this task</span>
-      </div>
-
-      {props.comments.length === 0 ? (
-        <PaneEmpty say="Nothing has been said about this one yet." />
-      ) : (
-        <div className="thread" data-comments="list">
-          {props.comments.map((comment) => (
-            <article
-              className={`msg msg--${comment.audience ?? 'unknown'}`}
-              data-comment-id={comment.id}
-              data-audience={comment.audience ?? 'unknown'}
-              key={comment.id}
-            >
-              <div className="sbact__meta">
-                {/* The audience is drawn on every comment, because "who may
-                    read this" is the one thing a person writing the next one
-                    needs to know and the one thing a colour cannot say. */}
-                <span className="sb__state" data-comment-audience={comment.audience ?? 'unknown'}>
-                  {audienceWord(comment.audience)}
-                </span>
-                {comment.comment_type === undefined ? null : <span> · {comment.comment_type}</span>}
-                {comment.author === undefined ? null : <span> · {comment.author}</span>}
-                {comment.posted_at === undefined ? null : <span> · {comment.posted_at}</span>}
-              </div>
-              <p className="card__body">{comment.body ?? ''}</p>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-comment="refusal">
-          {because}
-        </p>
-      )}
-
-      <form
-        id="task-comment"
-        className="taskform"
-        ref={form}
-        onSubmit={(event) => {
-          event.preventDefault();
-          post();
-        }}
-      >
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-body">
-            Say something
-          </label>
-          <textarea
-            id="comment-body"
-            className="input"
-            rows={3}
-            required
-            disabled={busy || refusedOutright}
-            value={body}
-            onChange={(event) => {
-              setBody(event.target.value);
-            }}
-          />
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-audience">
-            Who may read it
-          </label>
-          <select
-            id="comment-audience"
-            className="input"
-            disabled={busy || refusedOutright}
-            value={audience}
-            onChange={(event) => {
-              setAudience(event.target.value);
-            }}
-          >
-            {AUDIENCES.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-kind">
-            What it is
-          </label>
-          <select
-            id="comment-kind"
-            className="input"
-            disabled={busy || refusedOutright}
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value);
-            }}
-          >
-            {KINDS.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-comment="post"
-          disabled={busy || refusedOutright}
-        >
-          {busy ? 'Posting…' : 'Post comment'}
-        </button>
-        {!refusedOutright ? null : (
-          <p className="card__sub" data-comment="closed">
-            The server refused this. The box is closed rather than asking again on your behalf.
-          </p>
-        )}
-      </form>
-    </section>
-  );
-}
-
-/** The audience in the words a person reads, and the server's own word kept. */
-function audienceWord(audience: string | undefined): string {
-  if (audience === 'internal') return 'Internal';
-  if (audience === 'client') return 'Client';
-  // A word this build does not know is printed as it arrived. Inventing a
-  // label for it would hide the fact that something new is being stored.
-  return audience ?? 'no audience';
 }
 
 function stateOf(task: Task): DrawnState {
