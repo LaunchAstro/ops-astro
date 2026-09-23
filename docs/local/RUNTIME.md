@@ -497,6 +497,46 @@ A `dispatch_marker` or an `observed` attempt always keeps its **full hold**, as
 refuses to let either flag be lowered. Work refusal must never erase a real
 liability.
 
+### Restart recovery at API startup
+
+TRANSACTION-CONTRACT lines 84 and 92: a first-head restart resumes the same
+bounded classifier. **An API process start or restart is the resume entry.**
+`apps/api/server.ts` awaits `recoverInstallation` (`apps/api/recovery-entry.ts`)
+after its dependencies are validated and before `serve` binds the port. There
+is no database-only reconnect callback: if Postgres restarts under a running
+API, the replay runs at the API's next start, and nothing polls.
+
+- **Scope.** `RECOVERY_BUSINESS_KEYS`, from the environment or
+  `.local/recovery.env`: comma-separated business keys, de-duplicated, each
+  resolved on its own through `createBusinessResolver`, or the literal `none`.
+  Unset, blank, an empty entry, `none` beside a key, or a key that resolves to
+  no business stops the start with exit 1 and names the setting, before any
+  replay. No request, seed, fixture or scan of `public.businesses` supplies the
+  set; the administrative connection runs only the key lookups.
+- **One transaction per business.** Each business runs
+  `database.withBusiness(id, tx => replayRecordedTransitions(tx))` as the
+  application role, with the tenant set by `set_config(..., true)` inside that
+  transaction, one business after another.
+- **Failure.** A failed replay, including the classifier's refusal when
+  discovery changed under its locks (`recovery.ts:443-449`), rolls that
+  business back and exits 1 with `restart recovery for business "<key>" rolled
+back: <reason>`. There is no automatic retry: the next normal start runs the
+  replay again in a fresh transaction. A business that committed before the
+  failure stays committed and has nothing left to replay.
+- **Record.** After each commit the server logs `restart recovery: <key>
+committed, <n> classified, <r> released, <q> quarantined`. The durable record
+  is the classifier's own: `classified_cause` and `classified_cause_id` on the
+  reservation, naming the transition another operation recorded. Startup
+  invents no person or agent and creates no cancellation, approval, lease,
+  attempt, delegation, dispatch mark or spend.
+
+`tests/runtime/recovery-entry.test.ts` proves this through the real
+`apps/api/server.ts` process: classification once before readiness, a second
+start that subtracts nothing, a failed start that rolls back and a later one
+that completes, claimable and unfenced-live holds untouched, a marked hold kept
+whole, only the configured business changed, and two racing starts releasing
+each hold once (one completes; the other exits 1 on the changed discovery).
+
 ## The proofs
 
 `tests/runtime/gate.test.ts`, `tests/runtime/lease.test.ts`,
@@ -707,9 +747,9 @@ direct SQL.
   - A marked or observed attempt keeps its full hold as `quarantined`.
 
   `replayRecordedTransitions` also finds a revocation that committed without
-  its classification (`recovery.ts:462`, `:476-480`). No production path calls
-  that replay on this head; the tests do
-  (`tests/runtime/lifecycle-authority-loss.test.ts`, six cases).
+  its classification (`recovery.ts:462`, `:476-480`). Its production caller is
+  API startup ("Restart recovery at API startup" above); the classifier cases
+  are in `tests/runtime/lifecycle-authority-loss.test.ts` (six cases).
 
 - **Restart** is `restart` (`restart.ts`), reached by `task.restart`. It reads
   the terminal lineage's last version and step and calls `propose` with

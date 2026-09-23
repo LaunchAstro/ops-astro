@@ -79,6 +79,7 @@ export async function serveApi(world: World): Promise<ServedApi> {
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
       DELEGATION_CREDENTIAL_KEY_FILE: join(keys, 'delegation-keys.json'),
+      RECOVERY_BUSINESS_KEYS: 'none',
     },
     stdio: 'ignore',
   });
