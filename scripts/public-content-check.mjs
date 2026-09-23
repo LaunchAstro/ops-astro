@@ -50,10 +50,18 @@ const provenanceIdentities = [
 // Deliberately published, so allowed wherever they appear: the public
 // security address this project documents, and the reserved documentation
 // domains of RFC 2606 and RFC 6761, which can never reach a mailbox.
+//
+// The last entry is the local slice's synthetic logins, fixed as `alpha.local`
+// and `bravo.local` by lanes/LOCAL-SLICE-CONTRACT.md. `.local` is reserved for
+// multicast DNS by RFC 6762 and is not delegable, so these addresses cannot
+// reach a mailbox either and nobody's contact detail is published by naming
+// them. Anchored to those two business keys rather than all of `.local`, so a
+// real address at someone's Bonjour hostname is still a finding.
 const publishedAddresses = [
   /^security@launchastro\.com$/u,
   /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
   /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
+  /^[a-z0-9._%+-]+@(?:alpha|bravo)\.local$/u,
 ];
 
 // A raw commit object, as `git cat-file commit` prints it, is indexed under

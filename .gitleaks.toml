@@ -12,8 +12,13 @@ useDefault = true
 # path, so an unanchored LICENSE also excludes src/LICENSE-private-config.json
 # from secret scanning, which is a perfectly good place to hide a credential.
 # Round four found it. tests/gate/gate-cases.sh case K keeps it anchored.
+# `.local/` is the local runtime's scratch directory, written by
+# scripts/local/*-up.sh and gitignored, so nothing in it is ever committed:
+# db-up.sh:130 puts the generated runtime password there, and gitleaks reads
+# the directory anyway because `gitleaks dir` does not consult .gitignore.
 description = "The exact paths that carry no secrets and would otherwise be noisy"
 paths = [
+  '''^\.local/.*$''',
   '''^LICENSE$''',
   '''^pnpm-lock\.yaml$''',
   '''^scripts/gate/denylist\.sha256$''',
