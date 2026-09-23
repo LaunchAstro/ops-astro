@@ -98,6 +98,43 @@ describe('an operand the operation needs, absent or of the wrong type', () => {
     });
   }
 
+  // A read refused for its operands is still a read someone attempted, and the
+  // accepted ledger audits every refused production operation (I13). The check
+  // used to sit at the HTTP boundary, before the read's own transaction, so a
+  // refused `task.read` or `preset.plan` left no row; it now runs inside
+  // `runRead`, after the system-owned-field check, and is audited like it.
+  for (const one of CASES.filter((c) => c.path === 'task/read' || c.path === 'preset/plan')) {
+    it(`${one.path} ${JSON.stringify(one.operands)} leaves a refused audit row`, async () => {
+      const command = one.path.replace('/', '.');
+      const latest = async () =>
+        await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+          const rows = await tx.query<{
+            readonly seq: string;
+            readonly outcome: string;
+            readonly refusal_code: string | null;
+          }>(
+            `select seq::text as seq, outcome, refusal_code from audit_events
+              where business_id = $1 and command = $2
+              order by seq desc limit 1`,
+            [tx.businessId, command],
+          );
+          return rows[0];
+        });
+      const before = await latest();
+      const answer = await post(
+        api,
+        `/api/b/alpha/${one.path}`,
+        { operationId: randomUUID(), ...one.operands },
+        authorised(token),
+      );
+      expect(answer.status).toBe(422);
+      const after = await latest();
+      expect(after?.seq).not.toBe(before?.seq);
+      expect(after?.outcome).toBe('refused');
+      expect(after?.refusal_code).toBe('FIELD_VALUE_INVALID');
+    });
+  }
+
   it('still serves a well-formed request on each of the five', async () => {
     // The guard must refuse only what is malformed. One honest request apiece,
     // answered by the operation itself rather than by the new check.

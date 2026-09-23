@@ -11,9 +11,8 @@
 //
 // Each check answers `FIELD_VALUE_INVALID` 422 by name with a fix line, the
 // pattern `task.decide` uses for its own operands. The command checks are
-// called by their handlers, so a refusal is registered and audited like any
-// other; the read checks are called by the boundary, which is where a read
-// body is first seen whole.
+// called by their handlers and the read checks by `reads/dispatch.ts`, so
+// either refusal is registered and audited like any other.
 
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
