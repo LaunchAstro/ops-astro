@@ -27,6 +27,7 @@
     "OWN-LEASE-SCOPE adds own-lease-record-scope (task.pickup, task.heartbeat and task.handback authorised on the task their reservation or lease belongs to: a record-scoped writer works their own lease, the sibling task and a fabricated id answer byte-identically, the strand case renews and hands back).",
     "CLI-ENTRY adds cli-process (the runnable command line as separate OS processes against the real apps/api/server.ts on a free port: the person journey with revisions checked in the database, board and people reads, SCOPE_NOT_GRANTED, another business, an unknown verb with no request, the agent queue/pickup/heartbeat/handback with the saved delegation credential, a bare agent call, login's password grant, and the package script). cli-process-harness.ts is a harness, not a suite; mounted-cli.test.ts stays unnamed because it needs SURFACE_API_PORT.",
     "Also named: statement-capture-full, the fourth conformance suite (T04 and M03 over every operation); restricted-calls and restricted-calls-prefixes (I06 and M02 at the full schema and at every prefix, on seeded rows); production-lookup (I14 on the shipped lockTask, mutated on a disposable source copy); operand-refusals, capabilities-shape, unproduced-reach, gate-expiry, decision-integrity-read, controls-revoke, controls-work, web-reads, expiry-bound and the two external-party suites (R4); gate-negatives, model-negatives and gate-not-found; identifier-negatives (foreign, fabricated and same-business refusals compared by status and raw response bytes) and audit-per-operation (I13 and I08, and a non-object body recorded as one authentication_attempts row with no audit_events row, on both prefixes); authority-loss-narrowed, runtime-residuals and lease-held-reach.",
+    "DB-PROOF-GAPS-B adds l6-schedules (W02 b same-operationId pickup retry in flight, W04 pickup x task.cancel both orders and pickup x expired-lease replacement, each on two backends with observed parking), l6-cases (G04 superseded hold not claimable, G05 rulings 3 and 4, W05 BUDGET_UNAVAILABLE), restart-expiry-bound (task.restart at and one over seven days through the route) and heartbeat-bound (W02 c, the heartbeat maximum and one over).",
     "Not named: tests/api/server-onerror.test.ts and tests/cli/mounted-cli.test.ts skip every case unless SURFACE_API_PORT names a spare loopback port for the real server they spawn, and the runner refuses a skip, so each runs as its own step with the port set.",
     "G3-CASES adds grant-chain (a two-level manager chain through the grant writer: GRANT_WIDENS, GRANT_DEEPENS, and grant.revoke on the root biting the grandchild's next call beside a live sibling chain), agent-bare-handback-replay (a credential-free task.handback replay refused DELEGATION_EXCLUDES_OPERATION with nothing of the receipt and no state change) and decision-never-delegated (delegations_never_decide and the not-null decided_by_person_id, as the application role).",
     "L3-RETENTION adds purge-retention (task.purge reads each business's retention_window_days inside its own transaction: two businesses with different windows and trash an hour either side, evidence untouched, a caller olderThanDays of any value refused COMMAND_BODY_INVALID with no mutation and one refused audit row, replay of an applied purge, a window of zero purging one business's trash only).",
@@ -125,7 +126,11 @@
     "tests/commands/agent-system-fields.test.ts",
     "tests/tenancy/wrapper-mutation.test.ts",
     "tests/reads/decision-signature-only.test.ts",
-    "tests/runtime/decision-seq-race.test.ts"
+    "tests/runtime/decision-seq-race.test.ts",
+    "tests/runtime/l6-schedules.test.ts",
+    "tests/runtime/l6-cases.test.ts",
+    "tests/api/restart-expiry-bound.test.ts",
+    "tests/commands/heartbeat-bound.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
