@@ -17,6 +17,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { purgeTrashedRecords, restoreBatch, trashSubtree } from '../tasks/trash.ts';
 import { fromRecords } from './refusal.ts';
+import { refusePurgeOperands, refuseRestoreOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
@@ -53,6 +54,8 @@ export async function restoreTasks(
   _context: CommandContext,
   batchId: string,
 ): Promise<HandlerOutcome> {
+  const operands = refuseRestoreOperands(batchId);
+  if (operands !== undefined) return refused(operands);
   const restored = await restoreBatch(tx, { batchId });
   if (isRecordsRefusal(restored)) return refused(fromRecords(restored));
   return applied(null, null, {
@@ -74,6 +77,8 @@ export async function purgeTasks(
   context: CommandContext,
   olderThanDays: number,
 ): Promise<HandlerOutcome> {
+  const operands = refusePurgeOperands(olderThanDays);
+  if (operands !== undefined) return refused(operands);
   const purged = await purgeTrashedRecords(tx, {
     recordTypeId: context.spine.taskTypeId,
     trashedBefore: new Date(Date.now() - olderThanDays * DAY),

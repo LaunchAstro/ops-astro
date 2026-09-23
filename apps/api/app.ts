@@ -36,6 +36,7 @@ import type { Context } from 'hono';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { refuseReadOperands } from '../../packages/core-records/src/commands/operands.ts';
 import {
   isCommandRefusal,
   refuseCommand,
@@ -175,6 +176,11 @@ export function createApi(options: ApiOptions): Hono {
         if (execute === undefined) {
           return refuse(context, refuseCommand('DEPENDENCY_NOT_LANDED', [declaration.name], READS));
         }
+        // An absent or mistyped operand is refused here, where the read body
+        // is first seen whole, rather than reaching a bound parameter and
+        // answering a fault (checklist B7).
+        const operands = refuseReadOperands(declaration.name, body);
+        if (operands !== undefined) return refuse(context, operands);
         // The name comes from the route here too, so a caller cannot post to
         // one read and have another one run.
         const read = await execute(options.database, businessId, presented, {

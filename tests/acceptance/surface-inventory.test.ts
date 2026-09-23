@@ -262,7 +262,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     report('not landed', notLanded.length === 0 ? ['none'] : notLanded);
   });
 
-  it('records the declarations that answer an untyped fault where a refusal is owed', async () => {
+  it('answers every declaration with a result or a typed refusal, never a fault', async () => {
     // Every answer a caller can be given is meant to be one of two things: a
     // result, or a typed refusal carrying `refused: true` and a code. A third
     // thing exists — an unhandled fault, answered as a plain-text 500 — and the
@@ -277,7 +277,11 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     // answers `FIELD_VALUE_INVALID` 422 for exactly this, so the pattern is in
     // the tree; these five do not reach it.
     //
-    // Asserted as observed, so it fails when fixed and this note is read.
+    // On 2241725 five answered a fault here: `task.create`, `task.restore`,
+    // `task.purge`, `task.read` and `preset.plan`, each for an absent operand
+    // reaching a bound parameter or an `in` operator. L3-FAULTS answers each
+    // with `FIELD_VALUE_INVALID` 422 by name (`commands/operands.ts`), and this
+    // case now holds the whole table to none.
     const faulted: string[] = [];
     for (const declaration of COMMAND_SURFACE) {
       // eslint-disable-next-line no-await-in-loop
@@ -290,9 +294,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
       if (answer.status >= 500) faulted.push(`${declaration.name} ${String(answer.status)}`);
     }
     report('person-prefix untyped faults', faulted.length === 0 ? ['none'] : faulted);
-    // The claim is bounded: no declaration answers a fault *other* than the
-    // ones named here, so this number can only go down.
-    expect(faulted.length).toBeLessThanOrEqual(5);
+    expect(faulted).toStrictEqual([]);
   });
 
   // ── A defect this inventory found, fixed since ────────────────────────────
