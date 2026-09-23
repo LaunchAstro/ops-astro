@@ -22,6 +22,7 @@
 
 import type { AgentRefusal, Refusal as IdentityRefusal } from '../identity/refusals.ts';
 import type { RecordsRefusal } from '../records/refusals.ts';
+import type { AnyRefusal } from '../../../core-runtime/src/index.ts';
 import { CALLER_VISIBLE, registeredRefusal, type RefusalCode } from './register.ts';
 
 export interface CommandRefusal {
@@ -98,7 +99,7 @@ export function fromAgentIdentity(refusal: AgentRefusal): CommandRefusal {
 /**
  * A refusal that carries one reason and one fix. Authority's is one; the
  * runtime's and the delegation refusals it passes through are the others
- * (`fromRuntime` in `tasks-runtime.ts` comes here), so all three reach a
+ * (`fromRuntime` below comes here), so all three reach a
  * caller in one shape.
  */
 export interface ReasonedRefusal {
@@ -112,6 +113,19 @@ export function fromAuthority(refusal: ReasonedRefusal): CommandRefusal {
   // it can be shown. It goes in `fixes` beside the fix rather than into
   // `names`, which holds identifiers a reader looks up.
   return refuseCommand(refusal.code, [], [refusal.reason, refusal.fix]);
+}
+
+/**
+ * A runtime or delegation refusal as the command register spells it.
+ *
+ * Both unions are taken from the register (`RuntimeRefusalCode` from its rows
+ * marked `runtime`, and every delegation code is a row), so there is no
+ * spelling here the register has never heard of and nothing to cast. The
+ * shape is `fromAuthority`'s: reason then fix, into `fixes`, because both are
+ * sentences about the rule and neither is a value the caller sent.
+ */
+export function fromRuntime(refusal: AnyRefusal): CommandRefusal {
+  return fromAuthority(refusal);
 }
 
 /**
