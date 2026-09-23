@@ -20,7 +20,7 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { mount, settle } from './mount.tsx';
+import { mount } from './mount.tsx';
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -56,6 +56,21 @@ const tick = async (): Promise<void> => {
   });
 };
 
+/**
+ * Flush until the page says something, or give up loudly.
+ *
+ * Bounded, and recursive rather than a loop because the repository's lint
+ * forbids awaiting in one.
+ */
+async function until(say: string, check: () => boolean, deadline: number): Promise<void> {
+  if (check()) return;
+  if (Date.now() > deadline) throw new Error(`never happened: ${say}`);
+  await act(async () => {
+    await pause();
+  });
+  return until(say, check, deadline);
+}
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -67,6 +82,12 @@ function server(options: { readonly denyReads?: boolean } = {}) {
   const task = { ...TASK };
   const reads: string[] = [];
   let denied = options.denyReads ?? false;
+  // A read the test can hold open. Waiting a fixed moment for the refreshing
+  // `loading` state to appear is a race, and a race in the test is the thing
+  // this file exists to argue against; holding the read makes the moment the
+  // assertions want a fact rather than a hope.
+  let gate: Promise<void> | null = null;
+  let open: (() => void) | null = null;
 
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -80,7 +101,9 @@ function server(options: { readonly denyReads?: boolean } = {}) {
       // that started it. Without this the refreshing `loading` state never
       // reaches the DOM, `Loaded` is never unmounted, and the test would pass
       // against the very code the finding is about.
-      await pause();
+      const held = gate;
+      gate = null;
+      await (held ?? pause());
       if (denied) {
         return json(
           {
@@ -114,6 +137,15 @@ function server(options: { readonly denyReads?: boolean } = {}) {
     },
     allow: () => {
       denied = false;
+    },
+    /** The next read stops here until `release` is called. */
+    hold: () => {
+      gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+    },
+    release: () => {
+      open?.();
     },
   };
 }
@@ -153,15 +185,22 @@ describe('unsaved details across an assignment', () => {
     await view.type('#task-due', '2026-11-30');
     expect(valueOf(view.host, '#task-title')).toBe('A title nobody has saved yet');
 
+    // Hold the refreshing read open, so the state between the successful
+    // assign and the arriving data can be observed rather than raced for.
+    api.hold();
     await choose(view.host, 'select[aria-label="Assignee"]', 'p2');
-    await settle();
+    await until(
+      'the refreshing read reached the screen',
+      () => view.find('[data-outcome="loading"]') !== null,
+      Date.now() + 5000,
+    );
 
     // The refresh is on the screen and the form is not: this is the moment the
     // drafts used to die, and asserting it here is what stops this test
     // passing for the wrong reason.
-    expect(view.find('[data-outcome="loading"]')).not.toBeNull();
     expect(view.find('#task-title')).toBeNull();
 
+    api.release();
     await tick();
 
     // The assign really happened and the read really went round again, so the
