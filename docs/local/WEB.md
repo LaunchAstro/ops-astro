@@ -124,7 +124,11 @@ something the person can fix.
 
 Keyboard: the textarea, the two selects and the button are ordinary controls in
 document order after the details form, each with a `label` bound by `htmlFor`.
-Drawn at 1480, 900 and 390 with the rest of the page.
+Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
+-> post` and nothing is reachable only by mouse. Photographed at 1480, 900 and
+390 on 2026-09-23 with no horizontal overflow at any of the three
+(`parent-observations/web-comments/width-<w>-task.png`). The dark-theme gap
+recorded below is this page's too: there is no dark build to photograph.
 
 ## The settings screen
 
@@ -150,7 +154,10 @@ anybody, with no way to tell that number from a real one.
 
 The refusal rule is the comment form's: ask once, quote
 `SCOPE_NOT_GRANTED` verbatim in `p[data-settings="refusal"]`, close both
-controls, change nothing. `/settings` carries a rail entry and the panel
+controls, change nothing. Tabbing from the threshold box reaches
+`settings-four-eyes -> settings-four-eyes-off -> save-four-eyes ->
+settings-sign-off`. Photographed at 1480, 900 and 390 with no horizontal
+overflow (`parent-observations/web-comments/width-<w>-settings.png`). `/settings` carries a rail entry and the panel
 registry's one entry (`panels.ts`), whose dock tab navigates to the address
 rather than opening a drawer — the surface has a real address, and an address a
 person can quote is worth more than a panel they cannot.
