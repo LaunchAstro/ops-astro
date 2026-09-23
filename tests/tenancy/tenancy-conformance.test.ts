@@ -90,6 +90,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0014_runtime_attempts',
         '0015_login_kind_serialised',
         '0016_delegation_purpose_scope',
+        '0020_business_settings_revision',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -114,6 +115,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0014_runtime_attempts',
         '0015_login_kind_serialised',
         '0016_delegation_purpose_scope',
+        '0020_business_settings_revision',
       ]);
     });
 
