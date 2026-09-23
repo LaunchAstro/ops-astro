@@ -35,6 +35,14 @@ export interface TaskDetailProps {
   readonly taskKey: string;
 }
 
+/** The unsaved title and due date, and the read they belong to. */
+interface Draft {
+  /** Grant and task together: a draft belongs to one task under one grant. */
+  readonly identity: string;
+  readonly title: string;
+  readonly due: string;
+}
+
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const { state, reload } = useRead<TaskReadResult>({
@@ -43,10 +51,41 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
     deps: [props.taskKey],
   });
 
+  // **Drafts live above the read, not inside it.** A successful assign or
+  // lifecycle action reloads, `RecordState` draws `loading` and unmounts
+  // `Loaded`, and anything held in `Loaded` dies with it — which is how an
+  // unsaved title and due date used to disappear (review finding 2). Held
+  // here they survive the refresh and seed the remounted form.
+  //
+  // They are still dropped exactly where they were before: a different task,
+  // a different grant, or a read the server denied. A draft that outlived its
+  // authority would be stale authorised data left on the screen, which is the
+  // thing that must not happen.
+  const identity = `${props.grantKey}\u0000${props.taskKey}`;
+  const [draft, setDraft] = useState<Draft | null>(null);
+  if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
+    setDraft(null);
+  }
+  const held = draft !== null && draft.identity === identity ? draft : null;
+
   return (
     <RecordState state={state} subject="task" onRetry={reload}>
       {(value) => (
-        <Loaded client={client} grantKey={props.grantKey} task={value.task} onChanged={reload} />
+        <Loaded
+          client={client}
+          grantKey={props.grantKey}
+          task={value.task}
+          draft={held}
+          onDraft={(title, due) => {
+            setDraft({ identity, title, due });
+          }}
+          onSaved={() => {
+            // The fields command resolves the draft: what the server now holds
+            // is the answer, so the refreshed read is what the form shows.
+            setDraft(null);
+          }}
+          onChanged={reload}
+        />
       )}
     </RecordState>
   );
@@ -56,6 +95,10 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** An unsaved edit that outlived the last refresh, or nothing. */
+  readonly draft: Draft | null;
+  readonly onDraft: (title: string, due: string) => void;
+  readonly onSaved: () => void;
   readonly onChanged: () => void;
 }
 
@@ -63,8 +106,18 @@ function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [title, setTitle] = useState(task.title);
-  const [due, setDue] = useState(task.due === null ? '' : task.due.slice(0, 10));
+  const saved = { title: task.title, due: task.due === null ? '' : task.due.slice(0, 10) };
+  const [title, setTitle] = useState(props.draft?.title ?? saved.title);
+  const [due, setDue] = useState(props.draft?.due ?? saved.due);
+
+  /** Every keystroke lands in both places: this form, and the draft above it. */
+  const edit = (next: { title?: string; due?: string }): void => {
+    const nextTitle = next.title ?? title;
+    const nextDue = next.due ?? due;
+    setTitle(nextTitle);
+    setDue(nextDue);
+    props.onDraft(nextTitle, nextDue);
+  };
 
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
@@ -74,17 +127,19 @@ function Loaded(props: LoadedProps): ReactElement {
   });
 
   /** One place every write lands, so every refusal is shown the same way. */
-  const after = (result: CallResult<unknown>): void => {
+  const after = (result: CallResult<unknown>, resolvesDraft: boolean): void => {
     setBusy(false);
     const failure = isRefusal(result) || isUnavailable(result) ? describeFailure(result) : null;
     setBecause(failure);
-    if (failure === null) props.onChanged();
+    if (failure !== null) return;
+    if (resolvesDraft) props.onSaved();
+    props.onChanged();
   };
 
-  const run = (work: Promise<CallResult<unknown>>): void => {
+  const run = (work: Promise<CallResult<unknown>>, resolvesDraft = false): void => {
     setBusy(true);
     setBecause(null);
-    void work.then(after);
+    void work.then((result) => after(result, resolvesDraft));
   };
 
   const lifecycle = (command: 'task.start' | 'task.complete' | 'task.reopen'): void => {
@@ -107,6 +162,7 @@ function Loaded(props: LoadedProps): ReactElement {
         expectedRevision: task.revision,
         fields: { title, due: due === '' ? null : due },
       }),
+      true,
     );
   };
 
@@ -225,7 +281,7 @@ function Loaded(props: LoadedProps): ReactElement {
             required
             value={title}
             onChange={(event) => {
-              setTitle(event.target.value);
+              edit({ title: event.target.value });
             }}
           />
         </div>
@@ -239,7 +295,7 @@ function Loaded(props: LoadedProps): ReactElement {
             type="date"
             value={due}
             onChange={(event) => {
-              setDue(event.target.value);
+              edit({ due: event.target.value });
             }}
           />
         </div>
