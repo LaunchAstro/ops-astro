@@ -65,7 +65,7 @@ export async function renderEvidence(
   if (version === undefined) {
     return refuse(
       'GATE_NOT_FOUND',
-      `no proposal version ${of.versionId} to render evidence from`,
+      'no such proposal version to render evidence from',
       'Render the pack in the same transaction that wrote the version.',
     );
   }

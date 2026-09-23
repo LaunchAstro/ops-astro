@@ -307,7 +307,9 @@ id get identical bytes (`core-runtime/src/propose.ts:224-232`).
 `task.decide` names the **exact version** it is deciding. It is compared under
 the locks and never trusted, so a decision made from a page that has gone stale
 is `VERSION_SUPERSEDED` rather than a decision about something the decider
-never read. The signing key and the budget cap are not in the body: the key
+never read. The refusal names the gate and the version it carries, never the version
+presented, so a foreign and a fabricated `versionId` on the caller's own gate
+answer the same bytes. The signing key and the budget cap are not in the body: the key
 comes from the deployment's environment and the cap is the business's own,
 read rather than created, because a command that created the ceiling it then
 spent against could never be refused `BUDGET_EXHAUSTED`.

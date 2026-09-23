@@ -66,7 +66,7 @@ export async function restart(
   if (last === undefined) {
     return refuse(
       'GATE_NOT_FOUND',
-      `no proposal lineage ${request.lineageId} in this business`,
+      'no such proposal lineage in this business',
       'Name the rejected or cancelled lineage this restart replaces.',
     );
   }

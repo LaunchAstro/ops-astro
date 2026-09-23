@@ -389,9 +389,10 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           expect(revoked.code, 'grant.revoke').toBe('ok');
         }
 
-        // RED for write since 676cf71: authority loss revokes the delegation
-        // (`core-runtime/src/recovery.ts:723`, 9af0262, and `:384` in retireWork),
-        // so heartbeat and handback get DELEGATION_NOT_LIVE, not case 6's code.
+        // Green since 0d552f0: authority loss revokes the delegation with
+        // `revocation_cause` authority_lost (0023), and `resolveDelegation`
+        // answers that cause DELEGATION_NARROWED, case 6's code, for every
+        // route here, heartbeat and handback included.
         const cell = agentCell(agent, name, bodyFor(), p.credential, 'DELEGATION_NARROWED');
         expect(await check(`narrowed ${name}`, name, cell)).toStrictEqual([]);
       }, 120_000);
