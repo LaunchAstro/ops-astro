@@ -261,7 +261,7 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
   });
 
   describe('the slot table the engine is written against', () => {
-    it('is the shipped shape: 38 slots, the 18 reserved ones indexed and the rest not', async () => {
+    it('is the shipped shape: 38 slots, 18 reserved, and every one of them indexed', async () => {
       const slots = await readSlotTable(db.admin.execute);
       expect(slots).toHaveLength(38);
       const counted = (type: string): number =>
@@ -274,19 +274,23 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
         counted('boolean'),
       ]).toStrictEqual([10, 12, 5, 6, 5]);
 
-      // This is the anchor for the model the unit tests run against. Reserved
-      // and indexed are the same slots, so a migration that indexed a free
-      // slot, or stopped indexing a reserved one, fails here rather than
-      // leaving `records-engine` asserting a table nobody ships.
+      // This is the anchor for the model the unit tests run against.
       //
-      // Sixteen when T1d shipped, eighteen since T1e: the task spine's
-      // classification produced two protected fields that fixed slots 2.2 had
-      // no reservation for, `client_visible` and the party link, and migration
-      // 0006 reserves and indexes their slots together (specification, 2.3
-      // case T1-N3). The pair moving together is what this assertion is for.
-      const reserved = slots.filter((slot) => slot.reservation !== null).map((slot) => slot.slot);
-      const indexed = slots.filter((slot) => slot.indexed).map((slot) => slot.slot);
-      expect(reserved.toSorted()).toStrictEqual(indexed.toSorted());
+      // Reservation and indexing used to be the same eighteen slots: sixteen
+      // when T1d shipped, eighteen since T1e reserved and indexed
+      // `client_visible` and the party link together (specification, 2.3 case
+      // T1-N3). They are no longer the same set, and that is 0009's doing.
+      // `planSlotAssignment` refuses an unindexed slot, so while the twenty
+      // free columns carried no index, `preset.plan` could not place a field
+      // of any type and its only possible answer was `SLOT_INDEX_ABSENT`. A
+      // free slot is now a usable slot.
+      //
+      // So the assertion moves rather than weakens: every registered slot is
+      // indexed, and reservation is separately eighteen. A migration that
+      // stopped indexing one, or reserved a nineteenth, still fails here.
+      const reserved = slots.filter((slot) => slot.reservation !== null);
+      const indexed = slots.filter((slot) => slot.indexed);
+      expect(indexed).toHaveLength(38);
       expect(reserved).toHaveLength(18);
     });
   });
@@ -299,9 +303,13 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
     });
 
     it('catches a slotted field assigned to a slot with no index', async () => {
+      // Every shipped slot is indexed since 0009, so the breakage has to take
+      // an index away as well as use the slot. Both halves inside the one
+      // rolled-back transaction, which is what the helper is for.
       await whenSchemaIs(
         db.admin,
-        `insert into public.field_defs
+        `drop index public.records_bool_2_idx;
+         insert into public.field_defs
            (business_id, id, record_type_id, key, label, value_type, slot, write_mode)
          select '${businessId}', gen_random_uuid(), '${typeId}', 'unindexed', 'unindexed',
                 'boolean', 'bool_2', 'generic'`,

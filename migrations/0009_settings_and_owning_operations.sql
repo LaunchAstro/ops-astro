@@ -153,3 +153,63 @@ create policy authority_business_settings on public.business_settings
 -- No DELETE. A setting is reset to its default value, not removed, so that a
 -- reader asking for a key never has to decide what an absent row means.
 grant select, insert, update on public.business_settings to ops_astro_app;
+
+-- ---------------------------------------------------------------------------
+-- The free slots get their indexes.
+-- ---------------------------------------------------------------------------
+
+-- 0005 indexed the sixteen the task spine reserves and 0006 added the two it
+-- took later. The other twenty columns exist and carry no index, and
+-- `planSlotAssignment` refuses to place a field in an unindexed slot --
+-- correctly, because the entire point of a slot is a value that can be
+-- filtered, sorted and grouped, and handing a preset an unindexed column would
+-- be promising that and delivering a sequential scan.
+--
+-- The consequence, before this migration: `preset.plan` could not place a
+-- single field of any type. Every free text, timestamp, numeric and boolean
+-- slot was unindexed, and the one free uuid slot the core had indexed was
+-- reserved. A planner whose only possible answer is `SLOT_INDEX_ABSENT` is not
+-- a planner, so the indexes the slot table has been promising land here.
+--
+-- Same shape as 0005's, partial on `deleted_at is null` for the same reason:
+-- a trashed record is not a row any filter is looking for.
+create index records_uuid_8_idx
+  on public.records (business_id, record_type_id, uuid_8) where deleted_at is null;
+create index records_uuid_9_idx
+  on public.records (business_id, record_type_id, uuid_9) where deleted_at is null;
+create index records_uuid_10_idx
+  on public.records (business_id, record_type_id, uuid_10) where deleted_at is null;
+create index records_txt_7_idx
+  on public.records (business_id, record_type_id, txt_7) where deleted_at is null;
+create index records_txt_8_idx
+  on public.records (business_id, record_type_id, txt_8) where deleted_at is null;
+create index records_txt_9_idx
+  on public.records (business_id, record_type_id, txt_9) where deleted_at is null;
+create index records_txt_10_idx
+  on public.records (business_id, record_type_id, txt_10) where deleted_at is null;
+create index records_txt_11_idx
+  on public.records (business_id, record_type_id, txt_11) where deleted_at is null;
+create index records_txt_12_idx
+  on public.records (business_id, record_type_id, txt_12) where deleted_at is null;
+create index records_ts_3_idx
+  on public.records (business_id, record_type_id, ts_3) where deleted_at is null;
+create index records_ts_4_idx
+  on public.records (business_id, record_type_id, ts_4) where deleted_at is null;
+create index records_ts_5_idx
+  on public.records (business_id, record_type_id, ts_5) where deleted_at is null;
+create index records_num_3_idx
+  on public.records (business_id, record_type_id, num_3) where deleted_at is null;
+create index records_num_4_idx
+  on public.records (business_id, record_type_id, num_4) where deleted_at is null;
+create index records_num_5_idx
+  on public.records (business_id, record_type_id, num_5) where deleted_at is null;
+create index records_num_6_idx
+  on public.records (business_id, record_type_id, num_6) where deleted_at is null;
+create index records_bool_2_idx
+  on public.records (business_id, record_type_id, bool_2) where deleted_at is null;
+create index records_bool_3_idx
+  on public.records (business_id, record_type_id, bool_3) where deleted_at is null;
+create index records_bool_4_idx
+  on public.records (business_id, record_type_id, bool_4) where deleted_at is null;
+create index records_bool_5_idx
+  on public.records (business_id, record_type_id, bool_5) where deleted_at is null;
