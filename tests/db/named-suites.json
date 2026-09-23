@@ -15,7 +15,8 @@
     "L3-PART-B adds the task-runtime suite (propose/decide through the envelope, replay, the G03 recorded refusal, the runtime-refusal rollback, the proposal projection) and the agent-path suite (I12, I07: the pre-pickup pair, the one-task ceiling, the decision exclusion, the handback settlement, the agent-actor audit). runtime-codes.test.ts is a pure unit suite and must not be named.",
     "L3-PART-B-2 adds the task-runtime-routes suite (the five routes and both prefixes over HTTP, the retained-report refusal, the in-process restart), the cli-reach suite (every declaration through the generated client) and the surface-reads suite (settings.read, session.capabilities, audited reads with a null subject, D06 on the read half); L4-RUNTIME-FIX's review-fixes suite (R1-R10 regressions on a real database) is named with it. handback-expenditure.test.ts is a pure unit suite and must not be named.",
     "L4-RUNTIME-FIX-2 adds the classifier-race suite (R1's executed two-classifier race) and the decision-abort suite (R2's forced post-write reservation refusal).",
-    "See docs/agents/database-conformance.md."
+    "See docs/agents/database-conformance.md.",
+    "L5-PROOFS adds four acceptance suites (the generated exported-surface inventory, the six-role nine-case matrix, the protected set on three surfaces, the four-state predicate/RLS mutation proof); each runs in process against the real application. restart-and-expiry.test.ts is NOT named: its container-restart case is a guarded skip (L5_RESTART_CONTAINER=1) and the runner refuses a skipped test, so the coordinator runs that leg explicitly with the flag as its own step. world.ts, cast.ts, restart-harness.ts and role-case-*.ts are harnesses, not suites."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -39,7 +40,11 @@
     "tests/commands/surface-reads.test.ts",
     "tests/runtime/review-fixes.test.ts",
     "tests/runtime/classifier-race.test.ts",
-    "tests/runtime/decision-abort.test.ts"
+    "tests/runtime/decision-abort.test.ts",
+    "tests/acceptance/surface-inventory.test.ts",
+    "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/protected-fields.test.ts",
+    "tests/acceptance/predicate-rls.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
