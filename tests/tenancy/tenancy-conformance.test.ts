@@ -84,6 +84,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
         '0015_login_kind_serialised',
+        '0016_delegation_purpose_scope',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -102,6 +103,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
         '0015_login_kind_serialised',
+        '0016_delegation_purpose_scope',
       ]);
     });
 

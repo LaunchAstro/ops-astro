@@ -42,7 +42,14 @@ So the order of its checks is load-bearing:
 1. `DELEGATION_EXCLUDES_DECISION` — first, so a decision is never reported as
    something else. **I07.**
 2. `DELEGATION_OUT_OF_PURPOSE` — before any grant is read, so an agent probing
-   outside its purpose learns nothing about what its person holds.
+   outside its purpose learns nothing about what its person holds. Three ways
+   to be outside it: a collection the purpose does not reach, an action it does
+   not carry, and a **scope that is not exactly the one task it was minted
+   for**. The last is the one-task ceiling: R5 is "R1's delegated agent,
+   purpose-scoped to one task", and R1's own grant is business-wide, so without
+   the stored scope a call on a sibling task reaches that same grant and passes
+   exactly as a call on the picked-up task does. A business- or party-scoped
+   request under a delegation is refused here too.
 3. `DELEGATION_NARROWED` — the purpose reaches the call and the person's live
    grants no longer cover it. **I08**, and by name: substituting
    `SCOPE_NOT_GRANTED` would say the agent was never authorised, when what
@@ -74,6 +81,24 @@ type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
+
+/** `record` only. Record- and actor-scoped *minting* stays deferred; this is the ceiling. */
+interface PurposeScope { readonly kind: 'record'; readonly id: string }
+
+interface MintRequest {
+  readonly agentActorId: string
+  readonly delegatePersonId: string
+  readonly mintedByActorId: string        // the authorising person's acting identity
+  readonly purpose: string
+  readonly collections: readonly string[]
+  readonly actions: readonly Action[]     // never `decide`
+  readonly purposeScope: PurposeScope     // the picked-up task's record id, mandatory
+  readonly expiresAt: Date                // L4's, from the lease contract
+}
+
+// The resolved delegation exposes the same `purposeScope`, read back from
+// `delegations.purpose_scope_kind` / `purpose_scope_id` (migration 0016).
+interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope }
 ```
 
 ```ts
@@ -117,18 +142,19 @@ register is L3's file. A model module reaching into the command surface to add a
 code is the coupling the register exists to prevent. L3 registers them with the
 rest, with HTTP statuses in `apps/api/status.ts`:
 
-| Code                           | Suggested status | Caller-visible                  |
-| ------------------------------ | ---------------- | ------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`       | 401              | yes                             |
-| `AUTH_SESSION_EXPIRED`         | 401              | yes — this is the re-login path |
-| `DELEGATION_EXCLUDES_DECISION` | 403              | yes                             |
-| `DELEGATION_OUT_OF_PURPOSE`    | 403              | yes                             |
-| `DELEGATION_NARROWED`          | 403              | yes                             |
-| `DELEGATION_NOT_LIVE`          | 401              | yes                             |
-| `DELEGATION_WIDENS`            | 403              | yes (mint time only)            |
-| `PRESET_FIELD_UNCLASSIFIED`    | 422              | yes, with the field keys        |
-| `PRESET_TYPE_UNKNOWN`          | 404              | yes                             |
-| `PRESET_FIELD_UNPLACEABLE`     | 409              | yes                             |
+| Code                                                                         | Suggested status | Caller-visible                  |
+| ---------------------------------------------------------------------------- | ---------------- | ------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401              | yes                             |
+| `AUTH_SESSION_EXPIRED`                                                       | 401              | yes — this is the re-login path |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403              | yes                             |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403              | yes                             |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403              | yes                             |
+| `DELEGATION_NARROWED`                                                        | 403              | yes                             |
+| `DELEGATION_NOT_LIVE`                                                        | 401              | yes                             |
+| `DELEGATION_WIDENS`                                                          | 403              | yes (mint time only)            |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422              | yes, with the field keys        |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404              | yes                             |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409              | yes                             |
 
 ## The expired session
 
