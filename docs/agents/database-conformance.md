@@ -89,7 +89,8 @@ no new gate here for anyone to rule on.
 
 The ticket already settles the timing. Its acceptance criterion is that the
 hosted job "is bound as a required context before the first port dispatch"
-(`publication-v2/03-pg0-product.md:36`): before the first port is dispatched,
+(the PG0 product ticket, item 6, held outside this repository): before the
+first port is dispatched,
 not during or after the first port's pull request.
 
 The two context names are exactly:

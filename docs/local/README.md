@@ -187,6 +187,7 @@ you think you are editing. Ask three questions in this order.
 curl -s http://127.0.0.1:8790/api/health   # is anything answering, and is the database reachable
 lsof -nP -iTCP:8790 -sTCP:LISTEN           # which process is actually listening
 lsof -nP -iTCP:5190 -sTCP:LISTEN           # and the web server
+lsof -a -p <pid> -d cwd -Fn                # which checkout that process is serving
 ```
 
 `/api/health` runs a statement and answers `200` with `database: "reachable"`
@@ -195,8 +196,10 @@ is mounted. It does not say which checkout the process was started from, and
 neither does starting the API again: `scripts/local/api-up.sh` checks
 `/api/health` first and exits `0` with "something is already answering" when it
 gets a reply, so a successful `pnpm api:up` is not evidence that your code is
-being served. `lsof` gives you the pid; the pid's working directory is what
-settles it.
+being served. The listener's working directory is what settles it: the third
+`lsof` takes the pid the second one gave you and prints that directory on a
+line beginning with `n`, on both macOS and Linux. If it is not the checkout you
+are editing, you are reading one tree and testing another.
 
 ### Where the output goes
 
@@ -212,12 +215,12 @@ one it is listening on.
 They prove different things and fail for different reasons. Reaching for the
 slowest one first is the usual mistake.
 
-| Kind                 | Command                                                                                                                                      | Needs                                                    | Notes                                                                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mounted web tests    | `corepack pnpm exec vitest run tests/surfaces`                                                                                               | Nothing running                                          | Screens under jsdom, in about a second. The first thing to run.                                                                                                    |
-| HTTP                 | `corepack pnpm verify:slice`                                                                                                                 | Database, GoTrue, API                                    | Signs in for real and walks the create/start/complete path and the refusals. One line per case; `unrun` with a reason for a case that cannot run.                  |
-| Browser              | `mkdir -p .local/evidence/browser && SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" corepack pnpm verify:browser` | The whole stack, plus Playwright's Chromium downloaded   | Has side effects, below.                                                                                                                                           |
-| Database conformance | `corepack pnpm db:conformance`                                                                                                               | `DATABASE_URL` and `DATABASE_ADMIN_URL` exported, Docker | Runs the suites named in `tests/db/named-suites.json` and fails a run in which one skipped. [What each of its two jobs proves](../agents/database-conformance.md). |
+| Kind                 | Command                                                                                                                                      | Needs                                                                                                                                                                                    | Notes                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mounted web tests    | `corepack pnpm exec vitest run tests/surfaces`                                                                                               | Nothing running                                                                                                                                                                          | Screens under jsdom, in about a second. The first thing to run.                                                                                                    |
+| HTTP                 | `corepack pnpm verify:slice`                                                                                                                 | Database, GoTrue, API                                                                                                                                                                    | Signs in for real and walks the create/start/complete path and the refusals. One line per case; `unrun` with a reason for a case that cannot run.                  |
+| Browser              | `mkdir -p .local/evidence/browser && SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" corepack pnpm verify:browser` | The whole stack, plus Playwright's Chromium downloaded                                                                                                                                   | Has side effects, below.                                                                                                                                           |
+| Database conformance | `corepack pnpm db:conformance`                                                                                                               | Docker, and both database URLs exported: `set -a; . ./.local/db.env; set +a` puts `DATABASE_URL` and `DATABASE_ADMIN_URL` in the environment ([DATA.md](DATA.md#roles-and-the-two-urls)) | Runs the suites named in `tests/db/named-suites.json` and fails a run in which one skipped. [What each of its two jobs proves](../agents/database-conformance.md). |
 
 `chromium.launch()` in `tests/browser/slice-acceptance.mjs` needs a browser on
 disk, and installing the `playwright` package does not fetch one. Run

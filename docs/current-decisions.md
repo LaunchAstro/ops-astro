@@ -29,8 +29,9 @@ Private conversation history cannot be an implementation dependency.
 | Development            | Matt Pocock build loop; Pstack standards within it            | Complete hosted rehearsal before product code                    |
 | Shared UI and registry | One design system and typed capability contract               | Transfer and independent discovery checks from the first slice   |
 
-The detailed decisions are indexed in [ADRs](adr/README.md). All product
-components remain unbuilt in this foundation. Deep Agents, LangGraph,
+The detailed decisions are indexed in [ADRs](adr/README.md). As of 8 September
+2026, all product components remained unbuilt in this foundation; the dated
+paragraph below records the integrated head. Deep Agents, LangGraph,
 LangChain, and Langflow are unselected candidates. No new framework is required
 to publish the foundation or prove a deterministic local task flow.
 
