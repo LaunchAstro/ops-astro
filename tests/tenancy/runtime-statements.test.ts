@@ -9,8 +9,13 @@
 // rollback -- and for the no-runtime-DDL claim to be made over a capture that
 // is not empty, because a silent log clears everything.
 //
-// So every task command and read this tree actually implements runs here,
-// through `executeCommand` and `executeRead`, into a log of their own.
+// So six selected production operations run here, through `executeCommand` and
+// `executeRead`, into a log of their own: the `task.create`, `task.assign` and
+// `task.complete` mutations, and the `task.read`, `task.board` and
+// `person.list` reads. Six, and not every operation the tree implements: what
+// is proved below is the shape a serving transaction has, which is the same
+// shape in all of them, and this suite is not a coverage claim over the
+// surface.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

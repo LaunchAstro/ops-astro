@@ -43,6 +43,10 @@ export function App(props: AppProps): ReactElement {
     if (here !== props.path) navigate(here);
   }, [here, props.path, navigate]);
 
+  // Why the board was reached instead of the address that was held. Drawn on
+  // the board and nowhere else, and gone when this session is.
+  const [notice, setNotice] = useState<string | null>(null);
+
   const onSignedIn = useCallback(
     (next: Session) => {
       // Spent here, so the next ordinary sign-in is not redirected by an
@@ -50,7 +54,28 @@ export function App(props: AppProps): ReactElement {
       const back = props.sessions.takeInterruption();
       props.sessions.set(next);
       setSession(next);
-      props.navigate(back === null ? '/projects/' : back.address);
+      setNotice(null);
+      if (back === null) {
+        props.navigate('/projects/');
+        return;
+      }
+      // **The held address only means anything in the business it was held
+      // in.** A task key is business-local, so replaying the string under a
+      // different business does not reopen the task the person was promised:
+      // it refuses, or -- worse, because it looks like success -- it draws an
+      // unrelated record that happens to share the key. A deliberate change of
+      // business is not a mistake, so it is not refused; it goes to that
+      // business's board and says why.
+      if (back.businessKey === next.businessKey) {
+        props.navigate(back.address);
+        return;
+      }
+      setNotice(
+        `You signed in to ${next.businessKey}, and ${back.address} is an address in ` +
+          `${back.businessKey}. This is the ${next.businessKey} board. Sign in to ` +
+          `${back.businessKey} to go back to where you were.`,
+      );
+      props.navigate('/projects/');
     },
     [props],
   );
@@ -58,6 +83,7 @@ export function App(props: AppProps): ReactElement {
   const onSignOut = useCallback(() => {
     props.sessions.clear();
     setSession(null);
+    setNotice(null);
     props.navigate('/sign-in');
   }, [props]);
 
@@ -66,11 +92,29 @@ export function App(props: AppProps): ReactElement {
   // the only handler. Held in a ref rather than closed over by the client's
   // memo: the address changes on every navigation and the client must not,
   // because a new client is a new read of everything on the page.
-  const endedRef = useRef<(refusal: WireRefusal) => void>(() => undefined);
+  //
+  // **A refusal belongs to the session that made the request.** A client keeps
+  // the bearer it was built with, and a call can be answered long after that
+  // bearer stopped being anybody's session: two reads leave together, the first
+  // 401 sends the person to sign-in, they sign in, and then the second arrives.
+  // Acting on it would clear the session that replaced the one it was refusing
+  // — signing the person out of a session no server ever refused. So the
+  // session the client was built with comes back with the notification and the
+  // whole action, not only the storage clear, is gated on it still being the
+  // one in hand. Identity is the test: `setSession` is the only way a session
+  // gets here, and every sign-in mints a new object.
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
   const hereRef = useRef(here);
   hereRef.current = here;
-  endedRef.current = (refusal) => {
-    props.sessions.end({ address: hereRef.current, code: refusal.code });
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  endedRef.current = (from, refusal) => {
+    if (sessionRef.current !== from) return;
+    props.sessions.end({
+      address: hereRef.current,
+      businessKey: from.businessKey,
+      code: refusal.code,
+    });
     setSession(null);
     props.navigate('/sign-in');
   };
@@ -83,7 +127,9 @@ export function App(props: AppProps): ReactElement {
         token: session?.token ?? null,
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
-          endedRef.current(refusal);
+          // `session` here is this client's own generation, captured when it
+          // was built, and not whatever is current when the answer lands.
+          if (session !== null) endedRef.current(session, refusal);
         },
       }),
     [props.apiBase, props.fetch, session],
@@ -120,13 +166,20 @@ export function App(props: AppProps): ReactElement {
         />
       )
     ) : route.id === 'agency:projects-board' ? (
-      <Projects
-        client={client}
-        grantKey={grantKey}
-        onOpenTask={(key) => {
-          props.navigate(`/task/${encodeURIComponent(key)}`);
-        }}
-      />
+      <>
+        {notice === null ? null : (
+          <p className="signin__ended" role="status" data-notice="other-business">
+            {notice}
+          </p>
+        )}
+        <Projects
+          client={client}
+          grantKey={grantKey}
+          onOpenTask={(key) => {
+            props.navigate(`/task/${encodeURIComponent(key)}`);
+          }}
+        />
+      </>
     ) : (
       <TaskDetailScreen client={client} grantKey={grantKey} taskKey={match?.params['key'] ?? ''} />
     );

@@ -22,7 +22,10 @@ import {
   databaseUrlFromEnvironment,
   type EmptyDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { defaultDenyConformance } from '../../packages/core-records/src/tenancy/privileges.ts';
+import {
+  defaultDenyConformance,
+  type StorageRoles,
+} from '../../packages/core-records/src/tenancy/privileges.ts';
 import {
   describePrefix,
   firstFailing,
@@ -94,27 +97,34 @@ describe.skipIf(serverUrl === undefined)('M01/M02: every migration prefix', () =
   // against a schema satisfying it has not been shown to notice anything. Each
   // one is broken here inside a transaction that is rolled back. DDL is
   // transactional, so nothing below lands.
+  class Rollback extends Error {}
+
+  const rolesNow = (): StorageRoles => ({
+    owner: 'postgres',
+    application: APPLICATION_ROLE,
+    logins: [db.loginRole],
+    restricted: db.restrictedRole,
+  });
+
+  const whenSchemaIs = async (breakage: string, expected: string): Promise<void> => {
+    const roles = rolesNow();
+    try {
+      await db.admin.transaction(async (execute) => {
+        await execute(breakage);
+        const findings = await defaultDenyConformance(execute, roles);
+        expect(findings.map((finding) => finding.rule)).toContain(expected);
+        throw new Rollback();
+      });
+    } catch (error) {
+      if (!(error instanceof Rollback)) throw error;
+    }
+    // Rolled back, and said so from the catalogue rather than assumed: the
+    // same checker now finds nothing, so each case above is the breakage
+    // being noticed and not a database left broken for the next one.
+    expect(await defaultDenyConformance(db.admin.execute, roles)).toStrictEqual([]);
+  };
+
   describe('the default-deny rules notice', () => {
-    class Rollback extends Error {}
-
-    const whenSchemaIs = async (breakage: string, expected: string): Promise<void> => {
-      const roles = {
-        owner: 'postgres',
-        application: APPLICATION_ROLE,
-        restricted: db.restrictedRole,
-      };
-      try {
-        await db.admin.transaction(async (execute) => {
-          await execute(breakage);
-          const findings = await defaultDenyConformance(execute, roles);
-          expect(findings.map((finding) => finding.rule)).toContain(expected);
-          throw new Rollback();
-        });
-      } catch (error) {
-        if (!(error instanceof Rollback)) throw error;
-      }
-    };
-
     it('catches a table handed to a role the application connects as', async () => {
       await whenSchemaIs(
         `alter table public.businesses owner to ${APPLICATION_ROLE}`,
@@ -147,6 +157,46 @@ describe.skipIf(serverUrl === undefined)('M01/M02: every migration prefix', () =
       await whenSchemaIs(
         `grant select on public.records to ${db.restrictedRole}`,
         'a role outside the application group reaches no table and no function',
+      );
+    });
+  });
+
+  // `ops_astro_app` is the group the migrations grant to. Nothing connects as
+  // it: the application connects as a login that is a member of it. Privileges
+  // flow down that membership and never back up, so a privilege, an ownership
+  // or a role attribute placed directly on the login is invisible on the group
+  // -- and the login is the role that actually issues runtime queries. Each
+  // case below breaks a rule on the login alone, leaving the group exactly as
+  // the migrations left it.
+  describe('the default-deny rules notice the login, not only the grant group', () => {
+    it('catches TRUNCATE granted straight to the application login', async () => {
+      await whenSchemaIs(
+        `grant truncate on public.businesses to ${db.loginRole}`,
+        'the application role never holds TRUNCATE, which row security does not filter',
+      );
+    });
+
+    it('catches CREATE granted straight to the application login', async () => {
+      await whenSchemaIs(
+        `grant create on schema public to ${db.loginRole}`,
+        'the application role may create nothing, in any schema',
+      );
+    });
+
+    it('catches a table owned by the application login', async () => {
+      await whenSchemaIs(
+        `alter table public.businesses owner to ${db.loginRole}`,
+        'the owner is separate: no table is owned by a role the application connects as',
+      );
+    });
+
+    it('catches BYPASSRLS set on the application login', async () => {
+      // The attribute that makes every row policy in the installation stop
+      // applying. It is a property of the role that connects, and a group the
+      // login inherits from does not carry it.
+      await whenSchemaIs(
+        `alter role ${db.loginRole} bypassrls`,
+        'no application-side role is superuser or bypasses row security',
       );
     });
   });

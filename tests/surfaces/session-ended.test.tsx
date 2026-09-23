@@ -27,6 +27,8 @@ import { SessionStore, type StorageLike } from '../../apps/web/src/session/token
 import { mount, settle, type Mounted } from './mount.tsx';
 
 const SESSION = { token: 'the-hour-old-token', businessKey: 'alpha', email: 'mia@alpha.local' };
+/** What the stand-in identity provider hands back on a fresh sign-in. */
+const FRESH_TOKEN = 'a-fresh-token';
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -254,6 +256,184 @@ describe('a session the API will not vouch for any more', () => {
     expect(sessions.session).not.toBeNull();
     expect(store.held.get('ops-astro.session')).toBeDefined();
     expect(seen).not.toContain('/sign-in');
+    await view.unmount();
+  });
+});
+
+// A server that judges every call by the bearer it actually carried, rather
+// than by a flag the test flips. That is the whole of this group: two requests
+// leave on the old token, and the second one comes back after the person has
+// already signed in again. A stand-in that answered "the session has ended"
+// globally could not tell the two sessions apart and so could not show the
+// defect at all.
+function byBearer(): {
+  readonly fetch: typeof globalThis.fetch;
+  /** Answer the old-token read that is still in flight. */
+  readonly deliverTheDelayedRefusal: () => void;
+} {
+  let deliver: ((response: Response) => void) | null = null;
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    const at = String(url);
+    if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
+
+    if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+    if (at.endsWith('/person/list')) {
+      // The old token's people read never comes back on its own. The test
+      // holds it, signs in again, and only then lets the 401 arrive.
+      if (!stale) return json({ ok: true, persons: PEOPLE });
+      return new Promise<Response>((resolve) => {
+        deliver = resolve;
+      });
+    }
+    return stale ? unknownLogin() : json({ recordId: TASK.id, revision: TASK.revision + 1 });
+  }) as unknown as typeof globalThis.fetch;
+
+  return {
+    fetch,
+    deliverTheDelayedRefusal: () => {
+      if (deliver === null) throw new Error('no old-token read was in flight');
+      deliver(unknownLogin());
+    },
+  };
+}
+
+describe('a refusal that belongs to a session which is already over', () => {
+  it('does not end the session that replaced it', async () => {
+    const api = byBearer();
+    const store = storage(SIGNED_IN);
+    const sessions = new SessionStore(store.like);
+    const seen: string[] = [];
+    const view = await mount(
+      <Harness start="/task/TSK-1" sessions={sessions} fetch={api.fetch} seen={seen} />,
+    );
+    await settle();
+    await settle();
+    // Two calls are now out on the hour-old token: the task read, answered,
+    // and the people read, which the stand-in is holding.
+    expect(view.text()).toContain('Wire the board to the API');
+
+    // The first refusal: the mutation. This is the one that puts the person on
+    // sign-in, and it is correct.
+    await view.click('button[data-lifecycle="complete"]');
+    await settle();
+    await settle();
+    expect(view.find('[data-reason="session-ended"]')).not.toBeNull();
+    expect(sessions.session).toBeNull();
+
+    await signInAgain(view);
+    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(seen.at(-1)).toBe('/task/TSK-1');
+    expect(view.text()).toContain('Wire the board to the API');
+
+    // And now the hour-old people read is answered, long after the token it
+    // carried stopped being anybody's session.
+    api.deliverTheDelayedRefusal();
+    await settle();
+    await settle();
+
+    // The new session is untouched: in memory, in storage, on the screen, and
+    // at the address the person was returned to.
+    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(store.held.get('ops-astro.session')).toBeDefined();
+    expect(view.find('[data-reason="session-ended"]')).toBeNull();
+    expect(view.find('#signin-email')).toBeNull();
+    expect(view.text()).toContain('Wire the board to the API');
+    expect(seen.at(-1)).toBe('/task/TSK-1');
+    // Nothing was remembered to return to, because nothing was interrupted.
+    expect([...store.held.keys()].some((key) => key.includes('return'))).toBe(false);
+    await view.unmount();
+  });
+});
+
+// A task address is `/task/<key>`, and the key is business-local: the business
+// is not in the address at all, it is what the client puts in the path prefix.
+// So the same address means one record in Bravo and a different one in Alpha,
+// and this stand-in gives each business its own task with the same key --
+// which is the only way a test can tell "returned to where I was" apart from
+// "returned to a string that resolved to something else".
+const BRAVO = { token: 'the-hour-old-token', businessKey: 'bravo', email: 'bea@bravo.local' };
+
+function perBusiness(): typeof globalThis.fetch {
+  return (async (url: string | URL, init?: RequestInit) => {
+    const at = String(url);
+    if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();
+
+    const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
+    const task = { ...TASK, title: `The ${business} task called TSK-1` };
+    if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
+    if (at.endsWith('/task/read')) return json({ ok: true, task });
+    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [task] });
+    return json({ recordId: TASK.id, revision: TASK.revision + 1 });
+  }) as unknown as typeof globalThis.fetch;
+}
+
+/** Interrupted in Bravo, and the tab is reloaded on the sign-in screen. */
+async function interruptedInBravo(): Promise<{
+  readonly store: ReturnType<typeof storage>;
+  readonly seen: string[];
+  readonly view: Mounted;
+  readonly sessions: SessionStore;
+}> {
+  const fetch = perBusiness();
+  const store = storage({ 'ops-astro.session': JSON.stringify(BRAVO) });
+  const first = new SessionStore(store.like);
+  const opened = await mount(
+    <Harness start="/task/TSK-1" sessions={first} fetch={fetch} seen={[]} />,
+  );
+  await settle();
+  await settle();
+  expect(opened.find('[data-reason="session-ended"]')).not.toBeNull();
+  await opened.unmount();
+
+  // The reload. Nothing survives it but what is in session storage, which is
+  // where the interruption has to carry the business if it carries it at all.
+  const sessions = new SessionStore(store.like);
+  const seen: string[] = [];
+  const view = await mount(
+    <Harness start="/sign-in" sessions={sessions} fetch={fetch} seen={seen} />,
+  );
+  await settle();
+  return { store, seen, view, sessions };
+}
+
+describe('the business an interrupted address belonged to', () => {
+  it('is what sign-in comes back offering, and where the return address leads', async () => {
+    const { seen, view, sessions } = await interruptedInBravo();
+
+    // The form is asking again for the business the person was working in,
+    // not for the one that happens to be first in the list.
+    expect((view.find('#signin-business') as HTMLSelectElement | null)?.value).toBe('bravo');
+
+    await signInAgain(view);
+    expect(sessions.session?.businessKey).toBe('bravo');
+    expect(seen.at(-1)).toBe('/task/TSK-1');
+    expect(view.text()).toContain('The bravo task called TSK-1');
+    await view.unmount();
+  });
+
+  it('is not assumed: choosing another business does not reopen the address there', async () => {
+    const { seen, view, sessions } = await interruptedInBravo();
+
+    // The person deliberately signs in to Alpha instead. Alpha has a task
+    // under the very same key, so an application that simply replayed the
+    // remembered string would draw an unrelated record and call it the one
+    // it promised to bring them back to.
+    await view.choose('#signin-business', 'alpha');
+    await signInAgain(view);
+
+    expect(sessions.session?.businessKey).toBe('alpha');
+    expect(seen.at(-1)).toBe('/projects/');
+    expect(view.text()).not.toContain('The bravo task called TSK-1');
+
+    const notice = view.find('[data-notice="other-business"]');
+    expect(notice).not.toBeNull();
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent).toContain('bravo');
+    expect(notice?.textContent).toContain('alpha');
     await view.unmount();
   });
 });

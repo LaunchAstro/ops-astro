@@ -74,6 +74,35 @@ export function record(entry) {
   );
 }
 
+/**
+ * The exit status a module that advertises a standalone run owes its caller.
+ *
+ * A standalone entry that awaits its cases, catches errors into a row and then
+ * exits without consulting the rows it just wrote reports success for a run
+ * that printed FAIL. Anything reading that exit code -- a person, a later
+ * script, a checklist -- reads a failed run as an accepted one. So the status
+ * is computed from the same `results` the table is: every recorded row must
+ * have passed, *and* every required case must be among them, because a group
+ * that threw before reaching SX3 recorded no SX3 row at all and an absent row
+ * is not a pass. `writeResults` counts the same three things for the full
+ * runner; this is that rule for a module run on its own.
+ *
+ * It returns the status rather than exiting, so a caller can still decide.
+ */
+export function standaloneStatus(group, required) {
+  const short = results.filter((entry) => entry.pending || entry.ok !== true);
+  const absent = required.filter(
+    (name) => !results.some((entry) => entry.case.startsWith(name) && entry.ok === true),
+  );
+  const status = short.length + absent.length === 0 ? 0 : 1;
+  console.log(
+    `\n${group}: ${String(results.length - short.length)}/${String(results.length)} row(s) passed` +
+      `${absent.length === 0 ? '' : `, ${absent.join(', ')} never recorded a passing row`}` +
+      ` — exit ${String(status)}`,
+  );
+  return status;
+}
+
 export async function shot(page, name) {
   const file = `${SHOTS}/${name}.png`;
   await page.screenshot({ path: file, fullPage: true });

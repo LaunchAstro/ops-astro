@@ -50,10 +50,31 @@ to `/sign-in`, where a notice (`role="status"`,
 was not saved. Signing in again returns to the remembered address — a task page
 stays a task page — and with nothing remembered it goes to `/projects/`.
 
-The address is kept in `sessionStorage` under `ops-astro.return-to`, beside the
-session itself and under the same rule: never `localStorage`, gone when the tab
-is, and spent the moment it is used. Signing out clears it too, so an ordinary
-sign-in is never redirected by an interruption somebody already answered.
+**The refusal belongs to the session that made the request.** A client keeps the
+bearer it was built with, so a call can be answered after that bearer has
+stopped being anybody's session: two reads leave together, the first 401 sends
+the person to sign-in, they sign in, and the second arrives afterwards. The
+session the client was built with comes back with the notification and the whole
+clear-and-navigate action is gated on it still being the one in hand, so a late
+refusal of an old token cannot sign a person out of the session that replaced
+it.
+
+**An address is remembered with the business it meant.** A task key is
+business-local — the business is the `/api/b/<key>` prefix, not part of
+`/task/<key>` — so the same address names a different record in each business.
+The interruption keeps the business key beside the address, sign-in comes back
+offering that business rather than the first in the list, and the held address
+is reopened only when the new session is in the same business. Choosing another
+business deliberately is not refused: it goes to that business's board with a
+notice (`role="status"`, `data-notice="other-business"`) naming the business the
+held address belonged to. The token is never kept; the business key is the word
+in the URL prefix and the word in the top bar.
+
+The address and its business are kept in `sessionStorage` under
+`ops-astro.return-to`, beside the session itself and under the same rule: never
+`localStorage`, gone when the tab is, and spent the moment it is used. Signing
+out clears it too, so an ordinary sign-in is never redirected by an interruption
+somebody already answered.
 
 No refresh-token call, no token inspection and no decoding anywhere in the web:
 the hour is the server's to decide and the browser only ever finds out by being
@@ -177,6 +198,13 @@ places this build does not yet reach it.
   implying it was kept. Preserving a draft across a sign-in would mean holding
   edited record content for an unauthenticated tab, which is a larger decision
   than this slice makes.
+- Signing in to a different business than the one that was interrupted does not
+  reopen the held address. A task key is business-local, so the same
+  `/task/<key>` names a different record in each business; the application goes
+  to the new business's board and says which business the held address belonged
+  to. Offering to switch back, or carrying more than one interruption, is not
+  built. The interruption keeps the business key -- the word in the URL prefix,
+  never the token.
 - Fonts and icons are not fetched. The redistribution question (#32) is open, so
   the families are a stack with real fallbacks and the brand is its own words.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
