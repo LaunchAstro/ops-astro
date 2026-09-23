@@ -389,7 +389,9 @@ async function authorise(
   if (request.command === 'task.decide') {
     // L4 asks L2 and returns L2's answer. It cannot succeed: `DelegableAction`
     // excludes `decide`, the check refuses it first, and a delegation carrying
-    // it cannot be written at all (`delegations_never_decide`).
+    // it cannot be written at all. An ordinary write of one is refused by
+    // `delegations_actions_known` (0008:188), the constraint Postgres reports;
+    // `delegations_never_decide` (0008:186) is the named second barrier.
     const excluded = await decideAsAgent(tx, delegation, {
       collection: 'task',
       taskId,
