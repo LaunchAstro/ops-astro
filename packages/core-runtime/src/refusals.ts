@@ -52,7 +52,9 @@ export type RuntimeRefusalCode =
   | 'LEASE_HELD'
   | 'LEASE_NOT_OWNED'
   | 'LEASE_EXPIRED'
-  | 'SCOPE_NOT_GRANTED';
+  | 'SCOPE_NOT_GRANTED'
+  /** A restart of a lineage that is live, completed, or already restarted (G05). */
+  | 'TRANSITION_NOT_PERMITTED';
 
 export interface RuntimeRefusal {
   readonly code: RuntimeRefusalCode;
@@ -115,4 +117,5 @@ export const SUGGESTED_STATUS: Readonly<Record<RuntimeRefusalCode, number>> = {
   LEASE_NOT_OWNED: 403,
   LEASE_EXPIRED: 410,
   SCOPE_NOT_GRANTED: 403,
+  TRANSITION_NOT_PERMITTED: 409,
 };

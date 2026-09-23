@@ -12,10 +12,12 @@
 // **What this handler decides, and what it does not.** It decides that the
 // audience and the kind are values the model has, because a comment addressed
 // to an audience nobody defined is a comment whose readers are undecided. It
-// does not decide *who may write in an audience*: `AUDIENCE_NOT_PERMITTED` is
-// registered for that and stays unproduced, because the authority question —
-// whether writing to the client is the `share` action rather than `comment` —
-// is a grant-model decision and the grant model is not this lane's to make.
+// does not widen *who may write in an audience*: a person holding `comment`
+// writes in either, as before. A delegated agent is narrower. It reaches this
+// through `writeTaskComment` with `internal` alone, so a client-visible comment
+// stays a person's act and the agent is told `AUDIENCE_NOT_PERMITTED`
+// (`agent-envelope.ts`). Whether writing to the client should be the `share`
+// action rather than `comment` for a person is still a grant-model decision.
 //
 // The author is the acting actor and the posting time is the server's. Neither
 // is a payload field: a comment whose author or time a caller can choose is
@@ -24,6 +26,8 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 import { writeComment, type CommentAudience, type CommentType } from '../tasks/comments.ts';
 import type { CommandContext } from './context.ts';
+import type { CommandDeclaration } from './surface.ts';
+import type { EntryPoint } from '../tasks/placement.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
@@ -52,11 +56,56 @@ export async function commentOnTask(
   audience: unknown,
   commentType: unknown,
 ): Promise<HandlerOutcome> {
-  const commentTypeId = context.spine.taskCommentTypeId;
-  // A business with no comment type installed is the state the declaration's
-  // `waitingOn` used to describe for everybody. It is now a property of one
-  // installation rather than of the build, and it is still the honest answer.
-  if (commentTypeId === undefined) return refuseUnlanded(context.declaration);
+  const target = context.target;
+  if (target === undefined) {
+    throw new Error('commentOnTask: reached without the task the declaration targets');
+  }
+  return await writeTaskComment(
+    tx,
+    {
+      commentTypeId: context.spine.taskCommentTypeId,
+      declaration: context.declaration,
+      target,
+      authorActorId: context.session.actorId,
+      entryPoint: context.entryPoint,
+      audiences: AUDIENCES,
+    },
+    body,
+    audience,
+    commentType,
+  );
+}
+
+/** What a comment is written against, from whichever envelope reached it. */
+export interface CommentTarget {
+  readonly commentTypeId: string | undefined;
+  readonly declaration: CommandDeclaration;
+  readonly target: { readonly id: string; readonly revision: number };
+  readonly authorActorId: string;
+  readonly entryPoint: EntryPoint;
+  /**
+   * The audiences this caller may write in. A person holding `comment` writes
+   * in either; a delegated agent is narrower (`agent-envelope.ts`), and an
+   * audience outside this set is `AUDIENCE_NOT_PERMITTED` rather than the
+   * shape refusal an unknown audience gets.
+   */
+  readonly audiences: ReadonlySet<string>;
+}
+
+/**
+ * The comment itself, shared by the person path above and the agent path. It
+ * validates the body, the audience and the type, and commits the comment with
+ * its own identity, which is the answer's `commentId`.
+ */
+export async function writeTaskComment(
+  tx: TenantQuery,
+  on: CommentTarget,
+  body: unknown,
+  audience: unknown,
+  commentType: unknown,
+): Promise<HandlerOutcome> {
+  const commentTypeId = on.commentTypeId;
+  if (commentTypeId === undefined) return refuseUnlanded(on.declaration);
 
   if (typeof body !== 'string' || body.trim() === '') {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
@@ -64,27 +113,27 @@ export async function commentOnTask(
   if (typeof audience !== 'string' || !AUDIENCES.has(audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], AUDIENCE_FIXES));
   }
+  if (!on.audiences.has(audience)) {
+    return refused(
+      refuseCommand(
+        'AUDIENCE_NOT_PERMITTED',
+        ['audience'],
+        [`This caller writes in ${[...on.audiences].toSorted().join(' or ')} only.`],
+      ),
+    );
+  }
   if (commentType !== undefined && (typeof commentType !== 'string' || !TYPES.has(commentType))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
 
-  const target = context.target;
-  if (target === undefined) {
-    throw new Error('commentOnTask: reached without the task the declaration targets');
-  }
-
   const commentId = await writeComment(tx, commentTypeId, {
-    taskId: target.id,
-    authorActorId: context.session.actorId,
+    taskId: on.target.id,
+    authorActorId: on.authorActorId,
     commentType: (commentType as CommentType | undefined) ?? DEFAULT_TYPE,
     audience: audience as CommentAudience,
     body,
-    source: context.entryPoint,
+    source: on.entryPoint,
   });
 
-  // The task's own revision is unchanged: a comment is a record beside the
-  // task and not an edit to it, so the caller may keep writing against the
-  // revision they already hold. The comment's identifier is the detail,
-  // because it is the thing the caller now has and can refer to.
-  return applied(target.id, target.revision, { commentId });
+  return applied(on.target.id, on.target.revision, { commentId });
 }

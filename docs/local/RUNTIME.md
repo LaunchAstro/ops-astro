@@ -61,6 +61,8 @@ queue(tx): Promise<readonly QueueEntry[]>
 pickup(tx, PickupRequest): Promise<RuntimeResult<PickedUp>>
 handback(tx, HandbackRequest): Promise<RuntimeResult<HandedBack>>
 cancelAndClassify(tx, { lineageId, reason }): Promise<RuntimeResult<readonly Classification[]>>
+restart(tx, RestartRequest): Promise<RuntimeResult<Restarted>>
+heartbeat(tx, HeartbeatRequest): Promise<RuntimeResult<Renewed>>
 replayRecordedTransitions(tx): Promise<readonly Classification[]>
 classifyUnderLocks(tx, ClassifyRequest): Promise<Classification>
 ```
@@ -476,6 +478,38 @@ partly covered rather than proved.
   Without the second half a later migration granting `update` would silently
   make the trail amendable.
 
+## The work controls
+
+The ledger's support controls reach this package through declared operations
+([API.md, "The support controls"](API.md#the-support-controls)), never through
+direct SQL.
+
+- **Cancellation** is `cancelAndClassify` (`recovery.ts`), reached by
+  `task.cancel`. It is unchanged: the lineage becomes terminal, the live lease
+  is released, and this lineage's own holds are classified under the locks it
+  discovered first.
+- **Restart** is `restart` (`restart.ts`), reached by `task.restart`. It reads
+  the terminal lineage's last version and step and calls `propose` with
+  `restartsLineageId`. Under the old lineage's lock, `propose` refuses a
+  lineage on another task (`LINEAGE_NOT_ON_TASK`), a live or completed one,
+  and one already restarted (`TRANSITION_NOT_PERMITTED`, the twentieth runtime
+  code, 409). It then writes `restarts_lineage_id`, the column 0010 declared
+  for this. The new lineage has version 1, a pending gate and no hold. Nothing
+  the old lineage held is reopened or reused (G05).
+- **Heartbeat** is `heartbeat` (`heartbeat.ts`), reached by `task.heartbeat` on
+  the agent prefix only. Under the lease and delegation locks, the caller must
+  be the holder, present the lease's own delegation and send the task's newest
+  fence, or it is `LEASE_NOT_OWNED`. A lease that is not live, is past its
+  instant, or whose delegation is settled, revoked or expired is
+  `LEASE_EXPIRED` and is not revived. One renewal reaches at most
+  `MAXIMUM_RENEWAL_SECONDS` (3600) past now and never past
+  `MAXIMUM_LEASE_LIFETIME_SECONDS` (8 hours) after the pickup. The delegation's
+  expiry is copied from the lease row. **No timer grants authority**: nothing
+  runs on its own, a lease that stops beating expires, and the next pickup
+  fences it as before. Bounded unstarted recovery stays the owning operations'
+  classifier (W04), reached by pickup, cancellation and restart replay, with
+  no sweeper added.
+
 ## What is not here
 
 - **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`
@@ -487,7 +521,8 @@ partly covered rather than proved.
   reaching into another unit's trail.
 - **No HTTP surface of its own.** This package is reached only through L3's
   command surface: `task.propose`, `task.decide`, `task.pickup`,
-  `task.handback` and `task.queue` are routed there, and its codes are
+  `task.handback`, `task.queue`, `task.cancel`, `task.restart` and
+  `task.heartbeat` are routed there, and its codes are
   registered in `commands/register.ts` and `apps/api/status.ts`
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no

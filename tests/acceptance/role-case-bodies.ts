@@ -39,6 +39,17 @@ export const PROPOSAL = {
   step: { kind: 'compose', payload: {} },
 } as const;
 
+/** A proposal on `task`, answering with the lineage it opened. */
+async function lineageOn(context: BodyContext, task: Task): Promise<string> {
+  const proposed = await context.asPerson('task.propose', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    ...PROPOSAL,
+  });
+  if (proposed.code !== 'ok') throw new Error(`matrix: propose refused ${proposed.code}`);
+  return String((proposed.body['detail'] as Record<string, unknown>)['lineageId']);
+}
+
 /** A body the case can send, or the reason there is no such body. */
 export type Prepared = { readonly body: Record<string, unknown> } | { readonly exception: string };
 
@@ -193,6 +204,40 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'task.cancel': {
+        // A lineage to cancel is a proposal's, so one is proposed first.
+        const task = await context.freshTask('a task whose lineage is cancelled');
+        const lineageId = await lineageOn(context, task);
+        return { body: { recordId: task.id, lineageId, reason: 'the admin cancels it' } };
+      }
+      case 'task.restart': {
+        // Only a rejected or cancelled lineage is restarted, so this one is
+        // proposed and cancelled through the routes before the restart.
+        const task = await context.freshTask('a task whose lineage is restarted');
+        const lineageId = await lineageOn(context, task);
+        const cancelled = await context.asPerson('task.cancel', {
+          recordId: task.id,
+          lineageId,
+          reason: 'cancelled so it can be restarted',
+        });
+        if (cancelled.code !== 'ok') throw new Error(`matrix: cancel refused ${cancelled.code}`);
+        return { body: { recordId: task.id, lineageId } };
+      }
+      case 'grant.revoke':
+        // Its positive control is case (f): the admin revokes a member's read
+        // through this route, and the member's next read is refused. A body
+        // here would need a grant id, and the only way to one is the grant it
+        // then takes away from a later case.
+        return { exception: 'positive control is case (f), revoking through this route' };
+      case 'delegation.revoke':
+        // A delegation exists only after an agent's pickup, which this recipe
+        // cannot make; `tests/api/controls-revoke.test.ts` revokes one through
+        // this route and shows the agent's next call refused.
+        return { exception: 'needs a pickup; positive in tests/api/controls-revoke.test.ts' };
+      case 'task.heartbeat':
+        // Refused on the person path like pickup and handback; its positive
+        // control is the agent journey, which renews its own lease.
+        return { exception: 'person path refuses by design (handlers.ts); see the agent journey' };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

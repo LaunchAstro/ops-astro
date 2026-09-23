@@ -35,13 +35,15 @@ describe("the client's read names", () => {
     expect(new Set(READ_NAMES).size).toBe(READ_NAMES.length);
   });
 
-  it('leave only the reads no screen reaches, named so the gap stays visible', () => {
-    // Not a rule about what the client must reach — a statement of what it does
-    // not, so adding a screen for one of these is a deliberate edit here rather
-    // than a silent change in coverage.
+  it('reach all seven declared reads, so none is reachable only as a mutation', () => {
+    // SPEC-ADJUDICATE (b): the web client reaches `task.queue` and
+    // `preset.plan` with the same permissions as the API and the command line.
+    // So this is now a rule rather than a statement of the gap: removing either
+    // name from `READ_NAMES` fails here.
     const unreached = [...declaredReads].filter(
       (name) => !READ_NAMES.some((reached) => reached === name),
     );
-    expect(unreached.toSorted()).toEqual(['preset.plan', 'task.queue']);
+    expect(unreached).toEqual([]);
+    expect(READ_NAMES).toHaveLength(7);
   });
 });

@@ -82,7 +82,17 @@ export type CommandName =
   // generic edit and a named command owns it. The names are the ones the
   // `business_settings` rows already cite in `owning_operation`.
   | 'settings.set_four_eyes_threshold'
-  | 'settings.set_client_sign_off';
+  | 'settings.set_client_sign_off'
+  // The support controls the contract ledger requires through owning
+  // production interfaces: revocation of an existing grant or delegation,
+  // cancellation of a run's lineage, an authorised restart as a new lineage,
+  // and the lease owner's heartbeat. None is a new actor power; each asks for
+  // authority the caller already holds (see each row below).
+  | 'grant.revoke'
+  | 'delegation.revoke'
+  | 'task.cancel'
+  | 'task.restart'
+  | 'task.heartbeat';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -231,6 +241,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
   }),
+
+  // The grant manager's authority, which is `manage` on the task family this
+  // head's grants are about. The declaration is the gate the envelope asks;
+  // `authority-controls.ts` then asks the second half, the manager's own
+  // ceiling: it may revoke only a pair it holds itself at a covering scope.
+  declare('grant.revoke', 'manage', { targetsExistingRecord: false }),
+  declare('delegation.revoke', 'manage', { targetsExistingRecord: false }),
+  // Work control is `write` on the task, the authority `task.propose` asks.
+  // Both name the task in `recordId` and the lineage in `lineageId`, and the
+  // handler refuses a lineage opened on another task. They take no
+  // `expectedRevision` because neither writes the task record.
+  declare('task.cancel', 'write', { targetsExistingRecord: false }),
+  declare('task.restart', 'write', { targetsExistingRecord: false }),
+  // The lease owner's. The person path refuses it as it refuses pickup and
+  // handback; the agent path checks the delegation, then the lease.
+  declare('task.heartbeat', 'write', { targetsExistingRecord: false }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -259,6 +285,8 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
  * can send it back, but the read itself writes against nothing.
  */
 export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
+  'delegation.revoke',
+  'grant.revoke',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -266,13 +294,16 @@ export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
   'task.board',
+  'task.cancel',
   'task.create',
   'task.decide',
   'task.handback',
+  'task.heartbeat',
   'task.pickup',
   'task.purge',
   'task.queue',
   'task.read',
+  'task.restart',
   'task.restore',
 ]);
 

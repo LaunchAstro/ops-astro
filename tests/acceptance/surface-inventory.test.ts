@@ -225,25 +225,18 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     expect(disagreements).toStrictEqual([]);
   });
 
-  it('names the reads the mounted app cannot reach as reads, with the reason', () => {
-    // `OperationsClient.read()` takes `ReadName`, and `ReadName` is five names.
-    // The surface declares seven reads. The other two are reachable only through
-    // `mutate()`, which always sends an `operationId` — and a read carries no
-    // operation identity, because it has nothing to replay. So they are reached
-    // by the wrong verb rather than not at all, and that is the exception this
-    // inventory records rather than papers over.
+  it('reaches every declared read as a read on the mounted app, with none left over', () => {
+    // `OperationsClient.read()` takes `ReadName`. It was five names against
+    // seven declared reads, and `task.queue` and `preset.plan` were reached only
+    // through `mutate()`, with an operation identity a read does not carry.
+    // SPEC-ADJUDICATE (b) ruled both required, so they joined `READ_NAMES`
+    // and this case now requires none unreachable: taking either back out
+    // fails here and in `tests/surfaces/read-names.test.ts`.
     const declaredReads = READS as readonly CommandName[];
     const unreachableAsReads = declaredReads.filter((name) => !WEB_READ_VERBS.includes(name));
-    // Two, on this head. `task.queue` and `preset.plan` were always reached by
-    // the wrong verb. `settings.read` and `session.capabilities` joined
-    // `READ_NAMES` with WEB-RECONCILE, which removed the settings screen's
-    // casts; `tests/surfaces/read-names.test.ts` asserts the same two. When a
-    // screen gains a read verb for either, this case fails and the list comes
-    // down with it.
-    expect(unreachableAsReads).toStrictEqual(['task.queue', 'preset.plan']);
+    expect(unreachableAsReads).toStrictEqual([]);
     report('web read() reach', [
       `${String(WEB_READ_VERBS.length)} of ${String(declaredReads.length)} declared reads`,
-      `${unreachableAsReads.join(' and ')} reachable only through mutate()`,
     ]);
     // Every web read verb is a real declaration, which is the direction that
     // would otherwise let the client offer a read the server does not serve.

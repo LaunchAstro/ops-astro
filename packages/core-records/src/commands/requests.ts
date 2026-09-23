@@ -170,6 +170,31 @@ export type CommandRequest =
       readonly command: 'settings.set_client_sign_off';
       readonly value: boolean;
       readonly expectedRevision?: number;
+    } & Envelope)
+  // The support controls. Revocation names the row it revokes; the time is the
+  // server's. Cancel and restart name the task and the lineage on it, so the
+  // task is where the work-control authority is asked and the lineage is
+  // checked against it. A restart carries no proposal of its own: it is the
+  // terminal lineage's last version, proposed again under a new lineage.
+  | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
+  | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
+  | ({
+      readonly command: 'task.cancel';
+      readonly recordId: string;
+      readonly lineageId: string;
+      readonly reason: string;
+    } & Envelope)
+  | ({
+      readonly command: 'task.restart';
+      readonly recordId: string;
+      readonly lineageId: string;
+      readonly expiresInSeconds?: number;
+    } & Envelope)
+  | ({
+      readonly command: 'task.heartbeat';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly leaseSeconds?: number;
     } & Envelope);
 
 /**
