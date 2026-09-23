@@ -22,8 +22,22 @@
 // would have got anyway — because a constraint nobody can reach is a
 // constraint nobody has tested, and a path that only the constraint holds is
 // one the caller meets as a 500.
+//
+// **The row is written by `records/business-settings.ts`, against a revision.**
+// The update these two commands used to run themselves did not touch
+// `revision`, so a setting written through a command kept the number it had and
+// two administrators editing one row from two browser tabs both applied — the
+// second silently replacing a value chosen before the first existed. The write
+// now goes through `writeBusinessSetting`, which locks the row before it
+// compares, so the loser waits, re-reads and is refused `VERSION_STALE` instead
+// of being told `applied`.
+//
+// `expectedRevision` is optional and stays optional. The four contracts that
+// name these settings predate the column, so a caller that has not learnt to
+// send one still writes and is still handed the revision the row is now at.
 
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isSettingRevisionStale, writeBusinessSetting } from '../records/business-settings.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -41,26 +55,6 @@ const THRESHOLD_FIXES: readonly string[] = [
 
 const SIGN_OFF_FIXES: readonly string[] = ['Send value as true or false.'];
 
-/**
- * How each command's value becomes the document the row holds.
- *
- * `$3` is the caller's own value — a number or a boolean, not its text — and
- * it is converted by the server against the type this command knows the row
- * is. Null is `'null'::jsonb` and not a SQL null: the column is `not null` and
- * "the band is off" is a value rather than an absence.
- *
- * **The value is not stringified on the way in.** It was, and this driver
- * reads `$3::boolean` as a request to serialise the *JavaScript* value as a
- * boolean: the string `'true'` is not `true`, so it went to the server as
- * `false` and the setting was silently written the wrong way round. A driver
- * that serialises by the cast it can see is a good reason never to hand it a
- * value of a different type from the one the SQL claims.
- */
-const VALUE_SQL: Readonly<Record<string, string>> = {
-  'settings.set_four_eyes_threshold': `case when $3::text is null then 'null'::jsonb else to_jsonb($3::numeric) end`,
-  'settings.set_client_sign_off': `to_jsonb($3::boolean)`,
-};
-
 const ABSENT_FIXES: readonly string[] = [
   'This business has no row for that setting yet.',
   'Install the named business settings before writing one.',
@@ -75,53 +69,58 @@ function isCheckViolation(cause: unknown): boolean {
   );
 }
 
+/**
+ * Write one of the two settings a named operation owns.
+ *
+ * `expectedRevision` is the caller's own, straight off a `settings.read`, and
+ * it is handed to the records writer unchanged: absent means "write it anyway",
+ * a number the row has moved past is `VERSION_STALE`, and the refusal is
+ * returned by that writer rather than thrown so this transaction survives it.
+ *
+ * `undefined` from the writer is one answer for two facts — this business has
+ * no row by that key, and this operation does not own the row it found — and
+ * both are the caller's own `NOT_FOUND`. Neither tells the caller which,
+ * because "a setting you may not write" and "a setting that is not there" are
+ * the same amount of business configuration to somebody who may not write it.
+ */
 export async function setBusinessSetting(
   tx: TenantQuery,
   context: CommandContext,
   command: 'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off',
   value: unknown,
+  expectedRevision?: number,
 ): Promise<HandlerOutcome> {
   const key = KEY_OF[command];
   if (key === undefined) throw new Error(`setBusinessSetting: ${command} owns no setting`);
 
+  // The narrowing is done into a variable rather than by a guard above, because
+  // the value handed to the writer has to be the typed one: this driver
+  // serialises by the type it is given, and an `unknown` that is really a
+  // string reaches the column as the JSON string "500", which no comparison
+  // reads and the check constraint correctly refuses.
+  let writable: number | boolean | null;
   if (command === 'settings.set_four_eyes_threshold') {
-    const acceptable =
-      value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
-    if (!acceptable) {
-      return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));
-    }
-  } else if (typeof value !== 'boolean') {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SIGN_OFF_FIXES));
-  }
+    if (value === null) writable = null;
+    else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
+    else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));
+  } else if (typeof value === 'boolean') writable = value;
+  else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SIGN_OFF_FIXES));
 
-  // `write_mode = 'operation'` and `owning_operation @> {command}` in the
-  // predicate rather than in a branch above it: the row itself says which
-  // operation owns it, so a row someone later reclassified `generic` stops
-  // being writable here without this file changing. Nothing in the update
-  // trusts the caller for the key, the actor or the time.
-  let rows: readonly { readonly id: string }[];
+  // `owningOperation` is this command's own name and never the caller's idea of
+  // one. The row says which operation owns it, so a setting someone later
+  // reclassified stops being writable here without this file changing.
+  let written;
   try {
-    rows = await tx.query<{ readonly id: string }>(
-      // The conversion is chosen here, by the command, and there is no `case`
-      // over `value_type` in the statement. Two shapes were tried first and
-      // both were wrong for the same reason — the server decides the
-      // parameter's type before the row is read. A `case` had every arm's cast
-      // folded at plan time, so a numeric band was rejected by a boolean arm
-      // that was never meant to run; a single `$3::jsonb` had the driver send
-      // the text `1200` as the *JSON string* `"1200"`, which
-      // `business_settings_value_matches_type` correctly refused. So each
-      // command names its own conversion, which it can, because the key is the
-      // command and the row's type follows from it.
-      `update business_settings
-          set value = ${VALUE_SQL[command]},
-              updated_at = now(),
-              updated_by_actor_id = $4
-        where business_id = $1 and key = $2
-          and write_mode = 'operation'
-          and owning_operation @> array[$5::text]
-      returning id`,
-      [tx.businessId, key, value ?? null, context.session.actorId, command],
-    );
+    written = await writeBusinessSetting(tx, {
+      key,
+      value: writable,
+      // Spread rather than set: `exactOptionalPropertyTypes` makes "the
+      // property is absent" and "the property is undefined" two different
+      // things, and the writer's optional revision means the first one.
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
+      owningOperation: command,
+      actorId: context.session.actorId,
+    });
   } catch (cause) {
     if (!isCheckViolation(cause)) throw cause;
     return refused(
@@ -133,11 +132,19 @@ export async function setBusinessSetting(
     );
   }
 
-  const row = rows[0];
-  if (row === undefined) return refused(refuseCommand('NOT_FOUND', [key], ABSENT_FIXES));
+  if (written === undefined) return refused(refuseCommand('NOT_FOUND', [key], ABSENT_FIXES));
+  if (isSettingRevisionStale(written)) {
+    // Passed straight through: the writer already named the revision the row is
+    // at and the fixes the records spine words, so restating either here would
+    // be two wordings of one answer drifting apart.
+    return refused(refuseCommand(written.code, written.names, written.fixes));
+  }
 
-  // No revision: `business_settings` carries none, so there is nothing for a
-  // caller to write against and nothing to hand back. That is a schema gap
-  // rather than a decision, and it is named in the handback.
-  return applied(row.id, null, { key, value });
+  // The revision is in the handle *and* in the detail: the handle is what a
+  // client writes against next, and the detail is what it shows.
+  return applied(written.id, written.revision, {
+    key,
+    value: written.value,
+    revision: written.revision,
+  });
 }
