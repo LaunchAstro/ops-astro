@@ -35,20 +35,25 @@ lane's auth seed writes and which is gitignored.
 
 ### When the session ends
 
-A local access token lives for one hour, and the API answers a missing, an
-expired and an unverifiable bearer identically: HTTP 401 with
-`AUTH_UNKNOWN_LOGIN` (`docs/local/API.md`). So the application does not say
-"expired" — it cannot know that — and it does not leave the person on a refusal
-they cannot act on either.
+A local access token lives for one hour, and the API refuses a bearer it will
+not act on with HTTP 401 on one of two codes (`docs/local/API.md`). A missing, a
+forged, an unsigned and a subject-less bearer all answer `AUTH_UNKNOWN_LOGIN`,
+because telling them apart tells an unauthenticated caller which guess was
+closer. A bearer whose signature verifies against this deployment's own secret
+and whose `exp` has passed answers `AUTH_SESSION_EXPIRED` instead. That one is
+not a guess: whoever sent it held a credential this server issued a session for,
+so being told the session ran out gives them nothing they could not already
+prove, and it gives them the re-login door.
 
-The client is the one place that recognises it (`operations/client.ts`), for a
-read and a mutation alike. When it arrives while a session is held, the
-application drops the session, remembers the address the person was on, and goes
-to `/sign-in`, where a notice (`role="status"`,
-`data-reason="session-ended"`) says the session has ended, quotes
-`AUTH_UNKNOWN_LOGIN` as the server's own word, and says that anything unsaved
-was not saved. Signing in again returns to the remembered address — a task page
-stays a task page — and with nothing remembered it goes to `/projects/`.
+Both codes mean the same thing to the screen — the session has ended — and the
+client (`operations/client.ts`) is the one place that recognises them, for a read
+and a mutation alike. It raises `onSessionEnded` with the refusal the server
+sent, and on that signal the application drops the session, remembers the address
+the person was on, and goes to `/sign-in`, where a notice (`role="status"`,
+`data-reason="session-ended"`) says the session has ended, quotes the server's
+own code so the person can repeat it, and says that anything unsaved was not
+saved. Signing in again returns to the remembered address — a task page stays a
+task page — and with nothing remembered it goes to `/projects/`.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
@@ -180,18 +185,19 @@ There is no path from a failed read to sample data anywhere in this application.
 ## Tests
 
 ```
-pnpm exec vitest run --config tests/surfaces/vitest.config.ts
+pnpm exec vitest run tests/surfaces
 ```
 
-That config exists only because the root `vitest.config.ts` collects
-`*.test.ts` and the two mounted tests are `*.test.tsx`. When the root config
-gains `tests/**/*.test.tsx`, delete `tests/surfaces/vitest.config.ts` and use
-`pnpm test`.
+These suites have no config of their own. The root Vitest config collects
+`tests/**/*.test.tsx` alongside `tests/**/*.test.ts`, so `pnpm test` picks them
+up with everything else and the command above is only how you run this lane's on
+their own.
 
-Four suites. The two `.ts` ones need no browser: route derivation and the
-envelope against a stubbed `fetch`, and the generation/denial ordering in
-`authorised-read.ts`. The two `.tsx` ones mount into jsdom, declared per file
-with a `// @vitest-environment jsdom` docblock.
+The `.ts` suites need no browser: route derivation and the envelope against a
+stubbed `fetch`, and the generation/denial ordering in `authorised-read.ts`. The
+`.tsx` ones mount into jsdom, declared per file with a
+`// @vitest-environment jsdom` docblock rather than in a config, so a file says
+for itself what it needs and a new one needs nothing added anywhere else.
 
 None of them touches the API, and none discharges a browser acceptance case.
 They prove the wiring; B1–B7 prove the product.
@@ -203,15 +209,30 @@ pnpm verify:browser
 ```
 
 That runs `tests/browser/slice-acceptance.mjs` against the stack already
-serving on 5190/8790, writes every case into
-`parent-observations/local-slice/RESULTS.md` with a screenshot each, and exits
-non-zero if any case failed. It is the whole checklist in one place: B1–B7,
-N1–N7 including the real N6 revocation harness, and the two review findings'
-browser cases.
+serving on 5190/8790, writes every case into `RESULTS.md` with a screenshot
+each, and exits non-zero if any case failed. It is the whole checklist in one
+place: B1–B7, N1–N7 including the real N6 revocation harness, and the two review
+findings' browser cases.
 
-It is evidence, not a check, and it is not cheap: it stops the API, stops and
-restarts the Postgres container (keeping the volume), and revokes and reissues
-a live grant. Run it when you want the table, not on every edit.
+The screenshots and `RESULTS.md` go to the directory `SHOT_DIR` names, which
+defaults to `.local/evidence/browser` inside the repository and is created if it
+is not there. The default is gitignored and belongs to the clone rather than to
+one machine, so anybody who has it can run the checklist and read its table
+without first recreating somebody else's folder; a coordinator's run sets
+`SHOT_DIR` to gather the evidence with the rest of the round's.
+`node tests/browser/keyboard-and-widths.mjs` takes the same default and the same
+override. `DOCKER_BIN` names the `docker` binary the database cases call, and
+defaults to `/usr/local/bin/docker`, which is where a machine that does not put
+it on the agent's `PATH` still has it.
+
+It is evidence, not a check, and it is not cheap. B7 kills the API under a
+mounted page, and B6 then restarts the API and stops and starts the
+`ops-astro-local-pg` container, keeping the `ops-astro-local-pgdata` volume
+(`cases-b6-b7.mjs`). The settings cases issue a live `settings:manage` grant of
+their own through `issueGrant`, revoke it in a `finally` and put back the
+threshold they wrote (`cases-settings.mjs`), and N6 revokes a grant through
+`revokeGrant` for real. Each of those restores what it changed, but it changes
+it, so run this when you want the table and not on every edit.
 
 The run is made of one module per case group, so a group can be read or
 changed without reading the rest:
@@ -261,9 +282,12 @@ places this build does not yet reach it.
 - The board draws nine pinned columns; this build stores five of them. Rank,
   client, stage, estimate and actual draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab: the records they draw
-  are not stored by this build, so the registry is empty rather than carrying a
-  tab that opens onto nothing.
+- No Agent panel, gate or run surfaces, and no dock tab for them. The records
+  behind them are stored and read: `task.read` carries every proposal on the
+  task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
+  projection", served by `packages/core-records/src/reads/proposals.ts`). So this
+  is the web not drawing them yet and not the database failing to hold them, and
+  the panel registry stays empty until there is a surface for a tab to open onto.
 - Subtasks are not built. Comments are, and the task page draws them; the
   mockup's tabbed Internal / Client / All activity conversation is not — the
   comments are one list with each row's audience on it, and history stays its
@@ -284,12 +308,6 @@ places this build does not yet reach it.
 - **No settings read exists**, so `/settings` cannot show what a business holds
   — only what this browser last had confirmed. Named above and in the handback
   for the lane that owns the read surface.
-- **No seeded identity holds `settings:manage`.** `scripts/local-seed.mjs` grants
-  its admin six `task` actions and `person:read`; the settings commands take
-  `manage` on the `settings` collection, which nobody is granted. `S1` issues
-  that grant through `issueGrant` and revokes it in a `finally`, and restores
-  the threshold it wrote, so the run leaves the business's grants and rows as it
-  found them. The gap belongs to the seed's lane.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
   implying it was kept. Preserving a draft across a sign-in would mean holding

@@ -173,6 +173,49 @@ describe('what comes back', () => {
     expect(result).toMatchObject({ unavailable: true });
   });
 
+  it('ends the session on either 401 code, and only when a token was sent', async () => {
+    // The API tells the two apart on purpose — an unplaceable bearer is
+    // `AUTH_UNKNOWN_LOGIN` and a verified one past its `exp` is
+    // `AUTH_SESSION_EXPIRED` (`docs/local/API.md`) — and the difference is for
+    // the person reading the notice, not for what the client does about it.
+    // Recognising only the first is how a person whose hour ran out ends up
+    // reading a raw refusal with no way back to sign-in.
+    const reported = async (code: string): Promise<readonly string[]> => {
+      const ended: string[] = [];
+      const { fetch } = stub({ refused: true, code, names: [], fixes: [] }, 401);
+      const result = await new OperationsClient({
+        base: '/api',
+        businessKey: 'alpha',
+        token: 'tok',
+        fetch,
+        newOperationId: () => 'op-1',
+        onSessionEnded: (refusal) => ended.push(refusal.code),
+      }).read('task.board', { board: null });
+      // Reported, never swallowed: the refusal still comes back unchanged.
+      expect(result).toMatchObject({ refused: true, code });
+      return ended;
+    };
+
+    expect(await reported('AUTH_UNKNOWN_LOGIN')).toEqual(['AUTH_UNKNOWN_LOGIN']);
+    expect(await reported('AUTH_SESSION_EXPIRED')).toEqual(['AUTH_SESSION_EXPIRED']);
+
+    // A 401 with no bearer is a call nobody was signed in for, and ending a
+    // session that was never held would report an event that did not happen.
+    const ended: string[] = [];
+    const { fetch } = stub(
+      { refused: true, code: 'AUTH_SESSION_EXPIRED', names: [], fixes: [] },
+      401,
+    );
+    await new OperationsClient({
+      base: '/api',
+      businessKey: 'alpha',
+      token: null,
+      fetch,
+      onSessionEnded: (refusal) => ended.push(refusal.code),
+    }).read('task.board', { board: null });
+    expect(ended).toEqual([]);
+  });
+
   it('reports a transport failure as unavailable', async () => {
     const fetch = (async () => {
       throw new Error('connection refused');

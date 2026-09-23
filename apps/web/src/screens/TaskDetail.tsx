@@ -42,6 +42,13 @@
 // The write leaves the task's own revision alone, so nothing else on the page
 // goes stale because somebody said something.
 //
+// **The proposals are one answer, and the decision carries the version out of
+// it.** `task.read` brings the proposal projection with the task, so the
+// `versionId` the approve control sends is the version whose evidence and digest
+// are on the screen beside it. A refused decision is quoted and then the task is
+// read again, and the refusal text is held here rather than inside the proposals
+// view because the reread unmounts everything under the read state.
+//
 // **A refused comment is asked once.** There is no grant read anywhere in this
 // build, so this screen cannot know whether a person holds `comment` before it
 // asks. What it can do is ask once, quote the server's own code, and then stop
@@ -65,6 +72,7 @@ import type {
   TaskReadResult,
 } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
+import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { describeFailure, describeRefusal, submitEdit } from '../records/submit.ts';
 
@@ -116,6 +124,22 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   }
   const held = draft !== null && draft.identity === identity ? draft : null;
 
+  // **A refused decision is remembered above the read, for one task under one
+  // grant.** Deciding rereads the task, and a reread unmounts everything below
+  // `RecordState`, so a refusal held inside the proposals view would disappear
+  // together with the version it was about — the screen would change and say
+  // nothing about why. It is dropped when the task or the reader changes, for
+  // the same reason a draft is: it is an answer about one record read under one
+  // authority.
+  const [decision, setDecision] = useState<{
+    readonly identity: string;
+    readonly note: DecisionNote;
+  } | null>(null);
+  if (decision !== null && (decision.identity !== identity || state.outcome === 'denied')) {
+    setDecision(null);
+  }
+  const note = decision !== null && decision.identity === identity ? decision.note : null;
+
   return (
     <div className="stack">
       {/*
@@ -155,6 +179,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
             grantKey={props.grantKey}
             task={value.task}
             draft={held}
+            note={note}
+            onDecided={(next) => {
+              setDecision(next === null ? null : { identity, note: next });
+            }}
             onDraft={(next, base) => {
               if (next === null) {
                 setDraft(null);
@@ -202,6 +230,9 @@ interface LoadedProps {
   readonly task: Task;
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
+  /** What the server said about the last decision, or nothing. */
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
   readonly onSaved: (generation: number) => void;
   readonly onDiscard: () => void;
@@ -534,6 +565,16 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         revision={task.revision}
         onPosted={props.onChanged}
+      />
+
+      <Proposals
+        client={client}
+        note={props.note}
+        onChanged={props.onChanged}
+        onDecided={props.onDecided}
+        proposals={task.proposals}
+        recordId={task.id}
+        revision={task.revision}
       />
 
       <section className="sb__sect">

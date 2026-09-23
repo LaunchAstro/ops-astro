@@ -23,8 +23,14 @@
 // either, so `operationId` is an argument with a default, not a hidden value.
 //
 // **A session that has ended is reported from here, once, for every call.** The
-// API answers a missing, an expired and an unverifiable bearer identically:
-// HTTP 401 with `AUTH_UNKNOWN_LOGIN` (`docs/local/API.md`). A token lives an
+// API answers a bearer it will not act on with HTTP 401 on one of two codes
+// (`docs/local/API.md`): a missing, forged, unsigned or subject-less one is
+// `AUTH_UNKNOWN_LOGIN`, and one whose signature verifies against this
+// deployment's own secret and whose `exp` has passed is `AUTH_SESSION_EXPIRED`.
+// Both mean the credential this client holds is no longer one, so both end the
+// session here. A client that recognised only the first would leave a person
+// whose hour ran out reading a raw refusal on whichever screen they were on,
+// with the sign-in path never offered. A token lives an
 // hour, so this arrives at an ordinary moment in an ordinary day, and it
 // arrives at whichever call happened to be next — a board read, a task read, a
 // save. Recognising it in each screen would be the same rule written five times
@@ -213,7 +219,7 @@ export class OperationsClient {
     if (isWireRefusal(parsed)) {
       if (
         response.status === 401 &&
-        parsed.code === SESSION_ENDED &&
+        SESSION_ENDED.has(parsed.code) &&
         this.#options.token !== null
       ) {
         this.#options.onSessionEnded?.(parsed);
@@ -234,13 +240,23 @@ export class OperationsClient {
 }
 
 /**
- * The one code that means the bearer is no longer a credential.
+ * The two codes that mean the bearer is no longer a credential.
  *
  * Paired with the 401 rather than trusted alone: the code names the decision
- * and the status names the boundary that made it, and a 403 carrying this code
- * would be a different answer than the one this rule is about.
+ * and the status names the boundary that made it, and a 403 carrying either of
+ * these would be a different answer than the one this rule is about.
+ *
+ * They are two rather than one because the API tells them apart deliberately.
+ * `AUTH_UNKNOWN_LOGIN` covers every bearer the server cannot place, and saying
+ * more would tell an unauthenticated caller which guess was closer.
+ * `AUTH_SESSION_EXPIRED` is the exception the API documents: the signature
+ * verifies against this deployment's own secret, so whoever sent it already held
+ * a session here and learns nothing new from being told it ran out. The
+ * difference matters to the person reading the notice and not at all to what
+ * this client does about it, which is why both are on this list and neither is
+ * treated as the other.
  */
-const SESSION_ENDED = 'AUTH_UNKNOWN_LOGIN';
+const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
 
 function isWireRefusal(value: unknown): value is WireRefusal {
   if (typeof value !== 'object' || value === null) return false;
