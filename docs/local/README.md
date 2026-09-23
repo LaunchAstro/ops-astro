@@ -17,6 +17,36 @@ New here? [Pickup and debugging](#pickup-and-debugging) is the short version:
 how a request travels, what to check before restarting anything, which command
 proves what, and what a bug report has to carry.
 
+## Pick up here
+
+If you are new to this checkout, read this section first.
+
+- **Where state lives in the repository.** How the slice is built:
+  `docs/local/` (this file and the six above). Settled decisions:
+  `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
+  no executable check yet: `docs/TRAPS.md`. The proofs:
+  `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
+  that conformance must run: `tests/db/named-suites.json`.
+- **Where state does not live.** Run status, reviews and acceptance records are
+  kept with the build run's evidence, outside the tree. A checkout may carry an
+  ignored `.local/run-context.json` that points there ([below](#the-optional-local-run-pointer)).
+  If it is missing, nothing about completion follows from that.
+- **Implemented, tested, accepted.** These are three different claims.
+  Implemented means the code is on the branch. Tested means a named command
+  passed on a merge trial. Accepted means a review recorded it against a head.
+  [PROOFS.md](PROOFS.md#current-counts-and-what-they-are) labels each count. No
+  count in this repository is an acceptance.
+- **Start the stack.** Follow [Start it](#start-it). If another person or lane
+  already uses the default ports on this machine, give your stack its own ports
+  and database instead of sharing theirs.
+- **One command to check it.** `corepack pnpm verify:slice` prints one line per
+  case. Any `unrun` line comes with its reason.
+- **Stop only what you started.** Record the PIDs you start and kill only those
+  PIDs. Never kill by pattern ([Stopping what you started](#stopping-what-you-started)).
+- **The seed can change the external party's password.** See
+  [the external party's login](#the-external-partys-login) before you run
+  `db:seed` against an identity service someone else uses.
+
 Everything here is local. Every container and every process listens on a
 loopback address of this machine. Nothing is deployed, nothing is published,
 and no hosted service is involved at any point.
@@ -79,7 +109,7 @@ The synthetic logins live in **`.local/synthetic-users.json`**, written by
 and GoTrue subjects; read it there. No password appears in this repository,
 and none should be pasted into one.
 
-There are five of them, and these are all of them:
+`auth:seed` writes five of them:
 
 | Login                | Business |
 | -------------------- | -------- |
@@ -99,6 +129,22 @@ Two businesses, keys `alpha` and `bravo`. The business selector on the sign-in
 page chooses the `/api/b/<key>` route prefix; it is a routing choice, not a
 claim, and the API resolves who you are and what you may see server-side.
 [DATA.md](DATA.md) names which identities carry which negative case.
+
+### The external party's login
+
+`db:seed` adds a sixth login to the same file: the external party (R4), with
+`role: 'external'` (`scripts/local-seed.mjs`, `ensureExternalEntry` and
+`seedExternalUser`). Its address is built at seed time rather than written
+down, so it is not listed above. Read it from the file.
+
+The seed writes this entry only when the file does not already have one. When
+it writes one, it generates a new password and sets that user's password in
+GoTrue to match. So if the file has no external entry, for example because
+`auth:seed` rewrote it, re-seeding resets the external party's password in
+GoTrue. Anyone else who signs in as that user against the same GoTrue then
+holds a stale password. If your stack shares an identity service with another
+checkout, copy that checkout's existing external entry into your
+`.local/synthetic-users.json` before you run `db:seed`.
 
 ## Verify it
 
@@ -204,6 +250,21 @@ being served. The listener's working directory is what settles it: `-t` gives
 the pid on its own, and the last `lsof` prints that process's directory on a
 line beginning with `n`, on both macOS and Linux. If it is not the checkout you
 are editing, you are reading one tree and testing another.
+
+### Stopping what you started
+
+Several stacks can run on one machine at the same time, and their API processes
+look alike. On 23 September a cleanup with `pkill -f apps/api/server.ts`
+matched a shared API that other people were using, and stopped it
+([TRAPS.md](../TRAPS.md)). So:
+
+- When you start a process, record its PID. After a backgrounded command, that
+  is `$!`. For a listener, use `lsof -nP -iTCP:<port> -sTCP:LISTEN -t` on your
+  own port.
+- Before you stop it, confirm it is still yours:
+  `lsof -a -p <pid> -d cwd -Fn` prints its working directory.
+- Stop it with `kill <pid>`. Never use `pkill`, `killall` or any other
+  pattern-based kill, and never stop a listener on a port you did not start.
 
 ### Where the output goes
 
@@ -320,8 +381,9 @@ The slice is honest about being a slice.
   audience on it.
 - **An external party cannot be invited from the app.** The product reads a
   real external party's shared record ([AUTHORITY.md, "The external
-  party"](AUTHORITY.md#the-external-party-r4)), but no route issues a share
-  and the seed enrols no such person.
+  party"](AUTHORITY.md#the-external-party-r4)), but no route issues a share.
+  The seed enrols one external party. It shares a task with that party only
+  when it is rerun with `LOCAL_SEED_SHARE_TASK` naming the task.
 - **Reviews are recorded outside this repository.** The slice's review record
   is held with the build run's evidence, not in the tree, and the review of the
   final integrated head is still owed. A green `pnpm check` is not a review and
