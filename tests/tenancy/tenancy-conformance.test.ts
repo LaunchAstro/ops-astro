@@ -94,6 +94,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0018_runtime_handback_reports',
         '0019_runtime_active_hold_uniqueness',
         '0020_business_settings_revision',
+        '0021_runtime_gate_version_binding',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -122,6 +123,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0018_runtime_handback_reports',
         '0019_runtime_active_hold_uniqueness',
         '0020_business_settings_revision',
+        '0021_runtime_gate_version_binding',
       ]);
     });
 

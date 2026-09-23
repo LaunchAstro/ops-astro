@@ -117,35 +117,50 @@ describe.skipIf(serverUrl === undefined)('gate negatives', () => {
       },
     );
 
-    it('refuses to decide a gate whose run and step belong to another version of the same business', async () => {
-      // The foreign keys are (business_id, run_id) and (business_id, step_id),
-      // so a same-business run of another proposal satisfies them. This is the
-      // "mismatched" reference; the hand-made gate is the "fake fixture gate".
-      const proposal = await freshProposal('G01 mismatched run');
-      const other = await freshProposal('G01 the run it is swapped with');
+    // A same-business run, step or lineage of another proposal satisfies the
+    // (business_id, x) keys above. The mismatch is the "fake fixture gate": the
+    // gate's run must plan its version, its step must be a step of that run and
+    // its version must be of its lineage, or `decide` locks and charges the
+    // other proposal's task (it reads the task from the run). Migration 0021
+    // holds each binding as a composite foreign key, so no such gate is ever
+    // there to decide.
+    it.each([
+      [
+        'run and step of another version',
+        'gates_run_in_same_version',
+        (other: Proposal) => ({ run_id: other.runId, step_id: other.stepId }),
+      ],
+      [
+        "step of another version's run",
+        'gates_step_in_same_run',
+        (other: Proposal) => ({ step_id: other.stepId }),
+      ],
+      [
+        'lineage of another proposal',
+        'gates_version_in_same_lineage',
+        (other: Proposal) => ({ lineage_id: other.lineageId }),
+      ],
+    ] as const)(
+      'refuses a gate bound to the %s of the same business, and leaves the gate as written',
+      async (_what, constraint, tamper) => {
+        const proposal = await freshProposal(`G01 mismatched ${constraint}`);
+        const other = await freshProposal(`G01 the rows it is swapped with ${constraint}`);
+        const written = await gateRow(proposal.gateId);
+        const columns = Object.entries(tamper(other));
+        const set = columns.map(([column], index) => `${column} = $${index + 3}`).join(', ');
 
-      const tamper = await sqlRefusal(
-        db.admin.execute(
-          `update public.gates set run_id = $2, step_id = $3 where business_id = $1 and id = $4`,
-          [world.business, other.runId, other.stepId, proposal.gateId],
-        ),
-      );
-      if (tamper.code !== 'accepted') {
-        // The schema refused the mismatch itself, which is the stronger answer.
-        expect(tamper.code).toMatch(/^23/u);
-        return;
-      }
-
-      const before = await world.snapshot(proposal.gateId);
-      const operationId = randomUUID();
-      const outcome = await world.call(world.decideBody(proposal, 'approve', operationId));
-      expect(
-        isCommandRefusal(outcome) ? outcome.code : outcome.detail,
-        "a gate bound to another version's run and step was decided",
-      ).toEqual(expect.any(String));
-      const code = isCommandRefusal(outcome) ? outcome.code : 'applied';
-      await expectRefusedWithoutEffect(world, outcome, code, operationId, before, proposal.gateId);
-    });
+        // As the owner role, so neither row security nor a grant is what refuses it.
+        const refusal = await sqlRefusal(
+          db.admin.execute(`update public.gates set ${set} where business_id = $1 and id = $2`, [
+            world.business,
+            proposal.gateId,
+            ...columns.map(([, value]) => value),
+          ]),
+        );
+        expect(refusal).toStrictEqual({ code: '23503', constraint, column: null });
+        expect(await gateRow(proposal.gateId)).toStrictEqual(written);
+      },
+    );
   });
 
   describe('G07: a decide against evidence that is not this version’s rendered pack is refused', () => {
