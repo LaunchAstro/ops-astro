@@ -184,14 +184,13 @@ export function createPositiveBody(
             'agent-prefix success asserted in case (h) (ledger task.pickup)',
         };
       case 'task.handback':
-        // Refused on the person path for the same reason. The matrix's agent
-        // journey never hands back, so nothing here asserts its success;
-        // `tests/api/task-runtime-routes.test.ts:417` does, outside the matrix. A handback at
-        // the end of case (i)'s journey would close it.
+        // Refused on the person path for the same reason, and that refusal is
+        // observed as ada's `k-handback` row. The success is the agent's: the
+        // journey hands back a lease it holds, case (h), `k-handback` rows.
         return {
           exception:
-            'missing coverage: person path refuses by design (handlers.ts); ' +
-            'the matrix journey never hands back',
+            'executed alternative: person path refuses by design (handlers.ts); ' +
+            'own-lease handback success asserted in case (h), k-handback rows',
         };
       case 'task.read':
         return { body: { recordId: context.alphaTaskId } };
@@ -244,14 +243,12 @@ export function createPositiveBody(
         };
       case 'delegation.revoke':
         // A delegation exists only after an agent's pickup, which this recipe
-        // cannot make; `tests/api/controls-revoke.test.ts` revokes one through
-        // this route and shows the agent's next call refused.
-        // **Missing coverage** in the matrix: revoking the journey's own
-        // delegation after case (i) would close it here.
+        // cannot make. The journey makes one and the admin revokes it through
+        // this route, case (h), `k-revoke` rows.
         return {
           exception:
-            'missing coverage: needs a pickup; asserted outside the matrix in ' +
-            'tests/api/controls-revoke.test.ts',
+            'executed alternative: needs a pickup; ada revokes a live delegation in ' +
+            'case (h), k-revoke rows',
         };
       case 'task.heartbeat':
         // Refused on the person path like pickup and handback; its positive
