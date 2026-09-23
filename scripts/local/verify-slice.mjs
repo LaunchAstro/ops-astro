@@ -523,12 +523,17 @@ async function noahHasNoScope(recordId) {
     ['N2 noah reads the task', '/task/read', { recordId }],
     ['N2 noah lists people', '/person/list', {}],
   ];
-  for (const [name, path, body] of cases) {
-    const refused = await call(noah.token, 'alpha', path, body);
+  // Three independent refusals against a token with no scope; nothing one of
+  // them does changes what another sees, so they go out together and are
+  // recorded in the order they are written.
+  const refusals = await Promise.all(
+    cases.map(async ([, path, body]) => await call(noah.token, 'alpha', path, body)),
+  );
+  for (const [index, [name]] of cases.entries()) {
     record(name, {
-      status: refused.status,
-      code: codeOf(refused),
-      ok: codeOf(refused) === 'SCOPE_NOT_GRANTED',
+      status: refusals[index].status,
+      code: codeOf(refusals[index]),
+      ok: codeOf(refusals[index]) === 'SCOPE_NOT_GRANTED',
     });
   }
 }

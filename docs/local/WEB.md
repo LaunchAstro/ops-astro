@@ -92,5 +92,21 @@ places this build does not yet reach it.
 - Comments and subtasks are not built. The task page shows history only.
 - Fonts and icons are not fetched. The redistribution question (#32) is open, so
   the families are a stack with real fallbacks and the brand is its own words.
-- Layouts are written for 1480, 900 and 390 and have not been photographed at
-  those widths in this lane.
+- Layouts are written for 1480, 900 and 390. Photographed at all three, light
+  and dark, on 2026-09-23 (`parent-observations/local-slice/width-<w>-<theme>-<page>.png`,
+  `node tests/browser/keyboard-and-widths.mjs`). What the twelve captures show:
+  - **There is no dark theme.** Eleven of the twelve light/dark pairs are
+    byte-identical; the app does not answer `prefers-color-scheme`, so a person
+    who has chosen dark gets the light build. The twelfth pair differs only
+    because a task was created between the two captures. This is the largest
+    gap of the four and the only one a person would call a defect.
+  - No horizontal overflow at any of the three widths, on either page.
+  - At 390 the sidebar is gone, and with it the only navigation apart from the
+    breadcrumb. A person who lands on a task deep-linked has `Projects` in the
+    crumb and nothing else.
+  - At 390 the task page's assignee section can still be drawing
+    `Loading the people…` after the record itself is on screen: two reads, two
+    arrival times, and the slower one is a block of text in the middle of the
+    form rather than a field-shaped placeholder.
+
+  Recorded, not fixed.

@@ -215,6 +215,41 @@ describe('unsaved details across an assignment', () => {
     await view.unmount();
   });
 
+  it('survive the Refresh button, which is an authorised reread of the same task', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+
+    await view.type('#task-title', 'A title nobody has saved yet');
+    await view.type('#task-due', '2026-11-30');
+
+    // Refresh is the other way a read of this task starts over, and it is the
+    // one a person presses *because* they suspect the screen is behind. Doing
+    // that with unsaved text in the inputs must not be how they lose it. The
+    // read is held open so the intermediate state is observed rather than
+    // raced for, exactly as in the assignment case.
+    const before = api.reads.length;
+    api.hold();
+    await view.click('button[data-refresh="task"]');
+    await until(
+      'the refresh reached the screen',
+      () => view.find('[data-outcome="loading"]') !== null,
+      Date.now() + 5000,
+    );
+    expect(view.find('#task-title')).toBeNull();
+
+    api.release();
+    await tick();
+
+    expect(api.reads.length).toBeGreaterThan(before);
+    expect(valueOf(view.host, '#task-title')).toBe('A title nobody has saved yet');
+    expect(valueOf(view.host, '#task-due')).toBe('2026-11-30');
+
+    await view.unmount();
+  });
+
   it('are dropped when the grant changes, so no stale authorised text remains', async () => {
     const api = server();
     const held = client(api.fetch);

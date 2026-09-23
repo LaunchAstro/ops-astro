@@ -69,25 +69,46 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const held = draft !== null && draft.identity === identity ? draft : null;
 
   return (
-    <RecordState state={state} subject="task" onRetry={reload}>
-      {(value) => (
-        <Loaded
-          client={client}
-          grantKey={props.grantKey}
-          task={value.task}
-          draft={held}
-          onDraft={(title, due) => {
-            setDraft({ identity, title, due });
-          }}
-          onSaved={() => {
-            // The fields command resolves the draft: what the server now holds
-            // is the answer, so the refreshed read is what the form shows.
-            setDraft(null);
-          }}
-          onChanged={reload}
-        />
-      )}
-    </RecordState>
+    <div className="stack">
+      {/*
+        Refresh sits outside the read's own region on purpose. Inside it, the
+        loading rendering replaces the controls, so a person waiting on a slow
+        read has nothing to press and the screen can never have two reads in
+        flight. Out here it stays pressable while a read is running, which is
+        what makes the ordering rule observable in the product rather than only
+        in a unit test: press it twice and the answers may come back in either
+        order, and the older one must not win.
+
+        It is also an authorised refresh of the same task under the same grant,
+        which is exactly the case the drafts above are held for: pressing it
+        with unsaved text in the inputs must not throw that text away.
+      */}
+      <div className="btnrow">
+        <button className="btn" type="button" data-refresh="task" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <RecordState state={state} subject="task" onRetry={reload}>
+        {(value) => (
+          <Loaded
+            client={client}
+            grantKey={props.grantKey}
+            task={value.task}
+            draft={held}
+            onDraft={(title, due) => {
+              setDraft({ identity, title, due });
+            }}
+            onSaved={() => {
+              // The fields command resolves the draft: what the server now
+              // holds is the answer, so the refreshed read is what the form
+              // shows.
+              setDraft(null);
+            }}
+            onChanged={reload}
+          />
+        )}
+      </RecordState>
+    </div>
   );
 }
 
