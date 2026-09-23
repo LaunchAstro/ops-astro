@@ -44,6 +44,7 @@ import {
   record,
   shot,
   signIn,
+  throughClient,
   standaloneStatus,
   users,
 } from './harness.mjs';
@@ -116,6 +117,52 @@ async function storedThreshold(admin, businessId) {
 }
 
 /**
+ * The group moves from one person to the next.
+ *
+ * `signIn` goes to `/` and waits for the sign-in form, and a page that already
+ * holds a session never draws one -- it routes straight into the application,
+ * the wait times out, and every row behind the call is lost with the run. The
+ * group signs four people in across five rows on one page, so dropping the
+ * session belongs here rather than at each call site.
+ */
+async function signInAs(page, email) {
+  if (!page.url().startsWith(WEB)) await page.goto(`${WEB}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
+  await signIn(page, email, 'alpha');
+}
+
+/**
+ * Wait until the settings read has actually answered.
+ *
+ * `[data-settings="read"]` is on the page from the first paint, carrying
+ * `data-outcome="loading"` while the request is in flight, so waiting for the
+ * element -- or for the save button beside it -- says nothing about whether the
+ * read has come back. Asserting the screen's provenance in that window reads a
+ * page that has not finished opening and calls it incoherent: neither line is
+ * drawn yet, because neither is true yet. Every honest outcome is terminal, so
+ * "not `loading`" is the whole condition.
+ *
+ * It is bounded and it does not throw. A read that never answers is a fact
+ * about this build that the caller must be free to record in its own words,
+ * with the outcome it actually found, rather than one this helper takes the
+ * group down with.
+ */
+async function answered(page, selector) {
+  await page
+    .waitForFunction(
+      (one) => document.querySelector(one)?.getAttribute('data-outcome') !== 'loading',
+      selector,
+      { timeout: 15_000 },
+    )
+    .catch(() => undefined);
+}
+
+/** The settings read, which is the one the provenance assertion is about. */
+const readAnswered = (page) => answered(page, READ);
+
+/**
  * What the screen is showing for the four-eyes threshold, and whether the way
  * it is showing it is coherent.
  *
@@ -125,6 +172,7 @@ async function storedThreshold(admin, businessId) {
  * so a caller can assert the number without caring which build it is on.
  */
 async function whatIsShown(page) {
+  await readAnswered(page);
   const fromServer = await page.locator(VALUE).count();
   const fromBrowser = await page.locator(KNOWN).count();
   const named = await page.locator('[data-settings="not-readable"]').count();
@@ -257,12 +305,9 @@ async function settings(page, run) {
  * keep being refused.
  */
 async function refusedMember(page, admin, alpha) {
-  await page.evaluate(() => {
-    sessionStorage.clear();
-  });
   const before = await storedThreshold(admin, alpha);
 
-  await signIn(page, 'mia@alpha.local', 'alpha');
+  await signInAs(page, 'mia@alpha.local');
   await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(SAVE, { timeout: 15_000 });
 
@@ -348,13 +393,41 @@ async function storedRevision(admin, businessId) {
   return rows[0]?.revision;
 }
 
+/**
+ * Whether `settings.read` **carries** a revision for this row, asked through
+ * the application's own client with the session on the page.
+ *
+ * This and not the column is S5's gate. `business_settings` gained `revision`
+ * in `0020`, but the screen sends `expectedRevision` only for a row whose read
+ * carried one, so a read that does not carry it can never produce a
+ * `VERSION_STALE` for S5 to draw -- and moving the row underneath would then
+ * lose the person's write silently instead. When the projection starts sending
+ * it, this answers true and S5 runs with no edit.
+ */
+async function readCarriesRevision(page) {
+  const { result } = await throughClient(page, {
+    read: true,
+    name: 'settings.read',
+    body: {},
+  }).catch(() => ({ result: undefined }));
+  const rows = result?.ok === true ? (result.value?.settings ?? result.settings) : undefined;
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) => row?.key === KEY && row?.revision !== undefined);
+}
+
 /** Somebody else writes the row while this person is looking at it. */
 async function writtenByAnother(admin, businessId, value) {
+  // `to_jsonb($3::numeric)`, not the parameter straight into a `jsonb` column.
+  // A bound `'999'` reaches the column as the jsonb **string** `"999"`, which
+  // `business_settings_value_matches_type` refuses on a `numeric` row -- the
+  // same "a band that arrived as a string is a band no comparison reads" the
+  // constraint was written for. The cast makes the other writer's value the
+  // number the row says it holds.
   await admin.execute(
     `update public.business_settings
-        set value = $3, revision = revision + 1
+        set value = to_jsonb($3::numeric), revision = revision + 1
       where business_id = $1 and key = $2`,
-    [businessId, KEY, JSON.stringify(value)],
+    [businessId, KEY, String(value)],
   );
 }
 
@@ -366,9 +439,16 @@ const notYet = (name, action, why) => {
 async function readCases(page, run, ada, was) {
   const { database, admin, alpha } = run;
 
-  await signIn(page, 'ada@alpha.local', 'alpha');
+  // S2 left this page signed in as mia, and S3-S5 are ada's.
+  await signInAs(page, 'ada@alpha.local');
   await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(READ, { timeout: 15_000 });
+  // Both outcomes are sampled once, after both reads have answered. Sampling
+  // while either is still `loading` would stand S3-S5 down on this build for a
+  // reason that is not true of it: the reads landed, they were simply still in
+  // flight when the group looked.
+  await readAnswered(page);
+  await answered(page, CAPS);
   const reads = await readOutcome(page);
   const caps = await capsOutcome(page);
 
@@ -454,7 +534,7 @@ async function s4(page, context) {
     if (request.url().includes('/settings/set_')) sent.push(request.url());
   });
 
-  await signIn(page, 'mia@alpha.local', 'alpha');
+  await signInAs(page, 'mia@alpha.local');
   await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(SAVE, { timeout: 15_000 });
 
@@ -496,19 +576,23 @@ async function s4(page, context) {
  */
 async function s5(page, context) {
   const { database, admin, alpha, ada, was, reads } = context;
-  const revision = await storedRevision(admin, alpha);
-  if (reads !== 'ready' || revision === undefined) {
+  const column = await storedRevision(admin, alpha);
+  const carried = reads === 'ready' ? await readCarriesRevision(page) : false;
+  if (reads !== 'ready' || !carried) {
     notYet(
       'S5 a stale write is drawn as a conflict and needs a second press',
       'ada pressed save after another writer moved the row',
-      revision === undefined
-        ? 'business_settings carries no revision column yet'
-        : `the settings read answered "${String(reads)}"`,
+      reads !== 'ready'
+        ? `the settings read answered "${String(reads)}"`
+        : column === undefined
+          ? 'business_settings carries no revision column yet'
+          : 'business_settings carries a revision, but settings.read does not send it, ' +
+            'so the screen has nothing to write an expectedRevision from',
     );
     return;
   }
   await withSettingsGrant(database, alpha, ada, async () => {
-    await signIn(page, 'ada@alpha.local', 'alpha');
+    await signInAs(page, 'ada@alpha.local');
     await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector(VALUE, { timeout: 15_000 });
 
