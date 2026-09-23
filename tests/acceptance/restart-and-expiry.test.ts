@@ -15,18 +15,19 @@
 // application instance is built — a new connection pool, a new `createApi`, a
 // new verifier — so nothing the first instance held in memory carries across.
 // (ii) The lane's own Postgres container is restarted, so the server process
-// that held the rows is not the server process that serves them afterwards.
-// A test that only did (i) would prove the application forgets; a test that
-// only did (ii) would let a warm pool answer from a cache. Both, in that
-// order, is the claim.
+// that held the rows is not the server process that serves them afterwards. A
+// test that only did (i) would prove the application forgets; a test that only
+// did (ii) would let a warm pool answer from a cache. Both, in that order, is
+// the claim.
 //
 // **Identity, not merely presence.** "The task is still there" is the early
 // checkpoint and it is not this. Every identifier minted before the restart is
 // read back afterwards and compared, so a row that was recreated rather than
 // preserved fails here — which is exactly the silent resumption W06 names.
+//
+// The walk, the row reads and the container control are in
+// `restart-harness.ts`; this file is the cases. See that file's head for why.
 
-import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OperationsClient, isRefusal } from '../../apps/web/src/operations/client.ts';
@@ -41,72 +42,20 @@ import {
   tokenFor,
   type World,
 } from './world.ts';
+import {
+  asAda,
+  asAgent,
+  countLeases,
+  identities,
+  report,
+  restartOwnContainer,
+  startedAt,
+  walkTheJourney,
+  type Journey,
+} from './restart-harness.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/restart: DATABASE_URL is unset, so nothing below ran.');
-}
-
-/**
- * The lane's own container, restarted by name.
- *
- * Named as a constant and asserted against the environment's own port before
- * anything is done to it: the briefs for this round name several Postgres
- * containers on one host, and a restart aimed at the wrong one would stop
- * somebody else's work. `docker restart` keeps the volume, which is the whole
- * point — a proof that reseeded would prove nothing about durability.
- */
-/** Measured evidence goes to a gitignored file; the runner swallows stdout. */
-function report(label: string, lines: readonly string[]): void {
-  mkdirSync('.local', { recursive: true });
-  appendFileSync('.local/l5-restart.txt', `${label}: ${lines.join(', ')}\n`);
-}
-
-const CONTAINER = 'ops-astro-l5-pg';
-const DOCKER = '/usr/local/bin/docker';
-
-/**
- * When the container last started, as the daemon reports it.
- *
- * The restart proof's weakest point would be trusting that `docker restart`
- * did anything: a command that failed quietly, or a name that no longer
- * matches, would leave every assertion after it passing for the wrong reason.
- * Reading this before and after and requiring it to have MOVED is what makes
- * the restart a measured fact rather than an intention. (`RestartCount` is not
- * the check — it counts restart-policy restarts, not manual ones, and stays 0.)
- */
-function startedAt(): string {
-  return execFileSync(DOCKER, ['inspect', CONTAINER, '--format', '{{.State.StartedAt}}'], {
-    encoding: 'utf8',
-  }).trim();
-}
-
-function restartOwnContainer(): void {
-  execFileSync(DOCKER, ['restart', CONTAINER], { stdio: 'pipe' });
-  // `docker restart` returns when the container is up, not when Postgres is
-  // accepting connections. Waiting on the server's own readiness check rather
-  // than on a sleep is what keeps this from being flaky on a slow machine.
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      execFileSync(DOCKER, ['exec', CONTAINER, 'pg_isready', '-q', '-U', 'postgres'], {
-        stdio: 'pipe',
-      });
-      return;
-    } catch {
-      execFileSync('/bin/sleep', ['1'], { stdio: 'pipe' });
-    }
-  }
-  throw new Error(`${CONTAINER} did not accept connections after the restart`);
-}
-
-interface Journey {
-  readonly taskId: string;
-  readonly gateId: string;
-  readonly versionId: string;
-  readonly reservationId: string;
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly credential: string;
-  readonly pickupOperationId: string;
 }
 
 describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
@@ -115,132 +64,15 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
 
   beforeAll(async () => {
     world = await createWorld('rst');
-    journey = await walkTheJourney();
+    journey = await walkTheJourney(world);
   }, 180_000);
 
   afterAll(async () => {
     await world?.close();
   });
 
-  const asAda = async (
-    name: string,
-    body: Readonly<Record<string, unknown>>,
-    api: ReturnType<typeof rebuildApi>['api'] = world.api,
-  ): ReturnType<typeof call> =>
-    await call(api, personPath('alpha', name), body, bearer(world.ada.token));
-
-  const asAgent = async (
-    name: string,
-    body: Readonly<Record<string, unknown>>,
-    credential?: string,
-    api: ReturnType<typeof rebuildApi>['api'] = world.api,
-  ): ReturnType<typeof call> =>
-    await call(api, agentPath('alpha', name), body, {
-      ...bearer(world.agent.token),
-      ...(credential === undefined ? {} : { 'x-agent-delegation': credential }),
-    });
-
-  async function revisionOf(recordId: string): Promise<number> {
-    const rows = await world.db.admin.execute<{ readonly revision: string }>(
-      'select revision::text as revision from public.records where business_id = $1 and id = $2',
-      [world.alpha, recordId],
-    );
-    return Number(rows[0]?.revision ?? '0');
-  }
-
-  /** propose → decide → pickup, as a person and then as the agent. */
-  async function walkTheJourney(): Promise<Journey> {
-    const created = await asAda('/task/create', {
-      operationId: randomUUID(),
-      fields: { title: `a task that outlives a restart ${randomUUID()}` },
-    });
-    expect(created.code, 'create').toBe('ok');
-    const taskId = String(created.body['recordId']);
-
-    const proposed = await asAda('/task/propose', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: await revisionOf(taskId),
-      purpose: 'draft_the_reply',
-      maximumMinor: 3000,
-      currency: 'AUD',
-      payload: { instruction: 'draft a reply' },
-      step: { kind: 'compose', payload: {} },
-    });
-    expect(proposed.code, 'propose').toBe('ok');
-    const detail = proposed.body['detail'] as Record<string, string>;
-
-    const decided = await asAda('/task/decide', {
-      operationId: randomUUID(),
-      gateId: detail['gateId'],
-      versionId: detail['versionId'],
-      decision: 'approve',
-      note: 'approved so an agent can work it',
-    });
-    expect(decided.code, 'decide').toBe('ok');
-    const decision = decided.body['detail'] as Record<string, string>;
-
-    const pickupOperationId = randomUUID();
-    const pickedUp = await asAgent('/task/pickup', {
-      operationId: pickupOperationId,
-      reservationId: decision['reservationId'],
-    });
-    expect(pickedUp.code, 'pickup').toBe('ok');
-    const picked = pickedUp.body['detail'] as Record<string, unknown>;
-
-    return {
-      taskId,
-      gateId: String(detail['gateId']),
-      versionId: String(detail['versionId']),
-      reservationId: String(decision['reservationId']),
-      leaseId: String(picked['leaseId']),
-      fence: Number(picked['fence']),
-      credential: String(picked['credential']),
-      pickupOperationId,
-    };
-  }
-
-  /**
-   * Every identity the journey minted, read straight out of the database.
-   *
-   * Read through the owner connection rather than through a read endpoint, so
-   * that what is compared is the rows themselves and not a projection that
-   * could agree with itself.
-   */
-  async function identities(): Promise<Record<string, readonly string[]>> {
-    const rows = async (sql: string): Promise<readonly string[]> =>
-      (await world.db.admin.execute<{ readonly id: string }>(sql, [world.alpha])).map(
-        (row) => row.id,
-      );
-    return {
-      gates: await rows(
-        'select id::text as id from public.gates where business_id = $1 order by id',
-      ),
-      decisions: await rows(
-        'select id::text as id from public.gate_decisions where business_id = $1 order by id',
-      ),
-      reservations: await rows(
-        'select id::text as id from public.reservations where business_id = $1 order by id',
-      ),
-      leases: await rows(
-        'select id::text as id from public.leases where business_id = $1 order by id',
-      ),
-      // Two different things both called an attempt, and both are compared.
-      // `operations` is the command register's row — the attempt identity a
-      // caller replays against. `attempts` is the runtime's immutable synthetic
-      // attempt. A restart that preserved one and rebuilt the other would pass
-      // a proof that only looked at whichever it happened to pick.
-      register: await rows(
-        'select operation_id::text as id from public.operations where business_id = $1 order by operation_id',
-      ),
-      attempts: await rows(
-        'select id::text as id from public.attempts where business_id = $1 order by id',
-      ),
-    };
-  }
-
   it('minted a gate, a decision, a reservation and a lease before anything restarted', async () => {
-    const before = await identities();
+    const before = await identities(world);
     expect(before['gates']).toContain(journey.gateId);
     expect(before['reservations']).toContain(journey.reservationId);
     expect(before['leases']).toContain(journey.leaseId);
@@ -249,26 +81,25 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
   });
 
   it('serves the same rows from a fresh application instance', async () => {
-    const before = await identities();
+    const before = await identities(world);
     const fresh = rebuildApi(world);
     try {
       // The task is readable through the new instance, which is the ordinary
       // half, and then the identities are compared, which is the half the
       // early checkpoint does not cover.
-      const read = await asAda(
-        '/task/read',
-        { operationId: randomUUID(), recordId: journey.taskId },
-        fresh.api,
-      );
+      const read = await asAda(world, fresh.api, '/task/read', {
+        operationId: randomUUID(),
+        recordId: journey.taskId,
+      });
       expect(read.code).toBe('ok');
-      expect(await identities()).toStrictEqual(before);
+      expect(await identities(world)).toStrictEqual(before);
     } finally {
       await fresh.close();
     }
   });
 
   it('keeps every identity across a restart of its own Postgres', async () => {
-    const before = await identities();
+    const before = await identities(world);
     const startedBefore = startedAt();
     restartOwnContainer();
     const startedAfter = startedAt();
@@ -278,16 +109,15 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     report('container restart', [`${startedBefore} -> ${startedAfter}`]);
     const fresh = rebuildApi(world);
     try {
-      const read = await asAda(
-        '/task/read',
-        { operationId: randomUUID(), recordId: journey.taskId },
-        fresh.api,
-      );
+      const read = await asAda(world, fresh.api, '/task/read', {
+        operationId: randomUUID(),
+        recordId: journey.taskId,
+      });
       expect(read.code).toBe('ok');
       // Same rows, same identifiers, in the same order. A row recreated rather
       // than preserved changes this comparison, which is what makes the
       // assertion about durability rather than about presence.
-      expect(await identities()).toStrictEqual(before);
+      expect(await identities(world)).toStrictEqual(before);
     } finally {
       await fresh.close();
     }
@@ -296,19 +126,20 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
   it('hands back exactly once on the new instance, and a replayed pickup adds no hold', async () => {
     const fresh = rebuildApi(world);
     try {
-      const leasesBefore = await countLeases();
+      const leasesBefore = await countLeases(world, journey.reservationId);
 
       // The replay first: the same operation identity the pickup already used.
       // The register must answer it rather than mint a second lease, and the
       // answer must be the original one.
       const replayed = await asAgent(
+        world,
+        fresh.api,
         '/task/pickup',
         { operationId: journey.pickupOperationId, reservationId: journey.reservationId },
         undefined,
-        fresh.api,
       );
       expect(replayed.code).toBe('ok');
-      expect(await countLeases()).toBe(leasesBefore);
+      expect(await countLeases(world, journey.reservationId)).toBe(leasesBefore);
 
       const handback = {
         leaseId: journey.leaseId,
@@ -317,10 +148,11 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
         report: { wrote: 'a draft' },
       };
       const first = await asAgent(
+        world,
+        fresh.api,
         '/task/handback',
         { operationId: randomUUID(), ...handback },
         journey.credential,
-        fresh.api,
       );
       expect(first.code, 'the first handback').toBe('ok');
 
@@ -332,28 +164,21 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
       // a later change that turned it into a fence refusal — or into a second
       // settlement — fails this case instead of sliding past it.
       const second = await asAgent(
+        world,
+        fresh.api,
         '/task/handback',
         { operationId: randomUUID(), ...handback },
         journey.credential,
-        fresh.api,
       );
       expect(second.status, 'the second handback').toBe(401);
       expect(second.code, 'the second handback').toBe('DELEGATION_NOT_LIVE');
       report('second handback', [`${String(second.status)} ${second.code}`]);
       report('replayed pickup', [`${String(replayed.status)} ${replayed.code}`]);
-      expect(await countLeases()).toBe(leasesBefore);
+      expect(await countLeases(world, journey.reservationId)).toBe(leasesBefore);
     } finally {
       await fresh.close();
     }
   });
-
-  async function countLeases(): Promise<number> {
-    const rows = await world.db.admin.execute<{ readonly n: string }>(
-      'select count(*)::text as n from public.leases where business_id = $1 and reservation_id = $2',
-      [world.alpha, journey.reservationId],
-    );
-    return Number(rows[0]?.n ?? '0');
-  }
 
   it('answers an expired bearer AUTH_SESSION_EXPIRED on both prefixes', async () => {
     // Signed with this deployment's own secret, so the signature verifies and

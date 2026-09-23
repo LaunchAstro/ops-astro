@@ -58,6 +58,24 @@ needs GoTrue and it writes into the running slice's database.
 | `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02–D04)     | green, 38 cases      |
 | `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14) | see below            |
 
+## The per-file cap, and why two files are harnesses
+
+`scripts/pr-size.mjs` blocks at a per-file cap of 400 changed lines, and its
+own error text says no label lifts that cap. `restart-and-expiry.test.ts`
+reached 436 and was split rather than trimmed, because SPEC section 6's T1h row
+is the repository's answer to exactly this situation — **split the file, not
+the change** — and it names the two things not to do: delete the comments that
+say why each assertion is the assertion, or add the file to the gate's
+generated list. Neither was done.
+
+`world.ts` and `restart-harness.ts` assert nothing about the product. A failure
+in either is a broken fixture; a failure in a `.test.ts` file is a finding.
+That is also why neither belongs in `tests/db/named-suites.json`.
+
+**The lane as a whole is over the 400-line total** — it is a test directory, and
+the total is what the coherence waiver exists for. It is recorded here rather
+than worked around, and it is the coordinator's to decide at landing time.
+
 ## Item 1: the inventory
 
 The enumeration is **generated from `COMMAND_SURFACE` itself**. There is no
@@ -65,7 +83,11 @@ list of operation names anywhere in the file, which is SPEC section 8's first
 property: an endpoint added without a case fails the build, and a hand-kept
 list would have put the drift in the place least likely to be read.
 
-Measured on the run recorded at `eefd624`:
+Measured against `COMMAND_SURFACE` as it stands at this lane's base,
+`local/working-slice` at `b15ed7e`. Lane L3-PART-B-2 has since taken the table
+to 30 declarations and 7 reads on its own branch; **because the enumeration is
+generated, those two arrive here with no edit to the proof**, which is the
+property the generation exists for rather than a number to be updated by hand.
 
 | Count                                                 | Measured                    |
 | ----------------------------------------------------- | --------------------------- |
