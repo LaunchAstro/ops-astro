@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// L4's fifteen refusal codes, as L3 registers them.
+// L4's eighteen refusal codes, as L3 registers them.
 //
 // `RuntimeRefusalCode` is exported from `core-runtime` and deliberately not
 // added to `commands/register.ts` by that package: the register is this unit's
@@ -30,8 +30,8 @@ import { statusFor } from '../../apps/api/status.ts';
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all fifteen', () => {
-    expect(RUNTIME_CODES).toHaveLength(15);
+  it('registers all eighteen', () => {
+    expect(RUNTIME_CODES).toHaveLength(18);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -43,7 +43,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all fifteen are caller-visible', () => {
+  it('shows every one of them to the caller, because all eighteen are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }
@@ -66,6 +66,13 @@ describe('the runtime refusal codes L3 registers', () => {
       'DELEGATION_OUT_OF_PURPOSE',
       'DELEGATION_EXCLUDES_DECISION',
       'DELEGATION_NOT_LIVE',
+      // L4's three review-fix codes. Each is reachable from a field the caller
+      // fills in: `task.propose` takes the lineage and the currency, and
+      // `task.handback` takes the actual. `register.ts` says of each which
+      // path reaches it.
+      'LINEAGE_NOT_ON_TASK',
+      'CAP_BINDING_MISMATCH',
+      'ACTUAL_EXPENDITURE_UNSUPPORTED',
     ] as const) {
       expect(UNPRODUCED_CODES.has(code), code).toBe(false);
     }

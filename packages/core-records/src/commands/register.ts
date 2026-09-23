@@ -96,10 +96,12 @@ export type RefusalCode =
   | 'PROPOSAL_SUPERSEDED'
   | 'PROPOSAL_SCOPE_EXCEEDED'
   | 'FOUR_EYES_REQUIRED'
-  // L4's bounded runtime, `core-runtime/src/refusals.ts`. Eight of its fifteen
-  // are the seven above plus `SCOPE_NOT_GRANTED`, already registered by the
-  // parts that named them first; these eight are new spellings and they come
-  // in here rather than being invented a second time in a handler.
+  // L4's bounded runtime, `core-runtime/src/refusals.ts`. Seven of its eighteen
+  // are the six above plus `SCOPE_NOT_GRANTED`, already registered by the
+  // parts that named them first; these eleven are new spellings and they come
+  // in here rather than being invented a second time in a handler. The last
+  // three arrived with L4's review fixes (R2, R3 and R6) and are registered on
+  // the same terms as the eight before them.
   | 'VERSION_SUPERSEDED'
   | 'EVIDENCE_MISMATCH'
   | 'GATE_NOT_FOUND'
@@ -108,6 +110,9 @@ export type RefusalCode =
   | 'CHANGE_ROUNDS_EXHAUSTED'
   | 'PROPOSAL_OUT_OF_SCOPE'
   | 'RESERVATION_NOT_CLAIMABLE'
+  | 'LINEAGE_NOT_ON_TASK'
+  | 'CAP_BINDING_MISMATCH'
+  | 'ACTUAL_EXPENDITURE_UNSUPPORTED'
   // Budget, T1k.
   | 'BUDGET_UNAVAILABLE'
   | 'BUDGET_EXHAUSTED';
@@ -302,6 +307,21 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
     'The reservation is not approved, held and unpicked',
     'L4 RUNTIME.md',
   ),
+  entry(
+    'LINEAGE_NOT_ON_TASK',
+    'The proposal names a lineage opened on another task',
+    'L4 RUNTIME.md R3',
+  ),
+  entry(
+    'CAP_BINDING_MISMATCH',
+    'The decision names a cap or a currency the task’s envelope does not hold',
+    'L4 RUNTIME.md R2',
+  ),
+  entry(
+    'ACTUAL_EXPENDITURE_UNSUPPORTED',
+    'The handback reports spending nothing in this head could have made',
+    'L4 RUNTIME.md R6',
+  ),
 ];
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
@@ -385,4 +405,19 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'LEASE_EXPIRED',
   'LEASE_HELD',
   'CHANGE_ROUNDS_EXHAUSTED',
+  // L4's three review-fix codes are deliberately **not** on this list, and
+  // each is a command path rather than a module one.
+  //
+  // `LINEAGE_NOT_ON_TASK`: `task.propose` takes `lineageId` from the caller,
+  // so naming a live lineage opened on another task of the same business is an
+  // ordinary request, and R3 refuses it.
+  //
+  // `CAP_BINDING_MISMATCH`: the cap half of R2 is not command-reachable, since
+  // `readBusinessCapId` hands every decision on a business the same cap. The
+  // currency half is. `task.propose` takes `currency`, the first approval opens
+  // the envelope in the version's currency, and a second proposal on that task
+  // in another currency is refused when it is decided.
+  //
+  // `ACTUAL_EXPENDITURE_UNSUPPORTED`: `task.handback` refuses any non-null
+  // `actualMinor`, so a caller reporting a cost — including zero — produces it.
 ]);

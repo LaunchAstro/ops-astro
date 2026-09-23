@@ -83,7 +83,11 @@ describe('the refusal register', () => {
       // `DELEGATION_EXCLUDES_DECISION` are all produced by an operation a
       // caller can reach now. The five below are the ones that still are not,
       // and `register.ts` says of each what it waits for. The three `PRESET_*`
-      // codes are deliberately absent too — `preset.plan` produces them.
+      // codes are deliberately absent too — `preset.plan` produces them. So
+      // are L4's three review-fix codes: `LINEAGE_NOT_ON_TASK`,
+      // `CAP_BINDING_MISMATCH` and `ACTUAL_EXPENDITURE_UNSUPPORTED` are each
+      // reached from a field a caller fills in on `task.propose` or
+      // `task.handback`, so none of them joins this list.
       'CHANGE_ROUNDS_EXHAUSTED',
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXCLUDES_OPERATION',

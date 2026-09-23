@@ -10,6 +10,13 @@
 // `authority/checkDelegatedAuthority` what the third permits, on every call,
 // against the delegating person's grants as they are right now.
 //
+// **Asking what it may do.** `session.capabilities` is reachable on this
+// prefix and its answer is the agent's own, not the delegating person's: the
+// purpose its delegation is bounded to, or null before a pickup, and the two
+// operations it may reach holding nothing. An agent has no grants to report --
+// see below -- so reporting the person's would be reporting somebody else's
+// authority as the agent's.
+//
 // **The two operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
 // its call with. It may do exactly two things: read `task.queue` and call
@@ -50,6 +57,7 @@ import {
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
+import type { AgentCapabilities } from '../reads/capabilities.ts';
 import { writeAuditEvent } from './audit.ts';
 import { payloadDigest } from './digest.ts';
 import { readTaskSpine } from './context.ts';
@@ -86,7 +94,16 @@ export interface AgentRequest {
   readonly [field: string]: unknown;
 }
 
-/** The two an agent may reach before it holds anything. */
+/**
+ * The two operations an agent may reach before it holds anything.
+ *
+ * `session.capabilities` is not a third. It is reachable before a pickup for
+ * the same reason it takes no grant on the person path -- it reports what the
+ * caller already holds and confers nothing -- and it is kept out of this set
+ * because this set is the *ceiling* the refusal message quotes, and an agent
+ * reading its own capabilities should be told the two operations it may do,
+ * not three.
+ */
 export const BEFORE_PICKUP: ReadonlySet<CommandName> = new Set(['task.queue', 'task.pickup']);
 
 /** What an agent may reach at all, delegation or not. */
@@ -97,6 +114,7 @@ export const AGENT_SURFACE: ReadonlySet<CommandName> = new Set([
   'task.read',
   'task.comment',
   'task.decide',
+  'session.capabilities',
 ]);
 
 const NO_DELEGATION_FIXES: readonly string[] = [
@@ -206,7 +224,7 @@ async function runAgentCommand(
   if (authorised !== undefined) return await settle(tx, session, request, digest, authorised);
 
   await tx.query('savepoint agent_work');
-  const outcome = await serve(tx, session, request);
+  const outcome = await serve(tx, session, credential, request);
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(
@@ -254,6 +272,13 @@ async function authorise(
   request: AgentRequest,
 ): Promise<CommandRefusal | undefined> {
   if (BEFORE_PICKUP.has(request.command)) return undefined;
+
+  // The agent asking what it may do is answered whether or not it holds a
+  // delegation: with one the answer is that delegation's purpose, without one
+  // it is the pre-pickup pair and a null purpose. Refusing it for want of a
+  // credential would refuse the one call whose whole subject is that the
+  // credential is missing.
+  if (request.command === 'session.capabilities') return undefined;
 
   if (credential === undefined || credential === '') {
     return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
@@ -320,9 +345,28 @@ async function subjectTaskId(
 async function serve(
   tx: TenantQuery,
   session: AgentSession,
+  credential: string | undefined,
   request: AgentRequest,
 ): Promise<HandlerOutcome> {
   switch (request.command) {
+    case 'session.capabilities': {
+      // An agent holds no grants of its own -- `identity/agent-login.ts`
+      // confers nothing at all -- so this is not the person answer with a
+      // different subject in it. Handing back the delegating person's grants
+      // here would report somebody else's authority as the agent's, which is
+      // the collapse this whole entry point exists to prevent. What the agent
+      // has is a purpose and a floor: the task its delegation is bounded to,
+      // and the two operations it may reach holding nothing.
+      const resolved =
+        credential === undefined || credential === ''
+          ? undefined
+          : await resolveDelegation(tx, session.actorId, credential);
+      const capabilities: AgentCapabilities = {
+        purposeScope: resolved !== undefined && resolved.ok ? resolved.value.purposeScope : null,
+        beforePickup: [...BEFORE_PICKUP].toSorted(),
+      };
+      return { recordId: null, revision: null, detail: { capabilities } };
+    }
     case 'task.queue':
       return { recordId: null, revision: null, detail: { queue: await readQueue(tx) } };
     case 'task.pickup':
@@ -342,6 +386,11 @@ async function serve(
         leaseId: String(request['leaseId'] ?? ''),
         fence: Number(request['fence']),
         outcome: String(request['outcome'] ?? ''),
+        // Carried through rather than dropped here, so that sending a number
+        // is the refusal `handbackLease` spells out instead of a silence.
+        ...('actualMinor' in request
+          ? { actualMinor: request['actualMinor'] as number | null }
+          : {}),
         ...(typeof request['report'] === 'object' && request['report'] !== null
           ? { report: request['report'] as Readonly<Record<string, unknown>> }
           : {}),

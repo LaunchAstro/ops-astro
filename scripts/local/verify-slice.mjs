@@ -56,6 +56,18 @@ const userOf = (email) => {
   return found;
 };
 
+// The agent logins the seed mints. They are read the same way and signed in
+// the same way; what differs is who the token resolves to, which is the whole
+// of the difference between the two entry points.
+const agents = JSON.parse(readFileSync(join(LOCAL, 'synthetic-agents.json'), 'utf8'));
+const agentOf = (businessKey) => {
+  const found = agents.find((agent) => agent.business === businessKey);
+  if (found === undefined) {
+    throw new Error(`verify-slice: no agent for ${businessKey} in synthetic-agents.json`);
+  }
+  return found;
+};
+
 const results = [];
 function record(name, { status, code, ok, note }) {
   results.push({ name, status, code, ok, note });
@@ -108,6 +120,46 @@ async function call(token, businessKey, path, body, headers = {}) {
   return { status: response.status, body: parsed, elapsedMs, text };
 }
 
+/**
+ * The same call on the agent's own entry point. The delegation credential
+ * travels in a header rather than in the body, so nothing that is logged with
+ * the payload or digested into the register row carries it.
+ */
+async function callAgent(token, businessKey, path, body, delegation) {
+  const response = await fetch(`${API}/api/a/b/${businessKey}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+      ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
+    },
+    // The agent envelope is the command envelope: every call carries an
+    // operation identity, reads included, because a replayed read is still a
+    // register row.
+    body: JSON.stringify({ operationId: id(), ...body }),
+  });
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text === '' ? {} : JSON.parse(text);
+  } catch {
+    parsed = { raw: text };
+  }
+  return { status: response.status, body: parsed, text };
+}
+
+/** An agent login signs in through the same GoTrue a person does. */
+async function signInAgent(businessKey) {
+  const agent = agentOf(businessKey);
+  const response = await fetch(`${GOTRUE}/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: agent.email, password: agent.password }),
+  });
+  const body = await response.json().catch(() => ({}));
+  return { status: response.status, token: body.access_token, agent };
+}
+
 const id = () => `verify-${randomUUID()}`;
 
 /** Key order is not part of a JSON value, so it is not part of a comparison. */
@@ -121,6 +173,8 @@ function canonical(value) {
   }
   return JSON.stringify(value);
 }
+/** What the command reports doing. `recordId` and `revision` sit beside it. */
+const detailOf = (result) => result.body?.detail ?? result.body ?? {};
 const codeOf = (result) => (typeof result.body?.code === 'string' ? result.body.code : undefined);
 
 async function main() {
@@ -458,6 +512,29 @@ async function main() {
   }
 
   // ------------------------------------------------------------ N7 tampering
+  // Three halves, and the row passes only if all three hold. Before D06
+  // (`fa3041a`) the injected body keys were silently dropped and the write
+  // applied, and this row accepted that as the proof. It no longer does: a
+  // successful ordinary change after quietly discarding an identity field
+  // tells an attacker nothing was wrong with what they sent.
+  const spoofActor = userOf('ada@alpha.local').subject;
+  const forgedHeaders = {
+    'x-actor-id': spoofActor,
+    'x-business-key': 'bravo',
+    'x-forwarded-host': 'bravo.local',
+    host: 'bravo.local',
+  };
+
+  // The task as it stands, and who its writes are recorded under. Both are
+  // read through the API, because the API is the only thing this script may
+  // use -- and every write on this task so far was mia's, so the history
+  // carries exactly one actor and it is hers.
+  const beforeTamper = await call(mia.token, 'alpha', '/task/read', { recordId });
+  const historyBefore = beforeTamper.body?.task?.history ?? [];
+  const actorsBefore = new Set(historyBefore.map((entry) => entry.actorId));
+
+  // 1. Body injection: the typed refusal, the offending keys by name, and a
+  //    task nobody moved.
   const tampered = await call(
     mia.token,
     'alpha',
@@ -467,24 +544,76 @@ async function main() {
       recordId,
       expectedRevision: revision,
       fields: { title: `${title} (tampered)` },
-      // None of these are fields of any request in the surface.
-      actorId: userOf('ada@alpha.local').subject,
+      // None of these is a field of any request in the surface. Every one of
+      // them is a fact the server derives for itself.
+      actorId: spoofActor,
       businessId: '00000000-0000-4000-8000-000000000000',
-      business: 'bravo',
       entryPoint: 'worker',
     },
-    {
-      'x-actor-id': userOf('ada@alpha.local').subject,
-      'x-business-key': 'bravo',
-      'x-forwarded-host': 'bravo.local',
-      host: 'bravo.local',
-    },
+    forgedHeaders,
   );
+  const named = Array.isArray(tampered.body?.names) ? [...tampered.body.names].toSorted() : [];
+  const namesRight = canonical(named) === canonical(['actorId', 'businessId', 'entryPoint']);
+  const afterTamper = await call(mia.token, 'alpha', '/task/read', { recordId });
+  const dataHeld =
+    beforeTamper.status === 200 &&
+    afterTamper.status === 200 &&
+    afterTamper.body?.task?.revision === beforeTamper.body?.task?.revision &&
+    canonical(afterTamper.body?.task) === canonical(beforeTamper.body?.task);
+  const bodyHalf =
+    tampered.status === 422 && codeOf(tampered) === 'FIELD_NOT_WRITABLE' && namesRight && dataHeld;
+
+  // 2. Header-only tampering: the same session, a clean payload, the same
+  //    forged headers. It has to *succeed*, and the actor it is recorded
+  //    under has to be the session's. HTTP 200 on its own proves nothing
+  //    here -- a server that believed `x-actor-id` would also answer 200.
+  const headerOnly = await call(
+    mia.token,
+    'alpha',
+    '/task/update',
+    {
+      operationId: id(),
+      recordId,
+      expectedRevision: revision,
+      fields: { title: `${title} (headers only)` },
+    },
+    forgedHeaders,
+  );
+  if (headerOnly.status === 200) revision = headerOnly.body.revision;
+  const afterHeaders = await call(mia.token, 'alpha', '/task/read', { recordId });
+  const historyAfter = afterHeaders.body?.task?.history ?? [];
+  const actorsAfter = new Set(historyAfter.map((entry) => entry.actorId));
+  const wroteAs = [...actorsAfter][0];
+  const headerHalf =
+    headerOnly.status === 200 &&
+    historyAfter.length === historyBefore.length + 1 &&
+    // One actor before and one after: the forged header added no second one.
+    actorsBefore.size === 1 &&
+    actorsAfter.size === 1 &&
+    wroteAs === [...actorsBefore][0] &&
+    wroteAs !== spoofActor &&
+    // And the business is the path's, not the header's: the write landed on
+    // alpha's task. `N1 B reads A's real task` is the other side of that coin.
+    afterHeaders.body?.task?.id === recordId;
+
+  // 3. The positive control: the permitted request, no tampering at all.
+  const control = await call(mia.token, 'alpha', '/task/update', {
+    operationId: id(),
+    recordId,
+    expectedRevision: revision,
+    fields: { title: `${title} (edited)` },
+  });
+  if (control.status === 200) revision = control.body.revision;
+
   record('N7 tampered body and headers', {
     status: tampered.status,
     code: codeOf(tampered) ?? 'applied',
-    ok: tampered.status === 200,
-    note: 'the extra fields and headers changed nothing; it applied as mia in alpha',
+    ok: bodyHalf && headerHalf && control.status === 200,
+    note: [
+      bodyHalf ? `body refused names=[${named.join(',')}], data unchanged` : 'BODY HALF FAILED',
+      headerHalf ? 'headers-only applied as the session actor' : 'HEADER HALF FAILED',
+      control.status === 200 ? 'control applied' : `CONTROL HTTP ${control.status}`,
+    ].join('; '),
   });
 
   const crossed = await call(mia.token, 'bravo', '/task/create', {
@@ -500,6 +629,10 @@ async function main() {
 
   await noahHasNoScope(recordId);
   await orphanAndFabricated();
+  // Rows 33 onward. Everything above is the record slice; this is the runtime
+  // journey, and it is appended rather than interleaved so rows 1-32 keep
+  // their order and their numbers.
+  await theJourney();
   console.log(`verify-slice: the task is ${recordId} at revision ${revision}`);
   return finish();
 }
@@ -565,6 +698,317 @@ async function orphanAndFabricated() {
     status: anonymous.status,
     code: codeOf(anonymous),
     ok: codeOf(anonymous) === 'AUTH_UNKNOWN_LOGIN',
+  });
+}
+
+/**
+ * Rows 33 onward: the runtime journey, walked over HTTP by a person and an
+ * agent rather than in process.
+ *
+ * What it can prove today and what it cannot are both recorded. `task.decide`
+ * is declared with the action `decide` (`commands/surface.ts`) and
+ * `authority/grants.ts` matches `(collection, action)` exactly -- there is no
+ * implication from `manage` -- so until a seeded identity holds `task:decide`
+ * every decision here is `SCOPE_NOT_GRANTED` and everything downstream of it
+ * is printed `unrun` with that reason rather than skipped or called a pass.
+ * The grant goes into `scripts/local-seed.mjs`; a stack seeded before it was
+ * added stays refused until it is reseeded.
+ */
+async function theJourney() {
+  const ada = await signIn('ada@alpha.local');
+  record('J1 sign in ada@alpha.local', {
+    status: ada.status,
+    code: ada.token === undefined ? 'NO_TOKEN' : 'token',
+    ok: ada.status === 200 && typeof ada.token === 'string',
+    note: 'the admin, who is who a decision belongs to',
+  });
+  if (ada.token === undefined) return;
+
+  const made = await call(ada.token, 'alpha', '/task/create', {
+    operationId: id(),
+    fields: { title: `Journey ${new Date().toISOString()}`, description: 'Proposed against.' },
+    board: null,
+  });
+  const subject = made.body?.recordId;
+  record('J2 a task to propose against', {
+    status: made.status,
+    code: codeOf(made) ?? 'applied',
+    ok: made.status === 200 && typeof subject === 'string',
+    note: typeof subject === 'string' ? `id=${subject}` : '',
+  });
+  if (typeof subject !== 'string') return;
+
+  // A sibling task the same person may write perfectly well. It is what makes
+  // the agent's one-task ceiling a ceiling rather than a coincidence.
+  const siblingMade = await call(ada.token, 'alpha', '/task/create', {
+    operationId: id(),
+    fields: { title: 'A sibling the agent may not reach' },
+    board: null,
+  });
+  const sibling = siblingMade.body?.recordId;
+
+  const proposed = await call(ada.token, 'alpha', '/task/propose', {
+    operationId: id(),
+    recordId: subject,
+    expectedRevision: made.body.revision,
+    purpose: 'draft_the_reply',
+    maximumMinor: 2_500,
+    currency: 'AUD',
+    payload: { instruction: 'draft a reply to the client' },
+    step: { kind: 'compose', payload: { tone: 'plain' } },
+  });
+  const versionId = detailOf(proposed).versionId;
+  const gateId = detailOf(proposed).gateId;
+  record('J3 propose on the task as a person', {
+    status: proposed.status,
+    code: codeOf(proposed) ?? 'applied',
+    ok: proposed.status === 200 && typeof versionId === 'string' && typeof gateId === 'string',
+    note: proposed.status === 200 ? `version=${detailOf(proposed).version}` : '',
+  });
+
+  // The version, the digest and the evidence come back on `task.read`, not
+  // from a second read, because the decision control carries the `versionId`
+  // the page displayed the evidence for.
+  const projected = await call(ada.token, 'alpha', '/task/read', { recordId: subject });
+  const lineage = (projected.body?.task?.proposals ?? [])[0];
+  const head = lineage?.versions?.[0];
+  record('J4 the projection carries the version, digest and evidence', {
+    status: projected.status,
+    code: codeOf(projected) ?? 'ok',
+    ok:
+      projected.status === 200 &&
+      head?.versionId === versionId &&
+      typeof head?.payloadDigest === 'string' &&
+      head.payloadDigest.length === 64 &&
+      head?.evidence?.renderer === 'core-runtime/evidence@1' &&
+      head?.gate?.id === gateId,
+    note:
+      head === undefined
+        ? 'no proposal came back on the detail'
+        : `renderer=${head.evidence?.renderer ?? '-'} gate=${head.gate?.state ?? '-'}`,
+  });
+
+  const queueBefore = await call(ada.token, 'alpha', '/task/queue', {});
+  record('J5 task.queue is readable and holds no reservation yet', {
+    status: queueBefore.status,
+    code: codeOf(queueBefore) ?? 'ok',
+    ok:
+      queueBefore.status === 200 &&
+      Array.isArray(queueBefore.body?.queue) &&
+      !queueBefore.body.queue.some((entry) => entry.taskId === subject),
+    note: `entries=${queueBefore.body?.queue?.length ?? '-'}`,
+  });
+
+  // ------------------------------------------------------------- the agent
+  const agent = await signInAgent('alpha');
+  record('J6 sign in the alpha agent', {
+    status: agent.status,
+    code: agent.token === undefined ? 'NO_TOKEN' : 'token',
+    ok: agent.status === 200 && typeof agent.token === 'string',
+    note: 'the same GoTrue a person signs in through; what differs is who it resolves to',
+  });
+
+  if (agent.token !== undefined) {
+    const agentQueue = await callAgent(agent.token, 'alpha', '/task/queue', {});
+    record('J7 the agent reads the queue before any pickup', {
+      status: agentQueue.status,
+      code: codeOf(agentQueue) ?? 'ok',
+      ok: agentQueue.status === 200 && Array.isArray(detailOf(agentQueue).queue),
+      note: 'reading the queue claims nothing',
+    });
+
+    // An agent login confers nothing at all. Everything outside the queue and
+    // a pickup is the same answer, deliberately: telling an unknown credential
+    // apart from a revoked one tells a thief which it is holding.
+    const closed = await callAgent(agent.token, 'alpha', '/task/read', { recordId: subject });
+    record('J8 every other operation is DELEGATION_NOT_LIVE before a pickup', {
+      status: closed.status,
+      code: codeOf(closed),
+      ok: codeOf(closed) === 'DELEGATION_NOT_LIVE',
+    });
+
+    const personThere = await callAgent(ada.token, 'alpha', '/task/queue', {});
+    record('J9 a person on the agent prefix is AUTH_NO_AGENT_IDENTITY', {
+      status: personThere.status,
+      code: codeOf(personThere),
+      ok: codeOf(personThere) === 'AUTH_NO_AGENT_IDENTITY',
+    });
+
+    const agentHere = await call(agent.token, 'alpha', '/task/queue', {});
+    record('J10 an agent on the person prefix is AUTH_NO_MEMBERSHIP', {
+      status: agentHere.status,
+      code: codeOf(agentHere),
+      ok: codeOf(agentHere) === 'AUTH_NO_MEMBERSHIP',
+    });
+  }
+
+  // ------------------------------------------------------------ the decision
+  const decided = await call(ada.token, 'alpha', '/task/decide', {
+    operationId: id(),
+    gateId,
+    versionId,
+    decision: 'approve',
+    note: 'verify-slice approves the exact version it read',
+  });
+  const ungranted = codeOf(decided) === 'SCOPE_NOT_GRANTED';
+  const blocked = ungranted
+    ? 'no seeded identity holds task:decide; scripts/local-seed.mjs grants it, this stack predates the reseed'
+    : undefined;
+  record('J11 decide the exact version as a person', {
+    status: decided.status,
+    code: codeOf(decided) ?? 'applied',
+    ok: ungranted ? undefined : decided.status === 200,
+    note: blocked ?? `reservation=${detailOf(decided).reservationId ?? '-'}`,
+  });
+
+  // Everything past the decision depends on a reservation only a decision can
+  // make, so each is printed with the reason rather than skipped.
+  const downstream = [
+    'J12 the reservation is held and task.queue shows it',
+    'J13 the agent picks it up on the agent prefix',
+    'J14 a sibling read is DELEGATION_OUT_OF_PURPOSE',
+    'J15 the agent hands back and the queue no longer shows it',
+    'J16 a stale-version decision is VERSION_SUPERSEDED with unchanged state',
+  ];
+  if (decided.status !== 200) {
+    for (const name of downstream) {
+      record(name, { ok: undefined, note: blocked ?? `the decision answered ${codeOf(decided)}` });
+    }
+    return;
+  }
+
+  const reservationId = detailOf(decided).reservationId;
+  const queueAfter = await call(ada.token, 'alpha', '/task/queue', {});
+  const onQueue = (queueAfter.body?.queue ?? []).find(
+    (entry) => entry.reservationId === reservationId,
+  );
+  record(downstream[0], {
+    status: queueAfter.status,
+    code: codeOf(queueAfter) ?? 'ok',
+    ok: queueAfter.status === 200 && onQueue !== undefined,
+    note:
+      onQueue === undefined ? 'the reservation is not on the queue' : `purpose=${onQueue.purpose}`,
+  });
+
+  if (agent.token === undefined) {
+    for (const name of downstream.slice(1)) {
+      record(name, { ok: undefined, note: 'the agent could not sign in' });
+    }
+    return;
+  }
+
+  const picked = await callAgent(agent.token, 'alpha', '/task/pickup', {
+    operationId: id(),
+    reservationId,
+  });
+  const credential = detailOf(picked).credential;
+  record(downstream[1], {
+    status: picked.status,
+    code: codeOf(picked) ?? 'applied',
+    ok: picked.status === 200 && typeof credential === 'string',
+    note:
+      picked.status === 200
+        ? `scope=${detailOf(picked).purposeScope?.id ?? '-'} fence=${detailOf(picked).fence}`
+        : '',
+  });
+  if (typeof credential !== 'string') {
+    for (const name of downstream.slice(2)) {
+      record(name, { ok: undefined, note: 'the pickup handed back no credential' });
+    }
+    return;
+  }
+
+  // The ceiling, with its own control: the agent may reach the one task it was
+  // minted for and not the sibling, and the person read of that sibling in the
+  // same breath proves the sibling is there to be reached.
+  const own = await callAgent(
+    agent.token,
+    'alpha',
+    '/task/read',
+    { recordId: subject },
+    credential,
+  );
+  const other = await callAgent(
+    agent.token,
+    'alpha',
+    '/task/read',
+    { recordId: sibling },
+    credential,
+  );
+  const personSees = await call(ada.token, 'alpha', '/task/read', { recordId: sibling });
+  record(downstream[2], {
+    status: other.status,
+    code: codeOf(other),
+    ok:
+      own.status === 200 &&
+      codeOf(other) === 'DELEGATION_OUT_OF_PURPOSE' &&
+      personSees.status === 200,
+    note: 'not NOT_FOUND: the sibling is there and the agent may not reach it',
+  });
+
+  const handedBack = await callAgent(
+    agent.token,
+    'alpha',
+    '/task/handback',
+    {
+      operationId: id(),
+      leaseId: detailOf(picked).leaseId,
+      fence: detailOf(picked).fence,
+      outcome: 'completed',
+      report: { note: 'verify-slice walked the journey' },
+    },
+    credential,
+  );
+  const queueSettled = await call(ada.token, 'alpha', '/task/queue', {});
+  const stillThere = (queueSettled.body?.queue ?? []).some(
+    (entry) => entry.reservationId === reservationId,
+  );
+  record(downstream[3], {
+    status: handedBack.status,
+    code: codeOf(handedBack) ?? 'applied',
+    ok: handedBack.status === 200 && !stillThere,
+    note: stillThere ? 'the reservation is still on the queue' : 'the queue no longer shows it',
+  });
+
+  // A decision made from a page that went stale. The live gate is the one the
+  // second proposal raised; naming it with the version the decider read before
+  // that proposal landed is what `VERSION_SUPERSEDED` is for.
+  const first = await call(ada.token, 'alpha', '/task/propose', {
+    operationId: id(),
+    recordId: sibling,
+    expectedRevision: siblingMade.body.revision,
+    purpose: 'draft_the_reply',
+    maximumMinor: 2_500,
+    currency: 'AUD',
+    payload: { instruction: 'the version the decider read' },
+    step: { kind: 'compose', payload: {} },
+  });
+  const second = await call(ada.token, 'alpha', '/task/propose', {
+    operationId: id(),
+    recordId: sibling,
+    expectedRevision: siblingMade.body.revision,
+    purpose: 'draft_the_reply',
+    maximumMinor: 2_500,
+    currency: 'AUD',
+    payload: { instruction: 'the version that landed while they read' },
+    step: { kind: 'compose', payload: {} },
+    lineageId: detailOf(first).lineageId,
+  });
+  const before = await call(ada.token, 'alpha', '/task/read', { recordId: sibling });
+  const stale = await call(ada.token, 'alpha', '/task/decide', {
+    operationId: id(),
+    gateId: detailOf(second).gateId,
+    versionId: detailOf(first).versionId,
+    decision: 'approve',
+    note: 'decided from a page that went stale',
+  });
+  const after = await call(ada.token, 'alpha', '/task/read', { recordId: sibling });
+  const held = canonical(before.body?.task?.proposals) === canonical(after.body?.task?.proposals);
+  record(downstream[4], {
+    status: stale.status,
+    code: codeOf(stale),
+    ok: codeOf(stale) === 'VERSION_SUPERSEDED' && held,
+    note: held ? 'nothing on the lineage moved' : 'THE LINEAGE MOVED',
   });
 }
 

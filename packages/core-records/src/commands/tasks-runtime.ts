@@ -341,6 +341,8 @@ export interface HandbackFields {
   readonly fence: number;
   readonly outcome: string;
   readonly report?: Readonly<Record<string, unknown>>;
+  /** Declared only so that sending one is a refusal rather than a silence. */
+  readonly actualMinor?: number | null;
 }
 
 const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
@@ -371,6 +373,24 @@ export async function handbackLease(
       { fence: fields.fence },
     );
   }
+  // L4's `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any non-null
+  // `actualMinor`, and the command says so here rather than discarding the
+  // key. Dropping it quietly is the failure D06 exists to stop from the other
+  // direction: the caller is left believing a spend figure was recorded when
+  // nothing read it. `null` and absent are the same answer and both are fine.
+  if (fields.actualMinor !== undefined && fields.actualMinor !== null) {
+    return refused(
+      refuseCommand(
+        'ACTUAL_EXPENDITURE_UNSUPPORTED',
+        ['actualMinor'],
+        [
+          'Leave actualMinor out, or send null: nothing in this head dispatches.',
+          'A number here would claim the work ran and cost that much.',
+        ],
+      ),
+      { actualMinor: fields.actualMinor },
+    );
+  }
 
   const result = await handback(tx, {
     leaseId: fields.leaseId,
@@ -390,5 +410,9 @@ export async function handbackLease(
     classification: settled.classification,
     envelopeHeldMinor: settled.envelopeHeldMinor,
     envelopeActualMinor: settled.envelopeActualMinor,
+    // R4's durable report. Its identity is the only handle a caller has on the
+    // row the handback retained, and a report nobody can name is a report
+    // nobody can read.
+    reportId: settled.reportId,
   });
 }
