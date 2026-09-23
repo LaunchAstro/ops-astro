@@ -67,6 +67,7 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
       SUPABASE_JWT_SECRET: ACCEPTANCE_SECRET,
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
+      RECOVERY_BUSINESS_KEYS: 'none',
     },
     stdio: 'ignore',
   });

@@ -39,6 +39,12 @@ import { createApi, type AgentExecutor, type ReadExecutor } from './app.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
+import {
+  describeRecovered,
+  parseRecoveryScope,
+  recoverInstallation,
+  RECOVERY_SCOPE_SETTING,
+} from './recovery-entry.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -74,6 +80,10 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // The delegation credential keyring, in a gitignored file of its own for
     // the same reason, and never the gate key or the JWT secret.
     ...readEnvFile(join(ROOT, '.local', 'delegation.env')),
+    // The installation's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
+    // Deployment configuration rather than a secret, in a file of its own so the
+    // database script that rewrites `db.env` cannot drop it.
+    ...readEnvFile(join(ROOT, '.local', 'recovery.env')),
     ...process.env,
   };
 }
@@ -175,6 +185,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
+  // bound: a process start is the resume entry, and a failure is a failed
+  // start rather than a server that serves beside an unfinished classification.
+  const resolveBusiness = createBusinessResolver(admin);
+  const scope = parseRecoveryScope(environment[RECOVERY_SCOPE_SETTING]);
+  if (!scope.ok) {
+    console.error(`api: ${scope.problem}`);
+    process.exit(1);
+  }
+  if (scope.keys.length === 0) {
+    console.log('restart recovery: explicitly no installation businesses');
+  }
+  const recovered = await recoverInstallation(database, resolveBusiness, scope.keys);
+  if (!recovered.ok) {
+    console.error(`api: ${recovered.problem}`);
+    await Promise.allSettled([database.close(), admin.close()]);
+    process.exit(1);
+  }
+  for (const business of recovered.businesses) console.log(describeRecovered(business));
+
   const server = new Hono();
 
   // Measured, not assumed. `reachable` is the result of a statement that ran.
@@ -203,7 +233,7 @@ async function main(): Promise<void> {
     createApi({
       database,
       verify: createSupabaseVerifier({ secret: secret as string }),
-      resolveBusiness: createBusinessResolver(admin),
+      resolveBusiness,
       ...(executeRead === undefined ? {} : { executeRead }),
       executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
     }),
