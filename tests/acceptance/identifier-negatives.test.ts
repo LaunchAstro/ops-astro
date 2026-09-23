@@ -351,7 +351,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     // reading (TRANSACTION-CONTRACT line 113) is the root's to accept.
     const TARGET_FREE: readonly [CommandName, Body][] = [
       ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
-      ['task.purge', { olderThanDays: 3650 }],
+      ['task.purge', {}],
       ['settings.set_four_eyes_threshold', { value: 1300 }],
       ['settings.set_client_sign_off', { value: false }],
       ['task.queue', {}],

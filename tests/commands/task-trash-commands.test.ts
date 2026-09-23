@@ -31,6 +31,10 @@ import {
   readRecordAudit,
 } from '../../packages/core-records/src/commands/audit.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import {
+  installBusinessSettings,
+  writeBusinessSetting,
+} from '../../packages/core-records/src/records/business-settings.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -74,6 +78,13 @@ describe.skipIf(serverUrl === undefined)(
         share: await grantTo(tx, worker, 'share'),
         manage: await grantTo(tx, worker, 'manage'),
       }));
+      // The purge reads this business's window. Zero takes everything already
+      // in the trash, which is what these cases need; the window's boundary is
+      // `purge-retention.test.ts`.
+      await db.app.withBusiness(business, async (tx) => {
+        await installBusinessSettings(tx);
+        await writeBusinessSetting(tx, { key: 'retention_window_days', value: 0 });
+      });
     }, 60_000);
 
     afterAll(async () => {
@@ -104,7 +115,6 @@ describe.skipIf(serverUrl === undefined)(
         const purged = await run({
           command: 'task.purge',
           operationId: randomUUID(),
-          olderThanDays: 0,
         });
         if (isCommandRefusal(purged)) throw new Error(`purge refused ${purged.code}`);
 
@@ -133,7 +143,6 @@ describe.skipIf(serverUrl === undefined)(
         const purged = await run({
           command: 'task.purge',
           operationId: randomUUID(),
-          olderThanDays: 0,
         });
         if (isCommandRefusal(purged)) throw new Error(`purge refused ${purged.code}`);
         expect(Number(purged.detail['purged'])).toBeGreaterThanOrEqual(1);

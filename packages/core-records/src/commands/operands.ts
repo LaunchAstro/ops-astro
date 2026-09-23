@@ -38,13 +38,20 @@ export function refuseRestoreOperands(batchId: unknown): CommandRefusal | undefi
 }
 
 /**
- * `task.purge` takes a window in whole days, and zero is a window: it is the
- * one a test uses to watch the retention classes in a single run. A negative
- * one reaches into the future, and a string was being coerced into a date.
+ * `task.purge` takes no window. The business's retention window is read from
+ * its settings (`tasks-trash.ts`, SPEC:319 and C12-5 Q46), so a body naming
+ * `olderThanDays` is asking for something the operation does not take. Any
+ * value is refused, a valid one included, and by the code a body field the
+ * operation has no use for already gets (`prepare.ts`, `refuseIrrelevantTarget`).
+ * `null` is a value the caller sent, so it counts as present.
  */
 export function refusePurgeOperands(olderThanDays: unknown): CommandRefusal | undefined {
-  if (Number.isSafeInteger(olderThanDays) && (olderThanDays as number) >= 0) return undefined;
-  return invalid('olderThanDays', 'Send olderThanDays as a whole number of days, zero or more.');
+  if (olderThanDays === undefined) return undefined;
+  return refuseCommand(
+    'COMMAND_BODY_INVALID',
+    ['olderThanDays'],
+    ['Send no olderThanDays: the purge uses the business’s retention_window_days setting.'],
+  );
 }
 
 /** The planner reads each preset field as an object; which keys it needs is its own question. */
