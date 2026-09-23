@@ -63,11 +63,19 @@ export type RefusalCode =
   | 'DEPENDENCY_NOT_LANDED'
   | 'COMMAND_BODY_INVALID'
   | 'WRONG_BUSINESS'
+  // The agent's own identity, L2's `identity/agent-login.ts`. An agent login
+  // and a person's login are two credentials and resolve through two paths, so
+  // "no agent identity" is its own answer and never `AUTH_UNKNOWN_LOGIN`.
+  | 'AUTH_NO_AGENT_IDENTITY'
+  | 'AUTH_SESSION_EXPIRED'
   // Delegation and lease, T1's pickup and handback. No table yet.
   | 'DELEGATION_EXCLUDES_OPERATION'
   | 'DELEGATION_EXCLUDES_DECISION'
   | 'DELEGATION_EXCLUDES_INTAKE'
   | 'DELEGATION_NARROWED'
+  | 'DELEGATION_OUT_OF_PURPOSE'
+  | 'DELEGATION_NOT_LIVE'
+  | 'DELEGATION_WIDENS'
   | 'DELEGATION_EXPIRED'
   | 'DELEGATION_REVOKED'
   | 'LEASE_HELD'
@@ -76,6 +84,10 @@ export type RefusalCode =
   | 'TASK_NOT_PICKABLE'
   // Comments, T1's fourth observable result. No record type yet.
   | 'AUDIENCE_NOT_PERMITTED'
+  // The preset planner, L2's `records/preset-plan.ts`.
+  | 'PRESET_FIELD_UNCLASSIFIED'
+  | 'PRESET_TYPE_UNKNOWN'
+  | 'PRESET_FIELD_UNPLACEABLE'
   // Gates and proposals, T2.
   | 'GATE_PENDING'
   | 'GATE_ALREADY_DECIDED'
@@ -199,6 +211,13 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ),
   entry('WRONG_BUSINESS', 'The record belongs to another business', 'contract 4.4', 'audit'),
 
+  entry(
+    'AUTH_NO_AGENT_IDENTITY',
+    'The credential is not an agent login in this business',
+    'L2 AUTHORITY.md',
+  ),
+  entry('AUTH_SESSION_EXPIRED', 'The verified token has expired; sign in again', 'L2 AUTHORITY.md'),
+
   entry('DELEGATION_EXCLUDES_OPERATION', 'Outside the delegation’s permitted set', 'contract 4.4'),
   entry(
     'DELEGATION_EXCLUDES_DECISION',
@@ -207,6 +226,17 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ),
   entry('DELEGATION_EXCLUDES_INTAKE', 'Intake is reachable only inside a decision', 'contract 6.1'),
   entry('DELEGATION_NARROWED', 'The person’s grant no longer covers this call', 'contract 4.4'),
+  entry(
+    'DELEGATION_OUT_OF_PURPOSE',
+    'The call is outside the purpose the delegation was minted for',
+    'L2 AUTHORITY.md',
+  ),
+  entry('DELEGATION_NOT_LIVE', 'The delegation is expired, revoked or settled', 'L2 AUTHORITY.md'),
+  entry(
+    'DELEGATION_WIDENS',
+    'A mint would exceed what the delegating person holds',
+    'L2 AUTHORITY.md',
+  ),
   entry('DELEGATION_EXPIRED', 'The delegation minted at pickup has run out', 'contract 4.4'),
   entry('DELEGATION_REVOKED', 'The delegation was withdrawn', 'contract 4.4'),
   entry('LEASE_HELD', 'Another worker holds the lease on this work', 'contract 4.4'),
@@ -215,6 +245,14 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   entry('TASK_NOT_PICKABLE', 'The task is not in a state a worker may pick up', 'contract 4.3'),
 
   entry('AUDIENCE_NOT_PERMITTED', 'The caller may not write in that audience', 'contract 4.3'),
+
+  entry(
+    'PRESET_FIELD_UNCLASSIFIED',
+    'A preset field carries no write mode, or one the model does not have',
+    'spec D05',
+  ),
+  entry('PRESET_TYPE_UNKNOWN', 'This business has no record type by that key', 'spec D05'),
+  entry('PRESET_FIELD_UNPLACEABLE', 'No free indexed slot of the field’s type remains', 'spec D05'),
 
   entry('GATE_PENDING', 'A blocking gate instance is open on this record', 'contract 4.3'),
   entry('GATE_ALREADY_DECIDED', 'The gate instance carries a decision already', 'contract 4.4'),
@@ -272,6 +310,16 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
   'AUDIENCE_NOT_PERMITTED',
+  // The five agent codes L2 exported. Every one of them is produced by a
+  // module in this tree and by no *operation* in it: the agent's own API path
+  // is part B of L3 and waits on L4's mechanisms, so nothing a caller can
+  // reach mints, resolves or presents a delegation. They come off this list
+  // when that path lands, which is the diff this list exists to produce.
+  'AUTH_NO_AGENT_IDENTITY',
+  'AUTH_SESSION_EXPIRED',
+  'DELEGATION_NOT_LIVE',
+  'DELEGATION_OUT_OF_PURPOSE',
+  'DELEGATION_WIDENS',
   'DELEGATION_EXCLUDES_DECISION',
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXCLUDES_OPERATION',

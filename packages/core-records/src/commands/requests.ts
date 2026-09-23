@@ -50,7 +50,11 @@ export type CommandRequest =
   | ({
       readonly command: 'task.comment';
       readonly body: string;
+      /** `internal` or `client`. Two fields, because who sees it and what it is
+       * are two questions (L2 `tasks/comments.ts`). */
       readonly audience: string;
+      /** `note`, `client` or `system`. A person writing a comment writes a note. */
+      readonly commentType?: string;
     } & Targeted)
   | ({ readonly command: 'task.propose'; readonly gateDefinition: string } & Targeted)
   | ({
@@ -86,7 +90,17 @@ export type CommandRequest =
     } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
-  | ({ readonly command: 'task.purge'; readonly olderThanDays: number } & Envelope);
+  | ({ readonly command: 'task.purge'; readonly olderThanDays: number } & Envelope)
+  // The two operation-classified business settings. `value` is the whole
+  // payload: the key is the command, not a field, so a caller cannot reach a
+  // setting the model classified `generic` through the operation that owns a
+  // different one.
+  | ({
+      readonly command: 'settings.set_four_eyes_threshold';
+      /** Null is a real value: the band is off, which the accepted rule permits. */
+      readonly value: number | null;
+    } & Envelope)
+  | ({ readonly command: 'settings.set_client_sign_off'; readonly value: boolean } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

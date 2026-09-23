@@ -19,6 +19,12 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   AUTH_UNKNOWN_LOGIN: 401,
   AUTH_NO_MEMBERSHIP: 403,
   ACTOR_INACTIVE: 403,
+  // The agent's own two. `AUTH_SESSION_EXPIRED` is a 401 and not a 403
+  // because it is the re-login path: a client that cannot tell "sign in
+  // again" from "you may not see this" shows the wrong door to the caller.
+  AUTH_NO_AGENT_IDENTITY: 401,
+  AUTH_SESSION_EXPIRED: 401,
+  DELEGATION_NOT_LIVE: 401,
 
   // Signed in, and not allowed.
   SCOPE_NOT_GRANTED: 403,
@@ -28,6 +34,8 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   DELEGATION_EXCLUDES_DECISION: 403,
   DELEGATION_EXCLUDES_INTAKE: 403,
   DELEGATION_NARROWED: 403,
+  DELEGATION_OUT_OF_PURPOSE: 403,
+  DELEGATION_WIDENS: 403,
   DELEGATION_EXPIRED: 403,
   DELEGATION_REVOKED: 403,
   RETENTION_CLASS_PROTECTED: 403,
@@ -36,6 +44,9 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
 
   // It is not there, or it is not yours to know about.
   NOT_FOUND: 404,
+  // The preset names a record type this business does not have, which is the
+  // same kind of answer as an identifier that is not there.
+  PRESET_TYPE_UNKNOWN: 404,
   // `WRONG_BUSINESS` never reaches a caller; the envelope translates it. The
   // status is here so the table stays complete and reads the same as the one
   // the caller would get if it ever did.
@@ -58,6 +69,9 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   BUDGET_UNAVAILABLE: 409,
   BUDGET_EXHAUSTED: 409,
   TASK_NOT_PICKABLE: 409,
+  // The model is in a state that cannot hold the field. Not the caller's
+  // syntax and not their authority: something has to move first.
+  PRESET_FIELD_UNPLACEABLE: 409,
 
   // The request itself is wrong, and repeating it will not help.
   OPERATION_ID_REQUIRED: 422,
@@ -77,6 +91,9 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   COMMAND_BODY_INVALID: 400,
   PROPOSAL_SCOPE_EXCEEDED: 422,
   AUDIENCE_NOT_PERMITTED: 422,
+  // The preset itself is wrong, and it comes back naming the field keys so the
+  // author can classify them.
+  PRESET_FIELD_UNCLASSIFIED: 422,
 
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest

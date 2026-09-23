@@ -89,9 +89,42 @@ tenancy root sits behind forced row security keyed on a setting the serving
 transaction has not set yet, so that one mapping has to precede tenancy. Every
 statement after it runs through the wrapper.
 
+## The operations L2 made possible
+
+Four rows joined the surface when L2's model modules landed, and one came off
+the pending list. Each reaches the API and the command line by generation, so
+there is no route written out for any of them.
+
+| Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                     |
+| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
+| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409                                        |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`)                                         | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
+| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean)                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
+
+`task.comment` writes a comment record beside the task and leaves the task's
+own revision alone, so a caller may keep writing against the revision they
+hold. The author is the acting actor and the posting time is the server's;
+neither is a payload field.
+
+`preset.plan` is declared `kind: 'read'` because it writes nothing at all,
+including on success. It is the one read that does not take the `read` action:
+it asks for `manage` on presets, which is why the collection and the action
+are on the declaration rather than assumed from the kind.
+
+The two settings commands take no `expectedRevision`: `business_settings`
+carries no revision column, so there is nothing for a caller to write against.
+That is a schema gap rather than a decision and it is recorded as one.
+
+**Five routes are unchanged and still refuse.** `task.propose`, `task.decide`,
+`task.pickup`, `task.handback` and the agent's own API path answer
+`DEPENDENCY_NOT_LANDED` 501 naming what they wait for. They wait on L4's
+runtime mechanisms and are part B of L3; nothing here is a placeholder for
+them.
+
 ## Reads
 
-`task.read`, `task.board` and `person.list` are SLICE-DATA's, declared in
+`task.read`, `task.board`, `person.list` and `preset.plan` are declared in
 `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls
 the executor the composition root supplies:
 
@@ -103,6 +136,19 @@ exported as `executeRead` from `packages/core-records/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 A declared read with no executor refuses `DEPENDENCY_NOT_LANDED` rather than
 `404`, which is the answer the surface already gives for a part not yet built.
+
+`task.read` carries the task's comments. An internal reader — a membership
+role of `owner`, `admin` or `member` — is given every comment in full; every
+other role is given `externalCommentProjection`'s answer, which is the client
+comments in the fields the catalogue marks `shared` (`id`, `audience`,
+`author`, `body`, `comment_type`, `posted_at`). External is the default, so a
+role nobody classified sees the client view rather than everything.
+
+**Every read writes an audit event**, of the same shape the commands write,
+successful and refused alike (I13). Its `operation_id` is null: a read has
+nothing to replay. A read of one task carries that task as the subject, which
+is what makes "who looked at this" answerable — and the task's own `history`
+excludes the reads, because a history is what happened _to_ the task.
 
 ## Verifying it
 

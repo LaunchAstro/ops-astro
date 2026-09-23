@@ -17,6 +17,7 @@ import type { TaskStateRow } from '../tasks/state.ts';
 import { readTaskStates } from '../tasks/state.ts';
 import { TASK_TYPE_KEY } from '../tasks/spine.ts';
 import { TASK_STATE_TYPE_KEY } from '../tasks/states.ts';
+import { COMMENT_TYPE_KEY } from '../tasks/comments.ts';
 import type { CommandDeclaration } from './surface.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
 
@@ -24,6 +25,16 @@ import type { EntryPoint } from '../tasks/placement.ts';
 export interface TaskSpine {
   readonly taskTypeId: string;
   readonly taskStateTypeId: string;
+  /**
+   * The comment type, when this business has one.
+   *
+   * Optional, and deliberately not part of the pair above: a business seeded
+   * before L2 installed `task_comment` has a task spine and no comment type,
+   * and `task.comment` refusing `DEPENDENCY_NOT_LANDED` there is a truthful
+   * answer where raising would call a missing record type a fault in the
+   * caller's request.
+   */
+  readonly taskCommentTypeId: string | undefined;
   readonly states: readonly TaskStateRow[];
 }
 
@@ -56,7 +67,7 @@ export interface CommandContext {
 export async function readTaskSpine(tx: TenantQuery): Promise<TaskSpine> {
   const rows = await tx.query<{ readonly key: string; readonly id: string }>(
     `select key, id from record_types where business_id = $1 and key = any($2::text[])`,
-    [tx.businessId, [TASK_TYPE_KEY, TASK_STATE_TYPE_KEY]],
+    [tx.businessId, [TASK_TYPE_KEY, TASK_STATE_TYPE_KEY, COMMENT_TYPE_KEY]],
   );
   const taskTypeId = rows.find((row) => row.key === TASK_TYPE_KEY)?.id;
   const taskStateTypeId = rows.find((row) => row.key === TASK_STATE_TYPE_KEY)?.id;
@@ -68,6 +79,7 @@ export async function readTaskSpine(tx: TenantQuery): Promise<TaskSpine> {
   return {
     taskTypeId,
     taskStateTypeId,
+    taskCommentTypeId: rows.find((row) => row.key === COMMENT_TYPE_KEY)?.id,
     states: await readTaskStates(tx, taskStateTypeId),
   };
 }

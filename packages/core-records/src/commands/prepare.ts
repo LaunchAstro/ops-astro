@@ -129,6 +129,11 @@ const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
   'task.pickup': ['recordId'],
   'task.purge': [],
   'task.restore': ['batchId'],
+  // Neither settings command names a record. The setting is chosen by the
+  // command, so a body carrying a `recordId` is a body the caller believes was
+  // honoured and it is refused rather than dropped.
+  'settings.set_client_sign_off': [],
+  'settings.set_four_eyes_threshold': [],
 };
 
 /**
@@ -175,7 +180,8 @@ export async function prepareCommand(
   const recordId =
     'recordId' in request && typeof request.recordId === 'string' ? request.recordId : undefined;
   const authorised = await checkAuthority(tx, subjectsOf(session), {
-    collection: 'task',
+    // From the declaration, never written in here: see `CommandDeclaration`.
+    collection: declaration.collection,
     action: declaration.action,
     scope:
       declaration.targetsExistingRecord && recordId !== undefined

@@ -56,11 +56,19 @@ export async function grantTo(
   action: Action,
   scope: Scope = WHOLE_BUSINESS,
   canDelegate = false,
+  /**
+   * The collection, which is no longer always `task`: `preset.plan` asks about
+   * presets and the settings commands about settings, and a fixture that could
+   * only grant on tasks would have made those three untestable — or, worse,
+   * would have hidden a grant check that was still reading the wrong
+   * collection.
+   */
+  collection: string = TASK_COLLECTION,
 ): Promise<string> {
   const issued = await issueGrant(tx, [], {
     subject: { kind: 'person', id: member.personId },
     scope,
-    collection: TASK_COLLECTION,
+    collection,
     action,
     canDelegate,
     parentGrantId: null,

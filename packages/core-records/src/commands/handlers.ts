@@ -16,6 +16,8 @@ import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
+import { commentOnTask } from './tasks-comment.ts';
+import { setBusinessSetting } from './settings-write.ts';
 import { refuseUnlanded } from './pending.ts';
 
 export async function handleCommand(
@@ -58,6 +60,12 @@ export async function handleCommand(
       return await purgeTasks(tx, context, request.olderThanDays);
 
     case 'task.comment':
+      return await commentOnTask(tx, context, request.body, request.audience, request.commentType);
+
+    case 'settings.set_four_eyes_threshold':
+    case 'settings.set_client_sign_off':
+      return await setBusinessSetting(tx, context, request.command, request.value);
+
     case 'task.propose':
     case 'task.decide':
     case 'task.pickup':

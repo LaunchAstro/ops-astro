@@ -2,10 +2,16 @@
 //
 // The commands that are declared, routed, audited — and refuse.
 //
-// Five of the contract's nine rest on something no part of the ratified split
-// builds. `task.comment` needs a comment record type: specification 9.1 does
-// not list one as a table and no part of section 6 installs one, though T1-R4
-// requires comments in two audiences. `task.pickup` and `task.handback` need
+// Four of the contract's nine rest on something no part of the ratified split
+// builds. `task.comment` was the fifth and is not any more: L2 installed the
+// comment record type it was waiting for, so it is a real command with a
+// handler and its `waitingOn` text is gone from the declaration. The four
+// below keep theirs, and they keep it *unchanged* — the agent's own path, the
+// gate triple and the lease table are L4's mechanisms and part B of L3, and a
+// placeholder built against interfaces nobody has pinned would be the stub
+// this file's last paragraph refuses.
+//
+// `task.pickup` and `task.handback` need
 // the `delegations` and `leases` tables that section 9.1's authority group
 // names and that T1c, which built `grants`, did not carry. `task.propose` and
 // `task.decide` need the gate triple, and specification 2.1 puts a proposal
