@@ -21,6 +21,19 @@
 // second blocks inside `prepareCommand`, on the row lock, and cannot proceed
 // until the barrier is released and the first transaction commits.
 //
+// **The interleaving is observed, not slept through.** An earlier version of
+// this file waited 500 ms and hoped the second transaction had got as far as
+// the contested read. If it had not — a slow connection, a loaded machine —
+// the second caller would start *after* the first committed, be refused
+// `VERSION_STALE` by ordinary sequential means, and the case would pass green
+// without ever covering the defect it names. So the wait is now a question put
+// to the server: `awaitBlockedOnLock` polls `pg_stat_activity` on the owner
+// connection until a backend in this database is parked in `wait_event_type =
+// 'Lock'`, which is the second transaction sitting inside `prepareCommand`'s
+// `select ... for update`. It is bounded, and it throws rather than continuing
+// if the state never appears, so a run that could not establish the
+// interleaving fails loudly instead of passing quietly.
+//
 // Against the fixed code the second caller re-reads the committed revision and
 // is refused `VERSION_STALE`. Against the unfixed code nothing blocks, the
 // second caller reads the stale row, and the assertions below fail on the
@@ -55,6 +68,57 @@ function barrier(): { readonly held: Promise<void>; readonly release: () => void
   });
   return { held, release };
 }
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+interface Waiter {
+  readonly event: string | null;
+  readonly statement: string;
+}
+
+/**
+ * Wait, bounded, until a backend in this database is blocked on a lock.
+ *
+ * This is the synchronisation point the interleaving needs. The first
+ * transaction holds the row; the second reaches `for update` in
+ * `prepareCommand` and parks. Until that backend appears in `pg_stat_activity`
+ * with `wait_event_type = 'Lock'` there is no evidence the second transaction
+ * ever reached the contested read, and without that evidence the assertions
+ * below are about a sequence, not a race.
+ *
+ * The owner connection asks, because the two application connections are both
+ * inside transactions of their own. Recursion rather than a loop, because the
+ * repository's lint forbids awaiting in one.
+ */
+async function awaitBlockedOnLock(db: FreshDatabase, deadline: number): Promise<Waiter> {
+  const rows = await db.admin.execute<{
+    readonly wait_event: string | null;
+    readonly query: string;
+  }>(
+    `select wait_event, query
+       from pg_stat_activity
+      where datname = current_database()
+        and state = 'active'
+        and wait_event_type = 'Lock'
+      limit 1`,
+  );
+  const found = rows[0];
+  if (found !== undefined) return { event: found.wait_event, statement: found.query };
+  if (Date.now() > deadline) {
+    throw new Error(
+      'the second transaction never blocked on a lock: the contested read was not reached, ' +
+        'so this run establishes no interleaving and proves nothing about the defect',
+    );
+  }
+  await delay(25);
+  return awaitBlockedOnLock(db, deadline);
+}
+
+/** How long the interleaving is given to appear. Generous, and finite. */
+const WITHIN = 10_000;
 
 describe.skipIf(serverUrl === undefined)('two writers against one revision', () => {
   let db: FreshDatabase;
@@ -131,14 +195,21 @@ describe.skipIf(serverUrl === undefined)('two writers against one revision', () 
       runCommand(tx, session, 'api', update('second writer')),
     );
 
-    // Long enough for the second transaction to reach the lock and stop there.
-    // Nothing is asserted about the wait itself; it only decides whether the
-    // race is forced or left to chance, and the assertions below hold either
-    // way — they simply cannot fail by accident of timing.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 500);
+    // The interleaving, established rather than assumed: the second
+    // transaction is parked on the row lock, inside the contested read, while
+    // the first is still open. Only now is it safe to let the first commit.
+    //
+    // The statement is asserted, not just the wait. Without the lock the
+    // second transaction still blocks eventually — on its own `update`, having
+    // already compared its `expectedRevision` against the stale row and
+    // decided to apply. Blocking at the write is the defect; blocking at the
+    // read is the fix, and the statement text is what tells them apart.
+    const waiter = await awaitBlockedOnLock(db, Date.now() + WITHIN).finally(() => {
+      // Released whatever happened, so a failed run ends rather than hanging
+      // the rest of the file behind a transaction nobody will commit.
+      commit.release();
     });
-    commit.release();
+    expect(waiter.statement).toContain('for update');
 
     const [applied, refusedOutcome] = (await Promise.all([first, secondCaller])) as [
       CommandResult,
@@ -200,10 +271,11 @@ describe.skipIf(serverUrl === undefined)('two writers against one revision', () 
       }),
     );
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 500);
+    // The same established interleaving, across two different handlers.
+    const waiter = await awaitBlockedOnLock(db, Date.now() + WITHIN).finally(() => {
+      commit.release();
     });
-    commit.release();
+    expect(waiter.statement).toContain('for update');
 
     const [applied, refusedOutcome] = (await Promise.all([first, other])) as [
       CommandResult,
