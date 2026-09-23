@@ -3,13 +3,15 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Five companion files describe the parts:
+does not do. Six companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
 - [AUTHORITY.md](AUTHORITY.md): credentials, membership, grants and delegation.
 - [RUNTIME.md](RUNTIME.md): propose, decide, pick up, hand back, recover.
 - [WEB.md](WEB.md): the screens, their tests and the gaps against the mockup.
+- [PROOFS.md](PROOFS.md): the assembled acceptance proofs in `tests/acceptance/`,
+  how to run them, and the proofs that could not be written.
 
 New here? [Pickup and debugging](#pickup-and-debugging) is the short version:
 how a request travels, what to check before restarting anything, which command
