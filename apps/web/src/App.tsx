@@ -11,14 +11,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell, type RailEntry } from '@launchastro/ui';
-import { ROUTES, matchRoute } from './routes.ts';
+import { ROUTES, matchRoute, pathTo } from './routes.ts';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { Projects } from './screens/Projects.tsx';
-import { TaskDetailScreen } from './screens/TaskDetail.tsx';
-import { SettingsScreen } from './screens/Settings.tsx';
+import { SCREENS } from './screen-registry.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -39,7 +37,10 @@ export function App(props: AppProps): ReactElement {
   // a person arrives. It leads to the board when there is a session and to
   // sign-in when there is not, and the address bar is corrected to say so, so
   // a reload lands on the same place a link would.
-  const here = props.path === '/' ? (session === null ? '/sign-in' : '/projects/') : props.path;
+  const here =
+    props.path === '/'
+      ? pathTo(session === null ? 'agency:sign-in' : 'agency:projects-board')
+      : props.path;
   const navigate = props.navigate;
   useEffect(() => {
     if (here !== props.path) navigate(here);
@@ -58,7 +59,7 @@ export function App(props: AppProps): ReactElement {
       setSession(next);
       setNotice(null);
       if (back === null) {
-        props.navigate('/projects/');
+        props.navigate(pathTo('agency:projects-board'));
         return;
       }
       // **The held address only means anything in the business it was held
@@ -77,7 +78,7 @@ export function App(props: AppProps): ReactElement {
           `${back.businessKey}. This is the ${next.businessKey} board. Sign in to ` +
           `${back.businessKey} to go back to where you were.`,
       );
-      props.navigate('/projects/');
+      props.navigate(pathTo('agency:projects-board'));
     },
     [props],
   );
@@ -86,7 +87,7 @@ export function App(props: AppProps): ReactElement {
     props.sessions.clear();
     setSession(null);
     setNotice(null);
-    props.navigate('/sign-in');
+    props.navigate(pathTo('agency:sign-in'));
   }, [props]);
 
   // **The session ending is a fact about the application, not about a screen.**
@@ -118,7 +119,7 @@ export function App(props: AppProps): ReactElement {
       code: refusal.code,
     });
     setSession(null);
-    props.navigate('/sign-in');
+    props.navigate(pathTo('agency:sign-in'));
   };
 
   const client = useMemo(
@@ -156,7 +157,7 @@ export function App(props: AppProps): ReactElement {
       session !== null && !route.authenticated ? (
         <SignedInAlready
           onGo={() => {
-            props.navigate('/projects/');
+            props.navigate(pathTo('agency:projects-board'));
           }}
         />
       ) : (
@@ -167,29 +168,14 @@ export function App(props: AppProps): ReactElement {
           ended={props.sessions.interruption}
         />
       )
-    ) : route.id === 'agency:projects-board' ? (
-      <>
-        {notice === null ? null : (
-          <p className="signin__ended" role="status" data-notice="other-business">
-            {notice}
-          </p>
-        )}
-        <Projects
-          client={client}
-          grantKey={grantKey}
-          onOpenTask={(key) => {
-            props.navigate(`/task/${encodeURIComponent(key)}`);
-          }}
-        />
-      </>
-    ) : route.id === 'agency:settings' ? (
-      <SettingsScreen
-        client={client}
-        grantKey={grantKey}
-        storage={typeof sessionStorage === 'undefined' ? null : sessionStorage}
-      />
     ) : (
-      <TaskDetailScreen client={client} grantKey={grantKey} taskKey={match?.params['key'] ?? ''} />
+      SCREENS[route.id]({
+        client,
+        grantKey,
+        params: match?.params ?? {},
+        notice,
+        storage: typeof sessionStorage === 'undefined' ? null : sessionStorage,
+      })
     );
 
   return (
@@ -218,12 +204,12 @@ export function App(props: AppProps): ReactElement {
           : PANELS.map((panel) => ({
               id: panel.id,
               label: panel.label,
-              open: panel.route !== null && here === panel.route,
+              open: panel.route !== null && here === pathTo(panel.route),
             }))
       }
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route != null) props.navigate(panel.route);
+        if (panel?.route != null) props.navigate(pathTo(panel.route));
       }}
       seated={false}
     >
@@ -241,7 +227,7 @@ function NotFound(props: { readonly path: string }): ReactElement {
         it does not resolve, which is a truer answer than a blank page.
       </p>
       <p className="empty__hint">
-        <a className="sb__addr" href="/projects/">
+        <a className="sb__addr" href={pathTo('agency:projects-board')}>
           Go to Projects
         </a>
       </p>

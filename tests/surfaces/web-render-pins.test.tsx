@@ -248,9 +248,7 @@ describe('the board, pinned whole', () => {
       fetch,
       newOperationId: () => 'operation-1',
     });
-    const page = await mount(
-      <Projects client={client} grantKey="alpha:ada" onOpenTask={() => {}} />,
-    );
+    const page = await mount(<Projects client={client} grantKey="alpha:ada" />);
     await tick();
     expect(page.host.innerHTML).toMatchSnapshot();
     await page.unmount();

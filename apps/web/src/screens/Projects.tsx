@@ -19,6 +19,7 @@ import type { TaskBoardResult, TaskSummary } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
+import { pathTo } from '../routes.ts';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -29,7 +30,6 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
-  readonly onOpenTask: (key: string) => void;
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
@@ -198,7 +198,7 @@ function rowOf(task: TaskSummary): BoardRow {
     estimate: null,
     actual: null,
     group: groupOf(task),
-    href: `/task/${encodeURIComponent(task.key)}`,
+    href: pathTo('agency:task-detail', { key: task.key }),
   };
 }
 

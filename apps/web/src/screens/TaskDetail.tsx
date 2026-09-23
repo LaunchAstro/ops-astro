@@ -66,6 +66,7 @@ import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal, submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
+import { pathTo } from '../routes.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Comments } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
@@ -361,7 +362,7 @@ function Loaded(props: LoadedProps): ReactElement {
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <header className="tpr">
         <div className="tpr__crumb">
-          <a className="sb__addr" href="/projects/">
+          <a className="sb__addr" href={pathTo('agency:projects-board')}>
             Projects
           </a>
           <span aria-hidden="true">›</span>
