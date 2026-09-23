@@ -49,20 +49,22 @@ import {
 } from '../../../../packages/core-records/src/commands/surface.ts';
 
 /**
- * The reads the contract adds to the surface, named here as their own type.
+ * The reads, named here as their own type.
  *
- * They are declared in `COMMAND_SURFACE` with `kind: 'read'` by the lane that
- * owns `packages/core-records`. This union exists so that this lane's files
- * typecheck against the surface as it stands today and keep their meaning when
- * the read declarations land: the names are the same strings either way, and
- * `operationPath` below derives all of them through the one `pathOf`.
+ * Every one of them is already a `CommandName`: `COMMAND_SURFACE` declares
+ * them with `kind: 'read'`, and `OnSurface` below holds this list to the
+ * surface's own names, so a misspelt or retired read fails to typecheck here.
+ * What the surface's type cannot say is which names are reads, which is
+ * why this list exists: `read()` takes only these and `mutate()` takes every
+ * other name, and both derive their route through the one `pathOf`.
  *
  * It cannot drift from the server unnoticed: `tests/surfaces/read-names.test.ts`
  * holds that every name here is declared on `COMMAND_SURFACE` with
- * `kind: 'read'`. A name the server does not declare fails that case rather
- * than reaching a route at runtime and 404ing in front of a person. The names
- * are an array and the union is read off it, so the list the case walks is the
- * list the type is made of rather than a copy of it kept in step by hand.
+ * `kind: 'read'`, and that every read declared there is here. A name the server
+ * declares as a write fails that case rather than reaching a route through the
+ * wrong method. The names are an array and the union is read off it, so the
+ * list the case walks is the list the type is made of rather than a copy of it
+ * kept in step by hand.
  */
 export const READ_NAMES = [
   'task.read',
@@ -78,7 +80,25 @@ export const READ_NAMES = [
   'preset.plan',
 ] as const;
 
-export type ReadName = (typeof READ_NAMES)[number];
+/**
+ * Holds `READ_NAMES` to the surface's own names: a name here that is not a
+ * `CommandName` fails the constraint and `ReadName` does not typecheck. It is a
+ * constraint rather than `satisfies` on the array because `isolatedDeclarations`
+ * refuses an `as const satisfies` export without its type written out in full.
+ */
+type OnSurface<Names extends readonly CommandName[]> = Names;
+
+export type ReadName = OnSurface<typeof READ_NAMES>[number];
+
+/**
+ * What `mutate()` takes: any surface name not known to be a read. A read
+ * reached through `mutate()` would carry an operation identity it does not
+ * take, so a name typed as a read is refused where it is written. A caller
+ * holding a plain `CommandName` still compiles, because the tuple keeps the
+ * check from distributing over the union; which half such a name is in is
+ * something only the running caller knows.
+ */
+export type NotARead<Name extends CommandName> = [Name] extends [ReadName] ? never : Name;
 
 /** One approved, held, unpicked piece of work, as `task.queue` answers it. */
 export interface QueueEntryWire {
@@ -97,13 +117,6 @@ export interface QueueRead {
   readonly queue: readonly QueueEntryWire[];
 }
 
-/** What `preset.plan` is asked: a record family, a preset key and its fields. */
-export interface PresetPlanRequest {
-  readonly recordTypeKey: string;
-  readonly presetKey: string;
-  readonly fields: readonly Readonly<Record<string, unknown>>[];
-}
-
 /**
  * `preset.plan`'s answer: a dry-run plan that installs and approves nothing.
  * The actions are the planner's own words and this client does not interpret
@@ -118,11 +131,12 @@ export interface PresetPlanRead {
   };
 }
 
-export type OperationName = CommandName | ReadName;
+/** Reads and writes alike: the surface declares both, so its name is enough. */
+export type OperationName = CommandName;
 
 /** The one route rule, for both halves of the surface. */
 export function operationPath(name: OperationName): string {
-  return pathOf(name as CommandName);
+  return pathOf(name);
 }
 
 /** What a mutation returns when it worked: a durable handle and a new revision. */
@@ -235,8 +249,8 @@ export class OperationsClient {
    * `EXPECTED_REVISION_REQUIRED` stays reachable from this surface rather than
    * being pre-empted by a client-side guess.
    */
-  async mutate(
-    name: CommandName,
+  async mutate<Name extends CommandName>(
+    name: NotARead<Name>,
     body: Readonly<Record<string, unknown>>,
     options: MutationOptions = {},
   ): Promise<CallResult<CommandOutcome>> {

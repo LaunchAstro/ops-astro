@@ -11,12 +11,22 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { READ_NAMES } from '../../apps/web/src/operations/client.ts';
+import { READ_NAMES, type OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { COMMAND_SURFACE } from '../../packages/core-records/src/commands/surface.ts';
 
 const declaredReads = new Set(
   COMMAND_SURFACE.filter((command) => command.kind === 'read').map((command) => command.name),
 );
+
+// Never called: it is here for the typechecker. A read reached through
+// `mutate()` would carry an operation identity a read does not take, so the
+// name has to be refused where it is written rather than on the server. If
+// `mutate` ever accepts a read name again, the directive below is unused and
+// `tsc -p tsconfig.web.json` fails on it.
+export function readsAreNotMutations(client: OperationsClient): void {
+  // @ts-expect-error A read name is not a mutation.
+  void client.mutate('task.read', {});
+}
 
 describe("the client's read names", () => {
   it('are each declared on the surface as a read', () => {
