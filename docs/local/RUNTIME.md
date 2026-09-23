@@ -60,7 +60,7 @@ version's holds, live lease and delegation, in one ordered call
 (`propose.ts:107-176`). It is declared `targetLock: 'runtime'`
 (`commands/surface.ts:224`), so the command envelope only reads the task and
 does not lock it (`commands/prepare.ts:337-345`). The expected revision is
-compared once the runtime's locks are held (`commands/tasks-runtime.ts:201-208`).
+compared once the runtime's locks are held (`commands/tasks-runtime.ts:202-209`).
 
 Grants stay outside that order. `task.pickup` share-locks the grant chain
 behind the claim's authority before it acquires the runtime set: the
@@ -207,7 +207,7 @@ interface HandedBack {
 must be a whole number of seconds from 1 to 3600. `null`, a fraction or
 anything else is `FIELD_VALUE_INVALID` 422. Leaving it out gives 15 minutes,
 for a pickup and a renewal alike (`readLeaseSeconds`,
-`commands/tasks-runtime.ts:899-922`; defaults at `:338` and `:890`). A present
+`commands/tasks-runtime.ts:902-925`; defaults at `:339` and `:893`). A present
 handback `report` must be an object: `null`, an array or a string is
 `FIELD_VALUE_INVALID` (`:656-671`, on both prefixes). The pickup's brief lists
 `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
@@ -221,7 +221,7 @@ AUTHORITY.md gives: a module reaching into the command surface to add its own
 codes is the coupling the register exists to prevent. `SUGGESTED_STATUS` in
 `refusals.ts` carries the same table in code. L3 has registered every code
 below at the status suggested here (`apps/api/status.ts`), and
-`fromRuntime` (`commands/tasks-runtime.ts:71`) carries a runtime refusal onto
+`fromRuntime` (`commands/tasks-runtime.ts:72`) carries a runtime refusal onto
 the command surface unchanged. Each operation's refusals, with their routes,
 are in [API.md](API.md#the-operations-l4s-runtime-made-possible).
 
@@ -254,7 +254,7 @@ from AUTHORITY.md's table. It is not re-derived here.
 `RESERVATION_NOT_CLAIMABLE` gives the same two sentences whether the
 reservation does not exist, has no approval behind it, or is already picked up
 by another live lease (`NOT_CLAIMABLE_REASON`, `pickup.ts:187-197`;
-`commands/tasks-runtime.ts:413`, `:443`). The holding lease is never named.
+`commands/tasks-runtime.ts:435`, `:446`). The holding lease is never named.
 
 `LEASE_HELD` is reachable. Two lineages approved on one task, under an
 envelope an earlier handback left open, give two held reservations, and the
