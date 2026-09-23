@@ -96,6 +96,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0020_business_settings_revision',
         '0021_runtime_gate_version_binding',
         '0022_delegation_credential_scheme',
+        '0023_delegation_revocation_cause',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -126,6 +127,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0020_business_settings_revision',
         '0021_runtime_gate_version_binding',
         '0022_delegation_credential_scheme',
+        '0023_delegation_revocation_cause',
       ]);
     });
 

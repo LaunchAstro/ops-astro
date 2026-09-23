@@ -397,8 +397,10 @@ export async function retireWork(
       [tx.businessId, row.lease_id],
     );
     if (row.delegation_id !== null) {
+      // Cancellation or supersession. A delegation authority loss already
+      // revoked keeps that first cause; this write is then a no-op.
       // eslint-disable-next-line no-await-in-loop
-      await revokeDelegation(tx, row.delegation_id);
+      await revokeDelegation(tx, row.delegation_id, 'work_retired');
     }
   }
 }
@@ -780,9 +782,13 @@ export async function classifyAuthorityLoss<T>(
     locks.require('delegation', id);
     // Revoked here as well as by `delegation.revoke`'s own write, because a
     // grant revocation costs the delegation its authority without touching
-    // its row, and the classifier's fact is that row's `revoked_at`.
+    // its row, and the classifier's fact is that row's `revoked_at`. The cause
+    // is recorded in the same write and the same transaction (root ruling
+    // R-B): `authority_lost`, which the agent's next call on that credential
+    // answers as `DELEGATION_NARROWED`. After an explicit `delegation.revoke`
+    // the row is already revoked with its own cause and this writes nothing.
     // eslint-disable-next-line no-await-in-loop
-    await revokeDelegation(tx, id);
+    await revokeDelegation(tx, id, 'authority_lost');
     const work = workAfter.filter((row) => row.delegation_id === id);
     // eslint-disable-next-line no-await-in-loop
     await retireWork(tx, work, locks);
