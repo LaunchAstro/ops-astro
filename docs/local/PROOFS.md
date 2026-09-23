@@ -93,19 +93,23 @@ list of operation names anywhere in the file, which is SPEC section 8's first
 property: an endpoint added without a case fails the build, and a hand-kept
 list would have put the drift in the place least likely to be read.
 
-Measured against `COMMAND_SURFACE` as it stands at this lane's base,
-`local/working-slice` at `b15ed7e`. Lane L3-PART-B-2 has since taken the table
-to 30 declarations and 7 reads on its own branch; **because the enumeration is
-generated, those two arrive here with no edit to the proof**, which is the
-property the generation exists for rather than a number to be updated by hand.
+**Every count below is written by the run, not kept here.** The numbers are in
+`.local/l5-inventory.txt` and `.local/l5-matrix.tsv`, which the suites append to
+as they measure; the figures quoted in this file are the last observed values
+and the files are what to read. That is the same reason the enumeration is
+generated: L3-PART-B-2 took the table from 28 declarations to 30 and from 5
+reads to 7 between this lane's base and its merge, and **both rows arrived with
+no edit to the proof**.
+
+Last measured on `local/working-slice` at `3c0e02a`, merged into this branch:
 
 | Count                                                 | Measured                    |
 | ----------------------------------------------------- | --------------------------- |
-| Declarations                                          | **28** — 23 writes, 5 reads |
-| Reachable on the person prefix `/api/b/:businessKey`  | **28 of 28**                |
-| Reachable on the agent prefix `/api/a/b/:businessKey` | **28 of 28**                |
-| Reachable through `apps/cli/client.ts`                | **28 of 28**                |
-| Reachable through the web client's `read()` verb      | **3 of 5 declared reads**   |
+| Declarations                                          | **30** — 23 writes, 7 reads |
+| Reachable on the person prefix `/api/b/:businessKey`  | **30 of 30**                |
+| Reachable on the agent prefix `/api/a/b/:businessKey` | **30 of 30**                |
+| Reachable through `apps/cli/client.ts`                | **30 of 30**                |
+| Reachable through the web client's `read()` verb      | **3 of 7 declared reads**   |
 | Declared and not landed                               | **none**                    |
 
 Reachable means **routed, not permitted**: the request arrives at the operation
@@ -115,12 +119,18 @@ everyone count as proof that the surface is served.
 
 ### Named exceptions
 
-- **`task.queue` and `preset.plan` are reads the mounted app cannot reach as
-  reads.** `OperationsClient.read()` takes `ReadName`, which is three names;
-  the surface declares five. The other two are reachable only through
-  `mutate()`, which always sends an `operationId` — and a read carries no
-  operation identity, because it has nothing to replay. They are reached by the
-  wrong verb rather than not at all. Closing this is a change to
+- **Four reads the mounted app cannot reach as reads.** `OperationsClient.read()`
+  takes `ReadName`, which is three names; the surface declares seven.
+  `task.queue` and `preset.plan` are reachable only through `mutate()`, which
+  always sends an `operationId` — and a read carries no operation identity,
+  because it has nothing to replay. `settings.read` and `session.capabilities`
+  arrived with L3-PART-B-2 and `ReadName` did not widen with them, so the
+  settings screen reaches both by **casting the name**
+  (`apps/web/src/screens/settings/reads.ts:23,26`), which routes because the
+  path is built from the string and type-checks only because the cast silences
+  the union. All four are reached by the wrong verb rather than not at all. The
+  case names exactly these four, so **it fails on the day `ReadName` widens**
+  and the list is brought back down. Closing it is a change to
   `apps/web/src/operations/client.ts`, which is not this lane's file.
 
 ## Item 2: the six roles and the nine cases
@@ -130,19 +140,26 @@ and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
-**267 rows: 241 pass, 26 named exceptions, zero failures.**
+**283 rows: 253 pass, 30 named exceptions, zero failures**, as
+`.local/l5-matrix.tsv` records them. The four exceptions added over the base are
+the two new reads: `settings.read` joins case (a)'s positive control, and
+`session.capabilities` is an exception in three places because it is the one
+declaration that **needs no grant beyond membership**
+(`reads/capabilities.ts:20`) — `noah` under (e), and the agent before and after
+a pickup under (h) and (i). Each is asserted rather than skipped; the reasons
+are below.
 
 | Case                                                             | Rows |
 | ---------------------------------------------------------------- | ---- |
-| (a) own-business permitted — the positive control                | 28   |
-| (b) foreign business in the path                                 | 28   |
+| (a) own-business permitted — the positive control                | 30   |
+| (b) foreign business in the path                                 | 30   |
 | (c) foreign record id                                            | 16   |
 | (d) fabricated id                                                | 16   |
-| (e) no grant                                                     | 112  |
+| (e) no grant                                                     | 120  |
 | (f) grant revoked since the last read (I10)                      | 2    |
 | (g) external comment projection (I09)                            | 2    |
-| (h) pre-pickup agent restrictions and successes (I12)            | 28   |
-| (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 33   |
+| (h) pre-pickup agent restrictions and successes (I12)            | 30   |
+| (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 35   |
 | (j) agent decision excluded, with the person's success beside it | 2    |
 
 (c) and (d) are asserted to be **indistinguishable** — same status, same code,

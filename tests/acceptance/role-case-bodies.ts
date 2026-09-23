@@ -177,6 +177,15 @@ export function createPositiveBody(
         return { body: { board: null } };
       case 'task.queue':
       case 'person.list':
+      // Both take an empty body and neither carries an `expectedRevision`:
+      // `settings.read` because `business_settings` has no revision column to
+      // be stale against, `session.capabilities` because it reports the
+      // caller's own grants and there is nothing of the caller's to be stale.
+      // `settings.read` needs `settings:read`, which the seed grants the
+      // admin; `session.capabilities` needs membership and nothing else
+      // (`reads/capabilities.ts:20`), so the admin reaches both here.
+      case 'settings.read':
+      case 'session.capabilities':
         return { body: {} };
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };

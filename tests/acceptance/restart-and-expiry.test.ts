@@ -226,14 +226,19 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     expect(agent.code).toBe('AUTH_SESSION_EXPIRED');
   });
 
-  it('records that the mounted app does not draw the re-login path for an expired session', async () => {
+  it('draws the re-login path for an expired session, through the real client', async () => {
     // `apps/api/app.ts` answers an expired bearer `AUTH_SESSION_EXPIRED` 401 on
     // both prefixes, and `docs/local/AUTHORITY.md` calls that "the re-login
     // path" — the one refusal that is a door the person can open. The mounted
-    // app's client has a hook for exactly that, `onSessionEnded`, and it fires
-    // on `SESSION_ENDED`, which the client defines as `AUTH_UNKNOWN_LOGIN`.
-    // Those are two different codes, so the hook does not fire for the one
-    // case it exists for.
+    // app's client has a hook for exactly that, `onSessionEnded`.
+    //
+    // At `b15ed7e` this case recorded a defect: `SESSION_ENDED` was
+    // `AUTH_UNKNOWN_LOGIN` alone, so the hook fired zero times for the one
+    // refusal it exists for, and the case asserted that zero *as observed* so
+    // that it would fail on the day it was fixed. It has been fixed —
+    // `apps/web/src/operations/client.ts:259` now carries both codes — and
+    // this is that failure, turned round. The assertion is now the behaviour:
+    // the hook fires once, with the code the server really sent.
     //
     // Driven through the real `OperationsClient` against the real app, because
     // reading the constant would only prove what the source says. Asserted as
@@ -254,11 +259,14 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     const result = await client.read('task.read', { recordId: journey.taskId });
     expect(isRefusal(result)).toBe(true);
     if (isRefusal(result)) expect(result.code).toBe('AUTH_SESSION_EXPIRED');
-    // The refusal arrived and the hook did not fire.
-    expect(ended).toStrictEqual([]);
+    // The refusal arrived and the hook fired for it, once, carrying the code
+    // rather than a flag — so the screen can tell an expired session from a
+    // bearer the server cannot place at all, which is the distinction the two
+    // codes exist to make.
+    expect(ended).toStrictEqual(['AUTH_SESSION_EXPIRED']);
     report('web onSessionEnded for AUTH_SESSION_EXPIRED', [
       `fired ${String(ended.length)} times`,
-      'client.ts SESSION_ENDED is AUTH_UNKNOWN_LOGIN',
+      'client.ts SESSION_ENDED carries AUTH_UNKNOWN_LOGIN and AUTH_SESSION_EXPIRED',
     ]);
   });
 

@@ -236,7 +236,20 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     const unreachableAsReads = declaredReads.filter(
       (name) => !(WEB_READ_VERBS as readonly string[]).includes(name),
     );
-    expect(unreachableAsReads).toStrictEqual(['task.queue', 'preset.plan']);
+    // Four, on this head. `task.queue` and `preset.plan` were always reached
+    // by the wrong verb; `settings.read` and `session.capabilities` arrived
+    // with L3-PART-B-2 and `ReadName` did not widen with them, so the settings
+    // screen reaches both by casting the name
+    // (`apps/web/src/screens/settings/reads.ts:23,26`) — which routes, because
+    // the path is built from the string, and type-checks only because the cast
+    // silences the union. Named here rather than papered over, so the day
+    // `ReadName` widens this case fails and the list is brought back down.
+    expect(unreachableAsReads).toStrictEqual([
+      'task.queue',
+      'preset.plan',
+      'settings.read',
+      'session.capabilities',
+    ]);
     report('web read() reach', [
       `${String(WEB_READ_VERBS.length)} of ${String(declaredReads.length)} declared reads`,
       `${unreachableAsReads.join(' and ')} reachable only through mutate()`,
