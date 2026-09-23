@@ -539,6 +539,29 @@ Both are implemented and ran green on the SURFACE-FINAL lane's stack, and 7 of
 7 on the DOCS-2 lane's own stack at `cca3c89` (tested, lane run). Neither has a
 merge-trial run with the port set.
 
+## Delegated-pickup proof group: cases added for the freeze
+
+Three suites close cases that the source-only freeze mapping found missing. Each
+went red under a disposable mutation and green after it. "Tested" here means the
+same thing as in the rulings table below.
+
+- **Grant chain:** `tests/authority/grant-chain.test.ts`. A root, a derived and a
+  grandchild grant across two manager levels; `GRANT_WIDENS` and `GRANT_DEEPENS`
+  on each of their grounds. `grant.revoke` on the root refuses the grandchild's
+  and the middle manager's next call while a sibling chain reads on, with one
+  audit row per call.
+- **Bare handback replay:** `tests/api/agent-bare-handback-replay.test.ts`. A
+  credential-free replay of a settled `task.handback` answers 403
+  `DELEGATION_EXCLUDES_OPERATION` with its names and fixes (the wire refusal has
+  no reason field), nothing of the receipt and no state change. The credentialed
+  replay returns the stored receipt.
+- **Decision never delegated, in the schema:**
+  `tests/db/decision-never-delegated.test.ts`. On an ordinary write that names
+  `decide`, `delegations_actions_known` (`0008:188`) is the constraint Postgres
+  reports; `delegations_never_decide` (`0008:186`) is the named second barrier
+  and is shown refusing alone. `gate_decisions.decided_by_person_id` is not
+  null (`0012:36`).
+
 ## Engineering rulings, and how far each is proved
 
 The build's root ruled on contract questions the lanes raised at `906613f`,
