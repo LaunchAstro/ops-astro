@@ -66,6 +66,14 @@
 // has the gate state it produced; a rejected lineage has its rejection; and a
 // lineage's gates never reach a round its requested changes do not account
 // for. Any of these missing is the same named failure as a broken link.
+//
+// **The chain and the facts it is checked against are one snapshot.** The
+// read runs in an ordinary read-committed transaction, where each statement
+// sees what was committed when it began. A chain read before a `task.decide`
+// commits and a gate read after it would disagree about intact evidence: an
+// approved gate with no decision, a fault on a decision nobody touched. So the
+// chain prefix and the gate and lineage facts come from one statement, and the
+// read answers the old view or the new one, never a mix.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -132,9 +140,9 @@ export async function readVerifiedDecisions(
 ): Promise<readonly VerifiedDecision[]> {
   if (lineageIds.length === 0) return [];
 
-  const chain = await readChainPrefix(tx, lineageIds);
+  const { chain, gates } = await readSnapshot(tx, lineageIds);
   const returned = chain.length === 0 ? [] : verified(chain, lineageIds, keys);
-  const missing = await missingDecisions(tx, lineageIds, returned);
+  const missing = missingDecisions(lineageIds, gates, returned);
   if (missing !== null) throw new DecisionIntegrityError(missing);
   return returned;
 }
@@ -234,24 +242,13 @@ interface GateFact {
 /**
  * U1: what the gates and lineages say was decided, against the decisions the
  * chain returned. Returns where they disagree, or `null` when they agree.
+ * `gates` must come from the same snapshot as the chain (`readSnapshot`).
  */
-async function missingDecisions(
-  tx: TenantQuery,
+function missingDecisions(
   lineageIds: readonly string[],
+  gates: readonly GateFact[],
   decisions: readonly VerifiedDecision[],
-): Promise<string | null> {
-  const gates = await tx.query<GateFact>(
-    `select g.id, g.state, g.round, ver.lineage_id,
-            lin.state as lineage_state, lin.terminal_reason
-       from public.gates g
-       join public.proposal_versions ver
-         on ver.business_id = g.business_id and ver.id = g.version_id
-       join public.proposal_lineages lin
-         on lin.business_id = ver.business_id and lin.id = ver.lineage_id
-      where g.business_id = $1 and ver.lineage_id = any($2::uuid[])
-      order by g.round, g.id`,
-    [tx.businessId, lineageIds],
-  );
+): string | null {
   return (
     gateWithoutItsDecision(gates, decisions) ??
     lineageIds.map((id) => lineageWithoutItsDecisions(id, gates, decisions)).find(Boolean) ??
@@ -305,35 +302,72 @@ function lineageWithoutItsDecisions(
   return null;
 }
 
+/** A chain row with the snapshot's facts beside it; `id` is null when the chain is empty. */
+interface SnapshotRow extends Omit<VerifiedDecisionRow, 'id'> {
+  readonly id: string | null;
+  readonly chain_position: string | null;
+  readonly snapshot_gates: readonly GateFact[];
+}
+
 /**
  * The prefix of the business chain that ends at the newest decision on these
- * lineages. One statement, so the prefix and the rows it verifies are the same
- * snapshot.
+ * lineages, and the gate and lineage facts U1 checks it against, oldest gate
+ * round first. One statement, so the prefix, the rows it verifies and the
+ * facts are one snapshot.
+ *
+ * The facts are one aggregate beside the chain rows, so an empty chain still
+ * brings them: the snapshot row survives the left join with every chain
+ * column null, and is dropped here.
  */
-async function readChainPrefix(
+async function readSnapshot(
   tx: TenantQuery,
   lineageIds: readonly string[],
-): Promise<readonly VerifiedDecisionRow[]> {
-  return await tx.query<VerifiedDecisionRow>(
+): Promise<{
+  readonly chain: readonly VerifiedDecisionRow[];
+  readonly gates: readonly GateFact[];
+}> {
+  const rows = await tx.query<SnapshotRow>(
     `with wanted as (
        select max(seq) as last from public.gate_decisions
         where business_id = $1 and lineage_id = any($2::uuid[])
+     ),
+     facts as (
+       select coalesce(json_agg(json_build_object(
+                'id', g.id, 'state', g.state, 'round', g.round,
+                'lineage_id', ver.lineage_id, 'lineage_state', lin.state,
+                'terminal_reason', lin.terminal_reason)
+              order by g.round, g.id), '[]'::json) as snapshot_gates
+         from public.gates g
+         join public.proposal_versions ver
+           on ver.business_id = g.business_id and ver.id = g.version_id
+         join public.proposal_lineages lin
+           on lin.business_id = ver.business_id and lin.id = ver.lineage_id
+        where g.business_id = $1 and ver.lineage_id = any($2::uuid[])
      )
-     select d.lineage_id, ver.lineage_id as gate_lineage_id,
-            d.id, d.seq::text as seq, d.gate_id, d.version_id, d.decision, d.round,
-            d.decided_by_person_id, d.decided_by_actor_id, d.decided_at,
-            ${decidedAtText('d.decided_at')} as decided_at_text, d.evidence_digest,
-            d.payload, d.payload_digest, d.signing_key_id, d.signature, d.prev_hash, d.hash
-       from public.gate_decisions d
-       cross join wanted
-       left join public.gates g
-         on g.business_id = d.business_id and g.id = d.gate_id
-       left join public.proposal_versions ver
-         on ver.business_id = g.business_id and ver.id = g.version_id
-      where d.business_id = $1 and d.seq <= wanted.last
-      order by d.seq`,
+     select facts.snapshot_gates, chain.*
+       from facts
+       left join lateral (
+         select d.lineage_id, ver.lineage_id as gate_lineage_id,
+                d.id, d.seq::text as seq, d.seq as chain_position, d.gate_id, d.version_id,
+                d.decision, d.round, d.decided_by_person_id, d.decided_by_actor_id, d.decided_at,
+                ${decidedAtText('d.decided_at')} as decided_at_text, d.evidence_digest,
+                d.payload, d.payload_digest, d.signing_key_id, d.signature, d.prev_hash, d.hash
+           from public.gate_decisions d
+           cross join wanted
+           left join public.gates g
+             on g.business_id = d.business_id and g.id = d.gate_id
+           left join public.proposal_versions ver
+             on ver.business_id = g.business_id and ver.id = g.version_id
+          where d.business_id = $1 and d.seq <= wanted.last
+       ) chain on true
+      order by chain.chain_position`,
     [tx.businessId, lineageIds],
   );
+  const gates = rows[0]?.snapshot_gates ?? [];
+  const chain = rows
+    .filter((row): row is SnapshotRow & { readonly id: string } => row.id !== null)
+    .map(({ snapshot_gates: _gates, chain_position: _position, ...row }) => row);
+  return { chain, gates };
 }
 
 /**

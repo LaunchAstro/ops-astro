@@ -319,7 +319,7 @@ Over it is `FIELD_VALUE_INVALID` 422 and nothing is written
 ## A decision is verified before a read returns it
 
 `task.read` verifies every decision it returns before it answers
-(`core-records/src/reads/verified-decisions.ts`, called from `proposals.ts:217`).
+(`core-records/src/reads/verified-decisions.ts`, called from `proposals.ts:255`).
 It walks the business's decision chain from genesis to the newest decision the
 read returns. For each row it recomputes the payload digest from the stored
 JSON, then checks the signature and the link hash with the deployment's key,
@@ -331,6 +331,18 @@ key is configured. The failure is `DecisionIntegrityError`, code
 stored rows are left as they were found. `tests/reads/verified-decisions.test.ts`
 tampers as the database owner and asserts each failure, and that a clean read
 changes nothing.
+
+The chain and the gate and lineage facts it is checked against are read in one
+statement, so they are one snapshot (`readSnapshot`, `verified-decisions.ts:322`).
+The read runs read-committed, where each statement sees what was committed when
+it began. A chain read before a `task.decide` commits and a gate read after it
+would find an approved gate with no decision and fault on intact evidence. One
+statement answers the old view or the new one. Nothing else changes isolation
+or takes a lock. `tests/reads/decision-snapshot.test.ts` pauses the read after
+each statement, commits a real `task.decide` on another connection, and checks
+that the read answers without `DECISION_INTEGRITY`. It covers the first decision
+on a pending gate, a later decision on a lineage that already has one, and the
+proposal projection. A genuinely missing decision still fails the same read.
 
 Its limits:
 
