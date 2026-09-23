@@ -381,14 +381,12 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
   // Delegation codes no reachable operation raises. `DELEGATION_NARROWED`
-  // needs the delegating person's grant revoked between a pickup and the
-  // agent's next call, and there is still no authenticated grant-control
-  // route to revoke it through. `DELEGATION_WIDENS` is a mint refusal and
+  // left this list with `grant.revoke`, the route that revokes the delegating
+  // person's grant between a pickup and the agent's next call. `DELEGATION_WIDENS` is a mint refusal and
   // `task.pickup` mints from the authorising person's own live grants, so it
   // cannot construct a widening one. The other three name a delegation
   // lifecycle — intake, expiry as its own answer, an explicit revocation — that
   // this head's one-task purpose does not distinguish.
-  'DELEGATION_NARROWED',
   'DELEGATION_WIDENS',
   // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent

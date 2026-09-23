@@ -509,7 +509,21 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // and it is `DELEGATION_NARROWED` by name, because substituting
     // `SCOPE_NOT_GRANTED` would say the agent was never authorised when what
     // happened is that the authority it draws on was withdrawn.
-    await harness.revokeTaskRead(harness.world.ada.personId as string);
+    // Withdrawn through the owning operation: the admin, as grant manager,
+    // revokes its own task read with `grant.revoke`, so the narrowing is
+    // produced by a route rather than by a direct write.
+    const adaReads = await harness.world.db.admin.execute<{ readonly id: string }>(
+      `select id from public.grants
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and collection = 'task' and action = 'read' and revoked_at is null`,
+      [harness.world.alpha, harness.world.ada.personId],
+    );
+    expect(adaReads.length).toBeGreaterThan(0);
+    for (const grant of adaReads) {
+      // eslint-disable-next-line no-await-in-loop
+      const revoked = await harness.asPerson('grant.revoke', { grantId: grant.id });
+      observe('ada', 'i-narrowed', 'grant.revoke (own read)', revoked, SUCCESS);
+    }
     const narrowed = await harness.asAgent('task.read', { recordId: subject.id }, credential);
     const wasNarrowed = refusal('DELEGATION_NARROWED');
     observe('agent-after-pickup', 'i-narrowed', 'task.read', narrowed, wasNarrowed);

@@ -205,7 +205,12 @@ revision alone, so a caller may keep writing against the revision they hold.
 The proposer, the subjects and the expiry instant are the server's: a body
 naming an absolute `expiresAt` could raise a gate nobody can decide or hold a
 ceiling open for a decade, and a duration the server adds to its own clock can
-do neither.
+do neither. `expiresInSeconds` is a whole number from 1 to 604800: maximum
+seven days (owner decision, 23 Sep 2026), and leaving it out takes seven days.
+604801, zero or a fraction is `FIELD_VALUE_INVALID` 422 naming
+`expiresInSeconds` and the maximum, and it writes nothing but its refused
+audit row (`tests/api/expiry-bound.test.ts`). Existing gates are not
+rewritten.
 
 `task.decide` names the **exact version** it is deciding. It is compared under
 the locks and never trusted, so a decision made from a page that has gone stale
@@ -234,9 +239,12 @@ report nobody can name is a report nobody can read.
 `task.handback` takes an **optional** `successor`, which is how a worker that
 has finished one piece of work proposes the next without a person having to
 open the task again. Its caller-supplied half is
-`{ purpose, maximumMinor, currency, payload, step: { kind, payload }, expiresAt? }`.
-`expiresAt` is optional and, when sent, is an ISO-8601 instant in the future;
-leaving it out takes the same week `task.propose` defaults to.
+`{ purpose, maximumMinor, currency, payload, step: { kind, payload }, expiresInSeconds? }`.
+`expiresInSeconds` is the same duration `task.propose` takes, read through the
+same `expiryFrom`: maximum seven days (owner decision, 23 Sep 2026), and
+leaving it out takes seven days. Over the maximum is `FIELD_VALUE_INVALID` 422
+naming `successor.expiresInSeconds`, and it settles nothing. An absolute
+`successor.expiresAt` is refused by name.
 `proposedByActorId` is **not** a body field: it is the agent actor of the
 session, and a caller who sends it — under either spelling — is refused
 `FIELD_NOT_WRITABLE` naming `successor.proposedByActorId`, with the attempted
@@ -252,8 +260,7 @@ sees the pending gate, and a fault in either takes both with it.
 lease is still live and the hold still held, so the caller may retry with a
 successor that fits, or hand back without one. That is the opposite of the two
 stale-fence refusals below, which do write their retained report. The runtime
-side of the successor, the tests that hold it and the one open seam (an
-absolute `expiresAt` here against `task.propose`'s `expiresInSeconds`) are in
+side of the successor and the tests that hold it are in
 [RUNTIME.md, "The successor is part of the settlement"](RUNTIME.md#the-successor-is-part-of-the-settlement).
 
 **One refusal in this surface commits.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
@@ -286,6 +293,65 @@ below.
 their camel-case spellings are all derived by the server, and the check is in
 `prepareCommand`, which every command goes through. The attempted values go to
 the audit event and never to the response.
+
+## The support controls
+
+The contract ledger requires revocation, cancellation with an authorised
+restart, and the lease heartbeat through owning production interfaces, as
+declared operations. These five rows are on `COMMAND_SURFACE`, so the person
+prefix, the agent prefix, the command line and the parity tests reach them
+with no hand list. None is a new actor power: each asks for authority the
+caller already holds.
+
+| Operation           | Route                | Body                                                        | Authority                                                                                                                                       | Refusals it can answer                                                                                                                                                |
+| ------------------- | -------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/grant/revoke`      | `operationId`, `grantId`                                    | `manage` on tasks (the grant manager), then the manager's own ceiling: `manage` and the grant's own pair on its collection, at a covering scope | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `COMMAND_BODY_INVALID` 400                                                |
+| `delegation.revoke` | `/delegation/revoke` | `operationId`, `delegationId`                               | as `grant.revoke`, over every (collection, action) the delegation reaches, at its purpose scope                                                 | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `DELEGATION_NOT_LIVE` 401 (already revoked, settled or expired), `COMMAND_BODY_INVALID` 400                                 |
+| `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`            | `write` on tasks, the work-control authority `task.propose` asks                                                                                | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400                    |
+| `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?` | `write` on tasks, plus `propose`'s own read and write checks                                                                                    | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422 |
+| `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`          | the lease's holder, presenting the delegation minted with it; agent prefix only                                                                 | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `DELEGATION_NOT_LIVE` 401, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                     |
+
+What each one does:
+
+- **Revocation** writes `revoked_at` and nothing else, and the envelope's
+  applied audit row names the revoked row's id as its subject. Nothing is
+  cached, so the next call on the same session re-evaluates and is refused. A
+  read admitted before the revocation finishes in its own transaction. This
+  is I10's endpoint half, in `tests/api/controls-revoke.test.ts` and the
+  role-case matrix's case (f).
+- **Cancellation** reaches `cancelAndClassify`. The lineage becomes
+  `cancelled` with the reason as its terminal reason, the live lease is
+  released, and the lineage's holds are classified. The answer is
+  `{ lineageId, state: 'cancelled', reservations: [{ reservationId, state, released }] }`.
+  A pickup afterwards is `RESERVATION_NOT_CLAIMABLE` 409, and the refusal is
+  audited. A new version in the lineage is `LINEAGE_TERMINAL`.
+- **Restart** takes no proposal of its own. It proposes the terminal lineage's
+  last version again under a new lineage whose `restarts_lineage_id` names the
+  old one. The answer is `{ lineageId, restartsLineageId, versionId, version: 1, gateId, payloadDigest }`.
+  The new gate is pending, with no decision and no hold, and the old lineage,
+  lease and hold are never reopened or reused (G05). A terminal lineage is
+  restarted once.
+- **Heartbeat** moves the lease's and its delegation's expiry to now plus
+  `leaseSeconds` (1 to 3600, default 900). It is capped at 8 hours after the
+  pickup and never shortens a lease. A stale fence or someone else's lease is
+  `LEASE_NOT_OWNED`. A settled, revoked or expired delegation is
+  `DELEGATION_NOT_LIVE`, and a lease past its instant is not revived. No timer
+  runs. Bounded unstarted recovery stays with the owning operations'
+  classifier ([RUNTIME.md](RUNTIME.md)).
+
+### Source-to-route manifest
+
+Every route is generated from `COMMAND_SURFACE` by the one loop on each
+prefix (`apps/api/app.ts:148` person, `apps/api/app.ts:209` agent). The
+command line derives its verbs from the same table (`apps/cli/client.ts:68`).
+
+| Operation           | Person route                                         | Agent route                             | Declared                                            | Handler                                                                                       | Owning function                                                                                            |
+| ------------------- | ---------------------------------------------------- | --------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/api/b/:key/grant/revoke`                           | refused `DELEGATION_EXCLUDES_OPERATION` | `packages/core-records/src/commands/surface.ts:249` | `commands/handlers.ts:98` → `commands/authority-controls.ts:88` `revokeGrantAsManager`        | `authority/grants.ts:244` `revokeGrant`                                                                    |
+| `delegation.revoke` | `/api/b/:key/delegation/revoke`                      | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:250`                                    | `commands/handlers.ts:100` → `commands/authority-controls.ts:126` `revokeDelegationAsManager` | `authority/delegations.ts:387` `revokeDelegation`                                                          |
+| `task.cancel`       | `/api/b/:key/task/cancel`                            | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:255`                                    | `commands/handlers.ts:102` → `commands/tasks-controls.ts:86` `cancelOnTask`                   | `core-runtime/src/recovery.ts:426` `cancelAndClassify`                                                     |
+| `task.restart`      | `/api/b/:key/task/restart`                           | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:256`                                    | `commands/handlers.ts:104` → `commands/tasks-controls.ts:119` `restartOnTask`                 | `core-runtime/src/restart.ts:38` `restart` → `propose.ts:77` `propose` (`refuseRestart`, `propose.ts:282`) |
+| `task.heartbeat`    | refused `AUTH_NO_AGENT_IDENTITY` (`handlers.ts:109`) | `/api/a/b/:key/task/heartbeat`          | `surface.ts:259`                                    | `commands/agent-envelope.ts:500` → `commands/tasks-controls.ts:156` `heartbeatLease`          | `core-runtime/src/heartbeat.ts:53` `heartbeat`                                                             |
 
 ## Proposal projection
 

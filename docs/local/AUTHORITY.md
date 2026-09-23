@@ -181,22 +181,22 @@ code is the coupling the register exists to prevent. L3 has registered every one
 of them, with the HTTP status in `apps/api/status.ts`. The last column says
 whether a caller can meet the code on this head, and where that is shown.
 
-| Code                                                                         | Status | Reachable on this head                                                                                  |
-| ---------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                     |
-| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                        |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                     |
-| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                          |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                     |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                     |
-| `DELEGATION_NARROWED`                                                        | 403    | no: needs a grant revoked between pickup and the agent's next call, and there is no grant-control route |
-| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                     |
-| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                               |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                            |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                     |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                     |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                     |
+| Code                                                                         | Status | Reachable on this head                                                                        |
+| ---------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                           |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                              |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                           |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                           |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                           |
+| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant between pickup and the agent's next call |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                           |
+| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                     |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                  |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                      |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                           |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                           |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                           |
 
 The "no" rows are the reasons `UNPRODUCED_CODES` gives for them
 (`commands/register.ts:381`), where the refusal-register tests assert them by
@@ -387,6 +387,29 @@ administrators writing at once (its `describe` at `:287`), and
 at `records/business-settings.ts:57-61` still says no command calls the writer;
 that is out of date since the commands were wired to it.
 
+## Revocation
+
+`grant.revoke` and `delegation.revoke` are the ledger's "existing
+grant/delegation revocation controls" as declared operations
+([API.md, "The support controls"](API.md#the-support-controls)). The authority
+is the grant manager's, within its own ceiling, and no actor gains a power:
+
+- The declaration asks `manage` on tasks, so a caller who manages nothing is
+  `SCOPE_NOT_GRANTED` before the handler runs.
+- `commands/authority-controls.ts` then asks the manager's own ceiling. For a
+  grant, the caller must hold `manage` on the grant's collection and the
+  grant's own (collection, action), both live and both at a scope covering
+  the grant's. For a delegation, the same test runs for every (collection,
+  action) the delegation reaches, at its purpose scope. A manager without
+  `share` cannot revoke a `share` grant.
+- `revokeGrant` and `revokeDelegation` write `revoked_at` and now return the
+  instant they wrote, or null when they wrote nothing. A second revocation is
+  `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
+  delegation. A settled delegation is not revoked a second way.
+- Nothing is cached. The next call re-evaluates through `effectiveGrants` or
+  `resolveDelegation` and is refused. A call already admitted finishes in its
+  own transaction (I10, `tests/api/controls-revoke.test.ts`, matrix case (f)).
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with **no privilege
@@ -420,8 +443,8 @@ all four callers this section used to list as missing are built:
 
 What is still absent:
 
-- **No grant-control route.** `issueGrant` and `revokeGrant` are internal
-  functions, as they were before this lane. That is why `DELEGATION_NARROWED`
-  cannot be reached through a command.
+- **No grant-issuing route.** `issueGrant` is still an internal function.
+  Revocation has routes: `grant.revoke` and `delegation.revoke`, described
+  under [Revocation](#revocation).
 - **No acceptance.** Every mechanism here is implemented and tested; none is
   accepted on the integrated head.
