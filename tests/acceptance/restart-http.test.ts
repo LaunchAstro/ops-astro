@@ -27,9 +27,15 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from './world.ts';
 import {
+  agentOnLease,
   asAda,
   asAgent,
   countLeases,
+  holdState,
+  leaseState,
+  recordHistoricalRejection,
+  revokeWritesOf,
+  walkAgentWork,
   declaredContainer,
   identities,
   report,
@@ -38,6 +44,7 @@ import {
   startedAt,
   walkTheJourney,
   walkTheOtherLineages,
+  type AgentWork,
   type Journey,
   type Lineages,
 } from './restart-harness.ts';
@@ -76,6 +83,43 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   let approved: Journey;
   /** Version 2 of the sent-back round, proposed after the restart. */
   let roundV2: { readonly gateId: string; readonly versionId: string } | undefined;
+  let shortTaskId: string;
+  /** W06 (a): every identity, read after the historical fixture and before `restartContainer`. */
+  let preRestart: Record<string, readonly string[]>;
+  /** W04: approved, never picked up, never cancelled. */
+  let unleased: Journey;
+  let unleasedBefore: string;
+  /** Recovery: the historical rejection's hold, and the lineage that names it. */
+  let historical: Journey;
+  let historicalLineageId: string;
+  let historicalBefore: string;
+  let historicalAttempts: readonly string[];
+  /** I08: a live lease whose person lost their only write grant, and the explicit-revoke control. */
+  let narrowed: AgentWork;
+  let explicit: AgentWork;
+  let narrowedBefore: string;
+  let explicitBefore: string;
+
+  /**
+   * A snapshot as the restarted process must leave it: the one historical
+   * hold classified by startup recovery, and nothing else moved.
+   */
+  const recovered = (
+    snapshot: Record<string, readonly string[]>,
+  ): Record<string, readonly string[]> => ({
+    ...snapshot,
+    reservations: (snapshot['reservations'] ?? []).map((row) =>
+      row.startsWith(`${historical.reservationId}:`)
+        ? `${historical.reservationId}:abandoned`
+        : row,
+    ),
+    // The hold's own unstarted attempt is abandoned with it, in the same transaction.
+    attempts: (snapshot['attempts'] ?? []).map((row) =>
+      historicalAttempts.some((id) => row.startsWith(`${id}:`))
+        ? `${row.slice(0, row.indexOf(':'))}:abandoned`
+        : row,
+    ),
+  });
 
   beforeAll(async () => {
     world = await createWorld('rsh');
@@ -83,6 +127,18 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     journey = await walkTheJourney(world);
     // Approved and never picked up: what a production cancel would act on.
     approved = await walkTheJourney(world, { pickup: false });
+    unleased = await walkTheJourney(world, { pickup: false });
+    historical = await walkTheJourney(world, { pickup: false });
+
+    // I08: authority lost under a live lease, recorded before the restart.
+    narrowed = await walkAgentWork(world, 'restart_narrowed');
+    await revokeWritesOf(world, narrowed.approver);
+    explicit = await walkAgentWork(world, 'restart_explicit');
+    const revokedExplicitly = await asAda(world, world.api, '/delegation/revoke', {
+      operationId: randomUUID(),
+      delegationId: explicit.delegationId,
+    });
+    expect(revokedExplicitly.code, 'delegation.revoke, the control').toBe('ok');
 
     // A Request Changes round begun before the restart: version 1 proposed,
     // then sent back. Version 2 is proposed only after the restart.
@@ -122,7 +178,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       operationId: randomUUID(),
       fields: { title: `a gate that lapses while nothing runs ${randomUUID()}` },
     });
-    const shortTaskId = String(shortTask.body['recordId']);
+    shortTaskId = String(shortTask.body['recordId']);
     const short = await asAda(world, world.api, '/task/propose', {
       operationId: randomUUID(),
       recordId: shortTaskId,
@@ -152,6 +208,20 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     );
     expect(live, 'the short gate is still open while the first process serves').toBe('true');
     await first.stop();
+    // Written only now, with no process serving: the first process's own
+    // startup recovery has already run, so only the restarted one can classify it.
+    historicalLineageId = await recordHistoricalRejection(world, historical.versionId);
+    historicalAttempts = (
+      await world.db.admin.execute<{ readonly id: string }>(
+        'select id::text as id from public.attempts where business_id = $1 and reservation_id = $2',
+        [world.alpha, historical.reservationId],
+      )
+    ).map((row) => row.id);
+    preRestart = await identities(world);
+    unleasedBefore = await holdState(world, unleased.reservationId);
+    historicalBefore = await holdState(world, historical.reservationId);
+    narrowedBefore = await leaseState(world, narrowed.leaseId);
+    explicitBefore = await leaseState(world, explicit.leaseId);
     const startedBefore = startedAt(container);
     restartContainer(container);
     const startedAfter = startedAt(container);
@@ -171,7 +241,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       // eslint-disable-next-line no-await-in-loop
       await sleep(1000);
     }
-    before = await identities(world);
+    before = recovered(await identities(world));
     second = await startApi(world, port);
     api = overHttp(port);
     report('http restart', [
@@ -196,6 +266,46 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     });
     expect(read.code).toBe('ok');
     expect(await identities(world)).toStrictEqual(before);
+  });
+
+  // W06 (a): the baseline is read before `restartContainer`, not after it.
+  it('keeps the pre-restart identity baseline, but for the one hold startup recovery classified', async () => {
+    const after = await identities(world);
+    const causes = await world.db.admin.execute<{ readonly v: string }>(
+      `select id::text || ':' || state || ':' || coalesce(classified_cause, '-') as v
+         from public.reservations where business_id = $1 order by id`,
+      [world.alpha],
+    );
+    report('http startup recovery', [
+      ...(second?.output() ?? '').split('\n').filter((line) => line.startsWith('restart recovery')),
+      `historical hold ${historical.reservationId}`,
+      ...causes.map((row) => row.v),
+    ]);
+    expect(after, 'against the baseline read before the container restart').toStrictEqual(
+      recovered(preRestart),
+    );
+    const was = (table: string, id: string): string =>
+      `${table} ${String((preRestart[table] ?? []).find((row) => row.startsWith(`${id}:`)))}`;
+    const moved = Object.entries(preRestart).flatMap(([table, rows]) =>
+      rows.filter((row) => !(after[table] ?? []).includes(row)).map((row) => `${table} ${row}`),
+    );
+    expect(moved, 'the only rows the restart moved').toStrictEqual([
+      was('reservations', historical.reservationId),
+      ...historicalAttempts.map((id) => was('attempts', id)),
+    ]);
+    expect(historicalBefore, 'unclassified before the restart').toMatch(/\|-\|-$/u);
+    const classified = await holdState(world, historical.reservationId);
+    expect(classified).toMatch(
+      new RegExp(`^abandoned\\|[0-9]+\\|lineage_rejected\\|${historicalLineageId}$`, 'u'),
+    );
+    expect(second?.output(), 'recovered before the port was bound').toContain(
+      'restart recovery: alpha committed, 1 classified, 1 released',
+    );
+    expect(second?.output()).toContain('restart recovery: bravo committed, 0 classified');
+    report('http baseline before restartContainer', [
+      `tables ${String(Object.keys(preRestart).length)}`,
+      `moved ${String(moved.length)} (${historicalBefore} -> ${classified})`,
+    ]);
   });
 
   it('answers byte-identical propose and decide replays over HTTP and adds no row', async () => {
@@ -267,12 +377,23 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     );
     expect(twice.status, 'the second handback').toBe(401);
     expect(twice.code, 'the second handback').toBe('DELEGATION_NOT_LIVE');
-    expect((await identities(world))['receipts']?.length ?? 0).toBe(receipts + 1);
+    // AGENT-BOUNDARY's late intake (merged at e4cb2ae) keeps the refused second
+    // report as a `retained` row naming its refusal; only the first settled.
+    expect((await identities(world))['receipts']?.length ?? 0).toBe(receipts + 2);
+    const dispositions = await world.db.admin.execute<{ readonly v: string }>(
+      `select disposition || ':' || coalesce(refusal_code, '-') as v from public.handback_reports
+        where business_id = $1 and lease_id = $2 order by created_at, id`,
+      [world.alpha, journey.leaseId],
+    );
+    expect(dispositions.map((row) => row.v)).toStrictEqual([
+      'settled:-',
+      'retained:DELEGATION_NOT_LIVE',
+    ]);
     expect(await countLeases(world, journey.reservationId)).toBe(leases);
     report('http handback', [
       `first ${once.code}`,
       `second ${String(twice.status)} ${twice.code}`,
-      `receipts ${String(receipts)} -> ${String(receipts + 1)}`,
+      `receipts ${String(receipts)} -> ${String(receipts + 2)} (settled, retained)`,
     ]);
   });
 
@@ -523,6 +644,108 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       `decisions ${decisions}`,
       `holds ${holds}`,
       `restarts ${restarts}`,
+    ]);
+  });
+
+  // G06: the owner's expired projection, on the database clock, after the restart.
+  it('reads the lapsed gate as expired over HTTP, with the stored row still pending', async () => {
+    const read = await asAda(world, api, '/task/read', {
+      operationId: randomUUID(),
+      recordId: shortTaskId,
+    });
+    expect([read.status, read.code]).toStrictEqual([200, 'ok']);
+    const gates: Record<string, unknown>[] = [];
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) for (const item of value) walk(item);
+      else if (value !== null && typeof value === 'object') {
+        const object = value as Record<string, unknown>;
+        if (object['id'] === shortGate.gateId && 'expired' in object) gates.push(object);
+        for (const item of Object.values(object)) walk(item);
+      }
+    };
+    walk(read.body);
+    expect(gates.map((gate) => [gate['state'], gate['expired']])).toStrictEqual([
+      ['expired', true],
+    ]);
+    const stored = await scalar(
+      world,
+      'select state as v from public.gates where business_id = $1 and id = $2',
+      [shortGate.gateId],
+    );
+    expect(stored, 'the stored row, never rewritten').toBe('pending');
+    report('http expired projection', [`read expired`, `stored ${stored}`]);
+  });
+
+  // W04: an approved, unleased hold is neither abandoned by the restart nor by its recovery.
+  it('keeps an approved unleased hold held across the restart, and it is still claimable', async () => {
+    expect(await holdState(world, unleased.reservationId), 'the hold as snapshotted').toBe(
+      unleasedBefore,
+    );
+    expect(await countLeases(world, unleased.reservationId)).toBe(0);
+    const picked = await asAgent(world, api, '/task/pickup', {
+      operationId: randomUUID(),
+      reservationId: unleased.reservationId,
+    });
+    expect([picked.status, picked.code], 'pickup after the restart').toStrictEqual([200, 'ok']);
+    expect(await countLeases(world, unleased.reservationId)).toBe(1);
+    report('http unleased hold', [`before ${unleasedBefore}`, `pickup ${picked.code}`]);
+  });
+
+  // I08: the cause the revoking transaction recorded outlives the restart.
+  it('answers DELEGATION_NARROWED after the restart for authority lost before it, with no effect', async () => {
+    expect(narrowedBefore, 'revoked by the grant loss, before the restart').toMatch(
+      /\|true\|false\|0$/u,
+    );
+    const answers: string[] = [];
+    // AGENT-BOUNDARY-2 has not merged at this head: a narrowed agent's
+    // handback keeps no report, so both calls leave everything as it was.
+    for (const name of ['/task/heartbeat', '/task/handback'] as const) {
+      // eslint-disable-next-line no-await-in-loop -- one call, then the state it left
+      const answer = await agentOnLease(api, narrowed, name);
+      expect([answer.status, answer.code], name).toStrictEqual([403, 'DELEGATION_NARROWED']);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await leaseState(world, narrowed.leaseId), `${name} moved nothing`).toBe(
+        narrowedBefore,
+      );
+      answers.push(`${name} ${String(answer.status)} ${answer.code}`);
+    }
+    expect(explicitBefore, 'the control, revoked explicitly').not.toBe(narrowedBefore);
+    // The control keeps DELEGATION_NOT_LIVE, and AGENT-BOUNDARY's late intake
+    // keeps its report as one retained row; nothing else moves.
+    for (const [name, reports] of [
+      ['/task/heartbeat', '0'],
+      ['/task/handback', '1'],
+    ] as const) {
+      // eslint-disable-next-line no-await-in-loop
+      const answer = await agentOnLease(api, explicit, name);
+      expect([answer.status, answer.code], `control ${name}`).toStrictEqual([
+        401,
+        'DELEGATION_NOT_LIVE',
+      ]);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await leaseState(world, explicit.leaseId), `control ${name}`).toBe(
+        explicitBefore.replace(/\|0$/u, `|${reports}`),
+      );
+      answers.push(`control ${name} ${String(answer.status)} ${answer.code} reports ${reports}`);
+    }
+    report('http authority loss', answers);
+  });
+
+  // Startup recovery again: a second restart of the process classifies nothing twice.
+  it('does not classify the historical hold again on a second process restart', async () => {
+    const classified = await holdState(world, historical.reservationId);
+    const settled = await identities(world);
+    const port = declaredApiPort();
+    const previous = second;
+    await second?.stop();
+    second = await startApi(world, port);
+    expect(second.pid).not.toBe(previous?.pid);
+    expect(second.output()).toContain('restart recovery: alpha committed, 0 classified');
+    expect(await holdState(world, historical.reservationId)).toBe(classified);
+    expect(await identities(world)).toStrictEqual(settled);
+    report('http recovery second restart', [
+      `pid ${String(previous?.pid)} -> ${String(second.pid)}`,
+      `hold ${classified}`,
     ]);
   });
 });

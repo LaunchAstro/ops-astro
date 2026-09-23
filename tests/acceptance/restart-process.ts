@@ -26,8 +26,19 @@ const DENIED_PORTS: ReadonlySet<string> = new Set(['8790', '5190']);
 export interface RunningApi {
   readonly pid: number;
   readonly port: string;
+  /** Everything the process wrote to stdout so far, restart recovery's lines among it. */
+  output(): string;
   stop(): Promise<void>;
 }
+
+/**
+ * The world's businesses, as the installation scope restart recovery reads.
+ *
+ * `createWorld` inserts exactly these two keys, so the restarted process
+ * classifies eligible durable state in the proof's own database before it
+ * serves (RECOVERY-ENTRY, ruling 7), and in no other.
+ */
+export const WORLD_BUSINESS_KEYS = 'alpha,bravo';
 
 const sleep = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,9 +78,13 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
       SUPABASE_JWT_SECRET: ACCEPTANCE_SECRET,
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
-      RECOVERY_BUSINESS_KEYS: 'none',
+      RECOVERY_BUSINESS_KEYS: WORLD_BUSINESS_KEYS,
     },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  let written = '';
+  child.stdout?.on('data', (chunk: Buffer) => {
+    written += chunk.toString('utf8');
   });
   // Written down before anything can fail, so a runner that dies mid-case
   // still leaves `restart-proof.sh` the pid its exit trap must stop.
@@ -93,6 +108,7 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
   return {
     pid: child.pid as number,
     port,
+    output: () => written,
     stop: async () => {
       const gone = new Promise<void>((resolve) => {
         if (exited) resolve();
