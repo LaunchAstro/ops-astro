@@ -34,6 +34,14 @@ export interface Session {
 }
 
 const KEY = 'ops-astro.session';
+
+/**
+ * Where `/settings` keeps the last write this session had confirmed, per
+ * business. It is named here because sign-out removes it: the tab outlives the
+ * session, and the next person to sign in to it must not inherit the value.
+ */
+export const settingsCacheKey = (businessKey: string): string =>
+  `ops-astro.settings.${businessKey}`;
 /** Where to go back to once the person has signed in again. */
 const RETURN_KEY = 'ops-astro.return-to';
 
@@ -128,10 +136,12 @@ export class SessionStore {
   }
 
   clear(): void {
+    const ending = this.#session;
     this.#session = null;
     this.#forgetInterruption();
     try {
       this.#storage?.removeItem(KEY);
+      if (ending !== null) this.#storage?.removeItem(settingsCacheKey(ending.businessKey));
     } catch {
       /* Nothing to do: memory is already clear. */
     }
