@@ -10,9 +10,12 @@
 // (`tests/acceptance/surface-inventory.test.ts`, the faulted case).
 //
 // Each check answers `FIELD_VALUE_INVALID` 422 by name with a fix line, the
-// pattern `task.decide` uses for its own operands. The command checks are
-// called by their handlers and the read checks by `reads/dispatch.ts`, so
-// either refusal is registered and audited like any other.
+// pattern `task.decide` uses for its own operands. The one exception is
+// `task.purge`: any `olderThanDays` is `COMMAND_BODY_INVALID` 400, because the
+// operation takes no window at all (`refusePurgeOperands` below). The command
+// checks are called by their handlers and the read checks by
+// `reads/dispatch.ts`, so either refusal is registered and audited like any
+// other.
 
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 

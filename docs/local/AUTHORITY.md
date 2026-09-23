@@ -86,7 +86,12 @@ There is no path that widens it, because there is no stored permission to widen.
 `delegations_never_decide` in 0008 is the same rule as a constraint: a
 delegation carrying `decide` cannot be written at all. `authority/index.ts`
 exports no decide path either, so I07 is held three times — by the schema, by
-the check order, and by what the module does not offer.
+the check order, and by what the module does not offer. On an ordinary insert
+the constraint Postgres actually reports is `delegations_actions_known`
+(`0008:188`), because `decide` is not among the known delegation actions;
+`delegations_never_decide` (`0008:186`) is the named second barrier behind it
+(`tests/db/decision-never-delegated.test.ts` shows each). The migration stays
+as it is.
 
 ## The interfaces L3 consumes
 

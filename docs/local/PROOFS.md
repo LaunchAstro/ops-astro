@@ -539,6 +539,23 @@ Both are implemented and ran green on the SURFACE-FINAL lane's stack, and 7 of
 7 on the DOCS-2 lane's own stack at `cca3c89` (tested, lane run). Neither has a
 merge-trial run with the port set.
 
+**Run them one file at a time.** Each file spawns its own `apps/api/server.ts`
+on the one port `SURFACE_API_PORT` names. Under Vitest's default file
+parallelism the two servers start together, the second cannot bind
+(`EADDRINUSE`), and its suite fails with "the API process did not answer" (U1
+in `server-onerror.test.ts`). The coordinator's live run at `54700f7` showed
+both results: 4 passed, 1 file failed together, 7 of 7 passed serially
+(`parent-observations/runs/54700f7/surface-api-port.log` and
+`surface-api-port-serial.log`). Run them like this, with the stack's
+`DATABASE_URL` and `DATABASE_ADMIN_URL` set and any spare loopback port:
+
+```sh
+SURFACE_API_PORT=8812 pnpm exec vitest run --fileParallelism=false \
+  tests/api/server-onerror.test.ts tests/cli/mounted-cli.test.ts
+```
+
+Two separate `vitest run` invocations, one file each, work equally well.
+
 ## Delegated-pickup proof group: cases added for the freeze
 
 Three suites close cases that the source-only freeze mapping found missing. Each

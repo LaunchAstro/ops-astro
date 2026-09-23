@@ -817,14 +817,17 @@ async function theJourney() {
       note: 'reading the queue claims nothing',
     });
 
-    // An agent login confers nothing at all. Everything outside the queue and
-    // a pickup is the same answer, deliberately: telling an unknown credential
-    // apart from a revoked one tells a thief which it is holding.
+    // An agent login confers nothing at all. A bare call, with no credential,
+    // outside the queue and a pickup is excluded by name (root ruling 6 at
+    // 906613f; `agent-envelope.ts`, the no-credential branch). A credential
+    // that is presented and not live is another matter: it stays one answer,
+    // DELEGATION_NOT_LIVE, because telling an unknown credential apart from a
+    // revoked one tells a thief which it is holding.
     const closed = await callAgent(agent.token, 'alpha', '/task/read', { recordId: subject });
-    record('J8 every other operation is DELEGATION_NOT_LIVE before a pickup', {
+    record('J8 a bare call outside queue and pickup is DELEGATION_EXCLUDES_OPERATION', {
       status: closed.status,
       code: codeOf(closed),
-      ok: codeOf(closed) === 'DELEGATION_NOT_LIVE',
+      ok: codeOf(closed) === 'DELEGATION_EXCLUDES_OPERATION',
     });
 
     const personThere = await callAgent(ada.token, 'alpha', '/task/queue', {});
