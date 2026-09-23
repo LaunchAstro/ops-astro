@@ -20,8 +20,9 @@
 // through the production path with a short `expiresInSeconds`, and the cases
 // wait until the database says the deadline has passed. No row is back-dated.
 //
-// **The boundary is inclusive**, the same predicate as the decide path's
-// refusal (`packages/core-runtime/src/decide.ts`, `(g.expires_at <= now())`).
+// **The boundary is inclusive**, the same operator as the decide path's
+// refusal (`packages/core-runtime/src/decide.ts`, `(g.expires_at <= $3::timestamptz)`,
+// the database clock read after its locks).
 // A gate read at exactly its deadline reads expired, because a decide at
 // that instant would be refused. A clock cannot be stopped on a stored
 // microsecond, so the boundary case evaluates the read's own statement with
@@ -276,7 +277,7 @@ describe.skipIf(serverUrl === undefined)('a gate past its deadline, on read', ()
         new URL('../../packages/core-records/src/reads/proposals.ts', import.meta.url),
         'utf8',
       );
-      expect(decideSource).toContain('(g.expires_at <= now()) as expired');
+      expect(decideSource).toContain('(g.expires_at <= $3::timestamptz) as expired');
       expect(readSource).toContain("g.state = 'pending' and g.expires_at <= now()");
     });
   });
