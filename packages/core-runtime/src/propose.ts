@@ -358,7 +358,7 @@ async function refuseRestart(
   if (row === undefined) {
     return refuse(
       'GATE_NOT_FOUND',
-      `no proposal lineage ${restarts} in this business`,
+      'no such proposal lineage in this business',
       'Name the rejected or cancelled lineage this restart replaces.',
     );
   }

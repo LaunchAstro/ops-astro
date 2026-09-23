@@ -136,7 +136,7 @@ export async function decide(
   if (found === undefined) {
     return refuse(
       'GATE_NOT_FOUND',
-      `no gate ${request.gateId} in this business`,
+      'no such gate in this business',
       'Name a gate raised by a proposal on a task the caller can see.',
     );
   }
@@ -230,7 +230,7 @@ export async function decide(
   if (gate.version_id !== request.versionId) {
     return refuse(
       'VERSION_SUPERSEDED',
-      `gate ${gate.id} is bound to version ${gate.version_id}, not the ${request.versionId} presented`,
+      `gate ${gate.id} is bound to version ${gate.version_id}, not the version presented`,
       'Re-read the gate and decide the version it actually carries.',
     );
   }
@@ -580,7 +580,11 @@ async function openEnvelope(
   );
   const version = versions[0];
   if (version === undefined) {
-    return refuse('GATE_NOT_FOUND', `no version ${versionId}`, 'Re-read the gate.');
+    return refuse(
+      'GATE_NOT_FOUND',
+      'no such proposal version in this business',
+      'Re-read the gate.',
+    );
   }
 
   const envelopeId = randomUUID();
