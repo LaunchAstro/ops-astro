@@ -91,6 +91,52 @@ export const IN_PAGE = {
   authorisedRead: ['/src', 'data', 'authorised-read.ts'].join('/'),
 };
 
+/**
+ * What the page was actually served, bound to the source it was served from.
+ *
+ * A run through the app's own modules is evidence about those modules only if
+ * the run says which bytes they were. So this fetches, in the signed-in page and
+ * through the same origin, the entry document, each module script it names, the
+ * modules `IN_PAGE` imports and every `/src/` module the page has loaded, and
+ * hashes each one as served. Beside them it records `git rev-parse HEAD` and
+ * whether the tree had uncommitted changes. It prints one line per URL and
+ * returns the same list, so a caller can write it into its receipt.
+ */
+export async function servedIdentity(page, label) {
+  const head = sh('git', ['rev-parse', 'HEAD']).trim();
+  const dirty = sh('git', ['status', '--porcelain']).trim() !== '';
+  const modules = await page.evaluate(async (named) => {
+    // Inside the page: serialised by Playwright, so it cannot close over this module.
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const sha256 = async (bytes) =>
+      [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+    const served = async (url) => {
+      const bytes = await (await window.fetch(url, { cache: 'no-store' })).arrayBuffer();
+      return { url, bytes: bytes.byteLength, sha256: await sha256(bytes) };
+    };
+    const entry = await served('/');
+    const html = await (await window.fetch('/', { cache: 'no-store' })).text();
+    const scripts = [...html.matchAll(/<script[^>]*type="module"[^>]*src="([^"]+)"/gu)].map(
+      (match) => match[1],
+    );
+    const loaded = performance
+      .getEntriesByType('resource')
+      .map((timing) => new URL(timing.name))
+      .filter((url) => url.origin === window.location.origin && url.pathname.startsWith('/src/'))
+      .map((url) => `${url.pathname}${url.search}`);
+    const urls = [...new Set([...scripts, ...Object.values(named), ...loaded])].toSorted();
+    return [entry, ...(await Promise.all(urls.map(async (url) => await served(url))))];
+  }, IN_PAGE);
+  for (const one of modules) {
+    console.log(
+      `served ${label} ${WEB}${one.url} sha256=${one.sha256} bytes=${String(one.bytes)} head=${head}${dirty ? ' (dirty)' : ''}`,
+    );
+  }
+  return { label, web: WEB, head, dirty, modules };
+}
+
 /** The viewport every context in the checklist is opened at. */
 export const VIEWPORT = { width: 1480, height: 900 };
 
