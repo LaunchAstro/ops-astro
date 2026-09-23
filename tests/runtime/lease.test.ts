@@ -751,4 +751,88 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
 
     await fresh.close();
   }, 60_000);
+
+  /**
+   * R5 at the runtime level (lane L2-DELEGATION-FIX, item 2).
+   *
+   * The recovery existed here already; what it could not do was mint. The
+   * delegation expires with the lease, and `delegations_one_live_per_purpose_idx`
+   * (0008:195) does not read expiry, so the spent delegation went on holding
+   * the slot and the second pickup raised 23505 instead of recovering.
+   * `mintDelegation` now settles the spent row in this same transaction, so
+   * the fresh hold and the closed authority commit together.
+   */
+  it('recovers an expired lease into a fresh hold, settling the spent delegation', async () => {
+    // Its own handle, like the case above: earlier cases in this file close
+    // and replace the shared one to prove restart durability.
+    const fresh = connect(database.appUrl, { max: 1, source: 'recovery' });
+    const fixture = await buildFixture(fresh, 'recoverbiz');
+    const work = await approvedWork(fresh, fixture);
+
+    const claim = async (leaseSeconds: number) =>
+      await fresh.withBusiness(
+        fixture.businessId,
+        async (tx) =>
+          await pickup(tx, {
+            reservationId: work.reservationId,
+            agentActorId: fixture.agentActorId,
+            authorisedByPersonId: fixture.decider.personId,
+            mintedByActorId: fixture.decider.actorId,
+            collection: TASK_COLLECTION,
+            leaseSeconds,
+          }),
+      );
+
+    const first = await claim(1);
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('unreachable');
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+
+    const second = await claim(600);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error(`the recovery refused ${second.refusal.code}`);
+
+    // A replacement, not a revival: new reservation, new attempt, new fence.
+    expect(second.value.reservationId).not.toBe(work.reservationId);
+    expect(second.value.attemptId).not.toBe(first.value.attemptId);
+    expect(second.value.fence).toBeGreaterThan(first.value.fence);
+
+    // The old credential is spent on its own ground; the new one resolves.
+    await fresh.withBusiness(fixture.businessId, async (tx) => {
+      const stale = await resolveDelegation(
+        tx,
+        fixture.agentActorId,
+        first.value.delegation.credential,
+      );
+      expect(stale.ok).toBe(false);
+      if (!stale.ok) expect(stale.refusal.code).toBe('DELEGATION_NOT_LIVE');
+
+      const current = await resolveDelegation(
+        tx,
+        fixture.agentActorId,
+        second.value.delegation.credential,
+      );
+      expect(current.ok).toBe(true);
+
+      // One row satisfies the index, and the abandoned hold sits beside the
+      // fresh one rather than being overwritten.
+      const live = await tx.query<{ readonly count: string }>(
+        `select count(*)::text as count from public.delegations
+          where business_id = $1 and agent_actor_id = $2
+            and revoked_at is null and settled_at is null`,
+        [fixture.businessId, fixture.agentActorId],
+      );
+      expect(live[0]?.count).toBe('1');
+
+      const holds = await tx.query<{ readonly id: string; readonly state: string }>(
+        `select id, state from public.reservations where business_id = $1`,
+        [fixture.businessId],
+      );
+      expect(holds.length).toBe(2);
+      expect(holds.find((row) => row.id === work.reservationId)?.state).not.toBe('held');
+      expect(holds.find((row) => row.id === second.value.reservationId)?.state).toBe('held');
+    });
+
+    await fresh.close();
+  }, 60_000);
 });

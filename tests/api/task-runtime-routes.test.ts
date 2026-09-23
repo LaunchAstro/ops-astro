@@ -266,29 +266,90 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect((detail['purposeScope'] as { readonly id: string }).id).toBe(taskId);
     });
 
-    // Behavioural note 10 from lane L4-RUNTIME-FIX: a pickup of a reservation
-    // whose lease expired should *succeed* and hand back a different
-    // reservation and attempt from the ones asked for, with the abandoned hold
-    // shown beside the fresh one.
-    //
-    // It does not, and `it.fails` is how that is recorded rather than hidden.
-    // The second pickup mints a second delegation for a purpose the agent
-    // still holds live, `authority/delegations.ts:192` violates
-    // `delegations_one_live_per_purpose_idx` (migration 0008), and the fault
-    // propagates unhandled through `core-runtime/src/pickup.ts` and
-    // `commands/agent-envelope.ts`. Observed here: **HTTP 500 with the body
-    // `{"raw":"Internal Server Error"}`** -- not a refusal shape at all, no
-    // `refused: true`, no code, and because the serving transaction aborted,
-    // no audit row for the attempt either.
-    //
-    // So L4's R5 recovery is real in the runtime and unreachable through a
-    // command. `authority/**` is not lane L3-PART-B-2's file, so this is
-    // reported rather than fixed. When it is fixed this case will start
-    // failing, which is the point: rewrite it then to the note-10 assertions
-    // (new `reservationId` and `attemptId`, the old hold `abandoned` and the
-    // new one `held` in `task.read`'s projection).
-    it.fails('recovers an expired lease into a fresh hold with new identifiers', async () => {
-      const { reservationId } = await approvedReservation(
+    /**
+     * The duplicate live delegation, over the surface (lane L2-DELEGATION-FIX,
+     * item 1). `delegations_one_live_per_purpose_idx` (0008:195) is keyed on
+     * `(business_id, agent_actor_id, purpose)` and not on the purpose scope,
+     * so the duplicate an agent can actually reach through a command is a
+     * second pickup under a purpose word it still holds — a *different*
+     * reservation. A second pickup of the same reservation never gets that
+     * far: its live lease refuses it as `RESERVATION_NOT_CLAIMABLE` above.
+     *
+     * Before the fix this answered 500 `{"raw":"Internal Server Error"}` with
+     * the serving transaction aborted and no audit row.
+     *
+     * **Still `it.fails` on this branch, and for a different reason from the
+     * one it used to fail for.** `mintDelegation` now returns the refusal --
+     * `tests/identity` proves that -- but `DELEGATION_ALREADY_LIVE` is not in
+     * `commands/register.ts`'s `RefusalCode` union or in `apps/api/status.ts`,
+     * and those are lane L3-PART-B-3's files, registered on a sibling branch
+     * (its addendum 1). An unregistered code raises in `agent-envelope.ts:145`
+     * and the envelope still answers **500**, which is the status observed
+     * here. The moment the two branches meet this case starts failing and must
+     * be flipped to a plain `it`; the assertions below are already the ones it
+     * should then hold, including 409 via the register's status map.
+     */
+    it.fails(
+      'refuses a second live delegation for one purpose instead of faulting',
+      async () => {
+        const first = await approvedReservation('work under a held purpose', 'draft_the_reply_dup');
+        const held = await asAgent('task.pickup', {
+          operationId: randomUUID(),
+          reservationId: first.reservationId,
+        });
+        expect(held.status).toBe(200);
+        const firstDetail = detailOf(held);
+
+        const sibling = await approvedReservation('more work, same purpose', 'draft_the_reply_dup');
+        const operationId = randomUUID();
+        const again = await asAgent('task.pickup', {
+          operationId,
+          reservationId: sibling.reservationId,
+        });
+
+        // A decision, not an outage: a refusal shape, and neither 500 nor 503.
+        expect(again.status).not.toBe(500);
+        expect(again.status).not.toBe(503);
+        expect(again.body['refused']).toBe(true);
+        expect(again.body['code']).toBe('DELEGATION_ALREADY_LIVE');
+
+        // The first hold is untouched: still one lease, and its credential works.
+        const read = await asAgent(
+          'task.read',
+          { operationId: randomUUID(), recordId: first.taskId },
+          String(firstDetail['credential']),
+        );
+        expect(read.status).toBe(200);
+
+        // And the serving transaction committed, so the attempt is in the chain.
+        const audited = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+          tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
+            `select outcome, refusal_code from public.audit_events
+            where business_id = $1 and operation_id = $2`,
+            [fixture.business, operationId],
+          ),
+        );
+        expect(audited.length).toBe(1);
+        expect(audited[0]?.refusal_code).toBe('DELEGATION_ALREADY_LIVE');
+      },
+      60_000,
+    );
+
+    /**
+     * Behavioural note 10 from lane L4-RUNTIME-FIX, now the assertions rather
+     * than the `it.fails` that recorded it: a pickup of a reservation whose
+     * lease expired succeeds and hands back a *different* reservation and
+     * attempt from the ones asked for, with the abandoned hold shown beside
+     * the fresh one.
+     *
+     * What unblocked it is item 1's guard. The delegation expires with the
+     * lease, and expiry is not in the index's predicate, so the spent
+     * delegation went on occupying the slot; `mintDelegation` now settles it
+     * in the same transaction as the new hold, so the index is satisfied by
+     * one row and the abandoned credential answers `DELEGATION_NOT_LIVE`.
+     */
+    it('recovers an expired lease into a fresh hold with new identifiers', async () => {
+      const { taskId, reservationId } = await approvedReservation(
         'work whose lease runs out',
         'draft_the_reply_expiry',
       );
@@ -310,7 +371,35 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       const second = detailOf(again);
       expect(second['reservationId']).not.toBe(reservationId);
       expect(second['attemptId']).not.toBe(first['attemptId']);
-    });
+
+      // The old credential is spent; the new one works.
+      const stale = await asAgent(
+        'task.read',
+        { operationId: randomUUID(), recordId: taskId },
+        String(first['credential']),
+      );
+      expect(stale.body['code']).toBe('DELEGATION_NOT_LIVE');
+
+      const fresh = await asAgent(
+        'task.read',
+        { operationId: randomUUID(), recordId: taskId },
+        String(second['credential']),
+      );
+      expect(fresh.status).toBe(200);
+
+      // The projection shows the abandoned hold beside the fresh one.
+      const holds = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+        tx.query<{ readonly id: string; readonly state: string }>(
+          `select res.id, res.state from public.reservations res
+             join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+            where res.business_id = $1 and run.task_id = $2`,
+          [fixture.business, taskId],
+        ),
+      );
+      expect(holds.length).toBe(2);
+      expect(holds.find((row) => row.id === reservationId)?.state).not.toBe('held');
+      expect(holds.find((row) => row.id === second['reservationId'])?.state).toBe('held');
+    }, 60_000);
 
     it('refuses a reservation with no approval behind it', async () => {
       const answer = await asAgent('task.pickup', {

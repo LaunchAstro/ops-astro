@@ -8,7 +8,7 @@
 // own, so there is nothing here to go stale (transaction contract,
 // delegation).
 //
-// Three refusals, and the reason each is its own code rather than one shared
+// Four refusals, and the reason each is its own code rather than one shared
 // denial.
 //
 // - `DELEGATION_EXCLUDES_DECISION` (I07). A person decides. A delegated agent
@@ -23,6 +23,13 @@
 //   ledger requires by name: substituting `SCOPE_NOT_GRANTED` here would say
 //   the agent was never authorised, when what happened is that the authority
 //   it was drawing on was taken away.
+// - `DELEGATION_ALREADY_LIVE`. The agent already holds a live delegation for
+//   this purpose. `delegations_one_live_per_purpose_idx` has always forbidden
+//   the second row; before this it forbade it as a constraint violation, which
+//   reached the caller as a 500 in process and a 503 `SERVICE_UNAVAILABLE`
+//   from the served deployment, with the serving transaction aborted and so no
+//   audit row for the attempt. A decision is not an outage: the duplicate is
+//   read and refused here, and the index is never reached.
 //
 // The intersection is the whole mechanism. `effectiveGrants` is asked, inside
 // the serving transaction, what the *person* holds right now; the delegation
@@ -39,7 +46,8 @@ export type DelegationRefusalCode =
   | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED'
   | 'DELEGATION_NOT_LIVE'
-  | 'DELEGATION_WIDENS';
+  | 'DELEGATION_WIDENS'
+  | 'DELEGATION_ALREADY_LIVE';
 
 /** The same shape `grants.ts` returns, with this module's codes. Returned, never thrown. */
 export type DelegationDecision<T> =
@@ -188,12 +196,57 @@ export async function mintDelegation(
     }
   }
 
+  // The one-live-per-purpose guard, read inside the serving transaction.
+  //
+  // The index key is `(business_id, agent_actor_id, purpose)` where
+  // `revoked_at is null and settled_at is null` (0008:195). Two things follow
+  // and both are load-bearing here. The key is the *purpose word*, not the
+  // purpose scope, so a second mint for a sibling task under the same purpose
+  // is the same duplicate; and the agent is in the key, so another agent
+  // minting for the same work is not one. Expiry is **not** in the predicate,
+  // so a delegation nobody settled goes on occupying the slot after it stops
+  // permitting anything — which is what made R5's expired-lease recovery
+  // unreachable.
+  //
+  // So: `for update` the blocking row, and split on whether it is still worth
+  // anything. Still within its expiry, it is the agent's live authority and
+  // this is a retry: refuse. Past its expiry, it is a spent authority nobody
+  // closed, and settling it is the bookkeeping the index needs, done in this
+  // same transaction so the insert below and the settle commit together.
+  //
+  // Settled rather than reused, deliberately. Reuse would hand back a
+  // delegation still carrying the old credential and the old `expires_at`, so
+  // the abandoned holder's credential would keep working against the fresh
+  // hold — the recovery's whole point is that it does not. A new row also
+  // leaves the abandoned authority legible afterwards instead of overwriting
+  // it, which is what `task.read`'s projection shows beside the new hold.
+  const blocking = await tx.query<{ readonly id: string; readonly expired: boolean }>(
+    `select id, (expires_at <= now()) as expired from public.delegations
+      where business_id = $1 and agent_actor_id = $2 and purpose = $3
+        and revoked_at is null and settled_at is null
+      for update`,
+    [tx.businessId, request.agentActorId, request.purpose],
+  );
+  const held = blocking[0];
+  if (held !== undefined) {
+    if (!held.expired) {
+      return refuse(
+        'DELEGATION_ALREADY_LIVE',
+        `this agent already holds a live delegation for the purpose ${request.purpose}`,
+        'Use the credential already issued for it, or hand the work back so the delegation settles.',
+      );
+    }
+    await settleDelegation(tx, held.id);
+  }
+
   const credential = randomBytes(32).toString('base64url');
   const rows = await tx.query<DelegationRow>(
     `insert into public.delegations
        (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
         collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at)
      values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     on conflict (business_id, agent_actor_id, purpose)
+       where revoked_at is null and settled_at is null do nothing
      returning id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
                collections, actions, purpose_scope_kind, purpose_scope_id, expires_at`,
     [
@@ -211,7 +264,18 @@ export async function mintDelegation(
     ],
   );
   const written = rows[0];
-  if (written === undefined) throw new Error('mintDelegation: the insert returned no row');
+  if (written === undefined) {
+    // The read above holds a lock on a row that exists; it cannot lock one
+    // that does not, so two transactions minting a first delegation for one
+    // purpose can still both arrive here. `on conflict do nothing` lets the
+    // loser learn that from an empty result instead of from a 23505, and the
+    // answer is the same refusal the sequential duplicate gets.
+    return refuse(
+      'DELEGATION_ALREADY_LIVE',
+      `this agent already holds a live delegation for the purpose ${request.purpose}`,
+      'Use the credential already issued for it, or hand the work back so the delegation settles.',
+    );
+  }
   return { ok: true, value: { delegation: delegationOf(written), credential } };
 }
 

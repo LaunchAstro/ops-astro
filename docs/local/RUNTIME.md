@@ -406,7 +406,15 @@ partly covered rather than proved.
   `lease_expired_and_fenced`, a fresh reservation is read back `held` on the
   same still-approved version, and the envelope carries one hold's worth rather
   than two. A second case leaves a fenced lease with an unclassified hold and
-  asserts `replayRecordedTransitions` finishes it.
+  asserts `replayRecordedTransitions` finishes it. Until lane
+  L2-DELEGATION-FIX this was **unreachable through a command**: the delegation
+  expires with the lease and `delegations_one_live_per_purpose_idx` does not
+  read expiry, so the spent delegation held the slot and the second pickup
+  raised 23505 rather than recovering. `mintDelegation` now settles the spent
+  row in the same transaction as the fresh hold (AUTHORITY.md,
+  `DELEGATION_ALREADY_LIVE`), so the recovery is proved end to end over HTTP as
+  well as in the runtime, with the abandoned credential answering
+  `DELEGATION_NOT_LIVE` and the new one working.
 - Append-only is asserted **twice**: the application role is refused by
   privilege, and the owner — who does hold `update` — is refused by the trigger.
   Without the second half a later migration granting `update` would silently
