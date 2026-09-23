@@ -46,6 +46,7 @@ import {
 import { createApi, type ReadExecutor } from './app.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
 import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
@@ -126,31 +127,6 @@ export function createBusinessResolver(
   };
 }
 
-/**
- * SLICE-DATA's read executor, if it has landed.
- *
- * Imported dynamically because the module is another lane's and does not exist
- * in every checkout of this branch. A missing module is not an error here: the
- * boundary already answers `DEPENDENCY_NOT_LANDED` for a declared read with no
- * executor, which is the truthful answer and the one the surface already uses
- * for a command whose part has not been built.
- */
-export async function loadReadExecutor(): Promise<ReadExecutor | undefined> {
-  // The specifier is assembled rather than written as a literal so that a
-  // checkout without the module typechecks: the compiler cannot resolve a path
-  // it cannot see, and a missing optional dependency is not a type error.
-  const specifier = ['..', '..', 'packages', 'core-records', 'src', 'reads', 'execute.ts'].join(
-    '/',
-  );
-  try {
-    const module: unknown = await import(specifier);
-    const execute = (module as { executeRead?: unknown }).executeRead;
-    return typeof execute === 'function' ? (execute as ReadExecutor) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** What `composeApi` wires. Every value is one `main` read or opened. */
 export interface ApiConfig {
   /** The application role's connection, the one every request runs on. */
@@ -159,7 +135,12 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The HS256 secret the Supabase adapter verifies bearers with. */
   readonly secret: string;
-  /** The read half of the surface, when it has landed (`loadReadExecutor`). */
+  /**
+   * The read half of the surface. Absent means `reads/execute.ts`, imported
+   * statically, so a module that fails to load stops the server rather than
+   * turning every read into `DEPENDENCY_NOT_LANDED`. A test hands in its own
+   * to reach the fault branch.
+   */
   readonly executeRead?: ReadExecutor;
 }
 
@@ -179,7 +160,8 @@ export interface ComposedApi {
  * owns those, which is what lets a test build this twice over one database.
  */
 export function composeApi(config: ApiConfig): ComposedApi {
-  const { database, admin, executeRead } = config;
+  const { database, admin } = config;
+  const executeRead = config.executeRead ?? (readExecutor as unknown as ReadExecutor);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
 
@@ -197,7 +179,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       {
         ok: reachable,
         database: reachable ? 'reachable' : 'unreachable',
-        reads: executeRead === undefined ? 'not-landed' : 'mounted',
+        reads: 'mounted',
         detail,
       },
       reachable ? 200 : 503,
@@ -210,7 +192,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       database,
       verify: createSupabaseVerifier({ secret: config.secret }),
       resolveBusiness,
-      ...(executeRead === undefined ? {} : { executeRead }),
+      executeRead,
       executeCommand,
       executeAgentCommand,
     }),
@@ -248,7 +230,6 @@ async function main(): Promise<void> {
 
   const database = connect(databaseUrl as string, { source: 'runtime' });
   const admin = connectAsAdmin(adminUrl as string, { source: 'admin' });
-  const executeRead = await loadReadExecutor();
   // The signing key is a process fact, read by `commands/runtime-config.ts`
   // from the environment rather than passed down through every caller. The
   // composition root is where a deployment's environment is assembled, so this
@@ -278,7 +259,6 @@ async function main(): Promise<void> {
     database,
     admin,
     secret: secret as string,
-    ...(executeRead === undefined ? {} : { executeRead }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -302,7 +282,7 @@ async function main(): Promise<void> {
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
-    console.log(`api: reads ${executeRead === undefined ? 'not landed' : 'mounted'}`);
+    console.log('api: reads mounted');
   });
 
   const stop = (): void => {
