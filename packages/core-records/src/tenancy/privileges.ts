@@ -26,14 +26,39 @@ import type { Finding } from './conformance.ts';
 
 type Read = AdminConnection['execute'];
 
-/** The three separated roles a migration prefix is proved against. */
+/**
+ * The separated roles a migration prefix is proved against.
+ *
+ * **The grant group and the login that connects are different roles.** The
+ * migrations grant to `ops_astro_app`, which has no login; the application
+ * connects as a member of it. Privileges, ownership and role attributes flow
+ * down that membership and never back up, so a direct TRUNCATE on the login, a
+ * table it owns, or `bypassrls` set on it is invisible on the group -- and the
+ * login is the role that actually issues every runtime query. Asking the group
+ * alone answers a question about a role nothing connects as.
+ */
 export interface StorageRoles {
   /** Owns the schema. Migrations run as this one. */
   readonly owner: string;
-  /** The group role the migrations grant to. The application is a member. */
+  /** The group role the migrations grant to. Nothing logs in as it. */
   readonly application: string;
+  /**
+   * The login(s) the application actually connects as, each a member of the
+   * group. Effective privileges and role attributes are asked of these.
+   */
+  readonly logins: readonly string[];
   /** A login that is a member of nothing. It must reach nothing. */
   readonly restricted: string;
+}
+
+/**
+ * Every role on the application's side of the boundary: the group that holds
+ * the grants and the login(s) that spend them. Named once, because the
+ * ownership and attribute rules are about all of them, and a second list that
+ * drifts apart from the first is how a blind spot gets back in.
+ */
+function applicationSide(roles: StorageRoles): readonly string[] {
+  return [...new Set([roles.application, ...roles.logins])];
 }
 
 /** The schemas this installation owns. `pg_*` and information_schema are the server's. */
@@ -171,13 +196,20 @@ export async function defaultDenyConformance(
     )),
   );
 
-  for (const schema of await schemasFor(read, roles.application, 'CREATE')) {
-    if (held(schema.granted).length > 0) {
-      findings.push({
-        rule: 'the application role may create nothing, in any schema',
-        object: schema.nspname,
-        detail: `${roles.application} holds CREATE`,
-      });
+  // The group for what the migrations granted it, and each login for what it
+  // holds in its own right. `has_schema_privilege` follows membership, so the
+  // login's answer covers both, and a grant made straight to the login shows
+  // up nowhere else at all.
+  for (const role of applicationSide(roles)) {
+    // oxlint-disable-next-line no-await-in-loop
+    for (const schema of await schemasFor(read, role, 'CREATE')) {
+      if (held(schema.granted).length > 0) {
+        findings.push({
+          rule: 'the application role may create nothing, in any schema',
+          object: schema.nspname,
+          detail: `${role} holds CREATE`,
+        });
+      }
     }
   }
   for (const schema of await schemasFor(read, 'public', 'CREATE')) {
@@ -190,21 +222,26 @@ export async function defaultDenyConformance(
     }
   }
 
-  // TRUNCATE empties a table without consulting a single row policy.
-  for (const relation of await relationsFor(read, roles.application)) {
-    const privileges = held(relation.granted);
-    if (privileges.includes('TRUNCATE')) {
-      findings.push({
-        rule: 'the application role never holds TRUNCATE, which row security does not filter',
-        object: `${relation.schema}.${relation.name}`,
-        detail: `${roles.application} holds ${privileges.join(', ')}`,
-      });
+  // TRUNCATE empties a table without consulting a single row policy. Asked of
+  // the login as well as the group: the login is what sends the statement.
+  for (const role of applicationSide(roles)) {
+    // oxlint-disable-next-line no-await-in-loop
+    for (const relation of await relationsFor(read, role)) {
+      const privileges = held(relation.granted);
+      if (privileges.includes('TRUNCATE')) {
+        findings.push({
+          rule: 'the application role never holds TRUNCATE, which row security does not filter',
+          object: `${relation.schema}.${relation.name}`,
+          detail: `${role} holds ${privileges.join(', ')}`,
+        });
+      }
     }
   }
 
   // Ownership, not only grants. An owner may drop and recreate what it owns,
   // and `revoke` said to a table's owner changes nothing. The separation is
-  // only real if the roles the application connects as own none of it.
+  // only real if the roles the application connects as own none of it -- the
+  // login, and the group whose ownership powers the login can exercise.
   const owned = await read<{
     readonly schema: string;
     readonly name: string;
@@ -216,7 +253,7 @@ export async function defaultDenyConformance(
         and c.relkind in ('r', 'p', 'v', 'm', 'f')
         and pg_get_userbyid(c.relowner) = any($1::text[])
       order by 1, 2`,
-    [[roles.application, roles.restricted]],
+    [[...applicationSide(roles), roles.restricted]],
   );
   for (const relation of owned) {
     findings.push({
@@ -231,7 +268,7 @@ export async function defaultDenyConformance(
     readonly rolsuper: boolean;
     readonly rolbypassrls: boolean;
   }>(`select rolname, rolsuper, rolbypassrls from pg_roles where rolname = any($1::text[])`, [
-    [roles.application, roles.restricted],
+    [...applicationSide(roles), roles.restricted],
   ]);
   for (const row of roleRows) {
     if (row.rolsuper || row.rolbypassrls) {

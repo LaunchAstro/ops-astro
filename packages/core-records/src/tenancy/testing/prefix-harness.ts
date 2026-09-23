@@ -36,7 +36,14 @@ export interface PrefixProof {
   readonly findings: readonly Finding[];
 }
 
-/** The three roles each prefix is proved against, read from the database itself. */
+/**
+ * The roles each prefix is proved against, read from the database itself.
+ *
+ * `loginRole` is the login the harness connects `db.app` as, and it is what
+ * the effective-privilege and role-attribute rules are asked about.
+ * `APPLICATION_ROLE` is the group the migrations grant to and nothing logs in
+ * as; it is still checked, for what the migrations handed it.
+ */
 async function rolesOf(database: EmptyDatabase): Promise<StorageRoles> {
   const rows = await database.admin.execute<{ readonly owner: string }>(
     `select current_user as owner`,
@@ -44,6 +51,7 @@ async function rolesOf(database: EmptyDatabase): Promise<StorageRoles> {
   return {
     owner: rows[0]?.owner ?? 'postgres',
     application: APPLICATION_ROLE,
+    logins: [database.loginRole],
     restricted: database.restrictedRole,
   };
 }
