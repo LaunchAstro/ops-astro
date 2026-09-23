@@ -13,7 +13,10 @@ import type { Grant, SettingRow, SettingsReadResult } from '../../operations/sha
 /** `POST /api/b/:businessKey/settings/read`, body `{}`, grant `settings:read`. */
 export const SETTINGS_READ: ReadName = 'settings.read';
 
-/** `POST /api/b/:businessKey/session/capabilities`, body `{}`, membership only. */
+/**
+ * `POST /api/b/:businessKey/session/capabilities`, body `{}`. A member holding
+ * no grant is refused `SCOPE_NOT_GRANTED`, never answered an empty list.
+ */
 export const SESSION_CAPABILITIES: ReadName = 'session.capabilities';
 
 /** The collection and action the two settings commands take. */

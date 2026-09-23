@@ -190,7 +190,8 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     const entries = detailOf(queued)['queue'] as readonly Record<string, unknown>[];
     expect(entries.map((entry) => entry['reservationId'])).toContain(reservationId);
 
-    // Everything else, with no delegation to intersect the call with.
+    // Everything else, with no delegation to intersect the call with: outside
+    // what a bare agent login may do (minimum contract 8.2 case 9).
     for (const body of [
       { command: 'task.read', operationId: randomUUID(), recordId: task },
       {
@@ -209,7 +210,7 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
       },
     ]) {
       // eslint-disable-next-line no-await-in-loop
-      expect(codeOf(await asAgent(body)), body.command).toBe('DELEGATION_NOT_LIVE');
+      expect(codeOf(await asAgent(body)), body.command).toBe('DELEGATION_EXCLUDES_OPERATION');
     }
   });
 
@@ -299,29 +300,10 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
   });
 
   it('answers session.capabilities with its own purpose, never the person’s grants', async () => {
-    // Before a pickup: no purpose, and the floor it may work from. This is
-    // reachable with no credential on purpose — refusing it for want of one
-    // would refuse the single call whose whole subject is that there is none.
+    // Before a pickup the login reaches the queue and a pickup only, and this
+    // is neither (minimum contract 8.2 case 9).
     const cold = await asAgent({ command: 'session.capabilities', operationId: randomUUID() });
-    expect(isCommandRefusal(cold)).toBe(false);
-    const before = detailOf(cold);
-    expect(before['agentActorId']).toBe(agentActorId);
-    expect(before['businessKey']).toBe('agent-path');
-    expect(before['purposeScope']).toBeNull();
-    // The authority the pre-pickup pair takes -- `task.queue` reads and
-    // `task.pickup` writes -- and not the delegating person's grants wearing
-    // the agent's name. `decider` holds `decide`, `assign` and `comment` on
-    // tasks as well, and none of them is here.
-    expect(before['grants']).toStrictEqual([
-      { collection: 'task', action: 'write' },
-      { collection: 'task', action: 'read' },
-    ]);
-    expect(Object.keys(before).toSorted()).toStrictEqual([
-      'agentActorId',
-      'businessKey',
-      'grants',
-      'purposeScope',
-    ]);
+    expect(codeOf(cold)).toBe('DELEGATION_EXCLUDES_OPERATION');
 
     const subject = await createTask('a task an agent will ask its purpose about');
     const reservationId = await approvedReservation(subject);
@@ -339,6 +321,21 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     const after = detailOf(warm);
     expect(after['purposeScope']).toStrictEqual({ kind: 'record', id: subject });
     expect(after['agentActorId']).toBe(agentActorId);
+    expect(after['businessKey']).toBe('agent-path');
+    // The authority the pre-pickup pair takes -- `task.queue` reads and
+    // `task.pickup` writes -- and not the delegating person's grants wearing
+    // the agent's name. `decider` holds `decide`, `assign` and `comment` on
+    // tasks as well, and none of them is here.
+    expect(after['grants']).toStrictEqual([
+      { collection: 'task', action: 'write' },
+      { collection: 'task', action: 'read' },
+    ]);
+    expect(Object.keys(after).toSorted()).toStrictEqual([
+      'agentActorId',
+      'businessKey',
+      'grants',
+      'purposeScope',
+    ]);
 
     // Settle it, so this case leaves the agent holding nothing: an agent
     // actor may hold one live delegation per purpose, and a case that walked

@@ -14,7 +14,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
-import { checkAuthority, subjectsOf } from '../authority/grants.ts';
+import { checkAuthority, subjectsOf, type Refusal } from '../authority/grants.ts';
 import {
   fromAuthority,
   refuseCommand,
@@ -47,6 +47,17 @@ import { readCapabilities } from './capabilities.ts';
 
 /** The reads an external party is told NOT_FOUND about when its shares do not cover them. */
 const OUTSIDER_NOT_FOUND: ReadonlySet<string> = new Set(['task.read', 'task.board']);
+
+/**
+ * `session.capabilities` for a caller holding no live grant, in the words
+ * `checkAuthority` uses for any operation no grant covers: it is the same
+ * refusal, reached by a read with no collection of its own to ask about.
+ */
+const NO_GRANT_AT_ALL: Refusal = {
+  code: 'SCOPE_NOT_GRANTED',
+  reason: 'no live grant covers it',
+  fix: 'ask a holder who may delegate',
+};
 
 /**
  * Every read, audited, in the caller's own transaction (I13).
@@ -166,16 +177,18 @@ async function serveRead(
     subjectRecordId: recordId ?? null,
   });
 
-  // `session.capabilities` is the one read that asks the grant model nothing.
-  // It answers what the caller already holds, so a grant in front of it could
-  // only hide from a person the list of things they may do -- and a caller
-  // refused it could rebuild the same list by attempting each operation one at
-  // a time. A login with no standing never arrives here at all: that is
-  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so standing
-  // (a membership, or an external party's live share) is enforced upstream
-  // rather than assumed here. An external party is shown its shares' pairs. It is skipped rather than declared grantless because the declaration
-  // is what the route generator and the parity test read, and a row missing
-  // its collection and action would be a special case in three more places.
+  // `session.capabilities` has no collection of its own to hold a grant on:
+  // it reports the caller's grants, so it is answered only to a caller who
+  // holds at least one. A member with none is refused `SCOPE_NOT_GRANTED` like
+  // every other operation (minimum contract 8.2 case 3, ledger I05), and never
+  // answered with an empty list, because a denied read is not a success with
+  // nothing in it. That refusal is in the case below, where the list is read.
+  // A login with no standing never arrives here at all: that is
+  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs. An
+  // external party is shown its shares' pairs. It is skipped here rather than
+  // declared grantless because the declaration is what the route generator and
+  // the parity test read, and a row missing its collection and action would be
+  // a special case in three more places.
   if (request.read !== 'session.capabilities') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's. The collection is too for the record
@@ -244,10 +257,15 @@ async function serveRead(
     }
     case 'person.list':
       return served({ ok: true, persons: await listPeople(tx) });
-    case 'session.capabilities':
-      // No subject record and no grant: see the comment above the authority
-      // check. The audit row is written like every other read's (I13).
-      return served({ ok: true, ...(await readCapabilities(tx, session)) });
+    case 'session.capabilities': {
+      // No subject record: see the comment above the authority check. The
+      // audit row is written like every other read's (I13), refused or not.
+      const capabilities = await readCapabilities(tx, session);
+      if (capabilities.grants.length === 0) {
+        return served(fromAuthority(NO_GRANT_AT_ALL));
+      }
+      return served({ ok: true, ...capabilities });
+    }
     case 'settings.read':
       // No subject record, for the reason `task.queue` gives: the settings are
       // the business's own configuration rather than one record, and there is

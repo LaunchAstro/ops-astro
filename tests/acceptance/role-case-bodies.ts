@@ -208,8 +208,8 @@ export function createPositiveBody(
       // be stale against, `session.capabilities` because it reports the
       // caller's own grants and there is nothing of the caller's to be stale.
       // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs membership and nothing else
-      // (`reads/capabilities.ts:20`), so the admin reaches both here.
+      // admin; `session.capabilities` needs a live grant of any kind, which
+      // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
         return { body: {} };

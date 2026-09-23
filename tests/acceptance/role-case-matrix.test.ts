@@ -160,24 +160,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           continue;
         }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
-          // The one declaration a member holding nothing may still reach, and
-          // the reason is in the read itself: `reads/capabilities.ts:20`, "it
-          // needs no grant beyond membership", because every pair in the
-          // answer is a pair the caller already holds, so handing them back
-          // confers nothing. The two refusals this case is really about are
-          // untouched — `orphan` has no membership and never arrives here
-          // (`AUTH_NO_MEMBERSHIP`, from the resolution, before any read), and
-          // `bea` is in the other business and is refused as in case (b) —
-          // because neither is in `heldBy` at all.
-          //
-          // So it is a named exception rather than a refusal, and it is
-          // asserted rather than skipped: the 200 must carry the *caller's
-          // own* grants. For `noah`, a member holding nothing, that is an
-          // empty list — which is not the "nothing here" N2 forbids, because
-          // it arrives as a 200 naming noah beside it rather than as silence
-          // where a refusal was owed. The expected list is read back out of
-          // `grants` by the harness, so a fixture that reseeded changes what
-          // this expects instead of disagreeing with it.
+          // The read with no collection of its own: it reports the caller's
+          // grants, so the grant it takes is holding one at all. `noah`, a
+          // member holding nothing, is R2 for it and is refused
+          // `SCOPE_NOT_GRANTED` like everywhere else (contract 8.2 case 3,
+          // ledger I05), never a 200 with an empty list. `mia` holds grants,
+          // so she is not R2 here and her row is the control: a 200 carrying
+          // her own pairs, read back out of `grants` by the harness.
+          // `orphan` and `bea` are not in `heldBy` and fall through below.
           // eslint-disable-next-line no-await-in-loop
           const own = await call(
             harness.world.api,
@@ -185,16 +175,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             harness.probeBody(declaration),
             bearer(caller.token),
           );
-          except(
-            caller.name,
-            'e-no-grant',
-            declaration.name,
-            'executed alternative: 200 with own grants, asserted below; contract 8.2 case 3 ' +
-              'says SCOPE_NOT_GRANTED, the read needs membership only (reads/capabilities.ts:20)',
-          );
-          expect(own.status, caller.name).toBe(200);
-          expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
-          // The one shape, which case (h) asserts on the agent prefix too.
+          if (grants.size === 0) {
+            observe(caller.name, 'e-no-grant', declaration.name, own, refusal('SCOPE_NOT_GRANTED'));
+            expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBe(true);
+            expect(own.body['grants'], caller.name).toBeUndefined();
+            continue;
+          }
+          observe(caller.name, 'e-no-grant', declaration.name, own, SUCCESS);
+          // The one shape, which case (i) asserts on the agent prefix too.
           expect(own.body['ok'], caller.name).toBe(true);
           expect(own.body['detail'], caller.name).toBeUndefined();
           expect(own.body['personId'], caller.name).toBe(caller.personId);
@@ -326,65 +314,21 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     const reservationId = String(detail['reservationId']);
 
     // (h) I12, over every declaration, with the expectation derived from the
-    // two exported sets rather than from a list here. Three answers, and the
-    // middle one is the part SPEC's wording does not cover: an operation
-    // outside `AGENT_SURFACE` is `DELEGATION_EXCLUDES_OPERATION` and not
-    // `DELEGATION_NOT_LIVE`, because it would not be an agent's to call even
-    // holding a live credential. Both are typed refusals; they are different
-    // sentences, and this asserts the one the product actually says.
+    // exported `BEFORE_PICKUP` rather than from a list here. Three answers, as
+    // minimum contract 8.2 case 9 names them: the queue and a pickup succeed,
+    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, and every other
+    // operation, the agent's own after a pickup included, is
+    // `DELEGATION_EXCLUDES_OPERATION`.
     for (const declaration of COMMAND_SURFACE) {
       if (declaration.name === 'task.pickup') continue;
-      if (declaration.name === 'session.capabilities') {
-        // The third thing an agent may do before a pickup, and the reason it
-        // is not in `BEFORE_PICKUP` is deliberate: that set is the *ceiling
-        // the refusal message quotes*, and an agent reading its own
-        // capabilities should be told the two operations it may do, not three
-        // (`agent-envelope.ts:98-107`). So the declaration is reachable while
-        // the set stays at two, and the matrix records that as an exception
-        // with the reason rather than as a `DELEGATION_NOT_LIVE` it would
-        // have to be wrong about.
-        //
-        // Asserted, not waved through. Before a pickup there is no delegation
-        // to be bounded by, so `purposeScope` must be null; and the `grants`
-        // it reports must be exactly the pairs `BEFORE_PICKUP`'s two
-        // operations take, read from their own declarations, so widening that
-        // set without widening this answer fails here.
-        // eslint-disable-next-line no-await-in-loop
-        const own = await harness.asAgent(declaration.name, harness.probeBody(declaration));
-        except(
-          'agent-before-pickup',
-          'h-pre-pickup',
-          declaration.name,
-          'executed alternative: 200 with a null purposeScope, asserted below; contract ' +
-            '8.2 case 9 says refused, the read is kept out of BEFORE_PICKUP so the ' +
-            'refusal quotes two operations (agent-envelope.ts:98-107)',
-        );
-        expect(own.status, declaration.name).toBe(200);
-        expect(own.body['refused'], declaration.name).toBeUndefined();
-        // One shape on both prefixes: flattened beside `ok`, as case (e) asserts
-        // on the person prefix. It used to be nested under `detail` here, where
-        // the other agent answers' payloads go, so a client had to know which
-        // prefix it was on to read one read.
-        expect(own.body['ok'], declaration.name).toBe(true);
-        expect(own.body['detail'], declaration.name).toBeUndefined();
-        const beforeAny = own.body;
-        expect(beforeAny['agentActorId'], declaration.name).toBeTypeOf('string');
-        expect(beforeAny['purposeScope'], declaration.name).toBeNull();
-        const reported = (beforeAny['grants'] as readonly { collection: string; action: string }[])
-          .map((one) => `${one.collection}:${one.action}`)
-          .toSorted();
-        const owed = [...BEFORE_PICKUP]
-          .map((name) => harness.pairFor(declarationOf(name) as CommandDeclaration))
-          .toSorted();
-        expect(BEFORE_PICKUP.size, 'BEFORE_PICKUP is the two-operation ceiling').toBe(2);
-        expect(reported, declaration.name).toStrictEqual([...new Set(owed)]);
-        continue;
-      }
+      // `session.capabilities` is one of the refused: before a pickup the
+      // login reaches the two operations in `BEFORE_PICKUP` and nothing else,
+      // and `task.decide` is refused as a decision (contract 8.2 case 9).
       const expected = BEFORE_PICKUP.has(declaration.name)
         ? SUCCESS
         : refusal(
-            AGENT_SURFACE.has(declaration.name)
-              ? 'DELEGATION_NOT_LIVE'
+            declaration.name === 'task.decide'
+              ? 'DELEGATION_EXCLUDES_DECISION'
               : 'DELEGATION_EXCLUDES_OPERATION',
           );
       // eslint-disable-next-line no-await-in-loop
@@ -449,31 +393,37 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         continue;
       }
       if (declaration.name === 'session.capabilities') {
-        // The same reason the queue and a pickup are excepted above, arrived
-        // at from the other end: this read is reachable with no delegation at
-        // all, so a delegation cannot narrow it. What it *does* change after a
-        // pickup is its own answer — `purposeScope` is now the picked-up task
-        // — and that is the ceiling itself reported, not a call the ceiling
-        // could refuse. Asserted here so the shift from null is seen once.
+        // Under the live delegation this read answers, and what a pickup
+        // changes is its own answer: `purposeScope` is now the picked-up task,
+        // the ceiling itself reported. Before the pickup it was refused, in
+        // case (h).
         // eslint-disable-next-line no-await-in-loop
         const own = await harness.asAgent(
           declaration.name,
           harness.probeBody(declaration),
           credential,
         );
-        except(
-          'agent-after-pickup',
-          table,
-          declaration.name,
-          'executed alternative: needs no delegation; purposeScope is the task, asserted below',
-        );
-        expect(own.status, declaration.name).toBe(200);
+        observe('agent-after-pickup', table, declaration.name, own, SUCCESS);
+        // One shape on both prefixes: flattened beside `ok`, as case (e)
+        // asserts on the person prefix.
         expect(own.body['ok'], declaration.name).toBe(true);
+        expect(own.body['detail'], declaration.name).toBeUndefined();
         const after = own.body;
+        expect(after['agentActorId'], declaration.name).toBeTypeOf('string');
         expect(after['purposeScope'], declaration.name).toStrictEqual({
           kind: 'record',
           id: subject.id,
         });
+        // The pairs the pre-pickup operations take, read from their own
+        // declarations, and not the delegating person's grants.
+        const reported = (after['grants'] as readonly { collection: string; action: string }[])
+          .map((one) => `${one.collection}:${one.action}`)
+          .toSorted();
+        const owed = [...BEFORE_PICKUP]
+          .map((name) => harness.pairFor(declarationOf(name) as CommandDeclaration))
+          .toSorted();
+        expect(BEFORE_PICKUP.size, 'BEFORE_PICKUP is the two-operation ceiling').toBe(2);
+        expect(reported, declaration.name).toStrictEqual([...new Set(owed)]);
         continue;
       }
       if (declaration.name === 'task.handback') {

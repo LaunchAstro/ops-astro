@@ -71,8 +71,10 @@ export function CapabilityBanner(props: {
     <div className="readstate" data-settings="capabilities" data-outcome={state.outcome}>
       {state.outcome === 'denied' && state.refusal !== null ? (
         <p className="field__error" role="alert" data-settings="capabilities-because">
-          {describeRefusal(state.refusal)} The controls are closed: this screen could not find out
-          what you may do and does not assume in your favour.
+          {describeRefusal(state.refusal)}{' '}
+          {state.refusal.code === 'SCOPE_NOT_GRANTED'
+            ? 'You hold no grant in this business, so there is nothing here you may change. The controls are closed.'
+            : 'The controls are closed: this screen could not find out what you may do and does not assume in your favour.'}
         </p>
       ) : null}
       {short ? (

@@ -36,6 +36,7 @@ import { casesTaskDrafts } from './cases-task-drafts.mjs';
 import { casesSessionExpiry } from './cases-session-expiry.mjs';
 import { casesComments } from './cases-comments.mjs';
 import { casesSettings } from './cases-settings.mjs';
+import { casesCapabilitiesDenied } from './capabilities-denied.mjs';
 import { casesProposals } from './cases-proposals.mjs';
 import { casesN1toN2 } from './cases-n1-n2.mjs';
 import { casesB6toB7 } from './cases-b6-b7.mjs';
@@ -88,6 +89,7 @@ try {
   // under it. Here it is well behind it.
   await casesComments(run);
   await casesSettings(run);
+  await casesCapabilitiesDenied(run);
   // P after S for the same two reasons, and one of its own: it issues
   // `task:decide` and revokes it, so like S it must stay well behind N6, which
   // holds a read taken before a revocation and cannot have grants churning
