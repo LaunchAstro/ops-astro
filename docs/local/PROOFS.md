@@ -12,8 +12,18 @@ declarations. Where a proof could not be written, this file says so by name.
 ```sh
 export PATH=<toolchain>/node-v24.21.0-darwin-arm64/bin:$PATH
 set -a && . ./.local/db.env && set +a      # a real Postgres, migrated
-pnpm exec vitest run tests/acceptance
+pnpm exec vitest run tests/acceptance --fileParallelism=false
 ```
+
+**`--fileParallelism=false` is not optional, and the reason is a real one.**
+Every file here builds its own throwaway database, but they share one Postgres
+_server_, and `restart-and-expiry.test.ts` restarts that server's container. Run
+in parallel, the restart terminates the sibling suites' connections and they
+fail with `terminating connection due to administrator command` and
+`ECONNREFUSED` — a failure that says nothing about the product. Run
+sequentially, all five files pass. Vitest's file parallelism is set in
+`vitest.config.ts`, which this lane does not own, so the flag is the honest
+answer rather than a config change made from outside its owner.
 
 `.local/db.env` points at a disposable Postgres of the lane's own. With
 `DATABASE_URL` unset every file in the directory skips itself and says so on
@@ -113,6 +123,37 @@ everyone count as proof that the surface is served.
   wrong verb rather than not at all. Closing this is a change to
   `apps/web/src/operations/client.ts`, which is not this lane's file.
 
+## Item 2: the six roles and the nine cases
+
+`role-case-matrix.test.ts` with `role-case-harness.ts`, `role-case-bodies.ts`
+and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+and the whole matrix is written to `.local/l5-matrix.tsv` as
+`role · case · operation · observed code · observed status · expected · verdict`.
+
+**267 rows: 241 pass, 26 named exceptions, zero failures.**
+
+| Case                                                             | Rows |
+| ---------------------------------------------------------------- | ---- |
+| (a) own-business permitted — the positive control                | 28   |
+| (b) foreign business in the path                                 | 28   |
+| (c) foreign record id                                            | 16   |
+| (d) fabricated id                                                | 16   |
+| (e) no grant                                                     | 112  |
+| (f) grant revoked since the last read (I10)                      | 2    |
+| (g) external comment projection (I09)                            | 2    |
+| (h) pre-pickup agent restrictions and successes (I12)            | 28   |
+| (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 33   |
+| (j) agent decision excluded, with the person's success beside it | 2    |
+
+(c) and (d) are asserted to be **indistinguishable** — same status, same code,
+same body shape — which is the half of N1 that a foreign-read test usually
+leaves out.
+
+Every exception carries its reason in the row rather than being dropped: the
+two `task.pickup`/`task.handback` rows under (a) record that the person path
+refuses them by design, and the `mia` rows under (e) record that she holds the
+grant in question and the real no-grant role is `noah`.
+
 ## Item 3: the protected set on three surfaces
 
 Eleven fields, read by name from `PROTECTED_TASK_FIELDS`, submitted through the
@@ -195,7 +236,15 @@ repaired here.
    Driven through the real `OperationsClient` against the real app: the refusal
    arrives as `AUTH_SESSION_EXPIRED` and the hook fires **0 times**.
 
-4. **The command line cannot report a fault at all.**
+4. **An agent may reach `task.comment` by the surface and not by the server.**
+   `packages/core-records/src/commands/agent-envelope.ts:98` puts `task.comment`
+   in `AGENT_SURFACE`, and `task.pickup` mints `['read', 'comment', 'write']`,
+   so a live credential passes `checkDelegatedAuthority` for it. But `serve`'s
+   switch (`:320`–`:366`) has no `task.comment` branch, so the call falls to
+   `default:` and answers `DELEGATION_EXCLUDES_OPERATION` 403 — **on the agent's
+   own picked-up task**. The surface says it may; the server says it may not.
+
+5. **The command line cannot report a fault at all.**
    `apps/cli/client.ts:88` reads every answer with `await response.json()`,
    which throws on a body that is not JSON. Against the five above it raises
    `SyntaxError` rather than returning the status, so an operator driving the
@@ -218,6 +267,20 @@ lane does not own.
   `packages/core-records/src/tenancy/conformance.ts` — the check the harness
   itself calls — and hand-writes one `pg_class` query. A small exported
   `rowSecurityOf(read, table)` would remove that last hand-written query.
+- **No seeded role can `task.decide` on a real deployment.**
+  `GRANTS_BY_ROLE` in `scripts/local-seed.mjs:71` gives the admin no `decide`
+  action, so against the live stack `task.decide` is `SCOPE_NOT_GRANTED` for
+  every seeded person — and since a reservation needs an approval, **every
+  pickup is unreachable there too**. `world.ts` grants `decide`, which is why
+  the proofs in this directory reach the agent journey at all. This is the one
+  finding here that changes what someone can do with the running slice rather
+  than what a test can assert, so it is the first one to act on.
+- **The fixture's member and the seed's member differ.** The seed's `member`
+  holds `['task:read', 'task:write', 'task:assign', 'person:read']`;
+  `world.ts`'s `MEMBER_ACTIONS` is `read`, `write`, `assign` and `comment` on
+  `task` only. Not load-bearing for the matrix, which reads grants back out of
+  the `grants` table rather than trusting the list, but `mia` is not quite the
+  same person in the two places.
 - **`lockTask` is not exported**, so the predicate-less variant of the record
   lookup has to be hand-written in the proof rather than taken from the module
   it is a proof about.

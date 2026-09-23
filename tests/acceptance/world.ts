@@ -49,6 +49,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { grantTo, installSpine, WHOLE_BUSINESS } from '../commands/fixture.ts';
+import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
@@ -241,6 +242,19 @@ export async function createWorld(part: string): Promise<World> {
   const bravo = (await insertBusiness(db.app, 'bravo')) as BusinessId;
   const spineAlpha = await installSpine(db.app, alpha);
   const spineBravo = await installSpine(db.app, bravo);
+
+  // The named settings rows. `installTaskSpine` does not write them and
+  // `scripts/local-seed.mjs` does, so a fixture without them answers
+  // `NOT_FOUND` for both `settings.*` commands for a reason that has nothing
+  // to do with authority — and a matrix built on that would have recorded two
+  // missing positive controls as product failures. Installing is additive, so
+  // a second install by a caller's own harness resets nothing.
+  for (const businessId of [alpha, bravo]) {
+    // eslint-disable-next-line no-await-in-loop
+    await db.app.withBusiness(businessId, async (tx) => {
+      await installBusinessSettings(tx);
+    });
+  }
 
   const ada = await enrolCaller({ db }, alpha, 'alpha', 'ada', {
     membership: true,
