@@ -8,8 +8,7 @@ draft and releases no product implementation.
 
 **This page and the first task specification are the 8 September proposal.**
 Local construction has since run ahead of the sequence below, and
-[the local slice](../local/README.md) is the description of what the tree
-actually holds. Where the two disagree, the local pages describe behaviour and
+[the local slice](../local/README.md) describes what the tree holds. Where the two disagree, the local pages describe behaviour and
 this page describes an intended order; neither records an acceptance.
 
 ## Sequence

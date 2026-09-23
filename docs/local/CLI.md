@@ -10,8 +10,8 @@ to the data.
 ## Running it
 
 Nothing to install beyond the repository's own dependencies. From the
-repository root, with the pinned Node on the path and the API running (see
-`API.md`):
+repository root, with the pinned Node on the path and the API running
+([API.md](API.md) says where `TOOLCHAIN` points):
 
 ```sh
 export PATH="$TOOLCHAIN/node-v24.21.0-darwin-arm64/bin:$PATH"
@@ -65,12 +65,13 @@ access token. Calls go to `/api/b/<business>/...` with that bearer.
 
 **Agent.** An agent signs in with its own login, never a person's. The seed's
 agent logins are GoTrue passwords like a person's (`scripts/local-seed.mjs`,
-recorded in `.local/synthetic-agents.json`), so `login` works for them too. It
-then passes `--agent` (or sets `OPS_ASTRO_AGENT=1`). Calls go to `/api/a/b/<business>/...`. Before a pickup an
-agent can call `task.queue` and `task.pickup`; anything else is refused with
+recorded in `.local/synthetic-agents.json`), so `login` works for them too. The
+agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
+`/api/a/b/<business>/...`. Before a pickup an agent can call `task.queue` and
+`task.pickup`; the API refuses anything else with
 `DELEGATION_EXCLUDES_OPERATION`. A successful `task.pickup` saves the
 delegation credential to the delegation file and prints the answer with that
-credential replaced by `(saved to <file>)`. The following calls
+credential replaced by `(saved to <file>)`. Later calls
 (`task.heartbeat`, `task.read`, `task.comment`, `task.handback`) send it in the
 `x-agent-delegation` header. A successful `task.handback` removes the file.
 

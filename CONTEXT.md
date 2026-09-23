@@ -17,15 +17,15 @@ _Avoid_: user, profile, login.
 **Login**: A person's means of authenticating. A login's lifecycle is separate from the person's business history.
 _Avoid_: person, actor.
 
-**Actor**: A person or agent that can act within a business. Authentication identifies the caller; it does not define their authority.
+**Actor**: A person, agent or worker that can act within a business. Authentication identifies the caller; it does not define their authority.
 _Avoid_: user, profile.
 
-**Membership**: An actor's relationship and configured responsibilities within a business, party, or bounded collection of work.
+**Membership**: A person's relationship and configured responsibilities within a business, party, or bounded collection of work.
 _Avoid_: seat.
 
 ## Permission and review
 
-**Grant**: An actor's permission for named actions on bounded resources, with any applicable duration and limits.
+**Grant**: A permission, held by a person, group or actor, for named actions on bounded resources, with any applicable duration and limits.
 _Avoid_: clearance, login.
 
 **Clearance**: The autonomy category that governs the review required for an action. It does not replace resource access or create a route around permission checks.

@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Six companion files describe the parts:
+does not do. Seven companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
@@ -12,6 +12,7 @@ does not do. Six companion files describe the parts:
 - [WEB.md](WEB.md): the screens, their tests and the gaps against the mockup.
 - [PROOFS.md](PROOFS.md): the assembled acceptance proofs in `tests/acceptance/`,
   how to run them, and the proofs that could not be written.
+- [CLI.md](CLI.md): the command line, which calls the same API as the app.
 
 New here? [Pickup and debugging](#pickup-and-debugging) is the short version:
 how a request travels, what to check before restarting anything, which command
@@ -22,7 +23,7 @@ proves what, and what a bug report has to carry.
 If you are new to this checkout, read this section first.
 
 - **Where state lives in the repository.** How the slice is built:
-  `docs/local/` (this file and the six above). Settled decisions:
+  `docs/local/` (this file and the seven above). Settled decisions:
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
@@ -67,8 +68,9 @@ and no hosted service is involved at any point.
   preference.
 - **pnpm through corepack.** The version is pinned in `package.json`. Use
   `corepack pnpm …` and there is nothing to install globally.
-- **Docker.** Postgres and GoTrue run as containers from digests pinned in
-  `docs/supply-chain-pins.md`.
+- **Docker.** Postgres and GoTrue run as containers. Postgres runs from the
+  digest pinned in `docs/supply-chain-pins.md`; GoTrue runs from the tag
+  `gotrue:v2.192.0` named in `scripts/local/auth-up.sh`, not from a digest.
 
 Then install the workspace once, from the repository root:
 
@@ -76,8 +78,8 @@ Then install the workspace once, from the repository root:
 corepack pnpm install
 ```
 
-`pnpm check` additionally wants Python 3.11 or newer, Git and Gitleaks; the
-slice itself does not.
+`pnpm check` also needs Python 3.11 or newer, Git and Gitleaks. The slice itself
+does not.
 
 ## Start it
 
@@ -99,9 +101,10 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
   acceptance cases pass without the product working.
 
 Before the API starts, name the installation's businesses for restart
-recovery in `.local/recovery.env` (gitignored, read by `apps/api/server.ts`
-beside the other `.local` files; the real environment wins). The seeded local
-install is `alpha` and `bravo`:
+recovery in `.local/recovery.env`. The file is gitignored, and
+`apps/api/server.ts` reads it beside the other `.local` files
+(`localEnvironment`); a value set in the real environment wins. The seeded
+local install is `alpha` and `bravo`:
 
 ```
 printf 'RECOVERY_BUSINESS_KEYS=alpha,bravo\n' > .local/recovery.env
@@ -109,11 +112,13 @@ printf 'RECOVERY_BUSINESS_KEYS=alpha,bravo\n' > .local/recovery.env
 
 The API refuses to start without it. Every start and restart of the API process
 replays each named business's recorded, unclassified transitions in its own
-transaction before it binds the port (`docs/local/RUNTIME.md`, "Restart
-recovery at API startup"). `RECOVERY_BUSINESS_KEYS=none` is the only way to say
-there are none, and the server logs `restart recovery: explicitly no
-installation businesses` when it is used; a blank or missing value is a failed
-start, never an empty scope. `scripts/local/api-up.sh` needs no argument for
+transaction before it binds the port ([RUNTIME.md, "Restart recovery at API
+startup"](RUNTIME.md#restart-recovery-at-api-startup)). `RECOVERY_BUSINESS_KEYS=none`
+is the only way to say there are none, and the server then logs `restart
+recovery: explicitly no installation businesses`. A blank or missing value is a
+failed start, never an empty scope, and so is a key that resolves to no
+business (`parseRecoveryScope` and `recoverInstallation` in
+`apps/api/recovery-entry.ts`). `scripts/local/api-up.sh` needs no argument for
 it.
 
 Then the two servers, each in its own terminal or backgrounded:
@@ -123,7 +128,7 @@ corepack pnpm api:up    # http://127.0.0.1:8790
 corepack pnpm web:up    # http://127.0.0.1:5190
 ```
 
-Open **`http://127.0.0.1:5190/`**. The web server proxies `/api` to the API, so
+Open `http://127.0.0.1:5190/`. The web server proxies `/api` to the API, so
 the browser only ever makes same-origin requests.
 
 `corepack pnpm db:down` stops the database container. It keeps the named
@@ -131,7 +136,7 @@ volume, so the data survives.
 
 ## Signing in
 
-The synthetic logins live in **`.local/synthetic-users.json`**, written by
+The synthetic logins live in `.local/synthetic-users.json`, written by
 `auth:seed`. That file is gitignored and holds the email addresses, passwords
 and GoTrue subjects; read it there. No password appears in this repository,
 and none should be pasted into one.
@@ -146,8 +151,8 @@ and none should be pasted into one.
 | `orphan@alpha.local` | alpha    |
 | `bea@bravo.local`    | bravo    |
 
-Addresses, not contact details: `.local` is reserved for multicast DNS by RFC
-6762 and cannot be delegated, so none of them reaches a mailbox. The public
+These are addresses, not contact details. RFC 6762 reserves `.local` for
+multicast DNS and it cannot be delegated, so none of them reaches a mailbox. The public
 content check allows exactly these five by name
 (`scripts/public-content-check.mjs`, `publishedAddresses`), so a sixth
 invented login is a finding until it is added here and there.
@@ -192,14 +197,14 @@ SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" \
   corepack pnpm verify:browser
 ```
 
-`SHOT_DIR` is where the screenshots and `RESULTS.md` are written. Set it: the
-harness's default is a directory beside this repository rather than inside it,
-so an unset `SHOT_DIR` writes outside your checkout. `DOCKER_BIN` defaults to
+`SHOT_DIR` is where the screenshots and `RESULTS.md` are written. Unset, it
+defaults to `.local/evidence/browser` inside this checkout, and the harness
+creates the directory (`SHOTS` in `tests/browser/harness.mjs`). `DOCKER_BIN` defaults to
 `/usr/local/bin/docker`, which is not where every installation puts it.
 `WEB_URL` and `API_URL` override the two addresses if you moved them. The same
 four apply to `node tests/browser/keyboard-and-widths.mjs`.
 
-Drives the browser acceptance cases through Playwright against the running
+The command drives the browser acceptance cases through Playwright against the running
 application, so start the database, the identity service, the API and the web
 server first. The N6 revocation cases (a grant revoked underneath a live
 session, and an older in-flight response that cannot restore it) are part of
@@ -240,7 +245,7 @@ which posts to `/api/b/<business-key>/<command path>` with the session's token
 and nothing else identifying the caller. The API in `apps/api/app.ts` resolves
 that token to a verified subject and then to a session through
 `packages/core-records/src/identity/login-resolution.ts`, so who you are is
-what the token says, never what the body claims: [AUTHORITY.md](AUTHORITY.md)
+what the token says, never what the body claims. [AUTHORITY.md](AUTHORITY.md)
 has the three credentials and what each confers. The route itself is derived
 from `COMMAND_SURFACE` in `packages/core-records/src/commands/surface.ts`, so a
 command with no declaration has no route, and a read is a declaration with
@@ -249,13 +254,13 @@ command with no declaration has no route, and a read is a declaration with
 fixed-slot records in `packages/core-records/src/records/`, or, for the
 proposal and decision path, against `packages/core-runtime/`
 ([DATA.md](DATA.md), [RUNTIME.md](RUNTIME.md)). All of it commits inside one
-tenancy transaction opened by `withSession`, which sets the business on the
-connection and checks the grant in the same transaction as the write, which is
-why a revoked grant bites on the very next call.
+tenancy transaction opened by `withSession`. It sets the business on the
+connection and checks the grant in the same transaction as the write, so a
+revoked grant bites on the very next call.
 
 ### Before you restart anything
 
-A slice that "does not work" is usually a process answering that is not the one
+When the slice "does not work", the process answering is usually not the one
 you think you are editing. Ask three questions in this order.
 
 ```sh
@@ -270,10 +275,10 @@ lsof -a -p "$api_pid" -d cwd -Fn           # which checkout that process is serv
 `/api/health` runs a statement and answers `200` with `database: "reachable"`
 or `503` with the reason, and it reports whether the read half of the surface
 is mounted. It does not say which checkout the process was started from, and
-neither does starting the API again: `scripts/local/api-up.sh` checks
+neither does starting the API again. `scripts/local/api-up.sh` checks
 `/api/health` first and exits `0` with "something is already answering" when it
 gets a reply, so a successful `pnpm api:up` is not evidence that your code is
-being served. The listener's working directory is what settles it: `-t` gives
+being served. The listener's working directory settles it. `-t` gives
 the pid on its own, and the last `lsof` prints that process's directory on a
 line beginning with `n`, on both macOS and Linux. If it is not the checkout you
 are editing, you are reading one tree and testing another.
@@ -297,7 +302,7 @@ matched a shared API that other people were using, and stopped it
 
 `pnpm api:up` and `pnpm web:up` both run in the foreground and print to the
 terminal you started them in. Neither writes a log file and neither writes a
-pid file: if you want a detached process, the redirection and the pid file are
+pid file. If you want a detached process, the redirection and the pid file are
 yours to choose, and no other file in this repository will know where you put
 them. The web server prints its three addresses on start; the API prints the
 one it is listening on.
@@ -321,13 +326,12 @@ disk, and installing the `playwright` package does not fetch one. Run
 The browser command is the one to be careful with. It restarts the API and the
 Postgres container, and the N6 cases issue a live grant and revoke it again, so
 it changes the state of the running stack while it runs. Two of them at once
-would fight over the same containers and the same port: **on a shared run, the
+would fight over the same containers and the same port. **On a shared run, the
 browser suite gets one slot at a time**, and whoever is coordinating the run
-hands that slot out. Running `node tests/browser/n6-revocation.mjs` on its own
-revokes a grant the caller normally restores; run `corepack pnpm db:seed`
-afterwards.
+hands that slot out. The standalone N6 harness needs a reseed afterwards
+([Verify it](#verify-it)).
 
-`corepack pnpm check` is the blocking gate rather than a fifth kind: it runs
+`corepack pnpm check` is the blocking gate rather than a fifth kind. It runs
 the tooling checks and the test suite together, wants `DATABASE_URL` and
 `DATABASE_ADMIN_URL` exported, and reads the **staged** tree for its
 public-content step.
@@ -362,8 +366,10 @@ removed, where you put the evidence, and what you are still unsure of. A report
 missing the head is a report about a tree nobody can reconstruct.
 
 Secrets live in `.local/`, which is gitignored for that reason: `db.env`,
-`auth.env`, `synthetic-users.json`, `synthetic-agents.json` and `gate.env`. A log pasted into a report goes through the same filter: no generated
-password, no GoTrue secret, no signing key.
+`auth.env`, `synthetic-users.json`, `synthetic-agents.json`, `gate.env` and
+`delegation.env`. A log pasted into a report goes through the same filter. It
+carries no generated password, no GoTrue secret, no signing key and no
+credential key.
 
 ## A note on the dev server
 
@@ -373,35 +379,33 @@ the application. Every path under the workspace root is reachable through its
 
 On 23 September a probe of the running server asked for
 `/@fs/<worktree>/.local/db.env` and got 200 with the file's real content, and
-the same for `.local/auth.env` and `.local/synthetic-users.json`: the
-generated database password, the GoTrue secret and every synthetic login,
-readable by anything that could reach the port. The server binds to
-`127.0.0.1`, so that was one machine's own loopback rather than the network,
-which is why this is a gap rather than an incident.
+the same for `.local/auth.env` and `.local/synthetic-users.json`. The generated
+database password, the GoTrue secret and every synthetic login were readable by
+anything that could reach the port. The server binds to `127.0.0.1`, so that
+was one machine's own loopback rather than the network. That is why this is a
+gap rather than an incident.
 
 `apps/web/vite.config.ts` now sets `server.fs.deny` over `**/.local/**` and
-`**/*.local`, alongside Vite's own defaults, which that setting replaces. The
-three paths answer 403; a source import such as
+`**/*.local`. That setting replaces Vite's default list, so the config repeats
+those defaults beside the two new patterns. The three paths answer 403; a source import such as
 `/@fs/<worktree>/apps/web/src/main.tsx` still answers 200, and so does
 `packages/ui/src/index.ts`.
 
 Two things this does not do. It is a dev server, and a dev server is for one
-person's machine on loopback: do not put one on an address other people can
-reach, whatever it denies. And it constrains this server only -- the API on
-its own port and anything else the start sequence runs are not covered by it.
+person's machine on loopback. Do not put one on an address other people can
+reach, whatever it denies. It also constrains this server only. The API on its
+own port and anything else the start sequence runs are outside it.
 
 ## Limitations
 
-The slice is honest about being a slice.
-
 - **Not deployed, not released.** No installer, no image, no published package,
-  no hosted service. The L1-L6 sequence is not complete.
+  no hosted service. The L1 to L6 sequence is not complete.
 - **There is no dark theme.** The application does not answer
   `prefers-color-scheme`, so a person who has chosen dark gets the light build.
   This is the largest visual gap and the one a person would call a defect.
-- **Three smaller width gaps**, recorded rather than closed, along with the
+- **Three smaller width gaps.** They are recorded rather than closed, with the
   board columns, facets, agent surfaces and subtasks that this build does not
-  store or draw: [WEB.md, "Known gaps against the pinned
+  store or draw, in [WEB.md, "Known gaps against the pinned
   mockup"](WEB.md#known-gaps-against-the-pinned-mockup). Comments are stored and
   drawn; what is missing there is the mockup's tabbed Internal / Client / All
   activity conversation, which this build draws as one list with each row's
