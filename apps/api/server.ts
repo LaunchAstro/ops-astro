@@ -214,6 +214,7 @@ async function main(): Promise<void> {
   // like a decision. The message is not echoed: a message may carry a value.
   server.onError((cause, context) => {
     console.error('api: unhandled', cause instanceof Error ? cause.message : cause);
+    if ('getResponse' in cause) return cause.getResponse();
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
 

@@ -159,6 +159,55 @@ export function claimedSystemOwnedFields(
 }
 
 /**
+ * The installed field keys whose write mode is `system`, across every live
+ * field of every record type in the business.
+ *
+ * Read from `field_defs` rather than written out, because the installed
+ * metadata is what says a field is the server's to write: `completed_at` and
+ * `key` on the task, the comment's `task` and `edited_at`, the state's
+ * `machine_category`, and whatever a preset later installs as `system`.
+ * `SYSTEM_OWNED_FIELDS` is the envelope's facts, which are no field's; this is
+ * the fields', and a hand-copied list of them is the drift root ruling 1 rules
+ * out.
+ */
+const INSTALLED_SYSTEM_FIELDS = `
+  select distinct key from public.field_defs
+   where business_id = $1 and write_mode = 'system' and deactivated_at is null`;
+
+/**
+ * The system keys a request carries *at its top level*: the envelope's own
+ * and every installed system field's (root ruling 1, D06-GENERATED F1).
+ *
+ * Only the top level. A key nested in an operand is that operand's business:
+ * `fields.completed_at` is the field engine's refusal, `fields.source` stays
+ * `SOURCE_SPOOFED`, and a plan's field definitions carry `key` by design. It
+ * is not an unknown-key policy either: a key that is neither the envelope's
+ * nor an installed system field is left to the operation, as before. An own
+ * property only, so a field installed under a name `Object.prototype` also
+ * has is not claimed by every body.
+ *
+ * Returned as `claimedSystemOwnedFields` returns, keys and values apart, for
+ * the reason it gives.
+ */
+export async function claimedSystemFields(
+  tx: TenantQuery,
+  payload: unknown,
+): Promise<
+  | { readonly keys: readonly string[]; readonly values: Readonly<Record<string, unknown>> }
+  | undefined
+> {
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const named = payload as Readonly<Record<string, unknown>>;
+  const installed = await tx.query<{ readonly key: string }>(INSTALLED_SYSTEM_FIELDS, [
+    tx.businessId,
+  ]);
+  const owned = new Set([...SYSTEM_OWNED_FIELDS, ...installed.map((row) => row.key)]);
+  const keys = [...owned].filter((field) => Object.hasOwn(named, field)).toSorted();
+  if (keys.length === 0) return undefined;
+  return { keys, values: Object.fromEntries(keys.map((field) => [field, named[field]])) };
+}
+
+/**
  * A request naming a fact the server owns, refused before anything is read.
  *
  * It is first, before the identifier shape and before authority, for the same
@@ -166,9 +215,14 @@ export function claimedSystemOwnedFields(
  * read yet, so a caller learns only that the field they sent is not theirs to
  * send — which is exactly what they need to know and nothing else. The
  * attempted values go to the audit event and never to the response (T1-N4).
+ * The one statement it runs reads the business's own field metadata and
+ * nothing about any record.
  */
-function refuseSystemOwnedFields(request: CommandRequest): Refused | undefined {
-  const claimed = claimedSystemOwnedFields(request);
+async function refuseSystemOwnedFields(
+  tx: TenantQuery,
+  request: CommandRequest,
+): Promise<Refused | undefined> {
+  const claimed = await claimedSystemFields(tx, request);
   if (claimed === undefined) return undefined;
   return refused(
     refuseCommand('FIELD_NOT_WRITABLE', claimed.keys, SYSTEM_OWNED_FIXES),
@@ -244,6 +298,23 @@ const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * The identifier fields a body carries that its operation does not take.
+ *
+ * Exported for the read half, which asks the same question of its own
+ * operations (`reads/dispatch.ts`, root ruling 3): one list of what counts as
+ * an identifier, so a field added here is refused on both paths or neither.
+ * `null` is a value the caller sent, so it counts as present.
+ */
+export function irrelevantIdentifiers(
+  named: Readonly<Record<string, unknown>>,
+  allowed: readonly string[],
+): readonly string[] {
+  return IDENTIFIER_FIELDS.filter(
+    (field) => named[field] !== undefined && !allowed.includes(field),
+  );
+}
+
+/**
  * A target field on a command that has no target.
  *
  * Refused and not ignored. Ignoring it is what let the field reach the
@@ -257,10 +328,7 @@ function refuseIrrelevantTarget(
   if (declaration.targetsExistingRecord) return undefined;
   const allowed = UNTARGETED_IDENTIFIERS[declaration.name];
   if (allowed === undefined) return undefined;
-  const named = request as unknown as Record<string, unknown>;
-  const irrelevant = IDENTIFIER_FIELDS.filter(
-    (field) => named[field] !== undefined && !allowed.includes(field),
-  );
+  const irrelevant = irrelevantIdentifiers(request as unknown as Record<string, unknown>, allowed);
   if (irrelevant.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));
 }
@@ -304,7 +372,7 @@ export async function prepareCommand(
   request: CommandRequest,
   declaration: CommandDeclaration,
 ): Promise<CommandContext | Refused> {
-  const spoofed = refuseSystemOwnedFields(request);
+  const spoofed = await refuseSystemOwnedFields(tx, request);
   if (spoofed !== undefined) return spoofed;
   const malformed = refuseMalformedIdentifier(request);
   if (malformed !== undefined) return malformed;

@@ -23,6 +23,21 @@ export interface SigningKey {
   readonly secret: string;
 }
 
+/**
+ * The keys a verifier knows, by id. A row carries the id it was signed under,
+ * so a chain that spans a key change verifies each row with its own key
+ * rather than failing every row signed before the change. An id the resolver
+ * does not know answers `undefined`, and the verifier fails on it: an unknown
+ * key is not a row that skips the check.
+ */
+export type KeyResolver = (id: string) => SigningKey | undefined;
+
+/** A resolver over a fixed list. Today the list is the one configured key. */
+export function keyResolver(keys: readonly SigningKey[]): KeyResolver {
+  const byId = new Map(keys.map((key) => [key.id, key] as const));
+  return (id) => byId.get(id);
+}
+
 export type Canonical = string;
 
 /** Sorted at every depth, so a digest is over meaning rather than over key order. */
@@ -71,12 +86,107 @@ export function chainHash(previous: string, fields: Record<string, unknown>): st
 }
 
 /**
+ * Which fields a decision's link covers. **The version is part of what is
+ * stored, never inferred from which recomputation happens to match**: a
+ * verifier that tried v2 and fell back to v1 would accept a v2 row whose new
+ * fields were altered, because v1 does not look at them.
+ *
+ * - **v1** is the link `decide` wrote before 23 September 2026. It covers the
+ *   row's identity, place, gate, version, decision, person, payload digest and
+ *   signature, and not its round, time, lineage, acting actor, evidence digest
+ *   or key id. A change to those on a v1 row is not detectable, and a read
+ *   reports the row as v1 so nobody takes it for more than it is. v1 rows are
+ *   verified as v1 and never rewritten: the stored row is the evidence.
+ * - **v2** covers those fields too, and carries `link: 2` inside the hash.
+ *   A decision says which it is in its **signed payload** (`link: 2`; absent
+ *   is v1), so turning a v2 row into a v1 one to escape the wider check means
+ *   changing the payload, which breaks the digest, which breaks the signature.
+ *
+ * `decidedAt` is text in one fixed spelling, `DECIDED_AT_TEXT`, rendered by
+ * the database from the stored `timestamptz` on both sides: a JavaScript
+ * `Date` holds milliseconds and the column holds microseconds, so a link over
+ * a `Date` would not survive its own round trip.
+ */
+export type LinkVersion = 1 | 2;
+
+/** The version `decide` writes now. */
+export const LINK_VERSION: LinkVersion = 2;
+
+/** The row's own fields, in the names the link uses. */
+export interface DecisionLinkFields {
+  readonly id: string;
+  readonly seq: number;
+  readonly gate: string;
+  readonly version: string;
+  readonly decision: string;
+  readonly person: string;
+  readonly payloadDigest: string;
+  readonly signature: string;
+  readonly round: number;
+  readonly decidedAt: string;
+  readonly lineage: string;
+  readonly actor: string;
+  readonly evidence: string;
+  readonly key: string;
+}
+
+/** What the link hashes for a row at `version`. */
+export function decisionLink(
+  version: LinkVersion,
+  fields: DecisionLinkFields,
+): Record<string, unknown> {
+  const v1 = {
+    id: fields.id,
+    seq: fields.seq,
+    gate: fields.gate,
+    version: fields.version,
+    decision: fields.decision,
+    person: fields.person,
+    payloadDigest: fields.payloadDigest,
+    signature: fields.signature,
+  };
+  if (version === 1) return v1;
+  return {
+    ...v1,
+    link: 2,
+    round: fields.round,
+    decidedAt: fields.decidedAt,
+    lineage: fields.lineage,
+    actor: fields.actor,
+    evidence: fields.evidence,
+    key: fields.key,
+  };
+}
+
+/**
+ * The link version a stored payload declares, or `undefined` for one this
+ * code does not know (which fails the read rather than guessing).
+ */
+export function linkVersionOf(payload: Record<string, unknown>): LinkVersion | undefined {
+  if (!('link' in payload)) return 1;
+  return payload['link'] === 2 ? 2 : undefined;
+}
+
+/**
+ * The one spelling of `decided_at` a link covers, as SQL over a `timestamptz`
+ * expression: UTC, microseconds, a trailing `Z`. Written and read by the
+ * database so both sides render the same stored value the same way.
+ */
+export function decidedAtText(expression: string): string {
+  return `to_char(${expression} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+}
+
+/**
  * Walk a chain and say where it first breaks. Returns `null` when it holds.
  * A verifier that returns a boolean makes "it is broken" and "it is broken at
  * row 4" the same answer, and only one of them is actionable.
+ *
+ * `keys` resolves each row's `signing_key_id` to the key it was signed under,
+ * so a chain that spans a key change verifies; an id it does not know is the
+ * break. `linkFields` gives what the row's own link version covers.
  */
 export function verifyChain(
-  key: SigningKey,
+  keys: KeyResolver | SigningKey,
   rows: readonly {
     readonly seq: bigint | number;
     readonly prev_hash: string;
@@ -94,10 +204,13 @@ export function verifyChain(
   }[],
   linkFields: (row: (typeof rows)[number]) => Record<string, unknown>,
 ): string | null {
+  // A single key is a resolver with one entry, which is what every caller had
+  // before rows could be signed under more than one.
+  const resolve = typeof keys === 'function' ? keys : keyResolver([keys]);
   let previous = CHAIN_GENESIS;
   for (const row of rows) {
-    if (row.signing_key_id !== key.id)
-      return `seq ${row.seq}: unknown signing key ${row.signing_key_id}`;
+    const key = resolve(row.signing_key_id);
+    if (key === undefined) return `seq ${row.seq}: unknown signing key ${row.signing_key_id}`;
     // R9. Recomputed from the bytes on disk, before the signature is checked:
     // the signature covers the digest, so a digest nobody recomputed makes the
     // signature a statement about a value rather than about the content.

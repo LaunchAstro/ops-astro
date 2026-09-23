@@ -62,6 +62,16 @@ export function refuseReadOperands(
     case 'task.read':
       if (typeof body['recordId'] === 'string') return undefined;
       return invalid('recordId', 'Send recordId as the task’s identifier or its key.');
+    case 'task.board':
+      // `null` is a real board: the list of tasks on none. An absent key is
+      // not, and answering it with that list gave a body that asked nothing
+      // the answer to a question it never put (I14-SEAM U1). A string is
+      // looked up, and refused `NOT_FOUND` there if it names nothing here.
+      if (typeof body['board'] === 'string' || body['board'] === null) return undefined;
+      return invalid(
+        'board',
+        'Send board as a board task’s identifier, or null for tasks on no board.',
+      );
     case 'preset.plan': {
       for (const name of ['recordTypeKey', 'presetKey'] as const) {
         if (typeof body[name] !== 'string' || body[name] === '') {
