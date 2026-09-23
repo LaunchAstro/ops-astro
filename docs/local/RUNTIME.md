@@ -7,8 +7,13 @@ nobody can claim any more. The authority half is [AUTHORITY.md](AUTHORITY.md)
 and the data half is [DATA.md](DATA.md); this file is what happens between a
 person deciding and a hold being released.
 
-Nothing here is a plan. Every mechanism below is in the tree with a proof
-beside it, and [what is not here](#what-is-not-here) says what is not.
+Nothing here is a plan. Every mechanism below is implemented in the tree and
+tested by the cases named beside it, and [what is not here](#what-is-not-here)
+says what is not. Implemented and tested is not reviewed or accepted. An
+independent review of the runtime left findings that are still open, and the
+review record lives with the build run's evidence rather than in this
+repository. Until those findings are closed and the integrated head is reviewed
+and accepted, read "proved" below as "a test asserts it", not as "done".
 
 ## The shape of it
 
@@ -164,38 +169,42 @@ interface HandedBack {
 }
 ```
 
-### Refusal codes L3 must register
+### Refusal codes, as L3 registered them
 
 `RuntimeRefusalCode` is exported as this package's own type and is deliberately
 **not** added to `commands/register.ts`, which is L3's file, for the reason
 AUTHORITY.md gives: a module reaching into the command surface to add its own
 codes is the coupling the register exists to prevent. `SUGGESTED_STATUS` in
-`refusals.ts` carries the same table in code.
+`refusals.ts` carries the same table in code. L3 has registered every code
+below at the status suggested here (`apps/api/status.ts`), and
+`fromRuntime` (`commands/tasks-runtime.ts:71`) carries a runtime refusal onto
+the command surface unchanged. Each operation's refusals, with their routes,
+are in [API.md](API.md#the-operations-l4s-runtime-made-possible).
 
-| Code                             | Suggested status | Caller-visible                            |
-| -------------------------------- | ---------------- | ----------------------------------------- |
-| `VERSION_SUPERSEDED`             | 409              | yes — re-read and decide the live version |
-| `EVIDENCE_MISMATCH`              | 409              | yes                                       |
-| `GATE_NOT_FOUND`                 | 404              | yes                                       |
-| `GATE_ALREADY_DECIDED`           | 409              | yes — the loser of a decision race        |
-| `GATE_EXPIRED`                   | 410              | yes                                       |
-| `LINEAGE_TERMINAL`               | 409              | yes                                       |
-| `CHANGE_ROUNDS_EXHAUSTED`        | 409              | yes                                       |
-| `BUDGET_UNAVAILABLE`             | 409              | yes — this envelope has no room           |
-| `BUDGET_EXHAUSTED`               | 402              | yes — the cap behind it has none          |
-| `PROPOSAL_OUT_OF_SCOPE`          | 403              | yes                                       |
-| `LINEAGE_NOT_ON_TASK`            | 409              | yes — the lineage is another task's       |
-| `CAP_BINDING_MISMATCH`           | 409              | yes — the envelope's cap is the cap       |
-| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422              | yes — this head observed no spending      |
-| `SUCCESSOR_OUT_OF_BOUNDS`        | 409              | yes — cap, currency or rounds             |
-| `RESERVATION_NOT_CLAIMABLE`      | 409              | yes                                       |
-| `LEASE_HELD`                     | 409              | yes                                       |
-| `LEASE_NOT_OWNED`                | 403              | yes — a stale or foreign fence            |
-| `LEASE_EXPIRED`                  | 410              | yes                                       |
-| `SCOPE_NOT_GRANTED`              | 403              | yes                                       |
+| Code                             | Status | Caller-visible                            |
+| -------------------------------- | ------ | ----------------------------------------- |
+| `VERSION_SUPERSEDED`             | 409    | yes — re-read and decide the live version |
+| `EVIDENCE_MISMATCH`              | 409    | yes                                       |
+| `GATE_NOT_FOUND`                 | 404    | yes                                       |
+| `GATE_ALREADY_DECIDED`           | 409    | yes — the loser of a decision race        |
+| `GATE_EXPIRED`                   | 410    | yes                                       |
+| `LINEAGE_TERMINAL`               | 409    | yes                                       |
+| `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                       |
+| `BUDGET_UNAVAILABLE`             | 409    | yes — this envelope has no room           |
+| `BUDGET_EXHAUSTED`               | 402    | yes — the cap behind it has none          |
+| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                       |
+| `LINEAGE_NOT_ON_TASK`            | 409    | yes — the lineage is another task's       |
+| `CAP_BINDING_MISMATCH`           | 409    | yes — the envelope's cap is the cap       |
+| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes — this head observed no spending      |
+| `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes — cap, currency or rounds             |
+| `RESERVATION_NOT_CLAIMABLE`      | 409    | yes                                       |
+| `LEASE_HELD`                     | 409    | yes                                       |
+| `LEASE_NOT_OWNED`                | 403    | yes — a stale or foreign fence            |
+| `LEASE_EXPIRED`                  | 410    | yes                                       |
+| `SCOPE_NOT_GRANTED`              | 403    | yes                                       |
 
-`decideAsAgent` returns L2's `DELEGATION_EXCLUDES_DECISION`, which AUTHORITY.md
-already tells L3 to register. It is not re-derived here.
+`decideAsAgent` returns L2's `DELEGATION_EXCLUDES_DECISION`, which L3 registered
+from AUTHORITY.md's table. It is not re-derived here.
 
 ## Why the money is two columns
 
@@ -257,6 +266,27 @@ nonclaimable, and the successor is the work somebody may now approve instead. It
 is not approved and it opens no hold. A stale fence never reaches it — those
 paths retain their report and return — so a lease that cannot settle work
 cannot propose the next of it either.
+
+**On the command surface.** L3 carries the successor through `task.handback`
+(`commands/tasks-runtime.ts`, `readSuccessor` at `:563`). The body's
+`successor` is read and checked before the runtime is reached, and
+`proposedByActorId` is not a body field: the agent actor of the session
+proposes it (`:653`). A body that names it under either spelling is refused
+`FIELD_NOT_WRITABLE` (`:530`). `expiresAt` is optional there and defaults to
+the same week `task.propose` uses. The result carries the four successor
+handles, all null when none was asked for. The body and the refusals are in
+[API.md](API.md#the-operations-l4s-runtime-made-possible).
+`tests/commands/handback-successor.test.ts` holds the reading of the body with
+no database, and the `task.handback and its successor` block in
+`tests/api/task-runtime-routes.test.ts` (`:574`) holds it over HTTP. That block
+covers no successor, an in-bounds successor committed with the settlement, a
+body naming the actor, and `SUCCESSOR_OUT_OF_BOUNDS` settling nothing.
+
+One seam is open. `SuccessorRequest` pins an absolute `expiresAt`, while
+`task.propose` takes `expiresInSeconds` and computes the instant on the server.
+The surface refuses a past or malformed instant, so neither of the failures
+`task.propose`'s duration guards against can be reached. There are still two
+spellings for one concept.
 
 ## What the classifier will not do
 
@@ -429,8 +459,11 @@ partly covered rather than proved.
   attempt to write one from `handback.ts` aborted the whole transaction on a
   column that does not exist, which is the right answer to a second writer
   reaching into another unit's trail.
-- **No HTTP surface and no registry entry.** L3 wires these onto
-  `commands/register.ts` and `apps/api/status.ts`.
+- **No HTTP surface of its own.** This package is reached only through L3's
+  command surface: `task.propose`, `task.decide`, `task.pickup`,
+  `task.handback` and `task.queue` are routed there, and its codes are
+  registered in `commands/register.ts` and `apps/api/status.ts`
+  ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.
