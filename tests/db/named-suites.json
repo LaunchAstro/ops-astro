@@ -48,7 +48,9 @@
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
     "tests/api/envelope-faults.test.ts",
-    "tests/commands/settings-revision.test.ts"
+    "tests/commands/settings-revision.test.ts",
+    "tests/api/operand-refusals.test.ts",
+    "tests/api/capabilities-shape.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
