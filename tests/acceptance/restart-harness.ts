@@ -20,6 +20,14 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { expect } from 'vitest';
+import {
+  ADMIN_ACTIONS,
+  ADMIN_COLLECTIONS,
+  enrolAgent,
+  enrolCaller,
+  type AgentIdentity,
+  type Caller,
+} from './cast.ts';
 import { agentPath, bearer, call, personPath, type World } from './world.ts';
 
 /**
@@ -405,4 +413,191 @@ export async function identities(world: World): Promise<Record<string, readonly 
       "select id::text || ':' || state as id from public.attempts where business_id = $1 order by id",
     ),
   };
+}
+
+/** An agent's live lease on a person's approved work, for I08 across the restart. */
+export interface AgentWork {
+  readonly approver: Caller;
+  readonly agent: AgentIdentity;
+  readonly taskId: string;
+  readonly reservationId: string;
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly delegationId: string;
+  readonly credential: string;
+}
+
+/**
+ * A person of their own who approves their own work, and an agent that picks
+ * it up: `ada` stays untouched, because the other restart cases act as her
+ * after the restart and I08 takes this person's only write grant away.
+ */
+export async function walkAgentWork(world: World, name: string): Promise<AgentWork> {
+  const approver = await enrolCaller(world.db, world.alpha, 'alpha', name, {
+    membership: true,
+    actions: ADMIN_ACTIONS,
+    collections: ADMIN_COLLECTIONS,
+  });
+  const agent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
+  const as = bearer(approver.token);
+  const created = await call(
+    world.api,
+    personPath('alpha', '/task/create'),
+    {
+      operationId: randomUUID(),
+      fields: { title: `work ${name} across a restart ${randomUUID()}` },
+    },
+    as,
+  );
+  const taskId = String(created.body['recordId']);
+  const proposed = await call(
+    world.api,
+    personPath('alpha', '/task/propose'),
+    {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: await revisionOf(world, taskId),
+      purpose: 'draft_the_reply',
+      maximumMinor: 700,
+      currency: 'AUD',
+      payload: { instruction: 'work an agent holds across a restart' },
+      step: { kind: 'compose', payload: {} },
+    },
+    as,
+  );
+  expect(proposed.code, `propose for ${name}`).toBe('ok');
+  const gate = proposed.body['detail'] as Record<string, string>;
+  const decided = await call(
+    world.api,
+    personPath('alpha', '/task/decide'),
+    {
+      operationId: randomUUID(),
+      gateId: gate['gateId'],
+      versionId: gate['versionId'],
+      decision: 'approve',
+      note: `approved for ${name}`,
+    },
+    as,
+  );
+  expect(decided.code, `decide for ${name}`).toBe('ok');
+  const reservationId = String(
+    (decided.body['detail'] as Record<string, unknown>)['reservationId'],
+  );
+  const picked = await call(
+    world.api,
+    agentPath('alpha', '/task/pickup'),
+    {
+      operationId: randomUUID(),
+      reservationId,
+    },
+    bearer(agent.token),
+  );
+  expect(picked.code, `pickup for ${name}`).toBe('ok');
+  const detail = picked.body['detail'] as Record<string, unknown>;
+  return {
+    approver,
+    agent,
+    taskId,
+    reservationId,
+    leaseId: String(detail['leaseId']),
+    fence: Number(detail['fence']),
+    delegationId: String(detail['delegationId']),
+    credential: String(detail['credential']),
+  };
+}
+
+/** `grant.revoke`, by `ada` as grant manager, of every live task write the approver holds. */
+export async function revokeWritesOf(world: World, approver: Caller): Promise<readonly string[]> {
+  const grants = await world.db.admin.execute<{ readonly id: string }>(
+    `select id::text as id from public.grants
+      where business_id = $1 and subject_kind = 'person' and subject_id = $2
+        and collection = 'task' and action = 'write' and revoked_at is null`,
+    [world.alpha, approver.personId],
+  );
+  expect(grants.length, 'the approver holds exactly one write grant').toBe(1);
+  for (const grant of grants) {
+    // eslint-disable-next-line no-await-in-loop -- through the owning route, one at a time
+    const revoked = await asAda(world, world.api, '/grant/revoke', {
+      operationId: randomUUID(),
+      grantId: grant.id,
+    });
+    expect(revoked.code, 'grant.revoke').toBe('ok');
+  }
+  return grants.map((grant) => grant.id);
+}
+
+/** Heartbeat or handback on the agent's own lease, with its own credential; a retry passes its operation id. */
+export async function agentOnLease(
+  api: World['api'],
+  work: AgentWork,
+  name: '/task/heartbeat' | '/task/handback',
+  operationId: string = randomUUID(),
+): ReturnType<typeof call> {
+  const body =
+    name === '/task/heartbeat'
+      ? { operationId, leaseId: work.leaseId, fence: work.fence }
+      : {
+          operationId,
+          leaseId: work.leaseId,
+          fence: work.fence,
+          outcome: 'completed',
+          report: { wrote: 'after the loss and the restart' },
+        };
+  return await call(api, agentPath('alpha', name), body, {
+    ...bearer(work.agent.token),
+    'x-agent-delegation': work.credential,
+  });
+}
+
+/** Lease, hold, delegation and report count: everything a refused agent call must not move. */
+export async function leaseState(world: World, leaseId: string): Promise<string> {
+  const rows = await world.db.admin.execute<{ readonly v: string }>(
+    `select concat_ws('|', l.state, l.expires_at::text, l.fence::text, res.state,
+              coalesce(res.classified_cause, '-'), coalesce(d.revocation_cause, '-'),
+              (d.revoked_at is not null)::text, (d.settled_at is not null)::text,
+              (select count(*) from public.handback_reports hr
+                where hr.business_id = l.business_id and hr.lease_id = l.id)::text) as v
+       from public.leases l
+       join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+       join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+      where l.business_id = $1 and l.id = $2`,
+    [world.alpha, leaseId],
+  );
+  return String(rows[0]?.v);
+}
+
+/**
+ * The historical recorded transition RECOVERY-ENTRY's own proof uses: an
+ * approved, unleased hold whose lineage is then marked rejected by a separate
+ * statement, so the terminal transition is recorded and its classification is
+ * not. Written openly as fixture state from before the owning operations
+ * classified in the same transaction; a crash cannot split those today, and
+ * this does not claim one did.
+ */
+export async function recordHistoricalRejection(world: World, versionId: string): Promise<string> {
+  const rows = await world.db.admin.execute<{ readonly id: string }>(
+    'select lineage_id::text as id from public.proposal_versions where business_id = $1 and id = $2',
+    [world.alpha, versionId],
+  );
+  const lineageId = String(rows[0]?.id);
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `update public.proposal_lineages
+          set state = 'rejected', terminal_reason = 'historical rejection', terminal_at = now()
+        where business_id = $1 and id = $2`,
+      [world.alpha, lineageId],
+    );
+  });
+  return lineageId;
+}
+
+/** A hold's state and classification, for "classified once and not again". */
+export async function holdState(world: World, reservationId: string): Promise<string> {
+  const rows = await world.db.admin.execute<{ readonly v: string }>(
+    `select concat_ws('|', state, held_minor::text, coalesce(classified_cause, '-'),
+              coalesce(classified_cause_id::text, '-')) as v
+       from public.reservations where business_id = $1 and id = $2`,
+    [world.alpha, reservationId],
+  );
+  return String(rows[0]?.v);
 }

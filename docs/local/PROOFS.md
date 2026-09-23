@@ -380,14 +380,48 @@ before and after, each HTTP answer, and the verbose test output. On success and
 on failure the exit trap stops every API process the run wrote to its pid file,
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
-removed`, and `Tests 24 passed (24)`, with no expected failure.
-The 24 is the count from the head the proof was last run on; it has not been
-run at `cca3c89`. A lane with its own stack passes `--name`, `--port` and
+removed`, and `Tests 30 passed (30)`, with no expected failure.
+The 30 is the count at `bea6ab7` (RESTART-LEGS: 25 at `3eddfbe` plus the five
+restart legs below); it was 24 before `3eddfbe`. A lane with its own stack passes `--name`, `--port` and
 `--api-port` rather than taking the defaults, which belong to the coordinator.
 
 After the restart, `restart-http.test.ts` also asks for a third
 `request_changes` on the same lineage and gets 409 `CHANGE_ROUNDS_EXHAUSTED`,
 audited as a refusal (G08, `restart-http.test.ts:405-424`).
+
+**Restart legs (RESTART-LEGS, L6 rows I08, G06, W04, W06 a).** The restarted
+process starts with `RECOVERY_BUSINESS_KEYS=alpha,bravo`, the world's own keys
+(`WORLD_BUSINESS_KEYS` in `restart-process.ts`), and its stdout is kept. Five
+more named cases run in `restart-http.test.ts`:
+
+- **W06 (a):** the identity baseline is read after the first process stops and
+  before `restartContainer`. After the restart every table equals it except the
+  one hold startup recovery classified and that hold's attempt.
+- **Startup recovery:** a historical rejection is written openly with no
+  process serving, the same fixture pattern as `recovery-entry.test.ts`, which
+  does not claim that a crash split an atomic owning transition. The restarted
+  process prints `restart recovery: alpha committed, 1 classified, 1 released`
+  before it serves. A second process restart prints `0 classified` and the
+  hold does not move.
+- **W04:** an approved, unleased hold snapshotted before the restart is
+  unchanged after it and is picked up over HTTP.
+- **I08:** `grant.revoke` of a person's only write grant under a live agent
+  lease, before the restart. Afterwards heartbeat and handback with the same
+  credential answer 403 `DELEGATION_NARROWED`. Since AGENT-BOUNDARY-2 (merged
+  at `9e2192e`) the handback keeps its report as one `retained` row naming
+  `DELEGATION_NARROWED`, and nothing else moves. A retry of the same operation
+  keeps no second row, and a new operation id is a second retained row. The
+  explicit `delegation.revoke` control answers 401 `DELEGATION_NOT_LIVE`, and
+  its handback keeps one `retained` report (AGENT-BOUNDARY's late intake,
+  merged at `e4cb2ae`).
+- **G06:** `task.read` of the gate that lapsed while nothing ran draws it
+  `expired` (`expired: true`) on the database clock, and the stored row is
+  still `pending`.
+
+Since `e4cb2ae` the handback-once case also expects the second, refused
+handback's report as a `retained` row beside the settled one. At `3eddfbe`
+that case was red (`Tests 1 failed | 24 passed (25)`) because it still
+expected one receipt.
 
 **Removal on failure is demonstrated.** `L5_RESTART_INDUCE_FAILURE=throw` fails
 the run once the restarted container and the new API process are up;
