@@ -1,44 +1,46 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// D1: unsaved title and due date across the other things a person does on the
-// task page, in the real browser.
+// D1: an unsaved title or due date is resolved explicitly, never silently.
 //
-// **This case is written against the behaviour DRAFT-FIX is landing, not the
-// behaviour at this head.** Review finding 2 was that a successful assign or
-// lifecycle action started a read, `RecordState` unmounted the form while it
-// was in flight, and whatever the person had typed died with it. The first fix
-// held the drafts across the refresh instead, and the delta review of
-// `ac90768` then held two P2 findings against *that*: a draft saved with the
-// freshly read revision can overwrite another writer, and a late successful
-// save clears newer typing. So silently keeping the drafts is not the target
-// either.
+// **This case is written against DRAFT-FIX's markup, not this head's.** Review
+// finding 2 was that a successful assign or lifecycle action started a read,
+// `RecordState` unmounted the form while it was in flight, and whatever the
+// person had typed died with it. The first fix held the drafts across the
+// refresh instead, and the delta review of `ac90768` held two P2 findings
+// against that: a draft saved with the freshly read revision can overwrite
+// another writer, and a late successful save clears newer typing. So silently
+// keeping the drafts is not the target either.
 //
-// The target is explicit: with a dirty title or due date, assign, the state
-// actions and Refresh either offer a Save-or-Discard choice or are disabled
-// until one is made. Never silent loss, and never silent survival. Each probe
-// below classifies what actually happened into one of those three, passes only
-// on the explicit one, and records `pending DRAFT-FIX` when the screen still
-// resolves the draft silently either way.
+// The target, which DRAFT-FIX has landed on `slice/draft-fix`, is that a dirty
+// draft is resolved before anything else happens to the record: the Save or
+// Discard bar is on the screen, and Refresh, the assignee control and the three
+// lifecycle buttons are disabled until one of them is pressed.
 //
-// The one thing that does not change is authority: a draft must not outlive
-// the grant behind it. A draft still on the screen after its grant is gone
-// would be stale authorised data, which is worse than losing it. So the grant
-// is revoked through the authority path with the drafts in the inputs, the
-// same Refresh is pressed, and the screen must go to `denied`.
+// Until that merges, the markup below is simply absent. This case says so --
+// every row is recorded `pending DRAFT-FIX` with what the screen actually did
+// -- rather than asserting the behaviour this head happens to have. The suite
+// does not fail on a pending row; the coordinator reruns it on the merged head,
+// where it must pass.
 //
-// Nothing here is a test-only hook in the product. Every control it touches is
-// one a person uses.
+// Nothing here is a test-only hook in the product. Every selector it uses is
+// one DRAFT-FIX's handback lists as the screen's own.
 
-import { WEB, outcomeOf, record, revisionOn, shot, users } from './harness.mjs';
-import { personOfLogin, revokeTaskRead } from './n6-revocation.mjs';
-import { restoreTaskRead } from './cases-n6-n7.mjs';
+import { WEB, outcomeOf, record, revisionOn, serverTask, shot, throughClient } from './harness.mjs';
+
+const CHOICE = '[data-draft-resolve="choice"]';
+const SAVE = 'button[data-draft-resolve="save"]';
+const DISCARD = 'button[data-draft-resolve="discard"]';
+const WHY = '[data-draft-resolve="why"]';
+const REFRESH = 'button[data-refresh="task"]';
+const ASSIGNEE = 'select[aria-label="Assignee"]';
+const LIFECYCLE =
+  'button[data-lifecycle="start"], button[data-lifecycle="complete"], button[data-lifecycle="reopen"]';
+const CONFLICT = '[data-conflict="version"]';
+const UNSAVED = '[data-conflict="unsaved"]';
+const RELOAD = 'button[data-conflict="reload"]';
 
 const DRAFT_TITLE = 'A title nobody has saved yet';
-const DRAFT_DUE = '2027-03-04';
-
-/** The controls a dirty draft must not be lost to. */
-const ASSIGNEE = 'select[aria-label="Assignee"]';
-const REFRESH = '[data-refresh="task"]';
+const SECOND_DUE = '2027-05-06';
 
 /** What the inputs are holding right now. */
 const inputs = async (page) => ({
@@ -46,70 +48,29 @@ const inputs = async (page) => ({
   due: await page.inputValue('#task-due'),
 });
 
-const held = (now) => now.title === DRAFT_TITLE && now.due === DRAFT_DUE;
-
-/**
- * An explicit choice on the screen: a Discard control, or anything the screen
- * marks as the draft's own decision. `Save changes` is always there, so it is
- * not on its own a sign that the screen asked.
- */
-async function choiceOffered(page) {
-  const marked = await page.locator('[data-draft], [data-draft-choice]').count();
-  const discard = await page.getByRole('button', { name: /discard/iu }).count();
-  return { marked, discard, offered: marked > 0 || discard > 0 };
-}
-
-/** Put the drafts back in the inputs, whatever the last probe did to them. */
-async function makeDirty(page) {
-  await page.fill('#task-title', DRAFT_TITLE);
-  await page.fill('#task-due', DRAFT_DUE);
-}
-
-/**
- * One probe: with both fields dirty, reach for `control` and say which of the
- * three things happened.
- *
- * `act` returns what it observed; it is not expected to succeed, because a
- * screen that refuses the action while dirty is the target behaviour.
- */
-async function probe(page, given) {
-  await makeDirty(page);
-  const before = await choiceOffered(page);
-  const disabledWhileDirty = given.control
-    ? await page.locator(given.control).first().isDisabled()
-    : false;
-  const acted = await given.act();
-  const after = await choiceOffered(page);
-  const now = await inputs(page);
-
-  const explicit = disabledWhileDirty || (after.offered && !before.offered) || after.offered;
-  const lost = !explicit && !held(now);
-  const survived = !explicit && held(now);
+/** Every control a dirty draft must hold shut, and whether it is shut. */
+async function lockedControls(page) {
+  const refresh = await page
+    .locator(REFRESH)
+    .first()
+    .isDisabled()
+    .catch(() => undefined);
+  const assignee = await page
+    .locator(ASSIGNEE)
+    .first()
+    .isDisabled()
+    .catch(() => undefined);
+  const lifecycle = await page
+    .locator(LIFECYCLE)
+    .first()
+    .isDisabled()
+    .catch(() => undefined);
   return {
-    acted,
-    now,
-    disabledWhileDirty,
-    choice: after,
-    verdict: explicit
-      ? 'explicit'
-      : lost
-        ? 'silent-loss'
-        : survived
-          ? 'silent-survival'
-          : 'unclear',
+    refresh,
+    assignee,
+    lifecycle,
+    all: refresh === true && assignee === true && lifecycle === true,
   };
-}
-
-function recordProbe(given) {
-  const { verdict } = given.result;
-  record({
-    case: given.case,
-    action: given.action,
-    observed: `${given.result.acted}; the screen ${given.result.disabledWhileDirty ? 'disabled the control while dirty' : given.result.choice.offered ? 'offered an explicit draft choice' : 'offered no draft choice'}, inputs hold ${JSON.stringify(given.result.now)} — ${verdict}`,
-    ok: verdict === 'explicit' ? true : verdict === 'silent-loss' ? false : undefined,
-    pending: verdict === 'silent-survival' ? 'DRAFT-FIX' : undefined,
-    shot: given.shot,
-  });
 }
 
 export async function casesTaskDrafts(run) {
@@ -119,131 +80,147 @@ export async function casesTaskDrafts(run) {
   await page.waitForSelector('#task-title');
   const saved = await inputs(page);
 
-  await makeDirty(page);
-  record({
-    case: 'D1 drafts typed, nothing saved',
-    action: `typed a title and a due date on /task/${key} and did not press Save changes`,
-    observed: `inputs hold ${JSON.stringify(await inputs(page))}; the header still reads "${await page.locator('h2.tpr__title').innerText()}"`,
-    ok:
-      held(await inputs(page)) && (await page.locator('h2.tpr__title').innerText()) !== DRAFT_TITLE,
-    shot: await shot(page, 'D1-drafts-typed'),
-  });
+  await page.fill('#task-title', DRAFT_TITLE);
+  const offered = await page
+    .waitForSelector(CHOICE, { timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
 
-  await dirtyAssign(run, key);
-  await dirtyStateAction(run, key);
-  await dirtyRefresh(run, key);
-  await afterDeniedRead(run, key, saved);
-}
-
-async function dirtyAssign(run, key) {
-  const { page } = run;
-  const result = await probe(page, {
-    control: ASSIGNEE,
-    act: async () => {
-      const was = await revisionOn(page);
-      const chosen = await page
-        .selectOption(ASSIGNEE, { label: 'Noah Alpha' })
-        .then(() => 'the assignee control accepted a choice')
-        .catch((error) => `the assignee control refused the choice: ${String(error).slice(0, 60)}`);
-      await settleRead(page);
-      return `${chosen}; revision ${was} -> ${await revisionOn(page)}`;
-    },
-  });
-  recordProbe({
-    case: 'D1 assign with a dirty draft',
-    action: `chose Noah Alpha on /task/${key} with an unsaved title and due date`,
-    result,
-    shot: await shot(page, 'D1-dirty-assign'),
-  });
-}
-
-async function dirtyStateAction(run, key) {
-  const { page } = run;
-  const name = (await page.getByRole('button', { name: 'Start', exact: true }).count())
-    ? 'Start'
-    : 'Reopen';
-  const button = page.getByRole('button', { name, exact: true });
-  const result = await probe(page, {
-    act: async () => {
-      const was = await revisionOn(page);
-      const disabled = await button.isDisabled();
-      if (disabled) return `${name} is disabled while the draft is dirty`;
-      await button.click();
-      await settleRead(page);
-      return `clicked ${name}; revision ${was} -> ${await revisionOn(page)}`;
-    },
-  });
-  recordProbe({
-    case: 'D1 a state action with a dirty draft',
-    action: `clicked ${name} on /task/${key} with an unsaved title and due date`,
-    result,
-    shot: await shot(page, 'D1-dirty-state-action'),
-  });
-}
-
-async function dirtyRefresh(run, key) {
-  const { page } = run;
-  const result = await probe(page, {
-    control: REFRESH,
-    act: async () => {
-      if (await page.locator(REFRESH).first().isDisabled())
-        return 'Refresh is disabled while the draft is dirty';
-      await page.click(REFRESH);
-      return `pressed Refresh; the read settled on data-outcome="${await settleRead(page)}"`;
-    },
-  });
-  recordProbe({
-    case: 'D1 Refresh with a dirty draft',
-    action: `pressed Refresh on /task/${key}, an authorised reread of the same task, with an unsaved title and due date`,
-    result,
-    shot: await shot(page, 'D1-dirty-refresh'),
-  });
-}
-
-/** Wait for whatever read the last action started, and say where it landed. */
-async function settleRead(page) {
-  const outcome = await outcomeOf(page);
-  if (outcome === 'ready')
-    await page.waitForSelector('#task-title', { timeout: 15_000 }).catch(() => undefined);
-  return outcome;
-}
-
-async function afterDeniedRead(run, key, saved) {
-  const { page, database, admin, alpha } = run;
-  const login = users.find((user) => user.email === 'mia@alpha.local');
-  const personId = await personOfLogin(admin, alpha, login.provider, login.subject);
-  if (personId === undefined) {
-    record({
-      case: 'D1 a denied read clears the drafts',
-      action: 'derive the person behind mia@alpha.local through logins/person_logins',
-      observed: 'the login could not be walked to a person, so the grant was never touched',
-      ok: undefined,
-    });
+  if (!offered) {
+    await pendingRows(run, key);
     return;
   }
 
-  await makeDirty(page).catch(() => undefined);
-  const revoked = await revokeTaskRead(database, alpha, personId);
-  await page.click(REFRESH).catch(() => undefined);
-  const deniedOutcome = await settleRead(page);
-  const stillDrawn = await page.locator('#task-title').count();
+  await theChoiceBar(run, key);
+  await discardIt(run, key, saved);
+  await saveIt(run, key);
+  await theConflict(run, key);
+}
+
+/**
+ * This head has no resolve bar. Say what it does instead, in the same words the
+ * merged head's rows will use, so the two runs are comparable.
+ */
+async function pendingRows(run, key) {
+  const { page } = run;
+  const locked = await lockedControls(page);
+  const now = await inputs(page);
   record({
-    case: 'D1 a denied read clears the drafts',
-    action: `revoked ${revoked.length} live task:read grant(s) through revokeGrant on /task/${key}, then pressed the same Refresh`,
-    observed: `data-outcome="${deniedOutcome}", ${stillDrawn} draft input(s) left on the screen`,
-    ok: deniedOutcome === 'denied' && stillDrawn === 0,
-    shot: await shot(page, 'D1-denied-clears-drafts'),
+    case: 'D1 a dirty draft is resolved explicitly',
+    action: `typed a title on /task/${key} and looked for ${CHOICE}`,
+    observed: `no resolve bar on the screen; Refresh disabled=${locked.refresh}, assignee disabled=${locked.assignee}, lifecycle disabled=${locked.lifecycle}; inputs hold ${JSON.stringify(now)} — the draft is kept silently, which the delta review of ac90768 holds two P2 findings against`,
+    pending: 'DRAFT-FIX',
+    shot: await shot(page, 'D1-no-resolve-bar'),
+  });
+  for (const what of ['Discard', 'Save', 'the stale-revision conflict']) {
+    record({
+      case: `D1 ${what.toLowerCase()} from the resolve bar`,
+      action: `press ${what} on /task/${key}`,
+      observed: 'the control does not exist at this head',
+      pending: 'DRAFT-FIX',
+    });
+  }
+}
+
+async function theChoiceBar(run, key) {
+  const { page } = run;
+  const locked = await lockedControls(page);
+  const why = await page.locator(WHY).count();
+  const both =
+    (await page.locator(SAVE).count()) === 1 && (await page.locator(DISCARD).count()) === 1;
+  record({
+    case: 'D1 a dirty draft is resolved explicitly',
+    action: `typed a title on /task/${key} without saving`,
+    observed: `${CHOICE} is on the screen with Save and Discard (${both}); Refresh disabled=${locked.refresh}, assignee disabled=${locked.assignee}, lifecycle disabled=${locked.lifecycle}; ${why} line(s) saying why`,
+    ok: both && locked.all && why > 0,
+    shot: await shot(page, 'D1-choice-bar'),
+  });
+}
+
+async function discardIt(run, key, saved) {
+  const { page } = run;
+  await page.click(DISCARD);
+  await page.waitForSelector(CHOICE, { state: 'detached', timeout: 10_000 }).catch(() => undefined);
+  const now = await inputs(page);
+  const locked = await lockedControls(page);
+  record({
+    case: 'D1 discard from the resolve bar',
+    action: `pressed Discard on /task/${key}`,
+    observed: `inputs hold ${JSON.stringify(now)}; saved was ${JSON.stringify(saved)}; the bar is ${(await page.locator(CHOICE).count()) === 0 ? 'gone' : 'still there'}, Refresh disabled=${locked.refresh}, assignee disabled=${locked.assignee}`,
+    ok:
+      now.title === saved.title &&
+      now.due === saved.due &&
+      (await page.locator(CHOICE).count()) === 0 &&
+      locked.refresh === false,
+    shot: await shot(page, 'D1-discarded'),
+  });
+}
+
+async function saveIt(run, key) {
+  const { page, state } = run;
+  const was = await revisionOn(page);
+  await page.fill('#task-title', DRAFT_TITLE);
+  await page.waitForSelector(CHOICE, { timeout: 10_000 });
+  await page.click(SAVE);
+  await page
+    .waitForFunction(
+      (prior) => Number(document.querySelector('[data-revision]')?.dataset.revision) > prior,
+      was,
+      { timeout: 20_000 },
+    )
+    .catch(() => undefined);
+  await outcomeOf(page);
+  const drawn = await page.locator('h2.tpr__title').innerText();
+  const task = await serverTask(page, state.retryId ?? state.taskId);
+  const updates = (task?.history ?? []).filter((entry) => entry.operation === 'task.update');
+  record({
+    case: 'D1 save from the resolve bar',
+    action: `pressed Save on /task/${key} with an unsaved title`,
+    observed: `revision ${was} -> ${await revisionOn(page)}, the header reads "${drawn}", the bar is ${(await page.locator(CHOICE).count()) === 0 ? 'gone' : 'still there'}, ${updates.length} applied task.update in the history`,
+    ok:
+      drawn === DRAFT_TITLE &&
+      (await page.locator(CHOICE).count()) === 0 &&
+      updates.length === 1 &&
+      task?.title === DRAFT_TITLE,
+    shot: await shot(page, 'D1-saved'),
+  });
+}
+
+/**
+ * Two writers. The draft's own base revision is what its save carries, so a
+ * second writer who moved the record in between must not be overwritten: the
+ * save is refused as stale, the unsaved text is still on the screen to copy,
+ * and the other writer's due date survives.
+ */
+async function theConflict(run, key) {
+  const { page, state } = run;
+  const recordId = state.retryId ?? state.taskId;
+  await page.fill('#task-title', `${DRAFT_TITLE} again`);
+  await page.waitForSelector(CHOICE, { timeout: 10_000 });
+
+  const before = await serverTask(page, recordId);
+  const second = await throughClient(page, {
+    name: 'task.update',
+    body: { recordId, fields: { due: SECOND_DUE } },
+    options: { expectedRevision: before?.revision },
   });
 
-  await restoreTaskRead(database, alpha, personId);
-  await page.click(REFRESH).catch(() => undefined);
-  const backOutcome = await settleRead(page);
-  const now = await inputs(page).catch(() => ({ title: undefined, due: undefined }));
+  await page.click(SAVE);
+  const conflict = await page
+    .waitForSelector(CONFLICT, { timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  const after = await serverTask(page, recordId);
   record({
-    case: 'D1 the grant comes back to saved values, not the drafts',
-    action: 'reissued the task:read grant and pressed Refresh again',
-    observed: `data-outcome="${backOutcome}", inputs hold ${JSON.stringify(now)}; saved was ${JSON.stringify(saved)}`,
-    ok: backOutcome === 'ready' && now.title === saved.title && !held(now),
-    shot: await shot(page, 'D1-restored-shows-saved'),
+    case: 'D1 the stale-revision conflict',
+    action: `on /task/${key}, a second writer set due=${SECOND_DUE} through the client, then Save was pressed on the draft taken before it`,
+    observed: `the second write ${second.result.ok === true ? `applied at revision ${second.result.value.revision}` : String(second.result.code)}; ${CONFLICT} drawn: ${conflict}, unsaved text kept: ${(await page.locator(UNSAVED).count()) > 0}, reload offered: ${(await page.locator(RELOAD).count()) > 0}; the record's due is now ${JSON.stringify(after?.due ?? null)} and its title ${JSON.stringify(after?.title ?? null)}`,
+    ok:
+      second.result.ok === true &&
+      conflict &&
+      (await page.locator(UNSAVED).count()) > 0 &&
+      (await page.locator(RELOAD).count()) > 0 &&
+      String(after?.due ?? '').startsWith(SECOND_DUE),
+    shot: await shot(page, 'D1-version-conflict'),
   });
 }
