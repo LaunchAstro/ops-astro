@@ -96,6 +96,7 @@ try {
   // under it.
   await casesProposals(run);
   await (await import('./i10-open-page.mjs')).casesI10OpenPage(run);
+  await (await import('./r4-shared-page.mjs')).casesR4SharedPage(run);
   await casesB6toB7(run);
   await context.close();
 } catch (error) {
