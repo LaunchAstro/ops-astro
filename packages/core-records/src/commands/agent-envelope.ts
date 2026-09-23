@@ -369,8 +369,20 @@ async function authorise(
   const delegation = resolved.value;
 
   // Under a live delegation the agent may ask what it may do: the answer is
-  // that delegation's purpose, which is not a grant on any collection.
-  if (request.command === 'session.capabilities') return undefined;
+  // that delegation's purpose, which is not a grant on any collection. It is
+  // still an assertion that the agent reaches its task, so it is answered only
+  // while the delegation and the delegating person's current grants intersect
+  // on that task (root ruling 5). The check is the least the answer claims:
+  // `read` on the purpose record. When the person has lost it, the agent is
+  // told `DELEGATION_NARROWED` rather than shown a scope it cannot use.
+  if (request.command === 'session.capabilities') {
+    const reach = await checkDelegatedAuthority(tx, delegation, {
+      collection: delegation.collections[0] ?? 'task',
+      action: 'read',
+      scope: delegation.purposeScope,
+    });
+    return reach.ok ? undefined : fromRuntime(reach.refusal);
+  }
 
   const taskId = await subjectTaskId(tx, delegation, request);
 
