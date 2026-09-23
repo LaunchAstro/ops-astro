@@ -692,23 +692,49 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   });
 
   // I08: the cause the revoking transaction recorded outlives the restart.
-  it('answers DELEGATION_NARROWED after the restart for authority lost before it, with no effect', async () => {
+  it('answers DELEGATION_NARROWED after the restart for authority lost before it, keeping only the report', async () => {
     expect(narrowedBefore, 'revoked by the grant loss, before the restart').toMatch(
       /\|true\|false\|0$/u,
     );
     const answers: string[] = [];
-    // AGENT-BOUNDARY-2 has not merged at this head: a narrowed agent's
-    // handback keeps no report, so both calls leave everything as it was.
-    for (const name of ['/task/heartbeat', '/task/handback'] as const) {
+    const heartbeat = await agentOnLease(api, narrowed, '/task/heartbeat');
+    expect([heartbeat.status, heartbeat.code], 'heartbeat').toStrictEqual([
+      403,
+      'DELEGATION_NARROWED',
+    ]);
+    expect(await leaseState(world, narrowed.leaseId), 'heartbeat moved nothing').toBe(
+      narrowedBefore,
+    );
+    answers.push(`heartbeat ${String(heartbeat.status)} ${heartbeat.code}`);
+    // AGENT-BOUNDARY-2 (merged at 9e2192e): a narrowed agent's report is kept
+    // as one `retained` row naming the refusal, append-only per operation id.
+    // A retry of the same operation is answered from its register row and
+    // keeps nothing more (`agent-envelope.ts` `retainLateHandback`); a new
+    // operation id is a new late report. Lease, hold, delegation and cause stay put.
+    const withReports = (count: number): string =>
+      narrowedBefore.replace(/\|0$/u, `|${String(count)}`);
+    const retried = randomUUID();
+    for (const [label, operationId, reports] of [
+      ['handback', retried, 1],
+      ['same-operation retry', retried, 1],
+      ['new operation', randomUUID(), 2],
+    ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one call, then the state it left
-      const answer = await agentOnLease(api, narrowed, name);
-      expect([answer.status, answer.code], name).toStrictEqual([403, 'DELEGATION_NARROWED']);
+      const answer = await agentOnLease(api, narrowed, '/task/handback', operationId);
+      expect([answer.status, answer.code], label).toStrictEqual([403, 'DELEGATION_NARROWED']);
       // eslint-disable-next-line no-await-in-loop
-      expect(await leaseState(world, narrowed.leaseId), `${name} moved nothing`).toBe(
-        narrowedBefore,
-      );
-      answers.push(`${name} ${String(answer.status)} ${answer.code}`);
+      expect(await leaseState(world, narrowed.leaseId), label).toBe(withReports(reports));
+      answers.push(`${label} ${String(answer.status)} ${answer.code} reports ${String(reports)}`);
     }
+    const kept = await world.db.admin.execute<{ readonly v: string }>(
+      `select disposition || ':' || coalesce(refusal_code, '-') as v from public.handback_reports
+        where business_id = $1 and lease_id = $2 order by created_at, id`,
+      [world.alpha, narrowed.leaseId],
+    );
+    expect(kept.map((row) => row.v)).toStrictEqual([
+      'retained:DELEGATION_NARROWED',
+      'retained:DELEGATION_NARROWED',
+    ]);
     expect(explicitBefore, 'the control, revoked explicitly').not.toBe(narrowedBefore);
     // The control keeps DELEGATION_NOT_LIVE, and AGENT-BOUNDARY's late intake
     // keeps its report as one retained row; nothing else moves.

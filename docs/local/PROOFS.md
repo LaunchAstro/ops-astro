@@ -407,10 +407,13 @@ more named cases run in `restart-http.test.ts`:
   unchanged after it and is picked up over HTTP.
 - **I08:** `grant.revoke` of a person's only write grant under a live agent
   lease, before the restart. Afterwards heartbeat and handback with the same
-  credential answer 403 `DELEGATION_NARROWED` and move nothing, reports
-  included. The explicit `delegation.revoke` control answers 401
-  `DELEGATION_NOT_LIVE`, and its handback keeps one `retained` report
-  (AGENT-BOUNDARY's late intake, merged at `e4cb2ae`).
+  credential answer 403 `DELEGATION_NARROWED`. Since AGENT-BOUNDARY-2 (merged
+  at `9e2192e`) the handback keeps its report as one `retained` row naming
+  `DELEGATION_NARROWED`, and nothing else moves. A retry of the same operation
+  keeps no second row, and a new operation id is a second retained row. The
+  explicit `delegation.revoke` control answers 401 `DELEGATION_NOT_LIVE`, and
+  its handback keeps one `retained` report (AGENT-BOUNDARY's late intake,
+  merged at `e4cb2ae`).
 - **G06:** `task.read` of the gate that lapsed while nothing ran draws it
   `expired` (`expired: true`) on the database clock, and the stored row is
   still `pending`.

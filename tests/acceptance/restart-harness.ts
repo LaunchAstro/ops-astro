@@ -526,17 +526,18 @@ export async function revokeWritesOf(world: World, approver: Caller): Promise<re
   return grants.map((grant) => grant.id);
 }
 
-/** Heartbeat or handback on the agent's own lease, with its own credential. */
+/** Heartbeat or handback on the agent's own lease, with its own credential; a retry passes its operation id. */
 export async function agentOnLease(
   api: World['api'],
   work: AgentWork,
   name: '/task/heartbeat' | '/task/handback',
+  operationId: string = randomUUID(),
 ): ReturnType<typeof call> {
   const body =
     name === '/task/heartbeat'
-      ? { operationId: randomUUID(), leaseId: work.leaseId, fence: work.fence }
+      ? { operationId, leaseId: work.leaseId, fence: work.fence }
       : {
-          operationId: randomUUID(),
+          operationId,
           leaseId: work.leaseId,
           fence: work.fence,
           outcome: 'completed',
