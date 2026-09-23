@@ -65,6 +65,7 @@
     "test:api": "vitest run tests/api",
     "build:web": "pnpm --filter @launchastro/web exec vite build",
     "verify:browser": "node tests/browser/slice-acceptance.mjs",
+    "verify:d06-mounted": "node tests/browser/d06-mounted.mjs",
     "verify:restart": "bash scripts/local/restart-proof.sh",
     "cli": "node apps/cli/main.ts"
   },

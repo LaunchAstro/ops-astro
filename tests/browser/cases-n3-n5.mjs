@@ -9,6 +9,7 @@
 // own session: this is what the application's own code can be made to ask,
 // not a hand-rolled request.
 
+import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
 import { inOrder, record, serverRevision, shot, throughClient, throughSubmit } from './harness.mjs';
 
 const PROTECTED = [
@@ -24,6 +25,25 @@ const SYSTEM = [
   ['key', { key: 'T-0' }],
   ['completed_at', { completed_at: '2020-01-01T00:00:00.000Z' }],
 ];
+
+/**
+ * The exact refusal a protected field earns on `task.update`, derived from the
+ * spine as `tests/acceptance/protected-fields.test.ts` derives it (ledger D03):
+ * an operation-owned field is `TRANSITION_PROTECTED` naming `key=owning
+ * operations`, `source` is `SOURCE_SPOOFED`, any other derived field is
+ * `FIELD_NOT_WRITABLE` naming the key. A bare `refused` is not the claim.
+ */
+function refusalFor(key) {
+  const field = TASK_SPINE.find((one) => one.key === key);
+  if (key === 'source') return { code: 'SOURCE_SPOOFED', names: ['source'] };
+  if (field?.writeMode === 'system') return { code: 'FIELD_NOT_WRITABLE', names: [key] };
+  return { code: 'TRANSITION_PROTECTED', names: [`${key}=${field.owningOperations.join(' ')}`] };
+}
+
+const exactly = (refusal, key) =>
+  refusal.refused === true &&
+  refusal.code === refusalFor(key).code &&
+  JSON.stringify(refusal.names) === JSON.stringify(refusalFor(key).names);
 
 export async function casesN3toN5(run) {
   await protectedFields(run);
@@ -43,7 +63,7 @@ async function protectedFields(run) {
       case: `N3 protected ${field}`,
       action: `records/submit.ts sent ${field} to task.update`,
       observed: `${refusal.code ?? JSON.stringify(refusal)} naming ${JSON.stringify(refusal.names ?? [])}, revision still ${after}`,
-      ok: refusal.refused === true && after === was,
+      ok: exactly(refusal, field) && after === was,
       shot: field === 'state' ? await shot(page, 'N3-state-refused') : undefined,
     });
   });
@@ -78,11 +98,12 @@ async function systemFields(run) {
       request: { command: 'task.update', recordId: state.taskId, expectedRevision: was, fields },
     });
     const echoed = JSON.stringify(refusal).includes(String(Object.values(fields)[0]));
+    const after = await serverRevision(page, state.taskId);
     record({
       case: `N4 system field ${field}`,
       action: `records/submit.ts sent ${field} to task.update`,
-      observed: `${refusal.code ?? JSON.stringify(refusal)}; attempted value echoed back: ${echoed}`,
-      ok: refusal.refused === true && !echoed,
+      observed: `${refusal.code ?? JSON.stringify(refusal)} naming ${JSON.stringify(refusal.names ?? [])}; attempted value echoed back: ${echoed}; revision still ${after}`,
+      ok: exactly(refusal, field) && !echoed && after === was,
       shot: field === 'source' ? await shot(page, 'N4-source-spoofed') : undefined,
     });
   });

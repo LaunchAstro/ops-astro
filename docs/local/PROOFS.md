@@ -27,16 +27,17 @@ the local database (the live one still stands at migration 0020, so 0021 to
 0023 apply then), restart the API on the merged tree, then `verify:slice`,
 `verify:browser` and the restart proof.
 
-| What                                                                         | Count                                                          | Label                           |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------- |
-| `typecheck`, `lint`, `format:check`, `spdx`                                  | green                                                          | tested (merge trial, `cca3c89`) |
-| `pnpm test`                                                                  | 5,102 passed, 19 skipped                                       | tested (merge trial, `cca3c89`) |
-| `tests/acceptance`                                                           | 3,846 passed, 11 skipped                                       | tested (merge trial, `cca3c89`) |
-| `db:conformance`                                                             | 78 named suites (74 invariant, 4 conformance), 865 of 865      | tested (merge trial, `cca3c89`) |
-| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent` | tested (lane run on `a3d0afe`)  |
-| `role-case-matrix.test.ts` (item 2)                                          | 363 rows: 336 pass, 27 named exceptions, none missing coverage | tested (lane run on `cca3c89`)  |
-| `verify:browser`, including the in-flight, R4 and surface-final rows         | none at `cca3c89`                                              | implemented; not run            |
-| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run)) | skipped in the counts above                                    | not run at `cca3c89`            |
+| What                                                                                                             | Count                                                                 | Label                           |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------- |
+| `typecheck`, `lint`, `format:check`, `spdx`                                                                      | green                                                                 | tested (merge trial, `cca3c89`) |
+| `pnpm test`                                                                                                      | 5,102 passed, 19 skipped                                              | tested (merge trial, `cca3c89`) |
+| `tests/acceptance`                                                                                               | 3,846 passed, 11 skipped                                              | tested (merge trial, `cca3c89`) |
+| `db:conformance`                                                                                                 | 78 named suites (74 invariant, 4 conformance), 865 of 865             | tested (merge trial, `cca3c89`) |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                                                     | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`        | tested (lane run on `a3d0afe`)  |
+| `role-case-matrix.test.ts` (item 2)                                                                              | 363 rows: 336 pass, 27 named exceptions, none missing coverage        | tested (lane run on `cca3c89`)  |
+| `verify:browser`, including the in-flight, R4 and surface-final rows                                             | none at `cca3c89`                                                     | implemented; not run            |
+| `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11)) | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved | tested (lane run on `20363eb`)  |
+| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                     | skipped in the counts above                                           | not run at `cca3c89`            |
 
 The 19 skipped in `pnpm test` include the suites that spawn the real
 `server.ts` and skip without `SURFACE_API_PORT`
@@ -567,6 +568,80 @@ SURFACE_API_PORT=8812 pnpm exec vitest run --fileParallelism=false \
 ```
 
 Two separate `vitest run` invocations, one file each, work equally well.
+
+## D06 and D03 on the mounted browser (D06, D03, I02, I11)
+
+`tests/browser/d06-mounted.mjs` (`pnpm verify:d06-mounted`, beside
+`verify:browser` rather than inside it) runs the in-process D06 grid again in
+a real Chromium page. The person signs in through GoTrue, and every request
+is made by the `OperationsClient` module Vite serves to that page
+(`throughClient`), against the API on a socket and a real Postgres. The grid
+is not copied. The operations, keys, probe values and durable comparison come
+from `tests/acceptance/d06-cases.ts`, and the positive bodies from
+`role-case-bodies.ts` with their `asPerson` pointed at the page.
+
+- **Cells:** 966. That is 35 operations × 27 top-level keys (945) plus 7
+  `fields` operations × 3 installed system fields (21). The L6 packet's 872
+  missing cells were counted on the older 35 × 25 grid. Every one of those
+  (operation, key) pairs is in this grid.
+- **What a cell asserts:** a valid control succeeds. The same valid request
+  with the one field is refused with the exact code naming only that key
+  (`FIELD_NOT_WRITABLE`, or `SOURCE_SPOOFED` for `fields.source` on
+  `task.create` and `task.update`), and it echoes nothing. Every public table
+  keeps its count and newest `xmin`, and exactly one refused audit row holds
+  the attempted value. Then the request without the field succeeds under a
+  fresh operation identity.
+- **Per-cell receipt:** each cell writes one JSON line to
+  `d06-mounted-cells.jsonl` (operation, field, placement,
+  `surface: mounted-browser`, expected and actual code, names, control,
+  retry, pass, head). `d06-mounted-summary.json` holds the per-operation
+  applicability.
+- **I02:** all 35 operations are called from the page, so each operation's
+  valid control is its mounted web positive. Two need a precondition the page
+  cannot make:
+  - `grant.revoke`: its grant is issued by `tests/commands/fixture.ts`
+    `grantTo`, because no page operation issues a grant.
+  - `delegation.revoke`: its delegation is opened by the alpha agent's pickup
+    on `/api/a/b/alpha/task/pickup`, because an agent is not a page user.
+- **D03, browser column** (`d06-mounted-d03.mjs`): each of the 11
+  `PROTECTED_TASK_FIELDS` is added on the wire to the task screen's own Save,
+  which goes through `submitEdit`. The run asserts four things:
+  - the exact code and names. Eight fields are `TRANSITION_PROTECTED` naming
+    `key=owning operations`, `intake_state` included, which names
+    `task.triage`. `completed_at` and `key` are `FIELD_NOT_WRITABLE`, and
+    `source` is `SOURCE_SPOOFED` (403);
+  - the `public.records` row is unchanged, read by the admin;
+  - nothing is echoed;
+  - the text the existing renderer draws (`p.field__error[role=alert]`)
+    starts with the code and carries the names, owning operation included.
+
+  One screenshot per field, `D03-<field>.png`. N3 and N4 in
+  `cases-n3-n5.mjs` now also require the exact code and names, not just
+  `refused`.
+
+- **I11:** `servedIdentity` in `tests/browser/harness.mjs` fetches, in the
+  signed-in page, the entry document, its module scripts, the `IN_PAGE`
+  modules and every loaded `/src/` module. It prints each URL with its sha256
+  and byte count beside `git rev-parse HEAD` and whether the tree was dirty.
+  The same list goes into `MANIFEST.json`, together with a sha256 for every
+  PNG. The served modules are Vite's dev transform of the source (the local
+  slice is served by Vite dev), not a `vite build` bundle.
+
+**Lane runs on `20363eb`** (tested, lane run, own stack: Postgres on 54399,
+API 8799, Vite 5199):
+
+- **Grid:** 939 of 966 cells passed on both runs (118 s and 139 s).
+- **D03:** 11 of 11 on both runs.
+- **Not proved:** the 27 `delegation.revoke` cells. Each failed at its
+  precondition, before its control, because the alpha agent's pickup
+  answered 401 `AUTH_UNKNOWN_LOGIN`. The lane's
+  `.local/synthetic-agents.json` password for the alpha agent's login is not
+  the one the shared GoTrue holds (`invalid_credentials`). Another lane
+  created that user, and `scripts/local-seed.mjs` keeps an existing agent
+  user's password rather than resetting it. These cells are unproved on
+  the mounted browser, not passed.
+- **`verify:browser` on the same stack:** 84 of 85. B6 threw at the same
+  agent pickup.
 
 ## Delegated-pickup proof group: cases added for the freeze
 
