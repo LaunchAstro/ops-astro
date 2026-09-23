@@ -14,10 +14,16 @@
 // gate would catch, because opening the panel is the act that would make the
 // seam appear.
 //
-// The working slice registers no panel. The draft registers one, `ai`, whose
-// surface reads conversation records this build does not store; `route` stays
-// in the shape for it, and this list is empty rather than carrying a dock tab
-// that opens onto nothing.
+// The working slice registers one panel, `settings`, and it is a navigation
+// entry rather than a drawer: `route` is the address that draws the surface,
+// and the dock tab goes there. The draft registers a second, `ai`, whose
+// surface reads conversation records this build does not store; that one stays
+// unregistered, because a dock tab that opens onto nothing is worse than no
+// tab at all.
+//
+// **A registration with a route the router does not serve is the failure this
+// registry has to avoid.** `/settings` is in `routes.ts` and resolves, so the
+// tab has somewhere to arrive.
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -29,4 +35,11 @@ export interface PanelRegistration {
   readonly route: string | null;
 }
 
-export const PANELS: readonly PanelRegistration[] = [];
+export const PANELS: readonly PanelRegistration[] = [
+  {
+    id: 'settings',
+    label: 'Settings',
+    ariaLabel: 'Business settings',
+    route: '/settings',
+  },
+];

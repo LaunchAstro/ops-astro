@@ -42,9 +42,40 @@ export interface TaskSummary {
   readonly revision: number;
 }
 
+/**
+ * One comment as `task.read` carries it.
+ *
+ * The keys are the server's spelling, not this file's: `comment_type` and
+ * `posted_at` arrive snake_cased because they are the comment record's own
+ * field names, and the external projection is an allowlist over those same
+ * names (`docs/local/AUTHORITY.md`). Renaming them here would mean a projection
+ * that drops a field arrives as `undefined` under a name the server never
+ * used, and the screen would have to guess which of the two it was looking at.
+ *
+ * **Every field is optional except the identifier**, because an external reader
+ * is given fewer of them. The screen draws what arrived and says nothing about
+ * what did not; it does not fill a gap in a projection with a word of its own.
+ */
+export interface TaskComment {
+  readonly id: string;
+  readonly audience?: string;
+  readonly author?: string;
+  readonly body?: string;
+  readonly comment_type?: string;
+  readonly posted_at?: string;
+  readonly edited_at?: string | null;
+  readonly source?: string;
+}
+
 export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
   readonly history: readonly TaskHistoryEntry[];
+  /**
+   * In posted order, as the read returned them. An internal reader is given
+   * every comment in full; every other role is given the client comments in
+   * the fields the catalogue marks `shared`.
+   */
+  readonly comments: readonly TaskComment[];
 }
 
 export interface TaskReadResult {

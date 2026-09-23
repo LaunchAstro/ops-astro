@@ -34,6 +34,8 @@ import { caseN7, casesN6 } from './cases-n6-n7.mjs';
 import { casesCreateRetry } from './cases-create-retry.mjs';
 import { casesTaskDrafts } from './cases-task-drafts.mjs';
 import { casesSessionExpiry } from './cases-session-expiry.mjs';
+import { casesComments } from './cases-comments.mjs';
+import { casesSettings } from './cases-settings.mjs';
 import { casesN1toN2 } from './cases-n1-n2.mjs';
 import { casesB6toB7 } from './cases-b6-b7.mjs';
 
@@ -75,6 +77,16 @@ try {
   await casesN6(run);
   await casesTaskDrafts(run);
   await casesSessionExpiry(run);
+  // C and S come after SX and before B6/B7. After SX because each opens a
+  // context of its own and neither wants the previous group's session; before
+  // B6/B7 because those stop the API and the database container, and a group
+  // that needs either cannot follow them.
+  //
+  // **S issues and revokes a grant**, so it must not sit in front of N6, which
+  // holds a read taken before a revocation and cannot have grants churning
+  // under it. Here it is well behind it.
+  await casesComments(run);
+  await casesSettings(run);
   await casesB6toB7(run);
   await context.close();
 } catch (error) {

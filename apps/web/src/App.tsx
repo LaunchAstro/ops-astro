@@ -12,11 +12,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell, type RailEntry } from '@launchastro/ui';
 import { ROUTES, matchRoute } from './routes.ts';
+import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { SettingsScreen } from './screens/Settings.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -180,6 +182,12 @@ export function App(props: AppProps): ReactElement {
           }}
         />
       </>
+    ) : route.id === 'agency:settings' ? (
+      <SettingsScreen
+        client={client}
+        grantKey={grantKey}
+        storage={typeof sessionStorage === 'undefined' ? null : sessionStorage}
+      />
     ) : (
       <TaskDetailScreen client={client} grantKey={grantKey} taskKey={match?.params['key'] ?? ''} />
     );
@@ -200,9 +208,22 @@ export function App(props: AppProps): ReactElement {
           </span>
         )
       }
-      dock={[]}
-      onDockTab={() => {
-        /* No panel is registered in the working slice. */
+      // The panel registry is the dock. Each registration names the address
+      // that draws its surface, and the tab navigates there rather than
+      // opening a drawer over the page: the surface has a real address, and an
+      // address a person can quote is worth more than a panel they cannot.
+      dock={
+        session === null
+          ? []
+          : PANELS.map((panel) => ({
+              id: panel.id,
+              label: panel.label,
+              open: panel.route !== null && here === panel.route,
+            }))
+      }
+      onDockTab={(id) => {
+        const panel = PANELS.find((entry) => entry.id === id);
+        if (panel?.route != null) props.navigate(panel.route);
       }}
       seated={false}
     >

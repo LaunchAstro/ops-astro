@@ -19,7 +19,7 @@
 // report sixteen duplicates that are not duplicates or silently collapse the
 // agency and portal pairs into one entry.
 //
-// The working slice registers the three addresses it serves. The draft also
+// The working slice registers the four addresses it serves. The draft also
 // registers `/agent/`; that surface draws records no part of this build stores,
 // so it is not registered here — a route that resolves to nothing is a worse
 // answer than an address that does not resolve.
@@ -77,6 +77,20 @@ export const ROUTES: readonly RouteDescriptor[] = [
     title: 'Task',
     surface: 'S2',
     rail: false,
+    authenticated: true,
+  },
+  {
+    // The business's own two operation-classified settings. It draws no pinned
+    // surface — the mockup has no settings screen — so `surface` is `none`
+    // rather than a letter it would be borrowing. It carries a rail entry
+    // because it is a place a person goes to deliberately, and the panel
+    // registry carries the same destination for the dock.
+    id: 'agency:settings',
+    namespace: 'agency',
+    path: '/settings',
+    title: 'Settings',
+    surface: 'none',
+    rail: true,
     authenticated: true,
   },
 ];

@@ -38,6 +38,10 @@ const TASK = {
   completedAt: null,
   revision: 3,
   history: [] as { at: string; actorId: string; operation: string }[],
+  // `task.read` carries the task's comments. This stub is not about them, so
+  // the list is the empty one the read gives a task nobody has spoken on — an
+  // absent key would be a shape the API never sends.
+  comments: [],
 };
 
 const PEOPLE = [
