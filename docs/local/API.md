@@ -146,13 +146,13 @@ column is **queued** for a later lane; nothing in this part adds it, and
 `NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
 `DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
 
-| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                     |
-| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                               |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `SCOPE_NOT_GRANTED` 403 |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                       |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`                                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                     |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                    |
+| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                                 |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                                                   |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                           |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                |
 
 `task.propose` writes a proposal beside the task and leaves the task's own
 revision alone, so a caller may keep writing against the revision they hold.
@@ -168,6 +168,40 @@ never read. The signing key and the budget cap are not in the body: the key
 comes from the deployment's environment and the cap is the business's own,
 read rather than created, because a command that created the ceiling it then
 spent against could never be refused `BUDGET_EXHAUSTED`.
+
+Three of those codes arrived with lane L4-RUNTIME-FIX and are registered here
+with the statuses the runtime suggests. `LINEAGE_NOT_ON_TASK` 409 is
+`task.propose` naming a `lineageId` that belongs to a different task in the
+same business — the caller may hold it legitimately and it is still not this
+task's. `CAP_BINDING_MISMATCH` 409 is a decision whose version is in a currency
+the task's open envelope was not opened in; the cap half of that check is not
+reachable through a command, because every decision on a business reads the
+same cap. `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 is below.
+
+`task.handback` takes `actualMinor` only so that sending one is an answer
+rather than a silence. Nothing in this head dispatches, so no number here can
+be honest, and any non-null value is `ACTUAL_EXPENDITURE_UNSUPPORTED` 422
+naming the key; `null` and leaving it out are the same request. Its result
+carries `reportId`, the identity of the durable handback report, because a
+report nobody can name is a report nobody can read.
+
+**One refusal in this surface commits.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
+on `task.handback` are answered _after_ the runtime has written an append-only
+`handback_reports` row with `disposition = 'retained'`: a stale holder's work
+was still really done, and the refusal and the retained report are one fact.
+Every other refusal rolls its handler's savepoint back; these two release it,
+and the handler says which it is rather than a list of codes held somewhere
+else. `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately not one of them — it is
+refused before the first write, so there is nothing to keep.
+
+**A known gap, not a decision.** A `task.pickup` of a reservation whose lease
+has expired should recover it into a fresh hold with a new `reservationId` and
+`attemptId`. It does not: the second pickup mints a delegation for a purpose
+the agent still holds live and faults on
+`delegations_one_live_per_purpose_idx`, so the caller gets `500` with a
+non-JSON body instead of any refusal, and the aborted transaction writes no
+audit row for the attempt. `tests/api/task-runtime-routes.test.ts` records it
+as an expected failure so that fixing it is loud.
 
 `task.pickup` and `task.handback` refuse `AUTH_NO_AGENT_IDENTITY` 401 on the
 person path. A pickup mints a delegation for an agent identity a person's
