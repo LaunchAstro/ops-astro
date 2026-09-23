@@ -502,6 +502,62 @@ export async function handback(
 }
 
 /**
+ * The historical holder's report, retained and nothing else (T4: "a restricted
+ * evidence-only handback intake ... authenticates the historical actor/lease
+ * binding, writes only an append-only report and never changes the task,
+ * gate, current lease or money").
+ *
+ * The caller has already bound the credential to a delegation that is no
+ * longer live. This binds the rest under the same row: the lease is that
+ * delegation's, held by that agent, and the fence is the one it was issued.
+ * Any of them wrong and nothing is written. When they all hold, one
+ * `retained` row records the report and the refusal that kept it; no lease,
+ * delegation, run, attempt, reservation, gate or envelope is read for update
+ * or written, and no successor is considered. Returns whether a row was kept.
+ */
+export async function retainHistoricalReport(
+  tx: TenantQuery,
+  intake: {
+    readonly leaseId: string;
+    readonly delegationId: string;
+    readonly holderActorId: string;
+    readonly fence: number;
+    readonly outcome: string;
+    readonly report: Readonly<Record<string, unknown>>;
+    readonly refusalCode: string;
+  },
+): Promise<boolean> {
+  if (intake.outcome !== 'completed' && intake.outcome !== 'failed') return false;
+  if (!Number.isSafeInteger(intake.fence)) return false;
+  const leases = await tx.query<{ readonly reservation_id: string; readonly run_id: string }>(
+    `select reservation_id, run_id from public.leases
+      where business_id = $1 and id = $2 and delegation_id = $3 and holder_actor_id = $4
+        and fence = $5`,
+    [tx.businessId, intake.leaseId, intake.delegationId, intake.holderActorId, intake.fence],
+  );
+  const lease = leases[0];
+  if (lease === undefined) return false;
+  await tx.query(
+    `insert into public.handback_reports
+       (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
+        outcome, refusal_code, report)
+     values ($1, $2, $3, $4, $5, $6, 'retained', $7, $8, $9::text::jsonb)`,
+    [
+      tx.businessId,
+      randomUUID(),
+      intake.leaseId,
+      lease.reservation_id,
+      lease.run_id,
+      intake.fence,
+      intake.outcome,
+      intake.refusalCode,
+      JSON.stringify(intake.report),
+    ],
+  );
+  return true;
+}
+
+/**
  * The successor's three bounds, read under the caller's locks. Returns `null`
  * when it fits and the refusal otherwise, so each answer names the bound that
  * was missed rather than "out of bounds".

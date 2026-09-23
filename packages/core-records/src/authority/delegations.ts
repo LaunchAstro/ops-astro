@@ -362,6 +362,34 @@ export async function resolveDelegation(
 }
 
 /**
+ * The delegation a presented credential named, once it has stopped being live.
+ *
+ * Read-only, and it permits nothing. It exists for one caller: the agent
+ * entry's evidence-only handback intake (TRANSACTION-CONTRACT T4), which keeps
+ * a report produced under a delegation that was since settled, revoked or
+ * naturally expired. The row is reached through the same binding
+ * `resolveDelegation` uses (this business, this authenticated agent, this
+ * credential digest) and only when that binding answers to no live
+ * delegation, so it never stands in for `resolveDelegation` and never widens
+ * what a live credential reaches. What it returns is an identity to bind a
+ * historical lease to, not an authority.
+ */
+export async function resolveHistoricalDelegation(
+  tx: TenantQuery,
+  agentActorId: string,
+  credential: string,
+): Promise<{ readonly id: string } | undefined> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select id from public.delegations
+      where business_id = $1 and agent_actor_id = $2 and credential_hash = $3
+        and (revoked_at is not null or settled_at is not null or expires_at <= now())`,
+    [tx.businessId, agentActorId, digestOf(credential)],
+  );
+  const found = rows[0];
+  return found === undefined ? undefined : { id: found.id };
+}
+
+/**
  * What this delegation permits for this call, right now.
  *
  * Order matters and is the point. The decision exclusion first, so it is never
