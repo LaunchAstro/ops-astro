@@ -28,8 +28,13 @@ container name, pinned digest, port and volume `db-up.sh` uses, so the two
 converge whichever runs first. Neither script touches the Hub's `supabase_*`
 containers.
 
-`.local/` holds `db.env`, `auth.env` and `synthetic-users.json`. It is
-gitignored and never enters a commit.
+`.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
+`synthetic-agents.json` and `gate.env`. It is gitignored and never enters a
+commit. The last two are the seed's: the agent identities each business gets,
+with the password each signs in to GoTrue with, and the key decisions are
+signed with — generated once and read back, because a second seed minting a new
+secret would leave every decision already on the chain signed by a key this
+deployment no longer holds.
 
 ## Routes
 
@@ -64,9 +69,12 @@ signature and `exp` with `SUPABASE_JWT_SECRET` and takes `sub` as
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
 `businessId` alongside its token is a request with those fields nowhere to go.
-A missing, expired, forged, unsigned or subject-less token all answer
+A missing, forged, unsigned or subject-less token all answer
 `AUTH_UNKNOWN_LOGIN`, because telling them apart tells an unauthenticated
-caller which guess was closer.
+caller which guess was closer. An **expired** token is the one exception and
+answers `AUTH_SESSION_EXPIRED` 401: it is not a guess, since its signature
+verifies against this deployment's own secret, so the caller learns nothing
+they could not already prove and gains the re-login path.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
@@ -131,11 +139,148 @@ The two settings commands take no `expectedRevision`: `business_settings`
 carries no revision column, so there is nothing for a caller to write against.
 That is a schema gap rather than a decision and it is recorded as one.
 
-**Five routes are unchanged and still refuse.** `task.propose`, `task.decide`,
-`task.pickup`, `task.handback` and the agent's own API path answer
-`DEPENDENCY_NOT_LANDED` 501 naming what they wait for. They wait on L4's
-runtime mechanisms and are part B of L3; nothing here is a placeholder for
-them.
+## The operations L4's runtime made possible
+
+`NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
+`DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
+
+| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                     |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                               |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `SCOPE_NOT_GRANTED` 403 |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                       |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`                                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                     |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                    |
+
+`task.propose` writes a proposal beside the task and leaves the task's own
+revision alone, so a caller may keep writing against the revision they hold.
+The proposer, the subjects and the expiry instant are the server's: a body
+naming an absolute `expiresAt` could raise a gate nobody can decide or hold a
+ceiling open for a decade, and a duration the server adds to its own clock can
+do neither.
+
+`task.decide` names the **exact version** it is deciding. It is compared under
+the locks and never trusted, so a decision made from a page that has gone stale
+is `VERSION_SUPERSEDED` rather than a decision about something the decider
+never read. The signing key and the budget cap are not in the body: the key
+comes from the deployment's environment and the cap is the business's own,
+read rather than created, because a command that created the ceiling it then
+spent against could never be refused `BUDGET_EXHAUSTED`.
+
+`task.pickup` and `task.handback` refuse `AUTH_NO_AGENT_IDENTITY` 401 on the
+person path. A pickup mints a delegation for an agent identity a person's
+session does not have, and a body naming the agent to mint for would be a body
+choosing whose authority is borrowed. Their entry point is the agent's own,
+below.
+
+**A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
+422, naming the keys, with nothing written (D06). `business_id`, `actor_id`,
+`person_id`, `created_at`, `updated_at`, `revision`, `source`, `author` and
+their camel-case spellings are all derived by the server, and the check is in
+`prepareCommand`, which every command goes through. The attempted values go to
+the audit event and never to the response.
+
+## Proposal projection
+
+`task.read` carries every proposal on the task under `proposals`, newest
+lineage first. It is on the detail rather than behind a read of its own because
+a page that showed the evidence and then fetched the version separately could
+offer a decision on a version it never displayed, and the exact version is the
+whole of what `decide` compares. One read, one answer, one `versionId` for the
+button to carry.
+
+```ts
+proposals: {
+  lineageId: string;
+  state: string;                       // live, rejected, cancelled
+  versions: {                          // newest first; the head is the live one
+    versionId: string;                 // what task.decide takes
+    version: number;
+    purpose: string;
+    maximumMinor: number;
+    currency: string;
+    payloadDigest: string;
+    payload: unknown;
+    supersededAt: string | null;
+    runId: string | null;
+    evidence: { id; renderer; digest; body } | null;
+    gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
+  }[];
+  decisions: {                         // the chain as stored, oldest first
+    id; seq; decision; round; decidedByPersonId; decidedAt;
+    signingKeyId; signature; prevHash; hash;
+  }[];
+  reservations: {
+    id; state; heldMinor; actualMinor; classifiedCause; leaseId;
+    lease: { id; fence; state; expiresAt; holderActorId } | null;
+    attempt: { id; state; dispatchMarker; observed } | null;
+  }[];
+}[]
+```
+
+Three things about the shape are load-bearing. `gate.expired` is the
+**server's** answer, so a client with a skewed clock cannot disagree with the
+gate about whether it may still be decided. The decision links are the stored
+rows, hash and all, so a reader can check the chain rather than trust a summary
+of it — nothing here recomputes a hash, because handing back a recomputed value
+as though it were the stored one would make a tampered row invisible. And the
+evidence pack is the renderer's output **as stored**, never re-rendered on
+read: evidence that changed between the decision and the display is the one
+thing a gate cannot survive.
+
+The proposals go to every reader of the detail, internal or external. The
+projection carries no comment body and no field value the catalogue classifies
+— it carries the proposal's own payload, which is what the proposer put in it
+and what the decision was about — so a reader who may see the task may see what
+somebody proposed doing to it.
+
+## The agent's own entry point
+
+`POST /api/a/b/:businessKey` + the same generated paths. A second entry point,
+not a second surface: `/api/a/b/alpha/task/pickup` is the agent asking and
+`/api/b/alpha/task/pickup` is a person asking, and neither can be mistaken for
+the other by a proxy, a log reader or the server.
+
+`Authorization: Bearer <GoTrue access token>` says which **agent login** is
+calling, and it resolves through `identity/agent-login.ts` rather than the
+person path. A login is in `person_logins` or in `actor_logins`, never both, so
+a person presenting themselves here is `AUTH_NO_AGENT_IDENTITY` 401 and an
+agent presenting itself on the person path is `AUTH_NO_MEMBERSHIP` 403.
+
+`X-Agent-Delegation: <credential>` carries the delegation `task.pickup`
+returned. It is a header and not a body field for the same reason the bearer
+token is: a credential in a body is a credential that gets logged with the
+payload, stored in the register row and compared by a digest.
+
+An agent login **confers nothing at all**. Before a pickup it may read
+`task.queue` and call `task.pickup`; every other operation answers
+`DELEGATION_NOT_LIVE` 401, which is also what an unknown, expired, revoked or
+settled credential answers, deliberately — telling them apart tells a caller
+holding a stolen credential which of those it is. After a pickup every call is
+intersected with the delegation on the spot: the collection, the action, and a
+`scope` that must be **exactly** the one task it was minted for.
+
+| Answer                          | Status | When                                                                         |
+| ------------------------------- | ------ | ---------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                             |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                     |
+| `DELEGATION_NOT_LIVE`           | 401    | no credential, or none that answers to a live delegation                     |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry         |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always, from L4's `decideAsAgent` asking L2                   |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | an operation outside the queue, a pickup, its own task and a handback        |
+
+`AUTH_SESSION_EXPIRED` is answered on **both** paths. The rule above for
+everything else stands — a missing, forged, unsigned or subject-less token all
+answer `AUTH_UNKNOWN_LOGIN` — because those are guesses and an expired token is
+not: its signature verifies against this deployment's own secret, so whoever
+sent it held a credential this server issued a session for. They learn nothing
+from being told it has run out that they could not already prove, and they gain
+the difference between a door they can open and one they cannot.
+
+An agent is never an internal reader. It is a delegate working one task, not a
+member of the business, so `task.read` gives it `externalCommentProjection`'s
+answer and an internal note is absent from it rather than hidden in it (I09).
 
 ## Reads
 
