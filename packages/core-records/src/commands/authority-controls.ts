@@ -211,13 +211,14 @@ export async function revokeGrantAsManager(
     readonly scope_id: string | null;
     readonly revoked: boolean;
   }>(
-    // F4. Locked before the runtime set, and that is outside the global order
-    // on purpose rather than by accident: `grants` is not a class in it, and
-    // no runtime operation locks a grant row (pickup and every delegated call
-    // read grants without one), so a transaction holding runtime locks never
-    // waits on this row and no cycle can close through it. What it buys is
-    // that two revocations of one grant serialise here, before either has
-    // discovered or locked any work.
+    // F4. Locked before the runtime set, outside the global order on purpose:
+    // `grants` is not a class in it. The one runtime operation that locks a
+    // grant row is `task.pickup`, which holds `for share` on its covering
+    // grants (`holdCoveringGrants`) before its own runtime locks, the same
+    // order as here. So no transaction waits on a grant row while holding
+    // runtime locks, and no cycle can close through it. Two revocations of
+    // one grant serialise here, and a pickup and a revocation serialise on the
+    // grant row, before either has discovered or locked any work.
     `select collection, action, scope_kind, scope_id, (revoked_at is not null) as revoked
        from public.grants where business_id = $1 and id = $2 for update`,
     [tx.businessId, grantId],
