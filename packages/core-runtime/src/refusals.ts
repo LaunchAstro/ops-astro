@@ -33,6 +33,12 @@ export type RuntimeRefusalCode =
   | 'BUDGET_EXHAUSTED'
   /** The proposal asks for more than the caller's authority covers. */
   | 'PROPOSAL_OUT_OF_SCOPE'
+  /** The named lineage belongs to a different task than the request does (R3). */
+  | 'LINEAGE_NOT_ON_TASK'
+  /** The request names a cap the task's existing envelope does not draw on (R2). */
+  | 'CAP_BINDING_MISMATCH'
+  /** This head dispatches nothing, so it has no observed expenditure to settle (R6). */
+  | 'ACTUAL_EXPENDITURE_UNSUPPORTED'
   | 'RESERVATION_NOT_CLAIMABLE'
   | 'LEASE_HELD'
   | 'LEASE_NOT_OWNED'
@@ -87,6 +93,9 @@ export const SUGGESTED_STATUS: Readonly<Record<RuntimeRefusalCode, number>> = {
   BUDGET_UNAVAILABLE: 409,
   BUDGET_EXHAUSTED: 402,
   PROPOSAL_OUT_OF_SCOPE: 403,
+  LINEAGE_NOT_ON_TASK: 409,
+  CAP_BINDING_MISMATCH: 409,
+  ACTUAL_EXPENDITURE_UNSUPPORTED: 422,
   RESERVATION_NOT_CLAIMABLE: 409,
   LEASE_HELD: 409,
   LEASE_NOT_OWNED: 403,

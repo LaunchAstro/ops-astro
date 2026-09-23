@@ -85,7 +85,7 @@ export async function handback(
   // does not change the cap — "it must lock that envelope even when it need
   // not lock an unchanged cap" (T4). The cap is locked too, because the
   // classifier's release reads the cap's committed total.
-  await acquire(tx, [
+  const locks = await acquire(tx, [
     { lockClass: 'cap', id: found.cap_id },
     { lockClass: 'envelope', id: found.envelope_id },
     { lockClass: 'task', id: found.task_id },
@@ -148,6 +148,19 @@ export async function handback(
     );
   }
 
+  // R6. This head exports no dispatch, no worker and no provider adapter, so a
+  // reported cost -- including zero -- is a number nothing observed. Settling
+  // on it would write expenditure the accepted first-head boundary says cannot
+  // exist, and a fabricated zero is exactly the "fake zero-cost settlement" T5
+  // names. Refused before the first write; the hold stays whole.
+  if (request.actualMinor !== null) {
+    return refuse(
+      'ACTUAL_EXPENDITURE_UNSUPPORTED',
+      `this handback reports ${request.actualMinor} minor units of actual expenditure, and no path in this head can have spent it`,
+      'Hand back with a null actual. Settling real provider usage belongs to the later authorised, evidence-backed accounting path.',
+    );
+  }
+
   const attempts = await tx.query<{ readonly id: string; readonly marked: boolean }>(
     `select id, (dispatch_marker or observed) as marked from public.attempts
       where business_id = $1 and reservation_id = $2`,
@@ -165,57 +178,37 @@ export async function handback(
     `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
     [tx.businessId, found.run_id],
   );
-  await tx.query(
-    `update public.attempts set state = 'handed_back', outcome = $3
-      where business_id = $1 and id = $2`,
-    [tx.businessId, attempt.id, request.outcome],
-  );
+  // R7. The marker is read under the locks and decides whether the attempt's
+  // disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
+  // requires a marked or observed attempt to sit in `quarantined`, so writing
+  // `handed_back` over it aborts the transaction before the classifier can run
+  // and the documented quarantine result becomes unreachable. A marked attempt
+  // is therefore left to the classifier, which quarantines it and keeps the
+  // full hold for the recorded reconciliation owner.
+  if (!attempt.marked) {
+    await tx.query(
+      `update public.attempts set state = 'handed_back', outcome = $3
+        where business_id = $1 and id = $2`,
+      [tx.businessId, attempt.id, request.outcome],
+    );
+  }
 
-  let reservationState: HandedBack['reservationState'] = 'held';
-  let classification: Classification | null = null;
-
-  if (request.actualMinor !== null) {
-    // A real cost. The hold becomes an actual of that amount and the envelope
-    // moves the number from one total to the other in one statement, so no
-    // reader ever sees it counted twice or not at all.
-    await tx.query(
-      `update public.reservations
-          set state = 'actual', actual_minor = $3, terminal_at = now()
-        where business_id = $1 and id = $2 and state = 'held'`,
-      [tx.businessId, found.reservation_id, request.actualMinor],
-    );
-    await tx.query(
-      `update public.attempts set actual_minor = $3, settled_at = now()
-        where business_id = $1 and id = $2`,
-      [tx.businessId, attempt.id, request.actualMinor],
-    );
-    const held = await tx.query<{ readonly held_minor: string }>(
-      `select held_minor::text as held_minor from public.reservations
-        where business_id = $1 and id = $2`,
-      [tx.businessId, found.reservation_id],
-    );
-    await tx.query(
-      `update public.task_envelopes
-          set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-        where business_id = $1 and id = $2`,
-      [tx.businessId, found.envelope_id, Number(held[0]?.held_minor ?? 0), request.actualMinor],
-    );
-    reservationState = 'actual';
-  } else {
-    // No cost and nothing observed. The classifier decides, under the locks
-    // this transaction already holds, whether the hold may be abandoned — and
-    // a marked attempt keeps its full hold as quarantined instead.
-    classification = await classifyUnderLocks(tx, {
+  // No cost and nothing observed, because R6 refused every other case above.
+  // The classifier decides, under the locks this transaction already holds,
+  // whether the hold may be abandoned -- and a marked attempt keeps its full
+  // hold as quarantined instead. The settlement branch that used to sit here
+  // is gone rather than guarded: a branch that can only ever write a number
+  // nothing observed is not a branch this head should be able to reach.
+  const classification: Classification = await classifyUnderLocks(
+    tx,
+    {
       reservationId: found.reservation_id,
       cause: 'handback_completed',
       causeId: request.leaseId,
-    });
-    reservationState = attempt.marked
-      ? 'quarantined'
-      : classification.released
-        ? 'abandoned'
-        : 'held';
-  }
+    },
+    locks,
+  );
+  const reservationState: HandedBack['reservationState'] = classification.state;
 
   // No audit row is written here. `audit_events` is written through L3's
   // command envelope, which owns the actor, the operation identity and the
