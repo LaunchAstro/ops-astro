@@ -205,13 +205,18 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
 it, not `checkDelegatedAuthority`, for an operation an agent may not call
 whatever it holds: anything outside `AGENT_SURFACE`
-(`commands/agent-envelope.ts:111-119`, refused at `:184`), and `task.comment`,
-which is in that set but has no agent branch and falls to the handler's default
-(`:467`). It is 403 and not `DELEGATION_NOT_LIVE` 401 because a live credential
-would not change the answer. `tests/acceptance/role-case-matrix.test.ts` case (h)
-asserts it over every declaration, and `:416` asserts it for `task.comment`. The
-register still lists it in `UNPRODUCED_CODES` (`commands/register.ts:399`),
-which the tests above contradict; that list is not this file's to correct.
+(`commands/agent-envelope.ts:113-122`, refused at `:192`), and anything in that
+set with no agent branch, which falls to the default (`:532-535`). It is 403 and
+not `DELEGATION_NOT_LIVE` 401 because a live credential would not change the
+answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it over
+every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts:394-396`).
+
+**An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)):
+`task.comment` has an agent branch (`agent-envelope.ts:460`), and the matrix's
+case (i) asserts the saved comment identity. The agent may write in the
+`internal` audience only (`AGENT_AUDIENCES`, `:127`); a `client` comment is
+`AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
+lane L3-CONTROLS's choice and awaits root or owner confirmation.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
 (`authority/delegations.ts:231-238`, and `:268-276` for two first mints racing)
@@ -233,6 +238,31 @@ a re-login path. Never an empty result, never a 500, never a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
 "the server is broken", and only one of those is a door they can open. The
 browser half — holding the draft, re-authenticating, resuming — is L5's.
+
+## The external party (R4)
+
+A person of the business with a login, an acting identity and **no
+membership** is refused `AUTH_NO_MEMBERSHIP` 403 until somebody shares a record
+with them. With a live share and no business grant, the same login resolves as
+an external party, whose session `roleKey` is null
+(`identity/login-resolution.ts:86-96`). Minimum contract 8.1 R4: "that task's
+shared fields and client-audience comments only".
+
+- **The share is a record-scoped grant.** `shareRecord`
+  (`authority/shares.ts:74`) issues a root `read` grant at `scope_kind =
+'record'`, under the sharer's own live `share` grant; a member without one is
+  `SCOPE_NOT_GRANTED`. `revokeShare` (`:98`) takes it back.
+- **The read is an allowlist.** `task.read` answers `sharedTask`, built from
+  the catalogue's `shared` fields and the client comments, never `task` with
+  parts cut ([API.md, "Reads"](API.md#reads)). A sibling record and the board
+  are `NOT_FOUND`.
+- **`session.capabilities`** shows the party its shares' pairs.
+- **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
+  rows in the matrix's case (g).
+- **Standing checks raw liveness.** Resolution asks whether a share grant is
+  revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
+  issues root grants only, so the two agree today; a derived share under a
+  revoked parent would still resolve and then be refused per call.
 
 ## Every attempt at the door
 
@@ -409,6 +439,14 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 - Nothing is cached. The next call re-evaluates through `effectiveGrants` or
   `resolveDelegation` and is refused. A call already admitted finishes in its
   own transaction (I10, `tests/api/controls-revoke.test.ts`, matrix case (f)).
+  That half is shown before and after, not as a concurrent in-flight read.
+
+The other three support controls, `task.cancel`, `task.restart` and
+`task.heartbeat`, ask authority the caller already holds and live in the
+runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)). A
+restart of a live, completed or already restarted lineage is
+`TRANSITION_NOT_PERMITTED` 409, the same code a second grant revocation
+answers.
 
 ## The restricted worker role
 
@@ -432,11 +470,12 @@ all four callers this section used to list as missing are built:
 - **The delegation caller.** `task.pickup` mints the delegation through
   `mintDelegation` (`packages/core-runtime/src/pickup.ts:139`), and
   `task.handback` settles it ([RUNTIME.md](RUNTIME.md)).
-- **The external comment read.** `task.read` serves
-  `externalCommentProjection` to every reader who is not internal, and to every
-  agent (`reads/tasks.ts:194`; "Reads" in API.md). No seeded login has a role
-  outside `owner`, `admin` and `member`, so no browser case reads a task as an
-  external person ([WEB.md](WEB.md#known-gaps-against-the-pinned-mockup)).
+- **The external comment read.** `task.read` serves the shared view to an
+  external party and `externalCommentProjection` to every agent ("Reads" in
+  API.md). A real external party is enrolled and read over HTTP
+  ([The external party](#the-external-party-r4)). The seed still enrols none,
+  so no browser case reads a task as an external person
+  ([WEB.md](WEB.md#known-gaps-against-the-pinned-mockup)).
 - **The settings commands.** `settings.set_four_eyes_threshold`,
   `settings.set_client_sign_off` and `settings.read` are built and write by
   revision, as [Business settings](#business-settings) says.
@@ -446,5 +485,12 @@ What is still absent:
 - **No grant-issuing route.** `issueGrant` is still an internal function.
   Revocation has routes: `grant.revoke` and `delegation.revoke`, described
   under [Revocation](#revocation).
+- **No exported share operation.** `shareRecord` is reached from the seed and
+  the tests only. A `task.share` command, or the gated external assignment of
+  minimum contract 3.5, belongs to the commands, surface and apps owners.
+- **No external comment.** Shares stay read-only until `task.comment` forces
+  `audience: client` for a non-member.
+- **Which task fields are `shared`** is an owner decision. As shipped none
+  are.
 - **No acceptance.** Every mechanism here is implemented and tested; none is
   accepted on the integrated head.

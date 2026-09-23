@@ -55,8 +55,11 @@ every line of product code, and the subject it carries is a real row in
 `logins`. The cast is `scripts/local-seed.mjs`'s cast by name and by role —
 `ada` admin, `mia` member, `noah` member with no grant, `orphan` a verified
 login with no membership, `bea` a member of the other business — with an agent
-actor written the way the seed writes one. The seed itself is not imported: it
-needs GoTrue and it writes into the running slice's database.
+actor written the way the seed writes one. The external party (R4) is not in
+the seed: `enrolExternal` in `world.ts` makes one, a person of `alpha` with a
+login and no membership, and `shareRecord` gives it its share. The seed itself
+is not imported: it needs GoTrue and it writes into the running slice's
+database.
 
 ## The proof files
 
@@ -67,6 +70,7 @@ needs GoTrue and it writes into the running slice's database.
 | `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1–N7) | see the matrix below |
 | `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02–D04)     | green, 38 cases      |
 | `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14) | see below            |
+| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09) | green                |
 
 ## The per-file cap, and why two files are harnesses
 
@@ -101,37 +105,34 @@ generated: L3-PART-B-2 took the table from 28 declarations to 30 and from 5
 reads to 7 between this lane's base and its merge, and **both rows arrived with
 no edit to the proof**.
 
-Last measured on `local/working-slice` at `3c0e02a`, merged into this branch:
+Last measured on branch `slice/matrix-docs`, from `local/working-slice` at
+`88f78fe`, on 23 September 2026:
 
 | Count                                                 | Measured                    |
 | ----------------------------------------------------- | --------------------------- |
-| Declarations                                          | **30** — 23 writes, 7 reads |
-| Reachable on the person prefix `/api/b/:businessKey`  | **30 of 30**                |
-| Reachable on the agent prefix `/api/a/b/:businessKey` | **30 of 30**                |
-| Reachable through `apps/cli/client.ts`                | **30 of 30**                |
-| Reachable through the web client's `read()` verb      | **3 of 7 declared reads**   |
+| Declarations                                          | **35** — 28 writes, 7 reads |
+| Reachable on the person prefix `/api/b/:businessKey`  | **35 of 35**                |
+| Reachable on the agent prefix `/api/a/b/:businessKey` | **35 of 35**                |
+| Reachable through `apps/cli/client.ts`                | **35 of 35**                |
+| Reachable through the web client's `read()` verb      | **7 of 7 declared reads**   |
 | Declared and not landed                               | **none**                    |
+| Person-prefix untyped faults                          | **none**                    |
+
+Web `read()` reach: 7 of 7 declared reads; none reachable only through
+`mutate()`. The five new rows are L3-CONTROLS' support controls.
 
 Reachable means **routed, not permitted**: the request arrives at the operation
 that owns the rule. Whether the operation then says yes or no is authority, and
 authority is item 2's. Collapsing the two would let a route that refuses
 everyone count as proof that the surface is served.
 
-### Named exceptions
+### Closed: four reads the mounted app could not reach as reads
 
-- **Four reads the mounted app cannot reach as reads.** `OperationsClient.read()`
-  takes `ReadName`, which is three names; the surface declares seven.
-  `task.queue` and `preset.plan` are reachable only through `mutate()`, which
-  always sends an `operationId` — and a read carries no operation identity,
-  because it has nothing to replay. `settings.read` and `session.capabilities`
-  arrived with L3-PART-B-2 and `ReadName` did not widen with them, so the
-  settings screen reaches both by **casting the name**
-  (`apps/web/src/screens/settings/reads.ts:23,26`), which routes because the
-  path is built from the string and type-checks only because the cast silences
-  the union. All four are reached by the wrong verb rather than not at all. The
-  case names exactly these four, so **it fails on the day `ReadName` widens**
-  and the list is brought back down. Closing it is a change to
-  `apps/web/src/operations/client.ts`, which is not this lane's file.
+`OperationsClient.read()` took three names against seven declared reads, so
+`task.queue` and `preset.plan` went through `mutate()` and the settings reads
+through a cast. `READ_NAMES` now holds all seven (SPEC-ADJUDICATE (b)), and
+`surface-inventory.test.ts` and `tests/surfaces/read-names.test.ts` require
+none unreachable.
 
 ## Item 2: the six roles and the nine cases
 
@@ -140,36 +141,73 @@ and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
-**283 rows: 253 pass, 30 named exceptions, zero failures**, as
-`.local/l5-matrix.tsv` records them. The four exceptions added over the base are
-the two new reads: `settings.read` joins case (a)'s positive control, and
-`session.capabilities` is an exception in three places because it is the one
-declaration that **needs no grant beyond membership**
-(`reads/capabilities.ts:20`) — `noah` under (e), and the agent before and after
-a pickup under (h) and (i). Each is asserted rather than skipped; the reasons
-are below.
+**331 rows: 296 pass, 35 named exceptions, zero failures**, as
+`.local/l5-matrix.tsv` recorded them on this branch. The rows grew with the
+five support controls, which every generated case now reaches.
 
 | Case                                                             | Rows |
 | ---------------------------------------------------------------- | ---- |
-| (a) own-business permitted — the positive control                | 30   |
-| (b) foreign business in the path                                 | 30   |
+| (a) own-business permitted — the positive control                | 35   |
+| (b) foreign business in the path                                 | 35   |
 | (c) foreign record id                                            | 16   |
 | (d) fabricated id                                                | 16   |
-| (e) no grant                                                     | 120  |
-| (f) grant revoked since the last read (I10)                      | 2    |
-| (g) external comment projection (I09)                            | 2    |
-| (h) pre-pickup agent restrictions and successes (I12)            | 30   |
-| (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 35   |
+| (e) no grant                                                     | 140  |
+| (f) grant revoked since the last read (I10)                      | 4    |
+| (g) external projection (I09), the real R4 and the agent         | 4    |
+| (h) pre-pickup agent restrictions and successes (I12)            | 35   |
+| (i) after pickup — ceiling, out of purpose, narrowed (I07/I08)   | 44   |
 | (j) agent decision excluded, with the person's success beside it | 2    |
 
 (c) and (d) are asserted to be **indistinguishable** — same status, same code,
 same body shape — which is the half of N1 that a foreign-read test usually
 leaves out.
 
-Every exception carries its reason in the row rather than being dropped: the
-two `task.pickup`/`task.handback` rows under (a) record that the person path
-refuses them by design, and the `mia` rows under (e) record that she holds the
-grant in question and the real no-grant role is `noah`.
+**Case (g) is the real external party now.** It used to record
+`except('external-party', …, 'no non-member role in the seed')`. It now enrols
+R4 with `enrolExternal`, shares the agent's task with `shareRecord`, and
+observes three passing rows: the shared read (`sharedTask`, no internal note,
+no title), a sibling `task.read` and a `task.board`, both `NOT_FOUND`. With the
+share taken out, the read row fails `AUTH_NO_MEMBERSHIP` 403. The fourth row is
+the agent's own read through `externalCommentProjection`.
+`tests/acceptance/external-party.test.ts` is the full R4 suite.
+
+### What each exception is
+
+An exception is a row that records a reason instead of a verdict. **None is an
+owner waiver**, and the word "exception" accepts nothing. Each row's reason
+text starts with one of two labels:
+
+- **Executed alternative**: something in this run asserts a different,
+  specified outcome for it. The reason names what, and the table cites the
+  spec line.
+- **Missing coverage**: nothing in this run asserts it. The reason, or the
+  table, names what would.
+
+Nine rows are executed alternatives:
+
+| Rows                                            | What is asserted instead                                         | Spec line                                                                                                                                                 |
+| ----------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (a) `grant.revoke`                              | the admin's revocation succeeds, case (f)                        | contract ledger line 36, revocation controls                                                                                                              |
+| (a) `task.pickup`                               | the agent's pickup succeeds, case (h); the person path refuses   | contract ledger line 30; minimum contract 8.2 case 9                                                                                                      |
+| (a) `task.heartbeat`                            | the agent's own-lease beat succeeds, case (i)                    | contract ledger line 38                                                                                                                                   |
+| (i) `task.queue`, `task.pickup`                 | both succeed without a delegation, case (h)                      | contract ledger line 62, I12                                                                                                                              |
+| (i) `session.capabilities`                      | 200, `purposeScope` is the picked-up task                        | none in the contract, which has no read of this kind; the rule is API.md, "Reads", and needs the root's ruling                                            |
+| (h) `session.capabilities`                      | 200, `purposeScope` null, grants exactly `BEFORE_PICKUP`'s pairs | none: minimum contract 8.2 case 9 says every other operation is refused. The alternative is `agent-envelope.ts:98-107`'s rule and needs the root's ruling |
+| (e) `session.capabilities` for `noah` and `mia` | 200 with the caller's own grants                                 | none: minimum contract 8.2 case 3 says `SCOPE_NOT_GRANTED`. The alternative is `reads/capabilities.ts:20`'s rule and needs the root's ruling              |
+
+Twenty-six rows are missing coverage:
+
+| Rows                                        | What would cover it                                                                                                                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| (e) 23 `mia` rows, each on a pair she holds | a member-positive sweep over each caller's held pairs. Case (a) drives the admin only. Case (f) happens to assert her `task.read` success |
+| (a) `task.handback`                         | a handback at the end of the agent journey. `tests/api/task-runtime-routes.test.ts:417` holds its success outside the matrix              |
+| (a) `delegation.revoke`                     | revoking the journey's own delegation after case (i). `tests/api/controls-revoke.test.ts:107` holds it outside the matrix                 |
+| (i) `task.handback`                         | a handback naming a lease another delegation holds, expecting `LEASE_NOT_OWNED`                                                           |
+
+Contract ledger lines are in the build run's
+`t1a-revision/CONTRACT-LEDGER.md`. The minimum contract is
+`research/minimum-contract-2026-09-10/CONTRACT.md` in the roadmap repository.
+Neither is in this tree.
 
 ## Item 3: the protected set on three surfaces
 
@@ -293,70 +331,44 @@ stays `cancelAndClassify`. L3-CONTROLS owns the routes.
 
 ## Defects found in other lanes' files
 
-Both are recorded as cases that assert the behaviour **as observed**, so each
-fails on the day it is fixed and this section has to be read. Neither is
-repaired here.
+Five defects were found here and recorded as cases that asserted the behaviour
+as observed. Four are fixed on this head, and the cases now assert the fix.
 
-1. **An absent `operationId` is answered untyped.**
-   `packages/core-records/src/commands/envelope.ts:83` guards the attempt
-   identity with `OPERATION_ID.test(request.operationId)`, and
-   `RegExp.prototype.test` coerces its argument to a string. A request that
-   omits the field arrives as `undefined`, coerces to the nine-character string
-   `"undefined"`, and passes the pattern at
-   `packages/core-records/src/commands/register-store.ts:35`
-   (`/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/u`). The real `undefined` then reaches
-   `lookupAttempt`'s bound parameter and the driver raises `UNDEFINED_VALUE`, so
-   the caller is handed a plain-text 500 instead of the `OPERATION_ID_REQUIRED`
-   422 `apps/api/status.ts:83` promises. `null` and `''` are refused correctly:
-   it is the absent field, which is what an ordinary HTTP caller sends most
-   easily, that gets through.
-
-2. **Five declarations answer an untyped fault where a typed refusal is owed.**
-   With a well-formed envelope and no operation-specific fields, an authorised
-   administrator receives a 500 from `task.create`, `task.restore`,
-   `task.purge`, `task.read` and `preset.plan`. `task.decide` answers
-   `FIELD_VALUE_INVALID` 422 for exactly this, so the pattern is in the tree
-   and these five do not reach it. It matters beyond tidiness: the mounted
-   app's client draws a non-2xx with no refusal body as _unavailable_
-   (`apps/web/src/operations/client.ts`), which is the word for a server that
-   fell over rather than one that decided, and checklist case B7 requires that
-   distinction to be real.
-
-3. **The mounted app does not draw the re-login path for an expired session.**
-   `apps/api/app.ts` answers an expired bearer `AUTH_SESSION_EXPIRED` 401 on
-   both prefixes, and `docs/local/AUTHORITY.md` calls that "the re-login path" —
-   the one refusal that is a door the person can open. The web client has a hook
-   for exactly that, `onSessionEnded`, and it fires on `SESSION_ENDED`, which
-   `apps/web/src/operations/client.ts` defines as `AUTH_UNKNOWN_LOGIN`. Two
-   different codes, so the hook does not fire for the one case it exists for.
-   Driven through the real `OperationsClient` against the real app: the refusal
-   arrives as `AUTH_SESSION_EXPIRED` and the hook fires **0 times**.
-
-4. **An agent may reach `task.comment` by the surface and not by the server.**
-   `packages/core-records/src/commands/agent-envelope.ts:98` puts `task.comment`
-   in `AGENT_SURFACE`, and `task.pickup` mints `['read', 'comment', 'write']`,
-   so a live credential passes `checkDelegatedAuthority` for it. But `serve`'s
-   switch (`:320`–`:366`) has no `task.comment` branch, so the call falls to
-   `default:` and answers `DELEGATION_EXCLUDES_OPERATION` 403 — **on the agent's
-   own picked-up task**. The surface says it may; the server says it may not.
-
-5. **The command line cannot report a fault at all.**
-   `apps/cli/client.ts:88` reads every answer with `await response.json()`,
-   which throws on a body that is not JSON. Against the five above it raises
-   `SyntaxError` rather than returning the status, so an operator driving the
-   product through the command line sees a crash where the API sent a 500.
+1. **Fixed: an absent `operationId` was answered untyped.** `envelope.ts`
+   guarded it with `OPERATION_ID.test(...)`, which coerced `undefined` to the
+   string `"undefined"`, and the caller got a plain-text 500. The guard now
+   checks the type first (`packages/core-records/src/commands/envelope.ts:90`),
+   and `surface-inventory.test.ts:307` asserts `OPERATION_ID_REQUIRED` 422 for
+   the absent field, `null` and `''`.
+2. **Fixed: five declarations answered an untyped fault.** `task.create`,
+   `task.restore`, `task.purge`, `task.read` and `preset.plan` gave an
+   authorised admin a 500 for a bare envelope. They now answer typed operand
+   refusals (API.md, "Routes"), and `surface-inventory.test.ts` requires
+   **zero** person-prefix untyped faults over all 35 declarations.
+3. **Fixed: the mounted app did not draw the re-login path.** The web client's
+   `SESSION_ENDED` now holds `AUTH_UNKNOWN_LOGIN` and `AUTH_SESSION_EXPIRED`
+   (`apps/web/src/operations/client.ts:317`), and
+   `restart-and-expiry.test.ts:362` asserts the hook fires once, carrying the
+   expired code.
+4. **Fixed: an agent could reach `task.comment` by the surface and not by the
+   server.** `serve` has a `task.comment` branch
+   (`commands/agent-envelope.ts:460`). The matrix's case (i) asserts the saved
+   comment on the agent's own task, and `AUDIENCE_NOT_PERMITTED` for a
+   `client` comment.
+5. **Open: the command line cannot report a fault.** `apps/cli/client.ts:91`
+   still reads every answer with `await response.json()`, which throws on a
+   body that is not JSON. No declared operation answers the bare envelope with
+   a fault any more, so the five above no longer reach it, but any non-JSON
+   answer still surfaces as `SyntaxError` rather than a status.
 
 ## Interface gaps
 
 A gap is a proof that cannot be written without a change to a source file this
 lane does not own.
 
-- **No external reader can be minted through the seed's shape (I09).** The
-  read is there: `task.read` serves `externalCommentProjection` to every reader
-  who is not internal (`packages/core-records/src/reads/tasks.ts:194`). What
-  is missing is a reader. No seeded role is outside `owner`, `admin` and
-  `member`, so the external-comment case can only assert that the gap is
-  there.
+- **Closed: no external reader could be minted (I09).** R4 is enrolled by
+  `enrolExternal` and shared with by `shareRecord`, and the matrix's case (g)
+  drives it (see item 2). The seed still enrols none.
 - **The tenancy testing package cannot answer "is RLS on this table right now".**
   `prefix-harness.ts` exports per-prefix machinery and keeps `rolesOf` private,
   so item 4 reuses `tenancyConformance` from
@@ -401,6 +413,14 @@ lane does not own.
 
 Named by item number so the unfinished frontier stays countable.
 
-- **No external reader, so I09's projection case records a gap rather than a
-  result.** See the interface gaps above.
-- **No reports table**, so no report identity is compared across the restart.
+- **No exported share operation.** R4's share is issued by `shareRecord` from
+  the tests; no route calls it ([API.md, "Open items"](API.md#open-items)).
+- **Twenty-six matrix rows are missing coverage**, named with what would cover
+  them under item 2. Four more, the `session.capabilities` rows, are executed
+  alternatives with no contract line behind them and need the root's ruling.
+- **The heartbeat's 8-hour lifetime cap is untested**, and its bounds, like the
+  agent's internal-only comment audience, are lane choices awaiting root or
+  owner confirmation ([RUNTIME.md](RUNTIME.md#the-work-controls)).
+- **Reports are stored**: `public.handback_reports`
+  (`migrations/0018_runtime_handback_reports.sql:24`). Which report identities
+  the restart proof compares is the restart section's to say, above.
