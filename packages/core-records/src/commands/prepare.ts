@@ -358,36 +358,17 @@ export async function prepareCommand(
 }
 
 /**
- * The tenant half of `lockTask`'s filter, and the one seam I14 mutates.
+ * The tenant half of `lockTask`'s filter.
  *
- * I14 has to show that the proof turns red when this predicate is removed from
- * the lookup the product actually runs, and a copy of the statement proves
- * that about the copy. So the predicate is a value the statement is built
- * from, and `mutateTaskLookupPredicate` swaps it for one that binds the same
- * parameter and filters nothing: the statement, its bind list and every caller
- * stay as they are, and only the tenant condition goes. It refuses outside a
- * test run, so no installation can reach it, and it returns the restore.
+ * A constant, and the anchor I14's mutation proof edits. That proof copies
+ * this package's source to a disposable directory, replaces this one line in
+ * the copy with a condition that binds the same parameter and filters
+ * nothing, and runs the copy's own `lockTask` and command path against a real
+ * database (`tests/support/source-mutant.ts`, `tests/tenancy/production-lookup.test.ts`).
+ * So the statement below is the one under test, and the shipped module has no
+ * way to change its tenant filter at run time.
  */
-const SHIPPED_TENANT_PREDICATE = 'business_id = $1';
-export const REMOVED_TENANT_PREDICATE = '$1::uuid is not null';
-let tenantPredicate = SHIPPED_TENANT_PREDICATE;
-
-export function mutateTaskLookupPredicate(predicate: string): () => void {
-  if (process.env['VITEST'] === undefined) {
-    throw new Error(
-      'mutateTaskLookupPredicate: a mutation seam for the I14 proof, and nothing else',
-    );
-  }
-  tenantPredicate = predicate;
-  return () => {
-    tenantPredicate = SHIPPED_TENANT_PREDICATE;
-  };
-}
-
-/** The predicate `lockTask` is built with right now, so a test can assert it put it back. */
-export function taskLookupPredicate(): string {
-  return tenantPredicate;
-}
+const TENANT_PREDICATE = 'business_id = $1';
 
 /**
  * The target, held for the rest of the transaction.
@@ -417,7 +398,7 @@ export async function lockTask(
   const rows = await tx.query<Omit<TaskRow, 'revision'> & { readonly revision: string }>(
     `select id, revision::text as revision, data, deleted_at, trash_batch_id
        from records
-      where ${tenantPredicate} and record_type_id = $2 and id = $3
+      where ${TENANT_PREDICATE} and record_type_id = $2 and id = $3
         ${options.forUpdate === false ? '' : 'for update'}`,
     [tx.businessId, taskTypeId, recordId],
   );

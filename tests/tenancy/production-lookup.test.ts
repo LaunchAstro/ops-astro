@@ -10,17 +10,22 @@
 // red at exactly the check that exercises the half that was taken away:
 //
 //   intact            -- the proof passes.
-//   predicate removed -- the production statement loses `business_id = $1`
-//                        through `mutateTaskLookupPredicate`, and the proof
+//   predicate removed -- the production source is copied and the copy's
+//                        statement loses `business_id = $1`
+//                        (`tests/support/source-mutant.ts`), and the proof
 //                        goes red at "predicate alone" and nowhere else.
 //   RLS disabled      -- `alter table ... disable row level security`, and the
 //                        proof goes red at the catalogue and "policy alone".
 //   both removed      -- every check is red, and the shipped read leaks.
 //
-// No SQL is copied. Every read is `lockTask` itself; the only thing the seam
-// changes is the tenant condition, with the statement, its binds and its
-// callers untouched. `acceptance/predicate-rls.test.ts` keeps its copied
-// statement as supplementary evidence only.
+// No SQL is copied out of the product. Every read is `lockTask` itself: the
+// shipped module where the predicate stands, and where it is removed the same
+// module loaded from a disposable copy of the package source in which the one
+// constant line is replaced, with the statement, its binds, its callers and the
+// command path around it the shipped code. The shipped module has no setter,
+// so nothing in the running product can change its tenant filter.
+// `acceptance/predicate-rls.test.ts` keeps its copied statement as
+// supplementary evidence only.
 //
 // The command path is run in every state too, with real authority: alpha's
 // worker holds write over the whole business, so the grant check passes for
@@ -44,22 +49,37 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { tenancyConformance } from '../../packages/core-records/src/tenancy/conformance.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import * as shippedEnvelope from '../../packages/core-records/src/commands/envelope.ts';
+import * as shippedRefusal from '../../packages/core-records/src/commands/refusal.ts';
 import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
-import {
-  lockTask,
-  mutateTaskLookupPredicate,
-  REMOVED_TENANT_PREDICATE,
-  taskLookupPredicate,
-} from '../../packages/core-records/src/commands/prepare.ts';
+import * as shippedPrepare from '../../packages/core-records/src/commands/prepare.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { createSourceMutant, type SourceMutant } from '../support/source-mutant.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
 const ROW_SECURITY_RULE = 'row security enabled and forced on every application table';
-const SHIPPED = 'business_id = $1';
+
+/** The one line the mutant changes: a condition that binds `$1` and filters nothing. */
+const PREDICATE_MUTATION = {
+  file: 'packages/core-records/src/commands/prepare.ts',
+  from: "const TENANT_PREDICATE = 'business_id = $1';",
+  to: "const TENANT_PREDICATE = '$1::uuid is not null';",
+};
+
+/** The modules one run reads and commands through: the shipped ones, or the mutant's. */
+interface Code {
+  readonly lockTask: typeof shippedPrepare.lockTask;
+  readonly executeCommand: typeof shippedEnvelope.executeCommand;
+  readonly isCommandRefusal: typeof shippedRefusal.isCommandRefusal;
+}
+
+const SHIPPED: Code = {
+  lockTask: shippedPrepare.lockTask,
+  executeCommand: shippedEnvelope.executeCommand,
+  isCommandRefusal: shippedRefusal.isCommandRefusal,
+};
 
 interface Tenant {
   readonly businessId: string;
@@ -93,6 +113,9 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
   let bravo: Tenant;
   let alphaTask: Target;
   let bravoTask: Target;
+  let mutant: SourceMutant;
+  /** The same modules, loaded from the copy whose tenant predicate is gone. */
+  let removed: Code;
   const verdicts = new Map<State, Verdict>();
   const commands = new Map<State, CommandRun>();
 
@@ -108,24 +131,34 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
   };
 
   const createTask = async (tenant: Tenant, title: string): Promise<Target> => {
-    const made = await executeCommand(db.app, tenant.businessId, tenant.member.presented, 'api', {
-      command: 'task.create',
-      operationId: randomUUID(),
-      fields: { title },
-    } as Parameters<typeof executeCommand>[4]);
-    if (isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
+    const made = await SHIPPED.executeCommand(
+      db.app,
+      tenant.businessId,
+      tenant.member.presented,
+      'api',
+      {
+        command: 'task.create',
+        operationId: randomUUID(),
+        fields: { title },
+      } as Parameters<Code['executeCommand']>[4],
+    );
+    if (SHIPPED.isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
     return { typeId: tenant.taskTypeId, recordId: made.recordId ?? '' };
   };
 
-  /** The production `lockTask`, inside the caller's own tenancy wrapper. */
-  const lookup = async (caller: Tenant, target: Target) =>
+  /** The production `lockTask`, shipped or mutant, inside the caller's own tenancy wrapper. */
+  const lookup = async (caller: Tenant, target: Target, code: Code = SHIPPED) =>
     await db.app.withBusiness(
       caller.businessId,
-      async (tx) => await lockTask(tx, target.typeId, target.recordId),
+      async (tx) => await code.lockTask(tx, target.typeId, target.recordId),
     );
 
-  const titlesOf = async (caller: Tenant, target: Target): Promise<readonly string[]> => {
-    const row = await lookup(caller, target);
+  const titlesOf = async (
+    caller: Tenant,
+    target: Target,
+    code: Code = SHIPPED,
+  ): Promise<readonly string[]> => {
+    const row = await lookup(caller, target, code);
     return row === undefined ? [] : [String(row.data['title'] ?? '')];
   };
 
@@ -153,30 +186,21 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
     }
   };
 
-  /** Run `body` with the tenant predicate removed, and put back the predicate it found. */
-  const withoutPredicate = async <T>(body: () => Promise<T>): Promise<T> => {
-    const was = taskLookupPredicate();
-    const restore = mutateTaskLookupPredicate(REMOVED_TENANT_PREDICATE);
-    try {
-      return await body();
-    } finally {
-      if (was === SHIPPED) restore();
-    }
-  };
-
   /**
    * The barrier proof. Each check that reaches for bravo's record also reaches
    * for alpha's own through the same state, and throws if that comes back
    * empty: a zero is evidence only while the statement can still find a row.
+   * `code` is the lookup this state runs; "policy alone" always reads through
+   * the mutant, because that check is the predicate taken away.
    */
-  const prove = async (): Promise<Verdict> => {
+  const prove = async (code: Code): Promise<Verdict> => {
     const red: Check[] = [];
     const leaked: Partial<Record<Check, readonly string[]>> = {};
-    const reach = async (check: Check): Promise<void> => {
-      if ((await titlesOf(alpha, alphaTask)).length !== 1) {
+    const reach = async (check: Check, through: Code): Promise<void> => {
+      if ((await titlesOf(alpha, alphaTask, through)).length !== 1) {
         throw new Error(`${check}: the lookup no longer finds the caller's own record`);
       }
-      const foreign = await titlesOf(alpha, bravoTask);
+      const foreign = await titlesOf(alpha, bravoTask, through);
       if (foreign.length > 0) {
         red.push(check);
         leaked[check] = foreign;
@@ -186,37 +210,43 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
     if (findings.some((f) => f.rule === ROW_SECURITY_RULE && f.object === 'records')) {
       red.push('catalogue');
     }
-    await withoutRls(async () => await reach('predicate alone'));
-    await withoutPredicate(async () => await reach('policy alone'));
-    await reach('shipped read');
+    await withoutRls(async () => await reach('predicate alone', code));
+    await reach('policy alone', removed);
+    await reach('shipped read', code);
     return { red, leaked };
   };
 
   /** alpha names bravo's record through the real command path, then its own. */
-  const runCommands = async (): Promise<CommandRun> => {
+  const runCommands = async (code: Code): Promise<CommandRun> => {
     const before = (await readAudit(alpha)).length;
     const bravoRow = await lookup(bravo, bravoTask);
-    const probe = await executeCommand(db.app, alpha.businessId, alpha.member.presented, 'api', {
-      command: 'task.update',
-      operationId: randomUUID(),
-      recordId: bravoTask.recordId,
-      expectedRevision: bravoRow?.revision ?? 1,
-      fields: { title: 'alpha was here' },
-    } as Parameters<typeof executeCommand>[4]);
+    const probe = await code.executeCommand(
+      db.app,
+      alpha.businessId,
+      alpha.member.presented,
+      'api',
+      {
+        command: 'task.update',
+        operationId: randomUUID(),
+        recordId: bravoTask.recordId,
+        expectedRevision: bravoRow?.revision ?? 1,
+        fields: { title: 'alpha was here' },
+      } as Parameters<Code['executeCommand']>[4],
+    );
     const ownRow = await lookup(alpha, alphaTask);
-    const own = await executeCommand(db.app, alpha.businessId, alpha.member.presented, 'api', {
+    const own = await code.executeCommand(db.app, alpha.businessId, alpha.member.presented, 'api', {
       command: 'task.update',
       operationId: randomUUID(),
       recordId: alphaTask.recordId,
       expectedRevision: ownRow?.revision ?? 1,
       fields: { title: 'alpha can see this' },
-    } as Parameters<typeof executeCommand>[4]);
+    } as Parameters<Code['executeCommand']>[4]);
     const events = (await readAudit(alpha)).slice(before);
     return {
-      callerCode: isCommandRefusal(probe) ? probe.code : null,
+      callerCode: code.isCommandRefusal(probe) ? probe.code : null,
       auditCodes: events.map((event) => event.refusal_code),
       bravoTitle: (await titlesOf(bravo, bravoTask))[0] ?? '',
-      ownApplied: !isCommandRefusal(own),
+      ownApplied: !code.isCommandRefusal(own),
     };
   };
 
@@ -227,18 +257,27 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
   const underState = async (state: State): Promise<void> => {
     const predicate = state === 'predicate removed' || state === 'both removed';
     const rls = state === 'RLS disabled' || state === 'both removed';
-    const restore = predicate ? mutateTaskLookupPredicate(REMOVED_TENANT_PREDICATE) : undefined;
+    const code = predicate ? removed : SHIPPED;
     try {
       if (rls) await setRls(false);
-      verdicts.set(state, await prove());
-      commands.set(state, await runCommands());
+      verdicts.set(state, await prove(code));
+      commands.set(state, await runCommands(code));
     } finally {
       if (rls) await setRls(true);
-      restore?.();
     }
   };
 
   beforeAll(async () => {
+    mutant = createSourceMutant(PREDICATE_MUTATION);
+    removed = {
+      lockTask: (await mutant.load<typeof shippedPrepare>(PREDICATE_MUTATION.file)).lockTask,
+      executeCommand: (
+        await mutant.load<typeof shippedEnvelope>('packages/core-records/src/commands/envelope.ts')
+      ).executeCommand,
+      isCommandRefusal: (
+        await mutant.load<typeof shippedRefusal>('packages/core-records/src/commands/refusal.ts')
+      ).isCommandRefusal,
+    };
     db = await createFreshDatabase({ part: 'i' });
     alpha = await enrolTenant('alpha');
     bravo = await enrolTenant('bravo');
@@ -253,6 +292,7 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
 
   afterAll(async () => {
     await db?.drop();
+    mutant?.dispose();
   });
 
   describe('the four runs of the proof, each red for its own reason', () => {
@@ -285,10 +325,17 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
       });
     });
 
-    it('left the shipped predicate and forced row security behind it', async () => {
-      expect(taskLookupPredicate()).toBe(SHIPPED);
+    it('ran a mutant that is a separate module, not the shipped one', () => {
+      expect(removed.lockTask).not.toBe(SHIPPED.lockTask);
+      expect(removed.executeCommand).not.toBe(SHIPPED.executeCommand);
+    });
+
+    it('left the shipped module without a setter and forced row security behind it', async () => {
+      expect(Object.keys(shippedPrepare).filter((name) => /predicate/iu.test(name))).toStrictEqual(
+        [],
+      );
       expect(await rlsEnabled()).toBe(true);
-      expect(await prove()).toStrictEqual({ red: [], leaked: {} });
+      expect(await prove(SHIPPED)).toStrictEqual({ red: [], leaked: {} });
     });
   });
 
