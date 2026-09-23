@@ -51,7 +51,8 @@
     "tests/commands/settings-revision.test.ts",
     "tests/api/operand-refusals.test.ts",
     "tests/api/capabilities-shape.test.ts",
-    "tests/commands/unproduced-reach.test.ts"
+    "tests/commands/unproduced-reach.test.ts",
+    "tests/tenancy/production-lookup.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
