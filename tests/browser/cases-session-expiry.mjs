@@ -23,7 +23,22 @@ const NOTICE = '[data-reason="session-ended"]';
 const UNVERIFIABLE = 'not-a-token-this-server-can-verify';
 
 export async function casesSessionExpiry(run) {
-  const { page } = run;
+  // Its own context, like N1-N2 and B6-B7. This group signs in from scratch and
+  // then breaks the session it is holding; on the shared page it would land on
+  // `/projects/` instead of the sign-in form -- the page still holds the
+  // previous group's session -- and would leave a broken token behind for the
+  // groups that follow. A context of its own is both the fix and the isolation.
+  const { browser } = run;
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  const page = await context.newPage();
+  try {
+    await sessionExpiry(page);
+  } finally {
+    await context.close();
+  }
+}
+
+async function sessionExpiry(page) {
   await signIn(page, 'ada@alpha.local', 'alpha');
 
   // A task the board already carries. This group reads; it does not make one.
@@ -103,10 +118,8 @@ export async function casesSessionExpiry(run) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: VIEWPORT });
-  const page = await context.newPage();
   try {
-    await casesSessionExpiry({ browser, page });
+    await casesSessionExpiry({ browser });
   } catch (error) {
     record({
       case: 'SX run',
@@ -115,7 +128,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       ok: false,
     });
   } finally {
-    await context.close();
     await browser.close();
   }
 }
