@@ -224,12 +224,21 @@ pnpm verify:restart --evidence .local/restart-proof/<name>.txt
 digest, refuses before starting anything if the name or either port belongs to
 the working slice, the datafix database or the Hub's `supabase_*` stack, or if
 the name already exists or a port already answers, migrates it at the checked-out
-head, and runs `restart-and-expiry.test.ts` and `restart-declared.test.ts` with
-`--fileParallelism=false` and both restarts asked. The evidence file carries the
-head sha, the migration output, `StartedAt` before and after, every compared
-identity with its state, the API process ids before and after, and the verbose
-test output. The container is removed on success and on failure, and the exit
-status is the last line.
+head, and runs `restart-and-expiry.test.ts`, `restart-http.test.ts` and
+`restart-declared.test.ts` with `--fileParallelism=false` and both restarts
+asked. The evidence file carries the head sha, the migration output, `StartedAt`
+before and after, every compared identity with its state, the API process ids
+before and after, each HTTP answer, and the verbose test output. On success and
+on failure the exit trap stops every API process the run wrote to its pid file,
+records whether the API port is free, removes the container, and writes the
+exit status as the last line. Pass is exit 0, `api port free`, `container
+removed`, and `Tests 22 passed | 2 expected fail (24)`.
+
+**Removal on failure is demonstrated.** `L5_RESTART_INDUCE_FAILURE=throw` fails
+the run once the restarted container and the new API process are up;
+`L5_RESTART_INDUCE_FAILURE=crash` SIGKILLs the runner there, so no `afterAll`
+runs. Both exit 1 with no container left and the API port free; in the crash
+run the trap itself stopped the orphaned API process (`api stopped by trap`).
 
 **The container is declared, not hard-wired.** The case reads
 `L5_RESTART_CONTAINER_NAME`. Before any restart, `refusalFor` in
@@ -249,29 +258,38 @@ port no longer answers, starts a new process and reads again.
 
 ### W06 coverage
 
-| W06 claim                                         | Postgres restart                                                                    | API process restart                                 | browser B6 leg |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- |
-| task identity                                     | row read back through a fresh `createApi`                                           | `task.read` over HTTP, same id                      | yes (task)     |
-| lineage, version, evidence pack                   | ids and lineage state compared                                                      | same in the `proposals` projection                  | no             |
-| gate and gate state                               | `id:state` compared                                                                 | same in the projection                              | no             |
-| gate decision chain                               | ids compared                                                                        | ids, signatures and hashes compared                 | no             |
-| reservation, lease, attempt                       | `id:state` compared                                                                 | same in the projection                              | no             |
-| delegation                                        | `id:live/settled/revoked` compared                                                  | not projected over HTTP; DB rows compared around it | no             |
-| receipt (handback report)                         | a report minted before the restart, id compared                                     | DB rows compared                                    | no             |
-| operation register (the attempt a caller replays) | operation ids compared                                                              | DB rows compared                                    | no             |
-| no auto approval                                  | the undecided gate stays `pending` with 0 decisions                                 | pending gate unchanged in DB                        | no             |
-| no silent cancelled-lineage resumption            | lineage stays `cancelled`; pickup answers 409 `RESERVATION_NOT_CLAIMABLE`, no lease | DB state unchanged                                  | no             |
-| no duplicated proposal or hold                    | byte-identical propose and decide replayed after the restart add no row             | not replayed over HTTP                              | no             |
-| handback exactly once                             | second handback 401 `DELEGATION_NOT_LIVE`, replayed pickup mints no lease           | not driven over HTTP                                | no             |
+`restart-http.test.ts` stops the API process, restarts the container, waits on
+the database clock with nothing serving, then starts a new API process. Every
+call after that goes over the socket to the new process on the API port.
+
+| W06 claim                              | Postgres restart                                                                                     | API process restart, over HTTP                                                                                                                        | browser B6 leg |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| task identity                          | row read back through a fresh `createApi`                                                            | `task.read`, same id                                                                                                                                  | yes (task)     |
+| lineage, version, evidence pack        | ids and lineage state compared                                                                       | same in the `proposals` projection                                                                                                                    | no             |
+| gate and gate state                    | `id:state` compared                                                                                  | same in the projection                                                                                                                                | no             |
+| gate decision chain                    | ids compared                                                                                         | ids, signatures and hashes compared                                                                                                                   | no             |
+| reservation, lease, attempt            | `id:state` compared                                                                                  | same in the projection                                                                                                                                | no             |
+| delegation                             | `id:live/settled/revoked` compared                                                                   | DB rows compared around the HTTP calls                                                                                                                | no             |
+| receipt (handback report)              | a report minted before the restart, id compared                                                      | receipts go from 1 to 2 on one HTTP handback                                                                                                          | no             |
+| operation register                     | operation ids compared                                                                               | DB rows compared                                                                                                                                      | no             |
+| no auto approval                       | the undecided gate stays `pending` with 0 decisions                                                  | a gate that lapsed while down answers 410 `GATE_EXPIRED`; 0 decisions, 0 holds, stored state `pending`                                                | no             |
+| no silent cancelled-lineage resumption | **open**: the lineage is cancelled by the `cancelAndClassify` fixture, which is not an accepted path | **open**: pickup answers 409 `RESERVATION_NOT_CLAIMABLE`, no lease, but on the same fixture; `task.cancel` and `task.restart` answer 404 (`it.fails`) | no             |
+| no duplicated proposal or hold         | byte-identical propose and decide replays add no row                                                 | the same replays over HTTP add no row                                                                                                                 | no             |
+| handback exactly once                  | second handback 401 `DELEGATION_NOT_LIVE`, replayed pickup mints no lease                            | the same over HTTP                                                                                                                                    | no             |
+| Request Changes across a restart       | not exercised                                                                                        | version 1 sent back before, version 2 proposed after; a replay leaves versions `1,2`                                                                  | no             |
+
+A lapsed gate keeps the stored state `pending`: `migrations/0011_runtime_gates.sql:16`
+says nothing expires a gate on a timer, and `decide.ts` refuses it on the
+database clock (G06). Expiry is read, never written.
 
 **Still open, by name.** (1) The browser does not reload across a restart onto
 the proposal, gate, lease or attempt: the B6 leg covers the task only.
-(2) Replays, the cancelled pickup and the handback are driven through `app.fetch`
-after the Postgres restart, not over HTTP against the restarted process.
-(3) Cancellation has no HTTP route, so the cancelled lineage is made with the
-runtime's own `cancelAndClassify` rather than through a surface a person has.
-(4) A gate that expires across a restart and a Request Changes round across a
-restart are not exercised.
+(2) Run cancellation and authorised restart are required through owning
+production interfaces (contract ledger lines 37-38 and the paragraph after the
+table), and neither has a route at this head. `restart-http.test.ts` holds
+`task.cancel` and `task.restart` as `it.fails` cases, which answer 404 today.
+Until the routes land, the cancelled-lineage row stays open and its fixture
+stays `cancelAndClassify`. L3-CONTROLS owns the routes.
 
 ## Defects found in other lanes' files
 

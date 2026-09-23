@@ -15,6 +15,7 @@
 // it asserts nothing about the product: it starts, stops and reads.
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { ACCEPTANCE_SECRET, serverUrl, type World } from './world.ts';
 
 export const API_PORT_VARIABLE = 'L5_RESTART_API_PORT';
@@ -69,6 +70,10 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
     },
     stdio: 'ignore',
   });
+  // Written down before anything can fail, so a runner that dies mid-case
+  // still leaves `restart-proof.sh` the pid its exit trap must stop.
+  const pidFile = process.env['L5_RESTART_PIDFILE'];
+  if (pidFile !== undefined && child.pid !== undefined) appendFileSync(pidFile, `${child.pid}\n`);
   let exited = false;
   child.once('exit', () => {
     exited = true;
@@ -113,4 +118,22 @@ export async function readOverHttp(
     body: JSON.stringify({ operationId: crypto.randomUUID(), recordId }),
   });
   return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+}
+
+/**
+ * The restarted process as the `api` the acceptance helpers drive.
+ *
+ * `call` builds `http://api.test/...` requests for an in-process app; this
+ * sends each one over the loopback socket to the process on `port` instead, so
+ * `asAda` and `asAgent` reach the real server and nothing in the test's own
+ * memory answers them.
+ */
+export function overHttp(port: string): World['api'] {
+  const fetchOverSocket = async (request: Request): Promise<Response> =>
+    await fetch(request.url.replace('http://api.test', `http://127.0.0.1:${port}`), {
+      method: request.method,
+      headers: request.headers,
+      body: await request.text(),
+    });
+  return { fetch: fetchOverSocket } as unknown as World['api'];
 }
