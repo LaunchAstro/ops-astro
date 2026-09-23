@@ -175,16 +175,45 @@ identifier an untargeted command has no use for is now refused
 `COMMAND_BODY_INVALID` naming the field, rather than ignored: a body whose
 identifier the server quietly drops is a body the caller believes was honoured.
 
+### A setting is checked against its revision
+
+`business_settings` is not a record, so `prepare.ts` does not reach it, but the
+rule is the same one. Migration `0020_business_settings_revision.sql` gives the
+table `revision integer not null default 1` with a check that it is at least 1.
+The default is what upgrades an installation that already had settings: every
+existing row starts at 1, so no reader ever meets a null revision.
+
+The revision moves in one place. `writeBusinessSetting`
+(`packages/core-records/src/records/business-settings.ts:346`) reads the row
+`for update`, compares the caller's `expectedRevision` when one is sent, and
+then writes the value and `revision = revision + 1` in one statement (`:388`),
+so the row never holds a new value at an old revision. A mismatch is refused
+`VERSION_STALE` naming `revision=<current>`, and the value is left as it was.
+Both settings commands write through it (`commands/settings-write.ts:114`), so
+every command write moves the revision by exactly one, and `settings.read`
+hands the current number back.
+
+There is **no trigger**, unlike `records.revision`. The migration's header says
+why: a trigger would bump the revision for every writer of the table, fixtures
+and migrations included. So a statement that updates `business_settings`
+without going through `writeBusinessSetting` leaves the revision where it was.
+On this head nothing in `packages/` does. [AUTHORITY.md](AUTHORITY.md#business-settings)
+has the interface and the tests.
+
 ## The reads
 
-Three, declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
-`packages/core-records/src/reads/`:
+Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+`packages/core-records/src/reads/`. Three of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
 - `task.board { board }` → the tasks on a board; `null` is the unboarded ones,
   which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
+
+The other four, `task.queue`, `preset.plan`, `settings.read` and
+`session.capabilities`, are listed with their answers under "Reads" in
+[API.md](API.md#reads).
 
 A read carries no `operation_id` and no `expected_revision`: there is nothing to
 replay and nothing to be stale against. It runs through `withSession` and the
