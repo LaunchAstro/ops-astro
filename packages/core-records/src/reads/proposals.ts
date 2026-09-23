@@ -17,11 +17,15 @@
 // them the evidence. A page that offered "approve" without naming a version
 // would be a page that approves whatever arrived last.
 //
-// **The decision chain is the stored rows, hash and all.** Each link carries
-// its own hash and the one before it, so a reader with the chain can check it
-// rather than trust the server's summary of it. Nothing here recomputes a
-// hash; recomputing is `verifyChain`'s, and handing back a recomputed value as
-// if it were the stored one would make a tampered row unnoticeable.
+// **The decision chain is the stored rows, hash and all, and verified.** Each
+// link carries its own hash and the one before it, so a reader with the chain
+// can check it rather than trust the server's summary of it. The values
+// returned are the stored ones, never recomputed: handing back a recomputed
+// value as if it were the stored one would make a tampered row unnoticeable.
+// But they are returned only after `readVerifiedDecisions` has checked each
+// one against its persisted payload, signature and place in the business
+// chain (G02, T2). A decision that does not verify fails the whole read with
+// `DecisionIntegrityError`; see `verified-decisions.ts`.
 //
 // The evidence pack's body is the renderer's output as stored. It is not
 // re-rendered on read: an evidence pack that changed between the decision and
@@ -41,6 +45,9 @@
 //   or superseded gate reads its stored outcome whatever the clock says.
 
 import type { TenantQuery } from '../tenancy/database.ts';
+import type { SigningKey } from '../../../core-runtime/src/signing.ts';
+import { gateSigningKey } from '../commands/runtime-config.ts';
+import { readVerifiedDecisions } from './verified-decisions.ts';
 
 export interface EvidenceView {
   readonly id: string;
@@ -154,6 +161,10 @@ interface VersionRow {
 /**
  * Every proposal on one task, newest lineage first.
  *
+ * `signingKey` is the deployment's, from the environment, and a test names
+ * its own. `null` means none is configured: a task with decisions then fails
+ * `DecisionIntegrityError` rather than show them unverified.
+ *
  * It is one query per shape rather than one join across all of them, because a
  * lineage with three versions, four decisions and two reservations joined flat
  * is one row per combination and the reader has to undo the multiplication.
@@ -162,6 +173,7 @@ interface VersionRow {
 export async function readTaskProposals(
   tx: TenantQuery,
   taskId: string,
+  signingKey: SigningKey | null = gateSigningKey() ?? null,
 ): Promise<readonly ProposalView[]> {
   const versions = await tx.query<VersionRow>(
     `select lin.id                as lineage_id,
@@ -202,26 +214,7 @@ export async function readTaskProposals(
 
   const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];
 
-  const decisions = await tx.query<{
-    readonly lineage_id: string;
-    readonly id: string;
-    readonly seq: string;
-    readonly decision: string;
-    readonly round: number;
-    readonly decided_by_person_id: string;
-    readonly decided_at: Date;
-    readonly signing_key_id: string;
-    readonly signature: string;
-    readonly prev_hash: string;
-    readonly hash: string;
-  }>(
-    `select lineage_id, id, seq::text as seq, decision, round, decided_by_person_id,
-            decided_at, signing_key_id, signature, prev_hash, hash
-       from public.gate_decisions
-      where business_id = $1 and lineage_id = any($2::uuid[])
-      order by seq`,
-    [tx.businessId, lineageIds],
-  );
+  const decisions = await readVerifiedDecisions(tx, lineageIds, signingKey);
 
   const reservations = await tx.query<{
     readonly lineage_id: string;
