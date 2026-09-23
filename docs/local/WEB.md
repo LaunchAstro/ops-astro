@@ -387,10 +387,17 @@ leave the agent's delegation live, and the next run's pickup would be refused
 `DELEGATION_ALREADY_LIVE`. The screenshots are `B6-runtime-before-*.png` and
 `B6-runtime-after-*.png`.
 
-`cases-b.mjs` assigns the task to the option labelled `Noah Alpha`. The seed
-names noah's person from `.local/synthetic-users.json`, which says `Noah Patel`,
-so a freshly seeded database has no such option and B1 to B4 fail there. The
-live database still has the older name.
+`cases-b.mjs` assigns the task to noah's person, chosen by id rather than by
+label. It finds that person through the login whose subject is noah's in
+`.local/synthetic-users.json`, which is the same link the seed makes. The seed
+takes the display name from that file (`Noah Patel`), and the live database
+still has the older `Noah Alpha`. B2 passes on either, because the name is only
+quoted in its row.
+
+S5 reads the conflict block only once `conflict-server` shows `999` and
+`conflict-draft` shows `1200`. The block draws as soon as the refusal arrives
+and fills in the server's value only after its reread lands. A read taken
+before that finds `VERSION_STALE` and neither number.
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
