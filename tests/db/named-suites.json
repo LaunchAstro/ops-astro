@@ -13,6 +13,7 @@
     "L3-SURFACE adds the surface-operations suite (task.comment, preset.plan, settings, audited reads, D06); L4-RUNTIME adds the gate and lease suites (G01-G04, G06, G07, W01-W06, I07).",
     "L2-FIX adds the comment-type upgrade, the login-kind race and the preset family suites.",
     "L3-PART-B adds the task-runtime suite (propose/decide through the envelope, replay, the G03 recorded refusal, the runtime-refusal rollback, the proposal projection) and the agent-path suite (I12, I07: the pre-pickup pair, the one-task ceiling, the decision exclusion, the handback settlement, the agent-actor audit). runtime-codes.test.ts is a pure unit suite and must not be named.",
+    "L3-PART-B-2 adds the task-runtime-routes suite (the five routes and both prefixes over HTTP, the retained-report refusal, the in-process restart), the cli-reach suite (every declaration through the generated client) and the surface-reads suite (settings.read, session.capabilities, audited reads with a null subject, D06 on the read half); L4-RUNTIME-FIX's review-fixes suite (R1-R10 regressions on a real database) is named with it. handback-expenditure.test.ts is a pure unit suite and must not be named.",
     "See docs/agents/database-conformance.md."
   ],
   "invariant": [
@@ -31,7 +32,11 @@
     "tests/identity/login-kind-race.test.ts",
     "tests/records/preset-plan-family.test.ts",
     "tests/commands/task-runtime.test.ts",
-    "tests/commands/agent-path.test.ts"
+    "tests/commands/agent-path.test.ts",
+    "tests/api/task-runtime-routes.test.ts",
+    "tests/api/cli-reach.test.ts",
+    "tests/commands/surface-reads.test.ts",
+    "tests/runtime/review-fixes.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
