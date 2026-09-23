@@ -64,14 +64,7 @@
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty, Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
-import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type CommandOutcome,
-  type OperationsClient,
-  type WireRefusal,
-} from '../operations/client.ts';
+import type { CallResult, OperationsClient } from '../operations/client.ts';
 import type {
   PersonListResult,
   TaskComment,
@@ -81,7 +74,8 @@ import type {
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
-import { describeFailure, describeRefusal, submitEdit } from '../records/submit.ts';
+import { describeRefusal, submitEdit } from '../records/submit.ts';
+import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 
 export interface TaskDetailProps {
@@ -253,9 +247,13 @@ interface LoadedProps {
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
-  const [because, setBecause] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<WireRefusal | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, failure, run: send } = useCommand();
+  // Somebody else moved the record on while this edit was being made. The
+  // draft stays on the screen (it is the person's work) and the screen asks
+  // them to resolve it rather than resending against a revision they never
+  // saw. Every other failure is quoted as it arrived.
+  const conflict = failure?.kind === 'stale' ? failure.refusal : null;
+  const because = failure === null || failure.kind === 'stale' ? null : failure.because;
   // The details form itself, so the resolve bar's Save can ask it whether the
   // edit it is about to send is a legal one.
   const fields = useRef<HTMLFormElement>(null);
@@ -294,34 +292,17 @@ function Loaded(props: LoadedProps): ReactElement {
   });
 
   /** One place every write lands, so every refusal is shown the same way. */
-  const after = (result: CallResult<unknown>, settles: number | null): void => {
-    setBusy(false);
-    if (isRefusal(result) && result.code === 'VERSION_STALE') {
-      // Somebody else moved the record on while this edit was being made. The
-      // draft stays on the screen — it is the person's work — and the screen
-      // asks them to resolve it rather than resending against a revision they
-      // never saw.
-      setConflict(result);
-      setBecause(null);
-      return;
-    }
-    const failure = isRefusal(result) || isUnavailable(result) ? describeFailure(result) : null;
-    setBecause(failure);
-    if (failure !== null) return;
-    if (settles !== null) props.onSaved(settles);
-    props.onChanged();
-  };
-
-  const run = (work: Promise<CallResult<unknown>>, settles: number | null = null): void => {
-    setBusy(true);
-    setBecause(null);
-    setConflict(null);
-    void work.then((result) => after(result, settles));
+  const run = (work: () => Promise<CallResult<unknown>>, settles: number | null = null): void => {
+    send(work, (settlement) => {
+      if (settlement.kind !== 'ok') return;
+      if (settles !== null) props.onSaved(settles);
+      props.onChanged();
+    });
   };
 
   const lifecycle = (command: 'task.start' | 'task.complete' | 'task.reopen'): void => {
     const body = command === 'task.reopen' ? { reason: 'Reopened from the task page.' } : {};
-    run(
+    run(() =>
       client.mutate(command, { recordId: task.id, ...body }, { expectedRevision: task.revision }),
     );
   };
@@ -336,12 +317,13 @@ function Loaded(props: LoadedProps): ReactElement {
     // stale-edit protection: an edit begun at revision N is offered at N, and
     // if the record has moved the server says so.
     run(
-      submitEdit(client, {
-        command: 'task.update',
-        recordId: task.id,
-        expectedRevision: base.revision,
-        fields: { title, due: due === '' ? null : due },
-      }),
+      () =>
+        submitEdit(client, {
+          command: 'task.update',
+          recordId: task.id,
+          expectedRevision: base.revision,
+          fields: { title, due: due === '' ? null : due },
+        }),
       props.draft?.generation ?? null,
     );
   };
@@ -371,7 +353,7 @@ function Loaded(props: LoadedProps): ReactElement {
   };
 
   const onAssign = (personId: string): void => {
-    run(
+    run(() =>
       submitEdit(client, {
         command: 'task.assign',
         recordId: task.id,
@@ -644,43 +626,33 @@ function Comments(props: CommentsProps): ReactElement {
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState('internal');
   const [kind, setKind] = useState('note');
-  const [busy, setBusy] = useState(false);
-  const [because, setBecause] = useState<string | null>(null);
+  const { busy, failure, run } = useCommand();
+  const because = failure?.because ?? null;
   // Set when the server has said this reader may not comment. It disables the
   // control rather than merely reporting, so the same refusal is not fetched
-  // again on the next press.
-  const [refusedOutright, setRefusedOutright] = useState(false);
+  // again on the next press. Only an authority refusal closes the form: a body
+  // the server did not like is something the person can fix and try again.
+  const refusedOutright = failure?.kind === 'closed';
   const form = useRef<HTMLFormElement>(null);
-
-  /** What the server said, and nothing this component decided on its own. */
-  const settlePost = (result: CallResult<CommandOutcome>): void => {
-    setBusy(false);
-    const failure = describeFailure(result);
-    if (failure !== null) {
-      setBecause(failure);
-      // Only an authority refusal closes the form. A body the server did not
-      // like is something the person can fix and try again.
-      if (isRefusal(result) && result.code === 'SCOPE_NOT_GRANTED') setRefusedOutright(true);
-      return;
-    }
-    // Emptied because it has been stored, and the list is reread rather than
-    // appended to: what is on the screen is what the server has.
-    setBody('');
-    props.onPosted();
-  };
 
   const post = (): void => {
     if (busy || refusedOutright) return;
     if (form.current?.reportValidity() === false) return;
-    setBusy(true);
-    setBecause(null);
-    void props.client
-      .mutate(
-        'task.comment',
-        { recordId: props.recordId, body, audience, commentType: kind },
-        { expectedRevision: props.revision },
-      )
-      .then((result) => settlePost(result));
+    run(
+      () =>
+        props.client.mutate(
+          'task.comment',
+          { recordId: props.recordId, body, audience, commentType: kind },
+          { expectedRevision: props.revision },
+        ),
+      (settlement) => {
+        if (settlement.kind !== 'ok') return;
+        // Emptied because it has been stored, and the list is reread rather
+        // than appended to: what is on the screen is what the server has.
+        setBody('');
+        props.onPosted();
+      },
+    );
   };
 
   return (

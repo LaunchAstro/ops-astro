@@ -46,19 +46,14 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
-import {
-  isRefusal,
-  type CallResult,
-  type CommandOutcome,
-  type OperationsClient,
-} from '../operations/client.ts';
+import type { OperationsClient } from '../operations/client.ts';
 import type {
   ProposalDecision,
   ProposalLineage,
   ProposalReservation,
   ProposalVersion,
 } from '../operations/shapes.ts';
-import { describeFailure } from '../records/submit.ts';
+import { useCommand, type Settlement } from '../records/use-command.ts';
 
 /** What a refused decision left behind, held above the read that follows it. */
 export interface DecisionNote {
@@ -280,7 +275,7 @@ interface DecideProps {
 
 function Decide(props: DecideProps): ReactElement {
   const { gate } = props;
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useCommand();
   const closed = props.note?.closed === true;
   // Three reasons a decision is not on offer, and the person is told which.
   const why = closed
@@ -293,20 +288,23 @@ function Decide(props: DecideProps): ReactElement {
 
   const decide = (decision: 'approve' | 'reject'): void => {
     if (busy || closed) return;
-    setBusy(true);
     props.onDecided(null);
-    void props.client
+    run(
       // **The version is the one drawn above this button**, taken from the same
       // `task.read` answer as the evidence. No separate fetch, no draft: the
       // server compares this against the live version under the locks, and a
       // page that had gone stale is told so rather than deciding by accident.
-      .mutate('task.decide', {
-        gateId: gate.id,
-        versionId: props.versionId,
-        decision,
-        note: `Decided from the task page (${decision}).`,
-      })
-      .then((result) => settle(result, props, setBusy));
+      () =>
+        props.client.mutate('task.decide', {
+          gateId: gate.id,
+          versionId: props.versionId,
+          decision,
+          note: `Decided from the task page (${decision}).`,
+        }),
+      (settlement) => {
+        settled(settlement, props);
+      },
+    );
   };
 
   return (
@@ -363,14 +361,8 @@ function Decide(props: DecideProps): ReactElement {
  * because the reservation the approval created is the server's, not this
  * screen's guess at what an approval does.
  */
-function settle(
-  result: CallResult<CommandOutcome>,
-  props: DecideProps,
-  done: (busy: boolean) => void,
-): void {
-  done(false);
-  const because = describeFailure(result);
-  if (because === null) {
+function settled(settlement: Settlement, props: DecideProps): void {
+  if (settlement.kind === 'ok') {
     props.onDecided(null);
     props.onChanged();
     return;
@@ -378,8 +370,7 @@ function settle(
   // `SCOPE_NOT_GRANTED` is about this reader rather than about this version, so
   // it closes the control. Everything else is about the record, and the record
   // is what gets read again.
-  const closed = isRefusal(result) && result.code === 'SCOPE_NOT_GRANTED';
-  props.onDecided({ because, closed });
+  props.onDecided({ because: settlement.because, closed: settlement.kind === 'closed' });
   props.onChanged();
 }
 
@@ -472,42 +463,42 @@ function Propose(props: ProposeProps): ReactElement {
   const [purpose, setPurpose] = useState('');
   const [maximum, setMaximum] = useState('');
   const [currency, setCurrency] = useState('AUD');
-  const [busy, setBusy] = useState(false);
-  const [because, setBecause] = useState<string | null>(null);
-  const [closed, setClosed] = useState(false);
+  const { busy, failure, run } = useCommand();
+  const because = failure?.because ?? null;
+  const closed = failure?.kind === 'closed';
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (busy || closed) return;
-    setBusy(true);
-    setBecause(null);
-    void props.client
-      .mutate(
-        'task.propose',
-        {
-          recordId: props.recordId,
-          purpose,
-          // Money crosses the wire in minor units. The conversion happens once,
-          // here, because three places that each convert are three places that
-          // can disagree about what a dollar is.
-          maximumMinor: minorOf(maximum),
-          currency,
-          payload: { step: purpose },
-          // **`step` is an object, not the purpose again.** The contract is
-          // `{ kind, payload }` (`commands/requests.ts`), and `proposeOnTask`
-          // writes `step.kind` straight into `planned_steps.kind`, which is
-          // `not null`. Sending the slug as a bare string put null in that
-          // column and the handler threw, which the API reports as a 503 — so
-          // the screen said "the API answered 503" and the person had no idea
-          // their proposal was well formed and the client was not. The browser
-          // case is what found it; the mounted stand-in had accepted anything.
-          step: { kind: purpose, payload: { step: purpose } },
-        },
-        // The revision the page is holding. A proposal made against a task that
-        // has moved on is the server's `VERSION_STALE`, not a silent write.
-        { expectedRevision: props.revision },
-      )
-      .then((result) => settleProposal(result));
+    run(
+      () =>
+        props.client.mutate(
+          'task.propose',
+          {
+            recordId: props.recordId,
+            purpose,
+            // Money crosses the wire in minor units. The conversion happens once,
+            // here, because three places that each convert are three places that
+            // can disagree about what a dollar is.
+            maximumMinor: minorOf(maximum),
+            currency,
+            payload: { step: purpose },
+            // **`step` is an object, not the purpose again.** The contract is
+            // `{ kind, payload }` (`commands/requests.ts`), and `proposeOnTask`
+            // writes `step.kind` straight into `planned_steps.kind`, which is
+            // `not null`. Sending the slug as a bare string put null in that
+            // column and the handler threw, which the API reports as a 503 — so
+            // the screen said "the API answered 503" and the person had no idea
+            // their proposal was well formed and the client was not. The browser
+            // case is what found it; the mounted stand-in had accepted anything.
+            step: { kind: purpose, payload: { step: purpose } },
+          },
+          // The revision the page is holding. A proposal made against a task that
+          // has moved on is the server's `VERSION_STALE`, not a silent write.
+          { expectedRevision: props.revision },
+        ),
+      settledProposal,
+    );
   };
 
   /**
@@ -519,14 +510,8 @@ function Propose(props: ProposeProps): ReactElement {
    * correct and send again. A success clears the form and reads the task, so the
    * version that appears is the server's rather than this form's own echo.
    */
-  function settleProposal(result: CallResult<CommandOutcome>): void {
-    setBusy(false);
-    const failure = describeFailure(result);
-    if (failure !== null) {
-      setBecause(failure);
-      if (isRefusal(result) && result.code === 'SCOPE_NOT_GRANTED') setClosed(true);
-      return;
-    }
+  function settledProposal(settlement: Settlement): void {
+    if (settlement.kind !== 'ok') return;
     setPurpose('');
     setMaximum('');
     props.onChanged();
