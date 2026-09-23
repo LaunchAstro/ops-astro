@@ -146,6 +146,26 @@ export async function executeAgentCommand(
   });
 }
 
+/**
+ * What the agent prefix puts on the wire for a result, which is the handle
+ * except for the one read the person prefix also serves.
+ *
+ * `session.capabilities` answers flattened beside `ok` on the person prefix,
+ * which is the shape the mounted app reads (`reads/capabilities.ts`,
+ * `SessionCapabilities`). Here the envelope nests every payload under
+ * `detail`, so the same read arrived in two shapes and a client had to know
+ * which prefix it was on (L5-PROOFS handback, "Defects" 4). It is flattened
+ * here, at the wire, rather than in `serve`: the register row keeps the handle
+ * every other agent answer is stored as, so a replay reads the same record and
+ * is shaped the same way on the way out.
+ */
+export function agentAnswer(command: string, result: unknown): unknown {
+  if (command !== 'session.capabilities') return result;
+  if (typeof result !== 'object' || result === null || isCommandRefusal(result)) return result;
+  const detail = (result as Partial<CommandHandle>).detail;
+  return typeof detail === 'object' && detail !== null ? { ok: true, ...detail } : result;
+}
+
 async function runAgentCommand(
   tx: TenantQuery,
   session: AgentSession,

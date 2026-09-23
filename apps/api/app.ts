@@ -36,6 +36,7 @@ import type { Context } from 'hono';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { agentAnswer } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { refuseReadOperands } from '../../packages/core-records/src/commands/operands.ts';
 import {
   isCommandRefusal,
@@ -237,7 +238,7 @@ export function createApi(options: ApiOptions): Hono {
           },
         );
         if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
-        return context.json(result as Record<string, unknown>, 200);
+        return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
       });
     }
     api.route('/api/a/b/:businessKey', agentRoutes);
