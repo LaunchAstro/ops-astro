@@ -212,6 +212,67 @@ operation that really writes the field — the database readback failed 33 cases
 with `+ "assignee": "cfaa5cb8-…"`, then passed 38 again on revert. The
 refusal-writes-anyway failure this proof exists to catch is reachable.
 
+## Item 5: the restart proof (W06), as one named run
+
+```sh
+pnpm verify:restart --evidence .local/restart-proof/<name>.txt
+# defaults, declared in scripts/local/restart-proof.sh:
+#   --name ops-astro-restart-proof-pg  --port 54398  --api-port 8798
+```
+
+`scripts/local/restart-proof.sh` creates a disposable Postgres from the pinned
+digest, refuses before starting anything if the name or either port belongs to
+the working slice, the datafix database or the Hub's `supabase_*` stack, or if
+the name already exists or a port already answers, migrates it at the checked-out
+head, and runs `restart-and-expiry.test.ts` and `restart-declared.test.ts` with
+`--fileParallelism=false` and both restarts asked. The evidence file carries the
+head sha, the migration output, `StartedAt` before and after, every compared
+identity with its state, the API process ids before and after, and the verbose
+test output. The container is removed on success and on failure, and the exit
+status is the last line.
+
+**The container is declared, not hard-wired.** The case reads
+`L5_RESTART_CONTAINER_NAME`. Before any restart, `refusalFor` in
+`restart-harness.ts` refuses an undeclared name, any name on the deny list
+(`ops-astro-local-pg`, `ops-astro-datafix-pg`, `supabase_*`) without asking the
+daemon anything, and a container whose published 5432 port is not the port in
+`DATABASE_URL`. A refusal fails the case with its reason. It is never a skip.
+`restart-declared.test.ts` holds those refusals, and it runs on every
+invocation because it needs no database. Without either variable the two
+restart cases are skipped and printed as skipped, so a plain
+`vitest run tests/acceptance` on a shared server still never restarts it.
+
+**The API is restarted as a real process.** With `L5_RESTART_API_PORT` set,
+`restart-process.ts` starts `node apps/api/server.ts` against the suite's own
+database, reads `task.read` over HTTP, stops it with SIGTERM, checks that the
+port no longer answers, starts a new process and reads again.
+
+### W06 coverage
+
+| W06 claim                                         | Postgres restart                                                                    | API process restart                                 | browser B6 leg |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- |
+| task identity                                     | row read back through a fresh `createApi`                                           | `task.read` over HTTP, same id                      | yes (task)     |
+| lineage, version, evidence pack                   | ids and lineage state compared                                                      | same in the `proposals` projection                  | no             |
+| gate and gate state                               | `id:state` compared                                                                 | same in the projection                              | no             |
+| gate decision chain                               | ids compared                                                                        | ids, signatures and hashes compared                 | no             |
+| reservation, lease, attempt                       | `id:state` compared                                                                 | same in the projection                              | no             |
+| delegation                                        | `id:live/settled/revoked` compared                                                  | not projected over HTTP; DB rows compared around it | no             |
+| receipt (handback report)                         | a report minted before the restart, id compared                                     | DB rows compared                                    | no             |
+| operation register (the attempt a caller replays) | operation ids compared                                                              | DB rows compared                                    | no             |
+| no auto approval                                  | the undecided gate stays `pending` with 0 decisions                                 | pending gate unchanged in DB                        | no             |
+| no silent cancelled-lineage resumption            | lineage stays `cancelled`; pickup answers 409 `RESERVATION_NOT_CLAIMABLE`, no lease | DB state unchanged                                  | no             |
+| no duplicated proposal or hold                    | byte-identical propose and decide replayed after the restart add no row             | not replayed over HTTP                              | no             |
+| handback exactly once                             | second handback 401 `DELEGATION_NOT_LIVE`, replayed pickup mints no lease           | not driven over HTTP                                | no             |
+
+**Still open, by name.** (1) The browser does not reload across a restart onto
+the proposal, gate, lease or attempt: the B6 leg covers the task only.
+(2) Replays, the cancelled pickup and the handback are driven through `app.fetch`
+after the Postgres restart, not over HTTP against the restarted process.
+(3) Cancellation has no HTTP route, so the cancelled lineage is made with the
+runtime's own `cancelAndClassify` rather than through a surface a person has.
+(4) A gate that expires across a restart and a Request Changes round across a
+restart are not exercised.
+
 ## Defects found in other lanes' files
 
 Both are recorded as cases that assert the behaviour **as observed**, so each

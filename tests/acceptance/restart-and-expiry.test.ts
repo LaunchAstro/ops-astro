@@ -46,13 +46,21 @@ import {
   asAda,
   asAgent,
   countLeases,
+  declaredContainer,
   identities,
   report,
-  restartOwnContainer,
+  restartContainer,
   startedAt,
   walkTheJourney,
+  walkTheOtherLineages,
   type Journey,
+  type Lineages,
 } from './restart-harness.ts';
+import { declaredApiPort, readOverHttp, startApi } from './restart-process.ts';
+
+/** The proposals `task.read` carries on its task, as the task page reads them. */
+const proposalsOf = (body: Record<string, unknown>): unknown =>
+  (body['task'] as Record<string, unknown> | undefined)?.['proposals'];
 
 if (serverUrl === undefined) {
   console.warn('acceptance/restart: DATABASE_URL is unset, so nothing below ran.');
@@ -61,9 +69,14 @@ if (serverUrl === undefined) {
 describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
   let world: World;
   let journey: Journey;
+  let lineages: Lineages;
 
   beforeAll(async () => {
     world = await createWorld('rst');
+    // The other lineages first: the agent holds one live delegation at a
+    // time (`DELEGATION_ALREADY_LIVE`), so the settled one is handed back
+    // before the journey's own pickup mints the live one.
+    lineages = await walkTheOtherLineages(world);
     journey = await walkTheJourney(world);
   }, 180_000);
 
@@ -73,9 +86,12 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
 
   it('minted a gate, a decision, a reservation and a lease before anything restarted', async () => {
     const before = await identities(world);
-    expect(before['gates']).toContain(journey.gateId);
-    expect(before['reservations']).toContain(journey.reservationId);
-    expect(before['leases']).toContain(journey.leaseId);
+    const ids = (table: string): readonly string[] =>
+      (before[table] ?? []).map((row) => row.split(':')[0] as string);
+    expect(ids('gates')).toContain(journey.gateId);
+    expect(ids('reservations')).toContain(journey.reservationId);
+    expect(ids('leases')).toContain(journey.leaseId);
+    expect(before['receipts']?.length ?? 0, 'a handback receipt before the restart').toBe(1);
     expect(before['register']).toContain(journey.pickupOperationId);
     expect(before['decisions']?.length ?? 0).toBeGreaterThan(0);
   });
@@ -111,18 +127,29 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
   // printed as skipped, and a proof nobody ran must never read as a proof that
   // passed. `docs/local/PROOFS.md` carries the command and the measured
   // evidence from the runs that did execute it.
-  const restartAsked = process.env['L5_RESTART_CONTAINER'] === '1';
+  //
+  // Asked by naming the container, `L5_RESTART_CONTAINER_NAME`, which
+  // `pnpm verify:restart` does for its own disposable one. The older switch
+  // `L5_RESTART_CONTAINER=1` still asks, and without a name it now fails with
+  // the reason rather than restarting a name nobody declared.
+  const restartAsked =
+    process.env['L5_RESTART_CONTAINER_NAME'] !== undefined ||
+    process.env['L5_RESTART_CONTAINER'] === '1';
 
   it.skipIf(!restartAsked)(
-    'keeps every identity across a restart of its own Postgres',
+    'keeps every identity and outcome across a restart of the declared Postgres',
     async () => {
+      // Refused before anything restarts: a denied name, an undeclared one, or
+      // one that is not the server behind the URL fails here with its reason.
+      const container = declaredContainer(serverUrl);
       const before = await identities(world);
-      const startedBefore = startedAt();
-      restartOwnContainer();
-      const startedAfter = startedAt();
+      const startedBefore = startedAt(container);
+      restartContainer(container);
+      const startedAfter = startedAt(container);
       // The restart happened. Without this the rest of the case would pass
       // just as happily against a container that was never touched.
       expect(startedAfter).not.toBe(startedBefore);
+      report('container', [container]);
       report('container restart', [`${startedBefore} -> ${startedAfter}`]);
       const fresh = rebuildApi(world);
       try {
@@ -131,12 +158,82 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
           recordId: journey.taskId,
         });
         expect(read.code).toBe('ok');
-        // Same rows, same identifiers, in the same order. A row recreated rather
-        // than preserved changes this comparison, which is what makes the
-        // assertion about durability rather than about presence.
-        expect(await identities(world)).toStrictEqual(before);
+        // Same rows, same identifiers, same states, in the same order. A row
+        // recreated rather than preserved, or a state that moved, changes this
+        // comparison, which is what makes it about durability and not presence.
+        const after = await identities(world);
+        expect(after).toStrictEqual(before);
+        for (const [table, ids] of Object.entries(after)) {
+          report(`identities ${table}`, [String(ids.length), ...ids]);
+        }
+
+        // No auto approval: the gate nobody decided is still pending, with no
+        // decision and no hold drawn against it.
+        expect(after['gates']).toContain(`${lineages.pendingGateId}:pending`);
+        const undecided = await world.db.admin.execute<{ readonly n: string }>(
+          'select count(*)::text as n from public.gate_decisions where business_id = $1 and gate_id = $2',
+          [world.alpha, lineages.pendingGateId],
+        );
+        expect(undecided[0]?.n, 'decisions on the undecided gate').toBe('0');
+
+        // No silent resumption: the cancelled lineage is still cancelled, its
+        // hold is not claimable, and a pickup against it mints no lease.
+        expect(after['lineages']).toContain(`${lineages.cancelledLineageId}:cancelled`);
+        const leasesBefore = await countLeases(world, lineages.cancelledReservationId);
+        const resumed = await asAgent(world, fresh.api, '/task/pickup', {
+          operationId: randomUUID(),
+          reservationId: lineages.cancelledReservationId,
+        });
+        expect(resumed.code, 'pickup on a cancelled lineage').not.toBe('ok');
+        report('pickup on the cancelled lineage', [`${String(resumed.status)} ${resumed.code}`]);
+        expect(await countLeases(world, lineages.cancelledReservationId)).toBe(leasesBefore);
+
+        // No duplicated proposal or hold: the propose and the decide replayed
+        // byte for byte after the restart answer from the register and add no
+        // lineage, gate, decision or reservation. Snapshotted after the refused
+        // pickup, whose own attempt is registered under its new operation id.
+        const beforeReplay = await identities(world);
+        const proposeAgain = await asAda(world, fresh.api, '/task/propose', journey.proposeBody);
+        const decideAgain = await asAda(world, fresh.api, '/task/decide', journey.decideBody);
+        expect(proposeAgain.code, 'replayed propose').toBe('ok');
+        expect(decideAgain.code, 'replayed decide').toBe('ok');
+        report('replayed propose and decide', [proposeAgain.code, decideAgain.code]);
+        expect(await identities(world)).toStrictEqual(beforeReplay);
       } finally {
         await fresh.close();
+      }
+    },
+    120_000,
+  );
+
+  // The API as a real process, started, stopped and started again, with the
+  // identities read back over HTTP. Asked by `L5_RESTART_API_PORT`.
+  const apiAsked = process.env['L5_RESTART_API_PORT'] !== undefined;
+
+  it.skipIf(!apiAsked)(
+    'serves the same proposals over HTTP from a restarted API process',
+    async () => {
+      const port = declaredApiPort();
+      const before = await identities(world);
+      const first = await startApi(world, port);
+      const readBefore = await readOverHttp(port, world.ada.token, journey.taskId);
+      await first.stop();
+      const second = await startApi(world, port);
+      try {
+        const readAfter = await readOverHttp(port, world.ada.token, journey.taskId);
+        expect(second.pid, 'a new process').not.toBe(first.pid);
+        expect(readBefore.status).toBe(200);
+        expect(readAfter.status).toBe(200);
+        const proposals = proposalsOf(readAfter.body) as readonly unknown[];
+        expect(proposals.length).toBeGreaterThan(0);
+        // Everything the task page shows of the proposal — lineage, version,
+        // evidence, gate, the signed decision chain, the reservation, lease and
+        // attempt — identical from the new process.
+        expect(proposals).toStrictEqual(proposalsOf(readBefore.body));
+        expect(await identities(world)).toStrictEqual(before);
+        report('api process restart', [`pid ${String(first.pid)} -> ${String(second.pid)}`, port]);
+      } finally {
+        await second.stop();
       }
     },
     120_000,
