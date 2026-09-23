@@ -40,13 +40,15 @@ import { subjectsOf } from '../authority/grants.ts';
 import {
   handback,
   pickup,
-  propose,
+  lockProposal,
+  proposeUnderLocks,
   decide,
   type AnyRefusal,
   type DecisionKind,
   type SuccessorRequest,
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import {
   applied,
@@ -106,6 +108,8 @@ export interface ProposeFields {
   readonly step: { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> };
   readonly expiresInSeconds?: number;
   readonly lineageId?: string;
+  /** The task revision the caller read, compared under the runtime's locks (F1). */
+  readonly expectedRevision?: number;
 }
 
 /**
@@ -139,7 +143,7 @@ export async function proposeOnTask(
   fields: ProposeFields,
 ): Promise<HandlerOutcome> {
   const target = context.target;
-  if (target === undefined) throw new Error('proposeOnTask: reached without a locked task');
+  if (target === undefined) throw new Error('proposeOnTask: reached without a task');
   // Two shapes the columns constrain, answered here rather than left to the
   // constraint. `proposal_versions_purpose_shape` and `planned_steps.kind not
   // null` both fault at the write, and a fault reaches the caller as
@@ -177,7 +181,7 @@ export async function proposeOnTask(
     });
   }
 
-  const result = await propose(tx, {
+  const proposal = {
     taskId: target.id,
     collection: context.declaration.collection,
     proposedByActorId: context.session.actorId,
@@ -189,13 +193,28 @@ export async function proposeOnTask(
     step: { kind: fields.step.kind, payload: { ...fields.step.payload } },
     expiresAt,
     ...(fields.lineageId === undefined ? {} : { lineageId: fields.lineageId }),
-  });
+  };
+  // F1. The runtime takes cap, envelope, task and the rest in the contract's
+  // order; the envelope only read the task (`targetLock: 'runtime'`). The
+  // revision is compared here, with the task lock already held in that order,
+  // so a concurrent write is still refused `VERSION_STALE` and never merged.
+  const held = await lockProposal(tx, proposal);
+  const current = await lockTask(tx, context.spine.taskTypeId, target.id);
+  if (current === undefined) {
+    return refused(refuseCommand('NOT_FOUND', [], ['Check the identifier you were given.']));
+  }
+  if (fields.expectedRevision !== current.revision) {
+    return refused(
+      refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
+    );
+  }
+  const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(fromRuntime(result.refusal));
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against
   // the revision they hold. `task.comment` answers the same way.
-  return applied(target.id, target.revision, {
+  return applied(target.id, current.revision, {
     lineageId: result.value.lineageId,
     versionId: result.value.versionId,
     version: result.value.version,
