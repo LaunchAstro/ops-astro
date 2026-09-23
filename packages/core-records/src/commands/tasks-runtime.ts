@@ -321,6 +321,7 @@ export async function decideOnGate(
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
+const LEASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const MAXIMUM_LEASE_SECONDS = 60 * 60;
 
 export interface PickupFields {
@@ -362,6 +363,23 @@ export async function pickupAsPerson(
   context: CommandContext,
   fields: PickupFields,
 ): Promise<HandlerOutcome> {
+  // An HTTP body is untyped. Absent is the body's shape; present and not an
+  // identifier names nothing, and answers exactly as a fabricated one does.
+  const named: unknown = fields.reservationId;
+  if (typeof named !== 'string') {
+    return refused(
+      refuseCommand(
+        'COMMAND_BODY_INVALID',
+        ['reservationId'],
+        ['Name a reservation from task.queue.'],
+      ),
+    );
+  }
+  if (!LEASE_UUID.test(named)) {
+    return refused(
+      refuseCommand('RESERVATION_NOT_CLAIMABLE', [], [NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX]),
+    );
+  }
   return await claim(tx, context.declaration.collection, fields, {
     claimant: 'person',
     personId: context.session.personId,
@@ -550,6 +568,12 @@ export async function handbackOwnLease(
   context: CommandContext,
   fields: HandbackFields,
 ): Promise<HandlerOutcome> {
+  const named: unknown = fields.leaseId;
+  if (typeof named !== 'string' || !LEASE_UUID.test(named)) {
+    return refused(
+      refuseCommand('LEASE_NOT_OWNED', [], ['Hand back the lease your own pickup was issued.']),
+    );
+  }
   return await settle(tx, fields, context.session.actorId, {
     claimant: 'person',
     actorId: context.session.actorId,
@@ -794,7 +818,6 @@ export function readSuccessor(raw: unknown, agentActorId: string | undefined): R
 }
 
 const DEFAULT_RENEWAL_SECONDS = 15 * 60;
-const LEASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 /**
  * The person renews the lease their own pickup took, under their current
