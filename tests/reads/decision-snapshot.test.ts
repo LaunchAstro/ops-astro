@@ -231,9 +231,10 @@ describe.skipIf(serverUrl === undefined)('a decision committed during the decisi
   it('reads the proposal projection whichever statement the decide lands after', async () => {
     world = await createWorld('dsnap');
     const current = world;
-    // One statement for the versions, then the decision read's own statements.
-    // A decide after any of them leaves a valid view.
-    for (const after of [0, 1, 2]) {
+    // The projection is one statement now, the decision read's own
+    // (`projection-snapshot.test.ts` holds its relational cases). A decide
+    // after it leaves a valid view.
+    for (const after of [0]) {
       // eslint-disable-next-line no-await-in-loop
       const gate = await pendingFirst(current);
       // eslint-disable-next-line no-await-in-loop

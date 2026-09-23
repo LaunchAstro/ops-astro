@@ -31,6 +31,13 @@
 // re-rendered on read: an evidence pack that changed between the decision and
 // the display is the one thing a gate cannot survive.
 //
+// **The whole answer is one snapshot.** The versions, their gates, the
+// decisions and the reservations are read in one statement, the one that reads
+// the decision chain (`readVerifiedProjection`). Read separately, a
+// `task.decide` committed between them answers a gate `pending` beside its
+// own verified `approve`, and the page offers to decide a gate already
+// decided. One statement sees the decide entirely or not at all.
+//
 // **A pending gate past its deadline reads `expired`.** This is Nathan's
 // decision of 23 September 2026: show expired on read, preserve the stored
 // record. Nothing writes `expired` to `gates.state` (no timer, no migration),
@@ -51,7 +58,7 @@ import {
   keyResolver,
 } from '../../../core-runtime/src/signing.ts';
 import { gateSigningKey } from '../commands/runtime-config.ts';
-import { readVerifiedDecisions } from './verified-decisions.ts';
+import { readVerifiedProjection } from './verified-decisions.ts';
 
 export interface EvidenceView {
   readonly id: string;
@@ -182,7 +189,7 @@ interface VersionRow {
   readonly currency: string;
   readonly payload_digest: string;
   readonly payload: unknown;
-  readonly superseded_at: Date | null;
+  readonly superseded_at: string | null;
   readonly run_id: string | null;
   readonly evidence_pack_id: string | null;
   readonly evidence_renderer: string | null;
@@ -191,30 +198,38 @@ interface VersionRow {
   readonly gate_id: string | null;
   readonly gate_state: string | null;
   readonly gate_round: number | null;
-  readonly gate_expires_at: Date | null;
+  readonly gate_expires_at: string | null;
   readonly gate_expired: boolean | null;
 }
 
-/**
- * Every proposal on one task, newest lineage first.
- *
- * `signingKey` is the deployment's keys, from the environment, and a test
- * names its own key or resolver. `null` means none is configured: a task with
- * decisions then fails `DecisionIntegrityError` rather than show them
- * unverified.
- *
- * It is one query per shape rather than one join across all of them, because a
- * lineage with three versions, four decisions and two reservations joined flat
- * is one row per combination and the reader has to undo the multiplication.
- * Each of these is small and bounded by the lineage.
- */
-export async function readTaskProposals(
-  tx: TenantQuery,
-  taskId: string,
-  signingKey: KeyResolver | SigningKey | null = configuredKeys(),
-): Promise<readonly ProposalView[]> {
-  const versions = await tx.query<VersionRow>(
-    `select lin.id                as lineage_id,
+interface ReservationRow {
+  readonly lineage_id: string;
+  readonly id: string;
+  readonly state: string;
+  readonly held_minor: string;
+  readonly actual_minor: string | null;
+  readonly classified_cause: string | null;
+  readonly lease_id: string | null;
+  readonly lease_fence: string | null;
+  readonly lease_state: string | null;
+  readonly lease_expires_at: string | null;
+  readonly lease_holder: string | null;
+  readonly attempt_id: string | null;
+  readonly attempt_state: string | null;
+  readonly attempt_dispatch_marker: boolean | null;
+  readonly attempt_observed: boolean | null;
+}
+
+/** The task's lineages that have a version: the scope of the read. */
+const LINEAGES = `select distinct ver.lineage_id
+       from public.proposal_lineages lin
+       join public.proposal_versions ver
+         on ver.business_id = lin.business_id and ver.lineage_id = lin.id
+      where lin.business_id = $1 and lin.task_id = $2::uuid`;
+
+const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id, ver.version desc)
+                              as ordinal,
+            lin.id                as lineage_id,
             lin.state             as lineage_state,
             ver.id                as version_id,
             ver.version::text     as version,
@@ -244,34 +259,10 @@ export async function readTaskProposals(
          on pack.business_id = ver.business_id and pack.version_id = ver.id
        left join public.gates g
          on g.business_id = ver.business_id and g.version_id = ver.id
-      where lin.business_id = $1 and lin.task_id = $2
-      order by lin.created_at desc, ver.version desc`,
-    [tx.businessId, taskId],
-  );
-  if (versions.length === 0) return [];
+      where lin.business_id = $1 and lin.task_id = $2::uuid`;
 
-  const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];
-
-  const decisions = await readVerifiedDecisions(tx, lineageIds, signingKey);
-
-  const reservations = await tx.query<{
-    readonly lineage_id: string;
-    readonly id: string;
-    readonly state: string;
-    readonly held_minor: string;
-    readonly actual_minor: string | null;
-    readonly classified_cause: string | null;
-    readonly lease_id: string | null;
-    readonly lease_fence: string | null;
-    readonly lease_state: string | null;
-    readonly lease_expires_at: Date | null;
-    readonly lease_holder: string | null;
-    readonly attempt_id: string | null;
-    readonly attempt_state: string | null;
-    readonly attempt_dispatch_marker: boolean | null;
-    readonly attempt_observed: boolean | null;
-  }>(
-    `select run.lineage_id,
+const RESERVATIONS = `select row_number() over (order by res.created_at, res.id) as ordinal,
+            run.lineage_id,
             res.id, res.state, res.held_minor::text as held_minor,
             res.actual_minor::text as actual_minor, res.classified_cause,
             res.lease_id,
@@ -286,10 +277,42 @@ export async function readTaskProposals(
          on lease.business_id = res.business_id and lease.id = res.lease_id
        left join public.attempts att
          on att.business_id = res.business_id and att.reservation_id = res.id
-      where res.business_id = $1 and run.lineage_id = any($2::uuid[])
-      order by res.created_at`,
-    [tx.businessId, lineageIds],
+      where res.business_id = $1
+        and run.lineage_id in (select lineage_id from lineages)`;
+
+/**
+ * Every proposal on one task, newest lineage first.
+ *
+ * `signingKey` is the deployment's keys, from the environment, and a test
+ * names its own key or resolver. `null` means none is configured: a task with
+ * decisions then fails `DecisionIntegrityError` rather than show them
+ * unverified.
+ *
+ * It is one statement with one aggregate per shape rather than one join across
+ * all of them, because a lineage with three versions, four decisions and two
+ * reservations joined flat is one row per combination and the reader has to
+ * undo the multiplication. Each shape is small and bounded by the lineage.
+ */
+export async function readTaskProposals(
+  tx: TenantQuery,
+  taskId: string,
+  signingKey: KeyResolver | SigningKey | null = configuredKeys(),
+): Promise<readonly ProposalView[]> {
+  const snapshot = await readVerifiedProjection(
+    tx,
+    {
+      lineages: LINEAGES,
+      rows: { versions: VERSIONS, reservations: RESERVATIONS },
+      parameter: taskId,
+    },
+    signingKey,
   );
+  const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
+  const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
+  const decisions = snapshot.decisions;
+  if (versions.length === 0) return [];
+
+  const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];
 
   return lineageIds.map((lineageId) => {
     const rows = versions.filter((row) => row.lineage_id === lineageId);
@@ -330,7 +353,7 @@ export async function readTaskProposals(
                   id: row.lease_id,
                   fence: Number(row.lease_fence ?? '0'),
                   state: row.lease_state ?? 'unknown',
-                  expiresAt: (row.lease_expires_at ?? new Date(0)).toISOString(),
+                  expiresAt: isoTime(row.lease_expires_at),
                   holderActorId: row.lease_holder,
                 },
           attempt:
@@ -356,7 +379,7 @@ function asVersion(row: VersionRow): ProposalVersionView {
     currency: row.currency,
     payloadDigest: row.payload_digest,
     payload: row.payload,
-    supersededAt: row.superseded_at === null ? null : row.superseded_at.toISOString(),
+    supersededAt: row.superseded_at === null ? null : isoTime(row.superseded_at),
     runId: row.run_id,
     evidence:
       row.evidence_pack_id === null
@@ -374,11 +397,19 @@ function asVersion(row: VersionRow): ProposalVersionView {
             id: row.gate_id,
             state: row.gate_state ?? 'unknown',
             round: row.gate_round ?? 0,
-            expiresAt: (row.gate_expires_at ?? new Date(0)).toISOString(),
+            expiresAt: isoTime(row.gate_expires_at),
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
           },
   };
+}
+
+/**
+ * A timestamp from the snapshot's JSON, in the spelling a `Date` read gives:
+ * milliseconds, UTC. A missing one reads as the epoch, as it did before.
+ */
+function isoTime(text: string | null): string {
+  return new Date(text ?? 0).toISOString();
 }
 
 /**

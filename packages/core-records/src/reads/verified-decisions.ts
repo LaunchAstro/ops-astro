@@ -73,7 +73,10 @@
 // commits and a gate read after it would disagree about intact evidence: an
 // approved gate with no decision, a fault on a decision nobody touched. So the
 // chain prefix and the gate and lineage facts come from one statement, and the
-// read answers the old view or the new one, never a mix.
+// read answers the old view or the new one, never a mix. A read that shows
+// rows beside the decisions, such as a gate's state, takes them in that same
+// statement (`readVerifiedProjection`): a gate read before the decide and a
+// decision read after it would show `pending` beside a verified `approve`.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -139,12 +142,54 @@ export async function readVerifiedDecisions(
   keys: KeyResolver | SigningKey | null,
 ): Promise<readonly VerifiedDecision[]> {
   if (lineageIds.length === 0) return [];
+  const scope = {
+    lineages: 'select unnest($2::uuid[]) as lineage_id',
+    rows: {},
+    parameter: lineageIds,
+  };
+  return (await readVerifiedProjection(tx, scope, keys)).decisions;
+}
 
-  const { chain, gates } = await readSnapshot(tx, lineageIds);
+/**
+ * A read's own rows, taken in the statement that takes the chain, so what the
+ * read shows beside its decisions is the same snapshot as they are.
+ *
+ * `lineages` selects the column `lineage_id`, the lineages in scope; each
+ * entry of `rows` selects the rows of one shape, with an `ordinal` column that
+ * orders them. Both use `$1` for the business and `$2` for `parameter`. The
+ * rows come back as JSON: a timestamp is its text, and a caller wanting a
+ * number from a `bigint` selects it as text.
+ */
+export interface ProjectionScope {
+  readonly lineages: string;
+  readonly rows: Readonly<Record<string, string>>;
+  readonly parameter: unknown;
+}
+
+export interface VerifiedProjection {
+  /** The lineages in scope, in this snapshot. */
+  readonly lineageIds: readonly string[];
+  readonly decisions: readonly VerifiedDecision[];
+  /** Each entry of `rows`, in `ordinal` order. */
+  readonly rows: Readonly<Record<string, readonly unknown[]>>;
+}
+
+/**
+ * The decisions on the lineages a scope names, verified as
+ * `readVerifiedDecisions` verifies them, with the scope's rows from the same
+ * snapshot. Throws `DecisionIntegrityError` rather than return a decision that
+ * does not hold.
+ */
+export async function readVerifiedProjection(
+  tx: TenantQuery,
+  scope: ProjectionScope,
+  keys: KeyResolver | SigningKey | null,
+): Promise<VerifiedProjection> {
+  const { chain, gates, lineageIds, rows } = await readSnapshot(tx, scope);
   const returned = chain.length === 0 ? [] : verified(chain, lineageIds, keys);
   const missing = missingDecisions(lineageIds, gates, returned);
   if (missing !== null) throw new DecisionIntegrityError(missing);
-  return returned;
+  return { lineageIds, decisions: returned, rows };
 }
 
 /** The chain walked under each row's own link version and key, then filtered to the lineages. */
@@ -302,34 +347,48 @@ function lineageWithoutItsDecisions(
   return null;
 }
 
+/** True on the statement's first row: the oldest chain row, or the only row of an empty chain. */
+const FIRST_ROW = 'lag(chain.chain_position) over (order by chain.chain_position) is null';
+
 /** A chain row with the snapshot's facts beside it; `id` is null when the chain is empty. */
 interface SnapshotRow extends Omit<VerifiedDecisionRow, 'id'> {
   readonly id: string | null;
   readonly chain_position: string | null;
   readonly snapshot_gates: readonly GateFact[];
+  /** On the first row only; null on the others. */
+  readonly snapshot_lineages: readonly string[] | null;
+  readonly snapshot_rows: Readonly<Record<string, readonly unknown[]>> | null;
 }
 
 /**
- * The prefix of the business chain that ends at the newest decision on these
- * lineages, and the gate and lineage facts U1 checks it against, oldest gate
- * round first. One statement, so the prefix, the rows it verifies and the
- * facts are one snapshot.
+ * The prefix of the business chain that ends at the newest decision on the
+ * scope's lineages, the gate and lineage facts U1 checks it against, oldest
+ * gate round first, and the scope's own rows. One statement, so the prefix,
+ * the rows it verifies, the facts and what the read shows beside them are one
+ * snapshot.
  *
- * The facts are one aggregate beside the chain rows, so an empty chain still
- * brings them: the snapshot row survives the left join with every chain
- * column null, and is dropped here.
+ * The facts and rows are aggregates beside the chain rows, so an empty chain
+ * still brings them: the snapshot row survives the left join with every chain
+ * column null, and is dropped here. The scope's rows ride on the first row
+ * only, since the chain prefix can be the business's whole history.
  */
 async function readSnapshot(
   tx: TenantQuery,
-  lineageIds: readonly string[],
+  scope: ProjectionScope,
 ): Promise<{
   readonly chain: readonly VerifiedDecisionRow[];
   readonly gates: readonly GateFact[];
+  readonly lineageIds: readonly string[];
+  readonly rows: Readonly<Record<string, readonly unknown[]>>;
 }> {
+  const names = Object.keys(scope.rows);
+  const projected = names.map((name, index) => ({ name, cte: `projected_${index}` }));
   const rows = await tx.query<SnapshotRow>(
-    `with wanted as (
+    `with lineages as (${scope.lineages}),
+     ${projected.map(({ name, cte }) => `${cte} as (${scope.rows[name]}),`).join('\n     ')}
+     wanted as (
        select max(seq) as last from public.gate_decisions
-        where business_id = $1 and lineage_id = any($2::uuid[])
+        where business_id = $1 and lineage_id in (select lineage_id from lineages)
      ),
      facts as (
        select coalesce(json_agg(json_build_object(
@@ -342,10 +401,22 @@ async function readSnapshot(
            on ver.business_id = g.business_id and ver.id = g.version_id
          join public.proposal_lineages lin
            on lin.business_id = ver.business_id and lin.id = ver.lineage_id
-        where g.business_id = $1 and ver.lineage_id = any($2::uuid[])
+        where g.business_id = $1 and ver.lineage_id in (select lineage_id from lineages)
+     ),
+     scoped as (
+       select coalesce(array_agg(lineage_id::text), '{}') as snapshot_lineages from lineages
      )
-     select facts.snapshot_gates, chain.*
+     select facts.snapshot_gates,
+            case when ${FIRST_ROW} then scoped.snapshot_lineages end as snapshot_lineages,
+            case when ${FIRST_ROW} then json_build_object(${projected
+              .map(
+                ({ cte }, index) =>
+                  `$${index + 3}::text, (select coalesce(json_agg(p order by p.ordinal), '[]'::json) from ${cte} p)`,
+              )
+              .join(', ')}) end as snapshot_rows,
+            chain.*
        from facts
+       cross join scoped
        left join lateral (
          select d.lineage_id, ver.lineage_id as gate_lineage_id,
                 d.id, d.seq::text as seq, d.seq as chain_position, d.gate_id, d.version_id,
@@ -361,13 +432,26 @@ async function readSnapshot(
           where d.business_id = $1 and d.seq <= wanted.last
        ) chain on true
       order by chain.chain_position`,
-    [tx.businessId, lineageIds],
+    [tx.businessId, scope.parameter, ...names],
   );
-  const gates = rows[0]?.snapshot_gates ?? [];
+  const first = rows[0];
   const chain = rows
     .filter((row): row is SnapshotRow & { readonly id: string } => row.id !== null)
-    .map(({ snapshot_gates: _gates, chain_position: _position, ...row }) => row);
-  return { chain, gates };
+    .map(
+      ({
+        snapshot_gates: _gates,
+        snapshot_lineages: _lineages,
+        snapshot_rows: _rows,
+        chain_position: _position,
+        ...row
+      }) => row,
+    );
+  return {
+    chain,
+    gates: first?.snapshot_gates ?? [],
+    lineageIds: first?.snapshot_lineages ?? [],
+    rows: first?.snapshot_rows ?? {},
+  };
 }
 
 /**
