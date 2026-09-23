@@ -52,12 +52,24 @@ A part that lands adds its suites to the manifest, and that is the whole
 registration. No count of them is written down here, in the runner or in any
 other document, because a number written down is a number the next part makes
 wrong: read the manifest for the current set. Its `comment` array records which
-lane contributed which entries and why two suites are deliberately absent.
+part contributed which entries, and which suites are deliberately absent and why.
 
 **A pure unit suite must not be named.** The runner requires each named suite
 to move the database's transaction counter during its own run (rule 7 below),
 so naming a suite that touches no database fails the job, correctly. The
-manifest's comment names the two suites this applies to.
+manifest's comment names the suites this applies to.
+
+**A suite that needs more than a database is not named either.**
+`tests/api/server-onerror.test.ts` and `tests/cli/mounted-cli.test.ts` each
+spawn the real `apps/api/server.ts` on the loopback port `SURFACE_API_PORT`
+names, and without it every case is skipped
+(`server-onerror.test.ts:23-25`, `mounted-cli.test.ts:31`, `:77`). The runner
+passes its environment through and does not set that port
+(`scripts/db-conformance.mjs:178`), so naming them would fail the job on a
+skip. `tests/acceptance/restart-and-expiry.test.ts` stays out for the same
+reason: its container-restart case skips unless `L5_RESTART_CONTAINER_NAME`
+names the container (`restart-and-expiry.test.ts:135-139`), which
+`pnpm verify:restart` does. Each runs as its own step with its variable set.
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each

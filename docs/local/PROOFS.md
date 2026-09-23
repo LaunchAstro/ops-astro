@@ -20,36 +20,41 @@ Each count below carries one of three labels:
 **Nothing below is accepted.** The last evidenced milestone is `74d583c`. Its
 evidence, including the review reports and the source-to-route manifest, is
 kept with the build run under `runs/74d583c`, outside this repository.
-`906613f` has merge-trial evidence only. Its product tree is the merge trial's
-(`36dba27`), plus the named-suite list in `tests/db/named-suites.json`.
+`cca3c89` has merge-trial evidence only: each lane merged since `74d583c` was
+merged with the commands below run on the integration trial, and nothing more.
+The final live verification at `cca3c89` is owed and has not been run: reseed
+the local database (the live one still stands at migration 0020, so 0021 to
+0023 apply then), restart the API on the merged tree, then `verify:slice`,
+`verify:browser` and the restart proof.
 
-| What                                                                         | Count                                                                             | Label                                 |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
-| `pnpm test`                                                                  | 4,209 passed, 10 skipped, 113 files                                               | tested (merge trial, `36dba27`)       |
-| `tests/acceptance`                                                           | 3,234 passed, 10 skipped (the restart cases)                                      | tested (merge trial, `36dba27`)       |
-| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,145 of 3,145: 2,375 reported for `d06-generated`, 770 for `d06-agent`           | tested (merge trial)                  |
-| `role-case-matrix.test.ts` (item 2)                                          | 363 rows: 330 pass, 6 executed alternative, 23 not applicable, 4 missing coverage | tested (lane run; green in the trial) |
-| `statement-capture-full.test.ts`                                             | 81 passed: 35 of 35 operations captured, 35 refused                               | tested (merge trial)                  |
-| `restricted-calls.test.ts`, `restricted-calls-prefixes.test.ts`              | 30 passed                                                                         | tested (merge trial)                  |
-| `schedules-*.test.ts`                                                        | 12 of 12                                                                          | tested (merge trial)                  |
-| `i10-inflight.test.ts`                                                       | 2 passed                                                                          | tested (merge trial)                  |
-| `verified-decisions.test.ts` and the rest of `tests/reads`                   | 16 passed                                                                         | tested (merge trial)                  |
-| `tests/commands`, `tests/reads`, `tests/api` after the replay guard          | 359 passed                                                                        | tested (merge trial)                  |
-| `tests/db/named-suites.json`, `invariant`                                    | 52 suites named                                                                   | implemented; `db:conformance` not run |
-| `verify:browser`, including the three in-flight open-page rows               | none at `906613f`                                                                 | implemented; not run                  |
-| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run)) | skipped in the counts above                                                       | not run at `906613f`                  |
+| What                                                                         | Count                                                          | Label                           |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------- |
+| `typecheck`, `lint`, `format:check`, `spdx`                                  | green                                                          | tested (merge trial, `cca3c89`) |
+| `pnpm test`                                                                  | 5,102 passed, 19 skipped                                       | tested (merge trial, `cca3c89`) |
+| `tests/acceptance`                                                           | 3,846 passed, 11 skipped                                       | tested (merge trial, `cca3c89`) |
+| `db:conformance`                                                             | 78 named suites (74 invariant, 4 conformance), 865 of 865      | tested (merge trial, `cca3c89`) |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                 | 3,705 of 3,705: 2,900 for `d06-generated`, 805 for `d06-agent` | tested (lane run on `cca3c89`)  |
+| `role-case-matrix.test.ts` (item 2)                                          | 363 rows: 336 pass, 27 named exceptions, none missing coverage | tested (lane run on `cca3c89`)  |
+| `verify:browser`, including the in-flight, R4 and surface-final rows         | none at `cca3c89`                                              | implemented; not run            |
+| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run)) | skipped in the counts above                                    | not run at `cca3c89`            |
 
-The four missing-coverage rows in the matrix are the admin's `task.pickup` and the
-member's `task.pickup`, `task.handback` and `task.heartbeat`. All four are open. The matrix row
-count comes from `.local/l5-matrix.tsv` on the lane's own stack. The merge
-trial ran the same file green but kept no row count of its own.
+The 19 skipped in `pnpm test` include the suites that spawn the real
+`server.ts` and skip without `SURFACE_API_PORT`
+(`tests/api/server-onerror.test.ts`, `tests/cli/mounted-cli.test.ts`), and the
+restart cases, which skip without their disposable container. The named-suite
+list and why those stay unnamed are in
+[database-conformance.md](../agents/database-conformance.md).
 
-`d06-generated.test.ts` executes 2,373 cells: 35 operations × 22
-`SYSTEM_OWNED_FIELDS` × API, CLI and web, plus 7 `fields` operations × 3
-installed system fields on each of the three surfaces. The lane's run reported
-2,375, which is 2 more than the 2,373 that product gives. That difference has
-not been reconciled. `d06-agent.test.ts` holds 154 contract cells
-and 616 exclusion cells.
+`d06-generated.test.ts` executes 2,898 cells and two plain tests. The cells are
+35 operations × 27 top-level keys × API, CLI and web (2,835: the 22
+`SYSTEM_OWNED_FIELDS` plus the installed system fields, from `TOP_LEVEL_FIELDS`
+in `d06-cases.ts`), plus 7 `fields` operations × 3 installed system fields on
+each of the three surfaces (63). The two plain tests read the installed field
+metadata and list the operations whose bodies carry record fields. That is the
+old 2,375 against 2,373 settled: at `9221c29` the file ran 2,373 cells and the
+same two tests, 2,375 in all. `d06-agent.test.ts` holds the contract and
+exclusion cells for the agent route, including the top-level system-field
+keys, which the agent route now refuses `FIELD_NOT_WRITABLE` too.
 
 The in-flight half of I10 is `tests/acceptance/i10-inflight.test.ts`. A read
 is held at admission (after `effectiveGrants`) in its open transaction while
@@ -192,14 +197,16 @@ and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
-**363 rows: 330 pass, 33 named exceptions, zero failures**, as
-`.local/l5-matrix.tsv` recorded them on `slice/capabilities`. At 74d583c it
-was 331 rows, 296 pass and 35 exceptions: 9 executed alternative and 26
-missing coverage. On `slice/matrix-coverage` it was 326 pass, 10 executed
-alternative, 23 not applicable and 4 missing. It is now 6 executed
-alternative, 23 not applicable and 4 missing coverage, all four owned by
-PERSON-WORK: the four `session.capabilities` rows pass with the contract's
-outcome.
+**363 rows: 336 pass, 27 named exceptions, zero failures**, as
+`.local/l5-matrix.tsv` recorded them in the DOCS-2 lane's run of
+`tests/acceptance` on its own Postgres at `cca3c89` (tested, lane run). The 27
+are 4 executed alternative and 23 not applicable; no row is missing coverage.
+At 74d583c it was 331 rows, 296 pass and 35 exceptions: 9 executed
+alternative and 26 missing coverage. On `slice/capabilities` it was 330 pass,
+6 executed alternative, 23 not applicable and 4 missing coverage: the admin's
+`task.pickup` and the member's `task.pickup`, `task.handback` and
+`task.heartbeat`. PERSON-WORK's person route and OWN-LEASE-SCOPE's
+record-scoped work authority closed those four.
 
 | Case                                                             | Rows |
 | ---------------------------------------------------------------- | ---- |
@@ -243,15 +250,13 @@ text starts with one of three labels:
 - **Missing coverage**: nothing in this run asserts it. The reason, or the
   table, names what would, and who owns it.
 
-Six rows are executed alternatives:
+Four rows are executed alternatives:
 
-| Rows                            | What is asserted instead                                                                      | Spec line                                                                                         |
-| ------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| (a) `grant.revoke`              | the admin's revocation succeeds, case (f)                                                     | contract ledger line 36, revocation controls                                                      |
-| (a) `delegation.revoke`         | the admin revokes a live delegation, case (k); the agent's next call is `DELEGATION_NOT_LIVE` | contract ledger line 36, revocation controls                                                      |
-| (a) `task.handback`             | the agent hands back its own lease, case (k); person handback is PERSON-WORK's                | contract ledger line 31; minimum contract line 332, the holder of the delegation minted at pickup |
-| (a) `task.heartbeat`            | the agent's own-lease beat succeeds, case (i)                                                 | contract ledger line 38                                                                           |
-| (i) `task.queue`, `task.pickup` | both succeed without a delegation, case (h)                                                   | contract ledger line 62, I12                                                                      |
+| Rows                            | What is asserted instead                                                                      | Spec line                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| (a) `grant.revoke`              | the admin's revocation succeeds, case (f)                                                     | contract ledger line 36, revocation controls |
+| (a) `delegation.revoke`         | the admin revokes a live delegation, case (k); the agent's next call is `DELEGATION_NOT_LIVE` | contract ledger line 36, revocation controls |
+| (i) `task.queue`, `task.pickup` | both succeed without a delegation, case (h)                                                   | contract ledger line 62, I12                 |
 
 The four `session.capabilities` rows now pass with the contract's outcome.
 (e) `noah`, a member holding nothing, is refused `SCOPE_NOT_GRANTED` (minimum
@@ -270,19 +275,13 @@ elsewhere in the matrix:
 - `noah`, a member holding nothing, is refused `SCOPE_NOT_GRANTED` on every
   exported operation, so every operation keeps a true no-grant actor.
 - The new case (e) member positive drives `mia` on each pair she holds, with
-  case (a)'s minimal body. Twenty return 200. The other three are the missing
-  coverage below.
+  case (a)'s minimal body. All twenty-three return 200, `task.pickup`,
+  `task.handback` and `task.heartbeat` included.
 
-Four rows are missing coverage. (a) `task.pickup` is EX-01: the person path
-refuses it and nothing else stands in for a person's pickup. The other three
-are (e) member positive for `mia` on `task.pickup`, `task.handback` and
-`task.heartbeat`. Each is called, and the row records the observed
-`AUTH_NO_AGENT_IDENTITY` 401 without asserting it. The person path refuses
-these three for everyone (`handlers.ts:107-119`).
-Person pickup is required (transaction contract T3 line 66, minimum contract
-line 331, ledger line 30), so that refusal is a missing implementation. The
-root routes person pickup, and heartbeat and handback on the person's own
-lease, to PERSON-WORK (`ROOT-L6-74d583c-DISPOSITION.md` lines 31-35).
+No row is missing coverage. The four that were (the admin's `task.pickup`,
+and `mia`'s `task.pickup`, `task.handback` and `task.heartbeat`) pass on the
+person route. The admin's `task.handback` and `task.heartbeat` in case (a),
+once executed alternatives, pass as well.
 
 Case (k) drives the three operations the old rows only described:
 
@@ -369,6 +368,13 @@ on failure the exit trap stops every API process the run wrote to its pid file,
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
 removed`, and `Tests 24 passed (24)`, with no expected failure.
+The 24 is the count from the head the proof was last run on; it has not been
+run at `cca3c89`. A lane with its own stack passes `--name`, `--port` and
+`--api-port` rather than taking the defaults, which belong to the coordinator.
+
+After the restart, `restart-http.test.ts` also asks for a third
+`request_changes` on the same lineage and gets 409 `CHANGE_ROUNDS_EXHAUSTED`,
+audited as a refusal (G08, `restart-http.test.ts:405-424`).
 
 **Removal on failure is demonstrated.** `L5_RESTART_INDUCE_FAILURE=throw` fails
 the run once the restarted container and the new API process are up;
@@ -508,18 +514,74 @@ lane does not own.
   table now has the row, with where the envelope raises it
   ([AUTHORITY.md](AUTHORITY.md#refusal-codes-as-l3-registered-them)).
 
+## Suites that need a real server
+
+Two suites spawn the real `apps/api/server.ts` on the loopback port named by
+`SURFACE_API_PORT` and skip every case without it, so they are not in the
+counts above and are not named for `db:conformance`:
+
+- `tests/api/server-onerror.test.ts` proves a `DECISION_INTEGRITY` fault
+  answers 500 through the server's `onError`, not 503.
+- `tests/cli/mounted-cli.test.ts` drives `apps/cli/client.ts` over a real
+  socket: create, assign, start, complete and reload a task, `preset.plan`,
+  and a D03 cell.
+
+Both are implemented and ran green on the SURFACE-FINAL lane's stack, and 7 of
+7 on the DOCS-2 lane's own stack at `cca3c89` (tested, lane run). Neither has a
+merge-trial run with the port set.
+
+## Engineering rulings, and how far each is proved
+
+The build's root ruled on contract questions the lanes raised at `906613f`,
+`01a437a` and after the item-5 triage. Each ruling is an engineering reading of
+an existing clause, not a new product decision, not a waiver and not
+acceptance. The status column uses the labels above; "tested" means a merge
+trial ran the named suite green, nothing more.
+
+| Ruling                                                                                                                                                                                                                                                                                                                                                                                       | Clause                                      | Status                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------- |
+| An installed system field named at the top level of a body is refused `FIELD_NOT_WRITABLE` by name, from the installed field metadata, on every route. Nested keys stay the operation's own, and `source` stays `SOURCE_SPOOFED`. No general unknown-key policy.                                                                                                                             | D06, T1-N4                                  | tested (merge trial): `d06-generated`, `d06-agent`, `boundary-system-fields`            |
+| A foreign and a fabricated gate both answer public `NOT_FOUND`, byte for byte the same, audited in the caller's business. Tests compare raw bytes; normalising identifiers out of a comparison is not allowed.                                                                                                                                                                               | minimum contract 8.2 case 1                 | tested (merge trial): `identifier-negatives`                                            |
+| A read that takes no target refuses an unsupported identifier such as `recordId` with `COMMAND_BODY_INVALID`, as the command path does. Reads that do take one (`task.read`, `task.board`) are checked per operation.                                                                                                                                                                        | contract ledger SC2, I03                    | tested (merge trial): `audit-per-operation`, boundary suites                            |
+| A body that is not a JSON object writes one durable admission refusal (`authentication_attempts`, `COMMAND_BODY_INVALID`, subject digest only) once the bearer and business are resolved, and no `audit_events` row. No body or credential is stored.                                                                                                                                        | ledger I13                                  | tested (merge trial): `audit-per-operation`                                             |
+| A person's `session.capabilities` counts only live, unexpired, parent-covered grants; a member with none gets `SCOPE_NOT_GRANTED`. After pickup an agent's answer is bounded by the current delegation and person intersection.                                                                                                                                                              | ledger I05, I12                             | tested (merge trial)                                                                    |
+| A bare agent call outside `task.queue` and `task.pickup` is `DELEGATION_EXCLUDES_OPERATION`, and `task.decide` is `DELEGATION_EXCLUDES_DECISION`; a bare handback replay gets the same exclusion with no receipt content. The lost-response pickup replay is the one exception.                                                                                                              | minimum contract 8.2 case 9, ledger I12, T3 | tested (merge trial)                                                                    |
+| A lost pickup response is recovered by an authorised retry that returns the same credential, derived under a dedicated delegation key after current-rights and binding checks. Ordinary replay never rotates a credential. Legacy random credentials cannot be recovered and are labelled so ([RUNTIME.md](RUNTIME.md)).                                                                     | T3                                          | tested (merge trial); the custody boundary is owed to the independent correction review |
+| A present `null` `leaseSeconds` or `report` is `FIELD_VALUE_INVALID`; omitting either keeps the default.                                                                                                                                                                                                                                                                                     | T3, T4                                      | tested (merge trial)                                                                    |
+| **D03 precedence.** On `task.update`, any `intake_state` in `fields`, `accepted` included, is `TRANSITION_PROTECTED` naming `task.triage`. The specification's T1-N3 and ledger row D03 take precedence over the older minimum-contract 6.1 wording, which answered `SOURCE_SPOOFED`. `task.create` keeps `SOURCE_SPOOFED` for `source` and `intake_state` (minimum contract, create rules). | T1-N3, ledger D03, minimum contract 6.1     | tested (merge trial): `protected-fields`                                                |
+| The external party's task page draws only the server's shared projection.                                                                                                                                                                                                                                                                                                                    | R4                                          | implemented; browser rows not run at `cca3c89`                                          |
+| When a grant's loss revokes a delegation, the server records the cause (`authority_lost`), and the bound agent's next call on its unexpired credential is `DELEGATION_NARROWED`. Nothing is reactivated; explicit revocation, expiry and settlement keep `DELEGATION_NOT_LIVE`.                                                                                                              | minimum contract 8.2 case 6, ledger I08, T5 | tested (merge trial): `authority-loss-narrowed`, `runtime-residuals`                    |
+| New decisions sign round, decision time, acting actor and their chain context in a versioned payload (v3). Older rows are verified for what they signed and never rewritten.                                                                                                                                                                                                                 | T2                                          | tested (merge trial): `decision-v3`                                                     |
+| A read whose decisions fail to verify is a fault (`DECISION_INTEGRITY`, 500) that rolls back, not a committed refusal, so no tamper audit row is kept.                                                                                                                                                                                                                                       | TC11                                        | tested (merge trial); the live `onError` probe is owed at the final restart             |
+
+## Deferred limits
+
+These are limits of the first slice, recorded so nobody reads them as done.
+None is a waiver.
+
+- **Preset operand collision.** Preset install is outside the first slice. A
+  future planner must refuse a system-field key that equals a top-level operand
+  name.
+- **Cross-installation isolation on a shared Postgres cluster.** The
+  `ops_astro_app` role is cluster-wide and `PUBLIC` keeps `CONNECT` by
+  default. Two installations on one cluster are not proved isolated from each
+  other; a shared-cluster deployment needs its own proof.
+- **v1 and v2 decision rows.** Their round, decision time, lineage, acting
+  actor, id, sequence and previous link sit only in the unkeyed chain link. An
+  owner-level writer who recomputes every later link can change them
+  undetected. The proposal read labels each item with `linkVersion` and lists
+  what the signature covers in `signedFields`.
+- **Removing the newest decisions.** Deleting the tail of a business's chain
+  leaves a shorter chain that verifies. v3's signed previous link protects the
+  middle, not the tail; the gate and lineage cross-checks are the only defence
+  there.
+
 ## What is not here
 
 Named by item number so the unfinished frontier stays countable.
 
 - **No exported share operation.** R4's share is issued by `shareRecord` from
   the tests; no route calls it ([API.md, "Open items"](API.md#open-items)).
-- **Four matrix rows are missing coverage.** All four are person work: the
-  admin's `task.pickup` (EX-01) and the member's `task.pickup`, `task.handback`
-  and `task.heartbeat`, named under item 2.
-- **D06 residual F1.** An installed system field name sent at the top level of
-  a body is silently ignored rather than refused. It stays open until it is
-  ruled on.
 - **The one statement outside a transaction.** The runtime connection's only
   statement outside a transaction is the `postgres` driver's per-connection
   `pg_type` array lookup (`fetch_types`), which `statement-capture-full.test.ts`

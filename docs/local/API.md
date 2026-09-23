@@ -61,6 +61,16 @@ under the status `apps/api/status.ts` maps
 the code to. The code is what a client branches on; the status is what a proxy
 and a log reader see, and neither is derived from the other.
 
+**A body that is not a JSON object is `COMMAND_BODY_INVALID` 400**, on both
+prefixes (`apps/api/app.ts:168-173`, `:222-225`). Once the bearer is verified
+and the business resolved, the refusal writes one `authentication_attempts`
+row: owner `person_login` or `agent_login`, outcome `refused`, code
+`COMMAND_BODY_INVALID`, and the subject as a digest only
+(`identity/authentication-attempts.ts:100-117`). It writes no `audit_events`
+row, and stores neither the body nor a credential. An unknown login, an
+expired bearer or an unknown business writes nothing.
+`tests/api/boundary-body-admission.test.ts` holds it.
+
 **An absent or mistyped operand is refused by name, not answered as a fault.**
 Five operations used to take their request type at its word and answer a
 plain-text 500 when an operand was missing. Each now answers
@@ -72,16 +82,20 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `commands/tasks-write.ts:90`                 |
 | `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `commands/tasks-trash.ts:57`                 |
 | `task.purge`   | `olderThanDays`                          | a whole number of days, zero or more                                     | `commands/tasks-trash.ts:80`                 |
-| `task.read`    | `recordId`                               | a string                                                                 | `reads/dispatch.ts:166`, `operands.ts:62-64` |
-| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `reads/dispatch.ts:166`, `operands.ts:65-76` |
+| `task.read`    | `recordId`                               | a string                                                                 | `reads/dispatch.ts:262`, `operands.ts:62-64` |
+| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | `reads/dispatch.ts:262`, `operands.ts:65-74` |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `reads/dispatch.ts:262`, `operands.ts:75-86` |
 
 The three command checks run in their handlers, so the refusal is registered and
-audited like any other command refusal. The two read checks run inside the
-audited read (`refuseReadOperands`, called from `reads/dispatch.ts:166`), after
-the system-field check and before the grant check, so a refused read writes its
-audit row like any other (`apps/api/app.ts:179-180`).
-`tests/api/operand-refusals.test.ts` holds all five over HTTP, absent and
-mistyped, and that a well-formed request still succeeds on each. On the agent
+audited like any other command refusal. The read checks run inside the
+audited read (`refuseReadOperands`, called from `reads/dispatch.ts:262`), after
+the system-field and identifier checks and before the grant check, so a refused
+read writes its audit row like any other.
+`tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
+mistyped, and that a well-formed request still succeeds on each. `task.board`
+joined them later: a body with no `board` used to be answered the unboarded
+list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
+that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`). On the agent
 prefix, `task.read` does not go through `reads/dispatch.ts`: the agent
 envelope reads `recordId` itself, and under a live delegation an absent one is
 `NOT_FOUND` 404 (`commands/agent-envelope.ts:421-422`, `:557-570`).
@@ -152,7 +166,7 @@ the general rule above. Every write also answers the envelope's own refusals:
 | `task.move`                                                                           | `/task/move`                           | `operationId`, `recordId`, `expectedRevision`, `board`, `boardSection?` | `PLACEMENT_IS_DERIVED` 422 (a section on a subtask), `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404 naming `board`                                                                        |
 | `task.rank`                                                                           | `/task/rank`                           | `operationId`, `recordId`, `expectedRevision`, `afterId?`, `beforeId?`  | `PLACEMENT_IS_DERIVED` 422 when neither neighbour is sent, `NOT_FOUND` 404 naming `neighbour`                                                                                         |
 | `task.trash`                                                                          | `/task/trash`                          | `operationId`, `recordId`, `expectedRevision`                           | none of its own; the answer's `detail` carries `batchId`, which `task.restore` takes, and `trashed`, the count                                                                        |
-| `task.board`                                                                          | `/task/board`                          | `board`: a board id, or `null` for the unboarded tasks                  | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for an external party, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks }`                                                               |
+| `task.board`                                                                          | `/task/board`                          | `board`, required: a board id, or `null` for the unboarded tasks        | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks }`      |
 | `person.list`                                                                         | `/person/list`                         | `{}`; it takes no fields                                                | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, persons: [{ personId, name }] }`                                                   |
 
 `task.assign` takes the `assign` action, `task.set_party` and
@@ -163,6 +177,37 @@ placed between neighbours and never sent as a number. The handlers are the
 cases of the same name in `commands/handlers.ts` and `reads/dispatch.ts`; the
 manifest below cites each one. On the agent prefix all of these answer
 `DELEGATION_EXCLUDES_OPERATION` 403.
+
+**`intake_state` and `source` in `fields`.** On `task.update`, `intake_state`
+with any value, `accepted` included, is `TRANSITION_PROTECTED` 422 naming
+`intake_state=task.triage`; `source` is `SOURCE_SPOOFED` 403. On `task.create`
+both are `SOURCE_SPOOFED` (`commands/tasks-write.ts:50-53`, `:110`, `:188`).
+Either answer writes nothing, and the attempted value goes to the audit row
+only. By root ruling, the transaction contract's T1-N3 and contract-ledger row
+D03 take precedence here over the older minimum-contract 6.1 wording, which
+answered `SOURCE_SPOOFED` to `intake_state: accepted` on any write.
+`tests/acceptance/protected-fields.test.ts:317` holds both.
+
+**A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by
+name. The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every
+installed field whose `field_defs.write_mode` is `system`, which today adds
+`completed_at`, `key`, `task`, `edited_at` and `machine_category`
+(`commands/prepare.ts:108`, `:174-212`). It applies on the person prefix, on the agent
+prefix and on every read. A nested key is the operation's own question:
+`fields.completed_at` is the field engine's refusal, and `fields.source` stays
+`SOURCE_SPOOFED`. `tests/api/boundary-system-fields.test.ts` holds it.
+
+**`task.board` names its board or asks for none.** `board: null` lists the
+business's unboarded tasks. A board id must name a live task in the caller's
+business: a foreign, fabricated, malformed or trashed board is `NOT_FOUND` 404,
+the same body as any unknown record, audited in the caller's business with no
+subject, and never answered as an empty list (`reads/dispatch.ts:350-366`,
+`:427-436`; minimum contract 8.2 cases 1 and 3). `tests/commands/board-not-found.test.ts`
+holds it.
+`WRONG_BUSINESS` stays registered and unproducible (minimum contract 4.4, as
+corrected 14 September 2026): a cross-business probe is `NOT_FOUND` to the
+caller and `NOT_FOUND` in the prober's own audit
+(`commands/register.ts:369-385`).
 
 ## The operations L2 made possible
 
@@ -228,13 +273,13 @@ answer this table promises.
 `NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
 `DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
 
-| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                                 |
-| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_ALREADY_LIVE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                    |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                            |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                |
+| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                            |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                     |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                   |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                                        |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                           |
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, **before** the write rather than at it: a `purpose` outside
@@ -255,6 +300,10 @@ seven days (owner decision, 23 Sep 2026), and leaving it out takes seven days.
 audit row (`tests/api/expiry-bound.test.ts`). Existing gates are not
 rewritten.
 
+`task.propose` with a `lineageId` that is not in the caller's business answers
+`GATE_NOT_FOUND` 404 with a constant reason, so a foreign id and a fabricated
+id get identical bytes (`core-runtime/src/propose.ts:224-232`).
+
 `task.decide` names the **exact version** it is deciding. It is compared under
 the locks and never trusted, so a decision made from a page that has gone stale
 is `VERSION_SUPERSEDED` rather than a decision about something the decider
@@ -262,6 +311,12 @@ never read. The signing key and the budget cap are not in the body: the key
 comes from the deployment's environment and the cap is the business's own,
 read rather than created, because a command that created the ceiling it then
 spent against could never be refused `BUDGET_EXHAUSTED`.
+
+A gate not visible in the caller's business, foreign or fabricated, answers
+`NOT_FOUND` 404 with a constant body that carries no id, and the refusal is
+audited in the caller's business (`commands/tasks-runtime.ts:248-252`,
+`:313-319`). `GATE_NOT_FOUND` is no longer a `task.decide` answer: the runtime's
+code is translated before it leaves the handler.
 
 Three of those codes arrived with lane L4-RUNTIME-FIX and are registered here
 with the statuses the runtime suggests. `LINEAGE_NOT_ON_TASK` 409 is
@@ -324,11 +379,34 @@ that purpose in the same transaction before it mints the new one
 `DELEGATION_NOT_LIVE`. `tests/api/task-runtime-routes.test.ts:352` holds it as
 a plain positive case.
 
-`task.pickup` and `task.handback` refuse `AUTH_NO_AGENT_IDENTITY` 401 on the
-person path. A pickup mints a delegation for an agent identity a person's
-session does not have, and a body naming the agent to mint for would be a body
-choosing whose authority is borrowed. Their entry point is the agent's own,
-below.
+**A person picks up, renews and hands back as themselves.** On the person
+prefix `task.pickup`, `task.heartbeat` and `task.handback` are served on a
+lease that carries no delegation: the holder is the session's own actor, the
+authority is the session's own live grants, re-read under the claim's locks,
+and no credential is minted (`commands/handlers.ts:101-112`,
+`commands/tasks-runtime.ts:394-421`). The agent does the same on its own entry
+point, below, with the delegation its pickup minted. Neither reaches the
+other's lease. A person's `reservationId` that is not a string is
+`COMMAND_BODY_INVALID` 400, and a person's handback of a lease that is not
+theirs is `LEASE_NOT_OWNED` 403. `tests/runtime/person-work-http.test.ts`
+holds the person path.
+
+**The pickup answer** carries, for both principals, `claimant` (`person` or
+`agent`), `leaseId`, `fence`, `reservationId`, `attemptId`, `taskId`, `runId`,
+`versionId`, `expiresAt`, `declaredIncompleteness`, `holderActorId`,
+`authorisedByPersonId`, `brief { taskId, purpose }`,
+`expectedVersions { versionId, taskRevision }`,
+`budgetEnvelope { envelopeId, currency, heldMinor }`, `permittedOperations`
+and `excludedOperations`, each exclusion with its reason. Only the agent's
+answer adds `delegationId`, `credential` and `purposeScope`; a person's carries
+none of them and no placeholder (`commands/tasks-runtime.ts:497-529`).
+`authorisedByPersonId` is read from the approving decision, never from the
+body.
+
+**`RESERVATION_NOT_CLAIMABLE` 409 is one answer** for a reservation that does
+not exist, one with no approval behind it and one another live lease holds.
+The holding lease is never named (`commands/tasks-runtime.ts:437-446`,
+`core-runtime/src/pickup.ts:194-197`, `:394`).
 
 **A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
 422, naming the keys, with nothing written (D06). `business_id`, `actor_id`,
@@ -346,10 +424,10 @@ prefix, the agent prefix, the command line and the parity tests route them
 with no hand list. Routed is not the same as served. Revocation, cancellation
 and restart are served on the person prefix and the command line, and the
 agent prefix refuses them `DELEGATION_EXCLUDES_OPERATION`. The heartbeat is
-served only on the agent prefix: the person prefix refuses it
-`AUTH_NO_AGENT_IDENTITY`, and the command line posts only to the person prefix
-(`apps/cli/client.ts:87`), so it cannot beat a lease. None is a new actor
-power: each asks for authority the caller already holds.
+served on both prefixes, each for its own kind of lease: an agent's under the
+delegation its pickup minted, and a person's own delegation-free lease under
+their current grants. None is a new actor power: each asks for authority the
+caller already holds.
 
 | Operation           | Route                | Body                                                        | Authority                                                                                                                                                           | Refusals it can answer                                                                                                                                                |
 | ------------------- | -------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -357,19 +435,22 @@ power: each asks for authority the caller already holds.
 | `delegation.revoke` | `/delegation/revoke` | `operationId`, `delegationId`                               | as `grant.revoke`, asked at the delegation's purpose scope, over every (collection, action) the delegation reaches                                                  | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `DELEGATION_NOT_LIVE` 401 (already revoked, settled or expired), `COMMAND_BODY_INVALID` 400                                 |
 | `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`            | `write` on the task named in `recordId`, the work-control authority `task.propose` asks; a record-scoped grant is enough                                            | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400                    |
 | `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?` | `write` on the task named in `recordId`, plus `propose`'s own read and write checks                                                                                 | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422 |
-| `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`          | the lease's holder, presenting the delegation minted with it; agent prefix only                                                                                     | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `DELEGATION_NOT_LIVE` 401, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                     |
+| `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`          | the lease's holder: an agent presenting the delegation minted with it, or a person on their own delegation-free lease under current `write`                         | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                              |
 
 What each one does:
 
 - **Revocation** writes `revoked_at` on the row, and the envelope's applied
   audit row names the revoked row's id as its subject. In the same
-  transaction it releases the leases of work that lost its authority and
-  classifies their holds (`classifyAuthorityLoss`,
-  `commands/authority-controls.ts:191`, `:252`; the runtime side is in
-  [RUNTIME.md](RUNTIME.md)). The envelope asks `manage` at the revoked row's
+  transaction it releases the leases of work that lost its authority, an
+  agent's or a person's own, and classifies their holds
+  (`classifyAuthorityLoss`, `commands/authority-controls.ts:241`, `:315`; the
+  runtime side is in [RUNTIME.md](RUNTIME.md)). Both answer with
+  `detail.classifiedHolds`, the ids of the reservations the revocation
+  classified, and nothing about whose they were
+  (`authority-controls.ts:193-198`, `:279`, `:347`). The envelope asks `manage` at the revoked row's
   own scope (`commands/prepare.ts:277-297`), so `SCOPE_NOT_GRANTED` is also the
   answer for a manager whose `manage` does not cover that scope, as well as
-  for one outside the ceiling (`authority-controls.ts:54-63`). Nothing is
+  for one outside the ceiling (`authority-controls.ts:62-70`). Nothing is
   cached, so the next call on the same session re-evaluates and is refused. A
   read admitted before the revocation finishes in its own transaction. This
   is I10's endpoint half, in `tests/api/controls-revoke.test.ts` and the
@@ -387,8 +468,8 @@ What each one does:
   lease and hold are never reopened or reused (G05). A terminal lineage is
   restarted once. `expiresInSeconds` has the same bound as `task.propose`:
   maximum seven days (owner decision, 23 Sep 2026).
-- **Heartbeat** moves the lease's and its delegation's expiry to now plus
-  `leaseSeconds` (1 to 3600, default 900). It is capped at 8 hours after the
+- **Heartbeat** moves the lease's expiry, and on an agent's lease its
+  delegation's, to now plus `leaseSeconds` (1 to 3600, default 900). It is capped at 8 hours after the
   pickup (`MAXIMUM_LEASE_LIFETIME_SECONDS`, a lane constant) and never shortens
   a lease: past the cap a beat is applied and leaves `expires_at` where it
   was. A stale fence or someone else's lease is
@@ -411,13 +492,13 @@ served and where it is refused.
 
 The five support controls, with their owning functions:
 
-| Operation           | Person route                                         | Agent route                             | Declared         | Handler                                                                                       | Owning function                                                                                             |
-| ------------------- | ---------------------------------------------------- | --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/api/b/:key/grant/revoke`                           | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:281` | `commands/handlers.ts:98` → `commands/authority-controls.ts:150` `revokeGrantAsManager`       | `authority/grants.ts:244` `revokeGrant`                                                                     |
-| `delegation.revoke` | `/api/b/:key/delegation/revoke`                      | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:282` | `commands/handlers.ts:100` → `commands/authority-controls.ts:220` `revokeDelegationAsManager` | `authority/delegations.ts:387` `revokeDelegation`                                                           |
-| `task.cancel`       | `/api/b/:key/task/cancel`                            | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:291` | `commands/handlers.ts:102` → `commands/tasks-controls.ts:86` `cancelOnTask`                   | `core-runtime/src/recovery.ts:557` `cancelAndClassify`                                                      |
-| `task.restart`      | `/api/b/:key/task/restart`                           | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:292` | `commands/handlers.ts:104` → `commands/tasks-controls.ts:119` `restartOnTask`                 | `core-runtime/src/restart.ts:38` `restart` → `propose.ts:100` `propose` (`refuseRestart`, `propose.ts:336`) |
-| `task.heartbeat`    | refused `AUTH_NO_AGENT_IDENTITY` (`handlers.ts:109`) | `/api/a/b/:key/task/heartbeat`          | `surface.ts:295` | `commands/agent-envelope.ts:540` → `commands/tasks-controls.ts:156` `heartbeatLease`          | `core-runtime/src/heartbeat.ts:53` `heartbeat`                                                              |
+| Operation           | Person route                                                | Agent route                             | Declared         | Handler                                                                                       | Owning function                                                                                             |
+| ------------------- | ----------------------------------------------------------- | --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/api/b/:key/grant/revoke`                                  | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:281` | `commands/handlers.ts:98` → `commands/authority-controls.ts:200` `revokeGrantAsManager`       | `authority/grants.ts:244` `revokeGrant`                                                                     |
+| `delegation.revoke` | `/api/b/:key/delegation/revoke`                             | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:282` | `commands/handlers.ts:100` → `commands/authority-controls.ts:283` `revokeDelegationAsManager` | `authority/delegations.ts:387` `revokeDelegation`                                                           |
+| `task.cancel`       | `/api/b/:key/task/cancel`                                   | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:291` | `commands/handlers.ts:102` → `commands/tasks-controls.ts:86` `cancelOnTask`                   | `core-runtime/src/recovery.ts:557` `cancelAndClassify`                                                      |
+| `task.restart`      | `/api/b/:key/task/restart`                                  | refused `DELEGATION_EXCLUDES_OPERATION` | `surface.ts:292` | `commands/handlers.ts:104` → `commands/tasks-controls.ts:119` `restartOnTask`                 | `core-runtime/src/restart.ts:38` `restart` → `propose.ts:100` `propose` (`refuseRestart`, `propose.ts:336`) |
+| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease (`handlers.ts:110`) | `/api/a/b/:key/task/heartbeat`          | `surface.ts:295` | `commands/agent-envelope.ts:540` → `commands/tasks-controls.ts:156` `heartbeatLease`          | `core-runtime/src/heartbeat.ts:53` `heartbeat`                                                              |
 
 The other thirty. The person-prefix handler is the case in
 `commands/handlers.ts` (writes) or `reads/dispatch.ts` (reads). Agent-prefix
@@ -433,8 +514,8 @@ cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
 | `task.comment`                     | `surface.ts:221` | `handlers.ts:67` → `tasks-comment.ts:52` `commentOnTask`                           | served under a live delegation, `internal` audience only (`:500`) |
 | `task.propose`                     | `surface.ts:224` | `handlers.ts:84` → `tasks-runtime.ts:140` `proposeOnTask`                          | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.decide`                      | `surface.ts:225` | `handlers.ts:86` → `tasks-runtime.ts:239` `decideOnGate`                           | refused `DELEGATION_EXCLUDES_DECISION` (`:354-357`, `:369-378`)   |
-| `task.pickup`                      | `surface.ts:226` | refused `AUTH_NO_AGENT_IDENTITY` (`handlers.ts:107`)                               | served before a pickup (`:114`, `:468`)                           |
-| `task.handback`                    | `surface.ts:227` | refused `AUTH_NO_AGENT_IDENTITY` (`handlers.ts:108`)                               | served under a live delegation (`:478`)                           |
+| `task.pickup`                      | `surface.ts:226` | `handlers.ts:108` → `tasks-runtime.ts:394` `pickupAsPerson`                        | served before a pickup (`:114`, `:468`)                           |
+| `task.handback`                    | `surface.ts:227` | `handlers.ts:112` → `tasks-runtime.ts:619` `handbackOwnLease`                      | served under a live delegation (`:478`)                           |
 | `task.start`                       | `surface.ts:229` | `handlers.ts:43` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.assign`                      | `surface.ts:230` | `handlers.ts:46` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.triage`                      | `surface.ts:231` | `handlers.ts:47` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                           |
@@ -489,6 +570,8 @@ proposals: {
   decisions: {                         // the chain as stored, oldest first
     id; seq; decision; round; decidedByPersonId; decidedAt;
     signingKeyId; signature; prevHash; hash;
+    linkVersion: 1 | 2 | 3;            // the signed payload format
+    signedFields: string[];            // the item fields the signature covers
   }[];
   reservations: {
     id; state; heldMinor; actualMinor; classifiedCause; leaseId;
@@ -516,16 +599,50 @@ verifies every decision it returns before it answers**
 (`reads/verified-decisions.ts`). It walks the business's decision chain from
 genesis to the newest returned decision, recomputes each payload digest from
 the stored JSON, and checks the signature and link hash with the deployment
-key (`GATE_SIGNING_KEY_ID` and `GATE_SIGNING_SECRET`). A decision that does not
-verify, or decisions with no key configured, fail the read as a fault with no
-task body (`DecisionIntegrityError`, code `DECISION_INTEGRITY`). That is an
-integrity fault, not a refusal: the running server answers it as its other
-faults, `SERVICE_UNAVAILABLE` 503 (`apps/api/server.ts:198-201`). The values
-handed back are the stored ones, never recomputed ones, and stored rows are
-never altered, because a tampered row is the evidence. Third, the
+key, resolved by each row's `signing_key_id` (today the resolver's one entry
+is the configured `GATE_SIGNING_KEY_ID`; `reads/proposals.ts:389-392`). It
+then compares each shown or linked column with the row's signed payload. A
+read also fails when the gates and lineages record a decision the chain lacks:
+a decided gate with no decision, a gate-rejected lineage with no rejection, or
+a round its requested changes do not account for. The values handed back are
+the stored ones, never recomputed ones, and stored rows are never altered,
+because a tampered row is the evidence. Third, the
 evidence pack is the renderer's output **as stored**, never re-rendered on
 read: evidence that changed between the decision and the display is the one
 thing a gate cannot survive.
+
+**A read whose decisions do not verify is a fault, not a refusal.** It answers
+`DECISION_INTEGRITY` 500 with fixed words, no stored value and no `refused`
+flag: `{ code, names: [], fixes }` (`reads/dispatch.ts:166-186`). An unknown
+key id or no key configured fails the same way. Retrying gives the same
+answer. No audit row survives the failed read, because the transaction rolls
+back with it, and the server log carries where the chain broke. The real
+server lets the fault answer as itself through `onError`
+(`apps/api/server.ts:215-219`), and `tests/api/server-onerror.test.ts` spawns
+`server.ts` on `SURFACE_API_PORT` to prove it answers 500, not 503
+`SERVICE_UNAVAILABLE`.
+
+**Each decision item says what its signature covers.** The signed format is
+`link` inside the signed payload, not a column, so changing it breaks the
+signature; absent is v1 (`core-runtime/src/signing.ts:94-116`).
+
+- v1, before 23 September 2026, signs the gate, version, decision, person,
+  note and evidence digest. v2 adds `link: 2`. Both list `decision`,
+  `decidedByPersonId` and `signingKeyId` in `signedFields`.
+- v3, from 23 September 2026, also signs the decision id, seq, previous link
+  hash, lineage, round, acting actor, `decided_at` and signing key id, and lists
+  `id`, `seq`, `decision`, `round`, `decidedByPersonId`, `decidedAt`,
+  `signingKeyId` and `prevHash` (`reads/proposals.ts:93-106`).
+- Gate, version, decision, person and evidence are compared on every format,
+  and on v3 every signed field is too. Any difference is `DECISION_INTEGRITY`.
+- The shown `decidedAt` is millisecond ISO. The signed value is the
+  microsecond UTC text, `YYYY-MM-DDTHH:MM:SS.ffffffZ`.
+- v1 and v2 rows are verified for what they signed, never rewritten, and shown
+  with their `linkVersion`. Their round, time, lineage, acting actor, id,
+  sequence and previous link are covered only by the unkeyed chain link.
+
+`tests/reads/decision-integrity-read.test.ts` and
+`tests/reads/decision-v3.test.ts` hold the read.
 
 The proposals go to every reader of the detail: an internal reader on the
 person prefix and the agent on its own task. The person prefix's `sharedTask`
@@ -649,14 +766,20 @@ role nobody classified sees the client view rather than everything.
 
 A reader who is not internal on the person prefix gets a different key:
 `{ ok: true, sharedTask: { id, fields, comments } }`, never `task`
-(`reads/dispatch.ts:238-246`). `fields` holds the task fields the catalogue
+(`reads/dispatch.ts:333-341`). `fields` holds the task fields the catalogue
 marks `shared`, and as shipped none are, so R4 sees the id and the client
 comments. For an external party, a `task.read` of a record its shares do not
-cover and any `task.board` answer `NOT_FOUND` 404 (`reads/dispatch.ts:48-49`,
-`:225-227`; minimum contract 8.2 case 7). The agent path is unchanged: an agent
-reads its own task through `externalCommentProjection` under `task`.
+cover and any `task.board` answer `NOT_FOUND` 404 (`reads/dispatch.ts:53-54`,
+`:321-323`; minimum contract 8.2 case 7). Once `grant.revoke` removes an
+external party's last live share, their next read is refused earlier, at login
+resolution: `AUTH_NO_MEMBERSHIP` 403, since they now hold neither a membership
+nor a share (`identity/login-resolution.ts:106-108`). Neither answer carries
+task content. The agent path is unchanged: an agent reads its own task through
+`externalCommentProjection` under `task`.
 `tests/acceptance/external-party.test.ts` drives all of it over HTTP, and
-matrix case (g) carries the rows.
+matrix case (g) carries the rows. The web types the two answers as
+`TaskReadResult = InternalTaskRead | SharedTaskRead`
+(`apps/web/src/operations/shapes.ts:244-260`), told apart by the key.
 
 | Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
 | ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -728,14 +851,22 @@ answer flattened with the picked-up task as `purposeScope` after a pickup
 
 **A read payload naming a fact the server owns is refused**
 `FIELD_NOT_WRITABLE` 422, naming the offending keys. It is the commands' own
-rule, applied by `reads/dispatch.ts` from `prepare.ts`'s `SYSTEM_OWNED_FIELDS`
-rather than from a second copy, so `actor_id`, `business_id`, `revision`,
-`updated_at` and the rest are refused on a read exactly as they are on a write
-(D06). This used to be a silent drop with a `200` on top, which is the weaker
+rule, applied by `reads/dispatch.ts:236` through `prepare.ts`'s
+`claimedSystemFields` rather than a second copy, so `actor_id`, `business_id`,
+`revision`, `updated_at`, the installed system fields and the rest are refused
+on a read exactly as they are on a write (D06). This used to be a silent drop with a `200` on top, which is the weaker
 answer the accepted ledger rules out: a client that believed it had set
 `actor_id` got a success and no correction, so the mistake lived in the client
 and the server looked fine. The **attempted values** go to the audit row's
 `attempted` column and never to the response.
+
+**A read takes only its own identifier.** `task.read` takes `recordId` and
+`task.board` takes `board`; `task.queue`, `person.list`, `preset.plan`,
+`settings.read` and `session.capabilities` take none. Any other identifier
+field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400
+naming it, audited, and the same answer for an own, a foreign and a fabricated
+id (`reads/dispatch.ts:79-87`, `:248-257`).
+`tests/api/boundary-read-targets.test.ts` holds it.
 
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has
@@ -756,10 +887,12 @@ Named so they are not read as settled:
   SQL (`core-runtime/src/heartbeat.ts`).
   `tests/runtime/schedules-heartbeat.test.ts` reaches it through the agent
   entry point by moving the lease's `acquired_at` back on the database clock.
-- **The decision read's limits.** The decision link does not cover `round`,
-  `decided_at` or the actor and evidence columns, so those read as stored.
-  Removal of the newest decision is not caught by the chain. There is one
-  signing key: rows under an earlier key id fail the read.
+- **The decision read's limits.** On v1 and v2 rows the fields outside
+  `signedFields` are covered only by the unkeyed link, so a writer with owner
+  access who recomputes every later link can change them undetected. Removing
+  the newest decisions in a business still leaves a shorter chain that
+  verifies; only the gate and lineage checks stand against it. The key
+  resolver holds one key: rows under an earlier key id fail the read.
 - **Two lane choices await root or owner confirmation:** an agent comments in
   the `internal` audience only (`client` is `AUDIENCE_NOT_PERMITTED`), and the
   heartbeat bounds of 1 hour a beat and 8 hours in total.

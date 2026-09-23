@@ -98,6 +98,12 @@ SX1–SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real browse
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
+`/task/:key` for an external party (R4) draws `SharedTaskDetail` from
+`task.read`'s `sharedTask` answer: the shared fields under their server keys and
+the client comments, with no controls and no other read. The `sharedTask` key
+picks the view, never the role (`apps/web/src/screens/TaskDetail.tsx:185-186`).
+A revoked share draws the same denied state as a revoked grant.
+
 ## Comments on a task
 
 `task.read` has carried the task's comments since L3 (`docs/local/API.md`);
@@ -359,6 +365,8 @@ changed without reading the rest:
 | `cases-settings.mjs`     | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
 | `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
 | `i10-open-page.mjs`      | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
+| `r4-shared-page.mjs`     | R4, an external party's shared task page, revoked through `grant.revoke` while open                                                                        |
+| `surface-final.mjs`      | D03 and D05 through the page's own client, and R4X the external party's reads                                                                              |
 
 ### What B6 restarts
 
@@ -409,11 +417,27 @@ running API while a member's `/task/` page is open, and the member's only
 authority is one record grant. It records three rows: the next fetch is denied,
 an authorised response held back from before the revocation does not restore
 the task, and a later read is still denied. It runs after P and before B6/B7
-(`slice-acceptance.mjs:96-99`), because P issues and revokes a grant and B6/B7
-stop the API. Run on its own, it also probes an external party's task page and
-prints `BLOCKED` while the web has no shared view (see the known gaps). The
-lane ran the three rows on its own stack before the merge. `pnpm verify:browser`
-has not run with them in it on this head.
+(`slice-acceptance.mjs:97-98`), because P issues and revokes a grant and B6/B7
+stop the API. `pnpm verify:browser` has not run with them in it on this head.
+
+The R4 rows (`r4-shared-page.mjs`) follow I10's order on an external party's
+shared page: the shared view opens, the next fetch after `grant.revoke` is
+denied, an authorised response held from before cannot restore it, and a later
+read stays denied. They run after I10 (`slice-acceptance.mjs:99`). The revoked
+read answers 403 `AUTH_NO_MEMBERSHIP`, because with its only share gone the
+party has no standing left to resolve
+(`packages/core-records/src/identity/login-resolution.ts:107-108`). An
+unshared sibling task or the board answers `NOT_FOUND` while the share is live
+(`packages/core-records/src/reads/dispatch.ts:321-322`). Neither leaks content.
+
+`surface-final.mjs` runs after R4 (`slice-acceptance.mjs:100`). D03:
+`task.update` naming `client`, `client_visible` or `delegate` is refused
+`TRANSITION_PROTECTED` and the stored row is unchanged. D05: a classified
+`preset.plan` is accepted and one with an unclassified field is refused
+`PRESET_FIELD_UNCLASSIFIED`, neither adding a `field_defs` row. R4X: the
+external party reads its shared task, is refused the sibling task and the
+board, and is refused the shared task after `grant.revoke`. Every call is
+`operations/client.ts` inside the page. Both files also run on their own.
 
 `pnpm verify:browser` exits zero only when **every** row passed. `writeResults`
 returns the rows that did not — failed, pending and unrun together — so a run
@@ -456,20 +480,6 @@ places this build does not yet reach it.
   mockup's tabbed Internal / Client / All activity conversation is not — the
   comments are one list with each row's audience on it, and history stays its
   own section below.
-- **An external party's task page is blank.** The screen reads `task` from
-  `task.read` (`apps/web/src/operations/shapes.ts:227-230`, passed at
-  `apps/web/src/screens/TaskDetail.tsx:180`). An external party's answer
-  carries `sharedTask` instead ([AUTHORITY.md](AUTHORITY.md#the-external-party-r4)),
-  so `Loaded` throws at `TaskDetail.tsx:250` and nothing is drawn. The seed now
-  enrols an external party and can share a task with it
-  ([DATA.md](DATA.md#the-seed)), so the identity exists; the web has no shared
-  view for it to read.
-- **The external comment projection is taken from the API's word, not
-  exercised.** `task.read` gives a non-internal role the client comments in the
-  `shared` fields only (`docs/local/AUTHORITY.md`). The comment list is written
-  to draw whatever subset arrives, which `tests/surfaces/task-comments.test.tsx`
-  holds against a stand-in and the shape's optional fields. No browser case
-  reads a task as an external reader, because of the blank page above.
 - **`system` is not offered as a comment kind.** The API takes `note`, `client`
   and `system`; the form offers the first two. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes

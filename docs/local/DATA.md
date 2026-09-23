@@ -87,6 +87,10 @@ table exactly:
 There is no `status` column and no second coarse field: "is this done" is the
 machine category of the state record the task points at.
 
+Every field carries a write mode, slotted or not. A null write mode is named per
+field (`every field has a non-null write mode`,
+`packages/core-records/src/records/conformance.ts:170-176`).
+
 ## What the tenancy proofs are
 
 The suites under `tests/tenancy/` each run against a database of their own,
@@ -105,6 +109,7 @@ in which a named suite skipped.
 | `statement-capture-full.test.ts`    | T04 and M03 over every operation in `COMMAND_SURFACE`, a positive call and a refusal each.        |
 | `restricted-calls.test.ts`          | I06 and M02 at the full schema: every table and function called by each restricted role.          |
 | `restricted-calls-prefixes.test.ts` | The same calls at every migration prefix, through `proveEachPrefix`.                              |
+| `production-lookup.test.ts`         | I14 on the shipped `lockTask`: the tenant predicate and the forced policy, each removed.          |
 
 `statement-capture-full.test.ts` reads its operation list from the registry, so
 an operation added without a case fails. Each call runs on a logged `max: 1`
@@ -133,6 +138,20 @@ foreign insert into `delegations` is refused with `check_violation`
 `select` and `insert` on `handback_reports`, so `update` and `delete` are
 refused by privilege before the trigger. Its only live caller is the owner,
 whom it refuses.
+
+At every migration prefix, every tenant table holds an owner-written row per
+business before the calls, so cross-tenant reads are asked of rows that exist
+(`restricted-calls-prefixes.test.ts:18-25`, `:336`). At the full schema,
+`person_identifiers`, `person_merges` and `record_links` are seeded by the suite.
+The own-tenant insert positive control (TC:108) is counted per table: one insert
+through the production wrapper on each tenant table the application may insert
+into, each `rows 1`, and each rolled back (`restricted-calls.test.ts:250-306`).
+
+I14's predicate-removed runs load `lockTask` and the command path from a
+disposable copy of `packages/core-records/src` and `packages/core-runtime/src`
+under the ignored `.local/mutants/`, with the one `TENANT_PREDICATE` line
+replaced (`tests/support/source-mutant.ts`). The shipped module has no setter,
+and the replacement must match exactly once or the load fails.
 
 ### The pooled crossover
 

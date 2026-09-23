@@ -43,6 +43,13 @@ If you are new to this checkout, read this section first.
   case. Any `unrun` line comes with its reason.
 - **Stop only what you started.** Record the PIDs you start and kill only those
   PIDs. Never kill by pattern ([Stopping what you started](#stopping-what-you-started)).
+- **The delegation credential key.** Agent pickup credentials are derived
+  under a local key kept outside the database and outside tracked files: the
+  environment (`DELEGATION_CREDENTIAL_KEY_ID` and `DELEGATION_CREDENTIAL_KEYS`)
+  or the ignored `.local/delegation.env`. `db:seed` creates that file once, or
+  the API creates it on first use, and neither rewrites it. Back it up with the
+  database; a database restored without it cannot replay a lost pickup
+  response ([RUNTIME.md](RUNTIME.md#the-delegation-credential-key)).
 - **The seed can change the external party's password.** See
   [the external party's login](#the-external-partys-login) before you run
   `db:seed` against an identity service someone else uses.
