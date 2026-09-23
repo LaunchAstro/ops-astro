@@ -219,6 +219,32 @@ makes carrying a number and being `actual` the same fact.
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
 second is the cap behind it.
 
+## Why a lapsed gate reads expired but stays pending
+
+Nathan decided this on 23 September 2026: show expired on read, and preserve
+the stored record. Nothing writes `expired` to `gates.state`. There is no timer
+and no migration, and no historical row is rewritten. A gate that passes its
+deadline undecided stays stored as `pending`.
+
+- **Decide refuses.** `decide` refuses it `GATE_EXPIRED` 410 and writes no
+  decision (G06, `core-runtime/src/decide.ts`).
+- **Reads project it.** `task.read` derives `state: 'expired'` and
+  `expired: true` in the proposals read
+  (`core-records/src/reads/proposals.ts`). The page therefore sees the same
+  answer the refusal gives.
+- **Both use the database clock.** Each side reads `now()` inside its own
+  statement, never the application's clock.
+- **The boundary is inclusive.** `expires_at <= now()` is expired on both
+  sides, so at the deadline instant the read says expired and the decide
+  refuses.
+- **Only an otherwise pending gate expires.** An approved, rejected,
+  changes-requested or superseded gate reads its stored outcome after its
+  deadline.
+
+The cases are `tests/reads/gate-expiry.test.ts`, which crosses the deadline
+on the database clock through the production propose path, and
+`tests/surfaces/proposal-expired.test.tsx`.
+
 ## Why the lease is fenced
 
 The fence is the identity of the claim, not of the task, and it is monotonic per
