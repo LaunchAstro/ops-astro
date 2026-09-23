@@ -155,11 +155,26 @@ describe.skipIf(serverUrl === undefined)('one login is a person or an agent', ()
 
     // The evidence that the second writer reached the contested point rather
     // than starting after the first had finished.
-    const blocked = await awaitBlockedOnLock(db, Date.now() + WITHIN);
-    expect(blocked.length).toBeGreaterThan(0);
-
-    gate.release();
+    //
+    // The gate is released in `finally` (REVIEW-L2 finding 2). When the
+    // synchronisation never establishes, the helper used to throw with the
+    // first transaction still parked on `gate.held`, so the connection stayed
+    // open and the next case -- or `afterAll` -- hung instead of returning
+    // this case's actual result. Both transactions are settled before the
+    // assertion's failure is rethrown, so the failure that is reported is the
+    // one that happened.
+    let blocked = '';
+    let synchronisation: unknown = null;
+    try {
+      blocked = await awaitBlockedOnLock(db, Date.now() + WITHIN);
+    } catch (error) {
+      synchronisation = error;
+    } finally {
+      gate.release();
+    }
     const settled = await Promise.allSettled([firstRun, secondRun]);
+    if (synchronisation !== null) throw synchronisation;
+    expect(blocked.length).toBeGreaterThan(0);
     void loginId;
     return [settled[0], settled[1]];
   }

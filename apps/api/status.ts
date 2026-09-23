@@ -70,6 +70,13 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   LINEAGE_TERMINAL: 409,
   CHANGE_ROUNDS_EXHAUSTED: 409,
   RESERVATION_NOT_CLAIMABLE: 409,
+  // Both are "something on this task has already been bound and does not
+  // match", not a malformed request: the lineage belongs to another task and
+  // the envelope draws on another cap or another currency. Re-reading the task
+  // and naming what it is actually bound to is the way forward, which is what
+  // a 409 tells a caller and a 422 would not.
+  LINEAGE_NOT_ON_TASK: 409,
+  CAP_BINDING_MISMATCH: 409,
   GATE_NOT_APPROVED: 409,
   PROPOSAL_SUPERSEDED: 409,
   FOUR_EYES_REQUIRED: 409,
@@ -97,6 +104,11 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   COMMAND_BODY_INVALID: 400,
   PROPOSAL_SCOPE_EXCEEDED: 422,
   AUDIENCE_NOT_PERMITTED: 422,
+  // The body is well formed and the caller is allowed; the field itself is one
+  // this head cannot honestly accept, because nothing here dispatches and so
+  // nothing here observed a cost. Retrying with a null actual is the fix, and
+  // no state has to move first, so it is a 422 rather than a 409.
+  ACTUAL_EXPENDITURE_UNSUPPORTED: 422,
   // The preset itself is wrong, and it comes back naming the field keys so the
   // author can classify them.
   PRESET_FIELD_UNCLASSIFIED: 422,

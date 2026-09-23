@@ -323,7 +323,12 @@ async function attemptWork(
   await tx.query('savepoint command_work');
   const outcome = await work(tx, session, entryPoint, request, declaration);
   await tx.query(
-    isRefused(outcome) ? 'rollback to savepoint command_work' : 'release savepoint command_work',
+    // A refusal rolls back, except the one that kept something on purpose:
+    // `Refused.retains` is set by a handler that wrote a row the contract
+    // retains alongside the refusal, and rolling back would discard it.
+    isRefused(outcome) && outcome.retains !== true
+      ? 'rollback to savepoint command_work'
+      : 'release savepoint command_work',
   );
   return outcome;
 }

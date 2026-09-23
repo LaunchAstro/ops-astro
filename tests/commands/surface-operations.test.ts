@@ -525,7 +525,7 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
       }
     });
 
-    it('preset.plan: a field carrying system keys still plans nothing into them', async () => {
+    it('preset.plan: the read half refuses the injection rather than ignoring it', async () => {
       const before = await countRows('field_defs');
       const result = await read({
         read: 'preset.plan',
@@ -534,12 +534,32 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
         fields: [{ key: 'spoofed', label: 'Spoofed', valueType: 'text', writeMode: 'generic' }],
         ...SYSTEM_FIELDS,
       } as unknown as ReadRequest);
+      // This case used to assert `'plan' in result` — that the keys landed
+      // nowhere — and passing on that was the defect: a read took no command
+      // envelope, so `prepareCommand`'s rule never reached it and the injected
+      // keys were dropped in silence with a `200` on top. D06 asks for a typed
+      // refusal, and `reads/dispatch.ts` now applies the commands' own
+      // `SYSTEM_OWNED_FIELDS` to a read payload.
+      expect(isCommandRefusal(result) ? result.code : '').toBe('FIELD_NOT_WRITABLE');
+      expect(isCommandRefusal(result) ? [...result.names].toSorted() : []).toStrictEqual([
+        'actor_id',
+        'business_id',
+        'created_at',
+        'revision',
+      ]);
+      // Unchanged model state, which is the other half of the contract.
       expect(await countRows('field_defs')).toBe(before);
-      // A read takes no command envelope, so the boundary rule above does not
-      // reach it. What discharges D06 here is that the keys land nowhere: the
-      // planner reads the three fields it declares and the injected ones are
-      // not among them.
-      expect('plan' in result).toBe(true);
+
+      // The positive control: the same plan without the injected keys still
+      // plans, so the rule is not "refuse every preset".
+      const control = await read({
+        read: 'preset.plan',
+        recordTypeKey: 'task',
+        presetKey: 'marketing',
+        fields: [{ key: 'spoofed', label: 'Spoofed', valueType: 'text', writeMode: 'generic' }],
+      } as unknown as ReadRequest);
+      expect('plan' in control).toBe(true);
+      expect(await countRows('field_defs')).toBe(before);
     });
   });
 });

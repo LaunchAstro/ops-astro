@@ -11,7 +11,14 @@
 //
 // A login that resolves to no membership never reaches a read at all: it is
 // `AUTH_NO_MEMBERSHIP` from the resolution, which is a refusal and not an empty
-// list.
+// list. That is what arms `session.capabilities`, the one read that asks the
+// grant model nothing: membership is its whole authority, and this entry is
+// where membership is established rather than assumed.
+//
+// Nothing here branches on which read it is. Every read added to
+// `reads/requests.ts` and served in `reads/dispatch.ts` reaches the database
+// through this one function, so arming a new one is a declaration and a case
+// rather than a fourth place to edit.
 
 import type { BusinessId, Database } from '../tenancy/database.ts';
 import type { VerifiedSubject } from '../identity/login-resolution.ts';
