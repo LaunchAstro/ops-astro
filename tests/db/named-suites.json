@@ -35,7 +35,8 @@
     "PROOF-CLOSURE names d06-generated (D06 on the API, CLI and web person surfaces, every cell between a succeeding positive control and a succeeding clean retry, the person's own pickup, renewal and handback included) and d06-agent (D06 on the agent route).",
     "AGENT-BOUNDARY adds agent-capabilities-intersection (agent session.capabilities reports the current intersection of purpose and the delegating person's effective grants: write absent once its grant expires, DELEGATION_NARROWED when nothing is held, and a replay under another delegation's credential never releases the first scope) and historical-handback-intake (a superseded or expired agent's new handback keeps one retained handback_reports row and one refused audit row and still answers DELEGATION_NOT_LIVE; wrong lease, fence or credential retain nothing; settled replay stays the replay), and names the existing capabilities-contract and agent-system-fields suites.",
     "DB-PROOF-GAPS-A adds wrapper-mutation (T04 a and b: database.ts:105 made session-wide and moved before begin on a source copy, each red on the capture shape of real operations beside the unmutated copy; T04 c: the DECISION_INTEGRITY read captured as begin, local setting, work, rollback; T05: the session-wide mutant red at pooled-crossover's :168 and :206 reads, green on the restored wrapper), decision-signature-only (G02 a: only gate_decisions.signature altered, with and without the unkeyed chain recomputed, faults DECISION_INTEGRITY; restored, it reads) and decision-seq-race (G02 b: two approvals with room, parked on the chain lock on two backends, land at consecutive seq each linked to the row before).",
-    "RECOVERY-ENTRY adds recovery-entry (TC84/92 through the real apps/api/server.ts process with RECOVERY_BUSINESS_KEYS: an eligible recorded transition classified once before readiness, a second start subtracting nothing, an injected pre-commit fault rolled back with exit 1 and completed on the next start, claimable and unfenced-live holds untouched and a marked hold kept whole, only the configured business changed, two racing starts releasing each hold once)."
+    "RECOVERY-ENTRY adds recovery-entry (TC84/92 through the real apps/api/server.ts process with RECOVERY_BUSINESS_KEYS: an eligible recorded transition classified once before readiness, a second start subtracting nothing, an injected pre-commit fault rolled back with exit 1 and completed on the next start, claimable and unfenced-live holds untouched and a marked hold kept whole, only the configured business changed, two racing starts releasing each hold once).",
+    "AGENT-BOUNDARY-2 adds agent-pickup-payload (W02 a: person and agent pickup answers field by field against their rows, and the handbackShape derived from task.handback), and extends historical-handback-intake to a narrowed agent (DELEGATION_NARROWED keeps one retained report) with second-agent, cross-business, forged, lease, fence, replay and rollback controls on both paths."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -132,7 +133,8 @@
     "tests/runtime/l6-cases.test.ts",
     "tests/api/restart-expiry-bound.test.ts",
     "tests/commands/heartbeat-bound.test.ts",
-    "tests/runtime/recovery-entry.test.ts"
+    "tests/runtime/recovery-entry.test.ts",
+    "tests/commands/agent-pickup-payload.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

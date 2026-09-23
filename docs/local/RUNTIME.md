@@ -381,24 +381,36 @@ superseded, or the lineage is no longer live, it keeps the report as
 (`handback.ts:244-287`). `tests/runtime/lifecycle-stale-handback.test.ts` holds
 four cases, with and without a successor.
 
-**A retired agent's late report is still kept** (T4 lines 76 and 78, runtime
-review C2). Supersession, cancellation, settlement and plain expiry leave the original agent's credential answering to no live delegation,
+**A retired or narrowed agent's late report is still kept** (T4 lines 76 and
+78, runtime review C2, ROOT-NARROWED-REPORT-RULING). Supersession, cancellation, settlement and plain expiry leave the original agent's credential answering to no live delegation,
 so the agent entry refuses its new handback `DELEGATION_NOT_LIVE` before
 `handback` is reached. A delegation revoked for authority loss answers
-`DELEGATION_NARROWED` and keeps nothing, as R-B holds. The refusal stands, and
-the report is kept by an evidence-only intake (`retainLateHandback`,
-`commands/agent-envelope.ts:685`): the credential must name a delegation of this
-business and this authenticated agent that is no longer live
-(`resolveHistoricalDelegation`, `authority/delegations.ts:377`), and the
-presented lease and fence must be that delegation's exactly
-(`retainHistoricalReport`, `handback.ts:518`). Then one `retained` row naming
-the refusal is appended, beside the refused audit row. No lease, delegation,
-run, attempt, reservation, gate, envelope or successor is written, and nothing
-is read back to the caller. A wrong lease, fence or credential, another
-agent's credential and any other refusal retain nothing. A settled handback's
-replay is still answered from its register row; only a new operation id is a
-new late report. `tests/runtime/historical-handback-intake.test.ts` holds it
-over HTTP.
+`DELEGATION_NARROWED` (R-B). The refusal, its status and R-B's recorded cause
+stand, and the report is kept by an evidence-only intake (`retainLateHandback`,
+`commands/agent-envelope.ts:706`): the credential must name a delegation of this
+business and this authenticated agent that is no longer live for the reason
+the refusal gave, which for `DELEGATION_NARROWED` is only an unsettled,
+unexpired `authority_lost` revocation (`resolveHistoricalDelegation`,
+`authority/delegations.ts:384`), and the presented lease and fence must be that
+delegation's exactly (`retainHistoricalReport`, `handback.ts:518`). Then one
+`retained` row naming the refusal is appended, beside the refused audit row. No
+lease, delegation, run, attempt, reservation, gate, envelope or successor is
+written, and nothing is read back to the caller. A wrong lease, fence or
+credential, another agent's credential, another business, a heartbeat, any
+other call and any other refusal retain nothing. A refused or settled
+handback's replay is answered from its register row and retains no second row;
+the same identity with other operands is `OPERATION_ID_REUSED`; only a new
+operation id is a new late report. A fault after the retained row rolls back
+the row, the register row and the audit row together.
+`tests/runtime/historical-handback-intake.test.ts` holds both paths over HTTP.
+
+**The agent entry retries a lost identity claim once**, as the person entry
+does (`executeAgentCommand`, `commands/agent-envelope.ts:149`, with
+`isRetryableViolation`). A same-operationId retry in flight behind its
+original loses `operations_identity_key` to the original's commit, its whole
+transaction rolls back, and the second attempt reads the committed register
+row and replays it; a second collision propagates (DB-PROOF-GAPS-B F1,
+`tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
 **An abandoned hold is replaced, never revived** (R5). At pickup, a hold that
 ended without settling, because its lease expired or the authority behind it
