@@ -91,6 +91,15 @@ export async function buildFixture(database: Database, key: string): Promise<Run
   return { businessId, decider, agentActorId, taskId, capId };
 }
 
+/** Another task in the same business, through the same real command path. */
+export async function newTask(
+  database: Database,
+  businessId: string,
+  member: Member,
+): Promise<string> {
+  return await createTask(database, businessId, member);
+}
+
 /** Through the real command path. */
 async function createTask(database: Database, businessId: string, member: Member): Promise<string> {
   const outcome = await executeCommand(database, businessId, member.presented, 'api', {

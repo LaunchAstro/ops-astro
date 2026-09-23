@@ -26,7 +26,11 @@ import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide, decideAsAgent } from '../../packages/core-runtime/src/decide.ts';
 import { pickup, queue } from '../../packages/core-runtime/src/pickup.ts';
 import { handback } from '../../packages/core-runtime/src/handback.ts';
-import { replayRecordedTransitions } from '../../packages/core-runtime/src/recovery.ts';
+import {
+  cancelAndClassify,
+  classifyUnderLocks,
+  replayRecordedTransitions,
+} from '../../packages/core-runtime/src/recovery.ts';
 import { resolveDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import {
   buildFixture,
@@ -313,6 +317,295 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
     });
   }, 60_000);
 
+  // Case 3. `task.cancel`, on both sides of pickup.
+  it('cancels an unpicked reservation, releasing its hold exactly once', async () => {
+    const fixture = await buildFixture(database.app, 'cancelbiz');
+    const work = await approvedWork(database.app, fixture);
+
+    const before = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await envelopeTotals(tx, work.envelopeId),
+    );
+    expect(before.held).toBe(5_000);
+
+    const cancelled = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await cancelAndClassify(tx, { lineageId: work.lineageId, reason: 'not now' }),
+    );
+    expect(cancelled.ok).toBe(true);
+    if (!cancelled.ok) throw new Error('unreachable');
+    expect(cancelled.value).toHaveLength(1);
+    expect(cancelled.value[0]?.reservationId).toBe(work.reservationId);
+    expect(cancelled.value[0]?.released).toBe(true);
+    expect(cancelled.value[0]?.state).toBe('abandoned');
+
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const totals = await envelopeTotals(tx, work.envelopeId);
+      expect(totals.held).toBe(0);
+      // No observation, so no cost: `actual` is not moved to zero, it is untouched.
+      expect(totals.actual).toBe(0);
+      const attempts = await tx.query<{ readonly state: string; readonly outcome: string | null }>(
+        `select state, outcome from public.attempts where business_id = $1 and id = $2`,
+        [fixture.businessId, work.attemptId],
+      );
+      expect(attempts[0]?.state).toBe('abandoned');
+      expect(attempts[0]?.outcome).toBe('abandoned');
+      const reservations = await tx.query<{
+        readonly cause: string;
+        readonly cause_id: string;
+      }>(
+        `select classified_cause as cause, classified_cause_id::text as cause_id
+           from public.reservations where business_id = $1 and id = $2`,
+        [fixture.businessId, work.reservationId],
+      );
+      expect(reservations[0]?.cause).toBe('lineage_cancelled');
+      expect(reservations[0]?.cause_id).toBe(work.lineageId);
+    });
+
+    // Once, not twice. Replaying the recorded transition finds nothing left to
+    // do, and cancelling a cancelled lineage is refused rather than repeated.
+    const replayed = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await replayRecordedTransitions(tx),
+    );
+    expect(replayed).toStrictEqual([]);
+
+    const twice = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await cancelAndClassify(tx, { lineageId: work.lineageId, reason: 'again' }),
+    );
+    expect(twice.ok).toBe(false);
+    if (!twice.ok) expect(twice.refusal.code).toBe('LINEAGE_TERMINAL');
+
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const totals = await envelopeTotals(tx, work.envelopeId);
+      expect(totals.held).toBe(0);
+    });
+  }, 60_000);
+
+  it('fences the live lease first when a picked-up reservation is cancelled', async () => {
+    const fixture = await buildFixture(database.app, 'cancelheldbiz');
+    const work = await approvedWork(database.app, fixture);
+
+    const claimed = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) =>
+        await pickup(tx, {
+          reservationId: work.reservationId,
+          agentActorId: fixture.agentActorId,
+          authorisedByPersonId: fixture.decider.personId,
+          mintedByActorId: fixture.decider.actorId,
+          collection: TASK_COLLECTION,
+          leaseSeconds: 600,
+        }),
+    );
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error('unreachable');
+
+    const cancelled = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) =>
+        await cancelAndClassify(tx, { lineageId: work.lineageId, reason: 'stand down' }),
+    );
+    expect(cancelled.ok).toBe(true);
+    if (!cancelled.ok) throw new Error('unreachable');
+
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      // T5: the cancellation releases the live lease at the before-dispatch
+      // boundary, and only then does the classifier see claimable work gone.
+      const leases = await tx.query<{ readonly state: string }>(
+        `select state from public.leases where business_id = $1 and id = $2`,
+        [fixture.businessId, claimed.value.leaseId],
+      );
+      expect(leases[0]?.state).toBe('released');
+      const totals = await envelopeTotals(tx, work.envelopeId);
+      expect(totals.held + totals.actual).toBeLessThanOrEqual(totals.maximum);
+      const reservations = await tx.query<{ readonly state: string }>(
+        `select state from public.reservations where business_id = $1 and id = $2`,
+        [fixture.businessId, work.reservationId],
+      );
+      // Nothing was dispatched and nothing observed, so the hold closes rather
+      // than being retained: a retained hold here would be an invented liability.
+      expect(reservations[0]?.state).toBe('abandoned');
+    });
+  }, 60_000);
+
+  // Case 4 (W01). The interruption, on both sides of the commit.
+  it('leaves nothing behind when the decision transaction is interrupted, and everything when it is not', async () => {
+    const fixture = await buildFixture(database.app, 'interruptbiz');
+
+    // Kill before commit: the same production calls, then a throw at the
+    // transaction boundary, the way `tests/commands/lost-update.test.ts`
+    // forces its own interleaving rather than hoping for one.
+    const interrupted = database.app.withBusiness(fixture.businessId, async (tx) => {
+      const proposed = await propose(tx, {
+        taskId: fixture.taskId,
+        collection: TASK_COLLECTION,
+        proposedByActorId: fixture.decider.actorId,
+        subjects: subjectsOf(fixture.decider),
+        purpose: 'draft_the_brief',
+        maximumMinor: 5_000,
+        currency: 'AUD',
+        payload: { instruction: 'draft it' },
+        step: { kind: 'local.draft', payload: { words: 200 } },
+        expiresAt: hour(),
+      });
+      if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
+      const decided = await decide(tx, {
+        gateId: proposed.value.gateId,
+        versionId: proposed.value.versionId,
+        decidedByPersonId: fixture.decider.personId,
+        decidedByActorId: fixture.decider.actorId,
+        subjects: subjectsOf(fixture.decider),
+        collection: TASK_COLLECTION,
+        decision: 'approve',
+        note: 'go',
+        signingKey: TEST_SIGNING_KEY,
+        capId: fixture.capId,
+      });
+      if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+      throw new Error('killed before commit');
+    });
+    await expect(interrupted).rejects.toThrow('killed before commit');
+
+    // A genuinely fresh connection on its own backend, so nothing below is
+    // read back through the handle that did the aborted work. (The suite's
+    // own handle stays open: the restart case below is the one that closes it.)
+    const afterKill = connect(database.appUrl, { max: 1, source: 'after-kill' });
+    const nothing = await afterKill.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<Record<string, string>>(
+        `select
+           (select count(*)::text from public.gate_decisions where business_id = $1) as decisions,
+           (select count(*)::text from public.task_envelopes where business_id = $1) as envelopes,
+           (select count(*)::text from public.reservations where business_id = $1) as reservations,
+           (select count(*)::text from public.attempts where business_id = $1) as attempts`,
+        [fixture.businessId],
+      );
+      return rows[0];
+    });
+    // All four, or none. This is the none.
+    expect(nothing).toStrictEqual({
+      decisions: '0',
+      envelopes: '0',
+      reservations: '0',
+      attempts: '0',
+    });
+
+    // Kill after commit: the same work, committed, then a fresh connection
+    // again. All four are there and the replay finds nothing to do.
+    const work = await approvedWork(afterKill, fixture);
+    await afterKill.close();
+    const afterCommit = connect(database.appUrl, { max: 1, source: 'after-commit' });
+
+    const everything = await afterCommit.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<Record<string, string>>(
+        `select
+           (select count(*)::text from public.gate_decisions where business_id = $1 and gate_id = $2) as decisions,
+           (select count(*)::text from public.task_envelopes where business_id = $1 and id = $3) as envelopes,
+           (select count(*)::text from public.reservations where business_id = $1 and id = $4) as reservations,
+           (select count(*)::text from public.attempts where business_id = $1 and id = $5) as attempts`,
+        [fixture.businessId, work.gateId, work.envelopeId, work.reservationId, work.attemptId],
+      );
+      return rows[0];
+    });
+    expect(everything).toStrictEqual({
+      decisions: '1',
+      envelopes: '1',
+      reservations: '1',
+      attempts: '1',
+    });
+
+    // Replay after a restart is not a second commit: there is no recorded
+    // transition here, so it has nothing to do and does none of it.
+    const replayed = await afterCommit.withBusiness(
+      fixture.businessId,
+      async (tx) => await replayRecordedTransitions(tx),
+    );
+    expect(replayed).toStrictEqual([]);
+    await afterCommit.withBusiness(fixture.businessId, async (tx) => {
+      const totals = await envelopeTotals(tx, work.envelopeId);
+      expect(totals.held).toBe(5_000);
+    });
+
+    await afterCommit.close();
+  }, 90_000);
+
+  // Case 5. A marker contradicts this head's reachable operations, so the hold
+  // is retained as unknown and the work never goes out again.
+  it('quarantines a marked attempt, retains its hold and never queues it again', async () => {
+    const fixture = await buildFixture(database.app, 'quarantinebiz');
+    const work = await approvedWork(database.app, fixture);
+
+    const queued = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await queue(tx),
+    );
+    expect(queued.map((entry) => entry.reservationId)).toContain(work.reservationId);
+
+    // An imported or corrupt marked attempt. 0014's constraint requires the
+    // attempt's own state to move with the marker, which is why both are set.
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      await tx.query(
+        `update public.attempts set dispatch_marker = true, state = 'quarantined'
+          where business_id = $1 and id = $2`,
+        [fixture.businessId, work.attemptId],
+      );
+    });
+
+    const classified = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) =>
+        await classifyUnderLocks(tx, {
+          reservationId: work.reservationId,
+          // Even with a terminal cause, the marker wins.
+          cause: 'lineage_cancelled',
+          causeId: work.lineageId,
+        }),
+    );
+    expect(classified.released).toBe(false);
+    expect(classified.state).toBe('quarantined');
+    expect(classified.reason).toContain('retained');
+
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      // The full hold, not a released one and not a zero-cost observation.
+      const totals = await envelopeTotals(tx, work.envelopeId);
+      expect(totals.held).toBe(5_000);
+      expect(totals.actual).toBe(0);
+      const reservations = await tx.query<{ readonly state: string }>(
+        `select state from public.reservations where business_id = $1 and id = $2`,
+        [fixture.businessId, work.reservationId],
+      );
+      expect(reservations[0]?.state).toBe('quarantined');
+      const attempts = await tx.query<{ readonly outcome: string | null }>(
+        `select outcome from public.attempts where business_id = $1 and id = $2`,
+        [fixture.businessId, work.attemptId],
+      );
+      expect(attempts[0]?.outcome).toBe('unknown');
+    });
+
+    // And it is never offered again.
+    const afterwards = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) => await queue(tx),
+    );
+    expect(afterwards.map((entry) => entry.reservationId)).not.toContain(work.reservationId);
+
+    // The classifier is idempotent on it: a second pass releases nothing.
+    const again = await database.app.withBusiness(
+      fixture.businessId,
+      async (tx) =>
+        await classifyUnderLocks(tx, {
+          reservationId: work.reservationId,
+          cause: 'lineage_cancelled',
+          causeId: work.lineageId,
+        }),
+    );
+    expect(again.released).toBe(false);
+    expect(again.state).toBe('quarantined');
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      expect((await envelopeTotals(tx, work.envelopeId)).held).toBe(5_000);
+    });
+  }, 60_000);
   it('leaves an approved unleased reservation held across a restart, and classifies a rejected one once', async () => {
     const fixture = await buildFixture(database.app, 'recoverbiz');
     const work = await approvedWork(database.app, fixture);

@@ -22,10 +22,12 @@ import {
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
+import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import { verifyChain } from '../../packages/core-runtime/src/signing.ts';
 import {
   buildFixture,
   envelopeTotals,
+  newTask,
   subjectsOf,
   TASK_COLLECTION,
   TEST_SIGNING_KEY,
@@ -68,6 +70,29 @@ async function awaitBlockedOnLock(database: FreshDatabase): Promise<void> {
   throw new Error('no backend ever blocked on a lock: the interleaving was not established');
 }
 
+/**
+ * Which table the blocked backend is parked on. A waiter takes the tuple lock
+ * first and then waits on the holder's transaction, so the tuple lock names
+ * the row it wants — which is the whole question in the lock-order case.
+ */
+async function blockedOnRelation(database: FreshDatabase): Promise<string> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await database.admin.execute<{ readonly relname: string }>(
+      `select c.relname from pg_stat_activity a
+         join pg_locks l on l.pid = a.pid and l.locktype = 'tuple'
+         join pg_class c on c.oid = l.relation
+        where a.datname = current_database() and a.wait_event_type = 'Lock'
+        limit 1`,
+    );
+    const relname = rows[0]?.relname;
+    if (relname !== undefined) return relname;
+    // eslint-disable-next-line no-await-in-loop
+    await delay(25);
+  }
+  throw new Error('no backend ever blocked on a row lock: the interleaving was not established');
+}
+
 const hour = (): Date => new Date(Date.now() + 3_600_000);
 
 async function proposeOn(
@@ -97,6 +122,30 @@ async function proposeOn(
       throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.reason}`);
     return result.value;
   });
+}
+
+/** Decide a gate as the fixture's decider, returning the raw result. */
+async function decideOn(
+  database: FreshDatabase,
+  fixture: RuntimeFixture,
+  of: { readonly gateId: string; readonly versionId: string },
+  decision: 'approve' | 'reject' | 'request_changes',
+  note = 'as asked',
+) {
+  return await database.app.withBusiness(fixture.businessId, async (tx) =>
+    decide(tx, {
+      gateId: of.gateId,
+      versionId: of.versionId,
+      decidedByPersonId: fixture.decider.personId,
+      decidedByActorId: fixture.decider.actorId,
+      subjects: subjectsOf(fixture.decider),
+      collection: TASK_COLLECTION,
+      decision,
+      note,
+      signingKey: TEST_SIGNING_KEY,
+      capId: fixture.capId,
+    }),
+  );
 }
 
 describe.skipIf(serverUrl === undefined)('the gate', () => {
@@ -418,4 +467,270 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
       }
     });
   });
+  // Case 1 (G08). Two formal rounds, and the third is refused. Each round is a
+  // new version with its own gate, and G04 holds across every one of them: the
+  // superseded version's gate can no longer authorise anything.
+  it('takes two rounds of requested changes and refuses the third', async () => {
+    // Its own task, so the closing approval meets the round rule rather than
+    // an envelope another case in this file already filled.
+    const own = {
+      ...fixture,
+      taskId: await newTask(database.app, fixture.businessId, fixture.decider),
+    };
+    const one = await proposeOn(database, own);
+
+    const first = await decideOn(database, own, one, 'request_changes', 'tighten the scope');
+    expect(first.ok).toBe(true);
+
+    const two = await proposeOn(database, own, { lineageId: one.lineageId });
+    expect(two.version).toBe(2);
+    expect(two.versionId).not.toBe(one.versionId);
+
+    // G04 across rounds: version 1's gate is superseded and approves nothing.
+    const stale = await decideOn(database, own, one, 'approve');
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.refusal.code).toBe('GATE_ALREADY_DECIDED');
+
+    const second = await decideOn(database, own, two, 'request_changes', 'and the budget');
+    expect(second.ok).toBe(true);
+
+    const three = await proposeOn(database, own, { lineageId: one.lineageId });
+    expect(three.version).toBe(3);
+
+    const third = await decideOn(database, own, three, 'request_changes', 'once more');
+    expect(third.ok).toBe(false);
+    if (!third.ok) expect(third.refusal.code).toBe('CHANGE_ROUNDS_EXHAUSTED');
+
+    await database.app.withBusiness(own.businessId, async (tx) => {
+      // Exactly two formal rounds are recorded, and the refused third wrote
+      // no decision: a refusal is not a decision.
+      const rounds = await tx.query<{ readonly rounds: string }>(
+        `select count(*)::text as rounds from public.gate_decisions
+          where business_id = $1 and lineage_id = $2 and decision = 'request_changes'`,
+        [own.businessId, one.lineageId],
+      );
+      expect(Number(rounds[0]?.rounds)).toBe(2);
+      // No round approved anything, so the lineage holds no reservation.
+      const held = await tx.query<{ readonly count: string }>(
+        `select count(*)::text as count from public.reservations res
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+          where res.business_id = $1 and run.lineage_id = $2`,
+        [own.businessId, one.lineageId],
+      );
+      expect(Number(held[0]?.count)).toBe(0);
+    });
+
+    // The third round is refused; the lineage is still live and can be
+    // approved or rejected, which is what "escalate" means here.
+    const approved = await decideOn(database, own, three, 'approve');
+    expect(approved.ok).toBe(true);
+  });
+
+  // Case 2 (G05). Rejection is terminal, and only a new lineage goes on.
+  it('takes no further decision on a rejected lineage, and restarts only as a new one', async () => {
+    const own = {
+      ...fixture,
+      taskId: await newTask(database.app, fixture.businessId, fixture.decider),
+    };
+    const first = await proposeOn(database, own);
+    const rejected = await decideOn(database, own, first, 'reject', 'not this');
+    expect(rejected.ok).toBe(true);
+
+    // Terminal: the gate is decided, so a second decision on it is refused...
+    const again = await decideOn(database, own, first, 'approve');
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.refusal.code).toBe('GATE_ALREADY_DECIDED');
+
+    // ...and a new version in the same lineage is refused on the lineage, not
+    // on the gate. This is the one that matters: rejection closes the line.
+    const reopened = await database.app.withBusiness(own.businessId, async (tx) =>
+      propose(tx, {
+        taskId: own.taskId,
+        collection: TASK_COLLECTION,
+        proposedByActorId: own.decider.actorId,
+        subjects: subjectsOf(own.decider),
+        purpose: 'draft_the_brief',
+        maximumMinor: 5_000,
+        currency: 'AUD',
+        payload: { instruction: 'draft it again' },
+        step: { kind: 'local.draft', payload: { words: 200 } },
+        expiresAt: hour(),
+        lineageId: first.lineageId,
+      }),
+    );
+    expect(reopened.ok).toBe(false);
+    if (!reopened.ok) expect(reopened.refusal.code).toBe('LINEAGE_TERMINAL');
+
+    await database.app.withBusiness(own.businessId, async (tx) => {
+      const rows = await tx.query<{ readonly state: string; readonly reason: string }>(
+        `select state, terminal_reason as reason from public.proposal_lineages
+          where business_id = $1 and id = $2`,
+        [own.businessId, first.lineageId],
+      );
+      expect(rows[0]?.state).toBe('rejected');
+      expect(rows[0]?.reason).toBe('gate_rejected');
+    });
+
+    // The authorised restart: a new lineage on the same task, a new version, a
+    // new gate. It clears no terminal decision and revives nothing.
+    const restarted = await proposeOn(database, own);
+    expect(restarted.lineageId).not.toBe(first.lineageId);
+    expect(restarted.versionId).not.toBe(first.versionId);
+    expect(restarted.gateId).not.toBe(first.gateId);
+
+    await database.app.withBusiness(own.businessId, async (tx) => {
+      const gates = await tx.query<{ readonly state: string }>(
+        `select state from public.gates where business_id = $1 and id = $2`,
+        [own.businessId, restarted.gateId],
+      );
+      expect(gates[0]?.state).toBe('pending');
+      // The rejected lineage stays rejected. A restart is beside it, not over it.
+      const old = await tx.query<{ readonly state: string }>(
+        `select state from public.proposal_lineages where business_id = $1 and id = $2`,
+        [own.businessId, first.lineageId],
+      );
+      expect(old[0]?.state).toBe('rejected');
+    });
+
+    const decided = await decideOn(database, own, restarted, 'reject', 'and again');
+    expect(decided.ok).toBe(true);
+  });
+
+  // Case 6 (W05). The cap's refusal, not the envelope's, and nothing held.
+  it('refuses at the cap with BUDGET_EXHAUSTED and changes no total', async () => {
+    const taskId = await newTask(database.app, fixture.businessId, fixture.decider);
+    const overCap = { ...fixture, taskId };
+
+    // The envelope this opens has room for the whole ask; the cap does not.
+    const proposal = await proposeOn(database, overCap, { maximumMinor: 150_000 });
+
+    const before = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      tx.query<{ readonly held: string; readonly actual: string }>(
+        `select coalesce(sum(held_minor), 0)::text as held,
+                coalesce(sum(actual_minor), 0)::text as actual
+           from public.task_envelopes where business_id = $1`,
+        [fixture.businessId],
+      ),
+    );
+
+    const refused = await decideOn(database, overCap, proposal, 'approve');
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      // Distinct from BUDGET_UNAVAILABLE on purpose: the caller told the wrong
+      // one raises the wrong ceiling.
+      expect(refused.refusal.code).toBe('BUDGET_EXHAUSTED');
+      expect(refused.refusal.reason).toContain('cap');
+    }
+
+    await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const after = await tx.query<{ readonly held: string; readonly actual: string }>(
+        `select coalesce(sum(held_minor), 0)::text as held,
+                coalesce(sum(actual_minor), 0)::text as actual
+           from public.task_envelopes where business_id = $1`,
+        [fixture.businessId],
+      );
+      expect(after[0]?.held).toBe(before[0]?.held);
+      expect(after[0]?.actual).toBe(before[0]?.actual);
+
+      // Half a commit is the failure this case is really watching for: the
+      // gate must not be left approved by a decision that reserved nothing.
+      const gates = await tx.query<{ readonly state: string }>(
+        `select state from public.gates where business_id = $1 and id = $2`,
+        [fixture.businessId, proposal.gateId],
+      );
+      expect(gates[0]?.state).toBe('pending');
+      const decisions = await tx.query<{ readonly count: string }>(
+        `select count(*)::text as count from public.gate_decisions
+          where business_id = $1 and gate_id = $2`,
+        [fixture.businessId, proposal.gateId],
+      );
+      expect(Number(decisions[0]?.count)).toBe(0);
+      const reservations = await tx.query<{ readonly count: string }>(
+        `select count(*)::text as count from public.reservations res
+          where res.business_id = $1 and res.version_id = $2`,
+        [fixture.businessId, proposal.versionId],
+      );
+      expect(Number(reservations[0]?.count)).toBe(0);
+    });
+
+    // And the envelope's own refusal is still the other code, on its own ground.
+    const inside = await proposeOn(database, overCap, {
+      lineageId: proposal.lineageId,
+      maximumMinor: 1_000,
+    });
+    const ok = await decideOn(database, overCap, inside, 'approve');
+    expect(ok.ok).toBe(true);
+  });
+  // Case 7. The lock order, and why `locks.ts` exists at all.
+  it('normalises the lock order so two crossing transactions never deadlock', async () => {
+    const locking = await buildFixture(database.app, 'lockbiz');
+    const proposal = await proposeOn(database, locking);
+    const approved = await decideOn(database, locking, proposal, 'approve');
+    expect(approved.ok).toBe(true);
+    if (!approved.ok) throw new Error('unreachable');
+    const envelopeId = approved.value.envelopeId as string;
+
+    const opened = barrier();
+    const rival: Database = connect(database.appUrl, { max: 1, source: 'lock-rival' });
+
+    // Both callers list the set in an order the contract forbids, and neither
+    // lists the same wrong order. Honoured literally, the first would hold the
+    // gate and want the cap while the second held the cap and wanted the gate,
+    // which is a deadlock Postgres would have to detect and kill. `acquire`
+    // sorts both into cap, envelope, gate, so there is nothing to detect.
+    const first = database.app.withBusiness(locking.businessId, async (tx) => {
+      const held = await acquire(tx, [
+        { lockClass: 'gate', id: proposal.gateId },
+        { lockClass: 'envelope', id: envelopeId },
+        { lockClass: 'cap', id: locking.capId },
+      ]);
+      await opened.held;
+      return held;
+    });
+
+    await delay(150);
+
+    const second = rival.withBusiness(
+      locking.businessId,
+      async (tx) =>
+        await acquire(tx, [
+          { lockClass: 'envelope', id: envelopeId },
+          { lockClass: 'cap', id: locking.capId },
+          { lockClass: 'gate', id: proposal.gateId },
+        ]),
+    );
+
+    // The observed fact, not a slept-through one: the second caller listed the
+    // envelope first and is waiting on the **cap**, because that is the class
+    // `acquire` reached first. A literal reading would have it on the envelope.
+    const waitingOn = await blockedOnRelation(database);
+    expect(waitingOn).toBe('budget_caps');
+
+    opened.release();
+
+    // Both complete. A deadlock here would surface as `40P01 deadlock
+    // detected` on one of them rather than as a hang, so awaiting both is the
+    // assertion: the run that deadlocks throws instead of resolving.
+    const [held, alsoHeld] = await Promise.all([first, second]);
+    await rival.close();
+
+    expect(held.has('cap', locking.capId)).toBe(true);
+    expect(held.has('envelope', envelopeId)).toBe(true);
+    expect(held.has('gate', proposal.gateId)).toBe(true);
+    expect(alsoHeld.holds).toStrictEqual(held.holds);
+
+    // The wrong order is unreachable through `acquire` by construction — it
+    // sorts, so there is no way to ask it for a late cap. What a helper *can*
+    // do wrong is reach for a lock nobody took, and that is refused here,
+    // loudly, before Postgres is ever asked about it.
+    await database.app.withBusiness(locking.businessId, async (tx) => {
+      const set = await acquire(tx, [{ lockClass: 'gate', id: proposal.gateId }]);
+      expect(() => {
+        set.require('cap', locking.capId);
+      }).toThrow('lock order');
+      expect(() => {
+        set.require('gate', proposal.gateId);
+      }).not.toThrow();
+    });
+  }, 60_000);
 });
