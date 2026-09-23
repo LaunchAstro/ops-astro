@@ -154,13 +154,20 @@ export type CommandRequest =
   // The two operation-classified business settings. `value` is the whole
   // payload: the key is the command, not a field, so a caller cannot reach a
   // setting the model classified `generic` through the operation that owns a
-  // different one.
+  // different one. Each carries the optional `expectedRevision` its handler
+  // compares against the settings row, which `Envelope` does not: a stale
+  // write is refused `VERSION_STALE`, and naming no revision still applies.
   | ({
       readonly command: 'settings.set_four_eyes_threshold';
       /** Null is a real value: the band is off, which the accepted rule permits. */
       readonly value: number | null;
+      readonly expectedRevision?: number;
     } & Envelope)
-  | ({ readonly command: 'settings.set_client_sign_off'; readonly value: boolean } & Envelope);
+  | ({
+      readonly command: 'settings.set_client_sign_off';
+      readonly value: boolean;
+      readonly expectedRevision?: number;
+    } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the
