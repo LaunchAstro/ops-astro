@@ -34,6 +34,20 @@ components remain unbuilt in this foundation. Deep Agents, LangGraph,
 LangChain, and Langflow are unselected candidates. No new framework is required
 to publish the foundation or prove a deterministic local task flow.
 
+### State at the integrated head, 23 September 2026
+
+The paragraph above describes the foundation as it stood on 8 September. Since
+then a local task slice has been built against these decisions: records, the
+authority model, a bounded runtime, an HTTP API, a command line and a web
+application are in the tree with tests, and a person can sign in, create a
+task, assign it, change its state and reload it against a real local Postgres.
+[The local slice](local/README.md) is the description of what exists,
+what proves it and what it does not do; it is the page to read before any
+statement here about what is built. This paragraph records state, not a new
+decision: every decision above stands unchanged, the proof column is still
+owed, and no review of the integrated head has been recorded, so nothing in
+the slice is accepted.
+
 ## Current domain and behaviour decisions
 
 | ID  | Confirmed requirement                                                                                                                                                                                     |

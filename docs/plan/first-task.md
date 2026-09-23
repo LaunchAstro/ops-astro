@@ -10,6 +10,17 @@ rehearsal precedes product code. A green conformance proof is required before
 protected-component merges; the sandbox's final-contract hold applies before
 its implementation.
 
+**This is the 8 September proposal, and the slice that was built differs from
+it.** Read [the local slice](../local/README.md) for what exists. Two
+differences matter most. The worker of "problem and result" below, which
+proposes a change and performs one permitted local effect after approval, was
+not built: the runtime proposes, records a decision, leases work and settles
+it, and dispatches nothing to any provider. And the ticket withholding above
+has been overtaken: local construction proceeded under a later instruction
+recorded outside this repository, so the absence of a released ticket here is
+not evidence that the slice is unauthorised. Every user story, boundary and
+verification row below remains the proposal's, not a record of what passed.
+
 ## Problem and result
 
 The foundation has no usable task flow. A person needs to create work, review
