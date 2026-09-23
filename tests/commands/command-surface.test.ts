@@ -72,18 +72,22 @@ describe('the surface as a table', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
     // Every path is a collection and an operation. `person.list` was the first
-    // row whose collection is not `task` and there are now four prefixes, so
+    // row whose collection is not `task` and there are now five prefixes, so
     // the shape is what is asserted rather than the one prefix that happened
-    // to be true of the writes.
-    expect(paths.every((path) => /^\/(?:task|person|preset|settings)\/[a-z_]+$/u.test(path))).toBe(
-      true,
-    );
+    // to be true of the writes. `session` is the fifth and the odd one: it is
+    // the only collection nothing is stored in, because the read under it is
+    // about the caller rather than about the business's records.
+    expect(
+      paths.every((path) => /^\/(?:task|person|preset|settings|session)\/[a-z_]+$/u.test(path)),
+    ).toBe(true);
   });
 
-  it('declares the five reads as reads, and everything else as a write', () => {
+  it('declares the seven reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
+      'session.capabilities',
+      'settings.read',
       'task.board',
       'task.queue',
       'task.read',
@@ -114,6 +118,13 @@ describe('the surface as a table', () => {
     expect(collections.get('preset.plan')).toBe('preset');
     expect(collections.get('settings.set_four_eyes_threshold')).toBe('settings');
     expect(collections.get('settings.set_client_sign_off')).toBe('settings');
+    // `settings.read` is on the same collection as the two writes and takes a
+    // different action, which is the whole of the asymmetry: every member may
+    // see a setting, and changing one is `manage`.
+    expect(collections.get('settings.read')).toBe('settings');
+    expect(declarationOf('settings.read')?.action).toBe('read');
+    expect(declarationOf('settings.set_four_eyes_threshold')?.action).toBe('manage');
+    expect(collections.get('session.capabilities')).toBe('session');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }

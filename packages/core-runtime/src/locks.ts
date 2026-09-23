@@ -24,6 +24,13 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 
 /** The classes, in the contract's order. The number is the order. */
 export const LOCK_ORDER = [
+  // R10. The decision chain is allocated per business, and allocation has to
+  // be serialised somewhere earlier than any row two independent decisions
+  // might not share: two approvals on different tasks under different caps
+  // hold no row in common, so both read the same chain head and the unique
+  // index aborts one otherwise valid decision instead of ordering them. This
+  // class is first because it is the widest thing any operation takes.
+  'chain',
   'cap',
   'envelope',
   'task',
@@ -45,6 +52,12 @@ export interface LockRequest {
 }
 
 const TABLE_OF: Readonly<Record<LockClass, string>> = {
+  // `chain` names no table: there is no per-business chain row to lock, and
+  // inventing one would be a write before the lock set. It is taken as a
+  // transaction-scoped advisory lock instead, released at commit or rollback
+  // like every other lock here. The unique index on `(business_id, seq)`
+  // remains the independent second barrier.
+  chain: '',
   cap: 'public.budget_caps',
   envelope: 'public.task_envelopes',
   task: 'public.records',
@@ -89,6 +102,13 @@ export async function acquire(
   });
 
   for (const request of ordered) {
+    if (request.lockClass === 'chain') {
+      // eslint-disable-next-line no-await-in-loop
+      await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `${tx.businessId}:${request.id}`,
+      ]);
+      continue;
+    }
     // Sequential on purpose, and `Promise.all` would defeat the whole module:
     // locks taken concurrently are locks taken in whatever order the server
     // happens to serve them, which is the deadlock this order exists to avoid.

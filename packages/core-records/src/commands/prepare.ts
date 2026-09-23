@@ -104,7 +104,7 @@ export function expectedRevisionOf(request: CommandRequest): number | undefined 
  * forgets, and the four runtime commands added beside it inherit this one
  * without a line of their own.
  */
-const SYSTEM_OWNED_FIELDS: readonly string[] = [
+export const SYSTEM_OWNED_FIELDS: readonly string[] = [
   'actorId',
   'actor_id',
   'author',
@@ -129,11 +129,34 @@ const SYSTEM_OWNED_FIELDS: readonly string[] = [
   'updated_by_actor_id',
 ];
 
-const SYSTEM_OWNED_FIXES: readonly string[] = [
+export const SYSTEM_OWNED_FIXES: readonly string[] = [
   'These fields are derived by the server and cannot be sent: remove them and send the request again.',
   'The business comes from the path, the actor and the person from your authenticated session, the times from the server clock, and the revision from the record.',
   'To write against a revision, send expected_revision. To be a different actor, sign in as one.',
 ];
+
+/**
+ * The system-owned keys one payload claims, sorted, or nothing.
+ *
+ * Exported because the read half needs the same answer and a second copy of
+ * the list is a second thing to forget: `reads/dispatch.ts` applies this rule
+ * to read payloads, which reach the server through a different envelope and
+ * carry the same keys. It returns the keys and the values separately because
+ * the two have different destinations — the keys are named in the refusal, the
+ * values go only to the audit row (T1-N4) — and a helper that returned them
+ * together would invite a caller to put both in the response.
+ */
+export function claimedSystemOwnedFields(
+  payload: unknown,
+):
+  | { readonly keys: readonly string[]; readonly values: Readonly<Record<string, unknown>> }
+  | undefined {
+  const named = payload as Record<string, unknown>;
+  if (typeof named !== 'object' || named === null) return undefined;
+  const keys = SYSTEM_OWNED_FIELDS.filter((field) => field in named).toSorted();
+  if (keys.length === 0) return undefined;
+  return { keys, values: Object.fromEntries(keys.map((field) => [field, named[field]])) };
+}
 
 /**
  * A request naming a fact the server owns, refused before anything is read.
@@ -145,12 +168,11 @@ const SYSTEM_OWNED_FIXES: readonly string[] = [
  * attempted values go to the audit event and never to the response (T1-N4).
  */
 function refuseSystemOwnedFields(request: CommandRequest): Refused | undefined {
-  const named = request as unknown as Record<string, unknown>;
-  const claimed = SYSTEM_OWNED_FIELDS.filter((field) => field in named).toSorted();
-  if (claimed.length === 0) return undefined;
+  const claimed = claimedSystemOwnedFields(request);
+  if (claimed === undefined) return undefined;
   return refused(
-    refuseCommand('FIELD_NOT_WRITABLE', claimed, SYSTEM_OWNED_FIXES),
-    Object.fromEntries(claimed.map((field) => [field, named[field]])),
+    refuseCommand('FIELD_NOT_WRITABLE', claimed.keys, SYSTEM_OWNED_FIXES),
+    claimed.values,
   );
 }
 

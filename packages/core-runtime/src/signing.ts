@@ -81,6 +81,13 @@ export function verifyChain(
     readonly seq: bigint | number;
     readonly prev_hash: string;
     readonly hash: string;
+    /**
+     * The persisted payload itself, not the digest the row asserts about it.
+     * Required (R9): a verifier given only the digest checks that a number
+     * matches a number, and altered content paired with its old digest,
+     * signature and hash passes every one of those checks.
+     */
+    readonly payload: Record<string, unknown>;
     readonly payload_digest: string;
     readonly signature: string;
     readonly signing_key_id: string;
@@ -91,6 +98,11 @@ export function verifyChain(
   for (const row of rows) {
     if (row.signing_key_id !== key.id)
       return `seq ${row.seq}: unknown signing key ${row.signing_key_id}`;
+    // R9. Recomputed from the bytes on disk, before the signature is checked:
+    // the signature covers the digest, so a digest nobody recomputed makes the
+    // signature a statement about a value rather than about the content.
+    if (digestOf(row.payload) !== row.payload_digest)
+      return `seq ${row.seq}: payload does not match its stored digest`;
     if (!verify(key, row.payload_digest, row.signature))
       return `seq ${row.seq}: signature does not verify`;
     if (row.prev_hash !== previous) return `seq ${row.seq}: prev_hash does not follow the chain`;

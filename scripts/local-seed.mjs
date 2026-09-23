@@ -84,12 +84,31 @@ const GRANTS_BY_ROLE = {
     // must agree before money moves is an authority change, and an
     // administrator is who the model means by whoever may make it.
     ['settings', 'manage'],
+    // A decision draws on the business's budget cap and signs a link into the
+    // append-only decision chain, which is the same class of act as the
+    // `settings` grant above. `commands/surface.ts` declares `task.decide`
+    // with the action `decide`, and `authority/grants.ts` matches the
+    // collection and the action exactly -- there is no implication, so
+    // `task:manage` never covered it. As seeded before this line no identity
+    // held `task:decide` at all, so `task.decide` answered 403
+    // SCOPE_NOT_GRANTED for every synthetic user and the runtime journey could
+    // not be walked over HTTP: the same shape as the `settings:manage` gap.
+    ['task', 'decide'],
+    // Settings are business facts, and a reader is not a writer. The write
+    // stays `manage` above; this is the half that lets a screen show the
+    // four-eyes band instead of guessing at it.
+    ['settings', 'read'],
   ],
   member: [
     ['task', 'read'],
     ['task', 'write'],
     ['task', 'assign'],
     ['person', 'read'],
+    // Every member may see what the business decided about itself. A member
+    // who cannot read the four-eyes band cannot tell a refusal from a bug when
+    // their own work stops at a second approver. The write is the admin's:
+    // `settings:manage` is not widened by this line.
+    ['settings', 'read'],
   ],
   none: [],
 };

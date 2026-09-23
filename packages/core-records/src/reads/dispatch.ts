@@ -23,6 +23,7 @@ import {
 } from '../commands/refusal.ts';
 import { readTaskSpine } from '../commands/context.ts';
 import { declarationOf } from '../commands/surface.ts';
+import { SYSTEM_OWNED_FIXES, claimedSystemOwnedFields } from '../commands/prepare.ts';
 import { writeAuditEvent } from '../commands/audit.ts';
 import { payloadDigest } from '../commands/digest.ts';
 import {
@@ -34,6 +35,8 @@ import type { ReadRequest, ReadResult } from './requests.ts';
 import { isInternalReader, readBoard, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
+import { readSettings } from './settings.ts';
+import { readCapabilities } from './capabilities.ts';
 
 /**
  * Every read, audited, in the caller's own transaction (I13).
@@ -71,6 +74,11 @@ export async function runRead(
     refusalCode: refusal?.code ?? null,
     subjectRecordId: served.subjectRecordId,
     payloadDigest: payloadDigest(request),
+    // The values a spoof attempt carried, and only on the attempt that carried
+    // them. They are here and nowhere else: naming the keys tells the author
+    // what to remove, and echoing the values back would confirm to a prober
+    // that the server read what it sent (T1-N4).
+    attempted: served.attempted ?? null,
   });
   return outcome;
 }
@@ -93,6 +101,8 @@ export async function runRead(
 interface ServedRead {
   readonly outcome: ReadResult | CommandRefusal;
   readonly subjectRecordId: string | null;
+  /** Only the system-owned keys a payload claimed, with their values. */
+  readonly attempted?: Readonly<Record<string, unknown>> | undefined;
 }
 
 async function serveRead(
@@ -111,6 +121,23 @@ async function serveRead(
   if (declaration === undefined) {
     throw new Error(`runRead: ${request.read} is not in the command surface`);
   }
+
+  // D06, on the read half, with the commands' own list and the commands' own
+  // code. A read takes no command envelope, so `prepareCommand` never sees it
+  // and the keys used to be dropped in silence -- which is the answer the
+  // accepted ledger rules out: a caller who believed they had set `actor_id`
+  // got a `200` and no correction, so the mistake lived in their client and
+  // this server looked fine. It is first, before the spine is read and before
+  // authority, because nothing about the business has been read yet and a
+  // caller learns only that the field they sent is not theirs to send.
+  const claimed = claimedSystemOwnedFields(request);
+  if (claimed !== undefined) {
+    return {
+      outcome: refuseCommand('FIELD_NOT_WRITABLE', claimed.keys, SYSTEM_OWNED_FIXES),
+      subjectRecordId: null,
+      attempted: claimed.values,
+    };
+  }
   const needsSpine = request.read === 'task.read' || request.read === 'task.board';
   const spine = needsSpine ? await readTaskSpine(tx) : undefined;
   const recordId =
@@ -123,31 +150,44 @@ async function serveRead(
     subjectRecordId: recordId ?? null,
   });
 
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // The action is the declaration's. The collection is too for the three
-    // record reads, and for `preset.plan` it is the family the request names,
-    // because that is the grant the plan actually needs: L2's `planPresetSync`
-    // checks `manage` on the family of `recordTypeKey`, so a blanket `manage`
-    // on `preset` in front of it would be a wider question than the operation
-    // asks and a caller holding only it would be let through here and refused
-    // there. The declaration's own `preset` is what the route is about rather
-    // than what it takes; see `CommandDeclaration.collection`.
-    //
-    // Today the record type key *is* the family (L2's `familyOf`, private to
-    // the planner because it is the one place a real type-to-collection
-    // mapping has to land). This is the same key, not a second copy of that
-    // mapping: should the two ever differ, the planner still asks its own
-    // question afterwards, so this check can only be redundant or narrower --
-    // never wider than the authority the plan is granted under.
-    collection: request.read === 'preset.plan' ? request.recordTypeKey : declaration.collection,
-    action: declaration.action,
-    // A record-scoped grant is checked against the record named, exactly as a
-    // targeted command's is. A business-scoped grant covers both, which is
-    // what `effectiveGrants` already means by `scope_kind = 'business'`.
-    scope:
-      recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
-  });
-  if (!authorised.ok) return served(fromAuthority(authorised.refusal));
+  // `session.capabilities` is the one read that asks the grant model nothing.
+  // It answers what the caller already holds, so a grant in front of it could
+  // only hide from a person the list of things they may do -- and a caller
+  // refused it could rebuild the same list by attempting each operation one at
+  // a time. A login with no membership never arrives here at all: that is
+  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so
+  // "membership is the authority" is enforced upstream rather than assumed
+  // here. It is skipped rather than declared grantless because the declaration
+  // is what the route generator and the parity test read, and a row missing
+  // its collection and action would be a special case in three more places.
+  if (request.read !== 'session.capabilities') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // The action is the declaration's. The collection is too for the record
+      // reads, and for `preset.plan` it is the family the request names,
+      // because that is the grant the plan actually needs: L2's
+      // `planPresetSync` checks `manage` on the family of `recordTypeKey`, so
+      // a blanket `manage` on `preset` in front of it would be a wider
+      // question than the operation asks and a caller holding only it would be
+      // let through here and refused there. The declaration's own `preset` is
+      // what the route is about rather than what it takes; see
+      // `CommandDeclaration.collection`.
+      //
+      // Today the record type key *is* the family (L2's `familyOf`, private to
+      // the planner because it is the one place a real type-to-collection
+      // mapping has to land). This is the same key, not a second copy of that
+      // mapping: should the two ever differ, the planner still asks its own
+      // question afterwards, so this check can only be redundant or narrower --
+      // never wider than the authority the plan is granted under.
+      collection: request.read === 'preset.plan' ? request.recordTypeKey : declaration.collection,
+      action: declaration.action,
+      // A record-scoped grant is checked against the record named, exactly as
+      // a targeted command's is. A business-scoped grant covers both, which is
+      // what `effectiveGrants` already means by `scope_kind = 'business'`.
+      scope:
+        recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
+    });
+    if (!authorised.ok) return served(fromAuthority(authorised.refusal));
+  }
 
   switch (request.read) {
     case 'task.read': {
@@ -167,6 +207,16 @@ async function serveRead(
     }
     case 'person.list':
       return served({ ok: true, persons: await listPeople(tx) });
+    case 'session.capabilities':
+      // No subject record and no grant: see the comment above the authority
+      // check. The audit row is written like every other read's (I13).
+      return served({ ok: true, ...(await readCapabilities(tx, session)) });
+    case 'settings.read':
+      // No subject record, for the reason `task.queue` gives: the settings are
+      // the business's own configuration rather than one record, and there is
+      // no `settings` row in `records` to name in the column even if there
+      // were. The audit row is written all the same (I13).
+      return served({ ok: true, settings: await readSettings(tx) });
     case 'task.queue':
       // No subject record: the queue is about the business's outstanding work
       // rather than about one task, and naming one of the tasks on it in the
