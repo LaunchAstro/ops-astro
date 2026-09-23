@@ -140,18 +140,11 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       ).toStrictEqual(['settings:manage', 'settings:read', 'task:read']);
     });
 
-    it('needs no grant beyond membership, and never carries another person’s', async () => {
+    it('refuses a member holding no grant, rather than answering an empty list', async () => {
+      // Minimum contract 8.2 case 3 (I05): denied is never empty.
       const result = await read({ read: 'session.capabilities' }, noah);
-      if (!('grants' in result)) throw new Error('session.capabilities refused for noah');
-      expect(result.personId).toBe(noah.personId);
-      expect(result.grants).toStrictEqual([]);
-      // Not a secret in sight: the answer is pairs, two identifiers and `ok`.
-      expect(Object.keys(result).toSorted()).toStrictEqual([
-        'businessKey',
-        'grants',
-        'ok',
-        'personId',
-      ]);
+      expect(isCommandRefusal(result) ? result.code : 'answered').toBe('SCOPE_NOT_GRANTED');
+      expect('grants' in result).toBe(false);
       // Mia's pairs are hers. Nothing in this answer is anybody else's.
       expect(JSON.stringify(result).includes(mia.personId)).toBe(false);
     });
@@ -187,8 +180,11 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       for (const event of events) {
         expect(event.operation_id).toBeNull();
         expect(event.subject_record_id).toBeNull();
-        expect(event.outcome).toBe('applied');
       }
+      // Answered and refused alike: noah's refusal is audited too (I13).
+      expect(new Set(events.map((event) => event.outcome))).toStrictEqual(
+        new Set(['applied', 'refused']),
+      );
     });
   });
 

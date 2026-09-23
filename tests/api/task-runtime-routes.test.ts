@@ -441,7 +441,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(detailOf(handedBack)['reservationState']).toBe('abandoned');
     });
 
-    it('refuses a handback presented without a live delegation', async () => {
+    it('refuses a handback presented without a delegation as outside a bare login', async () => {
       const answer = await asAgent('task.handback', {
         operationId: randomUUID(),
         leaseId: randomUUID(),
@@ -449,9 +449,11 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
         outcome: 'completed',
       });
 
-      expect(answer.status).toBe(401);
+      // No credential is the pre-pickup login, which reaches the queue and a
+      // pickup only (minimum contract 8.2 case 9).
+      expect(answer.status).toBe(403);
       expect(answer.body['refused']).toBe(true);
-      expect(answer.body['code']).toBe('DELEGATION_NOT_LIVE');
+      expect(answer.body['code']).toBe('DELEGATION_EXCLUDES_OPERATION');
     });
 
     // Behavioural note 7 from lane L4-RUNTIME-FIX, over HTTP. The unit cases

@@ -84,7 +84,8 @@ describe.skipIf(serverUrl === undefined)('an agent replay under current rights',
     const picked = await world.pickUp(decider, 'a task read, then asked for bare');
     const read = { command: 'task.read', operationId: randomUUID(), recordId: picked.taskId };
     expect(isCommandRefusal(await world.asAgent(read, picked.credential))).toBe(false);
-    expect(codeOf(await world.asAgent(read))).toBe('DELEGATION_NOT_LIVE');
+    // Bare, the login is back to the queue and a pickup (contract 8.2 case 9).
+    expect(codeOf(await world.asAgent(read))).toBe('DELEGATION_EXCLUDES_OPERATION');
   });
 
   it('returns the same comment handles on a lost-response replay, writing one comment', async () => {

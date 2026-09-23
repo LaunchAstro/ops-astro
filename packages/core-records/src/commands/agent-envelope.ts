@@ -11,9 +11,9 @@
 // against the delegating person's grants as they are right now.
 //
 // **Asking what it may do.** `session.capabilities` is reachable on this
-// prefix and its answer is the agent's own, not the delegating person's: its
-// own acting identity, the business key, the purpose its delegation is bounded
-// to (null before a pickup) and the authority the two pre-pickup operations
+// prefix under a live delegation, and its answer is the agent's own, not the
+// delegating person's: its own acting identity, the business key, the purpose
+// its delegation is bounded to and the authority the two pre-pickup operations
 // take. An agent holds no grants of its own -- see below -- so reporting the
 // delegating person's here would be reporting somebody else's authority as the
 // agent's.
@@ -21,11 +21,15 @@
 // **The two operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
 // its call with. It may do exactly two things: read `task.queue` and call
-// `task.pickup`. Every other operation is refused `DELEGATION_NOT_LIVE`, which
-// is the code AUTHORITY.md names for a credential that does not answer to a
-// live delegation — and "none was presented" is that, told apart from
-// "expired", "revoked" and "settled" by nothing, deliberately, because telling
-// them apart tells a caller holding a stolen credential which of those it is.
+// `task.pickup`. Every other exported operation is refused
+// `DELEGATION_EXCLUDES_OPERATION`, and `task.decide`
+// `DELEGATION_EXCLUDES_DECISION` (minimum contract 8.2 case 9, ledger I12):
+// with no credential presented the call is outside what an agent login may do
+// at all, which is an exclusion, not a lapsed delegation. A credential that is
+// presented and does not answer to a live delegation is still
+// `DELEGATION_NOT_LIVE`, told apart from "expired", "revoked" and "settled" by
+// nothing, deliberately, because telling them apart tells a caller holding a
+// stolen credential which of those it is.
 //
 // **After pickup, the one-task ceiling.** `pickup` mints a delegation whose
 // `purposeScope` is the picked-up task's record id, and every call here is
@@ -102,12 +106,10 @@ export interface AgentRequest {
 /**
  * The two operations an agent may reach before it holds anything.
  *
- * `session.capabilities` is not a third. It is reachable before a pickup for
- * the same reason it takes no grant on the person path -- it reports what the
- * caller already holds and confers nothing -- and it is kept out of this set
- * because this set is the *ceiling* the refusal message quotes, and an agent
- * reading its own capabilities should be told the two operations it may do,
- * not three.
+ * `session.capabilities` is not a third: before a pickup it is refused
+ * `DELEGATION_EXCLUDES_OPERATION` like every other operation outside this set
+ * (minimum contract 8.2 case 9). Under a live delegation it answers the
+ * delegation's purpose.
  */
 export const BEFORE_PICKUP: ReadonlySet<CommandName> = new Set(['task.queue', 'task.pickup']);
 
@@ -131,6 +133,11 @@ const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
   'Before a pickup an agent login may only read task.queue and call task.pickup.',
+];
+
+const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
+  'A person decides, with their own credential.',
+  ...NO_DELEGATION_FIXES.slice(1),
 ];
 
 export async function executeAgentCommand(
@@ -341,19 +348,21 @@ async function authorise(
 ): Promise<CommandRefusal | undefined> {
   if (BEFORE_PICKUP.has(request.command)) return undefined;
 
-  // The agent asking what it may do is answered whether or not it holds a
-  // delegation: with one the answer is that delegation's purpose, without one
-  // it is the pre-pickup pair and a null purpose. Refusing it for want of a
-  // credential would refuse the one call whose whole subject is that the
-  // credential is missing.
-  if (request.command === 'session.capabilities') return undefined;
-
+  // No credential is an agent login before any pickup, and it reaches the two
+  // operations above and nothing else (minimum contract 8.2 case 9): an
+  // exclusion, named for what was asked, and a decision named as one.
   if (credential === undefined || credential === '') {
-    return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
+    return request.command === 'task.decide'
+      ? refuseCommand('DELEGATION_EXCLUDES_DECISION', [request.command], PRE_PICKUP_DECISION_FIXES)
+      : refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
   }
   const resolved = await resolveDelegation(tx, session.actorId, credential);
   if (!resolved.ok) return fromRuntime(resolved.refusal);
   const delegation = resolved.value;
+
+  // Under a live delegation the agent may ask what it may do: the answer is
+  // that delegation's purpose, which is not a grant on any collection.
+  if (request.command === 'session.capabilities') return undefined;
 
   const taskId = await subjectTaskId(tx, delegation, request);
 

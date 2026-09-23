@@ -17,12 +17,13 @@
 // decision: it reports authority, it does not confer it, and every operation
 // still asks `checkAuthority` for itself.
 //
-// **It needs no grant beyond standing.** A caller who could not read this
-// could still discover every pair in it by attempting the operations one at a
-// time, so gating it would cost a round trip and buy nothing. A login with no
-// standing never reaches here at all — that is `AUTH_NO_MEMBERSHIP` from the
-// resolution, before any read runs. Standing is a membership, or for an
-// external party (R4) a live share, whose pairs are what it is shown.
+// **It is answered to a caller who holds a grant.** A member holding none is
+// refused `SCOPE_NOT_GRANTED` by `reads/dispatch.ts` rather than shown an empty
+// list, because a denied read is never a success with nothing in it (minimum
+// contract 8.2 case 3, ledger I05). A login with no standing never reaches
+// here at all — that is `AUTH_NO_MEMBERSHIP` from the resolution, before any
+// read runs. Standing is a membership, or for an external party (R4) a live
+// share, whose pairs are what it is shown.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
