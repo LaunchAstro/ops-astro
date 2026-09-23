@@ -23,7 +23,12 @@ import { connect, type Database } from '../../packages/core-records/src/tenancy/
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
-import { verifyChain } from '../../packages/core-runtime/src/signing.ts';
+import {
+  decidedAtText,
+  decisionLink,
+  linkVersionOf,
+  verifyChain,
+} from '../../packages/core-runtime/src/signing.ts';
 import {
   buildFixture,
   envelopeTotals,
@@ -376,6 +381,11 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
           readonly version_id: string;
           readonly decision: string;
           readonly decided_by_person_id: string;
+          readonly decided_by_actor_id: string;
+          readonly lineage_id: string;
+          readonly round: number;
+          readonly decided_at: string;
+          readonly evidence_digest: string;
           readonly payload: Record<string, unknown>;
           readonly payload_digest: string;
           readonly signature: string;
@@ -384,7 +394,8 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
           readonly hash: string;
         }>(
           `select id, seq::text as seq, gate_id, version_id, decision, decided_by_person_id,
-                payload, payload_digest, signature, signing_key_id, prev_hash, hash
+                decided_by_actor_id, lineage_id, round, ${decidedAtText('decided_at')} as decided_at,
+                evidence_digest, payload, payload_digest, signature, signing_key_id, prev_hash, hash
            from public.gate_decisions where business_id = $1 order by seq`,
           [fixture.businessId],
         ),
@@ -392,19 +403,29 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
 
     expect(rows.length).toBeGreaterThan(0);
 
+    type Row = (typeof rows)[number];
     const broken = verifyChain(
       TEST_SIGNING_KEY,
       rows.map((row) => Object.assign({}, row, { seq: Number(row.seq) })),
-      (row) => ({
-        id: (row as unknown as { id: string }).id,
-        seq: Number(row.seq),
-        gate: (row as unknown as { gate_id: string }).gate_id,
-        version: (row as unknown as { version_id: string }).version_id,
-        decision: (row as unknown as { decision: string }).decision,
-        person: (row as unknown as { decided_by_person_id: string }).decided_by_person_id,
-        payloadDigest: row.payload_digest,
-        signature: row.signature,
-      }),
+      (row) => {
+        const full = row as unknown as Row;
+        return decisionLink(linkVersionOf(full.payload) ?? 1, {
+          id: full.id,
+          seq: Number(full.seq),
+          gate: full.gate_id,
+          version: full.version_id,
+          decision: full.decision,
+          person: full.decided_by_person_id,
+          payloadDigest: full.payload_digest,
+          signature: full.signature,
+          round: full.round,
+          decidedAt: full.decided_at,
+          lineage: full.lineage_id,
+          actor: full.decided_by_actor_id,
+          evidence: full.evidence_digest,
+          key: full.signing_key_id,
+        });
+      },
     );
     expect(broken).toBeNull();
   });

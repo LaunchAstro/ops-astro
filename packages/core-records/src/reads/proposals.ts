@@ -45,7 +45,11 @@
 //   or superseded gate reads its stored outcome whatever the clock says.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { SigningKey } from '../../../core-runtime/src/signing.ts';
+import {
+  type KeyResolver,
+  type SigningKey,
+  keyResolver,
+} from '../../../core-runtime/src/signing.ts';
 import { gateSigningKey } from '../commands/runtime-config.ts';
 import { readVerifiedDecisions } from './verified-decisions.ts';
 
@@ -67,6 +71,13 @@ export interface DecisionLink {
   readonly signature: string;
   readonly prevHash: string;
   readonly hash: string;
+  /**
+   * Which fields the link covers (`signing.ts`, `LinkVersion`). A `1` is a
+   * decision written before the link covered its round, time, lineage, acting
+   * actor, evidence digest and key id: it verifies, and those fields on it are
+   * not covered by the chain.
+   */
+  readonly linkVersion: number;
 }
 
 export interface ReservationView {
@@ -161,9 +172,10 @@ interface VersionRow {
 /**
  * Every proposal on one task, newest lineage first.
  *
- * `signingKey` is the deployment's, from the environment, and a test names
- * its own. `null` means none is configured: a task with decisions then fails
- * `DecisionIntegrityError` rather than show them unverified.
+ * `signingKey` is the deployment's keys, from the environment, and a test
+ * names its own key or resolver. `null` means none is configured: a task with
+ * decisions then fails `DecisionIntegrityError` rather than show them
+ * unverified.
  *
  * It is one query per shape rather than one join across all of them, because a
  * lineage with three versions, four decisions and two reservations joined flat
@@ -173,7 +185,7 @@ interface VersionRow {
 export async function readTaskProposals(
   tx: TenantQuery,
   taskId: string,
-  signingKey: SigningKey | null = gateSigningKey() ?? null,
+  signingKey: KeyResolver | SigningKey | null = configuredKeys(),
 ): Promise<readonly ProposalView[]> {
   const versions = await tx.query<VersionRow>(
     `select lin.id                as lineage_id,
@@ -273,6 +285,7 @@ export async function readTaskProposals(
           signature: row.signature,
           prevHash: row.prev_hash,
           hash: row.hash,
+          linkVersion: row.link_version,
         })),
       reservations: reservations
         .filter((row) => row.lineage_id === lineageId)
@@ -339,4 +352,14 @@ function asVersion(row: VersionRow): ProposalVersionView {
             payloadDigest: row.payload_digest,
           },
   };
+}
+
+/**
+ * The keys a read verifies with: the one configured key, as the resolver's
+ * only entry. Retaining an older key id is a configuration change that adds
+ * an entry here, and it belongs with the key configuration, not in the read.
+ */
+function configuredKeys(): KeyResolver | null {
+  const key = gateSigningKey();
+  return key === undefined ? null : keyResolver([key]);
 }

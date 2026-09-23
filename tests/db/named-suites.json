@@ -55,6 +55,7 @@
     "tests/commands/unproduced-reach.test.ts",
     "tests/tenancy/production-lookup.test.ts",
     "tests/reads/gate-expiry.test.ts",
+    "tests/reads/decision-integrity-read.test.ts",
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
     "tests/api/web-reads.test.ts",

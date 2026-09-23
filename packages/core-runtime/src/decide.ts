@@ -29,7 +29,16 @@ import {
 } from '../../core-records/src/authority/delegations.ts';
 import { acquire } from './locks.ts';
 import { affectedByVersions, classifyVersions } from './recovery.ts';
-import { CHAIN_GENESIS, chainHash, digestOf, sign, type SigningKey } from './signing.ts';
+import {
+  CHAIN_GENESIS,
+  LINK_VERSION,
+  chainHash,
+  decidedAtText,
+  decisionLink,
+  digestOf,
+  sign,
+  type SigningKey,
+} from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** The pinned synthetic estimator. Not a provider, not a production price. */
@@ -319,6 +328,9 @@ export async function decide(
     if (!room.ok) return room;
   }
 
+  // `link` says which fields the chain link covers, inside what is signed, so
+  // a row cannot be relabelled to an older link without breaking its
+  // signature (`signing.ts`, `LinkVersion`).
   const payload = {
     gate: gate.id,
     version: gate.version_id,
@@ -326,6 +338,7 @@ export async function decide(
     by: request.decidedByPersonId,
     note: request.note,
     evidence: pack.rendered_digest,
+    link: LINK_VERSION,
   };
   const payloadDigest = digestOf(payload);
   const signature = sign(request.signingKey, payloadDigest);
@@ -344,24 +357,43 @@ export async function decide(
   const prevHash = previous[0]?.hash ?? CHAIN_GENESIS;
   const seq = Number(previous[0]?.at ?? 0) + 1;
 
+  // The link covers `decided_at`, so the time is fixed before the hash and
+  // written as the value the hash saw, in the one spelling a read renders it
+  // back in. It is the database's clock, as the column default was. It goes
+  // in as text: a parameter typed `timestamptz` is serialised through a
+  // JavaScript `Date`, which keeps milliseconds and drops the microseconds the
+  // hash saw.
+  const clock = await tx.query<{ readonly at: string }>(`select ${decidedAtText('now()')} as at`);
+  const decidedAt = clock[0]?.at ?? '';
+
   const decisionId = randomUUID();
-  const hash = chainHash(prevHash, {
-    id: decisionId,
-    seq,
-    gate: gate.id,
-    version: gate.version_id,
-    decision: request.decision,
-    person: request.decidedByPersonId,
-    payloadDigest,
-    signature,
-  });
+  const hash = chainHash(
+    prevHash,
+    decisionLink(LINK_VERSION, {
+      id: decisionId,
+      seq,
+      gate: gate.id,
+      version: gate.version_id,
+      decision: request.decision,
+      person: request.decidedByPersonId,
+      payloadDigest,
+      signature,
+      round: gate.round,
+      decidedAt,
+      lineage: gate.lineage_id,
+      actor: request.decidedByActorId,
+      evidence: pack.rendered_digest,
+      key: request.signingKey.id,
+    }),
+  );
 
   await tx.query(
     `insert into public.gate_decisions
        (business_id, id, gate_id, version_id, lineage_id, seq, decision, round,
         decided_by_person_id, decided_by_actor_id, payload, payload_digest,
-        evidence_digest, signing_key_id, signature, prev_hash, hash)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::text::jsonb, $12, $13, $14, $15, $16, $17)`,
+        evidence_digest, signing_key_id, signature, prev_hash, hash, decided_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::text::jsonb, $12, $13, $14, $15, $16, $17,
+             $18::text::timestamptz)`,
     [
       tx.businessId,
       decisionId,
@@ -380,6 +412,7 @@ export async function decide(
       signature,
       prevHash,
       hash,
+      decidedAt,
     ],
   );
 
