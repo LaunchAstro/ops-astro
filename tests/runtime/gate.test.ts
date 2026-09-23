@@ -22,6 +22,7 @@ import {
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
+import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import { verifyChain } from '../../packages/core-runtime/src/signing.ts';
 import {
   buildFixture,
@@ -67,6 +68,29 @@ async function awaitBlockedOnLock(database: FreshDatabase): Promise<void> {
     await delay(25);
   }
   throw new Error('no backend ever blocked on a lock: the interleaving was not established');
+}
+
+/**
+ * Which table the blocked backend is parked on. A waiter takes the tuple lock
+ * first and then waits on the holder's transaction, so the tuple lock names
+ * the row it wants — which is the whole question in the lock-order case.
+ */
+async function blockedOnRelation(database: FreshDatabase): Promise<string> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await database.admin.execute<{ readonly relname: string }>(
+      `select c.relname from pg_stat_activity a
+         join pg_locks l on l.pid = a.pid and l.locktype = 'tuple'
+         join pg_class c on c.oid = l.relation
+        where a.datname = current_database() and a.wait_event_type = 'Lock'
+        limit 1`,
+    );
+    const relname = rows[0]?.relname;
+    if (relname !== undefined) return relname;
+    // eslint-disable-next-line no-await-in-loop
+    await delay(25);
+  }
+  throw new Error('no backend ever blocked on a row lock: the interleaving was not established');
 }
 
 const hour = (): Date => new Date(Date.now() + 3_600_000);
@@ -637,4 +661,76 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
     const ok = await decideOn(database, overCap, inside, 'approve');
     expect(ok.ok).toBe(true);
   });
+  // Case 7. The lock order, and why `locks.ts` exists at all.
+  it('normalises the lock order so two crossing transactions never deadlock', async () => {
+    const locking = await buildFixture(database.app, 'lockbiz');
+    const proposal = await proposeOn(database, locking);
+    const approved = await decideOn(database, locking, proposal, 'approve');
+    expect(approved.ok).toBe(true);
+    if (!approved.ok) throw new Error('unreachable');
+    const envelopeId = approved.value.envelopeId as string;
+
+    const opened = barrier();
+    const rival: Database = connect(database.appUrl, { max: 1, source: 'lock-rival' });
+
+    // Both callers list the set in an order the contract forbids, and neither
+    // lists the same wrong order. Honoured literally, the first would hold the
+    // gate and want the cap while the second held the cap and wanted the gate,
+    // which is a deadlock Postgres would have to detect and kill. `acquire`
+    // sorts both into cap, envelope, gate, so there is nothing to detect.
+    const first = database.app.withBusiness(locking.businessId, async (tx) => {
+      const held = await acquire(tx, [
+        { lockClass: 'gate', id: proposal.gateId },
+        { lockClass: 'envelope', id: envelopeId },
+        { lockClass: 'cap', id: locking.capId },
+      ]);
+      await opened.held;
+      return held;
+    });
+
+    await delay(150);
+
+    const second = rival.withBusiness(
+      locking.businessId,
+      async (tx) =>
+        await acquire(tx, [
+          { lockClass: 'envelope', id: envelopeId },
+          { lockClass: 'cap', id: locking.capId },
+          { lockClass: 'gate', id: proposal.gateId },
+        ]),
+    );
+
+    // The observed fact, not a slept-through one: the second caller listed the
+    // envelope first and is waiting on the **cap**, because that is the class
+    // `acquire` reached first. A literal reading would have it on the envelope.
+    const waitingOn = await blockedOnRelation(database);
+    expect(waitingOn).toBe('budget_caps');
+
+    opened.release();
+
+    // Both complete. A deadlock here would surface as `40P01 deadlock
+    // detected` on one of them rather than as a hang, so awaiting both is the
+    // assertion: the run that deadlocks throws instead of resolving.
+    const [held, alsoHeld] = await Promise.all([first, second]);
+    await rival.close();
+
+    expect(held.has('cap', locking.capId)).toBe(true);
+    expect(held.has('envelope', envelopeId)).toBe(true);
+    expect(held.has('gate', proposal.gateId)).toBe(true);
+    expect(alsoHeld.holds).toStrictEqual(held.holds);
+
+    // The wrong order is unreachable through `acquire` by construction — it
+    // sorts, so there is no way to ask it for a late cap. What a helper *can*
+    // do wrong is reach for a lock nobody took, and that is refused here,
+    // loudly, before Postgres is ever asked about it.
+    await database.app.withBusiness(locking.businessId, async (tx) => {
+      const set = await acquire(tx, [{ lockClass: 'gate', id: proposal.gateId }]);
+      expect(() => {
+        set.require('cap', locking.capId);
+      }).toThrow('lock order');
+      expect(() => {
+        set.require('gate', proposal.gateId);
+      }).not.toThrow();
+    });
+  }, 60_000);
 });

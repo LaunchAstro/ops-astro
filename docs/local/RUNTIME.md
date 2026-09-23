@@ -224,7 +224,7 @@ liability.
 
 ## The proofs
 
-`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 19 cases, all
+`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 20 cases, all
 against a real Postgres migrated from empty.
 
 - The race is **forced, not hoped for**: the first transaction is held open on a
@@ -256,6 +256,13 @@ against a real Postgres migrated from empty.
   connection zero decisions, envelopes, reservations and attempts; committed,
   the same fresh-connection read finds all four and `replayRecordedTransitions`
   has nothing to do.
+- **The lock order is observed, not assumed**: two transactions each list cap,
+  envelope and gate in an order the contract forbids, and in different wrong
+  orders. `pg_locks` is asked which table the blocked one is parked on, and the
+  answer is `budget_caps` — the class `acquire` reached first — although it
+  listed the envelope first. Both complete, so there is no deadlock to detect.
+  With the sort removed from `acquire` the same case reports `task_envelopes`,
+  which is the crossing that deadlocks.
 - Append-only is asserted **twice**: the application role is refused by
   privilege, and the owner — who does hold `update` — is refused by the trigger.
   Without the second half a later migration granting `update` would silently
@@ -272,10 +279,6 @@ against a real Postgres migrated from empty.
   reaching into another unit's trail.
 - **No HTTP surface and no registry entry.** L3 wires these onto
   `commands/register.ts` and `apps/api/status.ts`.
-- **No lock-order or deadlock proof.** `locks.ts` is asserted only by the one
-  forced approval race. Two transactions taking cap, envelope and gate in the
-  contract's order have not been watched into a forced interleaving, and the
-  wrong order has not been shown refused before Postgres detects it.
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.
