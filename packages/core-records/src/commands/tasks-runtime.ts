@@ -72,19 +72,29 @@ export function fromRuntime(refusal: AnyRefusal): CommandRefusal {
   return refuseCommand(refusal.code as RefusalCode, [], [refusal.reason, refusal.fix]);
 }
 
-/** The window a proposal's gate stays open for, when the caller names none. */
-const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * The longest a gate may stay open, and the window it stays open for when the
+ * caller names none: seven days either way. The maximum is the owner's
+ * decision (d) of 23 September 2026, "Fixed server maximum of seven days",
+ * for new proposals and successor gates. Existing gates are not rewritten.
+ */
+export const MAXIMUM_EXPIRY_SECONDS: number = 7 * 24 * 60 * 60;
+const DEFAULT_EXPIRY_SECONDS = MAXIMUM_EXPIRY_SECONDS;
+
+/** The fix every expiry refusal gives, naming the maximum in the unit sent. */
+export const EXPIRY_FIX: string = `Name a whole number of seconds from 1 to ${String(MAXIMUM_EXPIRY_SECONDS)} (seven days), or leave it out for seven days.`;
 
 /**
  * A caller's `expiresInSeconds` as an instant on the server's clock, or
- * `undefined` when it is not a whole number of seconds greater than zero.
- * Absent is the default week. `task.propose` and `task.handback`'s successor
- * both read their expiry through this one function, so the two are bounded
- * the same way and cannot drift apart.
+ * `undefined` when it is not a whole number of seconds from 1 to the maximum.
+ * Absent is the default week. `task.propose`, `task.restart` and
+ * `task.handback`'s successor all read their expiry through this one
+ * function, so they are bounded the same way and cannot drift apart.
  */
 export function expiryFrom(seconds: unknown): Date | undefined {
   const value = seconds ?? DEFAULT_EXPIRY_SECONDS;
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return undefined;
+  if (value > MAXIMUM_EXPIRY_SECONDS) return undefined;
   return new Date(Date.now() + value * 1000);
 }
 
@@ -162,14 +172,9 @@ export async function proposeOnTask(
 
   const expiresAt = expiryFrom(fields.expiresInSeconds);
   if (expiresAt === undefined) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['expiresInSeconds'],
-        ['Name a whole number of seconds greater than zero, or leave it out for a week.'],
-      ),
-      { expiresInSeconds: fields.expiresInSeconds },
-    );
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['expiresInSeconds'], [EXPIRY_FIX]), {
+      expiresInSeconds: fields.expiresInSeconds,
+    });
   }
 
   const result = await propose(tx, {
@@ -659,11 +664,7 @@ export function readSuccessor(raw: unknown, agentActorId: string | undefined): R
   }
   const expiresAt = expiryFrom(raw['expiresInSeconds']);
   if (expiresAt === undefined) {
-    return invalidSuccessor(
-      'successor.expiresInSeconds',
-      'Name a whole number of seconds greater than zero, or leave it out for a week.',
-      raw['expiresInSeconds'],
-    );
+    return invalidSuccessor('successor.expiresInSeconds', EXPIRY_FIX, raw['expiresInSeconds']);
   }
 
   return {

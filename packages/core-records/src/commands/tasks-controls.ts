@@ -25,7 +25,7 @@ import {
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { expiryFrom, fromRuntime } from './tasks-runtime.ts';
+import { EXPIRY_FIX, expiryFrom, fromRuntime } from './tasks-runtime.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
@@ -127,13 +127,7 @@ export async function restartOnTask(
 ): Promise<HandlerOutcome> {
   const expiresAt = expiryFrom(fields.expiresInSeconds);
   if (expiresAt === undefined) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['expiresInSeconds'],
-        ['Name a whole number of seconds greater than zero, or leave it out for a week.'],
-      ),
-    );
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['expiresInSeconds'], [EXPIRY_FIX]));
   }
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId);
   if (isOutcome(found)) return found;
