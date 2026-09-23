@@ -125,8 +125,11 @@ export type CommandRequest =
         readonly currency: string;
         readonly payload: FieldValues;
         readonly step: { readonly kind: string; readonly payload: FieldValues };
-        /** An ISO-8601 instant in the future. Absent is the server's own week. */
-        readonly expiresAt?: string;
+        /**
+         * Seconds from the server's clock, as `task.propose` takes it. Absent
+         * is the server's own week.
+         */
+        readonly expiresInSeconds?: number;
       };
     } & Envelope)
   // The owning operations. Each writes the fields its name owns on the field
