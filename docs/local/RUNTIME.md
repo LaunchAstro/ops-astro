@@ -471,8 +471,11 @@ partly covered rather than proved.
   transaction boundary and a fresh connection to a server that never stopped.
   `pnpm verify:restart` restarts a declared, disposable Postgres and the API
   process and compares the lineage, gate, decision, reservation, lease,
-  attempt, delegation, receipt and register identities with their states;
-  the coverage table and the W06 items still open are in `docs/local/PROOFS.md`.
+  attempt, delegation, receipt and register identities with their states. It
+  then drives replays, the handback, a gate that lapsed while nothing ran and a
+  Request Changes round over HTTP against the new process. Cancellation and
+  authorised restart have no route yet, so the cancelled-lineage claim stays
+  open. The coverage table and the open items are in `docs/local/PROOFS.md`.
 - **No settlement of actual expenditure.** `handback` refuses any non-null
   `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
   could settle; the settlement path belongs to the later authorised,

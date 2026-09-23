@@ -9,7 +9,9 @@
 # tests/acceptance/restart-and-expiry.test.ts with both restarts asked -- the
 # container restarted under the suite, and apps/api/server.ts started, stopped
 # and started again as a real process -- writes the evidence to FILE, and
-# removes the container whether the run passed or failed.
+# removes the container and stops any API process it started whether the run
+# passed or failed. L5_RESTART_INDUCE_FAILURE=throw|crash, passed through to the
+# run, makes it fail once everything is up, which is how that removal is shown.
 #
 # It never adopts a container it did not create: an existing NAME, a port
 # already answering, or a name or port belonging to the working slice, the
@@ -60,8 +62,29 @@ if "$DOCKER" inspect "$NAME" >/dev/null 2>&1; then
 fi
 
 created=no
+PIDFILE=
 cleanup() {
   status=$?
+  # The API processes the run started, by the pids it wrote down. A runner that
+  # died mid-case never reached its own afterAll, so they are stopped here.
+  if [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ]; then
+    while read -r pid; do
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+        say "stopped api pid $pid"
+        printf 'api stopped by trap: %s\n' "$pid" >>"$EVIDENCE"
+      fi
+    done <"$PIDFILE"
+    sleep 1
+    while read -r pid; do kill -KILL "$pid" 2>/dev/null || true; done <"$PIDFILE"
+    rm -f "$PIDFILE"
+  fi
+  if nc -z 127.0.0.1 "$API_PORT" 2>/dev/null; then
+    printf 'api port still answering: %s\n' "$API_PORT" >>"$EVIDENCE"
+    [ "$status" -ne 0 ] || status=1
+  else
+    printf 'api port free: %s\n' "$API_PORT" >>"$EVIDENCE"
+  fi
   if [ "$created" = yes ]; then
     "$DOCKER" rm -f -v "$NAME" >/dev/null 2>&1 || true
     say "removed $NAME"
@@ -73,6 +96,8 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$(dirname "$EVIDENCE")"
+PIDFILE=$EVIDENCE.pids
+: >"$PIDFILE"
 {
   printf 'head: %s\n' "$head_sha"
   printf 'started: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -104,6 +129,8 @@ DATABASE_ADMIN_URL=$admin_url node scripts/db-migrate.mjs | tee -a "$EVIDENCE"
 say 'running the restart proof'
 DATABASE_URL=$admin_url DATABASE_ADMIN_URL=$admin_url \
   L5_RESTART_CONTAINER_NAME=$NAME L5_RESTART_API_PORT=$API_PORT L5_RESTART_EVIDENCE=$EVIDENCE \
+  L5_RESTART_PIDFILE=$PIDFILE L5_RESTART_INDUCE_FAILURE=${L5_RESTART_INDUCE_FAILURE:-} \
   pnpm exec vitest run tests/acceptance/restart-and-expiry.test.ts tests/acceptance/restart-declared.test.ts \
+  tests/acceptance/restart-http.test.ts \
   --fileParallelism=false --reporter=verbose 2>&1 | tee -a "$EVIDENCE"
 say "evidence in $EVIDENCE"
