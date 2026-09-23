@@ -23,9 +23,15 @@ import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { affectedByVersions, classifyVersions } from './recovery.ts';
-import { digestOf } from './signing.ts';
-import { renderEvidence } from './evidence.ts';
+import { writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+
+// The version, run, step, evidence pack and gate inserts moved to
+// `proposal-writer.ts` so `handback` can make a successor through the same
+// code rather than a second copy of it (T4). `roundsUsed` moved with them and
+// is re-exported here, because `index.ts` pins it under this module's name and
+// L3 imports it from there.
+export { roundsUsed } from './proposal-writer.ts';
 
 export interface ProposeRequest {
   readonly taskId: string;
@@ -97,9 +103,36 @@ export async function propose(
             [tx.businessId, lineageId],
           )
         ).map((row) => row.id);
+
+  // The task's own accounting parents, when they exist. `writeProposal`
+  // requires them because the version it writes is the version a later
+  // decision draws on, and `affectedByVersions` above only finds them by way
+  // of a hold that is still live — an envelope whose holds are all terminal is
+  // just as real and just as much the parent of this version. Discovered here,
+  // before the locks, and taken in the same ordered call as everything else.
+  const envelopes = await tx.query<{ readonly id: string; readonly cap_id: string }>(
+    `select id, cap_id from public.task_envelopes
+      where business_id = $1 and task_id = $2 and state = 'open'`,
+    [tx.businessId, request.taskId],
+  );
+  const accounting = envelopes[0] ?? null;
+
+  // T4's "preallocate any new successor identities before lock acquisition;
+  // this is identity preparation, not a write or approval". A lineage opened by
+  // this call has no row to lock yet, and taking its lock after the reservation
+  // locks below would be the backwards acquisition the contract forbids. Its
+  // identity is decided here instead, so the whole set is one ordered call and
+  // `writeProposal` can require a lineage lock unconditionally.
+  const openingId = randomUUID();
   const locks = await acquire(tx, [
+    ...(accounting === null
+      ? []
+      : [
+          { lockClass: 'cap' as const, id: accounting.cap_id },
+          { lockClass: 'envelope' as const, id: accounting.id },
+        ]),
     { lockClass: 'task', id: request.taskId },
-    ...(lineageId === null ? [] : [{ lockClass: 'lineage' as const, id: lineageId }]),
+    { lockClass: 'lineage', id: lineageId ?? openingId },
     ...(await affectedByVersions(tx, liveVersions)),
   ]);
 
@@ -109,7 +142,7 @@ export async function propose(
       `insert into public.proposal_lineages (business_id, id, task_id, opened_by_actor_id)
        values ($1, $2, $3, $4)
        returning id, state, task_id`,
-      [tx.businessId, randomUUID(), request.taskId, request.proposedByActorId],
+      [tx.businessId, openingId, request.taskId, request.proposedByActorId],
     );
     lineage = opened[0] as LineageRow;
   } else {
@@ -151,127 +184,50 @@ export async function propose(
     lineage = row;
   }
 
-  // Supersede the live version and, with it, the gate that was bound to it.
-  // Doing this before the insert is what the one-live-version index requires,
-  // and it is also G04: the earlier approval stays in the chain as history and
-  // stops being able to authorise anything.
-  const superseded = await tx.query<{ readonly id: string }>(
-    `update public.proposal_versions set superseded_at = now()
-      where business_id = $1 and lineage_id = $2 and superseded_at is null
-      returning id`,
-    [tx.businessId, lineage.id],
+  const written = await writeProposal(
+    tx,
+    {
+      taskId: request.taskId,
+      lineageId: lineage.id,
+      envelopeId: accounting?.id ?? null,
+      capId: accounting?.cap_id ?? null,
+      proposedByActorId: request.proposedByActorId,
+      purpose: request.purpose,
+      maximumMinor: request.maximumMinor,
+      currency: request.currency,
+      payload: request.payload,
+      step: request.step,
+      expiresAt: request.expiresAt,
+    },
+    locks,
   );
-  const previous = superseded[0];
-  let round = 1;
-  if (previous !== undefined) {
-    const rounds = await tx.query<{ readonly used: string }>(
-      `update public.gates set state = 'superseded', decided_at = now()
-        where business_id = $1 and version_id = $2 and state = 'pending'
-        returning round::text as used`,
-      [tx.businessId, previous.id],
-    );
-    // A superseding version continues the lineage's round count: G08 caps the
-    // formal rounds across the lineage, not per gate, so resetting here would
-    // make a third round reachable by proposing again.
-    const carried = rounds[0];
-    round = carried === undefined ? await roundsUsed(tx, lineage.id) : Number(carried.used);
-  }
+  if (!written.ok) return written;
 
   // R8. The hold the superseded version owns is released here, in the
   // transaction that made it nonclaimable, under the locks discovered for it
   // above. Leaving it for a later unrelated replay is what made the business-
   // wide sweep from cancellation look necessary.
-  if (previous !== undefined) {
-    await classifyVersions(tx, [previous.id], 'version_superseded', previous.id, locks);
+  if (written.value.supersededVersionId !== null) {
+    await classifyVersions(
+      tx,
+      [written.value.supersededVersionId],
+      'version_superseded',
+      written.value.supersededVersionId,
+      locks,
+    );
   }
-
-  const versionNumbers = await tx.query<{ readonly next: string }>(
-    `select coalesce(max(version), 0) + 1 as next from public.proposal_versions
-      where business_id = $1 and lineage_id = $2`,
-    [tx.businessId, lineage.id],
-  );
-  const version = Number(versionNumbers[0]?.next ?? 1);
-
-  const payloadDigest = digestOf({
-    lineage: lineage.id,
-    version,
-    task: request.taskId,
-    purpose: request.purpose,
-    maximumMinor: request.maximumMinor,
-    currency: request.currency,
-    payload: request.payload,
-    step: request.step,
-  });
-
-  const versionId = randomUUID();
-  await tx.query(
-    `insert into public.proposal_versions
-       (business_id, id, lineage_id, version, payload, payload_digest, purpose,
-        maximum_minor, currency, proposed_by_actor_id)
-     values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8, $9, $10)`,
-    [
-      tx.businessId,
-      versionId,
-      lineage.id,
-      version,
-      JSON.stringify(request.payload),
-      payloadDigest,
-      request.purpose,
-      request.maximumMinor,
-      request.currency,
-      request.proposedByActorId,
-    ],
-  );
-
-  const runId = randomUUID();
-  await tx.query(
-    `insert into public.planned_runs (business_id, id, lineage_id, version_id, task_id)
-     values ($1, $2, $3, $4, $5)`,
-    [tx.businessId, runId, lineage.id, versionId, request.taskId],
-  );
-
-  const stepId = randomUUID();
-  await tx.query(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     values ($1, $2, $3, 1, $4, $5::text::jsonb)`,
-    [tx.businessId, stepId, runId, request.step.kind, JSON.stringify(request.step.payload)],
-  );
-
-  // Rendered here, from the rows just written, before the gate exists (G07).
-  const pack = await renderEvidence(tx, { versionId, runId });
-  if (!pack.ok) return pack;
-
-  const gateId = randomUUID();
-  await tx.query(
-    `insert into public.gates
-       (business_id, id, lineage_id, version_id, run_id, step_id, evidence_pack_id,
-        payload_digest, round, expires_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [
-      tx.businessId,
-      gateId,
-      lineage.id,
-      versionId,
-      runId,
-      stepId,
-      pack.value.evidencePackId,
-      payloadDigest,
-      round,
-      request.expiresAt,
-    ],
-  );
 
   return {
     ok: true,
     value: {
       lineageId: lineage.id,
-      versionId,
-      version,
-      runId,
-      stepId,
-      evidencePackId: pack.value.evidencePackId,
-      gateId,
-      payloadDigest,
+      versionId: written.value.versionId,
+      version: written.value.version,
+      runId: written.value.runId,
+      stepId: written.value.stepId,
+      evidencePackId: written.value.evidencePackId,
+      gateId: written.value.gateId,
+      payloadDigest: written.value.payloadDigest,
     },
   };
 }
@@ -296,14 +252,4 @@ async function requires(
     `proposing bounded work on this task needs ${action} on it, and the caller holds no such grant`,
     'Ask for the grant, or propose against a task the caller already holds it on.',
   );
-}
-
-/** Formal rounds used so far in this lineage. Comments and steering are not rounds (G08). */
-export async function roundsUsed(tx: TenantQuery, lineageId: string): Promise<number> {
-  const rows = await tx.query<{ readonly rounds: string }>(
-    `select count(*)::text as rounds from public.gate_decisions
-      where business_id = $1 and lineage_id = $2 and decision = 'request_changes'`,
-    [tx.businessId, lineageId],
-  );
-  return Number(rows[0]?.rounds ?? 0) + 1;
 }

@@ -19,6 +19,7 @@ import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { handback } from '../../packages/core-runtime/src/handback.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
+import { writeProposal } from '../../packages/core-runtime/src/proposal-writer.ts';
 import {
   classifyUnderLocks,
   replayRecordedTransitions,
@@ -85,7 +86,7 @@ async function decideOn(
   fixture: RuntimeFixture,
   of: Proposed,
   options: {
-    readonly decision?: 'approve' | 'reject';
+    readonly decision?: 'approve' | 'reject' | 'request_changes';
     readonly capId?: string;
   } = {},
 ) {
@@ -103,6 +104,63 @@ async function decideOn(
       capId: options.capId ?? fixture.capId,
     }),
   );
+}
+
+/** The bounded successor the R4 cases ask for. Inside the cap and in its currency. */
+function successorFor(fixture: RuntimeFixture) {
+  return {
+    proposedByActorId: fixture.decider.actorId,
+    purpose: 'draft_the_second_round',
+    maximumMinor: 4_000,
+    currency: 'AUD',
+    payload: { instruction: 'revise it' },
+    step: { kind: 'local.draft', payload: { words: 300 } },
+    expiresAt: hour(),
+  };
+}
+
+/** Pick the reservation up, or say which refusal stopped the case getting started. */
+async function claim(
+  database: FreshDatabase,
+  fixture: RuntimeFixture,
+  reservationId: string,
+): Promise<{ readonly leaseId: string; readonly fence: number }> {
+  const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    pickup(tx, {
+      reservationId,
+      agentActorId: fixture.agentActorId,
+      authorisedByPersonId: fixture.decider.personId,
+      mintedByActorId: fixture.decider.actorId,
+      collection: TASK_COLLECTION,
+      leaseSeconds: 3_600,
+    }),
+  );
+  if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
+  return { leaseId: claimed.value.leaseId, fence: claimed.value.fence };
+}
+
+/**
+ * Settle a claim with no successor. The cases below that end in a refusal call
+ * it to prove the refusal left the claim usable -- and because a live
+ * delegation is unique per agent and purpose (0008:195), so a case that walks
+ * away from one is a case that breaks the next pickup rather than its own
+ * assertion.
+ */
+async function settle(
+  database: FreshDatabase,
+  fixture: RuntimeFixture,
+  claimed: { readonly leaseId: string; readonly fence: number },
+): Promise<void> {
+  const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    handback(tx, {
+      leaseId: claimed.leaseId,
+      fence: claimed.fence,
+      outcome: 'completed',
+      report: { draft: 'settled with no successor' },
+      actualMinor: null,
+    }),
+  );
+  if (!settled.ok) throw new Error(`the refused claim could not settle: ${settled.refusal.code}`);
 }
 
 describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
@@ -256,6 +314,434 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     });
     expect(retained).toHaveLength(1);
     expect(retained[0]?.refusal_code).toBe('LEASE_EXPIRED');
+  });
+
+  // T4's lock-aware proposal writer, on its own. The writer is the mechanism
+  // the successor below is built from, and its whole safety property is that it
+  // asserts its caller's locks instead of taking any.
+  it('T4: the proposal writer refuses to run outside the locks its caller holds', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+
+    const write = {
+      taskId: task,
+      lineageId: proposed.lineageId,
+      envelopeId: null,
+      capId: null,
+      proposedByActorId: fixture.decider.actorId,
+      purpose: 'draft_the_second_round',
+      maximumMinor: 4_000,
+      currency: 'AUD',
+      payload: { instruction: 'revise it' },
+      step: { kind: 'local.draft', payload: { words: 300 } },
+      expiresAt: hour(),
+    };
+
+    // The lineage lock alone. It throws rather than refusing, because a caller
+    // reaching outside its own lock set is a bug in that caller and not an
+    // answer about authority.
+    await expect(
+      database.app.withBusiness(fixture.businessId, async (tx) => {
+        const partial = await acquire(tx, [{ lockClass: 'lineage', id: proposed.lineageId }]);
+        return await writeProposal(tx, write, partial);
+      }),
+    ).rejects.toThrow(`lock order: task:${task} is not held`);
+
+    // The task lock alone, which is the other half.
+    await expect(
+      database.app.withBusiness(fixture.businessId, async (tx) => {
+        const partial = await acquire(tx, [{ lockClass: 'task', id: task }]);
+        return await writeProposal(tx, write, partial);
+      }),
+    ).rejects.toThrow(`lock order: lineage:${proposed.lineageId} is not held`);
+
+    // And an envelope named but not locked, which is the case `propose` would
+    // hit if it discovered the task's accounting parents after acquiring.
+    await expect(
+      database.app.withBusiness(fixture.businessId, async (tx) => {
+        const partial = await acquire(tx, [
+          { lockClass: 'task', id: task },
+          { lockClass: 'lineage', id: proposed.lineageId },
+        ]);
+        return await writeProposal(
+          tx,
+          { ...write, envelopeId: proposed.versionId, capId: fixture.capId },
+          partial,
+        );
+      }),
+    ).rejects.toThrow(`lock order: cap:${fixture.capId} is not held`);
+
+    // Nothing was written by any of the three: the lineage still has its one
+    // version and its one gate.
+    const untouched = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{ readonly versions: string; readonly gates: string }>(
+        `select (select count(*)::text from public.proposal_versions
+                  where business_id = $1 and lineage_id = $2) as versions,
+                (select count(*)::text from public.gates g
+                   join public.proposal_versions v
+                     on v.business_id = g.business_id and v.id = g.version_id
+                  where g.business_id = $1 and v.lineage_id = $2) as gates`,
+        [fixture.businessId, proposed.lineageId],
+      );
+      return rows[0];
+    });
+    expect(untouched).toEqual({ versions: '1', gates: '1' });
+
+    // Under the complete set it writes, which is what `propose` and `handback`
+    // both do and what makes the refusals above about the locks and not the row.
+    const written = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const complete = await acquire(tx, [
+        { lockClass: 'task', id: task },
+        { lockClass: 'lineage', id: proposed.lineageId },
+      ]);
+      return await writeProposal(tx, write, complete);
+    });
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(written.value.version).toBe(2);
+    expect(written.value.supersededVersionId).toBe(proposed.versionId);
+  });
+
+  // R4, the successor half (T4). A claimed-and-settled attempt whose handback
+  // asks for the next round of work: the settlement and the successor's version,
+  // run, step, evidence pack and pending gate are one transaction, on one
+  // lineage, through the lock-aware writer `propose` also uses.
+  it('R4: handback creates its bounded successor and its pending gate in one transaction', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const claimed = await claim(database, fixture, decided.value.reservationId as string);
+
+    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: claimed.leaseId,
+        fence: claimed.fence,
+        outcome: 'completed',
+        report: { draft: 'the brief, 200 words' },
+        actualMinor: null,
+        successor: successorFor(fixture),
+      }),
+    );
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+
+    // The handles come back beside the report's, which is T4's "return the
+    // durable handback/proposal handles in one response".
+    expect(settled.value.successorVersionId).not.toBeNull();
+    expect(settled.value.successorGateId).not.toBeNull();
+    expect(settled.value.successorRunId).not.toBeNull();
+    expect(settled.value.successorStepId).not.toBeNull();
+    expect(settled.value.reservationState).toBe('abandoned');
+
+    const durable = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly report: string;
+        readonly gate_state: string;
+        readonly gate_lineage: string;
+        readonly version: string;
+        readonly maximum_minor: string;
+        readonly run_lineage: string;
+        readonly steps: string;
+        readonly packs: string;
+        readonly old_superseded: boolean;
+      }>(
+        `select (select count(*)::text from public.handback_reports
+                  where business_id = $1 and id = $2) as report,
+                g.state as gate_state, g.lineage_id as gate_lineage,
+                v.version::text as version, v.maximum_minor::text as maximum_minor,
+                r.lineage_id as run_lineage,
+                (select count(*)::text from public.planned_steps s
+                  where s.business_id = $1 and s.run_id = r.id) as steps,
+                (select count(*)::text from public.evidence_packs e
+                  where e.business_id = $1 and e.id = g.evidence_pack_id) as packs,
+                (select old.superseded_at is not null from public.proposal_versions old
+                  where old.business_id = $1 and old.id = $5) as old_superseded
+           from public.gates g
+           join public.proposal_versions v on v.business_id = g.business_id and v.id = g.version_id
+           join public.planned_runs r on r.business_id = g.business_id and r.id = g.run_id
+          where g.business_id = $1 and g.id = $3 and v.id = $4`,
+        [
+          fixture.businessId,
+          settled.value.reportId,
+          settled.value.successorGateId,
+          settled.value.successorVersionId,
+          proposed.versionId,
+        ],
+      );
+      return rows[0];
+    });
+    // One row, so the gate, its version, its run, its step and its evidence
+    // pack all exist and all name each other.
+    expect(durable).toEqual({
+      report: '1',
+      gate_state: 'pending',
+      gate_lineage: proposed.lineageId,
+      version: '2',
+      maximum_minor: '4000',
+      run_lineage: proposed.lineageId,
+      steps: '1',
+      packs: '1',
+      old_superseded: true,
+    });
+
+    // Not approved and holding nothing: the successor is work somebody has to
+    // decide, and the settlement released the old hold exactly once.
+    const totals = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const held = await envelopeTotals(tx, decided.value.envelopeId as string);
+      const reservations = await tx.query<{ readonly count: string }>(
+        `select count(*)::text as count from public.reservations
+          where business_id = $1 and version_id = $2`,
+        [fixture.businessId, settled.value.successorVersionId],
+      );
+      return { held: held.held, actual: held.actual, holds: reservations[0]?.count };
+    });
+    expect(totals).toEqual({ held: 0, actual: 0, holds: '0' });
+  });
+
+  // R4. The atomicity, forced. A failure that bites at the successor's first
+  // insert -- after the settled report, the released lease and the released
+  // hold are all already written -- must leave none of them.
+  it('R4: a forced failure after the settlement write leaves neither the report nor the successor', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const claimed = await claim(database, fixture, decided.value.reservationId as string);
+
+    // The arranged failure. It raises on the successor's version insert, which
+    // `writeProposal` reaches only after the report, the lease release, the
+    // delegation settlement and the classifier have all written. Nothing else
+    // in this suite proposes under this purpose, so nothing else can trip it.
+    await database.admin.execute(
+      `create function public.refuse_the_successor() returns trigger language plpgsql as $$
+         begin
+           if new.purpose = 'the_successor_that_cannot_be_written' then
+             raise exception 'arranged failure at the successor insert';
+           end if;
+           return new;
+         end $$`,
+    );
+    await database.admin.execute(
+      `create trigger refuse_the_successor before insert on public.proposal_versions
+         for each row execute function public.refuse_the_successor()`,
+    );
+
+    try {
+      await expect(
+        database.app.withBusiness(fixture.businessId, async (tx) =>
+          handback(tx, {
+            leaseId: claimed.leaseId,
+            fence: claimed.fence,
+            outcome: 'completed',
+            report: { draft: 'work that must not survive its own rollback' },
+            actualMinor: null,
+            successor: {
+              ...successorFor(fixture),
+              purpose: 'the_successor_that_cannot_be_written',
+            },
+          }),
+        ),
+      ).rejects.toThrow(/arranged failure at the successor insert/u);
+    } finally {
+      await database.admin.execute(
+        `drop trigger if exists refuse_the_successor on public.proposal_versions`,
+      );
+      await database.admin.execute(`drop function if exists public.refuse_the_successor()`);
+    }
+
+    // Both rows absent, and every other fact the settlement had written is back
+    // where it was: the lease is live, the hold is held, the run is not handed
+    // back and the envelope still carries the whole hold.
+    const after = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly reports: string;
+        readonly successors: string;
+        readonly lease_state: string;
+        readonly res_state: string;
+        readonly run_state: string;
+      }>(
+        `select (select count(*)::text from public.handback_reports
+                  where business_id = $1 and lease_id = $2) as reports,
+                (select count(*)::text from public.proposal_versions
+                  where business_id = $1 and lineage_id = $3 and version = 2) as successors,
+                l.state as lease_state, res.state as res_state, run.state as run_state
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+           join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
+          where l.business_id = $1 and l.id = $2`,
+        [fixture.businessId, claimed.leaseId, proposed.lineageId],
+      );
+      const totals = await envelopeTotals(tx, decided.value.envelopeId as string);
+      return { ...rows[0], held: totals.held };
+    });
+    expect(after).toEqual({
+      reports: '0',
+      successors: '0',
+      lease_state: 'live',
+      res_state: 'held',
+      run_state: 'claimed',
+      held: 5_000,
+    });
+
+    // And with the arranged failure gone the same handback settles and proposes,
+    // so the rollback above was the trigger's doing and not an unreachable path.
+    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: claimed.leaseId,
+        fence: claimed.fence,
+        outcome: 'completed',
+        report: { draft: 'and now it commits' },
+        actualMinor: null,
+        successor: successorFor(fixture),
+      }),
+    );
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    expect(settled.value.successorGateId).not.toBeNull();
+  });
+
+  // R4. The bounds, each on its own ground, each refused before the first write.
+  it('R4: a successor outside the cap, the currency or the rounds is refused before any write', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const claimed = await claim(database, fixture, decided.value.reservationId as string);
+
+    const refusedFor = async (successor: {
+      readonly maximumMinor?: number;
+      readonly currency?: string;
+    }): Promise<string> => {
+      const outcome = await database.app.withBusiness(fixture.businessId, async (tx) =>
+        handback(tx, {
+          leaseId: claimed.leaseId,
+          fence: claimed.fence,
+          outcome: 'completed',
+          report: { draft: 'work whose successor does not fit' },
+          actualMinor: null,
+          successor: { ...successorFor(fixture), ...successor },
+        }),
+      );
+      if (outcome.ok) throw new Error('the successor was accepted');
+      return outcome.refusal.code;
+    };
+
+    // Past the cap's finite ceiling, not merely past this envelope's maximum.
+    expect(await refusedFor({ maximumMinor: 200_000 })).toBe('SUCCESSOR_OUT_OF_BOUNDS');
+    // A currency the envelope does not hold.
+    expect(await refusedFor({ currency: 'NZD' })).toBe('SUCCESSOR_OUT_OF_BOUNDS');
+    // Not a finite positive ceiling at all.
+    expect(await refusedFor({ maximumMinor: 0 })).toBe('SUCCESSOR_OUT_OF_BOUNDS');
+
+    // "Before any write": three refusals, and no report, no version and no
+    // settlement among them. The lease is still live and the hold still held.
+    const untouched = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly reports: string;
+        readonly versions: string;
+        readonly lease_state: string;
+        readonly res_state: string;
+      }>(
+        `select (select count(*)::text from public.handback_reports
+                  where business_id = $1 and lease_id = $2) as reports,
+                (select count(*)::text from public.proposal_versions
+                  where business_id = $1 and lineage_id = $3) as versions,
+                l.state as lease_state, res.state as res_state
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+          where l.business_id = $1 and l.id = $2`,
+        [fixture.businessId, claimed.leaseId, proposed.lineageId],
+      );
+      return rows[0];
+    });
+    expect(untouched).toEqual({
+      reports: '0',
+      versions: '1',
+      lease_state: 'live',
+      res_state: 'held',
+    });
+    // Still usable, which is what "before any write" means from the caller's side.
+    await settle(database, fixture, claimed);
+
+    // G08's bound, on a lineage that has spent both of its formal rounds. The
+    // successor would be the third, so it is refused on that ground instead.
+    const spent = await newTask(database.app, fixture.businessId, fixture.decider);
+    let round = await proposeOn(database, fixture, { taskId: spent });
+    for (const _ of [1, 2]) {
+      // Sequential by definition: each round is a version the previous decision
+      // asked for.
+      // eslint-disable-next-line no-await-in-loop
+      const asked = await decideOn(database, fixture, round, { decision: 'request_changes' });
+      expect(asked.ok).toBe(true);
+      // eslint-disable-next-line no-await-in-loop
+      round = await proposeOn(database, fixture, { taskId: spent, lineageId: round.lineageId });
+    }
+    const approved = await decideOn(database, fixture, round);
+    if (!approved.ok) throw new Error(`decide refused ${approved.refusal.code}`);
+    const heldThird = await claim(database, fixture, approved.value.reservationId as string);
+    const third = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: heldThird.leaseId,
+        fence: heldThird.fence,
+        outcome: 'completed',
+        report: { draft: 'the second round of work' },
+        actualMinor: null,
+        successor: successorFor(fixture),
+      }),
+    );
+    expect(third.ok).toBe(false);
+    if (third.ok) return;
+    expect(third.refusal.code).toBe('SUCCESSOR_OUT_OF_BOUNDS');
+    expect(third.refusal.reason).toContain('third');
+    await settle(database, fixture, heldThird);
+  });
+
+  // R4. A stale fence retains its report, as it already did, and now also
+  // proposes nothing: the successor is reached only past the fence.
+  it('R4: a stale-fence refusal retains its report and creates no successor', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const claimed = await claim(database, fixture, decided.value.reservationId as string);
+
+    const stale = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: claimed.leaseId,
+        fence: claimed.fence + 1,
+        outcome: 'completed',
+        report: { draft: 'work a stale holder really did' },
+        actualMinor: null,
+        successor: successorFor(fixture),
+      }),
+    );
+    expect(stale.ok).toBe(false);
+    if (stale.ok) return;
+    expect(stale.refusal.code).toBe('LEASE_NOT_OWNED');
+
+    const after = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly retained: string;
+        readonly versions: string;
+        readonly gates: string;
+      }>(
+        `select (select count(*)::text from public.handback_reports
+                  where business_id = $1 and lease_id = $2 and disposition = 'retained') as retained,
+                (select count(*)::text from public.proposal_versions
+                  where business_id = $1 and lineage_id = $3) as versions,
+                (select count(*)::text from public.gates g
+                   join public.proposal_versions v
+                     on v.business_id = g.business_id and v.id = g.version_id
+                  where g.business_id = $1 and v.lineage_id = $3) as gates`,
+        [fixture.businessId, claimed.leaseId, proposed.lineageId],
+      );
+      return rows[0];
+    });
+    // The report is kept; the lineage still has exactly the one version and the
+    // one gate it had before the stale holder asked for a second.
+    expect(after).toEqual({ retained: '1', versions: '1', gates: '1' });
+    await settle(database, fixture, claimed);
   });
 
   // R3. A lineage belongs to one task, and the request has to name that task.

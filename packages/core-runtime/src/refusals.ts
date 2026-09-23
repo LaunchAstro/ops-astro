@@ -39,6 +39,12 @@ export type RuntimeRefusalCode =
   | 'CAP_BINDING_MISMATCH'
   /** This head dispatches nothing, so it has no observed expenditure to settle (R6). */
   | 'ACTUAL_EXPENDITURE_UNSUPPORTED'
+  /**
+   * The successor a handback asked for is outside the bounds a settlement may
+   * propose within: the cap behind the envelope, that envelope's currency, or
+   * the lineage's two formal rounds (R4, T4).
+   */
+  | 'SUCCESSOR_OUT_OF_BOUNDS'
   | 'RESERVATION_NOT_CLAIMABLE'
   | 'LEASE_HELD'
   | 'LEASE_NOT_OWNED'
@@ -96,6 +102,7 @@ export const SUGGESTED_STATUS: Readonly<Record<RuntimeRefusalCode, number>> = {
   LINEAGE_NOT_ON_TASK: 409,
   CAP_BINDING_MISMATCH: 409,
   ACTUAL_EXPENDITURE_UNSUPPORTED: 422,
+  SUCCESSOR_OUT_OF_BOUNDS: 409,
   RESERVATION_NOT_CLAIMABLE: 409,
   LEASE_HELD: 409,
   LEASE_NOT_OWNED: 403,
