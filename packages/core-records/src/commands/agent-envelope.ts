@@ -52,6 +52,7 @@ import { refuseExpiredSession, resolveAgentLogin } from '../identity/agent-login
 import type { AgentSession } from '../identity/agent-login.ts';
 import {
   checkDelegatedAuthority,
+  digestOf,
   resolveDelegation,
   type Delegation,
 } from '../authority/delegations.ts';
@@ -80,7 +81,8 @@ import {
 import { fromRuntime, handbackLease, pickupReservation } from './tasks-runtime.ts';
 import { heartbeatLease } from './tasks-controls.ts';
 import { writeTaskComment } from './tasks-comment.ts';
-import { isRefused, type HandlerOutcome } from './outcome.ts';
+import { isRefused, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { claimedSystemOwnedFields, SYSTEM_OWNED_FIXES } from './prepare.ts';
 
 /**
  * What an agent sends.
@@ -237,6 +239,28 @@ async function runAgentCommand(
       );
     }
     const replayed = seen.result as unknown as CommandResult;
+    // A stored refusal carries nothing protected. A stored success is released
+    // only to the rights held now (TRANSACTION-CONTRACT: "Authorise the
+    // replay's read under current rights before returning protected
+    // content"), so a read repeated after its grant or delegation went answers
+    // today's refusal rather than yesterday's task. The register row stays as
+    // it was: the operation happened, and nothing here repeats it.
+    const current = isCommandRefusal(replayed)
+      ? undefined
+      : await authoriseReplay(tx, session, credential, request, replayed);
+    if (current !== undefined) {
+      const visible = asCallerVisible(current);
+      await writeAuditEvent(tx, {
+        actorId: session.actorId,
+        command: request.command,
+        operationId: request.operationId,
+        outcome: 'refused',
+        refusalCode: visible.code,
+        subjectRecordId: null,
+        payloadDigest: digest,
+      });
+      return visible;
+    }
     await writeAuditEvent(tx, {
       actorId: session.actorId,
       command: request.command,
@@ -249,11 +273,19 @@ async function runAgentCommand(
     return replayed;
   }
 
+  // The request's own shape, before any authority is read: a system-owned
+  // field (D06, the person path's own classifier) and then each operand the
+  // command takes. Neither tells the caller anything about the business.
+  const operands = parseOperands(request);
+  if ('refusal' in operands) {
+    return await settle(tx, session, request, digest, operands.refusal, false, operands.attempted);
+  }
+
   const authorised = await authorise(tx, session, credential, request);
   if (authorised !== undefined) return await settle(tx, session, request, digest, authorised);
 
   await tx.query('savepoint agent_work');
-  const outcome = await serve(tx, session, credential, request);
+  const outcome = await serve(tx, session, credential, request, operands);
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(
@@ -264,7 +296,9 @@ async function runAgentCommand(
       ? 'rollback to savepoint agent_work'
       : 'release savepoint agent_work',
   );
-  if (isRefused(outcome)) return await settle(tx, session, request, digest, outcome.refusal);
+  if (isRefused(outcome)) {
+    return await settle(tx, session, request, digest, outcome.refusal, false, outcome.attempted);
+  }
 
   const handle: CommandHandle = {
     command: request.command,
@@ -277,7 +311,7 @@ async function runAgentCommand(
     command: request.command,
     actorId: session.actorId,
     digest,
-    result: handle,
+    result: storable(handle),
     recordId: outcome.recordId,
   });
   await writeAuditEvent(tx, {
@@ -384,6 +418,7 @@ async function serve(
   session: AgentSession,
   credential: string | undefined,
   request: AgentRequest,
+  operands: AgentOperands,
 ): Promise<HandlerOutcome> {
   switch (request.command) {
     case 'session.capabilities': {
@@ -428,9 +463,7 @@ async function serve(
         session.actorId,
         {
           reservationId: String(request['reservationId'] ?? ''),
-          ...(typeof request['leaseSeconds'] === 'number'
-            ? { leaseSeconds: request['leaseSeconds'] }
-            : {}),
+          ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
         },
       );
     case 'task.handback':
@@ -445,9 +478,7 @@ async function serve(
           ...('actualMinor' in request
             ? { actualMinor: request['actualMinor'] as number | null }
             : {}),
-          ...(typeof request['report'] === 'object' && request['report'] !== null
-            ? { report: request['report'] as Readonly<Record<string, unknown>> }
-            : {}),
+          ...(operands.report === undefined ? {} : { report: operands.report }),
           // The successor, untouched and unread. Whether the body is a shape
           // at all is `handbackLease`'s question, and a key checked here would
           // be a key checked twice; a key dropped here would be the silence
@@ -508,7 +539,7 @@ async function serve(
         {
           leaseId: request['leaseId'],
           fence: request['fence'],
-          ...('leaseSeconds' in request ? { leaseSeconds: request['leaseSeconds'] } : {}),
+          ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
         },
         session.actorId,
         resolved.value.id,
@@ -548,6 +579,7 @@ async function settle(
   digest: string,
   refusal: CommandRefusal,
   withoutIdentity = false,
+  attempted?: Readonly<Record<string, unknown>>,
 ): Promise<CommandRefusal> {
   const visible = asCallerVisible(refusal);
   if (!withoutIdentity) {
@@ -568,6 +600,7 @@ async function settle(
     refusalCode: refusal.code,
     subjectRecordId: null,
     payloadDigest: digest,
+    attempted: attempted ?? null,
   });
   return visible;
 }
@@ -576,4 +609,186 @@ async function settle(
 function comparable(request: AgentRequest): Readonly<Record<string, unknown>> {
   const { operationId: _identity, ...rest } = request;
   return rest;
+}
+
+/** The operands an agent command takes beyond its identifiers, parsed rather than coerced. */
+interface AgentOperands {
+  readonly leaseSeconds?: number;
+  readonly report?: Readonly<Record<string, unknown>>;
+}
+
+const LEASE_SECONDS_FIXES: readonly string[] = [
+  'Name a whole, positive number of seconds, or leave leaseSeconds out for the default.',
+];
+const REPORT_FIXES: readonly string[] = [
+  'Send report as an object of named values, or leave it out.',
+];
+
+/**
+ * The request's system-owned fields refused, then its operands read.
+ *
+ * A present operand of the wrong shape is refused by name. It is never the
+ * default in disguise, and a report is never dropped or turned into an object
+ * with numeric keys: a caller that sent something and got the default back
+ * would believe the server had read what it sent. Absent keeps the default.
+ * Range belongs to the handler (`pickupReservation`, `heartbeatLease`), which
+ * already refuses an out-of-range lease in the same code.
+ */
+function parseOperands(request: AgentRequest): AgentOperands | Refused {
+  const claimed = claimedSystemOwnedFields(request);
+  if (claimed !== undefined) {
+    return refused(
+      refuseCommand('FIELD_NOT_WRITABLE', claimed.keys, SYSTEM_OWNED_FIXES),
+      claimed.values,
+    );
+  }
+  let operands: AgentOperands = {};
+  if (
+    (request.command === 'task.pickup' || request.command === 'task.heartbeat') &&
+    'leaseSeconds' in request
+  ) {
+    const seconds = request['leaseSeconds'];
+    if (typeof seconds !== 'number' || !Number.isSafeInteger(seconds) || seconds <= 0) {
+      return refused(refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], LEASE_SECONDS_FIXES), {
+        leaseSeconds: seconds,
+      });
+    }
+    operands = { leaseSeconds: seconds };
+  }
+  if (request.command === 'task.handback' && 'report' in request) {
+    const report = request['report'];
+    if (typeof report !== 'object' || report === null || Array.isArray(report)) {
+      return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
+    }
+    operands = { report: report as Readonly<Record<string, unknown>> };
+  }
+  return operands;
+}
+
+/** The note a replayed pickup carries in place of its credential. */
+export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
+
+/**
+ * The handle as the register keeps it: without the delegation credential.
+ *
+ * The credential is "stored by hash" (TRANSACTION-CONTRACT) and
+ * `delegations.credential_hash` is that store. A register row holding it in
+ * the clear would be a second, readable copy, and a replay would hand it to
+ * whoever repeated the operation id. So the first answer carries it once and
+ * the stored one says, by a code, that it is not there: a pickup whose
+ * response was lost replays its handles, and the lease it names is held until
+ * it expires or is cancelled, because nobody can recover the credential.
+ */
+function storable(handle: CommandHandle): CommandHandle {
+  if (!('credential' in handle.detail)) return handle;
+  return {
+    ...handle,
+    detail: { ...handle.detail, credential: null, credentialNote: CREDENTIAL_NOT_REPLAYED },
+  };
+}
+
+/**
+ * Whether a stored success may be released to the rights held now.
+ *
+ * Most operations answer to the same check a fresh call does. Two cannot:
+ *
+ * - A pickup's replay is the case where the agent lost the answer that carried
+ *   its credential, so it has none to present. It is checked against the
+ *   delegation the pickup minted, by its stored id: still live, still this
+ *   agent's, and still inside the authorising person's current grants.
+ * - A handback settles its own delegation, so the credential that made it no
+ *   longer resolves as live. Its receipt is released to that same credential,
+ *   for that delegation's own lease, while the delegation was settled rather
+ *   than revoked and has not expired, and the person's grants still cover it.
+ *
+ * Neither repeats anything. Both return the refusal, not the stored detail,
+ * when the rights are gone.
+ */
+async function authoriseReplay(
+  tx: TenantQuery,
+  session: AgentSession,
+  credential: string | undefined,
+  request: AgentRequest,
+  stored: CommandHandle,
+): Promise<CommandRefusal | undefined> {
+  if (request.command !== 'task.pickup' && request.command !== 'task.handback') {
+    return await authorise(tx, session, credential, request);
+  }
+  const held =
+    request.command === 'task.pickup'
+      ? await heldDelegation(tx, session, 'live', String(stored.detail['delegationId'] ?? ''))
+      : credential === undefined || credential === ''
+        ? undefined
+        : await heldDelegation(
+            tx,
+            session,
+            'settled',
+            String(stored.detail['leaseId'] ?? ''),
+            credential,
+          );
+  if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
+  const declaration = declarationOf(request.command);
+  const decision = await checkDelegatedAuthority(tx, held, {
+    collection: declaration?.collection ?? 'task',
+    action: declaration?.action ?? 'write',
+    scope: held.purposeScope,
+  });
+  return decision.ok ? undefined : fromRuntime(decision.refusal);
+}
+
+interface HeldDelegationRow {
+  readonly id: string;
+  readonly agent_actor_id: string;
+  readonly delegate_person_id: string;
+  readonly minted_by_actor_id: string;
+  readonly purpose: string;
+  readonly collections: readonly string[];
+  readonly actions: Delegation['actions'];
+  readonly purpose_scope_id: string;
+  readonly expires_at: Date;
+}
+
+/**
+ * This agent's unexpired, unrevoked delegation: `live` by its own id, or
+ * `settled` through the lease it settled and the credential it was minted with.
+ */
+async function heldDelegation(
+  tx: TenantQuery,
+  session: AgentSession,
+  state: 'live' | 'settled',
+  key: string,
+  credential?: string,
+): Promise<Delegation | undefined> {
+  if (!UUID.test(key)) return undefined;
+  const rows = await tx.query<HeldDelegationRow>(
+    state === 'live'
+      ? `select d.id, d.agent_actor_id, d.delegate_person_id, d.minted_by_actor_id, d.purpose,
+                d.collections, d.actions, d.purpose_scope_id, d.expires_at
+           from public.delegations d
+          where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
+            and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`
+      : `select d.id, d.agent_actor_id, d.delegate_person_id, d.minted_by_actor_id, d.purpose,
+                d.collections, d.actions, d.purpose_scope_id, d.expires_at
+           from public.delegations d
+           join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
+          where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
+            and d.credential_hash = $4
+            and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
+    state === 'live'
+      ? [tx.businessId, session.actorId, key]
+      : [tx.businessId, session.actorId, key, digestOf(credential ?? '')],
+  );
+  const row = rows[0];
+  if (row === undefined) return undefined;
+  return {
+    id: row.id,
+    agentActorId: row.agent_actor_id,
+    delegatePersonId: row.delegate_person_id,
+    mintedByActorId: row.minted_by_actor_id,
+    purpose: row.purpose,
+    collections: row.collections,
+    actions: row.actions,
+    purposeScope: { kind: 'record', id: row.purpose_scope_id },
+    expiresAt: row.expires_at,
+  };
 }

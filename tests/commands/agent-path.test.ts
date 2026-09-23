@@ -362,7 +362,13 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     const operationId = randomUUID();
     const first = await asAgent({ command: 'task.pickup', operationId, reservationId });
     const again = await asAgent({ command: 'task.pickup', operationId, reservationId });
-    expect(again).toStrictEqual(first);
+    // The same handles, without the credential: it is stored by hash only, so
+    // the replay says so by code (`agent-replay-auth.test.ts`).
+    const { credential: _credential, ...handles } = detailOf(first);
+    expect(again).toStrictEqual({
+      ...first,
+      detail: { ...handles, credential: null, credentialNote: 'CREDENTIAL_NOT_REPLAYED' },
+    });
 
     // One lease, not two: the register answered the second call.
     const leases = await db.admin.execute<{ readonly n: string }>(
