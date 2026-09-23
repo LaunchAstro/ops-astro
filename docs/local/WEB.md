@@ -135,6 +135,81 @@ Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
 (`parent-observations/web-comments/width-<w>-task.png`). The dark-theme gap
 recorded below is this page's too: there is no dark build to photograph.
 
+## Proposals on a task
+
+The task page draws every proposal on the task under the comments, out of the
+`proposals` projection `task.read` already carries (`docs/local/API.md`,
+"Proposal projection"). There is no separate read, and that is the point: the
+`versionId` an approve control sends is the version whose evidence and digest are
+drawn beside it, from one answer, so the page cannot offer a decision on
+something it never displayed.
+
+Per lineage it draws the lineage's state, then its versions newest first — the
+purpose, the ceiling as money with the currency the proposal named, the payload
+digest, the payload, and the evidence pack with its renderer and its digest —
+then the gate's state, round and expiry, then the decision chain as stored rows
+with their sequence, decision, round, decider, instant and stored hash, then the
+reservation with what it held, what the work reported spending, and its lease and
+attempt.
+
+**Nothing on this screen is recomputed.** The evidence body and the payload are
+printed as they were stored, because evidence that changed between the decision
+and the display is the one thing a gate cannot survive. The hashes are the stored
+values: a recomputed hash drawn as though it were the stored one would make a
+tampered link look sound. And whether a gate has expired is the server's
+`expired` field, never a comparison against the browser's clock, so a laptop a
+few minutes out cannot offer a decision the server is certain to refuse or hide
+one it would have accepted.
+
+Three honest states, and no fourth. An empty projection says nobody has proposed
+anything (`[data-proposals="none"]`). A task read that carried no `proposals` key
+at all says so instead (`[data-proposals="not-carried"]`), because an absent
+projection and an empty one are different facts and defaulting one to the other
+would print "no proposals" over a projection nothing consulted. A read the server
+denied never reaches this section: `RecordState` draws the denial for the whole
+task. There is no path from any of the three to sample data.
+
+**The propose form** (`form#task-propose`) sends `task.propose` with the task's
+own `recordId` and the revision the page is holding, the purpose, the ceiling and
+the currency. The amount is typed in dollars and converted to the server's minor
+units once, in the client, because three places that each convert are three
+places that can disagree. A refusal is quoted with the server's own code in
+`[data-propose="refusal"]`; on success the form clears and the task is read again,
+so the new version appears because the server has it and not because the form
+drew what it sent.
+
+**The decision controls** (`[data-decide="approve"]` and
+`[data-decide="reject"]`) are drawn only on the head version, and each carries
+the `data-version-id` and `data-gate-id` it will send. They are absent, with the
+reason in `[data-decide="closed"]`, when the gate is not pending, when the server
+says it has expired, and after a refusal about the reader's own authority. A
+refused decision is quoted verbatim in `[data-decide="refusal"]` and followed by
+a fresh `task.read`, because a refusal like `VERSION_SUPERSEDED` or
+`GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the
+record, and the answer to that is to read it again rather than to retry. The
+refusal text is held above the read state in `TaskDetail.tsx`, since the reread
+unmounts everything under it and a message that vanished with the thing it
+explained would leave the screen changing for no stated reason.
+
+What this screen does not read back, and cannot:
+
+- **No capability read exists**, so the page cannot know whether a person may
+  decide before it asks. A member without `task:decide` presses Approve once,
+  reads the server's `SCOPE_NOT_GRANTED`, and the controls close. That is honest
+  but it means the first press of a control a person may not use is always a
+  refused request. The same gap already applies to comments and settings.
+- **No seeded identity holds `task:decide`.** `scripts/local-seed.mjs` gives its
+  admin six `task` actions plus `person:read` and `settings:manage`, and
+  `task.decide` takes the `decide` action (`commands/surface.ts`), so as the seed
+  stands nobody in either business can approve anything through the product. The
+  browser case issues that grant through the authority path and revokes it
+  afterwards; the gap belongs to the seed's lane.
+- Rejecting sends `decision: 'reject'` through the same control and the same
+  exact-version comparison. The change-round behaviour behind a rejection is the
+  runtime's and this screen does not model it.
+- The agent's own path — pickup, handback, the queue — has no surface here. The
+  records are stored and projected; the web does not draw them yet.
+
 ## The settings screen
 
 `/settings` draws the two settings the model classifies `operation`:
