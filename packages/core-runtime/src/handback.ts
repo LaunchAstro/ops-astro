@@ -33,6 +33,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
+import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { classifyUnderLocks, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
@@ -75,7 +76,25 @@ export interface HandbackRequest {
    * the same lineage, in this same transaction.
    */
   readonly successor?: SuccessorRequest;
+  /**
+   * Who is handing back, checked against the lease under the locks. Absent is
+   * the pre-EX-01 caller, which is the lower-level helper's own tests. An
+   * agent is the lease's holder with the delegation the envelope already
+   * resolved; a person is the holder of a lease that carries no delegation,
+   * with their own current write on the task (T3 line 66, ledger line 31 read
+   * conditionally: the owned lease, plus its delegation when an agent holds it).
+   */
+  readonly holder?: HandbackHolder;
 }
+
+export type HandbackHolder =
+  | { readonly claimant: 'agent'; readonly actorId: string }
+  | {
+      readonly claimant: 'person';
+      readonly actorId: string;
+      readonly subjects: readonly Subject[];
+      readonly collection: string;
+    };
 
 export interface HandedBack {
   readonly leaseId: string;
@@ -164,8 +183,9 @@ export async function handback(
     readonly fence: string;
     readonly expired: boolean;
     readonly current_fence: string;
+    readonly holder_actor_id: string;
   }>(
-    `select l.state, l.fence::text as fence, (l.expires_at <= now()) as expired,
+    `select l.state, l.fence::text as fence, (l.expires_at <= now()) as expired, l.holder_actor_id,
             (select max(fence) from public.leases
               where business_id = l.business_id and task_id = l.task_id)::text as current_fence
        from public.leases l where l.business_id = $1 and l.id = $2`,
@@ -176,7 +196,41 @@ export async function handback(
     fence: string;
     expired: boolean;
     current_fence: string;
+    holder_actor_id: string;
   };
+
+  // EX-01. Ownership before anything is written, retained reports included: a
+  // caller that never held this lease has no work of its own on it to keep.
+  // A person never settles an agent's lease or another person's, and an agent
+  // never settles a person's.
+  const holder = request.holder;
+  if (holder !== undefined) {
+    const personLease = found.delegation_id === null;
+    if (
+      lease.holder_actor_id !== holder.actorId ||
+      personLease !== (holder.claimant === 'person')
+    ) {
+      return refuse(
+        'LEASE_NOT_OWNED',
+        `lease ${request.leaseId} is not this caller's`,
+        'Hand back the lease your own pickup was issued.',
+      );
+    }
+    if (holder.claimant === 'person') {
+      const held = await checkAuthority(tx, holder.subjects, {
+        collection: holder.collection,
+        action: 'write',
+        scope: { kind: 'record', id: found.task_id },
+      });
+      if (!held.ok) {
+        return refuse(
+          'SCOPE_NOT_GRANTED',
+          `no live grant of yours covers work on task ${found.task_id} any more`,
+          'A lease is handed back under current rights. Ask a manager for write on this task.',
+        );
+      }
+    }
+  }
 
   /**
    * R4. A stale holder's work was still really done, and T4 keeps it: the

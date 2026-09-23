@@ -7,10 +7,21 @@
 // already ask for — being in the queue is not permission to pick it up, which
 // is re-established under the locks in `pickup`.
 //
-// `pickup` mints the delegation through L2's `mintDelegation` with `expiresAt`
-// equal to the lease expiry, so the agent's authority and its claim on the
-// work end at the same instant. A delegation outliving its lease is an agent
-// still holding narrowed authority over work somebody else now owns.
+// The claimant is a person or an agent, and both claim through the one
+// transaction below: the same approval, budget, lock order, lease, fence and
+// idempotency. What differs is only where the claimant's authority comes from.
+// T3 line 66: "Person pickup uses the same work/lease contract without
+// pretending the person is an agent."
+//
+// - **Agent.** `pickup` mints the delegation through L2's `mintDelegation`
+//   with `expiresAt` equal to the lease expiry, so the agent's authority and
+//   its claim on the work end at the same instant. A delegation outliving its
+//   lease is an agent still holding narrowed authority over work somebody else
+//   now owns.
+// - **Person.** The holder is the verified person's own actor, and the
+//   authority is that person's own live grants, re-read under the locks. No
+//   delegation is minted and no credential is returned: a delegation whose
+//   agent is really a person is the collapse the agent path exists to prevent.
 //
 // The coordinator's recorded decision: minting checks the **delegating
 // person's** business-scope grants, which is L2's conservative reading. An
@@ -26,6 +37,7 @@ import {
   type MintedDelegation,
   type MintRequest,
 } from '../../core-records/src/authority/delegations.ts';
+import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { reserve } from './decide.ts';
 import { classifyUnderLocks } from './recovery.ts';
@@ -88,28 +100,61 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
   }));
 }
 
-export interface PickupRequest {
+interface PickupCommon {
   readonly reservationId: string;
-  readonly agentActorId: string;
-  /** The person whose live grants are the ceiling. Named by the authorisation, not by the agent. */
+  /** The person whose approval is the recorded work authorisation. Named by the decision, not by the claimant. */
   readonly authorisedByPersonId: string;
-  readonly mintedByActorId: string;
   readonly collection: string;
   readonly leaseSeconds: number;
 }
 
-export interface PickedUp {
+export interface AgentPickupRequest extends PickupCommon {
+  readonly claimant?: 'agent';
+  readonly agentActorId: string;
+  /** The approving person's acting identity. The delegation's ceiling is their live grants. */
+  readonly mintedByActorId: string;
+}
+
+export interface PersonPickupRequest extends PickupCommon {
+  readonly claimant: 'person';
+  /** The verified session's person and actor, never a body field. */
+  readonly personId: string;
+  readonly actorId: string;
+}
+
+export type PickupRequest = AgentPickupRequest | PersonPickupRequest;
+
+interface PickedUpCommon {
   readonly leaseId: string;
   readonly fence: number;
-  readonly delegation: MintedDelegation;
   readonly reservationId: string;
   readonly attemptId: string;
   readonly taskId: string;
   readonly runId: string;
   readonly versionId: string;
   readonly expiresAt: Date;
+  /** The person whose approval authorised this work, kept apart from whoever claimed it. */
+  readonly authorisedByPersonId: string;
+  readonly holderActorId: string;
   /** What this head cannot do, stated rather than left to be discovered. */
   readonly declaredIncompleteness: readonly string[];
+  /** T1-R8: the brief, the expected versions and the budget envelope, in the one call. */
+  readonly brief: { readonly taskId: string; readonly purpose: string };
+  readonly expectedVersions: { readonly versionId: string; readonly taskRevision: number };
+  readonly budgetEnvelope: {
+    readonly envelopeId: string;
+    readonly currency: string;
+    readonly heldMinor: number;
+  };
+}
+
+export interface PickedUp extends PickedUpCommon {
+  readonly claimant: 'agent';
+  readonly delegation: MintedDelegation;
+}
+
+export interface PickedUpByPerson extends PickedUpCommon {
+  readonly claimant: 'person';
 }
 
 export const DECLARED_INCOMPLETENESS: readonly string[] = [
@@ -139,10 +184,86 @@ async function mintForOneTask(
   return await mintDelegation(tx, request);
 }
 
+/**
+ * The one answer for a reservation this caller may not claim, whichever reason
+ * it is: none by that id, none approved, or one another holder already has.
+ * The last used to name the holding lease, which told a caller with no claim
+ * on the work whose claim it was (IDENT-AUDIT red 3). The command layer
+ * answers the fabricated and foreign forms with these same two sentences.
+ */
+export const NOT_CLAIMABLE_REASON =
+  'Name a reservation from task.queue: approved, held and not already picked up.';
+export const NOT_CLAIMABLE_FIX =
+  'A reservation with no approval behind it is not work anybody authorised.';
+
+/** Who the claim's authority is read from, as grant subjects. */
+function authoritySubjects(request: PickupRequest): readonly Subject[] {
+  return request.claimant === 'person'
+    ? [
+        { kind: 'person', id: request.personId },
+        { kind: 'actor', id: request.actorId },
+      ]
+    : [
+        { kind: 'person', id: request.authorisedByPersonId },
+        { kind: 'actor', id: request.mintedByActorId },
+      ];
+}
+
+/**
+ * The revocation race (RUNTIME-LIFECYCLE F4 residual). `grant.revoke` takes
+ * `for update` on the grant row before any runtime lock, then rediscovers the
+ * live leases its loss affects. A pickup that read the grant before that
+ * revocation and committed after its rediscovery was a live claim nobody
+ * classified. Holding `for share` on every grant the claim's authority could
+ * rest on -- the subjects' own grants in this collection and each grant they
+ * descend from -- makes the two serialise: a revocation that locked first is
+ * seen by the authority read below, and one that locks second waits for this
+ * pickup to commit and then finds its lease.
+ *
+ * It is taken before the runtime set, where `grant.revoke` takes its own, so
+ * neither side ever waits on a grant row while holding a runtime lock.
+ */
+async function holdCoveringGrants(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  collection: string,
+): Promise<void> {
+  await tx.query(
+    `with recursive chain as (
+       select g.id, g.parent_grant_id from public.grants g
+        where g.business_id = $1 and g.collection = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                       where s.kind = g.subject_kind and s.id = g.subject_id)
+       union
+       select p.id, p.parent_grant_id from public.grants p
+         join chain c on p.id = c.parent_grant_id
+        where p.business_id = $1
+     )
+     select g.id from public.grants g
+      where g.business_id = $1 and g.id in (select id from chain)
+      order by g.id
+      for share`,
+    [
+      tx.businessId,
+      collection,
+      subjects.map((subject) => subject.kind),
+      subjects.map((subject) => subject.id),
+    ],
+  );
+}
+
+export async function pickup(
+  tx: TenantQuery,
+  request: AgentPickupRequest,
+): Promise<RuntimeResult<PickedUp>>;
+export async function pickup(
+  tx: TenantQuery,
+  request: PersonPickupRequest,
+): Promise<RuntimeResult<PickedUpByPerson>>;
 export async function pickup(
   tx: TenantQuery,
   request: PickupRequest,
-): Promise<RuntimeResult<PickedUp>> {
+): Promise<RuntimeResult<PickedUp | PickedUpByPerson>> {
   const discovered = await tx.query<{
     readonly envelope_id: string;
     readonly version_id: string;
@@ -180,6 +301,8 @@ export async function pickup(
     [tx.businessId, found.task_id],
   );
 
+  await holdCoveringGrants(tx, authoritySubjects(request), request.collection);
+
   // R5. The cap is in the set because a replacement hold reads its committed
   // total, and the reservation's own lease is in it because that is the lease
   // this transaction may have to fence. Discovering either of them after the
@@ -208,8 +331,17 @@ export async function pickup(
     readonly bound_lease_state: string | null;
     readonly bound_lease_expired: boolean | null;
     readonly held_minor: string;
+    readonly run_state: string;
+    readonly settled: boolean;
+    readonly active_elsewhere: boolean;
   }>(
-    `select res.state, res.lease_id, res.held_minor::text as held_minor,
+    `select res.state, res.lease_id, res.held_minor::text as held_minor, run.state as run_state,
+            exists (select 1 from public.handback_reports hr
+                     where hr.business_id = res.business_id and hr.reservation_id = res.id
+                       and hr.disposition = 'settled') as settled,
+            exists (select 1 from public.reservations o
+                     where o.business_id = res.business_id and o.version_id = res.version_id
+                       and o.id <> res.id and o.state in ('held', 'quarantined')) as active_elsewhere,
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
@@ -259,11 +391,7 @@ export async function pickup(
   let attemptId = state.attempt_id;
   if (state.state === 'held' && state.lease_id !== null) {
     if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
-      return refuse(
-        'RESERVATION_NOT_CLAIMABLE',
-        `reservation ${request.reservationId} is already claimed by lease ${state.lease_id}`,
-        'Wait for it to be handed back. A live claim is never stolen.',
-      );
+      return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
     }
     await tx.query(
       `update public.leases set state = 'expired', released_at = now()
@@ -284,6 +412,33 @@ export async function pickup(
         'RESERVATION_NOT_CLAIMABLE',
         `the hold behind lease ${state.lease_id} could not be released: ${classified.reason}`,
         'A retained or quarantined hold goes to its recorded owner, not to a worker.',
+      );
+    }
+    const replacement = await reserve(tx, {
+      envelopeId: found.envelope_id,
+      versionId: found.version_id,
+      runId: found.run_id,
+      stepId: found.step_id,
+      heldMinor: Number(state.held_minor),
+    });
+    if (!replacement.ok) return replacement;
+    reservationId = replacement.value.reservationId;
+    attemptId = replacement.value.attemptId;
+  } else if (state.state === 'abandoned' && replaceable(state)) {
+    /**
+     * R5, the remainder. A hold that ended without settling -- the authority
+     * behind its lease was lost, and replay classified it -- leaves approved
+     * work on a live lineage that nothing now holds. It is never revived; the
+     * claim gets a fresh hold and a fresh attempt on the still-approved
+     * version, under the locks already held, exactly as the expired-lease
+     * branch above does. Settled work is not replaceable: a handback that
+     * abandoned its hold because nothing was spent still finished the work.
+     */
+    if (state.gate_state !== 'approved' || state.lineage_state !== 'live' || state.superseded) {
+      return refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        'the approval behind this reservation is no longer current',
+        'Re-read the queue. A superseded or terminal approval authorises nothing.',
       );
     }
     const replacement = await reserve(tx, {
@@ -336,19 +491,40 @@ export async function pickup(
 
   const expiresAt = new Date(Date.now() + request.leaseSeconds * 1000);
 
-  // The delegation expires with the lease. Minted against the delegating
-  // person's live grants, which L2 reads for itself; nothing is copied here.
-  const minted = await mintForOneTask(tx, {
-    agentActorId: request.agentActorId,
-    delegatePersonId: request.authorisedByPersonId,
-    mintedByActorId: request.mintedByActorId,
-    purpose: found.purpose,
-    collections: [request.collection],
-    actions: ['read', 'comment', 'write'],
-    expiresAt,
-    purposeScope: { kind: 'record', id: found.task_id },
-  });
-  if (!minted.ok) return { ok: false, refusal: minted.refusal };
+  // The claimant's authority, read under the locks (T3 lines 62-64).
+  let delegation: MintedDelegation | undefined;
+  if (request.claimant === 'person') {
+    // The person's own live grants on this task, and nobody else's: not the
+    // approver's, and not a body's choice. The approval is the recorded
+    // authorisation and was checked above; this is the claimant's authority.
+    const granted = await checkAuthority(tx, authoritySubjects(request), {
+      collection: request.collection,
+      action: 'write',
+      scope: { kind: 'record', id: found.task_id },
+    });
+    if (!granted.ok) {
+      return refuse(
+        'SCOPE_NOT_GRANTED',
+        'no live grant of yours covers work on this task',
+        'Ask a manager for write on this task, or leave it for a holder who has it.',
+      );
+    }
+  } else {
+    // The delegation expires with the lease. Minted against the delegating
+    // person's live grants, which L2 reads for itself; nothing is copied here.
+    const minted = await mintForOneTask(tx, {
+      agentActorId: request.agentActorId,
+      delegatePersonId: request.authorisedByPersonId,
+      mintedByActorId: request.mintedByActorId,
+      purpose: found.purpose,
+      collections: [request.collection],
+      actions: ['read', 'comment', 'write'],
+      expiresAt,
+      purposeScope: { kind: 'record', id: found.task_id },
+    });
+    if (!minted.ok) return { ok: false, refusal: minted.refusal };
+    delegation = minted.value;
+  }
 
   // Monotonic per task, computed under the task lock. A sequence would be
   // shared across tenants; this is per task and unique by index.
@@ -359,6 +535,7 @@ export async function pickup(
   );
   const fence = Number(fences[0]?.next ?? 1);
 
+  const holderActorId = request.claimant === 'person' ? request.actorId : request.agentActorId;
   const leaseId = randomUUID();
   await tx.query(
     `insert into public.leases
@@ -371,8 +548,8 @@ export async function pickup(
       found.task_id,
       found.run_id,
       reservationId,
-      minted.value.delegation.id,
-      request.agentActorId,
+      delegation?.delegation.id ?? null,
+      holderActorId,
       request.authorisedByPersonId,
       fence,
       expiresAt,
@@ -395,19 +572,58 @@ export async function pickup(
     [tx.businessId, found.run_id],
   );
 
-  return {
-    ok: true,
-    value: {
-      leaseId,
-      fence,
-      delegation: minted.value,
-      reservationId,
-      attemptId,
-      taskId: found.task_id,
-      runId: found.run_id,
-      versionId: found.version_id,
-      expiresAt,
-      declaredIncompleteness: DECLARED_INCOMPLETENESS,
+  const context = await tx.query<{
+    readonly revision: string;
+    readonly currency: string;
+    readonly held_minor: string;
+  }>(
+    `select r.revision::text as revision,
+            env.currency, res.held_minor::text as held_minor
+       from public.reservations res
+       join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
+       join public.records r on r.business_id = res.business_id and r.id = $3
+      where res.business_id = $1 and res.id = $2`,
+    [tx.businessId, reservationId, found.task_id],
+  );
+  const facts = context[0];
+  const common: PickedUpCommon = {
+    leaseId,
+    fence,
+    reservationId,
+    attemptId,
+    taskId: found.task_id,
+    runId: found.run_id,
+    versionId: found.version_id,
+    expiresAt,
+    authorisedByPersonId: request.authorisedByPersonId,
+    holderActorId,
+    declaredIncompleteness: DECLARED_INCOMPLETENESS,
+    brief: { taskId: found.task_id, purpose: found.purpose },
+    expectedVersions: { versionId: found.version_id, taskRevision: Number(facts?.revision ?? 0) },
+    budgetEnvelope: {
+      envelopeId: found.envelope_id,
+      currency: facts?.currency ?? '',
+      heldMinor: Number(facts?.held_minor ?? 0),
     },
   };
+  return delegation === undefined
+    ? { ok: true, value: { ...common, claimant: 'person' } }
+    : { ok: true, value: { ...common, claimant: 'agent', delegation } };
+}
+
+/** An abandoned hold whose work was never settled and whose run is still open. */
+function replaceable(state: {
+  readonly run_state: string;
+  readonly settled: boolean;
+  readonly marked: boolean;
+  readonly active_elsewhere: boolean;
+}): boolean {
+  // One active hold per version (0019): a version already holding elsewhere is
+  // claimed through that hold, from the queue, and not through this one.
+  return (
+    !state.settled &&
+    !state.marked &&
+    !state.active_elsewhere &&
+    (state.run_state === 'claimed' || state.run_state === 'planned')
+  );
 }

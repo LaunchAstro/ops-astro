@@ -18,12 +18,16 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
-import { decideOnGate, proposeOnTask } from './tasks-runtime.ts';
+import {
+  decideOnGate,
+  handbackOwnLease,
+  heartbeatOwnLease,
+  pickupAsPerson,
+  proposeOnTask,
+} from './tasks-runtime.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { expectedRevisionOf } from './prepare.ts';
-import { refuseCommand } from './refusal.ts';
-import { refused } from './outcome.ts';
 
 export async function handleCommand(
   tx: TenantQuery,
@@ -86,15 +90,6 @@ export async function handleCommand(
     case 'task.decide':
       return await decideOnGate(tx, context, request);
 
-    // The two an agent does, and only an agent.
-    //
-    // `task.pickup` mints a delegation for an agent identity and `task.handback`
-    // settles the one it minted, so both need an agent actor that a person's
-    // session does not have and cannot be handed one: a body naming the agent
-    // to mint for would be a body choosing whose authority is borrowed. They
-    // are declared here and routed here because the surface is one surface —
-    // an operation with no route breaks the enumeration — and they are served
-    // on the agent's own entry point in `agent-envelope.ts`.
     case 'grant.revoke':
       return await revokeGrantAsManager(tx, context, request.grantId);
     case 'delegation.revoke':
@@ -104,18 +99,16 @@ export async function handleCommand(
     case 'task.restart':
       return await restartOnTask(tx, context, request);
 
+    // EX-01. A person picks up, renews and hands back as themselves, on a
+    // lease that carries no delegation; the agent does the same on its own
+    // entry point in `agent-envelope.ts`, with the delegation its pickup
+    // minted. Neither reaches the other's lease: the runtime compares the
+    // lease's holder and delegation under its locks.
     case 'task.pickup':
-    case 'task.handback':
+      return await pickupAsPerson(tx, context, request);
     case 'task.heartbeat':
-      return refused(
-        refuseCommand(
-          'AUTH_NO_AGENT_IDENTITY',
-          [request.command],
-          [
-            'An agent login picks work up and hands it back; a person authorises it by deciding.',
-            'Present the agent credential on the agent entry point.',
-          ],
-        ),
-      );
+      return await heartbeatOwnLease(tx, context, request);
+    case 'task.handback':
+      return await handbackOwnLease(tx, context, request);
   }
 }

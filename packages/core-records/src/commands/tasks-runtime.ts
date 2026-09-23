@@ -47,6 +47,14 @@ import {
   type DecisionKind,
   type SuccessorRequest,
 } from '../../../core-runtime/src/index.ts';
+import {
+  NOT_CLAIMABLE_FIX,
+  NOT_CLAIMABLE_REASON,
+  type PickedUp,
+  type PickedUpByPerson,
+} from '../../../core-runtime/src/pickup.ts';
+import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
+import type { HandbackHolder } from '../../../core-runtime/src/handback.ts';
 import type { CommandContext } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -338,6 +346,39 @@ export async function pickupReservation(
   agentActorId: string,
   fields: PickupFields,
 ): Promise<HandlerOutcome> {
+  return await claim(tx, collection, fields, { claimant: 'agent', agentActorId });
+}
+
+/**
+ * The verified person picks the reservation up as themselves (EX-01, T3 line
+ * 66). The holder is the session's own actor and the authority is the
+ * session's own live grants, re-read under the claim's locks; the approving
+ * person is still read from the decision and kept on the lease as the recorded
+ * work authorisation, never as the claimant's authority. No delegation is
+ * minted and no credential is returned, because there is no agent.
+ */
+export async function pickupAsPerson(
+  tx: TenantQuery,
+  context: CommandContext,
+  fields: PickupFields,
+): Promise<HandlerOutcome> {
+  return await claim(tx, context.declaration.collection, fields, {
+    claimant: 'person',
+    personId: context.session.personId,
+    actorId: context.session.actorId,
+  });
+}
+
+type Claimant =
+  | { readonly claimant: 'agent'; readonly agentActorId: string }
+  | { readonly claimant: 'person'; readonly personId: string; readonly actorId: string };
+
+async function claim(
+  tx: TenantQuery,
+  collection: string,
+  fields: PickupFields,
+  claimant: Claimant,
+): Promise<HandlerOutcome> {
   const seconds = fields.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
   if (!Number.isSafeInteger(seconds) || seconds <= 0 || seconds > MAXIMUM_LEASE_SECONDS) {
     return refused(
@@ -354,31 +395,39 @@ export async function pickupReservation(
   if (approver === undefined) {
     // No approval behind this reservation, or no reservation. Either way there
     // is nothing here a worker may claim, and the runtime's own code for that
-    // is the one to answer with rather than a second spelling.
+    // is the one to answer with rather than a second spelling. The runtime
+    // gives the same two sentences for a reservation somebody else holds.
     return refused(
-      refuseCommand(
-        'RESERVATION_NOT_CLAIMABLE',
-        [],
-        [
-          'Name a reservation from task.queue: approved, held and not already picked up.',
-          'A reservation with no approval behind it is not work anybody authorised.',
-        ],
-      ),
+      refuseCommand('RESERVATION_NOT_CLAIMABLE', [], [NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX]),
     );
   }
 
-  const result = await pickup(tx, {
+  const common = {
     reservationId: fields.reservationId,
-    agentActorId,
     authorisedByPersonId: approver.personId,
-    mintedByActorId: approver.actorId,
     collection,
     leaseSeconds: seconds,
-  });
+  };
+  const result =
+    claimant.claimant === 'person'
+      ? await pickup(tx, { ...common, ...claimant })
+      : await pickup(tx, {
+          ...common,
+          agentActorId: claimant.agentActorId,
+          mintedByActorId: approver.actorId,
+        });
   if (!result.ok) return refused(fromRuntime(result.refusal));
+  return applied(result.value.taskId, null, pickupDetail(result.value));
+}
 
-  const picked = result.value;
-  return applied(picked.taskId, null, {
+/**
+ * T1-R8's one-call payload for the actual claimant. The delegation half is
+ * the agent's alone: a person's result has no delegation id, no credential and
+ * no purpose scope, rather than a placeholder for any of them.
+ */
+function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unknown> {
+  const common = {
+    claimant: picked.claimant,
     leaseId: picked.leaseId,
     fence: picked.fence,
     reservationId: picked.reservationId,
@@ -388,13 +437,24 @@ export async function pickupReservation(
     versionId: picked.versionId,
     expiresAt: picked.expiresAt.toISOString(),
     declaredIncompleteness: picked.declaredIncompleteness,
+    holderActorId: picked.holderActorId,
+    authorisedByPersonId: picked.authorisedByPersonId,
+    brief: picked.brief,
+    expectedVersions: picked.expectedVersions,
+    budgetEnvelope: picked.budgetEnvelope,
+    permittedOperations: ['task.read', 'task.comment', 'task.heartbeat', 'task.handback'],
+    excludedOperations: ['effect dispatch', 'actual expenditure', 'task.decide on this work'],
+  };
+  if (picked.claimant === 'person') return common;
+  return {
+    ...common,
     // Returned once and stored only as a digest. It is in the detail because
     // the agent has to present it on its next call and there is nowhere else
     // it could come from; it is never read back, by anybody, afterwards.
     delegationId: picked.delegation.delegation.id,
     credential: picked.delegation.credential,
     purposeScope: picked.delegation.delegation.purposeScope,
-  });
+  };
 }
 
 interface Approver {
@@ -471,6 +531,39 @@ export async function handbackLease(
   fields: HandbackFields,
   agentActorId?: string,
 ): Promise<HandlerOutcome> {
+  return await settle(
+    tx,
+    fields,
+    agentActorId,
+    agentActorId === undefined ? undefined : { claimant: 'agent', actorId: agentActorId },
+  );
+}
+
+/**
+ * The person hands back the lease their own pickup took. Ownership and current
+ * write are checked by the runtime under the handback's locks, before any
+ * report, settlement or successor is written; a successor is proposed as the
+ * person's own actor.
+ */
+export async function handbackOwnLease(
+  tx: TenantQuery,
+  context: CommandContext,
+  fields: HandbackFields,
+): Promise<HandlerOutcome> {
+  return await settle(tx, fields, context.session.actorId, {
+    claimant: 'person',
+    actorId: context.session.actorId,
+    subjects: subjectsOf(context.session),
+    collection: context.declaration.collection,
+  });
+}
+
+async function settle(
+  tx: TenantQuery,
+  fields: HandbackFields,
+  agentActorId: string | undefined,
+  holder: HandbackHolder | undefined,
+): Promise<HandlerOutcome> {
   if (!OUTCOMES.has(fields.outcome)) {
     return refused(
       refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
@@ -519,6 +612,7 @@ export async function handbackLease(
     report: { ...fields.report },
     actualMinor: null,
     ...(successor === undefined ? {} : { successor }),
+    ...(holder === undefined ? {} : { holder }),
   });
   if (!result.ok) {
     // R4, behavioural note 8. On these two paths the runtime has already
@@ -697,4 +791,58 @@ export function readSuccessor(raw: unknown, agentActorId: string | undefined): R
       expiresAt,
     },
   };
+}
+
+const DEFAULT_RENEWAL_SECONDS = 15 * 60;
+const LEASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/**
+ * The person renews the lease their own pickup took, under their current
+ * rights. The agent's renewal is `heartbeatLease` in `tasks-controls.ts`, with
+ * the delegation its credential resolved to; a person has none to present, so
+ * the runtime checks the lease carries none and re-reads the person's grants.
+ */
+export async function heartbeatOwnLease(
+  tx: TenantQuery,
+  context: CommandContext,
+  fields: { readonly leaseId: unknown; readonly fence: unknown; readonly leaseSeconds?: unknown },
+): Promise<HandlerOutcome> {
+  const seconds = fields.leaseSeconds ?? DEFAULT_RENEWAL_SECONDS;
+  if (
+    typeof seconds !== 'number' ||
+    !Number.isSafeInteger(seconds) ||
+    seconds <= 0 ||
+    seconds > MAXIMUM_RENEWAL_SECONDS
+  ) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['leaseSeconds'],
+        [`Name a whole number of seconds from 1 to ${MAXIMUM_RENEWAL_SECONDS}, or leave it out.`],
+      ),
+    );
+  }
+  if (typeof fields.fence !== 'number' || !Number.isSafeInteger(fields.fence)) {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
+    );
+  }
+  if (typeof fields.leaseId !== 'string' || !LEASE_UUID.test(fields.leaseId)) {
+    return refused(refuseCommand('LEASE_NOT_OWNED', [], ['Renew the lease this pickup issued.']));
+  }
+  const result = await heartbeat(tx, {
+    claimant: 'person',
+    leaseId: fields.leaseId,
+    fence: fields.fence,
+    holderActorId: context.session.actorId,
+    subjects: subjectsOf(context.session),
+    collection: context.declaration.collection,
+    renewSeconds: seconds,
+  });
+  if (!result.ok) return refused(fromRuntime(result.refusal));
+  return applied(result.value.taskId, null, {
+    leaseId: result.value.leaseId,
+    fence: result.value.fence,
+    expiresAt: result.value.expiresAt.toISOString(),
+  });
 }
