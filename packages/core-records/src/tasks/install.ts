@@ -32,7 +32,10 @@ export interface InstalledTaskSpine {
   readonly taskCommentTypeId: string;
   /** The five seeded states by key, so a caller need not read them back. */
   readonly stateIds: Readonly<Record<string, string>>;
-  /** True when this call wrote the rows; false when they were already there. */
+  /**
+   * True when this call installed the task type itself; false when it was
+   * already there, including when this call added only the comment type to it.
+   */
   readonly installed: boolean;
 }
 
@@ -206,6 +209,20 @@ async function readStates(
 }
 
 /**
+ * The comment type, added beside a task type that is already installed.
+ *
+ * Its slots are planned against an empty `taken` because the type is new: a
+ * slot is reserved per record type, so a comment field never competes with a
+ * task field for one.
+ */
+async function addCommentType(tx: TenantQuery): Promise<string> {
+  const slots = await slotTable(tx);
+  const commentTypeId = await createRecordType(tx, COMMENT_TYPE_KEY, 'Task comment');
+  await createFields(tx, commentTypeId, COMMENT_SPINE, slots);
+  return commentTypeId;
+}
+
+/**
  * Install the task type and its states, or return what is already there.
  *
  * Idempotent by the record type's key, which is unique per business, so a
@@ -220,10 +237,14 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
     if (stateTypeId === undefined) {
       throw new Error('installTaskSpine: the task type is installed and the state type is not');
     }
-    const commentTypeId = await findRecordType(tx, COMMENT_TYPE_KEY);
-    if (commentTypeId === undefined) {
-      throw new Error('installTaskSpine: the task type is installed and the comment type is not');
-    }
+    // A business installed before the comment type existed has `task` and
+    // `task_state` and no `task_comment`. That is an ordinary earlier shape,
+    // not corruption, and the installer's job is to bring it forward: add the
+    // missing type and its fields, touch nothing that is already there. The
+    // task and state type ids, their field rows and every task record survive,
+    // because nothing below reads or rewrites them.
+    const commentTypeId =
+      (await findRecordType(tx, COMMENT_TYPE_KEY)) ?? (await addCommentType(tx));
     return {
       taskTypeId: existing,
       taskStateTypeId: stateTypeId,
