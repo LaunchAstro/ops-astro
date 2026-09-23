@@ -597,7 +597,21 @@ async function s5(page, context) {
     await page.fill('#settings-four-eyes', '1200');
     await writtenByAnother(admin, alpha, 999);
     await page.click(SAVE);
-    await page.waitForSelector(CONFLICT, { timeout: 15_000 }).catch(() => undefined);
+    // The block draws on the refusal and fills in "the server holds" only once
+    // its reread lands, so its first frame has the refusal and neither number.
+    // Wait on the block's own two lines, each holding its value.
+    await page
+      .waitForFunction(
+        ([server, draft]) =>
+          document.querySelector(server)?.textContent?.includes('999') === true &&
+          document.querySelector(draft)?.textContent?.includes('1200') === true,
+        [
+          `${CONFLICT} [data-settings="conflict-server"]`,
+          `${CONFLICT} [data-settings="conflict-draft"]`,
+        ],
+        { timeout: 15_000 },
+      )
+      .catch(() => undefined);
 
     const drawn = await page
       .locator(CONFLICT)
