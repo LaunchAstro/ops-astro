@@ -5,15 +5,22 @@
     "its change affects go in `conformance`. Both are paths from the repository",
     "root. The runner fails when a named suite is missing, when any test in one",
     "of them is skipped, and when a run ends with zero tests having executed.",
-    "Filled by the L1-TENANCY lane's handback: the pooled crossover and the",
-    "prefix harness are the invariants; the three conformance suites are the",
+    "Filled from the L1-TENANCY and L2-AUTHORITY handbacks: the pooled crossover,",
+    "the prefix harness and L2's identity, delegation, comment, preset-plan and",
+    "settings suites are the invariants; the three conformance suites are the",
     "catalogue, wrapper and runtime-statement proofs. statement-log.test.ts is",
     "a pure unit suite and must not be named (it moves the database counter by 0).",
     "See docs/agents/database-conformance.md."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
-    "tests/tenancy/migration-prefixes.test.ts"
+    "tests/tenancy/migration-prefixes.test.ts",
+    "tests/identity/agent-delegation.test.ts",
+    "tests/identity/authentication-attempts.test.ts",
+    "tests/identity/restricted-role.test.ts",
+    "tests/records/preset-plan.test.ts",
+    "tests/records/business-settings.test.ts",
+    "tests/tasks/comments.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
