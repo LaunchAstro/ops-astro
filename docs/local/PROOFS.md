@@ -333,28 +333,24 @@ repaired here.
 A gap is a proof that cannot be written without a change to a source file this
 lane does not own.
 
-- **No external reader can be minted through the seed's shape (I09).**
-  `docs/local/AUTHORITY.md` records that comments are stored and the external
-  projection function exists with no endpoint serving it: "Comments are stored
-  and not yet projected through the API. The read that serves them is L3's."
-  Until a read serves the projection, the external-comment case can only assert
-  that the gap is there.
+- **No external reader can be minted through the seed's shape (I09).** The
+  read is there: `task.read` serves `externalCommentProjection` to every reader
+  who is not internal (`packages/core-records/src/reads/tasks.ts:194`). What
+  is missing is a reader. No seeded role is outside `owner`, `admin` and
+  `member`, so the external-comment case can only assert that the gap is
+  there.
 - **The tenancy testing package cannot answer "is RLS on this table right now".**
   `prefix-harness.ts` exports per-prefix machinery and keeps `rolesOf` private,
   so item 4 reuses `tenancyConformance` from
   `packages/core-records/src/tenancy/conformance.ts` — the check the harness
   itself calls — and hand-writes one `pg_class` query. A small exported
   `rowSecurityOf(read, table)` would remove that last hand-written query.
-- **No seeded role can `task.decide` on a real deployment.**
-  `GRANTS_BY_ROLE` in `scripts/local-seed.mjs:71` gives the admin no `decide`
-  action, so against the live stack `task.decide` is `SCOPE_NOT_GRANTED` for
-  every seeded person — and since a reservation needs an approval, **every
-  pickup is unreachable there too**. `world.ts` grants `decide`, which is why
-  the proofs in this directory reach the agent journey at all. This is the one
-  finding here that changes what someone can do with the running slice rather
-  than what a test can assert, so it is the first one to act on.
+- **Closed: no seeded role could `task.decide`.** When this lane ran, the
+  seed gave the admin no `decide` action, so against the live stack every
+  decision and so every pickup was unreachable. The seed now gives the admin
+  `task:decide` (`scripts/local-seed.mjs:96`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
-  holds `['task:read', 'task:write', 'task:assign', 'person:read']`;
+  holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
   `world.ts`'s `MEMBER_ACTIONS` is `read`, `write`, `assign` and `comment` on
   `task` only. Not load-bearing for the matrix, which reads grants back out of
   the `grants` table rather than trusting the list, but `mia` is not quite the
@@ -378,12 +374,10 @@ lane does not own.
   one array and cannot disagree — but it is a new reader taking the legacy
   form, and it is why `state`'s refusal names read
   `state=task.complete task.reopen task.start`.
-- **`DELEGATION_EXCLUDES_OPERATION` is not in `AUTHORITY.md`'s table.** The
-  agent prefix answers it with 403 for most declarations, and the refusal-code
-  table in `docs/local/AUTHORITY.md` names `DELEGATION_EXCLUDES_DECISION`,
-  `DELEGATION_OUT_OF_PURPOSE`, `DELEGATION_NARROWED`, `DELEGATION_NOT_LIVE` and
-  `DELEGATION_WIDENS` and not this one. The code and the document disagree
-  about the surface an agent meets.
+- **Closed: `DELEGATION_EXCLUDES_OPERATION` was missing from `AUTHORITY.md`'s
+  table.** The agent prefix answers it with 403 for most declarations, and the
+  table now has the row, with where the envelope raises it
+  ([AUTHORITY.md](AUTHORITY.md#refusal-codes-as-l3-registered-them)).
 
 ## What is not here
 

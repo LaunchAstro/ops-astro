@@ -131,8 +131,8 @@ Keyboard: the textarea, the two selects and the button are ordinary controls in
 document order after the details form, each with a `label` bound by `htmlFor`.
 Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
 -> post` and nothing is reachable only by mouse. Photographed at 1480, 900 and
-390 on 2026-09-23 with no horizontal overflow at any of the three
-(`parent-observations/web-comments/width-<w>-task.png`). The dark-theme gap
+390 on 2026-09-23 with no horizontal overflow at any of the three; the
+captures are held with the build run's evidence, not in the tree. The dark-theme gap
 recorded below is this page's too: there is no dark build to photograph.
 
 ## Proposals on a task
@@ -193,18 +193,20 @@ explained would leave the screen changing for no stated reason.
 
 What this screen does not read back, and cannot:
 
-- **No capability read exists**, so the page cannot know whether a person may
-  decide before it asks. A member without `task:decide` presses Approve once,
-  reads the server's `SCOPE_NOT_GRANTED`, and the controls close. That is honest
-  but it means the first press of a control a person may not use is always a
-  refused request. The same gap applies to comments. It no longer applies to
-  `/settings`, which is the one screen that consults `session.capabilities`.
-- **No seeded identity holds `task:decide`.** `scripts/local-seed.mjs` gives its
-  admin six `task` actions plus `person:read` and `settings:manage`, and
-  `task.decide` takes the `decide` action (`commands/surface.ts`), so as the seed
-  stands nobody in either business can approve anything through the product. The
-  browser case issues that grant through the authority path and revokes it
-  afterwards; the gap belongs to the seed's lane.
+- **This screen does not consult the capability read**, so it cannot know
+  whether a person may decide before they ask. `session.capabilities` exists
+  ([API.md](API.md#reads)), but only `/settings` reads it. A member without
+  `task:decide` presses Approve once, reads the server's `SCOPE_NOT_GRANTED`,
+  and the controls close. That is honest but it means the first press of a
+  control a person may not use is always a refused request. The same gap
+  applies to comments.
+- **Only the seeded admin holds `task:decide`.** `scripts/local-seed.mjs` gives
+  its admin `task:decide` beside six other `task` actions, `person:read`,
+  `settings:manage` and `settings:read` (`scripts/local-seed.mjs:69-101`); a
+  member holds neither `decide` nor `manage`. So the admin in each business can
+  approve through the product and a member cannot. The browser case still
+  issues its own `task:decide` grant through the authority path and revokes it
+  afterwards, so its result does not depend on the seed.
 - Rejecting sends `decision: 'reject'` through the same control and the same
   exact-version comparison. The change-round behaviour behind a rejection is the
   runtime's and this screen does not model it.
@@ -334,7 +336,7 @@ mounted page, and B6 then restarts the API and stops and starts the
 (`cases-b6-b7.mjs`). The settings cases issue a live `settings:manage` grant of
 their own through `issueGrant`, revoke it in a `finally` and put back the
 threshold they wrote (`cases-settings.mjs`), the proposal cases do the same with
-`task:decide` because no seeded role holds it (`cases-proposals.mjs`), and N6
+`task:decide` so their result does not depend on the seed (`cases-proposals.mjs`), and N6
 revokes a grant through `revokeGrant` for real. Each of those restores what it changed, but it changes
 it, so run this when you want the table and not on every edit.
 
@@ -413,8 +415,9 @@ places this build does not yet reach it.
 - **The exact-revision path is proved only where the read sends a revision.**
   The screen writes `expectedRevision` for a row whose `settings.read` answer
   carried `revision`, and not otherwise. `business_settings` has the column
-  from migration `0020`; whether the running API's projection sends it depends
-  on which build is serving. Where it does not, the path and its `VERSION_STALE`
+  from migration `0020`, and on this head `settings.read` projects it on every
+  row (`packages/core-records/src/reads/settings.ts:76`). A running API built
+  from an older head does not send it. Where it does not, the path and its `VERSION_STALE`
   conflict are held by mounted cases alone, and browser row S5 records
   `pending` with the reason. Where it does, S5 runs with no edit. Which of the
   two happened is in S5's own row, not in this document.
@@ -433,8 +436,9 @@ places this build does not yet reach it.
 - Fonts and icons are not fetched. The redistribution question (#32) is open, so
   the families are a stack with real fallbacks and the brand is its own words.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
-  and dark, on 2026-09-23 (`parent-observations/local-slice/width-<w>-<theme>-<page>.png`,
-  `node tests/browser/keyboard-and-widths.mjs`). What the twelve captures show:
+  and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
+  which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
+  captures are held with the build run's evidence. What the twelve captures show:
   - **There is no dark theme.** Eleven of the twelve light/dark pairs are
     byte-identical; the app does not answer `prefers-color-scheme`, so a person
     who has chosen dark gets the light build. The twelfth pair differs only

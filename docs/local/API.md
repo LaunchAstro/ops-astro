@@ -143,7 +143,10 @@ with `names = ['revision=<current>']` and the stored value unchanged. It is
 optional rather than required because a caller who has not read the setting is
 still allowed to set it; omitting it is a last-writer-wins write, and naming it
 is the optimistic check. The applied result carries the `revision` the row is
-now at, which is the one the next write names.
+now at, which is the one the next write names. How the writer locks and moves
+the revision, and which tests hold it, is in
+[AUTHORITY.md, "Business settings"](AUTHORITY.md#business-settings); the column
+itself is in [DATA.md](DATA.md#a-setting-is-checked-against-its-revision).
 
 **`OPERATION_ID_REQUIRED` 422 covers the omitted field too.** `null` and `''`
 were always refused; an absent `operationId` was not, because
@@ -162,7 +165,7 @@ answer this table promises.
 | --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                |
 | `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                                                   |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_ALREADY_LIVE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                    |
 | `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                            |
 | `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                |
 
@@ -224,7 +227,10 @@ sees the pending gate, and a fault in either takes both with it.
 `SUCCESSOR_OUT_OF_BOUNDS` 409 is the exception that settles **nothing** — the
 lease is still live and the hold still held, so the caller may retry with a
 successor that fits, or hand back without one. That is the opposite of the two
-stale-fence refusals below, which do write their retained report.
+stale-fence refusals below, which do write their retained report. The runtime
+side of the successor, the tests that hold it and the one open seam (an
+absolute `expiresAt` here against `task.propose`'s `expiresInSeconds`) are in
+[RUNTIME.md, "The successor is part of the settlement"](RUNTIME.md#the-successor-is-part-of-the-settlement).
 
 **One refusal in this surface commits.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
 on `task.handback` are answered _after_ the runtime has written an append-only
@@ -337,15 +343,21 @@ holding a stolen credential which of those it is. After a pickup every call is
 intersected with the delegation on the spot: the collection, the action, and a
 `scope` that must be **exactly** the one task it was minted for.
 
-| Answer                          | Status | When                                                                         |
-| ------------------------------- | ------ | ---------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                             |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                     |
-| `DELEGATION_NOT_LIVE`           | 401    | no credential, or none that answers to a live delegation                     |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry         |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always, from L4's `decideAsAgent` asking L2                   |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | an operation outside the queue, a pickup, its own task and a handback        |
+| Answer                          | Status | When                                                                                      |
+| ------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                          |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                  |
+| `DELEGATION_NOT_LIVE`           | 401    | no credential, or none that answers to a live delegation                                  |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                      |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it              |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always, from L4's `decideAsAgent` asking L2                                |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | an operation outside the queue, a pickup, its own task and a handback, and `task.comment` |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for               |
+
+Which of these a caller can meet on this head, where each is raised and which
+tests hold it are in [AUTHORITY.md, "Refusal codes, as L3 registered
+them"](AUTHORITY.md#refusal-codes-as-l3-registered-them). The runtime's own
+codes are in [RUNTIME.md](RUNTIME.md#refusal-codes-as-l3-registered-them).
 
 `AUTH_SESSION_EXPIRED` is answered on **both** paths. The rule above for
 everything else stands — a missing, forged, unsigned or subject-less token all
@@ -423,6 +435,26 @@ other agent answer: `agentActorId`, `businessKey`, the delegation's
 (`task.queue` reads and `task.pickup` writes on `task`). It is reachable with
 no credential on purpose: refusing it for want of one would refuse the single
 call whose whole subject is that there is none.
+
+**Known gap: one read, two answers.** On this head `session.capabilities`
+answers differently on the two prefixes, and a client has to know which prefix
+it is on to read it:
+
+| Prefix                     | Body on success                                                                                                            | Code                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`, flattened onto the body                                                     | `reads/dispatch.ts:210-213`          |
+| agent, `/api/a/b/:key/...` | `{ recordId: null, revision: null, detail: { agentActorId, businessKey, purposeScope, grants } }`, like every agent answer | `commands/agent-envelope.ts:358-389` |
+
+Two more things about the agent answer. Its `grants` is always the pre-pickup
+pair, before and after a pickup; after a pickup only `purposeScope` changes. And
+a credential that no longer answers to a live delegation gives `purposeScope:
+null` rather than a refusal, so the answer does not say whether a credential was
+sent. `tests/acceptance/role-case-matrix.test.ts` case (h) reads the agent
+answer under `detail` and asserts `purposeScope` null before a pickup (`:287`)
+and the picked-up task after it (`:365`); it records the agent rows as named
+exceptions, not passes. The web client reads
+only the person prefix (`/settings`), so no screen meets the difference today.
+It stays a gap until one read gives one shape on both.
 
 **A read payload naming a fact the server owns is refused**
 `FIELD_NOT_WRITABLE` 422, naming the offending keys. It is the commands' own

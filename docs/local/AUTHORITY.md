@@ -7,8 +7,10 @@ The data side — migrations, slots, records, tasks — is [DATA.md](DATA.md), w
 lane L1 owns this round; this file is the identity, authority and model half and
 cross-references it rather than restating it.
 
-Nothing here is a plan. Every mechanism below is in the tree with a test beside
-it, and the limits section says what is not.
+Nothing here is a plan. Every mechanism below is implemented in the tree with a
+test beside it, and [what is not here](#what-is-not-here) says what is not.
+Implemented and tested is not accepted: no mechanism in this file has been
+accepted on the integrated head, and the review of that head is still owed.
 
 ## The three credentials, which are three things
 
@@ -148,34 +150,77 @@ type PresetPlanRefusalCode =
 installBusinessSettings(tx): Promise<void>
 readBusinessSettings(tx): Promise<readonly BusinessSetting[]>
 readBusinessSetting(tx, key: string): Promise<BusinessSetting | undefined>
+writeBusinessSetting(tx, BusinessSettingWrite): Promise<BusinessSettingWritten | SettingRevisionStale | undefined>
+isSettingRevisionStale(value: object): value is SettingRevisionStale
+
+interface BusinessSetting { /* ...as before... */ readonly revision: number }   // starts at 1 (0020)
+interface BusinessSettingWrite {
+  readonly key: string
+  readonly value: number | boolean | string | null
+  readonly expectedRevision?: number      // absent: write anyway
+  readonly owningOperation?: string       // the command's own name, never the caller's
+  readonly actorId?: string | null
+}
+interface BusinessSettingWritten { readonly id; readonly key; readonly value; readonly revision: number }
+interface SettingRevisionStale {
+  readonly refused: true; readonly code: 'VERSION_STALE'
+  readonly names: readonly string[]       // ['revision=<the one the row is at>']
+  readonly fixes: readonly string[]
+}
 ```
 
 `installTaskSpine` now also returns `taskCommentTypeId`, which is what
 `writeComment` and `readTaskComments` take.
 
-### Refusal codes L3 must register
+### Refusal codes, as L3 registered them
 
 These are **not** in `IdentityRefusalCode` or `RecordsRefusalCode`, deliberately:
 `commands/register.ts` derives its `RefusalCode` from those unions and the
 register is L3's file. A model module reaching into the command surface to add a
-code is the coupling the register exists to prevent. L3 registers them with the
-rest, with HTTP statuses in `apps/api/status.ts`:
+code is the coupling the register exists to prevent. L3 has registered every one
+of them, with the HTTP status in `apps/api/status.ts`. The last column says
+whether a caller can meet the code on this head, and where that is shown.
 
-| Code                                                                         | Suggested status | Caller-visible                  |
-| ---------------------------------------------------------------------------- | ---------------- | ------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401              | yes                             |
-| `AUTH_SESSION_EXPIRED`                                                       | 401              | yes — this is the re-login path |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403              | yes                             |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403              | yes                             |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403              | yes                             |
-| `DELEGATION_NARROWED`                                                        | 403              | yes                             |
-| `DELEGATION_NOT_LIVE`                                                        | 401              | yes                             |
-| `DELEGATION_WIDENS`                                                          | 403              | yes (mint time only)            |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409              | yes (mint time only)            |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422              | yes, with the field keys        |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404              | yes                             |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409              | yes                             |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422              | yes                             |
+| Code                                                                         | Status | Reachable on this head                                                                                  |
+| ---------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                     |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                        |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                     |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                          |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                     |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                     |
+| `DELEGATION_NARROWED`                                                        | 403    | no: needs a grant revoked between pickup and the agent's next call, and there is no grant-control route |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                     |
+| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                               |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                            |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                     |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                     |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                     |
+
+The "no" rows are the reasons `UNPRODUCED_CODES` gives for them
+(`commands/register.ts:381`), where the refusal-register tests assert them by
+name.
+
+**`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
+it, not `checkDelegatedAuthority`, for an operation an agent may not call
+whatever it holds: anything outside `AGENT_SURFACE`
+(`commands/agent-envelope.ts:111-119`, refused at `:164`), and `task.comment`,
+which is in that set but has no agent branch and falls to the handler's default
+(`:447`). It is 403 and not `DELEGATION_NOT_LIVE` 401 because a live credential
+would not change the answer. `tests/acceptance/role-case-matrix.test.ts` case (h)
+asserts it over every declaration, and `:409` asserts it for `task.comment`. The
+register still lists it in `UNPRODUCED_CODES` (`commands/register.ts:404`),
+which the tests above contradict; that list is not this file's to correct.
+
+**`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
+(`authority/delegations.ts:231-238`, and `:268-276` for two first mints racing)
+and reaches a caller as 409 through `task.pickup`.
+`tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
+`tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
+audit row. On this head it is also still in `UNPRODUCED_CODES`
+(`commands/register.ts:402`), and `tests/commands/runtime-codes.test.ts:100`
+asserts that it is. That marker predates the emitter and is due to come off.
 
 ## The expired session
 
@@ -313,6 +358,32 @@ second install adds what a later release named and resets nothing, because the
 alternative is an upgrade that quietly returns a business's retention window to
 the shipped default.
 
+**Every setting has a revision** (0020), for the reason a record has one: two
+administrators editing one row from two browser tabs both wrote, and the second
+silently replaced a value chosen before the first existed. The column starts at
+1, an upgraded row starts there too, and both readers hand it back as
+`BusinessSetting.revision`. [DATA.md](DATA.md#a-setting-is-checked-against-its-revision)
+has the column and how a write moves it.
+
+`writeBusinessSetting` (`records/business-settings.ts:346`) is the one writer.
+It locks the row (`:354`), compares the `expectedRevision` the caller read, and
+answers a mismatch with `SettingRevisionStale`: the code `VERSION_STALE`,
+`names` of `revision=<the one the row is at>`, returned and never thrown. It
+never tells the caller the value it tried to write. An absent `expectedRevision`
+writes anyway, which is what a caller that has not learnt to send one does. An
+unknown key and an `operation` row the named operation does not own are one
+answer, `undefined`, which the command turns into its own `NOT_FOUND`.
+
+The two settings commands write through it (`commands/settings-write.ts:114`),
+so `settings.set_four_eyes_threshold` and `settings.set_client_sign_off` both
+move the revision and both answer `VERSION_STALE` 409 to a stale one;
+`settings.read` projects the revision on every row (`reads/settings.ts:76`).
+`tests/records/business-settings.test.ts` holds the writer, including two
+administrators writing at once (its `describe` at `:287`), and
+`tests/commands/settings-revision.test.ts` holds the command path. The comment
+at `records/business-settings.ts:57-61` still says no command calls the writer;
+that is out of date since the commands were wired to it.
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with **no privilege
@@ -324,17 +395,30 @@ application role, never through a privilege the worker holds itself.
 
 ## What is not here
 
-- **No API, CLI or web surface.** Every mechanism above is a model module. L3
-  wires `preset.plan`, comments and delegation into the registry and handlers
-  from the interfaces pinned above; L5 proves the surfaces.
-- **No pickup, handback, lease, gate or decision.** `mintDelegation` is called
-  by `task.pickup` when L3/L4 build it; nothing calls it in the tree yet except
-  its test.
-- **No external comment read.** Comments are stored; the projection function
-  exists and no endpoint serves it.
+This file is the model modules. What calls them is elsewhere, and on this head
+all four callers this section used to list as missing are built:
+
+- **The surfaces.** L3 wired `preset.plan`, comments, delegation and settings
+  into the command surface and the HTTP boundary ([API.md](API.md)), with a
+  second entry point for agents ("The agent's own entry point" in API.md). The
+  web client draws them ([WEB.md](WEB.md)). L5's assembled proofs drive them
+  ([PROOFS.md](PROOFS.md)). There is no CLI.
+- **The delegation caller.** `task.pickup` mints the delegation through
+  `mintDelegation` (`packages/core-runtime/src/pickup.ts:139`), and
+  `task.handback` settles it ([RUNTIME.md](RUNTIME.md)).
+- **The external comment read.** `task.read` serves
+  `externalCommentProjection` to every reader who is not internal, and to every
+  agent (`reads/tasks.ts:194`; "Reads" in API.md). No seeded login has a role
+  outside `owner`, `admin` and `member`, so no browser case reads a task as an
+  external person ([WEB.md](WEB.md#known-gaps-against-the-pinned-mockup)).
+- **The settings commands.** `settings.set_four_eyes_threshold`,
+  `settings.set_client_sign_off` and `settings.read` are built and write by
+  revision, as [Business settings](#business-settings) says.
+
+What is still absent:
+
 - **No grant-control route.** `issueGrant` and `revokeGrant` are internal
-  functions, as they were before this lane.
-- **The `settings.*` operations are built.** The two operation-classified
-  settings have the commands that own them and a `settings.read` beside them;
-  all three are in the table under "The operations L2 made possible" and the
-  "Reads" heading in `docs/local/API.md`.
+  functions, as they were before this lane. That is why `DELEGATION_NARROWED`
+  cannot be reached through a command.
+- **No acceptance.** Every mechanism here is implemented and tested; none is
+  accepted on the integrated head.
