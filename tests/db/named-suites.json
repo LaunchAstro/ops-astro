@@ -16,7 +16,8 @@
     "L3-PART-B-2 adds the task-runtime-routes suite (the five routes and both prefixes over HTTP, the retained-report refusal, the in-process restart), the cli-reach suite (every declaration through the generated client) and the surface-reads suite (settings.read, session.capabilities, audited reads with a null subject, D06 on the read half); L4-RUNTIME-FIX's review-fixes suite (R1-R10 regressions on a real database) is named with it. handback-expenditure.test.ts is a pure unit suite and must not be named.",
     "L4-RUNTIME-FIX-2 adds the classifier-race suite (R1's executed two-classifier race) and the decision-abort suite (R2's forced post-write reservation refusal).",
     "See docs/agents/database-conformance.md.",
-    "L5-PROOFS adds four acceptance suites (the generated exported-surface inventory, the six-role nine-case matrix, the protected set on three surfaces, the four-state predicate/RLS mutation proof); each runs in process against the real application. restart-and-expiry.test.ts is NOT named: its container-restart case is a guarded skip (L5_RESTART_CONTAINER=1) and the runner refuses a skipped test, so the coordinator runs that leg explicitly with the flag as its own step. world.ts, cast.ts, restart-harness.ts and role-case-*.ts are harnesses, not suites."
+    "L5-PROOFS adds four acceptance suites (the generated exported-surface inventory, the six-role nine-case matrix, the protected set on three surfaces, the four-state predicate/RLS mutation proof); each runs in process against the real application. restart-and-expiry.test.ts is NOT named: its container-restart case is a guarded skip (L5_RESTART_CONTAINER=1) and the runner refuses a skipped test, so the coordinator runs that leg explicitly with the flag as its own step. world.ts, cast.ts, restart-harness.ts and role-case-*.ts are harnesses, not suites.",
+    "L3-PART-B-3 adds the settings-revision-routes suite (the two settings commands and settings.read by revision over in-process Hono), the envelope-faults suite (the omitted operationId and the two task.propose shapes over in-process Hono) and the settings-revision suite (the same three writes through executeCommand). handback-successor.test.ts is a pure unit suite and must not be named."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -44,7 +45,10 @@
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/acceptance/protected-fields.test.ts",
-    "tests/acceptance/predicate-rls.test.ts"
+    "tests/acceptance/predicate-rls.test.ts",
+    "tests/api/settings-revision-routes.test.ts",
+    "tests/api/envelope-faults.test.ts",
+    "tests/commands/settings-revision.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

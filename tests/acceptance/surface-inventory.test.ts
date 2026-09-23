@@ -304,36 +304,31 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     expect(faulted.length).toBeLessThanOrEqual(5);
   });
 
-  // ── A defect this inventory found, recorded rather than deleted ───────────
+  // ── A defect this inventory found, fixed since ────────────────────────────
   //
-  // `envelope.ts:83` guards the attempt identity with
-  // `OPERATION_ID.test(request.operationId)`, and `RegExp.prototype.test`
-  // coerces its argument to a string. A request that simply omits the field
-  // arrives as `undefined`, coerces to the nine-character string `"undefined"`,
-  // and **passes** the guard the register declares `OPERATION_ID_REQUIRED` for
-  // (`register-store.ts:35`: /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/u). The real
-  // `undefined` then reaches `lookupAttempt`'s bound parameter and the driver
-  // raises `UNDEFINED_VALUE`, so the caller is handed a 500 in plain text
-  // instead of the typed 422 the status table promises.
+  // On the head this suite was written against, `envelope.ts` guarded the
+  // attempt identity with `OPERATION_ID.test(request.operationId)`, and
+  // `RegExp.prototype.test` coerces its argument to a string: a request that
+  // simply omitted the field coerced to `"undefined"`, passed the guard, and
+  // the real `undefined` reached `lookupAttempt`'s bound parameter, so the
+  // caller was handed a plain-text 500 instead of the typed 422 the status
+  // table promises. `null` and `''` were refused correctly.
   //
-  // `null` and `''` are refused correctly. It is the absent field — the one
-  // thing an ordinary HTTP caller sends most easily — that gets through.
-  //
-  // This case asserts the behaviour **as observed**, so that it fails the day
-  // the defect is fixed and this comment has to be read. The fix belongs in
-  // another lane's file, so it is reported and not made here.
-  it('records that an absent operationId is answered untyped, not OPERATION_ID_REQUIRED', async () => {
+  // This case recorded that behaviour as observed so that it failed the day
+  // the defect was fixed. L3-PART-B-3 fixed it (the guard now checks the
+  // type first), and the case now asserts the fix beside the two spellings
+  // that were always right.
+  it('answers an absent operationId with OPERATION_ID_REQUIRED, like null and the empty string', async () => {
     const answer = await call(
       world.api,
       personPath('alpha', pathOf('task.create')),
       { fields: { title: 'a body with no attempt identity' } },
       bearer(world.ada.token),
     );
-    expect(answer.status).not.toBe(422);
-    expect(answer.code).not.toBe('OPERATION_ID_REQUIRED');
+    expect(answer.status).toBe(422);
+    expect(answer.code).toBe('OPERATION_ID_REQUIRED');
 
-    // The two spellings that are refused correctly, as the contrast that makes
-    // the finding specific rather than a complaint about validation in general.
+    // The two spellings that were always refused correctly.
     for (const operationId of [null, '']) {
       // eslint-disable-next-line no-await-in-loop
       const refused = await call(

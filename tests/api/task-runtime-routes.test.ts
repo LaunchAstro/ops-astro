@@ -287,62 +287,54 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
      * Before the fix this answered 500 `{"raw":"Internal Server Error"}` with
      * the serving transaction aborted and no audit row.
      *
-     * **Still `it.fails` on this branch, and for a different reason from the
-     * one it used to fail for.** `mintDelegation` now returns the refusal --
-     * `tests/identity` proves that -- but `DELEGATION_ALREADY_LIVE` is not in
-     * `commands/register.ts`'s `RefusalCode` union or in `apps/api/status.ts`,
-     * and those are lane L3-PART-B-3's files, registered on a sibling branch
-     * (its addendum 1). An unregistered code raises in `agent-envelope.ts:145`
-     * and the envelope still answers **500**, which is the status observed
-     * here. The moment the two branches meet this case starts failing and must
-     * be flipped to a plain `it`; the assertions below are already the ones it
-     * should then hold, including 409 via the register's status map.
+     * Flipped from `it.fails` to a plain `it` on the integration head once
+     * L3-PART-B-3 registered `DELEGATION_ALREADY_LIVE` at 409 in
+     * `commands/register.ts` and `apps/api/status.ts`: the mint's refusal
+     * (`tests/identity`) now travels the envelope as a typed 409 instead of
+     * raising in `agent-envelope.ts` as an unregistered code.
      */
-    it.fails(
-      'refuses a second live delegation for one purpose instead of faulting',
-      async () => {
-        const first = await approvedReservation('work under a held purpose', 'draft_the_reply_dup');
-        const held = await asAgent('task.pickup', {
-          operationId: randomUUID(),
-          reservationId: first.reservationId,
-        });
-        expect(held.status).toBe(200);
-        const firstDetail = detailOf(held);
+    it('refuses a second live delegation for one purpose instead of faulting', async () => {
+      const first = await approvedReservation('work under a held purpose', 'draft_the_reply_dup');
+      const held = await asAgent('task.pickup', {
+        operationId: randomUUID(),
+        reservationId: first.reservationId,
+      });
+      expect(held.status).toBe(200);
+      const firstDetail = detailOf(held);
 
-        const sibling = await approvedReservation('more work, same purpose', 'draft_the_reply_dup');
-        const operationId = randomUUID();
-        const again = await asAgent('task.pickup', {
-          operationId,
-          reservationId: sibling.reservationId,
-        });
+      const sibling = await approvedReservation('more work, same purpose', 'draft_the_reply_dup');
+      const operationId = randomUUID();
+      const again = await asAgent('task.pickup', {
+        operationId,
+        reservationId: sibling.reservationId,
+      });
 
-        // A decision, not an outage: a refusal shape, and neither 500 nor 503.
-        expect(again.status).not.toBe(500);
-        expect(again.status).not.toBe(503);
-        expect(again.body['refused']).toBe(true);
-        expect(again.body['code']).toBe('DELEGATION_ALREADY_LIVE');
+      // A decision, not an outage: a refusal shape, and neither 500 nor 503.
+      expect(again.status).not.toBe(500);
+      expect(again.status).not.toBe(503);
+      expect(again.status).toBe(409);
+      expect(again.body['refused']).toBe(true);
+      expect(again.body['code']).toBe('DELEGATION_ALREADY_LIVE');
 
-        // The first hold is untouched: still one lease, and its credential works.
-        const read = await asAgent(
-          'task.read',
-          { operationId: randomUUID(), recordId: first.taskId },
-          String(firstDetail['credential']),
-        );
-        expect(read.status).toBe(200);
+      // The first hold is untouched: still one lease, and its credential works.
+      const read = await asAgent(
+        'task.read',
+        { operationId: randomUUID(), recordId: first.taskId },
+        String(firstDetail['credential']),
+      );
+      expect(read.status).toBe(200);
 
-        // And the serving transaction committed, so the attempt is in the chain.
-        const audited = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
-          tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
-            `select outcome, refusal_code from public.audit_events
+      // And the serving transaction committed, so the attempt is in the chain.
+      const audited = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+        tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
+          `select outcome, refusal_code from public.audit_events
             where business_id = $1 and operation_id = $2`,
-            [fixture.business, operationId],
-          ),
-        );
-        expect(audited.length).toBe(1);
-        expect(audited[0]?.refusal_code).toBe('DELEGATION_ALREADY_LIVE');
-      },
-      60_000,
-    );
+          [fixture.business, operationId],
+        ),
+      );
+      expect(audited.length).toBe(1);
+      expect(audited[0]?.refusal_code).toBe('DELEGATION_ALREADY_LIVE');
+    }, 60_000);
 
     /**
      * Behavioural note 10 from lane L4-RUNTIME-FIX, now the assertions rather
