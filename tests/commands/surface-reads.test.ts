@@ -91,9 +91,11 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       // Never written through a command yet, so nobody owns the last change.
       expect(band?.updatedByActorId).toBeNull();
       expect(typeof band?.updatedAt).toBe('string');
-      // No revision exists on `business_settings`. The projection says so by
-      // carrying none rather than by inventing one a caller could send back.
-      expect(Object.keys(band ?? {}).includes('revision')).toBe(false);
+      // The revision is projected, because 0020 gave the row one and a write
+      // names it: a caller reads this number and sends it back as
+      // `expectedRevision`, and a projection that dropped it would leave the
+      // caller nothing to say which value it was replacing.
+      expect(typeof band?.revision).toBe('number');
     });
 
     it('names the actor a settings command wrote through', async () => {

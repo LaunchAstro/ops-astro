@@ -89,6 +89,10 @@ describe('the refusal register', () => {
       // reached from a field a caller fills in on `task.propose` or
       // `task.handback`, so none of them joins this list.
       'CHANGE_ROUNDS_EXHAUSTED',
+      // `DELEGATION_ALREADY_LIVE` is registered by this lane and produced by
+      // none of its files: the emitter is `authority/delegations.ts`, on
+      // L2-DELEGATION-FIX's branch. It comes off this list there.
+      'DELEGATION_ALREADY_LIVE',
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXCLUDES_OPERATION',
       'DELEGATION_EXPIRED',

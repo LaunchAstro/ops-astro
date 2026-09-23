@@ -76,6 +76,7 @@ export type RefusalCode =
   | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NOT_LIVE'
   | 'DELEGATION_WIDENS'
+  | 'DELEGATION_ALREADY_LIVE'
   | 'DELEGATION_EXPIRED'
   | 'DELEGATION_REVOKED'
   | 'LEASE_HELD'
@@ -113,6 +114,7 @@ export type RefusalCode =
   | 'LINEAGE_NOT_ON_TASK'
   | 'CAP_BINDING_MISMATCH'
   | 'ACTUAL_EXPENDITURE_UNSUPPORTED'
+  | 'SUCCESSOR_OUT_OF_BOUNDS'
   // Budget, T1k.
   | 'BUDGET_UNAVAILABLE'
   | 'BUDGET_EXHAUSTED';
@@ -255,6 +257,11 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
     'A mint would exceed what the delegating person holds',
     'L2 AUTHORITY.md',
   ),
+  entry(
+    'DELEGATION_ALREADY_LIVE',
+    'The agent already holds a live delegation for this purpose',
+    'L2 AUTHORITY.md',
+  ),
   entry('DELEGATION_EXPIRED', 'The delegation minted at pickup has run out', 'contract 4.4'),
   entry('DELEGATION_REVOKED', 'The delegation was withdrawn', 'contract 4.4'),
   entry('LEASE_HELD', 'Another worker holds the lease on this work', 'contract 4.4'),
@@ -322,6 +329,11 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
     'The handback reports spending nothing in this head could have made',
     'L4 RUNTIME.md R6',
   ),
+  entry(
+    'SUCCESSOR_OUT_OF_BOUNDS',
+    'The successor the handback proposes falls outside the purpose it was held under',
+    'L4 RUNTIME.md',
+  ),
 ];
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
@@ -379,6 +391,15 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // this head's one-task purpose does not distinguish.
   'DELEGATION_NARROWED',
   'DELEGATION_WIDENS',
+  // `DELEGATION_ALREADY_LIVE` is registered here and unreachable **on this
+  // branch by design**. The name is pinned so that two branches meet: lane
+  // L2-DELEGATION-FIX emits it from `authority/delegations.ts` for a second
+  // mint under a purpose the agent already holds live -- today that violates
+  // `delegations_one_live_per_purpose_idx` and reaches the caller as a 503
+  // (L3-PART-B-2 handback, note 10). Registering the code is this unit's file;
+  // producing it is not. It comes off this list in the commit that lands the
+  // emitter, which is the visible diff this list exists to produce.
+  'DELEGATION_ALREADY_LIVE',
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXCLUDES_OPERATION',
   'DELEGATION_EXPIRED',

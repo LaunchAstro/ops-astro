@@ -44,10 +44,17 @@ import {
   decide,
   type AnyRefusal,
   type DecisionKind,
+  type SuccessorRequest,
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, refusedRetaining, type HandlerOutcome } from './outcome.ts';
+import {
+  applied,
+  refused,
+  refusedRetaining,
+  type HandlerOutcome,
+  type Refused,
+} from './outcome.ts';
 import type { RefusalCode } from './register.ts';
 import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
 
@@ -79,6 +86,21 @@ export interface ProposeFields {
 }
 
 /**
+ * The shape `proposal_versions_purpose_shape` and `delegations_purpose_shape`
+ * both hold (`migrations/0010_runtime_proposals.sql:122`). Kept here as the
+ * same expression so the refusal and the constraint cannot drift apart.
+ */
+const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
+
+/** `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. */
+function isStep(step: unknown): step is { readonly kind: string; readonly payload: object } {
+  if (typeof step !== 'object' || step === null) return false;
+  const candidate = step as { kind?: unknown; payload?: unknown };
+  if (typeof candidate.kind !== 'string' || candidate.kind === '') return false;
+  return typeof candidate.payload === 'object' && candidate.payload !== null;
+}
+
+/**
  * A proposal on the locked task.
  *
  * The expiry is named as a duration and turned into an instant **here**,
@@ -94,6 +116,36 @@ export async function proposeOnTask(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('proposeOnTask: reached without a locked task');
+  // Two shapes the columns constrain, answered here rather than left to the
+  // constraint. `proposal_versions_purpose_shape` and `planned_steps.kind not
+  // null` both fault at the write, and a fault reaches the caller as
+  // `SERVICE_UNAVAILABLE` 503 -- a malformed request shown as a broken server,
+  // which is the difference checklist B7 asks to be real (WEB-PROPOSALS
+  // handback, "Interface gaps for L3" 4). `FIELD_VALUE_INVALID` 422 is already
+  // on this operation's row in `docs/local/API.md`.
+  if (!PURPOSE_SHAPE.test(fields.purpose)) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['purpose'],
+        [
+          'A purpose is lower-case letters, digits and underscores, starting with a letter, up to 63 characters.',
+        ],
+      ),
+      { purpose: fields.purpose },
+    );
+  }
+  if (!isStep(fields.step)) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['step'],
+        ['Send a step as { kind, payload }, with a non-empty kind and an object payload.'],
+      ),
+      { step: fields.step },
+    );
+  }
+
   const seconds = fields.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS;
   if (!Number.isSafeInteger(seconds) || seconds <= 0) {
     return refused(
@@ -343,6 +395,15 @@ export interface HandbackFields {
   readonly report?: Readonly<Record<string, unknown>>;
   /** Declared only so that sending one is a refusal rather than a silence. */
   readonly actualMinor?: number | null;
+  /**
+   * The successor the caller asks for, exactly as the body carried it.
+   *
+   * `unknown` rather than a shape, because this is the boundary that decides
+   * whether the body is a shape at all: an HTTP body is untyped, and a field
+   * typed here would be a field the surface believed without reading. Absent
+   * is the ordinary handback and anything else is read by `readSuccessor`.
+   */
+  readonly successor?: unknown;
 }
 
 const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
@@ -370,6 +431,7 @@ const RETAINING_REFUSALS: ReadonlySet<string> = new Set(['LEASE_NOT_OWNED', 'LEA
 export async function handbackLease(
   tx: TenantQuery,
   fields: HandbackFields,
+  agentActorId?: string,
 ): Promise<HandlerOutcome> {
   if (!OUTCOMES.has(fields.outcome)) {
     return refused(
@@ -402,12 +464,23 @@ export async function handbackLease(
     );
   }
 
+  // The successor, read before the runtime is reached. Every refusal below is
+  // about the body rather than about the lease, so it costs the caller nothing
+  // it holds: the lease is still live and the work can be handed back again.
+  let successor: SuccessorRequest | undefined;
+  if (fields.successor !== undefined && fields.successor !== null) {
+    const read = readSuccessor(fields.successor, agentActorId);
+    if ('refusal' in read) return read;
+    successor = read.successor;
+  }
+
   const result = await handback(tx, {
     leaseId: fields.leaseId,
     fence: fields.fence,
     outcome: fields.outcome as 'completed' | 'failed',
     report: { ...fields.report },
     actualMinor: null,
+    ...(successor === undefined ? {} : { successor }),
   });
   if (!result.ok) {
     // R4, behavioural note 8. On these two paths the runtime has already
@@ -435,5 +508,155 @@ export async function handbackLease(
     // row the handback retained, and a report nobody can name is a report
     // nobody can read.
     reportId: settled.reportId,
+    // The successor's four durable handles, null throughout when none was
+    // asked for. They are in the same detail as the settlement because they
+    // were written in the same transaction: T4 wants "the durable
+    // handback/proposal handles in one response", and a caller that had to go
+    // looking for its own gate could not tell the two halves apart.
+    successorVersionId: settled.successorVersionId,
+    successorGateId: settled.successorGateId,
+    successorRunId: settled.successorRunId,
+    successorStepId: settled.successorStepId,
   });
+}
+
+/**
+ * The fields of a successor the server writes rather than the caller.
+ *
+ * One list and both spellings, for the same reason `SYSTEM_OWNED_FIELDS` keeps
+ * both: a boundary that refused the camel case and accepted the snake case
+ * would be a boundary a caller gets past by changing an underscore.
+ */
+const SUCCESSOR_SERVER_OWNED: readonly string[] = ['proposedByActorId', 'proposed_by_actor_id'];
+
+const SUCCESSOR_ACTOR_FIXES: readonly string[] = [
+  'The successor is recorded as proposed by the agent actor of your session, and that is not a field a body may send: remove it and send the request again.',
+  'A body that could name the proposing actor could record a proposal as somebody else’s, which is the claim this boundary exists to refuse.',
+];
+
+/** A read successor, or the refusal that says why the body is not one. */
+type ReadSuccessor = { readonly successor: SuccessorRequest } | Refused;
+
+function invalidSuccessor(name: string, fix: string, attempted: unknown): Refused {
+  return refused(refuseCommand('FIELD_VALUE_INVALID', [name], [fix]), { [name]: attempted });
+}
+
+function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The caller's half of a successor, checked key by key.
+ *
+ * The half a caller sends is `purpose`, `maximumMinor`, `currency`, `payload`,
+ * `step` and `expiresAt`. The actor is the session's and is added here, after
+ * a body carrying one of its spellings has been refused: `FIELD_NOT_WRITABLE`
+ * naming the key, which is the answer `prepare.ts` gives for every other field
+ * the server owns. Overwriting it quietly would leave a caller believing it
+ * had chosen the proposing actor, and D06 is the rule against exactly that.
+ *
+ * What is *not* checked here is whether the successor fits: the ceiling, the
+ * currency and the lineage's rounds are bounds L4 reads under the handback's
+ * own locks and answers with `SUCCESSOR_OUT_OF_BOUNDS`. A second copy of those
+ * three here would be a second answer to one question.
+ */
+function readSuccessor(raw: unknown, agentActorId: string | undefined): ReadSuccessor {
+  if (!isObject(raw)) {
+    return invalidSuccessor(
+      'successor',
+      'A successor is an object with a purpose, a maximum, a currency, a payload and a step.',
+      raw,
+    );
+  }
+
+  const claimed = SUCCESSOR_SERVER_OWNED.find((field) => field in raw);
+  if (claimed !== undefined) {
+    return refused(
+      refuseCommand('FIELD_NOT_WRITABLE', [`successor.${claimed}`], SUCCESSOR_ACTOR_FIXES),
+      { [`successor.${claimed}`]: raw[claimed] },
+    );
+  }
+
+  // No actor to record it against, so there is no honest proposal to write.
+  // `pickup` and `handback` are the agent's own operations and the entry point
+  // hands the actor in; a call that reached here without one is a call from a
+  // door that does not have one.
+  if (agentActorId === undefined || agentActorId === '') {
+    return refused(
+      refuseCommand(
+        'AUTH_NO_AGENT_IDENTITY',
+        ['successor'],
+        [
+          'A successor is proposed by the agent that did the work, so it is asked for on the agent entry point.',
+          'Present the agent credential and hand the lease back there.',
+        ],
+      ),
+    );
+  }
+
+  const purpose = raw['purpose'];
+  if (typeof purpose !== 'string' || purpose === '') {
+    return invalidSuccessor(
+      'successor.purpose',
+      'Name the purpose the successor works to.',
+      purpose,
+    );
+  }
+  const maximumMinor = raw['maximumMinor'];
+  if (typeof maximumMinor !== 'number' || !Number.isSafeInteger(maximumMinor)) {
+    return invalidSuccessor(
+      'successor.maximumMinor',
+      'Name the ceiling as a whole number of minor units.',
+      maximumMinor,
+    );
+  }
+  const currency = raw['currency'];
+  if (typeof currency !== 'string' || currency === '') {
+    return invalidSuccessor(
+      'successor.currency',
+      'Name the currency the envelope holds, as a three-letter code.',
+      currency,
+    );
+  }
+  const payload = raw['payload'];
+  if (!isObject(payload)) {
+    return invalidSuccessor('successor.payload', 'The payload is an object.', payload);
+  }
+  const step = raw['step'];
+  if (!isObject(step) || typeof step['kind'] !== 'string' || !isObject(step['payload'])) {
+    return invalidSuccessor(
+      'successor.step',
+      'A step is an object with a kind and a payload object.',
+      step,
+    );
+  }
+
+  // Absent is the server's own week ahead, as `proposeOnTask` computes one. A
+  // named instant is read here and refused when it is not one or has already
+  // passed: a gate that opened in the past is a gate nobody can decide.
+  const named = raw['expiresAt'];
+  let expiresAt = new Date(Date.now() + DEFAULT_EXPIRY_SECONDS * 1000);
+  if (named !== undefined && named !== null) {
+    const parsed = typeof named === 'string' ? new Date(named) : new Date(Number.NaN);
+    if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+      return invalidSuccessor(
+        'successor.expiresAt',
+        'Name an ISO-8601 instant in the future, or leave it out for a week.',
+        named,
+      );
+    }
+    expiresAt = parsed;
+  }
+
+  return {
+    successor: {
+      proposedByActorId: agentActorId,
+      purpose,
+      maximumMinor,
+      currency,
+      payload: { ...payload },
+      step: { kind: step['kind'], payload: { ...(step['payload'] as Record<string, unknown>) } },
+      expiresAt,
+    },
+  };
 }

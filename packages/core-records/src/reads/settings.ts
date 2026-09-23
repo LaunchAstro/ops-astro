@@ -9,12 +9,12 @@
 // migration and two commands could see it, is a business fact the business
 // cannot check.
 //
-// **There is no revision.** `business_settings` carries `updated_at` and
-// `updated_by_actor_id` and no revision column, so this projection has nothing
-// to be stale against and carries no `revision` field for a caller to send
-// back. That is a schema gap rather than a decision, recorded as one: the
-// column is queued for L4-RUNTIME-FIX, and inventing a number here would let a
-// client believe in an optimistic-concurrency check the server cannot make.
+// **The revision is here, and it is the number a write sends back.** 0020 gave
+// `business_settings` a `revision` column and `records/business-settings.ts`
+// compares it under a row lock, so a caller reads a setting, writes against
+// the revision it read, and is refused rather than merged when the row has
+// moved on. A projection that dropped the number would have left the client no
+// way to name what it was replacing, which is the whole of the check.
 //
 // **`writeMode`, `label`, `visibilityClass` and the row id are not here.**
 // The contract asks for the value and its provenance; the classification is
@@ -40,6 +40,12 @@ export interface SettingView {
   readonly updatedAt: string;
   /** Null until a command has written it. Nobody owns a shipped default. */
   readonly updatedByActorId: string | null;
+  /**
+   * What a write names to say which value it is replacing. Starts at 1, and a
+   * command that sends a number the row has moved past is refused
+   * `VERSION_STALE` rather than having its value merged over the winner's.
+   */
+  readonly revision: number;
 }
 
 /**
@@ -67,5 +73,6 @@ export async function readSettings(tx: TenantQuery): Promise<readonly SettingVie
     valueType: setting.valueType,
     updatedAt: setting.updatedAt.toISOString(),
     updatedByActorId: authorOf.get(setting.key) ?? null,
+    revision: setting.revision,
   }));
 }

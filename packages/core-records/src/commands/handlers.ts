@@ -19,6 +19,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate, proposeOnTask } from './tasks-runtime.ts';
+import { expectedRevisionOf } from './prepare.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused } from './outcome.ts';
 
@@ -64,9 +65,19 @@ export async function handleCommand(
     case 'task.comment':
       return await commentOnTask(tx, context, request.body, request.audience, request.commentType);
 
+    // The revision travels with the rest of the envelope rather than as a
+    // field of the settings payload: `expectedRevisionOf` reads it the same
+    // way the targeted commands' check does, so a settings body naming one is
+    // answered instead of silently dropped.
     case 'settings.set_four_eyes_threshold':
     case 'settings.set_client_sign_off':
-      return await setBusinessSetting(tx, context, request.command, request.value);
+      return await setBusinessSetting(
+        tx,
+        context,
+        request.command,
+        request.value,
+        expectedRevisionOf(request),
+      );
 
     case 'task.propose':
       return await proposeOnTask(tx, context, request);

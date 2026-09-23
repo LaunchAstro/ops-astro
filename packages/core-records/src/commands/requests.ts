@@ -104,6 +104,30 @@ export type CommandRequest =
        * put here; `null` and absent are the same thing.
        */
       readonly actualMinor?: number | null;
+      /**
+       * The bounded successor this handback asks for, or nothing.
+       *
+       * Absent is the ordinary handback: it settles and proposes nothing.
+       * Present asks for the successor proposal and its pending gate on the
+       * same lineage, written in the settlement's own transaction.
+       *
+       * `proposedByActorId` is absent for the same reason `actorId` is absent
+       * from the envelope. L4 records the version as coming from whoever that
+       * field names, so a body that could fill it would choose whose authority
+       * the successor is recorded under; it is the agent actor of the session
+       * and the surface refuses a body carrying it rather than overwriting it
+       * silently. The four durable handles come back in the command's detail.
+       */
+      readonly successor?: {
+        /** The slug shape `delegations.purpose` carries, as `task.propose` takes it. */
+        readonly purpose: string;
+        readonly maximumMinor: number;
+        readonly currency: string;
+        readonly payload: FieldValues;
+        readonly step: { readonly kind: string; readonly payload: FieldValues };
+        /** An ISO-8601 instant in the future. Absent is the server's own week. */
+        readonly expiresAt?: string;
+      };
     } & Envelope)
   // The owning operations. Each writes the fields its name owns on the field
   // definition, so the payload is the values and nothing else.
