@@ -3,6 +3,13 @@
 // I14: the tenant barrier has two halves, and this is the proof that each one
 // holds the door on its own.
 //
+// **Supplementary evidence, not the I14 proof.** The statement below is a copy
+// of `lockTask`'s, so a mutation here is a mutation of the copy. The ledger's
+// proof runs the production lookup itself under each mutation, and lives in
+// `tests/tenancy/production-lookup.test.ts`. This file stays for what it shows
+// that one does not: SQLSTATEs recorded per reach, and the catalogue flags
+// before, during and after.
+//
 // Every task command reaches its record through one statement -- `lockTask` in
 // `packages/core-records/src/commands/prepare.ts`, which selects `from records
 // where business_id = $1 and record_type_id = $2 and id = $3 for update`. Two

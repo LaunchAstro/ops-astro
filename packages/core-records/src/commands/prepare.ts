@@ -317,6 +317,38 @@ export async function prepareCommand(
 }
 
 /**
+ * The tenant half of `lockTask`'s filter, and the one seam I14 mutates.
+ *
+ * I14 has to show that the proof turns red when this predicate is removed from
+ * the lookup the product actually runs, and a copy of the statement proves
+ * that about the copy. So the predicate is a value the statement is built
+ * from, and `mutateTaskLookupPredicate` swaps it for one that binds the same
+ * parameter and filters nothing: the statement, its bind list and every caller
+ * stay as they are, and only the tenant condition goes. It refuses outside a
+ * test run, so no installation can reach it, and it returns the restore.
+ */
+const SHIPPED_TENANT_PREDICATE = 'business_id = $1';
+export const REMOVED_TENANT_PREDICATE = '$1::uuid is not null';
+let tenantPredicate = SHIPPED_TENANT_PREDICATE;
+
+export function mutateTaskLookupPredicate(predicate: string): () => void {
+  if (process.env['VITEST'] === undefined) {
+    throw new Error(
+      'mutateTaskLookupPredicate: a mutation seam for the I14 proof, and nothing else',
+    );
+  }
+  tenantPredicate = predicate;
+  return () => {
+    tenantPredicate = SHIPPED_TENANT_PREDICATE;
+  };
+}
+
+/** The predicate `lockTask` is built with right now, so a test can assert it put it back. */
+export function taskLookupPredicate(): string {
+  return tenantPredicate;
+}
+
+/**
  * The target, held for the rest of the transaction.
  *
  * `for update` is the whole of the lost-update fix. A second caller presenting
@@ -331,7 +363,7 @@ export async function prepareCommand(
  * nothing, and the second caller gets `NOT_FOUND` — which is the same answer
  * it would have got a moment later anyway.
  */
-async function lockTask(
+export async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
@@ -343,7 +375,7 @@ async function lockTask(
   const rows = await tx.query<Omit<TaskRow, 'revision'> & { readonly revision: string }>(
     `select id, revision::text as revision, data, deleted_at, trash_batch_id
        from records
-      where business_id = $1 and record_type_id = $2 and id = $3
+      where ${tenantPredicate} and record_type_id = $2 and id = $3
         for update`,
     [tx.businessId, taskTypeId, recordId],
   );
