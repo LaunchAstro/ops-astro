@@ -30,7 +30,8 @@
     "Not named: tests/api/server-onerror.test.ts and tests/cli/mounted-cli.test.ts skip every case unless SURFACE_API_PORT names a spare loopback port for the real server they spawn, and the runner refuses a skip, so each runs as its own step with the port set.",
     "G3-CASES adds grant-chain (a two-level manager chain through the grant writer: GRANT_WIDENS, GRANT_DEEPENS, and grant.revoke on the root biting the grandchild's next call beside a live sibling chain), agent-bare-handback-replay (a credential-free task.handback replay refused DELEGATION_EXCLUDES_OPERATION with nothing of the receipt and no state change) and decision-never-delegated (delegations_never_decide and the not-null decided_by_person_id, as the application role).",
     "L3-RETENTION adds purge-retention (task.purge reads each business's retention_window_days inside its own transaction: two businesses with different windows and trash an hour either side, evidence untouched, a caller olderThanDays of any value refused COMMAND_BODY_INVALID with no mutation and one refused audit row, replay of an applied purge, a window of zero purging one business's trash only).",
-    "ID-OPERANDS adds id-operand-shape (a malformed id, \"\" and \"not-a-uuid\", against a fabricated uuid for every id operand on both prefixes: agent task.pickup, task.heartbeat and task.handback answer the fabricated refusal byte for byte instead of the uuid fault, person task.pickup, task.heartbeat and task.handback in the operation's own code, one refused audit row and no state change for each form, a numeric agent reservationId, and a valid pickup as the positive control)."
+    "ID-OPERANDS adds id-operand-shape (a malformed id, \"\" and \"not-a-uuid\", against a fabricated uuid for every id operand on both prefixes: agent task.pickup, task.heartbeat and task.handback answer the fabricated refusal byte for byte instead of the uuid fault, person task.pickup, task.heartbeat and task.handback in the operation's own code, one refused audit row and no state change for each form, a numeric agent reservationId, and a valid pickup as the positive control).",
+    "AGENT-BOUNDARY adds agent-capabilities-intersection (agent session.capabilities reports the current intersection of purpose and the delegating person's effective grants: write absent once its grant expires, DELEGATION_NARROWED when nothing is held, and a replay under another delegation's credential never releases the first scope) and historical-handback-intake (a superseded or expired agent's new handback keeps one retained handback_reports row and one refused audit row and still answers DELEGATION_NOT_LIVE; wrong lease, fence or credential retain nothing; settled replay stays the replay), and names the existing capabilities-contract and agent-system-fields suites."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -112,7 +113,11 @@
     "tests/api/agent-bare-handback-replay.test.ts",
     "tests/db/decision-never-delegated.test.ts",
     "tests/commands/purge-retention.test.ts",
-    "tests/api/id-operand-shape.test.ts"
+    "tests/api/id-operand-shape.test.ts",
+    "tests/commands/agent-capabilities-intersection.test.ts",
+    "tests/runtime/historical-handback-intake.test.ts",
+    "tests/commands/capabilities-contract.test.ts",
+    "tests/commands/agent-system-fields.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
