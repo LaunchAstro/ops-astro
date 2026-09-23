@@ -207,6 +207,15 @@ What this screen does not read back, and cannot:
 - Rejecting sends `decision: 'reject'` through the same control and the same
   exact-version comparison. The change-round behaviour behind a rejection is the
   runtime's and this screen does not model it.
+- **A form-driven `VERSION_SUPERSEDED` is unreachable**, and this is the
+  contract rather than a gap in the screen. The form sends no `lineageId`, so a
+  second proposal opens a new lineage instead of adding a version to the live one
+  (`core-runtime/src/propose.ts`). `decide` checks the gate's state before the
+  version it carries, so when a page has gone stale its Approve lands on a
+  superseded gate and the honest answer is `GATE_ALREADY_DECIDED`. The screen
+  quotes whichever it gets and rereads either way; `cases-proposals.mjs` proves
+  `VERSION_SUPERSEDED` through the client, where a `lineageId` can be named, and
+  the screen's own path separately.
 - The agent's own path — pickup, handback, the queue — has no surface here. The
   records are stored and projected; the web does not draw them yet.
 
@@ -305,25 +314,27 @@ mounted page, and B6 then restarts the API and stops and starts the
 `ops-astro-local-pg` container, keeping the `ops-astro-local-pgdata` volume
 (`cases-b6-b7.mjs`). The settings cases issue a live `settings:manage` grant of
 their own through `issueGrant`, revoke it in a `finally` and put back the
-threshold they wrote (`cases-settings.mjs`), and N6 revokes a grant through
-`revokeGrant` for real. Each of those restores what it changed, but it changes
+threshold they wrote (`cases-settings.mjs`), the proposal cases do the same with
+`task:decide` because no seeded role holds it (`cases-proposals.mjs`), and N6
+revokes a grant through `revokeGrant` for real. Each of those restores what it changed, but it changes
 it, so run this when you want the table and not on every edit.
 
 The run is made of one module per case group, so a group can be read or
 changed without reading the rest:
 
-| File                     | Cases                                                       |
-| ------------------------ | ----------------------------------------------------------- |
-| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table |
-| `cases-b.mjs`            | B1–B5, the journey and the reload                           |
-| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision        |
-| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`) |
-| `cases-n1-n2.mjs`        | another business, and a member with no grant                |
-| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                 |
-| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail       |
-| `cases-b6-b7.mjs`        | the API down, and the process and database restart          |
-| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once  |
-| `cases-settings.mjs`     | S1 an admin sets the threshold, S2 a member is refused      |
+| File                     | Cases                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table                                     |
+| `cases-b.mjs`            | B1–B5, the journey and the reload                                                               |
+| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision                                            |
+| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                     |
+| `cases-n1-n2.mjs`        | another business, and a member with no grant                                                    |
+| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                                                     |
+| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail                                           |
+| `cases-b6-b7.mjs`        | the API down, and the process and database restart                                              |
+| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                      |
+| `cases-settings.mjs`     | S1 an admin sets the threshold, S2 a member is refused                                          |
+| `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused |
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
