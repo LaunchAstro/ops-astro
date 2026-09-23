@@ -106,7 +106,7 @@ async function lifecycleCases(run) {
   const { page, state } = run;
   const lifecycle = async ([label, button, shotName]) => {
     const was = await revisionOn(page);
-    await page.getByRole('button', { name: button, exact: true }).click();
+    await page.click(`button[data-lifecycle="${button}"]`);
     await pastRevision(page, was);
     const drawn = await page
       .locator('.tpr__crumb .state, .tpr__crumb [class*="state"]')
@@ -116,7 +116,7 @@ async function lifecycleCases(run) {
     const sub = await page.locator('.card__sub').first().innerText();
     record({
       case: label,
-      action: `clicked ${button} on /task/${state.taskKey}`,
+      action: `clicked button[data-lifecycle="${button}"] on /task/${state.taskKey}`,
       observed: `revision ${was} -> ${await revisionOn(page)}, ${sub.replaceAll(/\s+/gu, ' ')} ${drawn}`,
       ok: true,
       shot: await shot(page, shotName),
@@ -125,9 +125,9 @@ async function lifecycleCases(run) {
   };
   const subs = await inOrder(
     [
-      ['B3 start', 'Start', 'B3-started'],
-      ['B3 complete', 'Complete', 'B3-completed'],
-      ['B3 reopen', 'Reopen', 'B3-reopened'],
+      ['B3 start', 'start', 'B3-started'],
+      ['B3 complete', 'complete', 'B3-completed'],
+      ['B3 reopen', 'reopen', 'B3-reopened'],
     ],
     lifecycle,
   );
@@ -156,7 +156,7 @@ async function contentEdit(run) {
   const before4 = await revisionOn(page);
   await page.fill('#task-title', state.edited);
   await page.fill('#task-due', state.due);
-  await page.getByRole('button', { name: 'Save changes' }).click();
+  await page.click('form.taskform button[type="submit"]');
   await pastRevision(page, before4);
   record({
     case: 'B4 ordinary content edit',

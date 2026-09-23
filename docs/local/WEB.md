@@ -106,7 +106,7 @@ changed without reading the rest:
 | `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`) |
 | `cases-n1-n2.mjs`        | another business, and a member with no grant                |
 | `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                 |
-| `cases-task-drafts.mjs`  | D1, unsaved details across assign, state and Refresh        |
+| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail       |
 | `cases-b6-b7.mjs`        | the API down, and the process and database restart          |
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
@@ -114,7 +114,19 @@ changed without reading the rest:
 
 A case written against behaviour a sibling lane is still landing is recorded
 `pending <LANE>` rather than pass or fail: it ran, it says what it saw, and it
-does not fail the command.
+does not fail the command. Nothing is pending on this head.
+
+### Cases address controls by attribute, not by text
+
+Two buttons on `/task/:key` read **Save changes**: the edit form's
+`form.taskform button[type="submit"]`, and the unsaved-changes bar's
+`button[data-draft-resolve="save"]` (`apps/web/src/screens/TaskDetail.tsx:485`
+and `:358`). A case that asks for the button by its name matches both and
+fails on the ambiguity, so B4 presses the form's submit — the honest control
+for a case that edits the fields and then saves them. The three state buttons
+are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
+the same reason: an attribute the screen owns cannot be made ambiguous by a
+second control that happens to share a word.
 
 ## Known gaps against the pinned mockup
 
