@@ -331,9 +331,11 @@ defaults to `/usr/local/bin/docker`, which is where a machine that does not put
 it on the agent's `PATH` still has it.
 
 It is evidence, not a check, and it is not cheap. B7 kills the API under a
-mounted page, and B6 then restarts the API and stops and starts the
-`ops-astro-local-pg` container, keeping the `ops-astro-local-pgdata` volume
-(`cases-b6-b7.mjs`). The settings cases issue a live `settings:manage` grant of
+mounted page, and B6 then restarts the API and stops and starts a Postgres
+container, keeping its volume (`cases-b6-b7.mjs`). Before it stops anything B6
+makes two tasks of its own, one with a pending gate and one approved and picked
+up by the alpha agent so it has a lease and an attempt, and afterwards the alpha
+agent hands that lease back to the restarted API. The settings cases issue a live `settings:manage` grant of
 their own through `issueGrant`, revoke it in a `finally` and put back the
 threshold they wrote (`cases-settings.mjs`), the proposal cases do the same with
 `task:decide` so their result does not depend on the seed (`cases-proposals.mjs`), and N6
@@ -352,10 +354,43 @@ changed without reading the rest:
 | `cases-n1-n2.mjs`        | another business, and a member with no grant                                                                                                               |
 | `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                                                                                                                |
 | `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
-| `cases-b6-b7.mjs`        | the API down, and the process and database restart                                                                                                         |
+| `cases-b6-b7.mjs`        | the API down, the process and database restart, and a pending gate, a lease and an attempt across it                                                       |
 | `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
 | `cases-settings.mjs`     | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
 | `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
+
+### What B6 restarts
+
+B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata` volume by
+default, which is the registered run. A stack of your own names its pair, and
+B6 restarts the API on `API_URL`'s port:
+
+```
+B6_PG_CONTAINER=ops-astro-webrs-pg B6_PG_VOLUME=ops-astro-webrs-pgdata \
+WEB_URL=http://127.0.0.1:5197 API_URL=http://127.0.0.1:8797 \
+  node tests/browser/slice-acceptance.mjs
+```
+
+The live pair goes through `scripts/local/db-down.sh` and `db-up.sh`, as it
+always has. A named container is stopped and started with `docker` directly,
+because those two scripts only know the live name. `restartTargetOf` in
+`harness.mjs` refuses `ops-astro-datafix-pg`, its volume, any `supabase_*` name,
+and a container named without its volume. The refusal happens when the module
+loads, so the run exits before any case has run.
+
+B6 records four rows. The first is the task from B1 to B5, read again after the
+restart. The second is the pending gate: lineage, version and gate ids, the gate
+still `pending`, not expired and with no decision. The third is the reservation,
+lease and attempt. The screen and `task.read` must each give the same answer as
+before the restart. The fourth is the hand-back. A run that skipped it would
+leave the agent's delegation live, and the next run's pickup would be refused
+`DELEGATION_ALREADY_LIVE`. The screenshots are `B6-runtime-before-*.png` and
+`B6-runtime-after-*.png`.
+
+`cases-b.mjs` assigns the task to the option labelled `Noah Alpha`. The seed
+names noah's person from `.local/synthetic-users.json`, which says `Noah Patel`,
+so a freshly seeded database has no such option and B1 to B4 fail there. The
+live database still has the older name.
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).

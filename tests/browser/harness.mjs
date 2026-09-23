@@ -38,6 +38,49 @@ export const WEB = process.env.WEB_URL ?? WEB_DEFAULT;
 export const API = process.env.API_URL ?? 'http://127.0.0.1:8790';
 export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 
+// **What B6 stops.** Case B6 stops a Postgres container and the API process and
+// brings both back, so the thing it stops is configuration, not a constant: a
+// lane with a stack of its own names its container and volume, and the
+// registered run, which names neither, gets today's live pair unchanged.
+//
+// Two names are refused before anything runs. The datafix database is another
+// lane's evidence, and a `supabase_*` container is the Hub's; stopping either
+// from a browser checklist is not a test of the slice. A container named
+// without its volume is refused too, because B6 reports the volume it kept, and
+// quietly reporting the live one beside someone else's container would be a
+// false line in the results table.
+const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata' };
+const DENIED_PG = new Set(['ops-astro-datafix-pg', 'ops-astro-datafix-pgdata']);
+/** Docker's own shape for container and volume names. */
+const DOCKER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
+
+/**
+ * The Postgres container and volume B6 restarts, and the port the API it
+ * restarts listens on, which is `API_URL`'s. Throws on a refused name.
+ */
+export function restartTargetOf(env, apiUrl = API) {
+  const named = env.B6_PG_CONTAINER;
+  const container = named ?? LIVE_PG.container;
+  const volume = env.B6_PG_VOLUME ?? (named === undefined ? LIVE_PG.volume : undefined);
+  if (volume === undefined) {
+    throw new Error(`B6 restart target: B6_PG_CONTAINER=${container} names no B6_PG_VOLUME`);
+  }
+  for (const name of [container, volume]) {
+    // One Docker name and nothing else. An empty value, or two names run
+    // together by a shell that did not split them, is not a name the deny list
+    // can be trusted to have checked.
+    if (!DOCKER_NAME.test(name)) {
+      throw new Error(`B6 restart target: ${JSON.stringify(name)} is not one Docker name`);
+    }
+    if (DENIED_PG.has(name) || name.startsWith('supabase_')) {
+      throw new Error(`B6 restart target: refusing ${name}; B6 never stops it`);
+    }
+  }
+  const url = new URL(apiUrl);
+  const apiPort = url.port === '' ? (url.protocol === 'https:' ? '443' : '80') : url.port;
+  return { container, volume, apiPort, live: container === LIVE_PG.container };
+}
+
 // The application modules the page imports for the cases that must run through
 // the app's own code. They are served by Vite to the browser, not resolvable
 // from here, so they travel into `page.evaluate` as data rather than standing in
