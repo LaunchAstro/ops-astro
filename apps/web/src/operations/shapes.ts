@@ -67,6 +67,134 @@ export interface TaskComment {
   readonly source?: string;
 }
 
+/**
+ * The evidence pack a proposal version was rendered with, as it was stored.
+ *
+ * `body` is the renderer's output and this build never re-renders it. Evidence
+ * that changed between the decision and the display is the one thing a gate
+ * cannot survive, so what arrives here is what was on the record when the
+ * decision was signed, and the screen prints it rather than formatting it.
+ */
+export interface ProposalEvidence {
+  readonly id: string;
+  readonly renderer: string;
+  readonly digest: string;
+  readonly body: unknown;
+}
+
+/**
+ * The approval gate on a version.
+ *
+ * **`expired` is the server's answer.** The `expiresAt` instant is here to be
+ * read, not to be compared: a browser with a skewed clock that decided for
+ * itself whether a gate was still open would either offer a decision the server
+ * will refuse or hide one it would have accepted. The screen closes its controls
+ * on this field and on `state`, never on a clock of its own.
+ */
+export interface ProposalGate {
+  readonly id: string;
+  readonly state: string;
+  readonly round: number;
+  readonly expiresAt: string | null;
+  readonly expired: boolean;
+  readonly payloadDigest?: string;
+}
+
+/**
+ * One version of a proposal. `versionId` is what `task.decide` compares.
+ *
+ * The version carries its own digest and its own evidence, and it arrives in
+ * the same answer as the gate whose decision would be about it. That is why the
+ * projection is on `task.read` rather than behind a read of its own: a screen
+ * that fetched the version separately from the evidence could offer a decision
+ * on something it never showed anybody.
+ */
+export interface ProposalVersion {
+  readonly versionId: string;
+  readonly version: number;
+  readonly purpose: string;
+  readonly maximumMinor: number;
+  readonly currency: string;
+  readonly payloadDigest: string;
+  readonly payload?: unknown;
+  readonly supersededAt: string | null;
+  readonly runId: string | null;
+  readonly evidence: ProposalEvidence | null;
+  readonly gate: ProposalGate | null;
+}
+
+/**
+ * One link of the decision chain, exactly as it is stored.
+ *
+ * `hash` and `prevHash` are the stored values and nothing recomputes them on
+ * the way here. A projection that handed back a freshly computed hash as though
+ * it were the stored one would make a tampered row invisible, so a reader who
+ * wants to check the chain has the material to check rather than a summary to
+ * trust.
+ */
+export interface ProposalDecision {
+  readonly id?: string;
+  readonly seq: number;
+  readonly decision: string;
+  readonly round: number;
+  readonly decidedByPersonId: string | null;
+  readonly decidedAt: string;
+  readonly signingKeyId?: string;
+  readonly signature?: string;
+  readonly prevHash?: string | null;
+  readonly hash?: string;
+}
+
+/** The lease an agent holds on a reservation while it works. */
+export interface ProposalLease {
+  readonly id: string;
+  readonly fence: number;
+  readonly state: string;
+  readonly expiresAt: string | null;
+  readonly holderActorId: string | null;
+}
+
+/** What the agent's attempt did, as the runtime recorded it. */
+export interface ProposalAttempt {
+  readonly id: string;
+  readonly state: string;
+  readonly dispatchMarker?: string | null;
+  readonly observed?: unknown;
+}
+
+/**
+ * The money an approval set aside, and who is holding it.
+ *
+ * `heldMinor` is what the approval reserved and `actualMinor` is what the work
+ * reported spending; they are different numbers and the screen draws both,
+ * because a reservation that held more than it spent is the ordinary case and a
+ * screen showing one number cannot say which one it is.
+ */
+export interface ProposalReservation {
+  readonly id: string;
+  readonly state: string;
+  readonly heldMinor: number | null;
+  readonly actualMinor: number | null;
+  readonly classifiedCause: string | null;
+  readonly leaseId?: string | null;
+  readonly lease: ProposalLease | null;
+  readonly attempt: ProposalAttempt | null;
+}
+
+/**
+ * One proposal lineage on a task: its versions, its decisions and its money.
+ *
+ * Versions arrive newest first and the head is the live one. The decisions are
+ * the chain in the order it was written.
+ */
+export interface ProposalLineage {
+  readonly lineageId: string;
+  readonly state: string;
+  readonly versions: readonly ProposalVersion[];
+  readonly decisions: readonly ProposalDecision[];
+  readonly reservations: readonly ProposalReservation[];
+}
+
 export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
   readonly history: readonly TaskHistoryEntry[];
@@ -76,6 +204,24 @@ export interface TaskDetail extends TaskSummary {
    * the fields the catalogue marks `shared`.
    */
   readonly comments: readonly TaskComment[];
+  /**
+   * Every proposal on the task, newest lineage first, as `task.read` carried
+   * them.
+   *
+   * It rides on the task detail rather than on a read of its own so that the
+   * `versionId` a decision control carries and the evidence a person read come
+   * out of one answer (`docs/local/API.md`, "Proposal projection"). The screen
+   * draws this and nothing else: it does not re-render the evidence, recompute a
+   * hash or decide for itself whether a gate has expired.
+   *
+   * **Optional, because an answer that omits it is a real answer.** An API
+   * without the projection sends a task with no `proposals` key at all, and that
+   * is not the same fact as a task with no proposals on it. The screen tells the
+   * two apart: an empty list says nobody has proposed anything, and an absent
+   * key says this build cannot read them. Defaulting the absent key to an empty
+   * list would print "no proposals" over a projection that was never consulted.
+   */
+  readonly proposals?: readonly ProposalLineage[];
 }
 
 export interface TaskReadResult {

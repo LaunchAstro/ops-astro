@@ -16,9 +16,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const root = fileURLToPath(new URL('../..', import.meta.url));
-export const SHOTS =
-  process.env.SHOT_DIR ??
-  `${root}../ops-astro-roadmap/.local/ops-astro-build-run-2026-09-23/parent-observations/local-slice`;
+// Screenshots and the results table default to a gitignored directory inside the
+// repository, so anyone who clones it can run the checklist and read its
+// evidence without first recreating someone else's local folder. `SHOT_DIR`
+// still wins, which is how a run collects its evidence somewhere else.
+export const SHOTS = process.env.SHOT_DIR ?? `${root}.local/evidence/browser`;
 export const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
 export const API = process.env.API_URL ?? 'http://127.0.0.1:8790';
 export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';

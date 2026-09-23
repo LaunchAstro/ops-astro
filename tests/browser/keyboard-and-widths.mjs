@@ -15,15 +15,18 @@
 //
 // Run: node tests/browser/keyboard-and-widths.mjs
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
-const SHOTS =
-  process.env.SHOT_DIR ??
-  `${root}../ops-astro-roadmap/.local/ops-astro-build-run-2026-09-23/parent-observations/local-slice`;
+// The same gitignored directory inside the repository the rest of the browser
+// evidence goes to, so this measurement travels with a clone rather than with
+// one machine's local folder. `SHOT_DIR` still wins, and the directory is made
+// here because this module runs on its own and cannot rely on the harness.
+const SHOTS = process.env.SHOT_DIR ?? `${root}.local/evidence/browser`;
+mkdirSync(SHOTS, { recursive: true });
 
 const users = JSON.parse(readFileSync(`${root}.local/synthetic-users.json`, 'utf8'));
 const mia = users.find((user) => user.email === 'mia@alpha.local');

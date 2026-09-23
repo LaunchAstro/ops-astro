@@ -127,3 +127,23 @@
     flex: 1 1 auto;
   }
 }
+
+/* The proposal section prints stored values it did not choose the length of: an
+   evidence pack, a payload, a 64-character hash, a digest. Measured at 390 the
+   page and the section both scrolled sideways and the evidence body was wider
+   than the viewport, because a `pre` does not wrap and a hash has nowhere to
+   break. Wrapping is the honest fix: the value stays exactly what was stored
+   and the reader can still see all of it. Breaking anywhere is confined to
+   these blocks, where the content is a digest rather than prose. */
+[data-evidence='body'],
+[data-version='payload'] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+[data-decision='hash'],
+[data-version='digest'],
+[data-evidence='digest'] {
+  overflow-wrap: anywhere;
+}
