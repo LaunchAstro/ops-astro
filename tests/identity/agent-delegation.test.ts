@@ -273,6 +273,93 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
     });
   });
 
+  // The duplicate a retry makes. `delegations_one_live_per_purpose_idx`
+  // (migration 0008:195) is unique on `(business_id, agent_actor_id, purpose)`
+  // where `revoked_at is null and settled_at is null` -- so the key is the
+  // agent and the purpose word, and **expiry is not in the predicate**. Two
+  // consequences the cases below assert directly: a second mint under a
+  // purpose the agent still holds is a duplicate even for a different task,
+  // and a delegation nobody settled still occupies the slot after it expires.
+  describe('a second live delegation for one purpose', () => {
+    const mintFor = async (
+      purpose: string,
+      scopeId: string,
+      expiresAt = new Date(Date.now() + 3_600_000),
+    ) =>
+      await db.app.withBusiness(business, async (tx) =>
+        mintDelegation(tx, {
+          agentActorId: agentActor,
+          delegatePersonId: adaPerson,
+          mintedByActorId: adaActor,
+          purpose,
+          collections: [COLLECTION],
+          actions: ['read'],
+          purposeScope: { kind: 'record', id: scopeId },
+          expiresAt,
+        }),
+      );
+
+    const liveRows = async (purpose: string): Promise<number> =>
+      await db.app.withBusiness(business, async (tx) => {
+        const rows = await tx.query<{ readonly count: string }>(
+          `select count(*)::text as count from public.delegations
+            where business_id = $1 and agent_actor_id = $2 and purpose = $3
+              and revoked_at is null and settled_at is null`,
+          [business, agentActor, purpose],
+        );
+        return Number(rows[0]?.count ?? '0');
+      });
+
+    it('refuses the duplicate rather than reaching the unique index', async () => {
+      const first = await mintFor('dup_same_task', taskA);
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      const second = await mintFor('dup_same_task', taskA);
+      expect(second.ok).toBe(false);
+      if (second.ok) return;
+      expect(second.refusal.code).toBe('DELEGATION_ALREADY_LIVE');
+      expect(second.refusal.fix.length).toBeGreaterThan(0);
+      // Refused, not faulted: nothing was inserted and the first hold stands.
+      expect(await liveRows('dup_same_task')).toBe(1);
+      const stillResolves = await db.app.withBusiness(business, async (tx) =>
+        resolveDelegation(tx, agentActor, first.value.credential),
+      );
+      expect(stillResolves.ok).toBe(true);
+    });
+
+    it('is keyed on the purpose word, so a sibling task is the same duplicate', async () => {
+      const first = await mintFor('dup_other_task', taskA);
+      expect(first.ok).toBe(true);
+      const second = await mintFor('dup_other_task', taskB);
+      expect(second.ok).toBe(false);
+      if (second.ok) return;
+      expect(second.refusal.code).toBe('DELEGATION_ALREADY_LIVE');
+      expect(await liveRows('dup_other_task')).toBe(1);
+    });
+
+    it('settles a spent delegation and mints again once it has expired', async () => {
+      const first = await mintFor('dup_expiring', taskA, new Date(Date.now() + 1_000));
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      await new Promise((resolve) => setTimeout(resolve, 1_400));
+
+      const again = await mintFor('dup_expiring', taskA);
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      expect(again.value.delegation.id).not.toBe(first.value.delegation.id);
+      // The spent one was settled in the same transaction, so the index holds
+      // one row and the old credential answers on its own ground.
+      expect(await liveRows('dup_expiring')).toBe(1);
+      const old = await db.app.withBusiness(business, async (tx) =>
+        resolveDelegation(tx, agentActor, first.value.credential),
+      );
+      expect(old.ok).toBe(false);
+      if (old.ok) return;
+      expect(old.refusal.code).toBe('DELEGATION_NOT_LIVE');
+    }, 20_000);
+  });
+
   // Finding 4: the purpose is a ceiling on *what*, not only on collections and
   // actions. R1's grant is business-wide, so without the stored purpose scope a
   // call on a sibling task reaches that same grant and passes exactly as a call

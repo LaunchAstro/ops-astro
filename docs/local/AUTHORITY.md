@@ -50,7 +50,21 @@ So the order of its checks is load-bearing:
    the stored scope a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
    request under a delegation is refused here too.
-3. `DELEGATION_NARROWED` — the purpose reaches the call and the person's live
+3. `DELEGATION_ALREADY_LIVE` — the agent already holds a live delegation for
+   this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
+   on `(business_id, agent_actor_id, purpose)` where `revoked_at is null and
+settled_at is null`, so the key is the purpose _word_, not the purpose
+   scope: a second mint for a sibling task under the same purpose is the same
+   duplicate, and another agent minting for the same work is not one. Expiry is
+   not in the predicate, so a delegation nobody settled goes on holding the
+   slot after it stops permitting anything; `mintDelegation` settles a spent
+   row in the serving transaction rather than refusing on it, which is what
+   makes RUNTIME.md's R5 recovery reachable. The refusal exists because the
+   index alone delivered the decision as a 23505 — a 500 in process, a 503
+   `SERVICE_UNAVAILABLE` from the deployment, and no audit row for the attempt,
+   the serving transaction having aborted.
+
+4. `DELEGATION_NARROWED` — the purpose reaches the call and the person's live
    grants no longer cover it. **I08**, and by name: substituting
    `SCOPE_NOT_GRANTED` would say the agent was never authorised, when what
    happened is the authority it drew on was taken away.
@@ -80,6 +94,7 @@ digestOf(credential: string): string
 type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
+  | 'DELEGATION_ALREADY_LIVE'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
 
 /** `record` only. Record- and actor-scoped *minting* stays deferred; this is the ceiling. */
@@ -156,6 +171,7 @@ rest, with HTTP statuses in `apps/api/status.ts`:
 | `DELEGATION_NARROWED`                                                        | 403              | yes                             |
 | `DELEGATION_NOT_LIVE`                                                        | 401              | yes                             |
 | `DELEGATION_WIDENS`                                                          | 403              | yes (mint time only)            |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409              | yes (mint time only)            |
 | `PRESET_FIELD_UNCLASSIFIED`                                                  | 422              | yes, with the field keys        |
 | `PRESET_TYPE_UNKNOWN`                                                        | 404              | yes                             |
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409              | yes                             |
