@@ -170,10 +170,10 @@ async function serveRead(
   // It answers what the caller already holds, so a grant in front of it could
   // only hide from a person the list of things they may do -- and a caller
   // refused it could rebuild the same list by attempting each operation one at
-  // a time. A login with no membership never arrives here at all: that is
-  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so
-  // "membership is the authority" is enforced upstream rather than assumed
-  // here. It is skipped rather than declared grantless because the declaration
+  // a time. A login with no standing never arrives here at all: that is
+  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so standing
+  // (a membership, or an external party's live share) is enforced upstream
+  // rather than assumed here. An external party is shown its shares' pairs. It is skipped rather than declared grantless because the declaration
   // is what the route generator and the parity test read, and a row missing
   // its collection and action would be a special case in three more places.
   if (request.read !== 'session.capabilities') {
