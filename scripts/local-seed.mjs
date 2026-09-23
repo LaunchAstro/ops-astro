@@ -30,6 +30,7 @@ import {
   readBusinessSettings,
 } from '../packages/core-records/src/records/business-settings.ts';
 import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
+import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -111,6 +112,10 @@ const GRANTS_BY_ROLE = {
     ['settings', 'read'],
   ],
   none: [],
+  // The external party holds no business grant, and must not: a person with no
+  // membership and a live business grant is refused at resolution as a former
+  // member. What it may read is what `shareRecord` shares with it, below.
+  external: [],
 };
 
 function placeholderUsers() {
@@ -259,6 +264,10 @@ async function seedLogin(tx, member, person) {
     },
   );
 
+  // R4 (minimum contract 8.1): mapped, acting, and not a member. Its login
+  // resolves only while something is shared with it (`login-resolution.ts`).
+  if (member.role === 'external') return { loginId, mapped: true };
+
   await ensure(
     tx,
     async () => {
@@ -317,9 +326,14 @@ async function seedGrants(tx, member, person) {
   // authority boundary -- the same path a person revoking a grant uses -- and
   // touches no task, person or membership.
   const keep = new Set(wanted.map(([collection, action]) => `${collection}:${action}`));
+  //
+  // Business grants only. A record share is not the role's to take back: it is
+  // `shareRecord`'s, and a seed rerun that revoked the external party's share
+  // would undo the demo it was run to set up.
   const live = await tx.query(
     `select id, collection, action from public.grants
-      where subject_kind = 'person' and subject_id = $1 and revoked_at is null`,
+      where subject_kind = 'person' and subject_id = $1 and revoked_at is null
+        and scope_kind = 'business'`,
     [person.personId],
   );
   let revoked = 0;
@@ -583,6 +597,80 @@ function readAuthEnv(name) {
   return undefined;
 }
 
+/**
+ * R4, the external party, as a login a person can actually sign in with.
+ *
+ * Its address is built rather than written, for the reason the agent's is.
+ * The entry lives in `.local/synthetic-users.json` beside the cast with
+ * `role: 'external'`, and is added back when `scripts/local/auth-seed.mjs`
+ * rewrites the file without it. GoTrue's user is created on the agent's path,
+ * and on a fresh entry its password is then set to the file's: a no-op for a
+ * user just created with it, and the fix for one that already existed under a
+ * password the rewritten file lost. It touches this one user and nobody else.
+ */
+const EXTERNAL_LOCAL_PART = 'ext';
+
+function ensureExternalEntry(list) {
+  const found = list.find((user) => user.role === 'external');
+  if (found !== undefined) return { entry: found, fresh: false };
+  const entry = {
+    email: `${EXTERNAL_LOCAL_PART}@${BUSINESS_KEYS.A}.local`,
+    password: `local-ext-${randomUUID().slice(0, 12)}`,
+    subject: randomUUID(),
+    business: 'A',
+    person: 'Ext Alpha',
+    role: 'external',
+  };
+  list.push(entry);
+  return { entry, fresh: true };
+}
+
+async function seedExternalUser(auth, entry, fresh) {
+  const user = await seedAgentUser(auth, entry);
+  if (!user.reachable || !fresh) return user;
+  const reset = await fetch(`${auth.url}/admin/users/${user.subject}`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${auth.token}`,
+      apikey: auth.token,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ password: entry.password }),
+  });
+  return { subject: user.subject, reachable: reset.ok };
+}
+
+/**
+ * Share one task with the external party, when the run is asked to.
+ *
+ * The seed makes no task, so it cannot share one on its own: the demo creates
+ * a task as the admin and then reruns the seed with `LOCAL_SEED_SHARE_TASK`
+ * naming it by key (`T-1`) or identifier. The share is `shareRecord`'s,
+ * issued by the admin under her own `task:share`, which is the same path any
+ * sharer takes; the seed writes no grant row of its own for it.
+ */
+async function shareWithExternal(tx, taskName, adminEmail, externalEmail, people) {
+  const sharer = people.get(adminEmail);
+  const external = people.get(externalEmail);
+  if (sharer === undefined || external === undefined) {
+    throw new Error('local-seed: the admin and the external party must be seeded to share');
+  }
+  const rows = await tx.query(
+    `select r.id from public.records r
+       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+      where t.key = 'task' and r.deleted_at is null and (r.txt_1 = $1 or r.id::text = $1)`,
+    [taskName],
+  );
+  if (rows[0] === undefined) throw new Error(`local-seed: no live task ${taskName} to share`);
+  const shared = await shareRecord(tx, sharer, {
+    collection: 'task',
+    recordId: rows[0].id,
+    personId: external.personId,
+  });
+  if (!shared.ok) throw new Error(`local-seed: share refused ${shared.refusal.code}`);
+  return { recordId: rows[0].id, grantId: shared.value };
+}
+
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const database = connect(appUrl, { source: 'seed' });
 try {
@@ -667,6 +755,17 @@ try {
       'is what task.pickup returns once and stores only as a digest.',
   );
 
+  const external = ensureExternalEntry(users);
+  const externalUser = await seedExternalUser(auth, external.entry, external.fresh);
+  external.entry.subject = externalUser.subject;
+  writeFileSync(usersFile, `${JSON.stringify(users, undefined, 2)}\n`, { mode: 0o600 });
+  console.log(
+    `local-seed: external party ${external.entry.email} ` +
+      `${external.fresh ? 'added to' : 'read back from'} .local/synthetic-users.json ` +
+      `(${externalUser.reachable ? 'confirmed in GoTrue' : 'GoTrue not reached'})`,
+  );
+
+  const people = new Map();
   for (const member of users) {
     const businessId = businessIds[member.business];
     if (businessId === undefined)
@@ -678,6 +777,7 @@ try {
       const person =
         member.role === 'none' ? { personId: null, actorId: null } : await seedPerson(tx, member);
       const login = await seedLogin(tx, member, person);
+      if (person.personId !== null) people.set(member.email, person);
       const grants =
         person.personId === null
           ? { granted: 0, revoked: 0 }
@@ -688,6 +788,18 @@ try {
           `grants ${grants.granted} revoked ${grants.revoked}`,
       );
     });
+  }
+
+  const shareTask = process.env['LOCAL_SEED_SHARE_TASK'];
+  if (shareTask) {
+    const adminEmail = users.find((user) => user.business === 'A' && user.role === 'admin')?.email;
+    const shared = await database.withBusiness(businessIds.A, (tx) =>
+      shareWithExternal(tx, shareTask, adminEmail, external.entry.email, people),
+    );
+    console.log(
+      `local-seed: shared task ${shared.recordId} with ${external.entry.email} ` +
+        `through shareRecord (grant ${shared.grantId}, record scope, read)`,
+    );
   }
 
   const counted = await admin.execute(
