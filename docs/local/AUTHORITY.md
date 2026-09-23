@@ -535,7 +535,10 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 - A delegation revoked because `grant.revoke` removed the authority it draws
   on is revoked in the same transaction, with `authority_lost` as its recorded
   cause. The bound agent's next call on its still unexpired
-  credential answers `DELEGATION_NARROWED`, and nothing is reactivated. An
+  credential answers `DELEGATION_NARROWED`, and nothing is reactivated. A
+  handback on it keeps its report as one unaccepted `retained` row naming that
+  code and changes nothing else (T4 line 76; RUNTIME.md, "A retired or
+  narrowed agent's late report is still kept"). An
   explicit `delegation.revoke`, cancellation or supersession, expiry,
   settlement, another agent, another business, an unknown token and a
   revocation from before 0023 answer `DELEGATION_NOT_LIVE`. When more than one
