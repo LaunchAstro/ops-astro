@@ -27,6 +27,7 @@ import {
   callFor,
   catalogueFunctions,
   catalogueTables,
+  classify,
   copyStatement,
   describeOutcome,
   expectedOutcome,
@@ -41,7 +42,48 @@ import {
   type CatalogueFunction,
   type CatalogueTable,
   type Callers,
+  type Outcome,
 } from './restricted-calls-cases.ts';
+
+/**
+ * One owner-written row per business in the three tables the journey leaves
+ * empty, so their filtering is asked of rows that exist (TC:108). Written by
+ * this suite's own setup rather than the shared world, so no other suite's
+ * world assertions move.
+ */
+const UNREACHED: Readonly<Record<string, string>> = {
+  'public.person_identifiers': `insert into public.person_identifiers
+       (business_id, id, person_id, kind, value, observed_value, source_system)
+     select business_id, gen_random_uuid(), id, 'email', 'restricted-calls-seed',
+            'restricted-calls-seed', 'restricted_calls'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // A business in the world holds one person, so the absorbed one is written here.
+  'public.person_merges': `with absorbed as (
+       insert into public.people (business_id, id, display_name)
+       values ($1, gen_random_uuid(), 'restricted calls absorbed') returning business_id, id)
+     insert into public.person_merges
+       (business_id, id, surviving_person_id, absorbed_person_id, decided_by_actor_id, evidence)
+     select a.business_id, gen_random_uuid(), p.id, a.id, actor.id, 'restricted_calls seed'
+       from absorbed a
+       join public.people p on p.business_id = a.business_id
+       join public.actors actor on actor.business_id = a.business_id
+      order by p.id, actor.id limit 1 returning 1`,
+  'public.record_links': `insert into public.record_links
+       (business_id, id, link_type, from_record_id, to_record_id)
+     select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id
+       from public.records a
+       join public.records b on b.business_id = a.business_id and b.id > a.id
+      where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+};
+
+/** Thrown to end the wrapper's transaction once the insert has answered. */
+class RolledBack extends Error {
+  readonly n: number;
+  constructor(n: number) {
+    super('rolled back');
+    this.n = n;
+  }
+}
 
 const TABLE_CALLERS: readonly CallerName[] = [
   'login in the wrapper, own tenant',
@@ -90,6 +132,13 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     world = await createWorld('rcf');
     await walkTheOtherLineages(world);
     await walkTheJourney(world);
+    for (const business of [world.alpha, world.bravo]) {
+      for (const [table, text] of Object.entries(UNREACHED)) {
+        // oxlint-disable-next-line no-await-in-loop
+        const seeded = await world.db.admin.execute(text, [business]);
+        if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
+      }
+    }
     callers = openCallers(world.db, { own: world.alpha, other: world.bravo });
     tables = await catalogueTables(world.db.admin);
     functions = await catalogueFunctions(world.db.admin);
@@ -195,7 +244,67 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // among them, because that case below needs a row to refuse.
     expect(empty).not.toContain('public.handback_reports');
     expect(empty).not.toContain('public.records');
+    for (const table of Object.keys(UNREACHED)) expect(empty).not.toContain(table);
   });
+
+  it('admits an own-business insert on every table the application inserts into', async () => {
+    // The positive control TC:108 names, counted: the login, through the
+    // production wrapper in its own tenant, inserts a whole own row and the
+    // insert lands. The owner first sets that row aside with triggers and
+    // foreign keys off, so the table's own uniqueness does not answer instead;
+    // the wrapper's transaction is rolled back, and the owner puts the row
+    // back exactly, which the fingerprint shows.
+    const inserting = tables.filter(
+      (table) => table.tenant && (APPLICATION_GRANTS[table.qualified] ?? '').includes('i'),
+    );
+    const admitted: string[] = [];
+    const wrong: string[] = [];
+    const asOwner = async (text: string, row: string): Promise<number> =>
+      await world.db.admin.transaction(async (execute) => {
+        await execute('set local session_replication_role = replica');
+        return (await execute(text, [row])).length;
+      });
+    for (const table of inserting) {
+      // oxlint-disable-next-line no-await-in-loop
+      const row = await ownRowJson(world.db.admin, table, world.alpha);
+      if (row === undefined) {
+        wrong.push(`${table.qualified}\tno own row to insert`);
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop
+      const before = await fingerprint(world.db.admin, table.qualified);
+      // oxlint-disable-next-line no-await-in-loop
+      const aside = await asOwner(
+        `delete from ${table.qualified} t where row_to_json(t)::text = $1 returning 1`,
+        row,
+      );
+      let outcome: Outcome;
+      try {
+        // oxlint-disable-next-line no-await-in-loop
+        await world.db.app.withBusiness(world.alpha, async (tx) => {
+          throw new RolledBack((await tx.query(copyStatement(table), [row])).length);
+        });
+        outcome = { kind: 'other', code: '', message: 'committed' };
+      } catch (error) {
+        outcome = error instanceof RolledBack ? { kind: 'rows', n: error.n } : classify(error);
+      } finally {
+        // oxlint-disable-next-line no-await-in-loop
+        await asOwner(copyStatement(table), row);
+      }
+      // oxlint-disable-next-line no-await-in-loop
+      const after = await fingerprint(world.db.admin, table.qualified);
+      const line = `${table.qualified}\town insert\tlogin in the wrapper, own tenant\t${describeOutcome(outcome)}`;
+      admitted.push(line);
+      if (aside !== 1) wrong.push(`${line}\tset aside ${String(aside)} rows`);
+      if (describeOutcome(outcome) !== 'rows 1') wrong.push(`${line}\texpected rows 1`);
+      if (before !== after) wrong.push(`${line}\tthe table changed`);
+    }
+    executed.push(...admitted);
+    tally('0020 own insert', admitted);
+    expect(wrong).toStrictEqual([]);
+    expect(admitted).toHaveLength(inserting.length);
+    expect(inserting.length).toBeGreaterThan(0);
+  }, 120_000);
 
   it('calls every function as every caller, and only the granted two run', async () => {
     const wrong: string[] = [];
