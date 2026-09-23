@@ -236,6 +236,13 @@ export interface DecideFields {
 
 const DECISIONS: ReadonlySet<string> = new Set(['approve', 'reject', 'request_changes']);
 
+/** `task.decide`'s answer for a gate not visible here. Constant, so nothing presented rides out. */
+const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
+  'NOT_FOUND',
+  [],
+  ['No gate by that identity in this business.', 'Name a gate on a task you can see.'],
+);
+
 export async function decideOnGate(
   tx: TenantQuery,
   context: CommandContext,
@@ -295,7 +302,15 @@ export async function decideOnGate(
     signingKey,
     capId,
   });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) {
+    // A gate this business cannot see is `NOT_FOUND`, whether it is another
+    // business's or no gate at all, and the answer is the same bytes for both:
+    // no presented id, no reason fragment (minimum contract 8.2 cases 1-2,
+    // root ruling 2 of 906613f). The refused audit row is still this
+    // business's, written by the envelope.
+    if (result.refusal.code === 'GATE_NOT_FOUND') return refused(GATE_NOT_VISIBLE);
+    return refused(fromRuntime(result.refusal));
+  }
 
   const decided = result.value;
   return applied(null, null, {
