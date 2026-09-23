@@ -80,6 +80,21 @@ export default defineConfig({
     port,
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
+    // The dev server serves any file under the workspace root through `/@fs/`,
+    // which is how a source import reaches `packages/ui`. On 23 September a
+    // probe of the running server got 200 and real content for
+    // `/@fs/<worktree>/.local/db.env`, and the same for `.local/auth.env` and
+    // `.local/synthetic-users.json`: the generated database password, the
+    // GoTrue secret and every synthetic login, readable by anything that can
+    // reach the port. Loopback-only binding is what kept that local rather
+    // than remote; it is not a reason to serve them.
+    //
+    // Listing `deny` replaces Vite's default list, so the defaults are
+    // repeated here rather than lost. Source imports are untouched: `.local/`
+    // holds runtime scratch that nothing in `src` imports.
+    fs: {
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.local/**', '**/*.local'],
+    },
   },
   build: {
     outDir: 'dist',

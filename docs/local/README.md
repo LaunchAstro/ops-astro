@@ -131,6 +131,31 @@ The whole blocking gate, tests included. The test suite needs `DATABASE_URL`
 and `DATABASE_ADMIN_URL` exported, and the public-content step reads the
 **staged** tree, so stage your changes before running it.
 
+## A note on the dev server
+
+`pnpm web:up` runs Vite's dev server, and a dev server serves files, not just
+the application. Every path under the workspace root is reachable through its
+`/@fs/` prefix, which is how a source import of `packages/ui` works at all.
+
+On 23 September a probe of the running server asked for
+`/@fs/<worktree>/.local/db.env` and got 200 with the file's real content, and
+the same for `.local/auth.env` and `.local/synthetic-users.json`: the
+generated database password, the GoTrue secret and every synthetic login,
+readable by anything that could reach the port. The server binds to
+`127.0.0.1`, so that was one machine's own loopback rather than the network,
+which is why this is a gap rather than an incident.
+
+`apps/web/vite.config.ts` now sets `server.fs.deny` over `**/.local/**` and
+`**/*.local`, alongside Vite's own defaults, which that setting replaces. The
+three paths answer 403; a source import such as
+`/@fs/<worktree>/apps/web/src/main.tsx` still answers 200, and so does
+`packages/ui/src/index.ts`.
+
+Two things this does not do. It is a dev server, and a dev server is for one
+person's machine on loopback: do not put one on an address other people can
+reach, whatever it denies. And it constrains this server only -- the API on
+its own port and anything else the start sequence runs are not covered by it.
+
 ## Limitations
 
 The slice is honest about being a slice.
