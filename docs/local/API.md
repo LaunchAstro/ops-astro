@@ -98,7 +98,7 @@ there is no route written out for any of them.
 | Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                     |
 | ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
-| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409                                        |
+| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422          |
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`)                                         | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean)                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                        |
 
@@ -108,9 +108,24 @@ hold. The author is the acting actor and the posting time is the server's;
 neither is a payload field.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing at all,
-including on success. It is the one read that does not take the `read` action:
-it asks for `manage` on presets, which is why the collection and the action
-are on the declaration rather than assumed from the kind.
+including on success. It is the one read that does not take the `read` action,
+which is why the collection and the action are on the declaration rather than
+assumed from the kind.
+
+**The grant `preset/plan` needs is `manage` on the family the request names,
+not on `preset`.** A body with `recordTypeKey: "task"` takes `manage` on
+`task`; planning a preset into another family takes `manage` on that family.
+A caller holding a blanket `manage` on `preset` and nothing else is refused
+`SCOPE_NOT_GRANTED` 403, naming the family they are missing. The planner
+bounds itself to the owned family, and the route asks the same question in
+front of it rather than a wider one, so the two cannot disagree about who may
+plan what.
+
+A preset that names one new field key twice is refused `PRESET_FIELD_DUPLICATE`
+422 naming the repeated keys, before any action is planned: two entries
+claiming one key cannot both be created, and a plan promising something the
+apply cannot do would be worse than a refusal. Nothing is written, as with
+every other refusal here and with every success.
 
 The two settings commands take no `expectedRevision`: `business_settings`
 carries no revision column, so there is nothing for a caller to write against.

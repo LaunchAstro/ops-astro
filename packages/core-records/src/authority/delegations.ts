@@ -55,6 +55,19 @@ export interface DelegationRefusal {
 /** The actions a delegation may carry. `decide` is not one of them (I07). */
 export type DelegableAction = Exclude<Action, 'decide'>;
 
+/**
+ * The one resource a delegation was minted for.
+ *
+ * `record` only, and mandatory. R5 is "R1's delegated agent, purpose-scoped to
+ * one task": the purpose is a ceiling on *what*, not only on which collections
+ * and actions. Record- or actor-scoped minting stays deferred, so this admits
+ * no other kind rather than pretending to support one.
+ */
+export interface PurposeScope {
+  readonly kind: 'record';
+  readonly id: string;
+}
+
 export interface Delegation {
   readonly id: string;
   readonly agentActorId: string;
@@ -64,6 +77,8 @@ export interface Delegation {
   readonly purpose: string;
   readonly collections: readonly string[];
   readonly actions: readonly DelegableAction[];
+  /** The task this delegation is for. Every call is intersected with it. */
+  readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
 }
 
@@ -75,6 +90,8 @@ export interface MintRequest {
   readonly purpose: string;
   readonly collections: readonly string[];
   readonly actions: readonly Action[];
+  /** The picked-up task's record id. Mandatory: there is no unscoped purpose. */
+  readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
 }
 
@@ -95,6 +112,8 @@ interface DelegationRow {
   readonly purpose: string;
   readonly collections: readonly string[];
   readonly actions: readonly DelegableAction[];
+  readonly purpose_scope_kind: 'record';
+  readonly purpose_scope_id: string;
   readonly expires_at: Date;
 }
 
@@ -121,6 +140,7 @@ function delegationOf(row: DelegationRow): Delegation {
     purpose: row.purpose,
     collections: row.collections,
     actions: row.actions,
+    purposeScope: { kind: row.purpose_scope_kind, id: row.purpose_scope_id },
     expiresAt: row.expires_at,
   };
 }
@@ -172,10 +192,10 @@ export async function mintDelegation(
   const rows = await tx.query<DelegationRow>(
     `insert into public.delegations
        (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-        collections, actions, credential_hash, expires_at)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9)
+        collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      returning id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-               collections, actions, expires_at`,
+               collections, actions, purpose_scope_kind, purpose_scope_id, expires_at`,
     [
       tx.businessId,
       request.agentActorId,
@@ -184,6 +204,8 @@ export async function mintDelegation(
       request.purpose,
       request.collections,
       request.actions,
+      request.purposeScope.kind,
+      request.purposeScope.id,
       digestOf(credential),
       request.expiresAt,
     ],
@@ -207,7 +229,7 @@ export async function resolveDelegation(
 ): Promise<DelegationDecision<Delegation>> {
   const rows = await tx.query<DelegationRow>(
     `select id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-            collections, actions, expires_at
+            collections, actions, purpose_scope_kind, purpose_scope_id, expires_at
        from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3
         and revoked_at is null and settled_at is null and expires_at > now()`,
@@ -258,6 +280,21 @@ export async function checkDelegatedAuthority(
       'DELEGATION_OUT_OF_PURPOSE',
       `the purpose ${delegation.purpose} does not carry ${request.action}`,
       'ask the authorising person for a delegation whose purpose covers it',
+    );
+  }
+  // The one-task ceiling. The person's own grant is ordinarily business-wide,
+  // so without this a call on a sibling task reaches the same grant and passes
+  // exactly as a call on the picked-up task does. `exactly` is the word: a
+  // business- or party-scoped request under a delegation is outside it too,
+  // because a delegation narrower than its person cannot answer wider than the
+  // resource it was minted for.
+  const scoped = delegation.purposeScope;
+  if (request.scope.kind !== scoped.kind || request.scope.id !== scoped.id) {
+    return refuse(
+      'DELEGATION_OUT_OF_PURPOSE',
+      `the purpose ${delegation.purpose} is scoped to ${scoped.kind} ${scoped.id}, ` +
+        `and this call is for ${request.scope.kind} ${request.scope.id ?? 'the whole business'}`,
+      'ask the authorising person for a delegation minted for that record',
     );
   }
 

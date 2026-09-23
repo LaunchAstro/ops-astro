@@ -205,6 +205,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.read', TASK_COLLECTION),
   read('task.board', TASK_COLLECTION),
   read('person.list', 'person'),
+  // `preset` is what this route is about; the grant it takes is `manage` on
+  // the family the request names, which `reads/dispatch.ts` reads off the
+  // request and `planPresetSync` checks again from its own mapping.
   read('preset.plan', 'preset', 'manage'),
 
   declare('settings.set_four_eyes_threshold', 'manage', {

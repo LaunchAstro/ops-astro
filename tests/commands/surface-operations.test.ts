@@ -88,7 +88,11 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
         // oxlint-disable-next-line no-await-in-loop
         await grantTo(tx, mia, action);
       }
-      await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'preset');
+      // `preset.plan` takes `manage` on the family it plans, not a blanket
+      // `manage` on `preset`: L2's planner checks the family of the request's
+      // `recordTypeKey` and the surface now asks the same question. These
+      // cases plan the `task` family, so that is the grant they need.
+      await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'task');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
     });
 

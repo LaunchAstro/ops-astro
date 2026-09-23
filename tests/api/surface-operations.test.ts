@@ -72,6 +72,33 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
       }),
     );
 
+  const countFieldDefs = async () =>
+    await db.app.withBusiness(alpha, async (tx) => {
+      const rows = await tx.query<{ readonly n: string }>(
+        'select count(*)::text as n from field_defs where business_id = $1',
+        [tx.businessId],
+      );
+      return Number(rows[0]?.n ?? '0');
+    });
+
+  /** The subject and outcome of the most recent audit row for one command. */
+  const lastAudit = async (command: string) =>
+    await db.app.withBusiness(alpha, async (tx) => {
+      const rows = await tx.query<{
+        readonly outcome: string;
+        readonly refusal_code: string | null;
+        readonly subject_record_id: string | null;
+      }>(
+        `select outcome, refusal_code, subject_record_id
+           from audit_events
+          where business_id = $1 and command = $2
+          order by seq desc
+          limit 1`,
+        [tx.businessId, command],
+      );
+      return rows[0];
+    });
+
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'l3api' });
     alpha = await insertBusiness(db.app, BUSINESS_KEY);
@@ -86,7 +113,11 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
         // oxlint-disable-next-line no-await-in-loop
         await grantTo(tx, mia, action);
       }
-      await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'preset');
+      // `preset.plan` takes `manage` on the family it plans, not a blanket
+      // `manage` on `preset`: L2's planner checks the family of the request's
+      // `recordTypeKey` and the surface now asks the same question. These
+      // cases plan the `task` family, so that is the grant they need.
+      await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'task');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
     });
 
@@ -182,6 +213,26 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
       expect(refusal.code).toBe('PRESET_FIELD_UNCLASSIFIED');
       expect(refusal.names).toContain('undecided');
     });
+
+    // The code L2's planner gained and this lane registered. Over HTTP it is a
+    // 422 like the other bad-preset refusal, and the claim that matters is the
+    // second one: a plan is a dry run, so a refused plan writes nothing at all.
+    it('refuses one new key named twice 422 PRESET_FIELD_DUPLICATE, writing no field_defs row', async () => {
+      const before = await countFieldDefs();
+      const response = await post('preset.plan', {
+        recordTypeKey: 'task',
+        presetKey: 'marketing',
+        fields: [
+          { key: 'twice_over', label: 'Once', valueType: 'text', writeMode: 'generic' },
+          { key: 'twice_over', label: 'Again', valueType: 'text', writeMode: 'generic' },
+        ],
+      });
+      expect(response.status).toBe(422);
+      const refusal = await refusalOf(response);
+      expect(refusal.code).toBe('PRESET_FIELD_DUPLICATE');
+      expect(refusal.names).toContain('twice_over');
+      expect(await countFieldDefs()).toBe(before);
+    });
   });
 
   describe('the settings operations', () => {
@@ -214,6 +265,39 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
       );
       expect(denied.status).toBe(403);
       expect((await refusalOf(denied)).code).toBe('SCOPE_NOT_GRANTED');
+    });
+  });
+
+  // `task.read` takes the key the address carries, and the audit column it
+  // writes into is a uuid. Writing the presented name there made the whole
+  // read answer 503 with `invalid input syntax for type uuid: "T-67"` in the
+  // API log -- a refusal the caller could do nothing about, on the ordinary
+  // path of reading a task by the name the address gives it.
+  describe('task.read by the key the address carries', () => {
+    it('answers 200, and the audit row carries the task uuid rather than the key', async () => {
+      const byId = await post('task.read', { recordId: taskId });
+      expect(byId.status).toBe(200);
+      const { task } = (await byId.json()) as { task: { id: string; key: string } };
+      expect(task.id).toBe(taskId);
+
+      const byKey = await post('task.read', { recordId: task.key });
+      expect(byKey.status).toBe(200);
+      expect(((await byKey.json()) as { task: { id: string } }).task.id).toBe(taskId);
+
+      const audited = await lastAudit('task.read');
+      expect(audited?.outcome).toBe('applied');
+      expect(audited?.subject_record_id).toBe(taskId);
+    });
+
+    it('refuses an unknown key NOT_FOUND and audits it with a null subject', async () => {
+      const response = await post('task.read', { recordId: 'T-nosuchtask' });
+      expect(response.status).toBe(404);
+      expect((await refusalOf(response)).code).toBe('NOT_FOUND');
+
+      const audited = await lastAudit('task.read');
+      expect(audited?.outcome).toBe('refused');
+      expect(audited?.refusal_code).toBe('NOT_FOUND');
+      expect(audited?.subject_record_id).toBeNull();
     });
   });
 });

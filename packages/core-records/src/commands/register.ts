@@ -88,6 +88,7 @@ export type RefusalCode =
   | 'PRESET_FIELD_UNCLASSIFIED'
   | 'PRESET_TYPE_UNKNOWN'
   | 'PRESET_FIELD_UNPLACEABLE'
+  | 'PRESET_FIELD_DUPLICATE'
   // Gates and proposals, T2.
   | 'GATE_PENDING'
   | 'GATE_ALREADY_DECIDED'
@@ -253,6 +254,11 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ),
   entry('PRESET_TYPE_UNKNOWN', 'This business has no record type by that key', 'spec D05'),
   entry('PRESET_FIELD_UNPLACEABLE', 'No free indexed slot of the field’s type remains', 'spec D05'),
+  entry(
+    'PRESET_FIELD_DUPLICATE',
+    'One preset names the same new field key more than once',
+    'spec D05',
+  ),
 
   entry('GATE_PENDING', 'A blocking gate instance is open on this record', 'contract 4.3'),
   entry('GATE_ALREADY_DECIDED', 'The gate instance carries a decision already', 'contract 4.4'),

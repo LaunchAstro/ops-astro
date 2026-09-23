@@ -59,7 +59,8 @@ export async function runRead(
   session: Session,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
-  const outcome = await serveRead(tx, session, request);
+  const served = await serveRead(tx, session, request);
+  const outcome = served.outcome;
   const refusal = 'refused' in outcome ? outcome : undefined;
   await writeAuditEvent(tx, {
     actorId: session.actorId,
@@ -67,17 +68,37 @@ export async function runRead(
     operationId: null,
     outcome: refusal === undefined ? 'applied' : 'refused',
     refusalCode: refusal?.code ?? null,
-    subjectRecordId: request.read === 'task.read' ? request.recordId : null,
+    subjectRecordId: served.subjectRecordId,
     payloadDigest: payloadDigest(request),
   });
   return outcome;
+}
+
+/**
+ * A read's answer and the record it was about.
+ *
+ * The two travel together because the audit row needs the second and the
+ * caller needs the first, and the identifier the caller *presented* is not
+ * the one the audit column takes: `task.read` may name a task by its key, and
+ * `audit_events.subject_record_id` is a uuid. Writing the presented name into
+ * it made the column raise `invalid input syntax for type uuid` and turned an
+ * ordinary read by key into a 503, which is the defect this shape removes.
+ *
+ * It is `null` when nothing resolved -- an unknown key, or a read that is
+ * about no single record at all. Null is the honest answer there: the read
+ * happened and it looked at nothing, and inventing an identifier to fill the
+ * column would make "who read this record" false.
+ */
+interface ServedRead {
+  readonly outcome: ReadResult | CommandRefusal;
+  readonly subjectRecordId: string | null;
 }
 
 async function serveRead(
   tx: TenantQuery,
   session: Session,
   request: ReadRequest,
-): Promise<ReadResult | CommandRefusal> {
+): Promise<ServedRead> {
   // `task.read` names one record and may name it by key, so the identifier is
   // resolved before the grant check and never after it: a record-scoped grant
   // is a grant on a record, not on whichever spelling the caller used. The
@@ -96,11 +117,28 @@ async function serveRead(
       ? await resolveTaskId(tx, spine.taskTypeId, request.recordId)
       : undefined;
 
+  const served = (outcome: ReadResult | CommandRefusal): ServedRead => ({
+    outcome,
+    subjectRecordId: recordId ?? null,
+  });
+
   const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // Both from the declaration. `preset.plan` asks for `manage` on presets
-    // and the other three for `read` on their own collection, and neither is
-    // written out here: see `CommandDeclaration.collection`.
-    collection: declaration.collection,
+    // The action is the declaration's. The collection is too for the three
+    // record reads, and for `preset.plan` it is the family the request names,
+    // because that is the grant the plan actually needs: L2's `planPresetSync`
+    // checks `manage` on the family of `recordTypeKey`, so a blanket `manage`
+    // on `preset` in front of it would be a wider question than the operation
+    // asks and a caller holding only it would be let through here and refused
+    // there. The declaration's own `preset` is what the route is about rather
+    // than what it takes; see `CommandDeclaration.collection`.
+    //
+    // Today the record type key *is* the family (L2's `familyOf`, private to
+    // the planner because it is the one place a real type-to-collection
+    // mapping has to land). This is the same key, not a second copy of that
+    // mapping: should the two ever differ, the planner still asks its own
+    // question afterwards, so this check can only be redundant or narrower --
+    // never wider than the authority the plan is granted under.
+    collection: request.read === 'preset.plan' ? request.recordTypeKey : declaration.collection,
     action: declaration.action,
     // A record-scoped grant is checked against the record named, exactly as a
     // targeted command's is. A business-scoped grant covers both, which is
@@ -108,7 +146,7 @@ async function serveRead(
     scope:
       recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
   });
-  if (!authorised.ok) return fromAuthority(authorised.refusal);
+  if (!authorised.ok) return served(fromAuthority(authorised.refusal));
 
   switch (request.read) {
     case 'task.read': {
@@ -120,14 +158,14 @@ async function serveRead(
               internal: isInternalReader(session.roleKey),
             });
       // Not there, or there in another business: one answer, deliberately.
-      return task === undefined ? refuseNotFound() : { ok: true, task };
+      return served(task === undefined ? refuseNotFound() : { ok: true, task });
     }
     case 'task.board': {
       if (spine === undefined) throw new Error('runRead: task.board reached without the spine');
-      return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) };
+      return served({ ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) });
     }
     case 'person.list':
-      return { ok: true, persons: await listPeople(tx) };
+      return served({ ok: true, persons: await listPeople(tx) });
     case 'preset.plan': {
       // L2's planner checks the same authority again, from its own module, and
       // that repetition is deliberate: the guarantee "this plan was authorised"
@@ -143,8 +181,8 @@ async function serveRead(
           fields: request.fields as readonly PresetField[],
         },
       );
-      if (!planned.ok) return fromPresetPlan(planned.refusal);
-      return { ok: true, plan: planned.value };
+      if (!planned.ok) return served(fromPresetPlan(planned.refusal));
+      return served({ ok: true, plan: planned.value });
     }
   }
 }

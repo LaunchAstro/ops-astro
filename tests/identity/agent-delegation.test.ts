@@ -19,6 +19,7 @@ import {
   type Delegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { resolveAgentLogin } from '../../packages/core-records/src/identity/agent-login.ts';
 import { resolveLogin } from '../../packages/core-records/src/identity/login-resolution.ts';
 import {
@@ -43,6 +44,8 @@ const PURPOSE = 'task_work';
 
 describe.skipIf(serverUrl === undefined)('the agent, its login and its delegation', () => {
   let db: FreshDatabase;
+  let taskA: string;
+  let taskB: string;
   let business: string;
   let adaPerson: string;
   let adaActor: string;
@@ -84,6 +87,24 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         if (action === 'write') rootGrant = issued.value;
       }
 
+      // Two sibling tasks of the same type. The delegation is minted for the
+      // first; the second is what the one-task ceiling has to refuse, and it
+      // has to be a real record rather than a spare uuid so the refusal is
+      // about the purpose rather than about a row that is not there.
+      const spine = await installTaskSpine(tx);
+      taskA = randomUUID();
+      taskB = randomUUID();
+      for (const [id, title] of [
+        [taskA, 'the picked-up task'],
+        [taskB, 'its sibling'],
+      ] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        await tx.query(
+          `insert into records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)`,
+          [business, id, spine.taskTypeId, { title }],
+        );
+      }
+
       const minted = await mintDelegation(tx, {
         agentActorId: agentActor,
         delegatePersonId: adaPerson,
@@ -91,6 +112,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         purpose: PURPOSE,
         collections: [COLLECTION],
         actions: ['read', 'write'],
+        purposeScope: { kind: 'record', id: taskA },
         expiresAt: new Date(Date.now() + 3_600_000),
       });
       if (!minted.ok) throw new Error(`fixture: the mint was refused ${minted.refusal.code}`);
@@ -148,7 +170,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'write',
-          scope: { kind: 'business', id: null },
+          scope: { kind: 'record', id: taskA },
         }),
       );
       expect(decision.ok).toBe(true);
@@ -160,7 +182,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         checkDelegatedAuthority(tx, delegation, {
           collection: 'invoice',
           action: 'write',
-          scope: { kind: 'business', id: null },
+          scope: { kind: 'record', id: taskA },
         }),
       );
       expect(decision.ok).toBe(false);
@@ -176,7 +198,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'decide',
-          scope: { kind: 'business', id: null },
+          scope: { kind: 'record', id: taskA },
         }),
       );
       expect(decision.ok).toBe(false);
@@ -194,6 +216,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
           purpose: 'deciding',
           collections: [COLLECTION],
           actions: ['decide'],
+          purposeScope: { kind: 'record', id: taskA },
           expiresAt: new Date(Date.now() + 3_600_000),
         }),
       );
@@ -210,7 +233,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'write',
-          scope: { kind: 'business', id: null },
+          scope: { kind: 'record', id: taskA },
         }),
       );
       expect(before.ok).toBe(true);
@@ -227,7 +250,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
         return await checkDelegatedAuthority(tx, live.value, {
           collection: COLLECTION,
           action: 'write',
-          scope: { kind: 'business', id: null },
+          scope: { kind: 'record', id: taskA },
         });
       });
       expect(after.ok).toBe(false);
@@ -247,6 +270,66 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       expect(resolved.ok).toBe(false);
       if (resolved.ok) return;
       expect(resolved.refusal.code).toBe('DELEGATION_NOT_LIVE');
+    });
+  });
+
+  // Finding 4: the purpose is a ceiling on *what*, not only on collections and
+  // actions. R1's grant is business-wide, so without the stored purpose scope a
+  // call on a sibling task reaches that same grant and passes exactly as a call
+  // on the picked-up task does -- the helper cannot tell them apart.
+  describe('the one-task purpose ceiling', () => {
+    it('permits the picked-up task, and refuses its sibling and the whole business', async () => {
+      // Its own delegation, on the `read` grant the cases above leave alone, so
+      // this says something about the ceiling rather than about their order.
+      const delegation = await db.app.withBusiness(business, async (tx) => {
+        const minted = await mintDelegation(tx, {
+          agentActorId: agentActor,
+          delegatePersonId: adaPerson,
+          mintedByActorId: adaActor,
+          purpose: 'one_task_ceiling',
+          collections: [COLLECTION],
+          actions: ['read'],
+          purposeScope: { kind: 'record', id: taskA },
+          expiresAt: new Date(Date.now() + 3_600_000),
+        });
+        if (!minted.ok) throw new Error(`the mint was refused ${minted.refusal.code}`);
+        return minted.value.delegation;
+      });
+      expect(delegation.purposeScope).toStrictEqual({ kind: 'record', id: taskA });
+
+      const onTaskA = await db.app.withBusiness(business, async (tx) =>
+        checkDelegatedAuthority(tx, delegation, {
+          collection: COLLECTION,
+          action: 'read',
+          scope: { kind: 'record', id: taskA },
+        }),
+      );
+      expect(onTaskA.ok).toBe(true);
+
+      // The same call, the same grant, a different task.
+      const onTaskB = await db.app.withBusiness(business, async (tx) =>
+        checkDelegatedAuthority(tx, delegation, {
+          collection: COLLECTION,
+          action: 'read',
+          scope: { kind: 'record', id: taskB },
+        }),
+      );
+      expect(onTaskB.ok).toBe(false);
+      if (onTaskB.ok) return;
+      expect(onTaskB.refusal.code).toBe('DELEGATION_OUT_OF_PURPOSE');
+      expect(onTaskB.refusal.code).not.toBe('SCOPE_NOT_GRANTED');
+
+      // And the business-wide request the person's own grant would satisfy.
+      const wide = await db.app.withBusiness(business, async (tx) =>
+        checkDelegatedAuthority(tx, delegation, {
+          collection: COLLECTION,
+          action: 'read',
+          scope: { kind: 'business', id: null },
+        }),
+      );
+      expect(wide.ok).toBe(false);
+      if (wide.ok) return;
+      expect(wide.refusal.code).toBe('DELEGATION_OUT_OF_PURPOSE');
     });
   });
 });
