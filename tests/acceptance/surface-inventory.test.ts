@@ -146,6 +146,9 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
       );
       if (answer.status === 404) unreachable.push(declaration.name);
     }
+    report('agent-prefix reach', [
+      `${String(COMMAND_SURFACE.length - unreachable.length)} of ${String(COMMAND_SURFACE.length)} routed`,
+    ]);
     expect(unreachable).toStrictEqual([]);
   });
 
