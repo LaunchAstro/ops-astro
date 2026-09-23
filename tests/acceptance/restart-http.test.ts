@@ -74,6 +74,8 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   let shortGate: { readonly gateId: string; readonly versionId: string };
   let round: { readonly lineageId: string; readonly taskId: string; readonly gateId: string };
   let approved: Journey;
+  /** Version 2 of the sent-back round, proposed after the restart. */
+  let roundV2: { readonly gateId: string; readonly versionId: string } | undefined;
 
   beforeAll(async () => {
     world = await createWorld('rsh');
@@ -337,6 +339,8 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     };
     const v2 = await asAda(world, api, '/task/propose', body);
     expect(v2.code, 'propose version 2 over HTTP').toBe('ok');
+    const v2Detail = v2.body['detail'] as Record<string, string>;
+    roundV2 = { gateId: String(v2Detail['gateId']), versionId: String(v2Detail['versionId']) };
     expect(await versionsOf()).toBe('1,2');
     const again = await asAda(world, api, '/task/propose', body);
     expect(again.code, 'replayed version 2').toBe('ok');
@@ -345,6 +349,83 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       `versions ${await versionsOf()}`,
       `v1 gate ${gateState}`,
     ]);
+  });
+
+  // G08 across the restart. Round 1 was requested before it, so version 2's
+  // gate is round 2 and still takes a request; version 3's would be the third
+  // formal round, which `decide.ts` refuses before anything is written.
+  it('refuses a third Request Changes round after the restart, and writes nothing', async () => {
+    if (roundV2 === undefined) throw new Error('version 2 was not proposed after the restart');
+    const secondRound = await asAda(world, api, '/task/decide', {
+      operationId: randomUUID(),
+      gateId: roundV2.gateId,
+      versionId: roundV2.versionId,
+      decision: 'request_changes',
+      note: 'shorter still, please',
+    });
+    expect(secondRound.code, 'round 2 on version 2 over HTTP').toBe('ok');
+    const v3 = await asAda(world, api, '/task/propose', {
+      operationId: randomUUID(),
+      recordId: round.taskId,
+      lineageId: round.lineageId,
+      expectedRevision: await revisionOf(world, round.taskId),
+      purpose: 'draft_the_reply',
+      maximumMinor: 2000,
+      currency: 'AUD',
+      payload: { instruction: 'third draft' },
+      step: { kind: 'compose', payload: {} },
+    });
+    expect(v3.code, 'propose version 3 over HTTP').toBe('ok');
+    const v3Detail = v3.body['detail'] as Record<string, string>;
+    const v3Gate = String(v3Detail['gateId']);
+
+    const snapshot = async (): Promise<readonly string[]> => [
+      await scalar(
+        world,
+        "select state || ':' || round::text || ':' || coalesce(decided_at::text, '-') as v from public.gates where business_id = $1 and id = $2",
+        [v3Gate],
+      ),
+      await scalar(
+        world,
+        "select string_agg(version::text, ',' order by version) as v from public.proposal_versions where business_id = $1 and lineage_id = $2",
+        [round.lineageId],
+      ),
+      await scalar(
+        world,
+        "select string_agg(decision || ':' || round::text, ',' order by seq) as v from public.gate_decisions where business_id = $1 and lineage_id = $2",
+        [round.lineageId],
+      ),
+      await scalar(
+        world,
+        'select count(*)::text as v from public.gate_decisions where business_id = $1',
+        [],
+      ),
+    ];
+    const prior = await snapshot();
+    expect(prior[0], 'version 3 is round 3 and pending').toMatch(/^pending:3:/u);
+    const operationId = randomUUID();
+    const third = await asAda(world, api, '/task/decide', {
+      operationId,
+      gateId: v3Gate,
+      versionId: String(v3Detail['versionId']),
+      decision: 'request_changes',
+      note: 'a third round',
+    });
+    expect(third.status).toBe(409);
+    expect(third.code).toBe('CHANGE_ROUNDS_EXHAUSTED');
+    const audits = await world.db.admin.execute<{
+      readonly outcome: string;
+      readonly refusal_code: string | null;
+    }>(
+      'select outcome, refusal_code from public.audit_events where business_id = $1 and operation_id = $2',
+      [world.alpha, operationId],
+    );
+    expect(audits.map((row) => [row.outcome, row.refusal_code])).toStrictEqual([
+      ['refused', 'CHANGE_ROUNDS_EXHAUSTED'],
+    ]);
+    expect(await snapshot(), 'nothing moved').toStrictEqual(prior);
+    expect(prior[2]).toBe('request_changes:1,request_changes:2');
+    report('http third round', [`status ${String(third.status)}`, `code ${third.code}`]);
   });
 
   // W06's "cancelled lineage resumes silently" needs a lineage cancelled the
