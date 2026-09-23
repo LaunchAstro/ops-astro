@@ -56,8 +56,11 @@ describe('the surface as a table', () => {
   });
 
   it('says which of them are declared and not yet built, and why', () => {
+    // Four, not five. `task.comment` came off this list when L2 installed the
+    // comment record type it was waiting for, which is the visible diff the
+    // list exists to produce; the other four wait on mechanisms no part of
+    // this lane builds and their text is unchanged.
     expect([...NOT_LANDED].toSorted()).toStrictEqual([
-      'task.comment',
       'task.decide',
       'task.handback',
       'task.pickup',
@@ -71,22 +74,50 @@ describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
-    // Every path is a collection and an operation. `person.list` is the first
-    // row whose collection is not `task`, so the shape is what is asserted
-    // rather than the one prefix that happened to be true of the writes.
-    expect(paths.every((path) => /^\/(?:task|person)\/[a-z_]+$/u.test(path))).toBe(true);
+    // Every path is a collection and an operation. `person.list` was the first
+    // row whose collection is not `task` and there are now four prefixes, so
+    // the shape is what is asserted rather than the one prefix that happened
+    // to be true of the writes.
+    expect(paths.every((path) => /^\/(?:task|person|preset|settings)\/[a-z_]+$/u.test(path))).toBe(
+      true,
+    );
   });
 
-  it('declares the three reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual(['person.list', 'task.board', 'task.read']);
+  it('declares the four reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual([
+      'person.list',
+      'preset.plan',
+      'task.board',
+      'task.read',
+    ]);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
-      // A read has nothing to be stale against and takes the read action.
+      // A read has nothing to be stale against. It does not always take the
+      // `read` action: `preset.plan` writes nothing and still asks for
+      // `manage` on presets, which is why the action is on the declaration
+      // rather than assumed from the kind.
       if (command.kind === 'read') {
         expect(command.targetsExistingRecord, command.name).toBe(false);
-        expect(command.action, command.name).toBe('read');
         expect(command.landed, command.name).toBe(true);
       }
+    }
+  });
+
+  it('gives every declaration the collection its authority is checked against', () => {
+    // The collection used to be written into `prepareCommand` as `'task'`,
+    // which was true while every operation was a task operation. A caller
+    // holding `manage` on tasks would have been handed the preset planner and
+    // both settings commands for free the moment one was not.
+    const collections = new Map(
+      COMMAND_SURFACE.map((command) => [command.name, command.collection]),
+    );
+    expect(collections.get('task.create')).toBe('task');
+    expect(collections.get('person.list')).toBe('person');
+    expect(collections.get('preset.plan')).toBe('preset');
+    expect(collections.get('settings.set_four_eyes_threshold')).toBe('settings');
+    expect(collections.get('settings.set_client_sign_off')).toBe('settings');
+    for (const command of COMMAND_SURFACE) {
+      expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
   });
 

@@ -59,7 +59,19 @@ export type CommandName =
   // route for reading a task to be invented somewhere else.
   | 'task.read'
   | 'task.board'
-  | 'person.list';
+  | 'person.list'
+  // The preset planner. It reads the model and writes nothing at all, so it is
+  // a read by the only definition this table has; what makes it unlike the
+  // other three is the authority it asks for, which is `manage` on presets
+  // rather than `read` on a collection of records.
+  | 'preset.plan'
+  // The two settings the model classifies `operation`. A setting that decides
+  // who must agree before money moves or before work completes is an authority
+  // change wearing configuration's clothes, so it is not reachable through a
+  // generic edit and a named command owns it. The names are the ones the
+  // `business_settings` rows already cite in `owning_operation`.
+  | 'settings.set_four_eyes_threshold'
+  | 'settings.set_client_sign_off';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -70,12 +82,30 @@ export interface CommandDeclaration {
    * in the surface is a read. That has stopped being true: the local slice
    * needs `task.read`, `task.board` and `person.list`, and declaring them
    * `mutating` so the field could keep its literal type would have made the
-   * table lie about the three rows added for the purpose. A read carries no
-   * `operation_id` and no `expected_revision`, writes no record and no audit
-   * event, and is served by `reads/dispatch.ts` rather than by the command
-   * dispatch.
+   * table lie about the rows added for the purpose. A read carries no
+   * `operation_id` and no `expected_revision` and writes no record, and it is
+   * served by `reads/dispatch.ts` rather than by the command dispatch.
+   *
+   * **A read does write an audit event.** This comment said it wrote none, and
+   * I13 is explicit that every successful *and* refused production operation
+   * is audited — a read that leaves no trace is the one way to look at a
+   * business's work without the business ever learning it happened. So
+   * `reads/dispatch.ts` writes one event per read, of the same shape the
+   * commands write, with a null `operation_id` because a read has nothing to
+   * replay.
    */
   readonly kind: 'read' | 'write';
+  /**
+   * The collection the grant model is asked about.
+   *
+   * It is on the declaration rather than in the envelope because the envelope
+   * had `'task'` written into it, which was true while every operation was a
+   * task operation and became a silent widening the moment one was not: a
+   * caller holding `manage` on tasks would have been handed the preset planner
+   * and the settings commands for free. The collection and the action are one
+   * decision and they now live in one place.
+   */
+  readonly collection: string;
   /** Whether it needs an `expected_revision`, which is whether it has a target. */
   readonly targetsExistingRecord: boolean;
   /** The grant action the domain operation checks before it does anything. */
@@ -92,6 +122,7 @@ function declare(
   name: CommandName,
   action: Action,
   options: {
+    readonly collection?: string;
     readonly targetsExistingRecord?: boolean;
     readonly contractNine?: boolean;
     readonly waitingOn?: string;
@@ -101,6 +132,7 @@ function declare(
   return {
     name,
     kind: 'write',
+    collection: options.collection ?? TASK_COLLECTION,
     targetsExistingRecord: options.targetsExistingRecord ?? true,
     action,
     contractNine: options.contractNine ?? false,
@@ -109,17 +141,21 @@ function declare(
   };
 }
 
+const TASK_COLLECTION = 'task';
+const SETTINGS_COLLECTION = 'settings';
+
 /**
  * A read. It takes the `read` action on the collection it names, targets no
  * revision, and is always landed: the records it reads are the ones the
  * commands above already write.
  */
-function read(name: CommandName): CommandDeclaration {
+function read(name: CommandName, collection: string, action: Action = 'read'): CommandDeclaration {
   return {
     name,
     kind: 'read',
+    collection,
     targetsExistingRecord: false,
-    action: 'read',
+    action,
     contractNine: false,
     landed: true,
     waitingOn: '',
@@ -131,10 +167,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.update', 'write', { contractNine: true }),
   declare('task.complete', 'write', { contractNine: true }),
   declare('task.reopen', 'write', { contractNine: true }),
-  declare('task.comment', 'comment', {
-    contractNine: true,
-    waitingOn: 'a comment record type, which no part of the split owns',
-  }),
+  declare('task.comment', 'comment', { contractNine: true }),
   declare('task.propose', 'write', {
     contractNine: true,
     waitingOn: 'the gate triple and the budget tables; T1 excludes a proposal',
@@ -169,9 +202,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.restore', 'write', { targetsExistingRecord: false }),
   declare('task.purge', 'manage', { targetsExistingRecord: false }),
 
-  read('task.read'),
-  read('task.board'),
-  read('person.list'),
+  read('task.read', TASK_COLLECTION),
+  read('task.board', TASK_COLLECTION),
+  read('person.list', 'person'),
+  read('preset.plan', 'preset', 'manage'),
+
+  declare('settings.set_four_eyes_threshold', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+  }),
+  declare('settings.set_client_sign_off', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -199,6 +242,9 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
  */
 export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
   'person.list',
+  'preset.plan',
+  'settings.set_client_sign_off',
+  'settings.set_four_eyes_threshold',
   'task.board',
   'task.create',
   'task.decide',

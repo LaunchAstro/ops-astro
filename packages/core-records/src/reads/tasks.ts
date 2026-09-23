@@ -20,6 +20,9 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { HistoryEntry, TaskDetail, TaskSummary } from './requests.ts';
+import { externalCommentProjection, readTaskComments } from '../tasks/comments.ts';
+import { readFieldDefinitions } from '../records/field-store.ts';
+import { READS } from '../commands/surface.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -97,17 +100,27 @@ function summaryOf(row: TaskRowRead): TaskSummary {
  * is where an operator looks and where the refusal evidence for N1 to N7 comes
  * from.
  */
+/** The declared reads, from the surface, so a read added later is excluded by declaring it. */
+const READ_COMMANDS: readonly string[] = [...READS];
+
 async function historyOf(tx: TenantQuery, recordId: string): Promise<readonly HistoryEntry[]> {
   const rows = await tx.query<{
     readonly occurred_at: Date;
     readonly actor_id: string;
     readonly command: string;
   }>(
+    // The writes only. Reads are audited now (I13) and they carry the record
+    // they looked at, which is what makes "who read this" answerable at all —
+    // but a history is what *happened to* the task, and a read happened to
+    // nobody. The two questions share one chain and are not the same question,
+    // so the projection names the outcomes it wants rather than taking every
+    // row that mentions the record.
     `select occurred_at, actor_id, command
        from public.audit_events
       where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
+        and command <> all($3::text[])
       order by seq`,
-    [tx.businessId, recordId],
+    [tx.businessId, recordId, READ_COMMANDS],
   );
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
@@ -146,10 +159,56 @@ export async function resolveTaskId(
 }
 
 /** One task with its history, or nothing at all. */
+/**
+ * Which comments a caller is shown, and in what.
+ *
+ * The internal projection is every comment in full; the external one is L2's
+ * `externalCommentProjection`, which is an allowlist in both directions — the
+ * client comments, in the fields the catalogue marks `shared`.
+ *
+ * **External is the default, and that is the mechanism.** A role is shown the
+ * internal projection only if it is one of the roles named below; anything
+ * else — a role a later release adds, a role a preset installs, a typo — is
+ * shown the client view. An allowlist pointing the other way would mean a role
+ * nobody classified sees everything, which is how the leak arrives with the
+ * next kind of member rather than with this one.
+ */
+const INTERNAL_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
+
+export function isInternalReader(roleKey: string): boolean {
+  return INTERNAL_ROLES.has(roleKey);
+}
+
+async function commentsFor(
+  tx: TenantQuery,
+  commentTypeId: string | undefined,
+  taskId: string,
+  internal: boolean,
+): Promise<readonly Readonly<Record<string, unknown>>[]> {
+  // A business with no comment type has no comments, which is an empty list
+  // and not a fault: the task detail is still the task detail.
+  if (commentTypeId === undefined) return [];
+  const comments = await readTaskComments(tx, commentTypeId, taskId);
+  if (!internal) {
+    return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
+  }
+  return comments.map((comment) => ({
+    id: comment.id,
+    audience: comment.audience,
+    author: comment.authorActorId,
+    body: comment.body,
+    comment_type: comment.commentType,
+    posted_at: comment.postedAt,
+    edited_at: comment.editedAt,
+    source: comment.source,
+  }));
+}
+
 export async function readTaskDetail(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
+  comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -167,6 +226,7 @@ export async function readTaskDetail(
     ...summaryOf(row),
     description: row.description,
     history: await historyOf(tx, row.id),
+    comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
   };
 }
 

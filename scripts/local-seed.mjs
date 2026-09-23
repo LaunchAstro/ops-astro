@@ -25,6 +25,10 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import { installTaskSpine } from '../packages/core-records/src/tasks/install.ts';
+import {
+  installBusinessSettings,
+  readBusinessSettings,
+} from '../packages/core-records/src/records/business-settings.ts';
 import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -315,6 +319,21 @@ try {
       const spine = await installTaskSpine(tx);
       console.log(
         `local-seed: ${BUSINESS_KEYS[tag]} task spine ${spine.installed ? 'installed' : 'already there'}`,
+      );
+      // After the spine, because both are record-model installs for the same
+      // business and reading a seed that installs them in one order and
+      // reports them in another is how a reader stops trusting the log.
+      //
+      // Idempotent by the producer's own rule rather than by a check here:
+      // `installBusinessSettings` inserts `on conflict do nothing`, so a second
+      // run adds whatever a later release named and resets no value a business
+      // has since changed. The count is printed because "four settings" after
+      // the second run is the observation that says so.
+      await installBusinessSettings(tx);
+      const settings = await readBusinessSettings(tx);
+      console.log(
+        `local-seed: ${BUSINESS_KEYS[tag]} business settings ${settings.length}` +
+          ` (${settings.map((setting) => setting.key).join(', ')})`,
       );
     });
   }

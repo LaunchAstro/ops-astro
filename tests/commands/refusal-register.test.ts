@@ -77,12 +77,21 @@ describe('the refusal register', () => {
     // command or the table that would produce them lands in a later part.
     expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual([
       'AUDIENCE_NOT_PERMITTED',
+      // The five agent codes L2 exported. Each is produced by a module in the
+      // tree and by no operation a caller can reach: the agent's own API path
+      // is part B of L3 and waits on L4. The three `PRESET_*` codes are
+      // deliberately *not* here — `preset.plan` produces them now.
+      'AUTH_NO_AGENT_IDENTITY',
+      'AUTH_SESSION_EXPIRED',
       'DELEGATION_EXCLUDES_DECISION',
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXCLUDES_OPERATION',
       'DELEGATION_EXPIRED',
       'DELEGATION_NARROWED',
+      'DELEGATION_NOT_LIVE',
+      'DELEGATION_OUT_OF_PURPOSE',
       'DELEGATION_REVOKED',
+      'DELEGATION_WIDENS',
       'GATE_ALREADY_DECIDED',
       'GATE_PENDING',
       'LEASE_EXPIRED',
