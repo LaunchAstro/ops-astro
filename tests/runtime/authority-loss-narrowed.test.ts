@@ -188,7 +188,13 @@ describe.skipIf(serverUrl === undefined)('R-B: authority loss answers DELEGATION
       reports: 0,
     });
 
-    for (const send of [heartbeat, handback]) {
+    // Heartbeat retains nothing. The handback carries a supported report, and
+    // T4 line 76 keeps it: exactly one unaccepted row naming the refusal, the
+    // answer and R-B's cause unchanged (ROOT-NARROWED-REPORT-RULING).
+    for (const [send, reports] of [
+      [heartbeat, 0],
+      [handback, 1],
+    ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one after the other, each against the same state
       const answer = await send(x);
       expect(answer.code, answer.text).toBe(NARROWED);
@@ -200,10 +206,19 @@ describe.skipIf(serverUrl === undefined)('R-B: authority loss answers DELEGATION
         ),
       ).toStrictEqual([]);
       // eslint-disable-next-line no-await-in-loop
-      expect(await state(x), 'no effect: nothing reactivated, renewed or settled').toStrictEqual(
-        closed,
-      );
+      expect(await state(x), 'no effect: nothing reactivated, renewed or settled').toStrictEqual({
+        ...closed,
+        reports,
+      });
     }
+    const kept = await admin<{ disposition: string; refusal_code: string }>(
+      `select disposition, refusal_code from public.handback_reports where lease_id = $1`,
+      [x.picked.leaseId],
+    );
+    expect(kept.map((row) => [row.disposition, row.refusal_code])).toStrictEqual([
+      ['retained', NARROWED],
+    ]);
+    const retained = { ...closed, reports: 1 };
 
     // A retry, of the call and of the revocation, answers the same bytes and
     // leaves the recorded cause as it was.
@@ -211,7 +226,7 @@ describe.skipIf(serverUrl === undefined)('R-B: authority loss answers DELEGATION
     expect((await heartbeat(x)).text).toBe(first.text);
     const again = await w.person(w.h.world.ada, 'grant.revoke', { grantId: grants[0]?.id });
     expect(again.code).toBe('TRANSITION_NOT_PERMITTED');
-    expect(await state(x)).toStrictEqual(closed);
+    expect(await state(x)).toStrictEqual(retained);
 
     // A rebuilt API holds nothing in memory from the first: the cause is the row's.
     const rebuilt = rebuildApi(w.h.world);
@@ -235,7 +250,7 @@ describe.skipIf(serverUrl === undefined)('R-B: authority loss answers DELEGATION
     } finally {
       await rebuilt.close();
     }
-    expect(await state(x)).toStrictEqual(closed);
+    expect(await state(x)).toStrictEqual(retained);
   }, 120_000);
 
   it('another agent, an unknown token, another business and a bare call learn nothing of the loss', async () => {

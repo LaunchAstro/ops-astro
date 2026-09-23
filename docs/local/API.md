@@ -417,9 +417,29 @@ holds the person path.
 `authorisedByPersonId`, `brief { taskId, purpose }`,
 `expectedVersions { versionId, taskRevision }`,
 `budgetEnvelope { envelopeId, currency, heldMinor }`, `permittedOperations`
-and `excludedOperations`, each exclusion with its reason. Only the agent's
-answer adds `delegationId`, `credential` and `purposeScope`; a person's carries
-none of them and no placeholder (`commands/tasks-runtime.ts:500-532`).
+and `excludedOperations`, each exclusion with its reason, and `handbackShape`.
+Only the agent's answer adds `delegationId`, `credential` and `purposeScope`; a
+person's carries none of them and no placeholder
+(`commands/tasks-runtime.ts:604-637`).
+
+**`handbackShape`** (TRANSACTION-CONTRACT line 64, root ruling 6) says how to
+hand this lease back and grants nothing. Its operands are keyed by the owning
+`task.handback` contract, `HandbackFields` (`HANDBACK_OPERANDS`,
+`tasks-runtime.ts:518`), so an operand added, dropped or made optional there
+does not compile until the descriptor follows: `required` `leaseId`, `fence`,
+`outcome`; `optional` `report`, `actualMinor` (null only) and `successor`.
+`operationIdentity` is the envelope's `operationId` and its replay rule;
+`lease` repeats this pickup's `leaseId` and `fence`; `outcomes` is `completed`
+or `failed`. `credential` names where the claimant's credential travels, never
+the credential: the `x-agent-delegation` header for an agent, the person's own
+bearer for a person. `versionBinding` has no operand: the lease is bound to
+`versionId`, and the handback refuses `LEASE_NOT_OWNED`, keeping the report,
+when that version was superseded or its lineage is no longer live
+(`core-runtime/src/handback.ts:299-342`). `task.handback` takes no
+`expectedVersions` and no record revision; `expectedVersions.taskRevision` is
+the task as read at pickup. `tests/commands/agent-pickup-payload.test.ts`
+asserts the answer field by field against the rows it names, for both
+principals.
 `authorisedByPersonId` is read from the approving decision, never from the
 body.
 

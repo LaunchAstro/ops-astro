@@ -220,13 +220,12 @@ describe.skipIf(serverUrl === undefined)('L6 schedules: W02 (b) and W04', () => 
     );
     const original = answered(first);
     expect(codeOf(original)).toBe('applied');
-    // The retry in flight behind the original either replays it or loses the
-    // operation-identity claim and rolls back whole. The agent entry does not
-    // retry that loss itself (`agent-envelope.ts:145-166`; the person entry
-    // does, `envelope.ts:147-160`), so the caller's own retry is what replays.
-    const retry = faultedWith(second, 'operations_identity_key')
-      ? await asAgent(s, body)
-      : answered(second);
+    // The retry in flight behind the original loses the operation-identity
+    // claim once, and the agent entry's one bounded retry (as the person
+    // entry's, `envelope.ts` `executeCommand`) reads the committed row and
+    // replays it: no fault reaches the caller (DB-PROOF-GAPS-B F1).
+    expect(faultedWith(second, 'operations_identity_key')).toBe(false);
+    const retry = answered(second);
     expect(codeOf(retry)).toBe('applied');
     expect(handles(retry)).toStrictEqual(handles(original));
     expect(handles(original)['credential']).toBeTypeOf('string');
@@ -264,16 +263,11 @@ describe.skipIf(serverUrl === undefined)('L6 schedules: W02 (b) and W04', () => 
     expect(codeOf(answered(first))).toBe('applied');
     // The cancel discovered an unleased hold before its locks and meets a live
     // lease under them. It rolls back rather than extend its lock set
-    // (`recovery.ts:645-652`), writing nothing; the same request, retried,
-    // rediscovers the lease and cancels it.
-    if (faultedWith(second, 'cancellation: the affected set changed under discovery')) {
-      expect(await leasesOn(work.taskId, 'live')).toBe(1);
-      expect((await holdsOf(work.proposal)).map((hold) => hold.state)).toStrictEqual(['held']);
-      await heldIsExact(work.taskId);
-      expect(codeOf(await asPerson(s, cancel))).toBe('applied');
-    } else {
-      expect(codeOf(answered(second))).toBe('applied');
-    }
+    // (`recovery.ts`, `AffectedSetChanged`), writing nothing, and the person
+    // entry retries it once in a fresh transaction that rediscovers the lease
+    // and cancels it (`register-store.ts`, `isRetryableViolation`). The first
+    // request answers; the caller never sees the rollback.
+    expect(codeOf(answered(second))).toBe('applied');
 
     const holds = await holdsOf(work.proposal);
     expect(holds).toHaveLength(1);
