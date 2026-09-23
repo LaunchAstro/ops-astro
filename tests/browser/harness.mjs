@@ -51,6 +51,8 @@ export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 // false line in the results table.
 const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata' };
 const DENIED_PG = new Set(['ops-astro-datafix-pg', 'ops-astro-datafix-pgdata']);
+/** Docker's own shape for container and volume names. */
+const DOCKER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 
 /**
  * The Postgres container and volume B6 restarts, and the port the API it
@@ -64,6 +66,12 @@ export function restartTargetOf(env, apiUrl = API) {
     throw new Error(`B6 restart target: B6_PG_CONTAINER=${container} names no B6_PG_VOLUME`);
   }
   for (const name of [container, volume]) {
+    // One Docker name and nothing else. An empty value, or two names run
+    // together by a shell that did not split them, is not a name the deny list
+    // can be trusted to have checked.
+    if (!DOCKER_NAME.test(name)) {
+      throw new Error(`B6 restart target: ${JSON.stringify(name)} is not one Docker name`);
+    }
     if (DENIED_PG.has(name) || name.startsWith('supabase_')) {
       throw new Error(`B6 restart target: refusing ${name}; B6 never stops it`);
     }
