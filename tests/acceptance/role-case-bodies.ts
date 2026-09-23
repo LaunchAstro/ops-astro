@@ -86,6 +86,28 @@ export async function approvableGate(
   return { gateId: detail['gateId'] as string, versionId: detail['versionId'] as string };
 }
 
+/** Proposed and approved by the context's person: a reservation on the queue. */
+async function approvedReservationId(context: BodyContext): Promise<string> {
+  const gate = await approvableGate(context);
+  const decided = await context.asPerson('task.decide', {
+    ...gate,
+    decision: 'approve',
+    note: 'approved so a person can work it',
+  });
+  if (decided.code !== 'ok') throw new Error(`matrix: decide refused ${decided.code}`);
+  return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
+}
+
+/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+  const picked = await context.asPerson('task.pickup', {
+    reservationId: await approvedReservationId(context),
+  });
+  if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
+  const detail = picked.body['detail'] as Record<string, unknown>;
+  return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+}
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
@@ -175,28 +197,14 @@ export function createPositiveBody(
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
       case 'task.pickup':
-        // Not a failure and not a pass. `handlers.ts` refuses every person
-        // here, but person pickup is required (transaction contract T3 line
-        // 66, minimum contract line 331, ledger line 30), so this is a missing
-        // implementation rather than an alternative (EX-01, routed to
-        // PERSON-WORK by ROOT-L6-74d583c-DISPOSITION.md lines 31-35). The
-        // agent's pickup is asserted in case (h).
-        return {
-          exception:
-            'missing coverage: person pickup is required (T3 line 66, minimum contract 331) ' +
-            'and handlers.ts refuses it; owner PERSON-WORK (EX-01); agent pickup in case (h)',
-        };
+        // Person pickup (EX-01, transaction contract T3 line 66, minimum
+        // contract line 331, ledger line 30): the admin claims approved work
+        // as themselves. The agent's pickup is asserted in case (h).
+        return { body: { reservationId: await approvedReservationId(context) } };
       case 'task.handback':
-        // Refused on the person path for the same reason. The handback is the
-        // holder of the delegation minted at pickup (minimum contract line
-        // 332), so the success is the agent's: the journey hands back a lease
-        // it holds, case (h), `k-handback` rows. A person's handback of a
-        // person's own lease is PERSON-WORK's, with person pickup.
-        return {
-          exception:
-            'executed alternative: person path refuses by design (handlers.ts); ' +
-            'own-lease handback success asserted in case (h), k-handback rows',
-        };
+        // The person's own lease, handed back by that person. The agent's
+        // own-lease handback is case (h), `k-handback` rows.
+        return { body: { ...(await ownLease(context)), outcome: 'completed' } };
       case 'task.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
@@ -256,13 +264,9 @@ export function createPositiveBody(
             'case (h), k-revoke rows',
         };
       case 'task.heartbeat':
-        // Refused on the person path like pickup and handback; its positive
-        // control is the agent journey, which renews its own lease.
-        return {
-          exception:
-            'executed alternative: person path refuses by design (handlers.ts); ' +
-            'own-lease success asserted in the agent journey (ledger line 38)',
-        };
+        // The person renews their own lease (ledger line 38, "current lease
+        // owner"). The agent's renewal is in the agent journey.
+        return { body: await ownLease(context) };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }
