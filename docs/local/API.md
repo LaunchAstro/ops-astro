@@ -659,6 +659,10 @@ not a second surface: `/api/a/b/alpha/task/pickup` is the agent asking and
 `/api/b/alpha/task/pickup` is a person asking, and neither can be mistaken for
 the other by a proxy, a log reader or the server.
 
+The command line ([CLI.md](CLI.md)) calls these same routes:
+`/api/b/:businessKey` by default, and `/api/a/b/:businessKey` with `--agent`,
+sending the delegation credential in `x-agent-delegation`.
+
 `Authorization: Bearer <GoTrue access token>` says which **agent login** is
 calling, and it resolves through `identity/agent-login.ts` rather than the
 person path. A login is in `person_logins` or in `actor_logins`, never both, so

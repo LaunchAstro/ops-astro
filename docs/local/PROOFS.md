@@ -526,6 +526,15 @@ counts above and are not named for `db:conformance`:
   socket: create, assign, start, complete and reload a task, `preset.plan`,
   and a D03 cell.
 
+The real command line is proved separately and needs no port:
+`tests/cli/cli-process.test.ts` (named, 11 tests) runs `apps/api/server.ts`
+and `apps/cli/main.ts` as separate OS processes over HTTP (person journey
+with revisions checked in the database, board and people reads,
+`SCOPE_NOT_GRANTED`, another business, an unknown verb that sends nothing, the
+agent queue, pickup, heartbeat and handback, a bare agent call refused
+`DELEGATION_EXCLUDES_OPERATION`, login, and the package script). See
+[CLI.md](CLI.md).
+
 Both are implemented and ran green on the SURFACE-FINAL lane's stack, and 7 of
 7 on the DOCS-2 lane's own stack at `cca3c89` (tested, lane run). Neither has a
 merge-trial run with the port set.

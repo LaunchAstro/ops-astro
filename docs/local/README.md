@@ -41,6 +41,8 @@ If you are new to this checkout, read this section first.
   and database instead of sharing theirs.
 - **One command to check it.** `corepack pnpm verify:slice` prints one line per
   case. Any `unrun` line comes with its reason.
+- **The command line.** `corepack pnpm cli <operation>` calls the same API as
+  the app, as a person or (with `--agent`) as an agent; see [CLI.md](CLI.md).
 - **Stop only what you started.** Record the PIDs you start and kill only those
   PIDs. Never kill by pattern ([Stopping what you started](#stopping-what-you-started)).
 - **The delegation credential key.** Agent pickup credentials are derived
