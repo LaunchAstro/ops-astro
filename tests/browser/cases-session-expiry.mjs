@@ -17,9 +17,11 @@
 // Run: node tests/browser/cases-session-expiry.mjs  (or through slice-acceptance)
 
 import { chromium } from 'playwright';
-import { VIEWPORT, WEB, passwordOf, record, shot, signIn } from './harness.mjs';
+import { VIEWPORT, WEB, passwordOf, record, shot, signIn, standaloneStatus } from './harness.mjs';
 
 const NOTICE = '[data-reason="session-ended"]';
+/** The rows a standalone run has to have passed before it may exit zero. */
+const REQUIRED = ['SX1', 'SX2', 'SX3'];
 const UNVERIFIABLE = 'not-a-token-this-server-can-verify';
 
 export async function casesSessionExpiry(run) {
@@ -116,6 +118,10 @@ async function sessionExpiry(page) {
 
 // ------------------------------------------------------------------ standalone
 
+// A zero exit from here means every SX row above passed, and nothing else.
+// The caught-error path records a failed row like any other, so a timeout that
+// never reached SX3 leaves both a FAIL row and an absent required row, and the
+// status says so twice rather than staying silent.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const browser = await chromium.launch();
   try {
@@ -130,4 +136,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } finally {
     await browser.close();
   }
+  process.exitCode = standaloneStatus('session expiry', REQUIRED);
 }
