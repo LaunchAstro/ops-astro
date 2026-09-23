@@ -22,7 +22,6 @@
 
 import type { AgentRefusal, Refusal as IdentityRefusal } from '../identity/refusals.ts';
 import type { RecordsRefusal } from '../records/refusals.ts';
-import type { Refusal as AuthorityRefusal } from '../authority/grants.ts';
 import { CALLER_VISIBLE, registeredRefusal, type RefusalCode } from './register.ts';
 
 export interface CommandRefusal {
@@ -96,7 +95,19 @@ export function fromAgentIdentity(refusal: AgentRefusal): CommandRefusal {
   return refuseCommand(refusal.code, [], refusal.fixes);
 }
 
-export function fromAuthority(refusal: AuthorityRefusal): CommandRefusal {
+/**
+ * A refusal that carries one reason and one fix. Authority's is one; the
+ * runtime's and the delegation refusals it passes through are the others
+ * (`fromRuntime` in `tasks-runtime.ts` comes here), so all three reach a
+ * caller in one shape.
+ */
+export interface ReasonedRefusal {
+  readonly code: RefusalCode;
+  readonly reason: string;
+  readonly fix: string;
+}
+
+export function fromAuthority(refusal: ReasonedRefusal): CommandRefusal {
   // The reason is a sentence about the rule, not about the caller's data, so
   // it can be shown. It goes in `fixes` beside the fix rather than into
   // `names`, which holds identifiers a reader looks up.

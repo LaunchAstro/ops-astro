@@ -58,7 +58,7 @@ import type { HandbackHolder } from '../../../core-runtime/src/handback.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromAuthority, refuseCommand, type CommandRefusal } from './refusal.ts';
 import {
   applied,
   refused,
@@ -66,21 +66,19 @@ import {
   type HandlerOutcome,
   type Refused,
 } from './outcome.ts';
-import type { RefusalCode } from './register.ts';
 import { delegationCredentialKeys, gateSigningKey, readBusinessCapId } from './runtime-config.ts';
 
 /**
  * A runtime or delegation refusal as the command register spells it.
  *
- * Every code in both unions is registered (`tests/commands/runtime-codes.test.ts`
- * asserts the twenty), so `refuseCommand` cannot be handed a spelling the
- * register has never heard of; if it ever is, its own constructor raises
- * rather than inventing one. The reason and the fix go into `fixes` beside
- * each other for the same reason `fromAuthority` puts them there: both are
- * sentences about the rule, neither is a value the caller sent.
+ * Both unions are taken from the register (`RuntimeRefusalCode` from its rows
+ * marked `runtime`, and every delegation code is a row), so there is no
+ * spelling here the register has never heard of and nothing to cast. The
+ * shape is `fromAuthority`'s: reason then fix, into `fixes`, because both are
+ * sentences about the rule and neither is a value the caller sent.
  */
 export function fromRuntime(refusal: AnyRefusal): CommandRefusal {
-  return refuseCommand(refusal.code as RefusalCode, [], [refusal.reason, refusal.fix]);
+  return fromAuthority(refusal);
 }
 
 /**
