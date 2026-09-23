@@ -20,6 +20,12 @@ import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
 
+/** A create whose outcome is not known, held so the retry is the same attempt. */
+interface PendingCreate {
+  readonly operationId: string;
+  readonly title: string;
+}
+
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
@@ -31,6 +37,12 @@ export function Projects(props: ProjectsProps): ReactElement {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [because, setBecause] = useState<string | null>(null);
+  // The attempt whose outcome nobody knows. A create that ended `unavailable`
+  // may well have committed on the server, so its identity and its exact
+  // payload are kept here and presented again on the next submission. Minting
+  // a fresh id instead would make the server's replay register unreachable and
+  // the retry would create a second task (review finding 1).
+  const [pending, setPending] = useState<PendingCreate | null>(null);
 
   const { state, reload } = useRead<TaskBoardResult>({
     grantKey: props.grantKey,
@@ -39,29 +51,58 @@ export function Projects(props: ProjectsProps): ReactElement {
     deps: [],
   });
 
+  // The same attempt while the asked-for task is the same one, a new attempt
+  // when the person has changed what they are asking for. Retrying an unknown
+  // outcome and deliberately starting a second task are different intentions
+  // and the title is what tells them apart; `startNew` below says it outright.
+  const attemptFor = (asked: string): PendingCreate =>
+    pending !== null && pending.title === asked
+      ? pending
+      : { operationId: client.newOperationId(), title: asked };
+
   const onCreate = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const asked = title.trim();
     if (asked === '') return;
+    const attempt = attemptFor(asked);
+    setPending(attempt);
     setCreating(true);
     setBecause(null);
     // `board: null` is explicit. The acceptance case is a task with no board,
     // and leaving the field out would let a server default decide.
     void (async () => {
-      const result = await client.mutate('task.create', { fields: { title: asked }, board: null });
+      const result = await client.mutate(
+        'task.create',
+        { fields: { title: attempt.title }, board: null },
+        { operationId: attempt.operationId },
+      );
       setCreating(false);
       if (isRefusal(result)) {
+        // A refusal is a decision: the outcome is known and the attempt is
+        // over. Holding it would resend an identity the server has settled.
+        setPending(null);
         setBecause(describeRefusal(result));
         return;
       }
       if (isUnavailable(result)) {
+        // The one case the attempt is kept for. The task may or may not exist.
         setBecause(result.because);
         return;
       }
+      setPending(null);
       setTitle('');
       reload();
     })();
   };
+
+  /** Abandon an unresolved attempt and ask for a genuinely different task. */
+  const startNew = (): void => {
+    setPending(null);
+    setBecause(null);
+    setTitle('');
+  };
+
+  const retrying = pending !== null && pending.title === title.trim();
 
   return (
     <div className="stack">
@@ -85,13 +126,25 @@ export function Projects(props: ProjectsProps): ReactElement {
         <button
           className="btn btn--primary"
           type="submit"
+          data-attempt={retrying ? 'retry' : 'new'}
           disabled={creating || title.trim() === ''}
         >
-          {creating ? 'Creating…' : 'Create task'}
+          {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
         </button>
+        {pending === null ? null : (
+          <button className="btn" type="button" data-attempt="discard" onClick={startNew}>
+            Start a different task
+          </button>
+        )}
         {because === null ? null : (
           <p className="field__error" role="alert" data-voice="input-wrong">
             {because}
+          </p>
+        )}
+        {pending === null || because === null ? null : (
+          <p className="card__sub" data-attempt="unresolved">
+            This task may already have been created. Retrying sends the same attempt, so the server
+            answers with the original result rather than making a second task.
           </p>
         )}
       </form>
