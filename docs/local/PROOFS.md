@@ -579,6 +579,38 @@ same thing as in the rulings table below.
   and is shown refusing alone. `gate_decisions.decided_by_person_id` is not
   null (`0012:36`).
 
+## L6 proof gaps: runtime schedules and refusals (DB-PROOF-GAPS-B)
+
+Four suites close the L6 rows G04, G05, W02 (b, c), W04 (schedules) and W05
+(`parent-observations/runs/6f15252/L6/DISPOSITIONS.md`) under root rulings 3,
+4 and 6. Each runs on a real database and is named in `tests/db/named-suites.json`.
+
+- **Schedules:** `tests/runtime/l6-schedules.test.ts`. A third connection holds
+  the cap row; the first racer is seen parked on it and the second seen waiting
+  before it lets go. W02 (b): the original pickup and a same-operationId retry
+  in flight leave one lease, one delegation and one hold with identical handles.
+  The retry that loses the identity claim is rolled back and replays on the
+  caller's retry, because the agent entry does not retry that loss itself. W04:
+  pickup against `task.cancel` in both orders, and two pickups over an expired
+  lease. One outcome, the hold classified at most once (the envelope's held
+  total equals its held reservations) and no reservation revived.
+- **Cases:** `tests/runtime/l6-cases.test.ts`. G04: a held, unleased
+  reservation superseded by a real `task.propose` is `RESERVATION_NOT_CLAIMABLE`
+  with no runtime row changed and one refused audit row. G05 ruling 3: a
+  retried restart identity returns the same child, a different identity on the
+  restarted parent is `TRANSITION_NOT_PERMITTED` and audited, and a terminal
+  child restarts. G05 ruling 4: a parentless proposal beside a rejected or
+  cancelled lineage opens a live lineage with no provenance and changes none of
+  the old lineage's gate, hold or lease. W05: no room in the envelope under a
+  cap with room is `BUDGET_UNAVAILABLE`, with no decision, reservation or
+  envelope change.
+- **Restart expiry:** `tests/api/restart-expiry-bound.test.ts`. Through the
+  route, `task.restart` at 604800 seconds is accepted with the gate closing
+  seven days out; 604801 is `FIELD_VALUE_INVALID`, audited, with no lineage.
+- **Heartbeat maximum:** `tests/commands/heartbeat-bound.test.ts`. Through the
+  agent route, `leaseSeconds` of 3600 renews the lease and its delegation to it;
+  3601 is `FIELD_VALUE_INVALID` naming `leaseSeconds`, audited, and moves neither.
+
 ## Engineering rulings, and how far each is proved
 
 The build's root ruled on contract questions the lanes raised at `906613f`,
