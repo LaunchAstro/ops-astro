@@ -18,6 +18,47 @@
 // Installing is additive and never resets. A second install adds what is
 // missing and leaves every value alone, because the alternative is an upgrade
 // that quietly returns a business's retention window to the shipped default.
+//
+// ## The revision, and the interface a command wires to (0020)
+//
+// Every setting carries a `revision` (`integer`, starting at 1) and both
+// readers hand it back, so the mechanism a record has had since 0005 is
+// available on a setting: a caller reads, writes against the revision it read,
+// and is refused rather than merged when the row has moved on. Without it two
+// administrators editing one row from two browser tabs both wrote, and the
+// second silently replaced the first with a value chosen before the first
+// existed.
+//
+// The interface, pinned so a command can wire to it without guessing:
+//
+// - **The read result.** `BusinessSetting.revision: number`, on every setting,
+//   from `readBusinessSettings` and `readBusinessSetting` alike.
+// - **The write input.** `writeBusinessSetting(tx, write)` with
+//   `expectedRevision?: number`. It is *optional*: absent, the write proceeds
+//   and still returns the new revision, which is what a caller that has not
+//   learnt to send one does today.
+// - **The stale result.** `SettingRevisionStale`, which is the shape the
+//   records engine's refusals carry (`refused`, `code`, `names`, `fixes`) with
+//   the code the command register already holds for this answer,
+//   `VERSION_STALE`, and `names` of `revision=<the one the row is at>`. It is
+//   returned, never thrown, for the reason `records/refusals.ts` gives. A
+//   caller at the command boundary passes it straight to `refuseCommand`.
+// - **Nothing to write.** `undefined`, for a key this business has no row for
+//   and for an operation-owned row the named operation does not own. One
+//   answer, because both are "there is no row here you may write" and the
+//   caller turns it into its own `NOT_FOUND`.
+//
+// The value is *not* type-checked here against the row's declared type. The
+// database's check constraint refuses a mismatch and this module lets that
+// throw, because the caller knows which setting it is writing and can refuse
+// the caller's own value with a better answer than a constraint violation --
+// which is what `commands/settings-write.ts` already does.
+//
+// **Until a command calls this, the revision does not move on the command
+// path.** `commands/settings-write.ts` still writes the row with an update of
+// its own, and that statement does not touch `revision`. There is no trigger
+// (0020 says why), so a setting written through the two settings commands
+// keeps the revision it had until those commands are wired to this function.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -98,6 +139,8 @@ export interface BusinessSetting {
   readonly owningOperations: readonly string[];
   readonly visibilityClass: VisibilityClass;
   readonly updatedAt: Date;
+  /** What a write names to say which value it is replacing. Starts at 1 (0020). */
+  readonly revision: number;
 }
 
 interface SettingRow {
@@ -110,6 +153,7 @@ interface SettingRow {
   readonly owning_operation: readonly string[] | null;
   readonly visibility_class: VisibilityClass;
   readonly updated_at: Date;
+  readonly revision: number;
 }
 
 function settingFrom(row: SettingRow): BusinessSetting {
@@ -123,6 +167,7 @@ function settingFrom(row: SettingRow): BusinessSetting {
     owningOperations: row.owning_operation ?? [],
     visibilityClass: row.visibility_class,
     updatedAt: row.updated_at,
+    revision: row.revision,
   };
 }
 
@@ -175,7 +220,7 @@ export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
 export async function readBusinessSettings(tx: TenantQuery): Promise<readonly BusinessSetting[]> {
   const rows = await tx.query<SettingRow>(
     `select id, key, label, value_type, value, write_mode, owning_operation,
-            visibility_class, updated_at
+            visibility_class, updated_at, revision
        from business_settings
       where business_id = $1
       order by key`,
@@ -191,11 +236,163 @@ export async function readBusinessSetting(
 ): Promise<BusinessSetting | undefined> {
   const rows = await tx.query<SettingRow>(
     `select id, key, label, value_type, value, write_mode, owning_operation,
-            visibility_class, updated_at
+            visibility_class, updated_at, revision
        from business_settings
       where business_id = $1 and key = $2`,
     [tx.businessId, key],
   );
   const row = rows[0];
   return row === undefined ? undefined : settingFrom(row);
+}
+
+/**
+ * The refusal a write against a revision the row has moved past gets.
+ *
+ * The records engine's shape, with the code the command register already holds
+ * for this answer. It names the revision the row is actually at, which is
+ * in-business configuration the caller is already inside the business to read,
+ * and never the value the caller tried to write.
+ */
+export interface SettingRevisionStale {
+  readonly refused: true;
+  readonly code: 'VERSION_STALE';
+  readonly names: readonly string[];
+  readonly fixes: readonly string[];
+}
+
+/** The same wording the records spine uses, so a caller is told the same thing twice. */
+export const SETTING_REVISION_FIXES: readonly string[] = [
+  'Read the setting and send the revision you are writing against as expected_revision.',
+  'A write against a stale revision is refused, never merged.',
+];
+
+/** The discriminant, so a caller can tell a written setting from a refusal. */
+export function isSettingRevisionStale(value: object): value is SettingRevisionStale {
+  return 'refused' in value && value.refused === true;
+}
+
+export interface BusinessSettingWrite {
+  readonly key: string;
+  /**
+   * The value itself, not its text. The conversion is chosen from the type the
+   * row declares and the server applies it; handing the driver a string for a
+   * `numeric` makes the band the JSON string "500", which no comparison reads.
+   */
+  readonly value: number | boolean | string | null;
+  /**
+   * The revision the caller read. Absent means "write it anyway", which is what
+   * a caller that has not learnt to send one does.
+   */
+  readonly expectedRevision?: number;
+  /**
+   * The operation writing, when a named one owns the row. The row itself says
+   * which: `write_mode = 'operation'` and `owning_operation` naming this one.
+   * Absent is a generic write, which an `operation` row refuses.
+   */
+  readonly owningOperation?: string;
+  /** Who wrote it, recorded on the row. Never the caller's idea of who they are. */
+  readonly actorId?: string | null;
+}
+
+export interface BusinessSettingWritten {
+  readonly id: string;
+  readonly key: string;
+  readonly value: number | boolean | string | null;
+  /** The revision the row is now at, which the next write names. */
+  readonly revision: number;
+}
+
+/**
+ * How a value becomes the document the row holds, by the type the row declares.
+ *
+ * Chosen here in TypeScript and not as a `case` over `value_type` in the
+ * statement, for the reason `commands/settings-write.ts` records: the server
+ * decides a parameter's type before the row is read, so every arm's cast is
+ * folded at plan time and a numeric value is rejected by a boolean arm that was
+ * never meant to run.
+ *
+ * Null is `'null'::jsonb` and not a SQL null: the column is `not null` and "the
+ * band is off" is a value rather than an absence.
+ */
+const VALUE_SQL_BY_TYPE: Readonly<Record<SettingValueType, string>> = {
+  numeric: `case when $3::text is null then 'null'::jsonb else to_jsonb($3::numeric) end`,
+  boolean: `to_jsonb($3::boolean)`,
+  text: `case when $3::text is null then 'null'::jsonb else to_jsonb($3::text) end`,
+};
+
+interface LockedSettingRow {
+  readonly id: string;
+  readonly value_type: SettingValueType;
+  readonly write_mode: WriteMode;
+  readonly owning_operation: readonly string[] | null;
+  readonly revision: number;
+}
+
+/**
+ * Write one setting, against the revision the caller read.
+ *
+ * **The row is locked before its revision is compared**, which is the whole
+ * mechanism and the lesson `commands/prepare.ts` records for records: two
+ * writers presenting the same revision each read the committed row, neither saw
+ * the other's uncommitted write, and both applied -- so the one who lost was
+ * told `applied` and the other's value was silently restored. Optimistic
+ * concurrency is only as good as the row the comparison reads. With `for
+ * update` the second transaction waits, re-reads the revision the first
+ * committed, and is refused.
+ *
+ * The value and the revision then move in one statement, so there is no instant
+ * in which the row holds a new value at an old revision.
+ */
+export async function writeBusinessSetting(
+  tx: TenantQuery,
+  write: BusinessSettingWrite,
+): Promise<BusinessSettingWritten | SettingRevisionStale | undefined> {
+  const locked = await tx.query<LockedSettingRow>(
+    `select id, value_type, write_mode, owning_operation, revision
+       from business_settings
+      where business_id = $1 and key = $2
+        for update`,
+    [tx.businessId, write.key],
+  );
+  const row = locked[0];
+  if (row === undefined) return undefined;
+
+  // The row says which operation owns it, so a setting someone later
+  // reclassified stops being writable by its old operation without this file
+  // changing. A generic write to an `operation` row is the refusal the
+  // classification exists for.
+  const ownedElsewhere =
+    write.owningOperation === undefined
+      ? row.write_mode === 'operation'
+      : row.write_mode !== 'operation' ||
+        !(row.owning_operation ?? []).includes(write.owningOperation);
+  if (ownedElsewhere) return undefined;
+
+  if (write.expectedRevision !== undefined && write.expectedRevision !== row.revision) {
+    return {
+      refused: true,
+      code: 'VERSION_STALE',
+      names: [`revision=${row.revision}`],
+      fixes: SETTING_REVISION_FIXES,
+    };
+  }
+
+  const written = await tx.query<{
+    readonly id: string;
+    readonly key: string;
+    readonly value: number | boolean | string | null;
+    readonly revision: number;
+  }>(
+    `update business_settings
+        set value = ${VALUE_SQL_BY_TYPE[row.value_type]},
+            revision = revision + 1,
+            updated_at = now(),
+            updated_by_actor_id = $4
+      where business_id = $1 and key = $2
+    returning id, key, value, revision`,
+    [tx.businessId, write.key, write.value ?? null, write.actorId ?? null],
+  );
+  // The row was locked above, so the update reaches it or the transaction is
+  // not the one holding the lock, which cannot happen inside one statement.
+  return written[0];
 }
