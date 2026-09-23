@@ -54,11 +54,10 @@
 // the caller's own value with a better answer than a constraint violation --
 // which is what `commands/settings-write.ts` already does.
 //
-// **Until a command calls this, the revision does not move on the command
-// path.** `commands/settings-write.ts` still writes the row with an update of
-// its own, and that statement does not touch `revision`. There is no trigger
-// (0020 says why), so a setting written through the two settings commands
-// keeps the revision it had until those commands are wired to this function.
+// **This function is the only writer that moves the revision.** Both settings
+// commands write through it (`commands/settings-write.ts`). There is no
+// trigger (0020 says why), so a statement that updated `business_settings`
+// some other way would leave the revision where it was.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';

@@ -62,7 +62,7 @@ import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
  * A runtime or delegation refusal as the command register spells it.
  *
  * Every code in both unions is registered (`tests/commands/runtime-codes.test.ts`
- * asserts the fifteen), so `refuseCommand` cannot be handed a spelling the
+ * asserts the nineteen), so `refuseCommand` cannot be handed a spelling the
  * register has never heard of; if it ever is, its own constructor raises
  * rather than inventing one. The reason and the fix go into `fixes` beside
  * each other for the same reason `fromAuthority` puts them there: both are

@@ -254,9 +254,9 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
  * version rather than a record revision, `task.pickup` mints a lease without
  * writing the task, and  `task.handback` echoes expected versions for
  * everything it touched (minimum contract 4.3). The reads write nothing, so
- * there is no revision for any of them to be writing against — including
- * `settings.read`, where the absence is a schema gap rather than a decision:
- * `business_settings` carries no revision column at all.
+ * there is no revision for any of them to be writing against. `settings.read`
+ * answers with the revision 0020 gave `business_settings`, so a settings write
+ * can send it back, but the read itself writes against nothing.
  */
 export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
   'person.list',
