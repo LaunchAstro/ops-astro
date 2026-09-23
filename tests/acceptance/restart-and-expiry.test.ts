@@ -64,6 +64,22 @@ function report(label: string, lines: readonly string[]): void {
 const CONTAINER = 'ops-astro-l5-pg';
 const DOCKER = '/usr/local/bin/docker';
 
+/**
+ * When the container last started, as the daemon reports it.
+ *
+ * The restart proof's weakest point would be trusting that `docker restart`
+ * did anything: a command that failed quietly, or a name that no longer
+ * matches, would leave every assertion after it passing for the wrong reason.
+ * Reading this before and after and requiring it to have MOVED is what makes
+ * the restart a measured fact rather than an intention. (`RestartCount` is not
+ * the check — it counts restart-policy restarts, not manual ones, and stays 0.)
+ */
+function startedAt(): string {
+  return execFileSync(DOCKER, ['inspect', CONTAINER, '--format', '{{.State.StartedAt}}'], {
+    encoding: 'utf8',
+  }).trim();
+}
+
 function restartOwnContainer(): void {
   execFileSync(DOCKER, ['restart', CONTAINER], { stdio: 'pipe' });
   // `docker restart` returns when the container is up, not when Postgres is
@@ -253,7 +269,13 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
 
   it('keeps every identity across a restart of its own Postgres', async () => {
     const before = await identities();
+    const startedBefore = startedAt();
     restartOwnContainer();
+    const startedAfter = startedAt();
+    // The restart happened. Without this the rest of the case would pass
+    // just as happily against a container that was never touched.
+    expect(startedAfter).not.toBe(startedBefore);
+    report('container restart', [`${startedBefore} -> ${startedAfter}`]);
     const fresh = rebuildApi(world);
     try {
       const read = await asAda(

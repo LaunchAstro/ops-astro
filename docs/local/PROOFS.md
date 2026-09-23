@@ -226,11 +226,6 @@ lane does not own.
 
 Named by item number so the unfinished frontier stays countable.
 
-- **Item 5's container restart had not been run when this file was written.**
-  Every other case in `restart-and-expiry.test.ts` is green; the
-  `docker restart` leg is held back until the lane's sibling proofs stop using
-  the same Postgres, because restarting it under them would fail their runs for
-  a reason that is not theirs.
 - **No external reader, so I09's projection case records a gap rather than a
   result.** See the interface gaps above.
 - **No reports table**, so no report identity is compared across the restart.
