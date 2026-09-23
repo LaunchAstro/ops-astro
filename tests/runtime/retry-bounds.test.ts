@@ -293,7 +293,7 @@ describe.skipIf(serverUrl === undefined)('the bounded command retries, exhausted
     expect(codeOf(await asPerson(s, cancel))).toBe('applied');
   }, 60_000);
 
-  it('agent entry: a pickup losing operations_identity_key twice makes two attempts and answers the fault', async () => {
+  it('agent entry (staged control): a pickup losing operations_identity_key twice makes two attempts and answers the fault', async () => {
     const taskId = await createTask(s, 'a pickup that loses its identity claim on both attempts');
     const proposal = await propose(s, taskId, { maximumMinor: 2_000, purpose: freshPurpose() });
     const reservationId = String((await approve(s, proposal))['reservationId']);
