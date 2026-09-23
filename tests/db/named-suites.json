@@ -67,6 +67,7 @@
     "tests/tenancy/production-lookup.test.ts",
     "tests/reads/gate-expiry.test.ts",
     "tests/reads/decision-integrity-read.test.ts",
+    "tests/reads/decision-snapshot.test.ts",
     "tests/reads/verified-decisions.test.ts",
     "tests/reads/decision-v3.test.ts",
     "tests/api/controls-revoke.test.ts",
