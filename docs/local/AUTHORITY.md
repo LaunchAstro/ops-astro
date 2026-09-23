@@ -123,7 +123,11 @@ externalCommentProjection(comments, fields: readonly FieldDefinition[]): readonl
 planPresetSync(tx, planner: Planner, request: PresetSyncRequest): Promise<PresetPlanDecision<PresetPlan>>
 type PresetPlanRefusalCode =
   | 'PRESET_FIELD_UNCLASSIFIED' | 'PRESET_TYPE_UNKNOWN'
-  | 'PRESET_FIELD_UNPLACEABLE' | 'SCOPE_NOT_GRANTED'
+  | 'PRESET_FIELD_UNPLACEABLE' | 'PRESET_FIELD_DUPLICATE' | 'SCOPE_NOT_GRANTED'
+
+// `PresetSyncRequest` is unchanged. The authority it asks for is not: `manage`
+// on the family named by `recordTypeKey`, not on a blanket `preset` collection.
+// L3's `preset.plan` must keep passing the request's own `recordTypeKey`.
 
 // records/business-settings.ts
 installBusinessSettings(tx): Promise<void>
@@ -155,6 +159,7 @@ rest, with HTTP statuses in `apps/api/status.ts`:
 | `PRESET_FIELD_UNCLASSIFIED`                                                  | 422              | yes, with the field keys        |
 | `PRESET_TYPE_UNKNOWN`                                                        | 404              | yes                             |
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409              | yes                             |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422              | yes                             |
 
 ## The expired session
 
@@ -238,6 +243,27 @@ applied the good half and refused the bad one leaves a business half-synced to a
 preset nobody approved, and the next run cannot tell what it decided from what
 it inherited. It writes nothing even on success; applying is a separate
 authorised operation.
+
+**The authority is the family's, not a blanket preset grant.** The accepted
+clause is "existing collection-manager/manage authority bounded to the owned
+record family", with "no new role power" beside it. So the planner resolves
+`recordTypeKey` to its record type and checks `manage` on _that family_ — the
+collection the type's records belong to. There is no collection column on
+`record_types` yet, so the record type's key is the family (`task` records are
+the `task` collection); `familyOf` is the single place that learns otherwise
+when the tree grows a real mapping. Checking a `preset` collection instead
+refused the legitimate manager of the task family and admitted a blanket holder
+to every installed type, which is the opposite of what the clause bounds. The
+type is read before the check but `PRESET_TYPE_UNKNOWN` is returned after it, so
+an unauthorised caller still learns nothing about what is installed.
+
+**Duplicate new keys refuse.** `field_defs_key_idx` permits one key per business
+and type, so two entries claiming one key cannot both be created. Uniqueness is
+checked across the whole request before any action is built, and the refusal
+names the keys: `PRESET_FIELD_DUPLICATE`, zero actions, no writes. An installed
+field named once is still `no_change`; named twice it is still a duplicate
+request. This is ordinary invalid input that a validated dry run rejects rather
+than promising an apply that the index will refuse.
 
 "Unclassified" is both halves — absent, and present but not one of the three
 modes the model has. A preset shipping `write_mode: 'sometimes'` has not been
