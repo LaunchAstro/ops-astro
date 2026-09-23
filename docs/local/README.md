@@ -318,6 +318,10 @@ The slice is honest about being a slice.
   drawn; what is missing there is the mockup's tabbed Internal / Client / All
   activity conversation, which this build draws as one list with each row's
   audience on it.
+- **An external party cannot be invited from the app.** The product reads a
+  real external party's shared record ([AUTHORITY.md, "The external
+  party"](AUTHORITY.md#the-external-party-r4)), but no route issues a share
+  and the seed enrols no such person.
 - **Reviews are recorded outside this repository.** The slice's review record
   is held with the build run's evidence, not in the tree, and the review of the
   final integrated head is still owed. A green `pnpm check` is not a review and

@@ -175,13 +175,24 @@ export function createPositiveBody(
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
       case 'task.pickup':
+        // Not a failure and not a pass. `handlers.ts` refuses it on the person
+        // path by design: an agent login picks work up, and a person authorises
+        // it by deciding. Its success is asserted in the agent journey, case (h).
+        return {
+          exception:
+            'executed alternative: person path refuses by design (handlers.ts); ' +
+            'agent-prefix success asserted in case (h) (ledger task.pickup)',
+        };
       case 'task.handback':
-        // Not a failure and not a pass. `handlers.ts` refuses both on the
-        // person path by design — an agent login picks work up and hands it
-        // back, and a person authorises it by deciding — so their positive
-        // control is the agent journey, where they are driven on the agent
-        // prefix and succeed.
-        return { exception: 'person path refuses by design (handlers.ts)' };
+        // Refused on the person path for the same reason. The matrix's agent
+        // journey never hands back, so nothing here asserts its success;
+        // `tests/api/task-runtime-routes.test.ts:417` does, outside the matrix. A handback at
+        // the end of case (i)'s journey would close it.
+        return {
+          exception:
+            'missing coverage: person path refuses by design (handlers.ts); ' +
+            'the matrix journey never hands back',
+        };
       case 'task.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
@@ -228,16 +239,28 @@ export function createPositiveBody(
         // through this route, and the member's next read is refused. A body
         // here would need a grant id, and the only way to one is the grant it
         // then takes away from a later case.
-        return { exception: 'positive control is case (f), revoking through this route' };
+        return {
+          exception: 'executed alternative: success asserted in case (f), ada grant.revoke row',
+        };
       case 'delegation.revoke':
         // A delegation exists only after an agent's pickup, which this recipe
         // cannot make; `tests/api/controls-revoke.test.ts` revokes one through
         // this route and shows the agent's next call refused.
-        return { exception: 'needs a pickup; positive in tests/api/controls-revoke.test.ts' };
+        // **Missing coverage** in the matrix: revoking the journey's own
+        // delegation after case (i) would close it here.
+        return {
+          exception:
+            'missing coverage: needs a pickup; asserted outside the matrix in ' +
+            'tests/api/controls-revoke.test.ts',
+        };
       case 'task.heartbeat':
         // Refused on the person path like pickup and handback; its positive
         // control is the agent journey, which renews its own lease.
-        return { exception: 'person path refuses by design (handlers.ts); see the agent journey' };
+        return {
+          exception:
+            'executed alternative: person path refuses by design (handlers.ts); ' +
+            'own-lease success asserted in the agent journey (ledger line 38)',
+        };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

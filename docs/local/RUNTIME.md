@@ -183,27 +183,28 @@ below at the status suggested here (`apps/api/status.ts`), and
 the command surface unchanged. Each operation's refusals, with their routes,
 are in [API.md](API.md#the-operations-l4s-runtime-made-possible).
 
-| Code                             | Status | Caller-visible                            |
-| -------------------------------- | ------ | ----------------------------------------- |
-| `VERSION_SUPERSEDED`             | 409    | yes — re-read and decide the live version |
-| `EVIDENCE_MISMATCH`              | 409    | yes                                       |
-| `GATE_NOT_FOUND`                 | 404    | yes                                       |
-| `GATE_ALREADY_DECIDED`           | 409    | yes — the loser of a decision race        |
-| `GATE_EXPIRED`                   | 410    | yes                                       |
-| `LINEAGE_TERMINAL`               | 409    | yes                                       |
-| `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                       |
-| `BUDGET_UNAVAILABLE`             | 409    | yes — this envelope has no room           |
-| `BUDGET_EXHAUSTED`               | 402    | yes — the cap behind it has none          |
-| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                       |
-| `LINEAGE_NOT_ON_TASK`            | 409    | yes — the lineage is another task's       |
-| `CAP_BINDING_MISMATCH`           | 409    | yes — the envelope's cap is the cap       |
-| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes — this head observed no spending      |
-| `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes — cap, currency or rounds             |
-| `RESERVATION_NOT_CLAIMABLE`      | 409    | yes                                       |
-| `LEASE_HELD`                     | 409    | yes                                       |
-| `LEASE_NOT_OWNED`                | 403    | yes — a stale or foreign fence            |
-| `LEASE_EXPIRED`                  | 410    | yes                                       |
-| `SCOPE_NOT_GRANTED`              | 403    | yes                                       |
+| Code                             | Status | Caller-visible                                                  |
+| -------------------------------- | ------ | --------------------------------------------------------------- |
+| `VERSION_SUPERSEDED`             | 409    | yes — re-read and decide the live version                       |
+| `EVIDENCE_MISMATCH`              | 409    | yes                                                             |
+| `GATE_NOT_FOUND`                 | 404    | yes                                                             |
+| `GATE_ALREADY_DECIDED`           | 409    | yes — the loser of a decision race                              |
+| `GATE_EXPIRED`                   | 410    | yes                                                             |
+| `LINEAGE_TERMINAL`               | 409    | yes                                                             |
+| `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                                             |
+| `BUDGET_UNAVAILABLE`             | 409    | yes — this envelope has no room                                 |
+| `BUDGET_EXHAUSTED`               | 402    | yes — the cap behind it has none                                |
+| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                             |
+| `LINEAGE_NOT_ON_TASK`            | 409    | yes — the lineage is another task's                             |
+| `CAP_BINDING_MISMATCH`           | 409    | yes — the envelope's cap is the cap                             |
+| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes — this head observed no spending                            |
+| `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes — cap, currency or rounds                                   |
+| `RESERVATION_NOT_CLAIMABLE`      | 409    | yes                                                             |
+| `LEASE_HELD`                     | 409    | yes                                                             |
+| `LEASE_NOT_OWNED`                | 403    | yes — a stale or foreign fence                                  |
+| `LEASE_EXPIRED`                  | 410    | yes                                                             |
+| `SCOPE_NOT_GRANTED`              | 403    | yes                                                             |
+| `TRANSITION_NOT_PERMITTED`       | 409    | yes — restart of a live, completed or already restarted lineage |
 
 `decideAsAgent` returns L2's `DELEGATION_EXCLUDES_DECISION`, which L3 registered
 from AUTHORITY.md's table. It is not re-derived here.
@@ -246,6 +247,13 @@ deadline undecided stays stored as `pending`.
 The cases are `tests/reads/gate-expiry.test.ts`, which crosses the deadline
 on the database clock through the production propose path, and
 `tests/surfaces/proposal-expired.test.tsx`.
+
+The deadline itself has a ceiling, the second owner decision of 23 September
+2026: `expiresInSeconds` is at most 604800, seven days, on `task.propose`, on
+the handback successor and on `task.restart`, all through one `expiryFrom`.
+Over it is `FIELD_VALUE_INVALID` 422 and nothing is written
+(`tests/api/expiry-bound.test.ts`; the inputs are in
+[API.md](API.md#the-operations-l4s-runtime-made-possible)).
 
 ## Why the lease is fenced
 
@@ -495,7 +503,9 @@ direct SQL.
   and one already restarted (`TRANSITION_NOT_PERMITTED`, the twentieth runtime
   code, 409). It then writes `restarts_lineage_id`, the column 0010 declared
   for this. The new lineage has version 1, a pending gate and no hold. Nothing
-  the old lineage held is reopened or reused (G05).
+  the old lineage held is reopened or reused (G05). Its `expiresInSeconds`
+  takes the same seven-day maximum as `task.propose`
+  ([Why a lapsed gate reads expired](#why-a-lapsed-gate-reads-expired-but-stays-pending)).
 - **Heartbeat** is `heartbeat` (`heartbeat.ts`), reached by `task.heartbeat` on
   the agent prefix only. Under the lease and delegation locks, the caller must
   be the holder, present the lease's own delegation and send the task's newest
@@ -509,6 +519,10 @@ direct SQL.
   fences it as before. Bounded unstarted recovery stays the owning operations'
   classifier (W04), reached by pickup, cancellation and restart replay, with
   no sweeper added.
+- **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in
+  total, are lane L3-CONTROLS's choice and await root or owner confirmation.
+  The 8-hour cap is enforced in SQL (`heartbeat.ts`), but no test reaches it,
+  because nothing moves the database clock past it.
 
 ## What is not here
 

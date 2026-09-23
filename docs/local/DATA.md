@@ -221,6 +221,11 @@ same `checkAuthority` the commands use, in the same transaction, so a revoked
 grant bites on the next read. A denied read is `SCOPE_NOT_GRANTED` and never an
 empty list.
 
+An external party reads through the same path with no membership. Its share is
+an ordinary `grants` row at `scope_kind = 'record'`, so it needed no migration,
+and `task.read` answers it `sharedTask` rather than the task
+([AUTHORITY.md, "The external party"](AUTHORITY.md#the-external-party-r4)).
+
 ## The seed
 
 `scripts/local-seed.mjs` creates businesses `alpha` and `bravo`, the five
@@ -237,6 +242,9 @@ Two identities carry negative cases:
   authenticated member without task collection scope" (N2).
 - `orphan@alpha.local` — a verified login with no mapping and no membership,
   for `AUTH_NO_MEMBERSHIP` (N2's second half).
+
+The seed enrols no external party. `tests/acceptance/world.ts`'s
+`enrolExternal` makes one for the tests, and `shareRecord` gives it its share.
 
 Identity comes from `.local/synthetic-users.json`, which SLICE-API writes
 because the GoTrue subjects are its to mint. Until that file exists the seed

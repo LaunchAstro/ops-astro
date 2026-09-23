@@ -106,6 +106,14 @@ the caller is not a member of and a business that does not exist both answer
 login refuse identically: the difference is an inference across a tenancy
 boundary.
 
+`AUTH_NO_MEMBERSHIP` 403 (`apps/api/status.ts:20`) also refuses a mapped
+person of the business who holds no membership **and no live share**. A
+non-member who does hold a live share, and no business grant, resolves as an
+**external party** (R4): the session's `roleKey` is null
+(`identity/login-resolution.ts:86-96`). Shares are issued by `shareRecord`
+(`authority/shares.ts:74`), under the sharer's own `share` grant. No HTTP route
+issues one yet (see "Open items" below).
+
 The algorithm is named when verifying rather than read from the token's own
 header, so a token nominating `alg: none` verifies against no key at all.
 
@@ -330,14 +338,15 @@ What each one does:
   old one. The answer is `{ lineageId, restartsLineageId, versionId, version: 1, gateId, payloadDigest }`.
   The new gate is pending, with no decision and no hold, and the old lineage,
   lease and hold are never reopened or reused (G05). A terminal lineage is
-  restarted once.
+  restarted once. `expiresInSeconds` has the same bound as `task.propose`:
+  maximum seven days (owner decision, 23 Sep 2026).
 - **Heartbeat** moves the lease's and its delegation's expiry to now plus
   `leaseSeconds` (1 to 3600, default 900). It is capped at 8 hours after the
   pickup and never shortens a lease. A stale fence or someone else's lease is
   `LEASE_NOT_OWNED`. A settled, revoked or expired delegation is
   `DELEGATION_NOT_LIVE`, and a lease past its instant is not revived. No timer
   runs. Bounded unstarted recovery stays with the owning operations'
-  classifier ([RUNTIME.md](RUNTIME.md)).
+  classifier ([RUNTIME.md](RUNTIME.md)). Both bounds are open items below.
 
 ### Source-to-route manifest
 
@@ -394,7 +403,8 @@ proposals: {
 Three things about the shape are load-bearing. `gate.expired` is the
 **server's** answer, so a client with a skewed clock cannot disagree with the
 gate about whether it may still be decided. The owner decision of 23 September
-2026 governs it: show expired on read and preserve the stored record.
+2026 governs it: show expired on read and preserve the stored record
+([RUNTIME.md](RUNTIME.md#why-a-lapsed-gate-reads-expired-but-stays-pending)).
 
 - A gate stored `pending` whose `expiresAt` is at or before the database's
   `now()` reads `state: 'expired'`, `expired: true`. The row itself stays
@@ -493,10 +503,21 @@ comments in the fields the catalogue marks `shared` (`id`, `audience`,
 `author`, `body`, `comment_type`, `posted_at`). External is the default, so a
 role nobody classified sees the client view rather than everything.
 
+A reader who is not internal on the person prefix gets a different key:
+`{ ok: true, sharedTask: { id, fields, comments } }`, never `task`
+(`reads/dispatch.ts:222-232`). `fields` holds the task fields the catalogue
+marks `shared`, and as shipped none are, so R4 sees the id and the client
+comments. For an external party, a `task.read` of a record its shares do not
+cover and any `task.board` answer `NOT_FOUND` 404 (`reads/dispatch.ts:48-49`,
+`:206-212`; minimum contract 8.2 case 7). The agent path is unchanged: an agent
+reads its own task through `externalCommentProjection` under `task`.
+`tests/acceptance/external-party.test.ts` drives all of it over HTTP, and
+matrix case (g) carries the rows.
+
 | Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                         |
 | ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401    |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401, `AUTH_SESSION_EXPIRED` 401 |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403    |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `settings.read` takes **`read` on `settings`** while the two settings commands
 take `manage` on the same collection. That asymmetry is the decision: a setting
@@ -518,8 +539,10 @@ whole of the optimistic check: there is no other watermark.
 It reports what the caller already holds, so a grant in front of it could only
 hide from a person the list of things they may do, and a caller refused it
 could rebuild the same list by attempting each operation one at a time.
-Membership is its whole authority and membership is established upstream: a
-login that resolves to none is `AUTH_NO_MEMBERSHIP` before any read runs. The
+Membership, or an external party's live share, is its whole authority, and
+both are established upstream: a login that resolves to neither is
+`AUTH_NO_MEMBERSHIP` before any read runs. An external party is shown its
+shares' pairs. The
 grants are read live in the caller's own transaction through the same
 `effectiveGrants` the authority check uses, so a grant revoked a moment ago is
 missing from the answer rather than soon. It never carries a secret, and it
@@ -577,6 +600,20 @@ is what makes "who looked at this" answerable — and the task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
 `settings.read` and `session.capabilities` carry a **null subject**: neither is
 about one record, and naming one would make "who read this record" false.
+
+## Open items
+
+Named so they are not read as settled:
+
+- **No exported share operation.** `shareRecord` issues an external party's
+  share, but no route calls it; the seed and the tests do. See "Who is
+  calling".
+- **The heartbeat's 8-hour lifetime cap is untested.** It is enforced in SQL
+  (`core-runtime/src/heartbeat.ts`), and no test reaches it without a clock
+  seam.
+- **Two lane choices await root or owner confirmation:** an agent comments in
+  the `internal` audience only (`client` is `AUDIENCE_NOT_PERMITTED`), and the
+  heartbeat bounds of 1 hour a beat and 8 hours in total.
 
 ## Verifying it
 
