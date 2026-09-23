@@ -60,6 +60,30 @@ refusal is `{ code, names, fixes }` under the status `apps/api/status.ts` maps
 the code to. The code is what a client branches on; the status is what a proxy
 and a log reader see, and neither is derived from the other.
 
+**An absent or mistyped operand is refused by name, not answered as a fault.**
+Five operations used to take their request type at its word and answer a
+plain-text 500 when an operand was missing. Each now answers
+`FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
+(`packages/core-records/src/commands/operands.ts`):
+
+| Operation      | Operand                                  | What it has to be                                                        | Checked at                                 |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `commands/tasks-write.ts:90`               |
+| `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `commands/tasks-trash.ts:57`               |
+| `task.purge`   | `olderThanDays`                          | a whole number of days, zero or more                                     | `commands/tasks-trash.ts:80`               |
+| `task.read`    | `recordId`                               | a string                                                                 | `apps/api/app.ts:183`, `operands.ts:63-65` |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `apps/api/app.ts:183`, `operands.ts:66-77` |
+
+The three command checks run in their handlers, so the refusal is registered and
+audited like any other command refusal. The two read checks run at the
+boundary, after the membership check and before the read executor, so they come
+before the grant check and **write no read audit row yet**: the audited home
+for them is the read dispatcher, and they have not moved there on this head.
+`tests/api/operand-refusals.test.ts` holds all five over HTTP, absent and
+mistyped, and that a well-formed request still succeeds on each. On the agent
+prefix, `task.read` reads `recordId` through the agent envelope and not this
+boundary check.
+
 ## Who is calling
 
 `Authorization: Bearer <GoTrue access token>`. The adapter verifies the HS256
@@ -103,12 +127,12 @@ Four rows joined the surface when L2's model modules landed, and one came off
 the pending list. Each reaches the API and the command line by generation, so
 there is no route written out for any of them.
 
-| Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                     |
-| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
-| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422          |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                   |
-| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                   |
+| Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                                                                         |
+| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type                                                     |
+| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422 |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                                                       |
+| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                                                       |
 
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
@@ -428,33 +452,37 @@ never carries another person's grants: the subjects are the session's own and
 there is no parameter to point at somebody else.
 
 On the **agent prefix** the same name answers the agent's own capabilities and
-not the delegating person's, under the agent envelope's `detail` like every
-other agent answer: `agentActorId`, `businessKey`, the delegation's
+not the delegating person's: `agentActorId`, `businessKey`, the delegation's
 `purposeScope` — `{ kind: 'record', id }`, or `null` before a pickup — and
 `grants`, which is the authority the two pre-pickup operations take
 (`task.queue` reads and `task.pickup` writes on `task`). It is reachable with
 no credential on purpose: refusing it for want of one would refuse the single
 call whose whole subject is that there is none.
 
-**Known gap: one read, two answers.** On this head `session.capabilities`
-answers differently on the two prefixes, and a client has to know which prefix
-it is on to read it:
+**One shape on both prefixes.** Both answers are flattened beside `ok`, and
+neither carries a `detail`. The subject fields differ because the subjects do,
+and `businessKey` and `grants` sit at the same level on both:
 
-| Prefix                     | Body on success                                                                                                            | Code                                 |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`, flattened onto the body                                                     | `reads/dispatch.ts:210-213`          |
-| agent, `/api/a/b/:key/...` | `{ recordId: null, revision: null, detail: { agentActorId, businessKey, purposeScope, grants } }`, like every agent answer | `commands/agent-envelope.ts:358-389` |
+| Prefix                     | Body on success                                                 | Code                                                          |
+| -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | `reads/dispatch.ts:210-213`                                   |
+| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `commands/agent-envelope.ts:378-409`, flattened at `:162-167` |
+
+The agent handler still stores the answer as the handle every agent command is
+stored as, `{ recordId: null, revision: null, detail }`, so a replay reads the
+same register row. `agentAnswer` flattens it at the wire (`apps/api/app.ts:241`),
+for the first answer and a replay alike. Every other agent answer keeps its
+payload under `detail`.
 
 Two more things about the agent answer. Its `grants` is always the pre-pickup
 pair, before and after a pickup; after a pickup only `purposeScope` changes. And
 a credential that no longer answers to a live delegation gives `purposeScope:
 null` rather than a refusal, so the answer does not say whether a credential was
-sent. `tests/acceptance/role-case-matrix.test.ts` case (h) reads the agent
-answer under `detail` and asserts `purposeScope` null before a pickup (`:287`)
-and the picked-up task after it (`:365`); it records the agent rows as named
-exceptions, not passes. The web client reads
-only the person prefix (`/settings`), so no screen meets the difference today.
-It stays a gap until one read gives one shape on both.
+sent. `tests/api/capabilities-shape.test.ts:34` asserts the one shape on both
+prefixes and on a replay. `tests/acceptance/role-case-matrix.test.ts` case (h)
+asserts it flattened with no `detail` (`:289-290`), `purposeScope` null before a
+pickup (`:293`) and the picked-up task after it (`:372`); it records the agent
+rows as named exceptions, not passes.
 
 **A read payload naming a fact the server owns is refused**
 `FIELD_NOT_WRITABLE` 422, naming the offending keys. It is the commands' own

@@ -205,12 +205,12 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
 it, not `checkDelegatedAuthority`, for an operation an agent may not call
 whatever it holds: anything outside `AGENT_SURFACE`
-(`commands/agent-envelope.ts:111-119`, refused at `:164`), and `task.comment`,
+(`commands/agent-envelope.ts:111-119`, refused at `:184`), and `task.comment`,
 which is in that set but has no agent branch and falls to the handler's default
-(`:447`). It is 403 and not `DELEGATION_NOT_LIVE` 401 because a live credential
+(`:467`). It is 403 and not `DELEGATION_NOT_LIVE` 401 because a live credential
 would not change the answer. `tests/acceptance/role-case-matrix.test.ts` case (h)
-asserts it over every declaration, and `:409` asserts it for `task.comment`. The
-register still lists it in `UNPRODUCED_CODES` (`commands/register.ts:404`),
+asserts it over every declaration, and `:416` asserts it for `task.comment`. The
+register still lists it in `UNPRODUCED_CODES` (`commands/register.ts:399`),
 which the tests above contradict; that list is not this file's to correct.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -218,9 +218,12 @@ which the tests above contradict; that list is not this file's to correct.
 and reaches a caller as 409 through `task.pickup`.
 `tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
 `tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
-audit row. On this head it is also still in `UNPRODUCED_CODES`
-(`commands/register.ts:402`), and `tests/commands/runtime-codes.test.ts:100`
-asserts that it is. That marker predates the emitter and is due to come off.
+audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
+(`commands/register.ts:394-397`). `tests/commands/runtime-codes.test.ts:113-115`
+asserts that it stays off, and `:103-107` that it is registered at 409 and
+caller-visible. It is not one of the nineteen runtime codes (`:109-111`): the
+runtime passes it through from the authority layer as `DELEGATION_NOT_LIVE` and
+`DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
 ## The expired session
 
