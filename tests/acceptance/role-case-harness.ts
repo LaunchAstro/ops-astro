@@ -22,11 +22,7 @@ import {
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
-import {
-  issueGrant,
-  revokeGrant,
-  type Action,
-} from '../../packages/core-records/src/authority/grants.ts';
+import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../apps/api/app.ts';
 import {
@@ -79,7 +75,6 @@ export interface Harness {
   probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
   positiveBody(declaration: CommandDeclaration): Promise<Prepared>;
   approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
-  revokeTaskRead(personId: string): Promise<number>;
   activeRoleKeys(): Promise<readonly string[]>;
   writeBothComments(taskId: string): Promise<readonly Answer[]>;
   close(): Promise<void>;
@@ -259,31 +254,7 @@ export async function createHarness(part: string): Promise<Harness> {
     return { subject, sibling, decided };
   }
 
-  /**
-   * Take a person's `task:read` back, through the boundary that owns it.
-   *
-   * `revokeGrant` writes a timestamp: there is no delete path and the
-   * application role holds no DELETE, because a trail that can be amended is
-   * not a trail. It returns how many rows it took so a case can assert it
-   * revoked something rather than silently revoking nothing.
-   */
-  async function revokeTaskRead(personId: string): Promise<number> {
-    return await world.db.app.withBusiness(world.alpha, async (tx) => {
-      const held = await tx.query<{ readonly id: string }>(
-        `select id from public.grants
-          where subject_kind = 'person' and subject_id = $1 and collection = 'task'
-            and action = 'read' and revoked_at is null`,
-        [personId],
-      );
-      for (const grant of held) {
-        // eslint-disable-next-line no-await-in-loop
-        await revokeGrant(tx, grant.id);
-      }
-      return held.length;
-    });
-  }
-
-  /** Every role this business's active memberships carry, for the I09 gap. */
+  /** Every role this business's active memberships carry; R4 adds none (case (g)). */
   async function activeRoleKeys(): Promise<readonly string[]> {
     return await world.db.app.withBusiness(world.alpha, async (tx) => {
       const rows = await tx.query<{ readonly role_key: string }>(
@@ -331,7 +302,6 @@ export async function createHarness(part: string): Promise<Harness> {
       freshTask,
     }),
     approvedReservation,
-    revokeTaskRead,
     activeRoleKeys,
     writeBothComments,
     close: async () => {

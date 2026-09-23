@@ -41,7 +41,8 @@ import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
 } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { bearer, call, personPath, serverUrl } from './world.ts';
+import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
+import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 
@@ -141,10 +142,18 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       for (const declaration of COMMAND_SURFACE) {
         const pair = harness.pairFor(declaration);
         if (grants !== undefined && grants.has(pair)) {
-          // Held, so this caller's answer here is case (a)'s question and not
-          // this one's. Recorded rather than dropped, so the matrix still has a
-          // row for every role against every endpoint.
-          except(caller.name, 'e-no-grant', declaration.name, `holds ${pair}; see case (a)`);
+          // Held, so this is not a no-grant row. Recorded rather than dropped,
+          // so the matrix still has a row for every role against every
+          // endpoint. **Missing coverage**, and not a pass: case (a) drives
+          // the admin, not this caller, so nothing here asserts this caller's
+          // own success. Only `mia`'s `task.read` is asserted, under case (f).
+          // A member-positive sweep over each caller's held pairs would close it.
+          except(
+            caller.name,
+            'e-no-grant',
+            declaration.name,
+            `missing coverage: holds ${pair}; no row asserts this caller's success`,
+          );
           continue;
         }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
@@ -177,7 +186,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             caller.name,
             'e-no-grant',
             declaration.name,
-            `200 ok; needs no grant beyond membership (reads/capabilities.ts:20)`,
+            'executed alternative: 200 with own grants, asserted below; contract 8.2 case 3 ' +
+              'says SCOPE_NOT_GRANTED, the read needs membership only (reads/capabilities.ts:20)',
           );
           expect(own.status, caller.name).toBe(200);
           expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
@@ -292,7 +302,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           'agent-before-pickup',
           'h-pre-pickup',
           declaration.name,
-          '200 ok; reachable before a pickup, kept out of BEFORE_PICKUP so the ' +
+          'executed alternative: 200 with a null purposeScope, asserted below; contract ' +
+            '8.2 case 9 says refused, the read is kept out of BEFORE_PICKUP so the ' +
             'refusal quotes two operations (agent-envelope.ts:98-107)',
         );
         expect(own.status, declaration.name).toBe(200);
@@ -359,7 +370,12 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // The queue and a pickup are reachable with no delegation at all, so a
         // delegation cannot narrow them, and a second pickup would claim state
         // the rest of this case depends on. Case (h) is where they are proved.
-        except('agent-after-pickup', table, declaration.name, 'see case (h)');
+        except(
+          'agent-after-pickup',
+          table,
+          declaration.name,
+          'executed alternative: needs no delegation, success asserted in case (h) (ledger I12)',
+        );
         continue;
       }
       if (declaration.name === 'session.capabilities') {
@@ -379,7 +395,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           'agent-after-pickup',
           table,
           declaration.name,
-          'reachable with no delegation; its answer is the purpose, not a call under it',
+          'executed alternative: needs no delegation; purposeScope is the task, asserted below',
         );
         expect(own.status, declaration.name).toBe(200);
         expect(own.body['ok'], declaration.name).toBe(true);
@@ -397,7 +413,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // nothing and falls back to this delegation's own scope, so the call is
         // *inside* the purpose by construction and proves nothing about the
         // ceiling. Recorded rather than dressed up as a refusal it is not.
-        except('agent-after-pickup', table, declaration.name, 'its task comes from the lease');
+        // **Missing coverage**: no row here hands back a lease outside the
+        // purpose. A handback naming a lease another delegation holds, expecting
+        // `LEASE_NOT_OWNED`, would close it.
+        except(
+          'agent-after-pickup',
+          table,
+          declaration.name,
+          'missing coverage: its task comes from the lease; no out-of-purpose lease is tried',
+        );
         continue;
       }
       const expected = refusal(
@@ -472,26 +496,62 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     const noDecision = refusal('DELEGATION_EXCLUDES_DECISION');
     observe('agent-after-pickup', 'j-decision-excluded', 'task.decide', agentDecides, noDecision);
 
-    // (g) I09. No external *party* reader can be minted through this seed's
-    // shape — `tests/identity/fixture.ts` writes every membership with
-    // `role_key = 'member'`, and `reads/tasks.ts` counts owner, admin and
-    // member as internal — so that gap is recorded as a fact rather than worked
-    // around with an identity the product does not have. What the API *can*
-    // mint is the other external reader: an agent is not a member, and
-    // `agent-envelope.ts` reads its own task with `internal: false`, which is
-    // `externalCommentProjection`. So the allowlist is proved through the
-    // reader that exists, and the one that does not is named.
-    expect(await harness.activeRoleKeys()).toStrictEqual(['member']);
-    except(
-      'external-party',
-      'g-external-projection',
-      'task.read',
-      'no non-member role in the seed',
-    );
-
+    // (g) I09, minimum contract 8.2 case 7, through R4 itself. The party is
+    // `enrolExternal`'s: a person of alpha with a login and no membership, so
+    // the active role keys stay `member` alone. The share is `shareRecord`'s,
+    // the owning interface, issued by the admin under her own `share` grant.
+    // `tests/acceptance/external-party.test.ts` is the full R4 suite; this is
+    // the row the matrix owes for it.
     for (const written of await harness.writeBothComments(subject.id)) {
       expect(written.code).toBe('ok');
     }
+    const external = await enrolExternal(harness.world);
+    expect(await harness.activeRoleKeys()).toStrictEqual(['member']);
+    const shared = await harness.world.db.app.withBusiness(harness.world.alpha, (tx) =>
+      shareRecord(
+        tx,
+        {
+          personId: harness.world.ada.personId as string,
+          actorId: harness.world.ada.actorId as string,
+        },
+        { collection: 'task', recordId: subject.id, personId: external.personId as string },
+      ),
+    );
+    expect(shared.ok).toBe(true);
+    const asExternal = { token: external.token };
+    const externalRead = await harness.asPerson(
+      'task.read',
+      { recordId: subject.id },
+      'alpha',
+      asExternal,
+    );
+    observe('external-party', 'g-external-projection', 'task.read', externalRead, SUCCESS);
+    const sharedTask = externalRead.body['sharedTask'] as Record<string, unknown>;
+    expect(externalRead.body['task']).toBeUndefined();
+    // Absent, not hidden: no field is classified `shared` as shipped, and the
+    // one comment is the client's.
+    expect(sharedTask['fields']).toStrictEqual({});
+    expect(JSON.stringify(externalRead.body)).not.toContain('must never see');
+    expect(JSON.stringify(externalRead.body)).not.toContain('the one task this delegation is for');
+    expect(sharedTask['comments']).toHaveLength(1);
+    // The rest of case 7: a sibling task and the board are `NOT_FOUND`.
+    const externalSibling = await harness.asPerson(
+      'task.read',
+      { recordId: sibling.id },
+      'alpha',
+      asExternal,
+    );
+    const notFound = refusal('NOT_FOUND');
+    const siblingRow = 'task.read (sibling)';
+    observe('external-party', 'g-external-projection', siblingRow, externalSibling, notFound);
+    const externalBoard = await harness.asPerson(
+      'task.board',
+      { board: null },
+      'alpha',
+      asExternal,
+    );
+    observe('external-party', 'g-external-projection', 'task.board', externalBoard, notFound);
+
     const agentRead = await harness.asAgent('task.read', { recordId: subject.id }, credential);
     observe('agent-after-pickup', 'g-external-projection', 'task.read', agentRead, SUCCESS);
     const task = (agentRead.body['detail'] as Record<string, unknown>)['task'] as Record<
