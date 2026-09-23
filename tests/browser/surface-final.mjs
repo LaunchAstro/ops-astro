@@ -38,6 +38,7 @@ import {
   signIn,
   standaloneStatus,
   throughClient,
+  users,
 } from './harness.mjs';
 import { callApi, sharedTask, tokenOf } from './i10-open-page.mjs';
 
@@ -154,10 +155,13 @@ async function casesD05(run) {
 
 async function casesR4X(run, browser) {
   const { database, admin, alpha, stamp } = run;
+  // The seed builds the external address rather than writing it; so does this.
+  const external = users.find((user) => user.role === 'external')?.email;
+  if (external === undefined) throw new Error('no role: external entry in synthetic-users.json');
   const adaToken = await tokenOf('ada@alpha.local');
   const shared = await sharedTask(
     { database, admin, alpha, adaToken },
-    `${'ext'}@alpha.local`,
+    external,
     `SF shared ${stamp}`,
   );
   const sibling = await callApi(adaToken, 'task.create', {
@@ -170,7 +174,7 @@ async function casesR4X(run, browser) {
   const page = await context.newPage();
   try {
     step('ext signs in through the form (GoTrue password grant)');
-    await signIn(page, `${'ext'}@alpha.local`, 'alpha');
+    await signIn(page, external, 'alpha');
     const read = async (name, body) =>
       (await throughClient(page, { read: true, name, body })).result;
 
