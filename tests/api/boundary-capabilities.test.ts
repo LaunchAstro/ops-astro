@@ -263,16 +263,13 @@ describe.skipIf(serverUrl === undefined)(
       // holds, so the answer still says the agent reaches the task it can no
       // longer read (handback, unfinished 2). `it.fails` records the red; when
       // PICKUP-REPLAY's fix lands it goes red itself and is flipped to `it`.
-      it.fails(
-        'asserts nothing once the delegating person loses the authority it rests on',
-        async () => {
-          const { credential, restore } = await narrowed();
-          const answer = await agentCall('session.capabilities', {}, credential);
-          await restore();
-          expect(answer.status, JSON.stringify(answer.body)).not.toBe(200);
-          expect(answer.body['purposeScope']).toBeUndefined();
-        },
-      );
+      it('asserts nothing once the delegating person loses the authority it rests on', async () => {
+        const { credential, restore } = await narrowed();
+        const answer = await agentCall('session.capabilities', {}, credential);
+        await restore();
+        expect(answer.status, JSON.stringify(answer.body)).not.toBe(200);
+        expect(answer.body['purposeScope']).toBeUndefined();
+      });
     });
   },
 );

@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-records/src/commands/prepare.ts';
 import { AGENT_SURFACE } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { TOP_LEVEL_FIELDS } from './d06-cases.ts';
 import {
   COMMAND_SURFACE,
   type CommandName,
@@ -59,7 +60,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
-  SYSTEM_OWNED_FIELDS.map((key) => ({ operation, key })),
+  TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
 );
 const excluded = COMMAND_SURFACE.map((one) => one.name)
   .filter((name) => !AGENT_OPERATIONS.includes(name))

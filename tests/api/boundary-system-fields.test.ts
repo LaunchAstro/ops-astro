@@ -187,16 +187,13 @@ describe.skipIf(serverUrl === undefined)('installed system fields at the top lev
   // is PICKUP-REPLAY's file, not this lane's. The case is written, and is
   // expected to fail until that call site moves to `claimedSystemFields`
   // (handback, unfinished 1). When it passes, `it.fails` goes red and says so.
-  it.fails(
-    'agent task.queue refuses top-level completed_at (agent route, handed back)',
-    async () => {
-      const answer = await post(
-        api,
-        `/api/a/b/${BUSINESS_KEY}${pathOf('task.queue')}`,
-        { operationId: randomUUID(), completed_at: '1970-01-01T00:00:00.000Z' },
-        authorised(await tokenFor(fixture.agent.subject)),
-      );
-      expect(answer.body).toMatchObject({ code: 'FIELD_NOT_WRITABLE', names: ['completed_at'] });
-    },
-  );
+  it('agent task.queue refuses top-level completed_at (agent route, handed back)', async () => {
+    const answer = await post(
+      api,
+      `/api/a/b/${BUSINESS_KEY}${pathOf('task.queue')}`,
+      { operationId: randomUUID(), completed_at: '1970-01-01T00:00:00.000Z' },
+      authorised(await tokenFor(fixture.agent.subject)),
+    );
+    expect(answer.body).toMatchObject({ code: 'FIELD_NOT_WRITABLE', names: ['completed_at'] });
+  });
 });

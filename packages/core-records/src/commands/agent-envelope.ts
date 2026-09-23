@@ -88,7 +88,7 @@ import { fromRuntime, handbackLease, pickupReservation } from './tasks-runtime.t
 import { heartbeatLease } from './tasks-controls.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { isRefused, refused, type HandlerOutcome, type Refused } from './outcome.ts';
-import { claimedSystemOwnedFields, SYSTEM_OWNED_FIXES } from './prepare.ts';
+import { claimedSystemFields, SYSTEM_OWNED_FIXES } from './prepare.ts';
 
 /**
  * What an agent sends.
@@ -291,7 +291,7 @@ async function runAgentCommand(
   // The request's own shape, before any authority is read: a system-owned
   // field (D06, the person path's own classifier) and then each operand the
   // command takes. Neither tells the caller anything about the business.
-  const operands = parseOperands(request);
+  const operands = await parseOperands(tx, request);
   if ('refusal' in operands) {
     return await settle(tx, session, request, digest, operands.refusal, false, operands.attempted);
   }
@@ -663,8 +663,14 @@ const REPORT_FIXES: readonly string[] = [
  * Range belongs to the handler (`pickupReservation`, `heartbeatLease`), which
  * already refuses an out-of-range lease in the same code.
  */
-function parseOperands(request: AgentRequest): AgentOperands | Refused {
-  const claimed = claimedSystemOwnedFields(request);
+async function parseOperands(
+  tx: TenantQuery,
+  request: AgentRequest,
+): Promise<AgentOperands | Refused> {
+  // The envelope's own list and every installed `write_mode = 'system'` field
+  // key, read from `field_defs`, the same classifier the person and read
+  // routes use (root ruling 1).
+  const claimed = await claimedSystemFields(tx, request);
   if (claimed !== undefined) {
     return refused(
       refuseCommand('FIELD_NOT_WRITABLE', claimed.keys, SYSTEM_OWNED_FIXES),
