@@ -108,10 +108,14 @@ corepack pnpm verify:browser
 
 Drives the browser acceptance cases through Playwright against the running
 application, so start the database, the identity service, the API and the web
-server first. Two further harnesses are not in that command and run on their
-own: `node tests/browser/n6-revocation.mjs` (a grant revoked underneath a live
-session) and `node tests/browser/keyboard-and-widths.mjs` (keyboard paths, and
-the width captures the gaps below are recorded from).
+server first. The N6 revocation cases (a grant revoked underneath a live
+session, and an older in-flight response that cannot restore it) are part of
+that command: `tests/browser/slice-acceptance.mjs` runs them through
+`cases-n6-n7.mjs`, which imports `n6-revocation.mjs`. One further harness is
+not in that command and runs on its own: `node tests/browser/keyboard-and-widths.mjs`
+(keyboard paths, and the width captures the gaps below are recorded from).
+Running `node tests/browser/n6-revocation.mjs` alone revokes a grant that the
+caller normally restores; run `corepack pnpm db:seed` afterwards.
 
 ```
 corepack pnpm build
