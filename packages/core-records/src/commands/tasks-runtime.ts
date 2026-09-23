@@ -62,7 +62,7 @@ import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
  * A runtime or delegation refusal as the command register spells it.
  *
  * Every code in both unions is registered (`tests/commands/runtime-codes.test.ts`
- * asserts the nineteen), so `refuseCommand` cannot be handed a spelling the
+ * asserts the twenty), so `refuseCommand` cannot be handed a spelling the
  * register has never heard of; if it ever is, its own constructor raises
  * rather than inventing one. The reason and the fix go into `fixes` beside
  * each other for the same reason `fromAuthority` puts them there: both are
@@ -82,7 +82,7 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
  * both read their expiry through this one function, so the two are bounded
  * the same way and cannot drift apart.
  */
-function expiryFrom(seconds: unknown): Date | undefined {
+export function expiryFrom(seconds: unknown): Date | undefined {
   const value = seconds ?? DEFAULT_EXPIRY_SECONDS;
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return undefined;
   return new Date(Date.now() + value * 1000);

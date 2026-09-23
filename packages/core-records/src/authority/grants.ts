@@ -234,12 +234,19 @@ async function exceedsGranter(
   return undefined;
 }
 
-/** Revocation writes a timestamp. There is no delete path, and the role has no DELETE. */
-export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<void> {
-  await tx.query(
-    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null',
+/**
+ * Revocation writes a timestamp. There is no delete path, and the role has no DELETE.
+ *
+ * It answers with the timestamp this call wrote, or null when it wrote none
+ * because the grant was already revoked or is not in this business. Callers
+ * that only needed the write may ignore it; `grant.revoke` returns it.
+ */
+export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Date | null> {
+  const rows = await tx.query<{ readonly revoked_at: Date }>(
+    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null returning revoked_at',
     [grantId],
   );
+  return rows[0]?.revoked_at ?? null;
 }
 
 function refuse(code: RefusalCode, reason: string, fix: string): Decision<never> {

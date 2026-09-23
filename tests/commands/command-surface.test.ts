@@ -76,9 +76,13 @@ describe('the surface as a table', () => {
     // the shape is what is asserted rather than the one prefix that happened
     // to be true of the writes. `session` is the fifth and the odd one: it is
     // the only collection nothing is stored in, because the read under it is
-    // about the caller rather than about the business's records.
+    // about the caller rather than about the business's records. `grant` and
+    // `delegation` are the revocation controls': the path names the row a
+    // revocation writes, and the authority it asks is still on tasks.
     expect(
-      paths.every((path) => /^\/(?:task|person|preset|settings|session)\/[a-z_]+$/u.test(path)),
+      paths.every((path) =>
+        /^\/(?:task|person|preset|settings|session|grant|delegation)\/[a-z_]+$/u.test(path),
+      ),
     ).toBe(true);
   });
 

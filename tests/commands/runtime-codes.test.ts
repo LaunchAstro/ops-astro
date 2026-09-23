@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// L4's nineteen refusal codes, as L3 registers them.
+// L4's twenty refusal codes, as L3 registers them. The twentieth is
+// `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a lineage that is
+// live, completed or already restarted (`core-runtime/src/propose.ts`).
 //
 // `RuntimeRefusalCode` is exported from `core-runtime` and deliberately not
 // added to `commands/register.ts` by that package: the register is this unit's
@@ -30,8 +32,8 @@ import { statusFor } from '../../apps/api/status.ts';
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all nineteen', () => {
-    expect(RUNTIME_CODES).toHaveLength(19);
+  it('registers all twenty', () => {
+    expect(RUNTIME_CODES).toHaveLength(20);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -43,7 +45,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all nineteen are caller-visible', () => {
+  it('shows every one of them to the caller, because all twenty are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }
@@ -90,14 +92,14 @@ describe('the runtime refusal codes L3 registers', () => {
 });
 
 // `DELEGATION_ALREADY_LIVE` is not a runtime code -- it is an authority
-// refusal, and it is not one of the nineteen above. `mintDelegation` in
+// refusal, and it is not one of the twenty above. `mintDelegation` in
 // `authority/delegations.ts` raises it for a second live delegation under a
 // purpose the agent already holds; `task.pickup` in `core-runtime` mints
 // through that function and hands the refusal back as an `AnyRefusal`, and
 // `fromRuntime` (`commands/tasks-runtime.ts`) registers it like any runtime
 // code. That is the same road `DELEGATION_NOT_LIVE` and
 // `DELEGATION_OUT_OF_PURPOSE` already travel, and neither is counted in the
-// nineteen either: the census above is `SUGGESTED_STATUS`, the runtime's own
+// twenty either: the census above is `SUGGESTED_STATUS`, the runtime's own
 // codes and the statuses it asked for, and a code the runtime passes through
 // without owning is not the runtime's to suggest a status for. So it is not
 // counted there, and the case below holds it to the list that matters to a
@@ -112,7 +114,7 @@ describe('the delegation code a pickup now produces', () => {
     expect(CALLER_VISIBLE.has('DELEGATION_ALREADY_LIVE')).toBe(true);
   });
 
-  it('is not one of the runtime codes, so the nineteen do not count it', () => {
+  it('is not one of the runtime codes, so the twenty do not count it', () => {
     expect(RUNTIME_CODES).not.toContain('DELEGATION_ALREADY_LIVE');
   });
 

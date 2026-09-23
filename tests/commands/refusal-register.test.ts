@@ -76,7 +76,9 @@ describe('the refusal register', () => {
     // Registered because the contract registers them; unreachable because the
     // command or the table that would produce them lands in a later part.
     expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual([
-      'AUDIENCE_NOT_PERMITTED',
+      // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
+      // comment was wired: the agent writes `internal` only, and a `client`
+      // comment is refused with it (`agent-envelope.ts`, role-case matrix).
       // The agent codes came off this list when L3 part B built the agent's
       // own API path: `AUTH_NO_AGENT_IDENTITY`, `AUTH_SESSION_EXPIRED`,
       // `DELEGATION_NOT_LIVE`, `DELEGATION_OUT_OF_PURPOSE` and

@@ -78,6 +78,8 @@ import {
   type CommandResult,
 } from './register-store.ts';
 import { fromRuntime, handbackLease, pickupReservation } from './tasks-runtime.ts';
+import { heartbeatLease } from './tasks-controls.ts';
+import { writeTaskComment } from './tasks-comment.ts';
 import { isRefused, type HandlerOutcome } from './outcome.ts';
 
 /**
@@ -112,11 +114,17 @@ export const AGENT_SURFACE: ReadonlySet<CommandName> = new Set([
   'task.queue',
   'task.pickup',
   'task.handback',
+  'task.heartbeat',
   'task.read',
   'task.comment',
   'task.decide',
   'session.capabilities',
 ]);
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
+const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
 const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
@@ -357,7 +365,10 @@ async function subjectTaskId(
   delegation: Delegation,
   request: AgentRequest,
 ): Promise<string> {
-  if (request.command === 'task.handback' && typeof request['leaseId'] === 'string') {
+  if (
+    (request.command === 'task.handback' || request.command === 'task.heartbeat') &&
+    typeof request['leaseId'] === 'string'
+  ) {
     const rows = await tx.query<{ readonly task_id: string }>(
       `select task_id from public.leases where business_id = $1 and id = $2`,
       [tx.businessId, request['leaseId']],
@@ -446,6 +457,63 @@ async function serve(
         },
         session.actorId,
       );
+    case 'task.comment': {
+      // The agent's own picked-up task: `authorise` has already held the
+      // delegation's purpose scope to this record and its `comment` action to
+      // the delegating person's live grant. The task is locked here as the
+      // person path's envelope locks it, and the comment commits with its own
+      // identity. `internal` only: a note to the team, never text a client
+      // reads without a person having written it.
+      const recordId = request['recordId'];
+      const rows =
+        typeof recordId === 'string' && UUID.test(recordId)
+          ? await tx.query<{ readonly id: string; readonly revision: string }>(
+              `select id, revision::text as revision from public.records
+                where business_id = $1 and id = $2 and deleted_at is null for update`,
+              [tx.businessId, recordId],
+            )
+          : [];
+      const task = rows[0];
+      if (task === undefined) {
+        return {
+          refusal: refuseCommand('NOT_FOUND', [], ['Check the identifier you were given.']),
+        };
+      }
+      const spine = await readTaskSpine(tx);
+      return await writeTaskComment(
+        tx,
+        {
+          commentTypeId: spine.taskCommentTypeId,
+          declaration: declarationOf('task.comment') as NonNullable<
+            ReturnType<typeof declarationOf>
+          >,
+          target: { id: task.id, revision: Number(task.revision) },
+          authorActorId: session.actorId,
+          entryPoint: 'api',
+          audiences: AGENT_AUDIENCES,
+        },
+        request['body'],
+        request['audience'],
+        request['commentType'],
+      );
+    }
+    case 'task.heartbeat': {
+      // `authorise` resolved this credential a moment ago in this transaction;
+      // it is resolved again for its id rather than threaded through, the way
+      // `session.capabilities` does above.
+      const resolved = await resolveDelegation(tx, session.actorId, credential ?? '');
+      if (!resolved.ok) return { refusal: fromRuntime(resolved.refusal) };
+      return await heartbeatLease(
+        tx,
+        {
+          leaseId: request['leaseId'],
+          fence: request['fence'],
+          ...('leaseSeconds' in request ? { leaseSeconds: request['leaseSeconds'] } : {}),
+        },
+        session.actorId,
+        resolved.value.id,
+      );
+    }
     case 'task.read': {
       const spine = await readTaskSpine(tx);
       const task = await readTaskDetail(tx, spine.taskTypeId, String(request['recordId'] ?? ''), {

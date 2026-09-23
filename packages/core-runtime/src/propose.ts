@@ -47,6 +47,14 @@ export interface ProposeRequest {
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
+  /**
+   * An authorised restart (G05): the rejected or cancelled lineage on this task
+   * the new one is opened in place of. Only with `lineageId` absent. The old
+   * lineage is locked, checked terminal and not already restarted under that
+   * lock, and named in the new row's `restarts_lineage_id`; it is never
+   * reopened, and nothing it held is reused.
+   */
+  readonly restartsLineageId?: string;
 }
 
 export interface Proposal {
@@ -93,6 +101,7 @@ export async function propose(
   // lock would be the backwards acquisition T5 forbids. Discovery first,
   // acquisition second, writes third.
   const lineageId = request.lineageId ?? null;
+  const restarts = lineageId === null ? (request.restartsLineageId ?? null) : null;
   const liveVersions =
     lineageId === null
       ? []
@@ -133,16 +142,23 @@ export async function propose(
         ]),
     { lockClass: 'task', id: request.taskId },
     { lockClass: 'lineage', id: lineageId ?? openingId },
+    ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
     ...(await affectedByVersions(tx, liveVersions)),
   ]);
+
+  if (restarts !== null) {
+    const refused = await refuseRestart(tx, restarts, request.taskId);
+    if (refused !== undefined) return refused;
+  }
 
   let lineage: LineageRow;
   if (lineageId === null) {
     const opened = await tx.query<LineageRow>(
-      `insert into public.proposal_lineages (business_id, id, task_id, opened_by_actor_id)
-       values ($1, $2, $3, $4)
+      `insert into public.proposal_lineages
+         (business_id, id, task_id, opened_by_actor_id, restarts_lineage_id)
+       values ($1, $2, $3, $4, $5)
        returning id, state, task_id`,
-      [tx.businessId, openingId, request.taskId, request.proposedByActorId],
+      [tx.businessId, openingId, request.taskId, request.proposedByActorId, restarts],
     );
     lineage = opened[0] as LineageRow;
   } else {
@@ -252,4 +268,63 @@ async function requires(
     `proposing bounded work on this task needs ${action} on it, and the caller holds no such grant`,
     'Ask for the grant, or propose against a task the caller already holds it on.',
   );
+}
+
+/**
+ * Why a restart of `restarts` is refused, under its lineage lock, or nothing.
+ *
+ * Terminal means rejected or cancelled: a live lineage is continued with a new
+ * version, not restarted, and a completed one finished its work. One restart
+ * per terminal lineage, because the restart *is* the owner's answer to that
+ * line ending; a second one would be two lines of work authorised by one
+ * choice. A lineage on another task is the R3 refusal `propose` already gives.
+ */
+async function refuseRestart(
+  tx: TenantQuery,
+  restarts: string,
+  taskId: string,
+): Promise<RuntimeResult<never> | undefined> {
+  const rows = await tx.query<{
+    readonly state: string;
+    readonly task_id: string;
+    readonly successor: string | null;
+  }>(
+    `select lin.state, lin.task_id,
+            (select next.id from public.proposal_lineages next
+              where next.business_id = lin.business_id and next.restarts_lineage_id = lin.id
+              limit 1) as successor
+       from public.proposal_lineages lin
+      where lin.business_id = $1 and lin.id = $2`,
+    [tx.businessId, restarts],
+  );
+  const row = rows[0];
+  if (row === undefined) {
+    return refuse(
+      'GATE_NOT_FOUND',
+      `no proposal lineage ${restarts} in this business`,
+      'Name the rejected or cancelled lineage this restart replaces.',
+    );
+  }
+  if (row.task_id !== taskId) {
+    return refuse(
+      'LINEAGE_NOT_ON_TASK',
+      `lineage ${restarts} belongs to task ${row.task_id}, not to ${taskId}`,
+      'Restart a lineage on the task it was opened on.',
+    );
+  }
+  if (row.state !== 'rejected' && row.state !== 'cancelled') {
+    return refuse(
+      'TRANSITION_NOT_PERMITTED',
+      `lineage ${restarts} is ${row.state}; only a rejected or cancelled lineage is restarted`,
+      'Propose a new version on a live lineage instead.',
+    );
+  }
+  if (row.successor !== null) {
+    return refuse(
+      'TRANSITION_NOT_PERMITTED',
+      `lineage ${restarts} was already restarted as ${row.successor}`,
+      'Work on the lineage the first restart opened.',
+    );
+  }
+  return undefined;
 }

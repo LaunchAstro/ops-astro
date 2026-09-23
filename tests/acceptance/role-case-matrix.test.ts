@@ -228,10 +228,25 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     const before = await harness.asPerson('task.read', read, 'alpha', mia);
     observe('mia', 'f-revoked', 'task.read (before)', before, SUCCESS);
 
-    // Assert something was actually taken back: a revocation that matched no
-    // row would leave the second read succeeding for the right reason and the
-    // case proving nothing.
-    expect(await harness.revokeTaskRead(mia.personId as string)).toBeGreaterThan(0);
+    // Taken back through the owning operation, `grant.revoke`, by the admin as
+    // grant manager: the id is looked up, the revocation is the route. This is
+    // also that declaration's positive control (`role-case-bodies.ts`).
+    const held = await harness.world.db.admin.execute<{ readonly id: string }>(
+      `select id from public.grants
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and collection = 'task' and action = 'read' and revoked_at is null`,
+      [harness.world.alpha, mia.personId],
+    );
+    expect(held.length).toBeGreaterThan(0);
+    for (const grant of held) {
+      // eslint-disable-next-line no-await-in-loop
+      const revoked = await harness.asPerson('grant.revoke', { grantId: grant.id });
+      observe('ada', 'f-revoked', 'grant.revoke', revoked, SUCCESS);
+    }
+    // And the member cannot revoke it back or revoke anyone else's: `mia`
+    // holds no `manage`, so the grant-manager gate refuses that caller first.
+    const byMember = await harness.asPerson('grant.revoke', { grantId: held[0]?.id }, 'alpha', mia);
+    observe('mia', 'f-revoked', 'grant.revoke', byMember, refusal('SCOPE_NOT_GRANTED'));
 
     const after = await harness.asPerson('task.read', read, 'alpha', mia);
     observe('mia', 'f-revoked', 'task.read (after)', after, refusal('SCOPE_NOT_GRANTED'));
@@ -403,18 +418,48 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
 
     // The agent's own task, with an action its delegation carries. `comment` is
     // one of the three `pickup` mints and `task.comment` is in `AGENT_SURFACE`,
-    // so the delegation check lets it through — and `agent-envelope.ts`'s
-    // `serve` has no branch for it, so the operation the surface says an agent
-    // may reach is answered as one it may not. Asserted as observed, so the day
-    // that branch is written this case fails and the finding is read; reported
-    // and not fixed, because the file belongs to another lane.
+    // so it succeeds with a saved comment identity (SPEC-ADJUDICATE (a),
+    // contract ledger `task.comment`: "comment grant and permitted audience;
+    // current delegation if agent"). The permitted audience is the team's:
+    // a client-visible comment stays a person's to write.
     const agentComments = await harness.asAgent(
       'task.comment',
-      { recordId: subject.id, body: 'the agent writes a note', audience: 'client' },
+      { recordId: subject.id, body: 'the agent writes a note', audience: 'internal' },
       credential,
     );
-    const excluded = refusal('DELEGATION_EXCLUDES_OPERATION');
-    observe('agent-after-pickup', table, 'task.comment (own task)', agentComments, excluded);
+    observe('agent-after-pickup', table, 'task.comment (own task)', agentComments, SUCCESS);
+    const saved = (agentComments.body['detail'] as Record<string, unknown> | undefined)?.[
+      'commentId'
+    ];
+    expect(String(saved)).toMatch(/^[0-9a-f-]{36}$/u);
+    const toClient = await harness.asAgent(
+      'task.comment',
+      { recordId: subject.id, body: 'the agent writes to the client', audience: 'client' },
+      credential,
+    );
+    const notPermitted = refusal('AUDIENCE_NOT_PERMITTED');
+    observe('agent-after-pickup', table, 'task.comment (client)', toClient, notPermitted);
+
+    // The lease owner's heartbeat on its own lease, and the same call at a
+    // fence that is not the lease's, which is somebody else's claim.
+    const beat = await harness.asAgent(
+      'task.heartbeat',
+      { leaseId: picked['leaseId'], fence: picked['fence'] },
+      credential,
+    );
+    observe('agent-after-pickup', table, 'task.heartbeat (own lease)', beat, SUCCESS);
+    const stale = await harness.asAgent(
+      'task.heartbeat',
+      { leaseId: picked['leaseId'], fence: Number(picked['fence']) + 1 },
+      credential,
+    );
+    observe(
+      'agent-after-pickup',
+      table,
+      'task.heartbeat (stale)',
+      stale,
+      refusal('LEASE_NOT_OWNED'),
+    );
 
     // (j) The decision, excluded from every delegation and checked first in the
     // order so it is never reported as something else, beside the person's own

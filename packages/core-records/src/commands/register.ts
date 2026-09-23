@@ -380,7 +380,6 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
  */
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
-  'AUDIENCE_NOT_PERMITTED',
   // Delegation codes no reachable operation raises. `DELEGATION_NARROWED`
   // needs the delegating person's grant revoked between a pickup and the
   // agent's next call, and there is still no authenticated grant-control

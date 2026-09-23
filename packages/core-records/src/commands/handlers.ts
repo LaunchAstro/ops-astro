@@ -19,6 +19,8 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate, proposeOnTask } from './tasks-runtime.ts';
+import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
+import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { expectedRevisionOf } from './prepare.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused } from './outcome.ts';
@@ -93,8 +95,18 @@ export async function handleCommand(
     // are declared here and routed here because the surface is one surface —
     // an operation with no route breaks the enumeration — and they are served
     // on the agent's own entry point in `agent-envelope.ts`.
+    case 'grant.revoke':
+      return await revokeGrantAsManager(tx, context, request.grantId);
+    case 'delegation.revoke':
+      return await revokeDelegationAsManager(tx, context, request.delegationId);
+    case 'task.cancel':
+      return await cancelOnTask(tx, context, request);
+    case 'task.restart':
+      return await restartOnTask(tx, context, request);
+
     case 'task.pickup':
     case 'task.handback':
+    case 'task.heartbeat':
       return refused(
         refuseCommand(
           'AUTH_NO_AGENT_IDENTITY',

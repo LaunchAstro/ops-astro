@@ -16,6 +16,14 @@
 // carries the statuses L3 should give them.
 
 export { propose, roundsUsed, type Proposal, type ProposeRequest } from './propose.ts';
+export { restart, type Restarted, type RestartRequest } from './restart.ts';
+export {
+  heartbeat,
+  MAXIMUM_LEASE_LIFETIME_SECONDS,
+  MAXIMUM_RENEWAL_SECONDS,
+  type HeartbeatRequest,
+  type Renewed,
+} from './heartbeat.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

@@ -378,13 +378,23 @@ export async function checkDelegatedAuthority(
   return { ok: true, value: held.map((grant) => grant.id) };
 }
 
-/** Revocation writes a timestamp. There is no delete path, and the role has no DELETE. */
-export async function revokeDelegation(tx: TenantQuery, delegationId: string): Promise<void> {
-  await tx.query(
+/**
+ * Revocation writes a timestamp. There is no delete path, and the role has no DELETE.
+ *
+ * A settled delegation is already not live, so it is not revoked a second way.
+ * The answer is the timestamp this call wrote, or null when it wrote none.
+ */
+export async function revokeDelegation(
+  tx: TenantQuery,
+  delegationId: string,
+): Promise<Date | null> {
+  const rows = await tx.query<{ readonly revoked_at: Date }>(
     `update public.delegations set revoked_at = now()
-      where business_id = $1 and id = $2 and revoked_at is null`,
+      where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
+      returning revoked_at`,
     [tx.businessId, delegationId],
   );
+  return rows[0]?.revoked_at ?? null;
 }
 
 /** Handback settles a delegation: it stops permitting work without being a revocation. */
