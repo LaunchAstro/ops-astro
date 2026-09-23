@@ -155,66 +155,122 @@ export type AgentExecutor = (
  */
 export const DELEGATION_HEADER = 'x-agent-delegation';
 
-export function createApi(options: ApiOptions): Hono {
-  const api = new Hono();
-  const routes = new Hono();
-  const executePerson = options.executeCommand ?? executeCommand;
+/**
+ * What one prefix does differently at the door: whose login table it records
+ * a body refusal against, and what a key that resolves to no business answers.
+ */
+interface Entry {
+  readonly owner: 'person_login' | 'agent_login';
+  readonly unresolved: () => CommandRefusal;
+}
 
-  for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
-    routes.post(pathOf(declaration.name), async (context) => {
-      const presented = await options.verify(context.req);
-      if (presented === undefined) {
-        return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
-      }
-      // An expired bearer is its own answer on both paths. It is the re-login
-      // door, and a client shown `AUTH_UNKNOWN_LOGIN` for it cannot tell a
-      // session that ended from a credential that was never good.
-      if (presented === 'expired')
-        return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED));
+const PERSON: Entry = {
+  owner: 'person_login',
+  unresolved: () => refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP),
+};
+const AGENT: Entry = {
+  owner: 'agent_login',
+  unresolved: () => refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_IDENTITY),
+};
 
-      // The key comes from the path and is resolved by the server. A caller
-      // who is not a member of the business they named gets the same refusal
-      // as one who named a business that does not exist.
-      const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
-      if (businessId === undefined) {
-        return refuse(context, refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_BUSINESS));
-      }
+interface Admitted {
+  readonly presented: VerifiedSubject;
+  readonly businessId: string;
+  readonly body: Readonly<Record<string, unknown>>;
+}
 
-      const body = await readObject(context);
-      if (body === undefined) {
-        // An admission refusal: the resolved business, the verified subject (ruling 4).
-        await recordBodyRefusal(options.database, businessId, 'person_login', presented);
-        return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
-      }
-
-      // The command comes from the route, never from the body, so a caller
-      // cannot post to one endpoint and have another operation run.
-      if (isRead(declaration)) {
-        const execute = options.executeRead;
-        if (execute === undefined) {
-          return refuse(context, refuseCommand('DEPENDENCY_NOT_LANDED', [declaration.name], READS));
-        }
-        // An absent or mistyped operand is refused by the read itself, inside
-        // its audited transaction (`reads/dispatch.ts`), not here.
-        // The name comes from the route here too, so a caller cannot post to
-        // one read and have another one run.
-        const read = await execute(options.database, businessId, presented, {
-          ...body,
-          read: declaration.name,
-        });
-        if (isObject(read) && isCommandRefusal(read)) return refuse(context, read);
-        return context.json(read as Record<string, unknown>, 200);
-      }
-
-      const request = { ...body, command: declaration.name } as CommandRequest;
-      const result = await executePerson(options.database, businessId, presented, 'api', request);
-
-      if (isCommandRefusal(result)) return refuse(context, result);
-      return context.json({ ...result }, 200);
-    });
+/**
+ * The door, the same on both prefixes (Sol 6 SURFACE-1, AUTHORITY-1).
+ *
+ * An expired bearer is the re-login answer before the key or the body is
+ * looked at. A malformed body is refused the same way whether the key names a
+ * business or not, and the attempt is recorded only in a business that
+ * resolved. A key that names no business answers exactly as the prefix's own
+ * login resolution answers a caller the business does not know, so a key that
+ * exists and one that does not cannot be told apart.
+ */
+async function admit(
+  options: ApiOptions,
+  context: Context,
+  entry: Entry,
+): Promise<Admitted | Response> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined) {
+    return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+  }
+  // An expired bearer is its own answer on both paths. It is the re-login
+  // door, and a client shown `AUTH_UNKNOWN_LOGIN` for it cannot tell a
+  // session that ended from a credential that was never good.
+  if (presented === 'expired') {
+    return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED));
   }
 
-  api.route('/api/b/:businessKey', routes);
+  // The key comes from the path and is resolved by the server.
+  const body = await readObject(context);
+  const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
+  if (body === undefined) {
+    // An admission refusal: the resolved business, the verified subject (ruling 4).
+    if (businessId !== undefined) {
+      await recordBodyRefusal(options.database, businessId, entry.owner, presented);
+    }
+    return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
+  }
+  if (businessId === undefined) return refuse(context, entry.unresolved());
+  return { presented, businessId, body };
+}
+
+export function createApi(options: ApiOptions): Hono {
+  const api = new Hono();
+  const executePerson = options.executeCommand ?? executeCommand;
+
+  /** One route per surface declaration under `prefix`, each through the door. */
+  function mountSurface(
+    prefix: string,
+    entry: Entry,
+    run: (
+      context: Context,
+      declaration: SurfaceDeclaration,
+      admitted: Admitted,
+    ) => Promise<Response>,
+  ): void {
+    const routes = new Hono();
+    for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
+      routes.post(pathOf(declaration.name), async (context) => {
+        const admitted = await admit(options, context, entry);
+        if (admitted instanceof Response) return admitted;
+        return await run(context, declaration, admitted);
+      });
+    }
+    api.route(prefix, routes);
+  }
+
+  mountSurface('/api/b/:businessKey', PERSON, async (context, declaration, admitted) => {
+    const { presented, businessId, body } = admitted;
+    // The command comes from the route, never from the body, so a caller
+    // cannot post to one endpoint and have another operation run.
+    if (isRead(declaration)) {
+      const execute = options.executeRead;
+      if (execute === undefined) {
+        return refuse(context, refuseCommand('DEPENDENCY_NOT_LANDED', [declaration.name], READS));
+      }
+      // An absent or mistyped operand is refused by the read itself, inside
+      // its audited transaction (`reads/dispatch.ts`), not here.
+      // The name comes from the route here too, so a caller cannot post to
+      // one read and have another one run.
+      const read = await execute(options.database, businessId, presented, {
+        ...body,
+        read: declaration.name,
+      });
+      if (isObject(read) && isCommandRefusal(read)) return refuse(context, read);
+      return context.json(read as Record<string, unknown>, 200);
+    }
+
+    const request = { ...body, command: declaration.name } as CommandRequest;
+    const result = await executePerson(options.database, businessId, presented, 'api', request);
+
+    if (isCommandRefusal(result)) return refuse(context, result);
+    return context.json({ ...result }, 200);
+  });
 
   // The second entry point. Same surface table, same paths, a different
   // prefix and a different envelope: `/api/a/b/alpha/task/pickup` is the agent
@@ -222,41 +278,30 @@ export function createApi(options: ApiOptions): Hono {
   // mistaken for the other by a proxy, a log reader or the server.
   const agentExecutor = options.executeAgentCommand;
   if (agentExecutor !== undefined) {
-    const agentRoutes = new Hono();
-    for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
-      agentRoutes.post(pathOf(declaration.name), async (context) => {
-        const presented = await options.verify(context.req);
-        if (presented === undefined) {
-          return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
-        }
-        const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
-        if (businessId === undefined) {
-          return refuse(context, refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_BUSINESS));
-        }
-        const body = await readObject(context);
-        if (body === undefined) {
-          await recordBodyRefusal(options.database, businessId, 'agent_login', presented);
-          return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
-        }
-        const result = await agentExecutor(
-          options.database,
-          businessId,
-          presented,
-          context.req.header(DELEGATION_HEADER),
-          {
-            ...body,
-            // From the route, never from the body, exactly as on the person
-            // path: a caller must not be able to post to one endpoint and have
-            // another operation run.
-            command: declaration.name,
-            operationId: String(body['operationId'] ?? ''),
-          },
-        );
-        if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
-        return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
-      });
-    }
-    api.route('/api/a/b/:businessKey', agentRoutes);
+    mountSurface('/api/a/b/:businessKey', AGENT, async (context, declaration, admitted) => {
+      const { presented, businessId, body } = admitted;
+      const operationId = body['operationId'];
+      const result = await agentExecutor(
+        options.database,
+        businessId,
+        presented,
+        context.req.header(DELEGATION_HEADER),
+        {
+          ...body,
+          // From the route, never from the body, exactly as on the person
+          // path: a caller must not be able to post to one endpoint and have
+          // another operation run.
+          command: declaration.name,
+          // A string is passed as sent. Anything else is not an operation id,
+          // and is passed as the empty one, which the envelope refuses: a
+          // number or an array is not converted into a string that passes
+          // (Sol 6 AUTHORITY-4).
+          operationId: typeof operationId === 'string' ? operationId : '',
+        },
+      );
+      if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
+      return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
+    });
   }
 
   return api;
@@ -290,9 +335,17 @@ const OBJECT = 'Send a JSON object holding the command’s own fields.';
 const READS: readonly string[] = [
   'The read half of the command surface has not been mounted in this deployment.',
 ];
-const NO_BUSINESS: readonly string[] = [
-  'Check that the business named in the path is the intended one.',
-  'Ask an administrator of that business to link this login to a person.',
+// A key that names no business answers in the bytes the prefix's own login
+// resolution gives a caller the business does not know
+// (`identity/login-resolution.ts` and `identity/agent-login.ts`), so the two
+// cannot be told apart. `tests/api/admission-enumeration.test.ts` compares them.
+const NO_MEMBERSHIP: readonly string[] = [
+  'ask an administrator of this business to link this login to a person',
+  'check that the business named in the request is the intended one',
+];
+const NO_AGENT_IDENTITY: readonly string[] = [
+  'ask an administrator of this business to link this login to an agent identity',
+  'a person signs in through the person login path, not this one',
 ];
 
 /** `isCommandRefusal` takes an object; a read executor's result is unknown until then. */

@@ -199,16 +199,15 @@ describe.skipIf(serverUrl === undefined)('a non-object body is an admission refu
 
     const ended = await send(api, `/api/b/${BUSINESS_KEY}${create}`, '[]', authorised(expired));
     expect(JSON.parse(ended.text)['code']).toBe('AUTH_SESSION_EXPIRED');
-    // The agent prefix hands an expired bearer to its executor, after the body
-    // is read, so a malformed body is still refused as one there: with no
-    // verified subject it records nothing.
+    // An expired bearer is the re-login answer on the agent prefix too,
+    // before the key or the body is looked at (Sol 6 AUTHORITY-1).
     const endedAgent = await send(
       api,
       `/api/a/b/${BUSINESS_KEY}${create}`,
       '[]',
       authorised(expiredAgent),
     );
-    expect(JSON.parse(endedAgent.text)['code']).toBe('COMMAND_BODY_INVALID');
+    expect(JSON.parse(endedAgent.text)['code']).toBe('AUTH_SESSION_EXPIRED');
 
     const nowhere = await send(
       api,
@@ -216,14 +215,17 @@ describe.skipIf(serverUrl === undefined)('a non-object body is an admission refu
       '[]',
       authorised(memberToken),
     );
-    expect(JSON.parse(nowhere.text)['code']).toBe('AUTH_NO_MEMBERSHIP');
+    // A malformed body is refused as one whether the key names a business or
+    // not, so the answer cannot tell the two apart (Sol 6 SURFACE-1); nothing
+    // is recorded, because no business resolved.
+    expect(JSON.parse(nowhere.text)['code']).toBe('COMMAND_BODY_INVALID');
     const nowhereAgent = await send(
       api,
       `/api/a/b/no-such-business${create}`,
       '[]',
       authorised(agentToken),
     );
-    expect(JSON.parse(nowhereAgent.text)['code']).toBe('AUTH_NO_MEMBERSHIP');
+    expect(JSON.parse(nowhereAgent.text)['code']).toBe('COMMAND_BODY_INVALID');
 
     expect(await counts(fixture.business)).toStrictEqual(before);
     expect(await counts(bravo)).toStrictEqual(bravoBefore);
