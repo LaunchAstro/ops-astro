@@ -82,6 +82,7 @@ import {
 import { declarationOf, type CommandName } from './surface.ts';
 import {
   OPERATION_ID,
+  isRetryableViolation,
   lookupAttempt,
   registerAttempt,
   type CommandHandle,
@@ -158,14 +159,31 @@ export async function executeAgentCommand(
   // here" cannot tell a door it can open from one it cannot.
   if (presented === 'expired') return asCallerVisible(fromAgentIdentity(refuseExpiredSession()));
 
-  return await database.withBusiness(businessId, async (tx) => {
-    const session = await resolveAgentLogin(tx, presented);
-    // No actor, so no audit event can be attributed. `resolveAgentLogin` has
-    // already written the authentication attempt, which is the record that
-    // exists for exactly this case (AUTHORITY.md, "every attempt at the door").
-    if ('refused' in session) return asCallerVisible(fromAgentIdentity(session));
-    return await runAgentCommand(tx, session, credential, request);
-  });
+  // One bounded retry on a lost identity claim, as the person entry takes
+  // (`envelope.ts`, `executeCommand`). A same-operationId retry in flight
+  // behind its original read no register row, then lost
+  // `operations_identity_key` to the original's commit; its whole transaction
+  // is gone, so the second attempt reads the committed row and replays it
+  // rather than answering a fault (DB-PROOF-GAPS-B F1). A second collision
+  // propagates.
+  for (let attempts = 0; ; attempts += 1) {
+    try {
+      // Sequential by definition: the retry exists only because the first lost.
+      // oxlint-disable-next-line no-await-in-loop
+      return await database.withBusiness(businessId, async (tx) => {
+        const session = await resolveAgentLogin(tx, presented);
+        // No actor, so no audit event can be attributed. `resolveAgentLogin`
+        // has already written the authentication attempt, which is the record
+        // that exists for exactly this case (AUTHORITY.md, "every attempt at
+        // the door").
+        if ('refused' in session) return asCallerVisible(fromAgentIdentity(session));
+        return await runAgentCommand(tx, session, credential, request);
+      });
+    } catch (cause) {
+      if (attempts === 0 && isRetryableViolation(cause)) continue;
+      throw cause;
+    }
+  }
 }
 
 /**
