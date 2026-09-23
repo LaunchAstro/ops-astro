@@ -68,6 +68,22 @@ The synthetic logins live in **`.local/synthetic-users.json`**, written by
 and GoTrue subjects; read it there. No password appears in this repository,
 and none should be pasted into one.
 
+There are five of them, and these are all of them:
+
+| Login                | Business |
+| -------------------- | -------- |
+| `ada@alpha.local`    | alpha    |
+| `mia@alpha.local`    | alpha    |
+| `noah@alpha.local`   | alpha    |
+| `orphan@alpha.local` | alpha    |
+| `bea@bravo.local`    | bravo    |
+
+Addresses, not contact details: `.local` is reserved for multicast DNS by RFC
+6762 and cannot be delegated, so none of them reaches a mailbox. The public
+content check allows exactly these five by name
+(`scripts/public-content-check.mjs`, `publishedAddresses`), so a sixth
+invented login is a finding until it is added here and there.
+
 Two businesses, keys `alpha` and `bravo`. The business selector on the sign-in
 page chooses the `/api/b/<key>` route prefix; it is a routing choice, not a
 claim, and the API resolves who you are and what you may see server-side.
