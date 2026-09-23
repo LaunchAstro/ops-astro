@@ -180,15 +180,16 @@ export function createPositiveBody(
         return { body: { batchId: batchOf(trashed) } };
       }
       case 'task.purge': {
-        // A purge with a zero-day window takes everything already in the trash,
-        // so there has to be something in it: an empty purge succeeds too, and
-        // would have proved the authority without proving the operation.
+        // The purge takes no window: it reads the business's installed
+        // retention_window_days, thirty days here, so this fresh trash stays
+        // and the case proves the authority and the operation's reach. The
+        // window boundary itself is `tests/commands/purge-retention.test.ts`.
         const task = await context.freshTask('a task to trash and purge');
         await context.asPerson('task.trash', {
           recordId: task.id,
           expectedRevision: task.revision,
         });
-        return { body: { olderThanDays: 0 } };
+        return { body: {} };
       }
       case 'task.propose':
         return { body: { ...(await target()), ...PROPOSAL } };

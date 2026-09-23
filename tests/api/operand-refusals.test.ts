@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { grantTo } from '../commands/fixture.ts';
+import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
 
 let fixture: ApiFixture;
@@ -31,6 +32,8 @@ beforeAll(async () => {
   // reaches the operand the case is about.
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     await grantTo(tx, fixture.member, 'manage');
+    // The purge reads the business's retention window, so the business has one.
+    await installBusinessSettings(tx);
   });
   api = fixture.compose();
   token = await tokenFor(fixture.member.presented.subject);
@@ -54,10 +57,6 @@ const CASES: readonly Case[] = [
   { path: 'task/create', operands: { fields: null }, named: 'fields' },
   { path: 'task/restore', operands: {}, named: 'batchId' },
   { path: 'task/restore', operands: { batchId: 7 }, named: 'batchId' },
-  { path: 'task/purge', operands: {}, named: 'olderThanDays' },
-  { path: 'task/purge', operands: { olderThanDays: '30' }, named: 'olderThanDays' },
-  { path: 'task/purge', operands: { olderThanDays: -1 }, named: 'olderThanDays' },
-  { path: 'task/purge', operands: { olderThanDays: 1.5 }, named: 'olderThanDays' },
   { path: 'task/read', operands: {}, named: 'recordId' },
   { path: 'task/read', operands: { recordId: 42 }, named: 'recordId' },
   { path: 'preset/plan', operands: {}, named: 'recordTypeKey' },
@@ -113,9 +112,11 @@ describe('an operand the operation needs, absent or of the wrong type', () => {
             readonly outcome: string;
             readonly refusal_code: string | null;
           }>(
-            `select seq::text as seq, outcome, refusal_code from audit_events
+            // Ordered by the column and not the text alias: `seq desc` on the
+            // alias sorts '9' after '10', and the latest row stops moving.
+            `select a.seq::text as seq, outcome, refusal_code from audit_events a
               where business_id = $1 and command = $2
-              order by seq desc limit 1`,
+              order by a.seq desc limit 1`,
             [tx.businessId, command],
           );
           return rows[0];
@@ -132,6 +133,44 @@ describe('an operand the operation needs, absent or of the wrong type', () => {
       expect(after?.seq).not.toBe(before?.seq);
       expect(after?.outcome).toBe('refused');
       expect(after?.refusal_code).toBe('FIELD_VALUE_INVALID');
+    });
+  }
+
+  // The purge has no operand now: its window is the business's
+  // `retention_window_days` (SPEC:319, C12-5 Q46, root ruling 2). A body that
+  // still names `olderThanDays` is refused whatever the value, valid ones
+  // included, and the refusal is audited like any other.
+  for (const olderThanDays of [30, 0, '30', -1, 1.5, null]) {
+    it(`task/purge ${JSON.stringify({ olderThanDays })} is refused as a field it does not take`, async () => {
+      const latest = async () =>
+        await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+          const rows = await tx.query<{
+            readonly seq: string;
+            readonly outcome: string;
+            readonly refusal_code: string | null;
+          }>(
+            `select a.seq::text as seq, outcome, refusal_code from audit_events a
+              where business_id = $1 and command = 'task.purge'
+              order by a.seq desc limit 1`,
+            [tx.businessId],
+          );
+          return rows[0];
+        });
+      const before = await latest();
+      const answer = await post(
+        api,
+        '/api/b/alpha/task/purge',
+        { operationId: randomUUID(), olderThanDays },
+        authorised(token),
+      );
+      expect(answer.body['raw']).toBeUndefined();
+      expect(answer.status).toBe(400);
+      expect(answer.body['code']).toBe('COMMAND_BODY_INVALID');
+      expect(answer.body['names']).toStrictEqual(['olderThanDays']);
+      const after = await latest();
+      expect(after?.seq).not.toBe(before?.seq);
+      expect(after?.outcome).toBe('refused');
+      expect(after?.refusal_code).toBe('COMMAND_BODY_INVALID');
     });
   }
 
@@ -165,7 +204,7 @@ describe('an operand the operation needs, absent or of the wrong type', () => {
     const purge = await post(
       api,
       '/api/b/alpha/task/purge',
-      { operationId: randomUUID(), olderThanDays: 30 },
+      { operationId: randomUUID() },
       authorised(token),
     );
     expect(purge.status).toBe(200);

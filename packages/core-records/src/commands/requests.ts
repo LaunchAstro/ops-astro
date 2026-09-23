@@ -153,7 +153,10 @@ export type CommandRequest =
     } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
-  | ({ readonly command: 'task.purge'; readonly olderThanDays: number } & Envelope)
+  // The purge's window is the business's setting, not an operand. The field is
+  // here only so the refusal of a body that still sends one is reachable, for
+  // the reason `expectedRevision` is optional above.
+  | ({ readonly command: 'task.purge'; readonly olderThanDays?: unknown } & Envelope)
   // The two operation-classified business settings. `value` is the whole
   // payload: the key is the command, not a field, so a caller cannot reach a
   // setting the model classified `generic` through the operation that owns a

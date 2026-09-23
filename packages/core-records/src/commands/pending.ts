@@ -2,22 +2,16 @@
 //
 // The commands that are declared, routed, audited — and refuse.
 //
-// Four of the contract's nine rest on something no part of the ratified split
-// builds. `task.comment` was the fifth and is not any more: L2 installed the
-// comment record type it was waiting for, so it is a real command with a
-// handler and its `waitingOn` text is gone from the declaration. The four
-// below keep theirs, and they keep it *unchanged* — the agent's own path, the
-// gate triple and the lease table are L4's mechanisms and part B of L3, and a
-// placeholder built against interfaces nobody has pinned would be the stub
-// this file's last paragraph refuses.
-//
-// `task.pickup` and `task.handback` need
-// the `delegations` and `leases` tables that section 9.1's authority group
-// names and that T1c, which built `grants`, did not carry. `task.propose` and
-// `task.decide` need the gate triple, and specification 2.1 puts a proposal
-// and a decision outside T1 in terms: "T1 does not include a proposal, a
-// decision or an effect. It includes the tables and the refusals those things
-// will need."
+// No declared operation waits on anything now. Four of the contract's nine
+// once did, and `task.comment` was a fifth: `task.pickup` and `task.handback`
+// waited on the `delegations` and `leases` tables, `task.propose` and
+// `task.decide` on the gate triple, and `task.comment` on the comment record
+// type. All five have landed as real commands with handlers, and no
+// declaration in `surface.ts` passes a `waitingOn` any more, so `landed` is
+// true across the surface. What remains here is `refuseUnlanded` itself,
+// which `tasks-comment.ts` still calls for a business whose comment record
+// type is not installed, and the reasons below, which apply to any operation
+// declared before what it rests on is built.
 //
 // **Why they are here rather than absent.** Every domain operation is
 // reachable through an endpoint and the enumeration proving it is generated

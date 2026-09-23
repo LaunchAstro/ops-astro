@@ -77,14 +77,26 @@ plain-text 500 when an operand was missing. Each now answers
 `FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
 (`packages/core-records/src/commands/operands.ts`):
 
-| Operation      | Operand                                  | What it has to be                                                        | Checked at                                   |
-| -------------- | ---------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------- |
-| `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `commands/tasks-write.ts:90`                 |
-| `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `commands/tasks-trash.ts:57`                 |
-| `task.purge`   | `olderThanDays`                          | a whole number of days, zero or more                                     | `commands/tasks-trash.ts:80`                 |
-| `task.read`    | `recordId`                               | a string                                                                 | `reads/dispatch.ts:262`, `operands.ts:62-64` |
-| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | `reads/dispatch.ts:262`, `operands.ts:65-74` |
-| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `reads/dispatch.ts:262`, `operands.ts:75-86` |
+| Operation      | Operand                                  | What it has to be                                                        | Checked at                                     |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `commands/tasks-write.ts:90`                   |
+| `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `commands/tasks-trash.ts:57`                   |
+| `task.purge`   | none                                     | no window operand: see below                                             | `commands/tasks-trash.ts:87`, `operands.ts:48` |
+| `task.read`    | `recordId`                               | a string                                                                 | `reads/dispatch.ts:262`, `operands.ts:62-64`   |
+| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | `reads/dispatch.ts:262`, `operands.ts:65-74`   |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `reads/dispatch.ts:262`, `operands.ts:75-86`   |
+
+**`task.purge` takes no window.** It reads the business's own
+`retention_window_days` setting inside the transaction the command is served in
+(`commands/tasks-trash.ts:111`), and the cutoff is the database's `now()` less
+that many days (`:136`). A body that still names `olderThanDays`, any value
+including a valid one, is refused `COMMAND_BODY_INVALID` 400 naming it
+(`operands.ts:48`), the code a body field the operation does not take already
+gets (`prepare.ts:325-335`), with nothing purged and a refused audit row. A
+business with no such row is `NOT_FOUND` naming `retention_window_days`; a row
+that is not a whole number of days, zero or more, is `FIELD_VALUE_INVALID`.
+No default, floor or ceiling is applied. `tests/commands/purge-retention.test.ts`
+holds it.
 
 The three command checks run in their handlers, so the refusal is registered and
 audited like any other command refusal. The read checks run inside the
@@ -529,7 +541,7 @@ cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
 | `task.rank`                        | `surface.ts:238` | `handlers.ts:57` → `tasks-place.ts:138` `rankTask`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.trash`                       | `surface.ts:239` | `handlers.ts:60` → `tasks-trash.ts:35` `trashTask`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.restore`                     | `surface.ts:240` | `handlers.ts:62` → `tasks-trash.ts:52` `restoreTasks`                              | refused `DELEGATION_EXCLUDES_OPERATION`                           |
-| `task.purge`                       | `surface.ts:241` | `handlers.ts:64` → `tasks-trash.ts:75` `purgeTasks`                                | refused `DELEGATION_EXCLUDES_OPERATION`                           |
+| `task.purge`                       | `surface.ts:255` | `handlers.ts:69` → `tasks-trash.ts:82` `purgeTasks`, window `:111`                 | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.read`                        | `surface.ts:243` | `dispatch.ts:233` → `reads/tasks.ts:209` `readTaskDetail`, `:251` `readSharedTask` | served under a live delegation (`:557`)                           |
 | `task.board`                       | `surface.ts:244` | `dispatch.ts:254` → `reads/tasks.ts:286` `readBoard`                               | refused `DELEGATION_EXCLUDES_OPERATION`                           |
 | `task.queue`                       | `surface.ts:249` | `dispatch.ts:275` → `reads/queue.ts:31` `readQueue`                                | served before a pickup (`:114`, `:466`)                           |
