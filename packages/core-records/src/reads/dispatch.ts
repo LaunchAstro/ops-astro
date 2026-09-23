@@ -278,7 +278,7 @@ async function serveRead(
   // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs. An
   // external party is shown its shares' pairs. It is skipped here rather than
   // declared grantless because the declaration is what the route generator and
-  // the parity test read, and a row missing its collection and action would be
+  // the surface inventory read, and a row missing its collection and action would be
   // a special case in three more places.
   if (request.read !== 'session.capabilities') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {

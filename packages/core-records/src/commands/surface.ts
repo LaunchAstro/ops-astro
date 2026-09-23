@@ -2,10 +2,11 @@
 //
 // The command surface: every domain operation, declared once.
 //
-// This table is the thing the endpoint parity test reads (T1g) and the thing
-// the Hono adapter builds its routes from, so an operation that exists and an
-// operation that is reachable cannot come apart: adding a row here adds the
-// endpoint, and a command with no row has no route to be reached through.
+// This table is the thing the surface inventory enumerates
+// (`tests/acceptance/surface-inventory.test.ts`) and the thing the Hono adapter
+// builds its routes from, so an operation that exists and an operation that is
+// reachable cannot come apart: adding a row here adds the endpoint, and a
+// command with no row has no route to be reached through.
 //
 // **Why there are more than nine.** The contract names nine (minimum contract
 // 4.3) and this part is titled after them. But the task type T1e installed
@@ -24,7 +25,7 @@
 // rests on has been built. A command that is declared and not landed still
 // runs the whole envelope — identity, revision, audit — and then refuses
 // `DEPENDENCY_NOT_LANDED` naming what it waits for. That is deliberate: a
-// declared operation with no route would break parity, and a route that
+// declared operation with no route would fail the surface inventory, and a route that
 // pretends to work would be worse than either.
 
 import type { Action } from '../authority/grants.ts';
@@ -274,7 +275,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // Declared with a collection and an action like every other row, and served
   // without asking them: `reads/dispatch.ts` answers this one from membership
   // alone. The declaration still carries the pair because the table is what
-  // the route generator and the parity test read, and a row missing half its
+  // the route generator and the surface inventory read, and a row missing half its
   // shape would be a special case in three more places than one.
   read('session.capabilities', SESSION_COLLECTION),
 
