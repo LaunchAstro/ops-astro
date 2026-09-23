@@ -31,13 +31,25 @@ const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
-/** Never reached: every case below is refused before the database is asked. */
+/**
+ * Every case below is refused before the database is asked for anything but
+ * the one row the boundary writes itself: a non-object body's admission
+ * refusal (root ruling 4). That insert is answered with nothing; any other
+ * statement throws.
+ */
 const stubDatabase = (): Database =>
   ({
     log: { record: () => undefined, statements: () => [] },
-    withBusiness: async () => {
-      throw new Error('the stub database has no rows');
-    },
+    withBusiness: async (businessId: string, run: (tx: unknown) => Promise<unknown>) =>
+      await run({
+        businessId,
+        query: async (text: string) => {
+          if (!text.trimStart().startsWith('insert into public.authentication_attempts')) {
+            throw new Error('the stub database has no rows');
+          }
+          return [];
+        },
+      }),
     close: async () => undefined,
   }) as unknown as Database;
 
