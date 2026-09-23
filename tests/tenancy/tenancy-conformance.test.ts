@@ -83,6 +83,11 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0007_command_envelope',
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
+        '0010_runtime_proposals',
+        '0011_runtime_gates',
+        '0012_runtime_decisions',
+        '0013_runtime_budget_and_leases',
+        '0014_runtime_attempts',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -100,6 +105,11 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0007_command_envelope',
         '0008_agent_authority',
         '0009_settings_and_owning_operations',
+        '0010_runtime_proposals',
+        '0011_runtime_gates',
+        '0012_runtime_decisions',
+        '0013_runtime_budget_and_leases',
+        '0014_runtime_attempts',
       ]);
     });
 
