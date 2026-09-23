@@ -259,7 +259,12 @@ async function serveRead(
       // business's identifier and case 3 says a denied list is never an empty
       // success. Foreign, fabricated, malformed and trashed all get the one
       // answer. `null` is the list of tasks on no board and is not a lookup.
-      if (request.board !== null && !(await boardExists(tx, spine.taskTypeId, request.board))) {
+      // An absent operand is not a board either; refusing it is the operand
+      // check's job (`commands/operands.ts`), not a lookup's.
+      if (
+        typeof request.board === 'string' &&
+        !(await boardExists(tx, spine.taskTypeId, request.board))
+      ) {
         return served(refuseNotFound());
       }
       return served({ ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) });
