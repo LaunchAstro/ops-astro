@@ -20,6 +20,10 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { SigningKey } from '../../../core-runtime/src/signing.ts';
+import {
+  configuredCredentialKeys,
+  type CredentialKeysDecision,
+} from '../authority/credential-keys.ts';
 
 /** The key this deployment signs decision links with, or nothing if unconfigured. */
 export function gateSigningKey(
@@ -29,6 +33,25 @@ export function gateSigningKey(
   const secret = environment['GATE_SIGNING_SECRET'];
   if (id === undefined || id === '' || secret === undefined || secret === '') return undefined;
   return { id, secret };
+}
+
+/**
+ * The keyring delegation credentials are derived under, or why there is none.
+ *
+ * A third deployment secret beside the two above, and deliberately not either
+ * of them: the gate key signs decisions and the JWT secret verifies logins, and
+ * a leak of one should not let anybody compute a delegation credential. The
+ * same custody argument as the signing key's applies. The bytes stay out of
+ * every table, so the digest in `delegations.credential_hash` is only worth
+ * something with a key the database does not hold. `DELEGATION_CREDENTIAL_KEY_ID`
+ * and `DELEGATION_CREDENTIAL_KEYS` configure it explicitly. Without them it is
+ * the gitignored `.local/delegation.env`, which is created once and never
+ * rewritten (`authority/credential-keys.ts`).
+ */
+export function delegationCredentialKeys(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): CredentialKeysDecision {
+  return configuredCredentialKeys(environment);
 }
 
 /**

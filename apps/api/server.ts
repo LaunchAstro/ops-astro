@@ -37,6 +37,7 @@ import {
 } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi, type AgentExecutor, type ReadExecutor } from './app.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -70,6 +71,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // scripts write, because it is a deployment secret rather than a
     // connection string and it has no business in either of theirs.
     ...readEnvFile(join(ROOT, '.local', 'gate.env')),
+    // The delegation credential keyring, in a gitignored file of its own for
+    // the same reason, and never the gate key or the JWT secret.
+    ...readEnvFile(join(ROOT, '.local', 'delegation.env')),
     ...process.env,
   };
 }
@@ -153,9 +157,22 @@ async function main(): Promise<void> {
   // from the environment rather than passed down through every caller. The
   // composition root is where a deployment's environment is assembled, so this
   // is where the file the seed wrote becomes one.
-  for (const name of ['GATE_SIGNING_KEY_ID', 'GATE_SIGNING_SECRET'] as const) {
+  for (const name of [
+    'GATE_SIGNING_KEY_ID',
+    'GATE_SIGNING_SECRET',
+    'DELEGATION_CREDENTIAL_KEY_ID',
+    'DELEGATION_CREDENTIAL_KEYS',
+  ] as const) {
     const value = environment[name];
     if (value !== undefined && value !== '') process.env[name] = value;
+  }
+  // Checked at boot so a malformed keyring stops the server with its reason,
+  // rather than serving until the first agent pickup refuses. The problem names
+  // the setting, never a key's bytes.
+  const credentialKeys = delegationCredentialKeys();
+  if (!credentialKeys.ok) {
+    console.error(`api: delegation credential keys: ${credentialKeys.problem}`);
+    process.exit(1);
   }
 
   const server = new Hono();

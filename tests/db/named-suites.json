@@ -21,7 +21,8 @@
     "L3-PART-B-3 adds the settings-revision-routes suite (the two settings commands and settings.read by revision over in-process Hono), the envelope-faults suite (the omitted operationId and the two task.propose shapes over in-process Hono) and the settings-revision suite (the same three writes through executeCommand). handback-successor.test.ts is a pure unit suite and must not be named.",
     "RUNTIME-LIFECYCLE adds the five lifecycle suites (cancellation closes delegation and run, stale-version handback refused with retained report, proposal/handback lock order, cancel race, authority-loss classification) and control-scope (cancel/restart authorised on their own target); W-SCHEDULES adds the W01 before/after-commit, W03 handback-versus-proposal, W05 competing-reservation and eight-hour heartbeat schedules through the real command entry.",
     "PERSON-WORK adds person-work-http (EX-01 person pickup, renewal and handback on the person route, wrong-owner and lost-rights refusals) and person-work-schedules (grant.revoke against pickup, R5 fresh replacement, three competing claimants, an agent on a person's lease of its own task).",
-    "AUTHORITY-LOSS adds authority-loss-person-lease (grant.revoke classifies a person's own lease, write as work authority, the run back to planned, revoke responses listing classified holds, replay exactly once) and gate-reason-lineage (task.propose and task.restart answer a foreign and a fabricated lineage id byte-identically, audited at home)."
+    "AUTHORITY-LOSS adds authority-loss-person-lease (grant.revoke classifies a person's own lease, write as work authority, the run back to planned, revoke responses listing classified holds, replay exactly once) and gate-reason-lineage (task.propose and task.restart answer a foreign and a fabricated lineage id byte-identically, audited at home).",
+    "PICKUP-REPLAY adds pickup-replay-lost-response (a lost pickup response replayed with the same derived credential and handles under current rights, lease and approval binding, no plaintext token or key bytes stored) and pickup-replay-keys (fixed HMAC encoding, keyring parsing and provisioning, rotation with retained read keys, closed failure on a missing key or corrupt metadata, legacy rows kept legacy)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -87,7 +88,9 @@
     "tests/runtime/person-work-http.test.ts",
     "tests/runtime/person-work-schedules.test.ts",
     "tests/runtime/authority-loss-person-lease.test.ts",
-    "tests/commands/gate-reason-lineage.test.ts"
+    "tests/commands/gate-reason-lineage.test.ts",
+    "tests/commands/pickup-replay-lost-response.test.ts",
+    "tests/commands/pickup-replay-keys.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

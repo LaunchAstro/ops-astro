@@ -66,7 +66,7 @@ import {
   type Refused,
 } from './outcome.ts';
 import type { RefusalCode } from './register.ts';
-import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
+import { delegationCredentialKeys, gateSigningKey, readBusinessCapId } from './runtime-config.ts';
 
 /**
  * A runtime or delegation refusal as the command register spells it.
@@ -362,6 +362,24 @@ export async function pickupReservation(
   agentActorId: string,
   fields: PickupFields,
 ): Promise<HandlerOutcome> {
+  // An agent's pickup mints a credential, and the credential is derived under
+  // the deployment's delegation key. Without one there is no credential this
+  // deployment could give back after a lost response, so nothing is claimed.
+  // The same answer as a decision with no signing key: not about the caller,
+  // and retrying will not change it.
+  const keys = delegationCredentialKeys();
+  if (!keys.ok) {
+    return refused(
+      refuseCommand(
+        'DEPENDENCY_NOT_LANDED',
+        ['task.pickup', 'DELEGATION_CREDENTIAL_KEY_ID and DELEGATION_CREDENTIAL_KEYS'],
+        [
+          'This deployment has no usable delegation credential key.',
+          'It is not a permission problem and retrying will not change it.',
+        ],
+      ),
+    );
+  }
   return await claim(tx, collection, fields, { claimant: 'agent', agentActorId });
 }
 
@@ -481,9 +499,11 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
   if (picked.claimant === 'person') return common;
   return {
     ...common,
-    // Returned once and stored only as a digest. It is in the detail because
-    // the agent has to present it on its next call and there is nowhere else
-    // it could come from; it is never read back, by anybody, afterwards.
+    // In the clear only in this answer. The delegation stores its digest and
+    // the register keeps this detail with the credential nulled
+    // (`agent-envelope.ts`, `storable`). A replay of this pickup, after the
+    // current-rights and lease checks, derives the same value again from the
+    // delegation's pinned key and checks it against that digest.
     delegationId: picked.delegation.delegation.id,
     credential: picked.delegation.credential,
     purposeScope: picked.delegation.delegation.purposeScope,
