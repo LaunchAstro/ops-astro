@@ -35,7 +35,8 @@ import {
   isBusinessId,
   type AdminConnection,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { createApi, type ReadExecutor } from './app.ts';
+import { createApi, type AgentExecutor, type ReadExecutor } from './app.ts';
+import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -64,6 +65,11 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
   return {
     ...readEnvFile(join(ROOT, '.local', 'db.env')),
     ...readEnvFile(join(ROOT, '.local', 'auth.env')),
+    // The decision signing key. Written by `scripts/local-seed.mjs` into a
+    // gitignored file of its own, beside the two the database and GoTrue
+    // scripts write, because it is a deployment secret rather than a
+    // connection string and it has no business in either of theirs.
+    ...readEnvFile(join(ROOT, '.local', 'gate.env')),
     ...process.env,
   };
 }
@@ -143,6 +149,14 @@ async function main(): Promise<void> {
   const database = connect(databaseUrl as string, { source: 'runtime' });
   const admin = connectAsAdmin(adminUrl as string, { source: 'admin' });
   const executeRead = await loadReadExecutor();
+  // The signing key is a process fact, read by `commands/runtime-config.ts`
+  // from the environment rather than passed down through every caller. The
+  // composition root is where a deployment's environment is assembled, so this
+  // is where the file the seed wrote becomes one.
+  for (const name of ['GATE_SIGNING_KEY_ID', 'GATE_SIGNING_SECRET'] as const) {
+    const value = environment[name];
+    if (value !== undefined && value !== '') process.env[name] = value;
+  }
 
   const server = new Hono();
 
@@ -174,6 +188,7 @@ async function main(): Promise<void> {
       verify: createSupabaseVerifier({ secret: secret as string }),
       resolveBusiness: createBusinessResolver(admin),
       ...(executeRead === undefined ? {} : { executeRead }),
+      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
     }),
   );
 

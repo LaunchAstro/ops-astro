@@ -244,7 +244,7 @@ export interface PickupFields {
  */
 export async function pickupReservation(
   tx: TenantQuery,
-  context: CommandContext,
+  collection: string,
   agentActorId: string,
   fields: PickupFields,
 ): Promise<HandlerOutcome> {
@@ -282,7 +282,7 @@ export async function pickupReservation(
     agentActorId,
     authorisedByPersonId: approver.personId,
     mintedByActorId: approver.actorId,
-    collection: context.declaration.collection,
+    collection,
     leaseSeconds: seconds,
   });
   if (!result.ok) return refused(fromRuntime(result.refusal));

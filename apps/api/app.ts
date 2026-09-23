@@ -87,7 +87,7 @@ export interface ApiOptions {
    * enters the system, and it is passed in rather than chosen here so a
    * deployment cannot be talked into a second one.
    */
-  readonly verify: (request: Context['req']) => Promise<VerifiedSubject | undefined>;
+  readonly verify: (request: Context['req']) => Promise<VerifiedSubject | 'expired' | undefined>;
   /**
    * The business key from the path to the server's own identifier, or nothing
    * if there is no such business. Injected for the same reason `verify` is:
@@ -101,7 +101,43 @@ export interface ApiOptions {
    * has not been built.
    */
   readonly executeRead?: ReadExecutor;
+  /**
+   * The agent's own entry point.
+   *
+   * Injected like `verify` and `executeRead` rather than imported here,
+   * because mounting it is a composition-root decision: a deployment that
+   * serves no agents should not have the routes at all, and a boundary that
+   * reached for the module itself would make that undecidable. Absent means
+   * the agent prefix is not mounted and an agent's request finds no route,
+   * which is the honest answer for a deployment that has not enabled it.
+   */
+  readonly executeAgentCommand?: AgentExecutor;
 }
+
+/**
+ * The agent path's executor. The credential travels beside the request, not
+ * inside it, which is why it is an argument rather than a body field.
+ */
+export type AgentExecutor = (
+  database: Database,
+  businessId: string,
+  presented: VerifiedSubject | 'expired',
+  credential: string | undefined,
+  request: { readonly command: string; readonly operationId: string } & Readonly<
+    Record<string, unknown>
+  >,
+) => Promise<unknown>;
+
+/**
+ * The header an agent presents its delegation credential in.
+ *
+ * A header rather than a body field for the same reason the bearer token is
+ * one: it is a credential, and a credential in a body is a credential that
+ * gets logged with the payload, stored in the register row and compared by a
+ * digest. The register compares what the request *is*; the authority it was
+ * made under is not part of that.
+ */
+export const DELEGATION_HEADER = 'x-agent-delegation';
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
@@ -113,6 +149,11 @@ export function createApi(options: ApiOptions): Hono {
       if (presented === undefined) {
         return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
       }
+      // An expired bearer is its own answer on both paths. It is the re-login
+      // door, and a client shown `AUTH_UNKNOWN_LOGIN` for it cannot tell a
+      // session that ended from a credential that was never good.
+      if (presented === 'expired')
+        return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED));
 
       // The key comes from the path and is resolved by the server. A caller
       // who is not a member of the business they named gets the same refusal
@@ -153,6 +194,49 @@ export function createApi(options: ApiOptions): Hono {
   }
 
   api.route('/api/b/:businessKey', routes);
+
+  // The second entry point. Same surface table, same paths, a different
+  // prefix and a different envelope: `/api/a/b/alpha/task/pickup` is the agent
+  // asking, `/api/b/alpha/task/pickup` is a person asking, and neither can be
+  // mistaken for the other by a proxy, a log reader or the server.
+  const agentExecutor = options.executeAgentCommand;
+  if (agentExecutor !== undefined) {
+    const agentRoutes = new Hono();
+    for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
+      agentRoutes.post(pathOf(declaration.name), async (context) => {
+        const presented = await options.verify(context.req);
+        if (presented === undefined) {
+          return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+        }
+        const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
+        if (businessId === undefined) {
+          return refuse(context, refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_BUSINESS));
+        }
+        const body = await readObject(context);
+        if (body === undefined) {
+          return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
+        }
+        const result = await agentExecutor(
+          options.database,
+          businessId,
+          presented,
+          context.req.header(DELEGATION_HEADER),
+          {
+            ...body,
+            // From the route, never from the body, exactly as on the person
+            // path: a caller must not be able to post to one endpoint and have
+            // another operation run.
+            command: declaration.name,
+            operationId: String(body['operationId'] ?? ''),
+          },
+        );
+        if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
+        return context.json(result as Record<string, unknown>, 200);
+      });
+    }
+    api.route('/api/a/b/:businessKey', agentRoutes);
+  }
+
   return api;
 }
 
@@ -176,6 +260,10 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
+const EXPIRED: readonly string[] = [
+  'The session has expired. Sign in again to continue.',
+  'Nothing was changed by this call.',
+];
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 const READS: readonly string[] = [
   'The read half of the command surface has not been mounted in this deployment.',
