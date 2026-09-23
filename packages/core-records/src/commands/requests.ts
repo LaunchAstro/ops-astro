@@ -56,18 +56,47 @@ export type CommandRequest =
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
     } & Targeted)
-  | ({ readonly command: 'task.propose'; readonly gateDefinition: string } & Targeted)
+  // A proposal is a record beside the task and targets it, so it names the
+  // revision it was written against like every other targeted command. What it
+  // does *not* carry is who is proposing, what they may spend it against or
+  // when the server's clock says the gate closes: the first two are the
+  // session's and the third is a duration the server adds to its own now.
+  | ({
+      readonly command: 'task.propose';
+      /** The slug shape `delegations.purpose` carries, checked at propose time. */
+      readonly purpose: string;
+      readonly maximumMinor: number;
+      readonly currency: string;
+      readonly payload: FieldValues;
+      readonly step: { readonly kind: string; readonly payload: FieldValues };
+      readonly expiresInSeconds?: number;
+      /** Present to add a version to a live lineage; absent to open one. */
+      readonly lineageId?: string;
+    } & Targeted)
+  // A decision binds a proposal version, not a record revision (the reason
+  // `task.decide` is in `NEEDS_NO_EXPECTED_REVISION`). `versionId` is the
+  // exact version the caller read: it is compared under the locks and never
+  // trusted, which is what makes a stale-version decision a refusal rather
+  // than a decision about something else.
   | ({
       readonly command: 'task.decide';
-      readonly gateInstanceId: string;
-      readonly proposalVersion: number;
+      readonly gateId: string;
+      readonly versionId: string;
       readonly decision: string;
+      readonly note: string;
     } & Envelope)
-  | ({ readonly command: 'task.pickup'; readonly recordId: string } & Envelope)
+  | ({
+      readonly command: 'task.pickup';
+      readonly reservationId: string;
+      readonly leaseSeconds?: number;
+    } & Envelope)
   | ({
       readonly command: 'task.handback';
-      readonly recordId: string;
+      readonly leaseId: string;
+      /** The fence the pickup handed back. A stale one settles nothing. */
+      readonly fence: number;
       readonly outcome: string;
+      readonly report?: FieldValues;
     } & Envelope)
   // The owning operations. Each writes the fields its name owns on the field
   // definition, so the payload is the values and nothing else.

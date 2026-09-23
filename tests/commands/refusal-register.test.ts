@@ -77,26 +77,25 @@ describe('the refusal register', () => {
     // command or the table that would produce them lands in a later part.
     expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual([
       'AUDIENCE_NOT_PERMITTED',
-      // The five agent codes L2 exported. Each is produced by a module in the
-      // tree and by no operation a caller can reach: the agent's own API path
-      // is part B of L3 and waits on L4. The three `PRESET_*` codes are
-      // deliberately *not* here — `preset.plan` produces them now.
-      'AUTH_NO_AGENT_IDENTITY',
-      'AUTH_SESSION_EXPIRED',
-      'DELEGATION_EXCLUDES_DECISION',
+      // The agent codes came off this list when L3 part B built the agent's
+      // own API path: `AUTH_NO_AGENT_IDENTITY`, `AUTH_SESSION_EXPIRED`,
+      // `DELEGATION_NOT_LIVE`, `DELEGATION_OUT_OF_PURPOSE` and
+      // `DELEGATION_EXCLUDES_DECISION` are all produced by an operation a
+      // caller can reach now. The five below are the ones that still are not,
+      // and `register.ts` says of each what it waits for. The three `PRESET_*`
+      // codes are deliberately absent too — `preset.plan` produces them.
+      'CHANGE_ROUNDS_EXHAUSTED',
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXCLUDES_OPERATION',
       'DELEGATION_EXPIRED',
       'DELEGATION_NARROWED',
-      'DELEGATION_NOT_LIVE',
-      'DELEGATION_OUT_OF_PURPOSE',
       'DELEGATION_REVOKED',
       'DELEGATION_WIDENS',
-      'GATE_ALREADY_DECIDED',
+      'EVIDENCE_MISMATCH',
+      'GATE_EXPIRED',
       'GATE_PENDING',
       'LEASE_EXPIRED',
       'LEASE_HELD',
-      'LEASE_NOT_OWNED',
       'PROPOSAL_SCOPE_EXCEEDED',
       'PROPOSAL_SUPERSEDED',
       'TASK_NOT_PICKABLE',

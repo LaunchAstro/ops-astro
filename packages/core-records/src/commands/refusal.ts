@@ -20,7 +20,7 @@
 // empty names, same fixes. Anything else is an inference channel, which is the
 // leak composite tenant keys exist to close (ADR 0014:14).
 
-import type { Refusal as IdentityRefusal } from '../identity/refusals.ts';
+import type { AgentRefusal, Refusal as IdentityRefusal } from '../identity/refusals.ts';
 import type { RecordsRefusal } from '../records/refusals.ts';
 import type { Refusal as AuthorityRefusal } from '../authority/grants.ts';
 import { CALLER_VISIBLE, registeredRefusal, type RefusalCode } from './register.ts';
@@ -79,6 +79,20 @@ export function fromRecords(refusal: RecordsRefusal): CommandRefusal {
 }
 
 export function fromIdentity(refusal: IdentityRefusal): CommandRefusal {
+  return refuseCommand(refusal.code, [], refusal.fixes);
+}
+
+/**
+ * The agent login path's refusal, which is a different union from a person's.
+ *
+ * It is a separate function rather than a widened `fromIdentity` because the
+ * two unions are separate on purpose: `AUTH_NO_AGENT_IDENTITY` is not one of
+ * the answers a person's login may get, and a single translator taking both
+ * would be the place someone later returns an agent code from the person path.
+ * Both spellings are in the register, so the constructor still refuses an
+ * invented one.
+ */
+export function fromAgentIdentity(refusal: AgentRefusal): CommandRefusal {
   return refuseCommand(refusal.code, [], refusal.fixes);
 }
 

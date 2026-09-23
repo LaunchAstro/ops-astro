@@ -59,6 +59,7 @@ export type CommandName =
   // route for reading a task to be invented somewhere else.
   | 'task.read'
   | 'task.board'
+  | 'task.queue'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -168,25 +169,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.complete', 'write', { contractNine: true }),
   declare('task.reopen', 'write', { contractNine: true }),
   declare('task.comment', 'comment', { contractNine: true }),
-  declare('task.propose', 'write', {
-    contractNine: true,
-    waitingOn: 'the gate triple and the budget tables; T1 excludes a proposal',
-  }),
-  declare('task.decide', 'decide', {
-    targetsExistingRecord: false,
-    contractNine: true,
-    waitingOn: 'the gate triple and a delegations table; T1 excludes a decision',
-  }),
-  declare('task.pickup', 'write', {
-    targetsExistingRecord: false,
-    contractNine: true,
-    waitingOn: 'a delegations table and a leases table, which no part of the split owns',
-  }),
-  declare('task.handback', 'write', {
-    targetsExistingRecord: false,
-    contractNine: true,
-    waitingOn: 'a leases table and the gate triple, which no part of the split owns',
-  }),
+  declare('task.propose', 'write', { contractNine: true }),
+  declare('task.decide', 'decide', { targetsExistingRecord: false, contractNine: true }),
+  declare('task.pickup', 'write', { targetsExistingRecord: false, contractNine: true }),
+  declare('task.handback', 'write', { targetsExistingRecord: false, contractNine: true }),
 
   declare('task.start', 'write'),
   declare('task.assign', 'assign'),
@@ -204,6 +190,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   read('task.read', TASK_COLLECTION),
   read('task.board', TASK_COLLECTION),
+  // The work a decision approved and nobody has picked up (I12). It is a read
+  // because it writes nothing and it is a *projection* rather than a claim:
+  // reading the queue reserves nothing, and two workers reading it see the
+  // same row until one of them picks it up.
+  read('task.queue', TASK_COLLECTION),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -254,6 +245,7 @@ export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
   'task.handback',
   'task.pickup',
   'task.purge',
+  'task.queue',
   'task.read',
   'task.restore',
 ]);

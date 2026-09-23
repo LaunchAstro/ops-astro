@@ -40,6 +40,7 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   DELEGATION_REVOKED: 403,
   RETENTION_CLASS_PROTECTED: 403,
   LEASE_NOT_OWNED: 403,
+  PROPOSAL_OUT_OF_SCOPE: 403,
   SOURCE_SPOOFED: 403,
 
   // It is not there, or it is not yours to know about.
@@ -47,6 +48,8 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   // The preset names a record type this business does not have, which is the
   // same kind of answer as an identifier that is not there.
   PRESET_TYPE_UNKNOWN: 404,
+  // No gate by that identity, which is the same kind of answer.
+  GATE_NOT_FOUND: 404,
   // `WRONG_BUSINESS` never reaches a caller; the envelope translates it. The
   // status is here so the table stays complete and reads the same as the one
   // the caller would get if it ever did.
@@ -60,14 +63,17 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   UNIQUE_VALUE_TAKEN: 409,
   TRANSITION_NOT_PERMITTED: 409,
   LEASE_HELD: 409,
-  LEASE_EXPIRED: 409,
   GATE_PENDING: 409,
   GATE_ALREADY_DECIDED: 409,
+  VERSION_SUPERSEDED: 409,
+  EVIDENCE_MISMATCH: 409,
+  LINEAGE_TERMINAL: 409,
+  CHANGE_ROUNDS_EXHAUSTED: 409,
+  RESERVATION_NOT_CLAIMABLE: 409,
   GATE_NOT_APPROVED: 409,
   PROPOSAL_SUPERSEDED: 409,
   FOUR_EYES_REQUIRED: 409,
   BUDGET_UNAVAILABLE: 409,
-  BUDGET_EXHAUSTED: 409,
   TASK_NOT_PICKABLE: 409,
   // The model is in a state that cannot hold the field. Not the caller's
   // syntax and not their authority: something has to move first.
@@ -100,8 +106,25 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   // permission problem and not a bad request, and saying so is the honest
   // answer rather than a 404 that reads as "no such endpoint".
   DEPENDENCY_NOT_LANDED: 501,
+
+  // The two statuses only the runtime asks for, and both are the runtime's own
+  // suggestion rather than this table's preference (`SUGGESTED_STATUS` in
+  // `core-runtime/src/refusals.ts`, asserted in
+  // `tests/commands/runtime-codes.test.ts`).
+  //
+  // `402` for a spent cap and `409` for a full envelope are two answers
+  // because a caller told the wrong one raises the wrong ceiling: the first
+  // needs more money behind the business, the second needs room on this task.
+  // `410` rather than `409` for a window that has closed, because re-reading
+  // and retrying will never make an expired gate or an expired lease live
+  // again — a new proposal or a new pickup is the only way forward.
+  BUDGET_EXHAUSTED: 402,
+  GATE_EXPIRED: 410,
+  LEASE_EXPIRED: 410,
 };
 
-export function statusFor(code: RefusalCode): 400 | 401 | 403 | 404 | 409 | 422 | 501 {
-  return STATUS[code] as 400 | 401 | 403 | 404 | 409 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+
+export function statusFor(code: RefusalCode): RefusalStatus {
+  return STATUS[code] as RefusalStatus;
 }

@@ -73,6 +73,87 @@ export function expectedRevisionOf(request: CommandRequest): number | undefined 
  * type that grows an identifier has to be added here rather than being
  * silently covered or silently missed.
  */
+/**
+ * The facts a caller may never state about their own request (D06).
+ *
+ * Every one of these is derived by the server: the business from the path and
+ * the login mapping, the actor and the person from the resolved session, the
+ * times from the server's clock, the revision from the record, and `source`
+ * from the actor kind and the entry point. A body carrying one of them is a
+ * body claiming a fact it is not in a position to know.
+ *
+ * **Why a typed refusal and not a quiet drop.** Dropping them and doing the
+ * write anyway is what this boundary used to do, and the accepted ledger
+ * (D06) requires a typed refusal and unchanged domain state instead. The
+ * difference matters to the caller: a client that believed it had set
+ * `actor_id` got a `200` and no correction, so the bug lived in the client and
+ * the server looked fine. A refusal naming the keys is the only answer that
+ * gets the field removed.
+ *
+ * **Why `FIELD_NOT_WRITABLE` and not `COMMAND_BODY_INVALID`.** The register
+ * already spells this: "A payload carried a derived field", contract 4.3. The
+ * body is well-formed JSON of well-formed keys, so calling it invalid would
+ * send an author looking for a syntax mistake; what is wrong is that one of
+ * its fields is the server's to write. `SOURCE_SPOOFED` stays what it is —
+ * `tasks-write.ts` uses it for `source` and `intake_state` *inside `fields`*,
+ * where the mistake is claiming a provenance rather than writing a derived
+ * value — and the two are told apart by where the key appears.
+ *
+ * The check is here, in the one place every command is prepared, rather than
+ * in each handler. A rule held in one handler is a rule the next handler
+ * forgets, and the four runtime commands added beside it inherit this one
+ * without a line of their own.
+ */
+const SYSTEM_OWNED_FIELDS: readonly string[] = [
+  'actorId',
+  'actor_id',
+  'author',
+  'authorActorId',
+  'author_actor_id',
+  'businessId',
+  'business_id',
+  'createdAt',
+  'created_at',
+  'entryPoint',
+  'entry_point',
+  'personId',
+  'person_id',
+  'postedAt',
+  'posted_at',
+  'revision',
+  'source',
+  'updatedAt',
+  'updatedBy',
+  'updatedByActorId',
+  'updated_at',
+  'updated_by_actor_id',
+];
+
+const SYSTEM_OWNED_FIXES: readonly string[] = [
+  'These fields are derived by the server and cannot be sent: remove them and send the request again.',
+  'The business comes from the path, the actor and the person from your authenticated session, the times from the server clock, and the revision from the record.',
+  'To write against a revision, send expected_revision. To be a different actor, sign in as one.',
+];
+
+/**
+ * A request naming a fact the server owns, refused before anything is read.
+ *
+ * It is first, before the identifier shape and before authority, for the same
+ * reason the identifier check is early: nothing about the business has been
+ * read yet, so a caller learns only that the field they sent is not theirs to
+ * send — which is exactly what they need to know and nothing else. The
+ * attempted values go to the audit event and never to the response (T1-N4).
+ */
+function refuseSystemOwnedFields(request: CommandRequest): Refused | undefined {
+  const named = request as unknown as Record<string, unknown>;
+  const claimed = SYSTEM_OWNED_FIELDS.filter((field) => field in named).toSorted();
+  if (claimed.length === 0) return undefined;
+  return refused(
+    refuseCommand('FIELD_NOT_WRITABLE', claimed, SYSTEM_OWNED_FIXES),
+    Object.fromEntries(claimed.map((field) => [field, named[field]])),
+  );
+}
+
 const IDENTIFIER_FIELDS: readonly string[] = [
   'recordId',
   'parentId',
@@ -81,7 +162,11 @@ const IDENTIFIER_FIELDS: readonly string[] = [
   'beforeId',
   'board',
   'boardSection',
-  'gateInstanceId',
+  'gateId',
+  'versionId',
+  'lineageId',
+  'reservationId',
+  'leaseId',
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -124,9 +209,9 @@ const BODY_FIXES: readonly string[] = [
  */
 const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
   'task.create': ['parentId', 'board', 'boardSection'],
-  'task.decide': ['gateInstanceId'],
-  'task.handback': ['recordId'],
-  'task.pickup': ['recordId'],
+  'task.decide': ['gateId', 'versionId'],
+  'task.handback': ['leaseId'],
+  'task.pickup': ['reservationId'],
   'task.purge': [],
   'task.restore': ['batchId'],
   // Neither settings command names a record. The setting is chosen by the
@@ -166,6 +251,8 @@ export async function prepareCommand(
   request: CommandRequest,
   declaration: CommandDeclaration,
 ): Promise<CommandContext | Refused> {
+  const spoofed = refuseSystemOwnedFields(request);
+  if (spoofed !== undefined) return spoofed;
   const malformed = refuseMalformedIdentifier(request);
   if (malformed !== undefined) return malformed;
 

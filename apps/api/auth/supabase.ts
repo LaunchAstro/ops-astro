@@ -35,7 +35,24 @@ export interface SupabaseVerifierOptions {
   readonly secret: string;
 }
 
-export type Verifier = (request: Context['req']) => Promise<VerifiedSubject | undefined>;
+/**
+ * What the boundary learns about a caller: a verified subject, the one word
+ * `'expired'`, or nothing.
+ *
+ * **Why `expired` is told apart and the rest are not.** API.md's rule stands
+ * for every other failure: a missing, forged, unsigned or subject-less token
+ * all answer the same, because telling them apart tells an unauthenticated
+ * caller which guess was closer. An expired token is not a guess. Its
+ * signature verifies against this deployment's secret, so whoever sent it held
+ * a real credential this server issued a session for, and they learn nothing
+ * from being told it has run out that they could not already prove. What they
+ * gain is the difference between a door they can open and one they cannot:
+ * `AUTH_SESSION_EXPIRED` is the re-login path and the browser already draws it
+ * as one.
+ */
+export type Verified = VerifiedSubject | 'expired';
+
+export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
 /**
  * Build the verifier the API is constructed with.
@@ -51,7 +68,7 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
 
   return async function verifySupabaseToken(
     request: Context['req'],
-  ): Promise<VerifiedSubject | undefined> {
+  ): Promise<Verified | undefined> {
     const token = bearerOf(request.header('authorization'));
     if (token === undefined) return undefined;
 
@@ -61,8 +78,12 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
       // from the token's own header is what stops a token that nominates
       // `none` from verifying against no key at all. `exp` is checked here.
       claims = (await verify(token, secret, 'HS256')) as Record<string, unknown>;
-    } catch {
-      return undefined;
+    } catch (cause) {
+      // The algorithm is still named when verifying rather than read from the
+      // token's own header, so a token nominating `alg: none` verifies against
+      // no key at all and lands here like any other forgery. Only a signature
+      // that did verify can be reported as expired.
+      return isExpiry(cause) ? 'expired' : undefined;
     }
 
     const subject = claims['sub'];
@@ -77,6 +98,19 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
 }
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
+/**
+ * Whether Hono's verifier rejected a token for its `exp` rather than its
+ * signature.
+ *
+ * `hono/jwt` throws a named error for expiry. It is matched by name rather
+ * than by class so that a version bump changing the class hierarchy degrades
+ * to "not expired" — which is `AUTH_UNKNOWN_LOGIN`, the stricter answer —
+ * instead of reporting a forgery as an ended session.
+ */
+function isExpiry(cause: unknown): boolean {
+  return cause instanceof Error && cause.name === 'JwtTokenExpired';
+}
+
 function bearerOf(header: string | undefined): string | undefined {
   if (header === undefined) return undefined;
   const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());

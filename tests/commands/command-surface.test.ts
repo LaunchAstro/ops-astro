@@ -55,19 +55,16 @@ describe('the surface as a table', () => {
     ]);
   });
 
-  it('says which of them are declared and not yet built, and why', () => {
-    // Four, not five. `task.comment` came off this list when L2 installed the
-    // comment record type it was waiting for, which is the visible diff the
-    // list exists to produce; the other four wait on mechanisms no part of
-    // this lane builds and their text is unchanged.
-    expect([...NOT_LANDED].toSorted()).toStrictEqual([
-      'task.decide',
-      'task.handback',
-      'task.pickup',
-      'task.propose',
-    ]);
-    for (const name of NOT_LANDED) {
-      expect(declarationOf(name)?.waitingOn.length, name).toBeGreaterThan(20);
+  it('has nothing left that is declared and not built', () => {
+    // Empty, and that is the visible diff this list exists to produce. It held
+    // five, then four when L2 installed the comment record type, and now none:
+    // `task.propose`, `task.decide`, `task.pickup` and `task.handback` became
+    // real commands against L4's runtime, so each one's `waitingOn` text went
+    // in the same commit as its test.
+    expect([...NOT_LANDED].toSorted()).toStrictEqual([]);
+    for (const command of COMMAND_SURFACE) {
+      expect(command.waitingOn, command.name).toBe('');
+      expect(command.landed, command.name).toBe(true);
     }
   });
 
@@ -83,11 +80,12 @@ describe('the surface as a table', () => {
     );
   });
 
-  it('declares the four reads as reads, and everything else as a write', () => {
+  it('declares the five reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
       'task.board',
+      'task.queue',
       'task.read',
     ]);
     for (const command of COMMAND_SURFACE) {
