@@ -579,6 +579,37 @@ same thing as in the rulings table below.
   and is shown refusing alone. `gate_decisions.decided_by_person_id` is not
   null (`0012:36`).
 
+## Tenancy wrapper mutations and decision-chain negatives
+
+Three suites for ledger T04, T05 (`:49`, `:50`, `:105`) and G02 (`:87`), proved
+at `e5cbcba`. Each negative was run red with its expectation inverted, and each
+suite is green as committed.
+
+- **Wrapper mutation:** `tests/tenancy/wrapper-mutation.test.ts`. On a disposable
+  source copy (`tests/support/source-mutant.ts`), `tenancy/database.ts:105` is
+  made session-wide (T04 a) and moved before `begin` (T04 b). `task.create`,
+  `task.update`, `task.read` and `task.board` then fail the capture's shape check:
+  (a) at `sessionWide` and (b) at `outside`, where (b) also fails closed with 500
+  and a rollback. An unmutated copy runs green in the same run after both
+  mutants. T04 (c): the `DECISION_INTEGRITY` read, captured on the shipped
+  wrapper, is begin, local setting, work, `rollback`, with nothing outside. T05:
+  the session-wide mutant, run through pooled-crossover's sequence on one
+  backend, leaves A's id at the `:168` read and B's at the `:206` read. The
+  restored wrapper leaves `''` at both. A session-wide setting made inside a
+  transaction that rolls back is undone with it, so `:206` goes red on the
+  previous commit's leftover, not on A's rollback. The suite shows this on a
+  fresh backend.
+- **Signature only:** `tests/reads/decision-signature-only.test.ts` (G02 a). Only
+  `gate_decisions.signature` is altered. With the stored hash kept, and with the
+  unkeyed chain recomputed over the new signature, the HTTP read answers 500
+  `DECISION_INTEGRITY` and the direct read throws `signature does not verify`.
+  With the original signature and hash restored, the read answers.
+- **Decision seq race:** `tests/runtime/decision-seq-race.test.ts` (G02 b). Two
+  approvals on two tasks, both with cap room, are parked on the business chain
+  lock on two backends behind a held lock and then released. Both apply, at seq
+  2 and 3 after an existing seq 1, each `prev_hash` the previous row's `hash`,
+  in queue order, and the production read verifies both tasks.
+
 ## Engineering rulings, and how far each is proved
 
 The build's root ruled on contract questions the lanes raised at `906613f`,
