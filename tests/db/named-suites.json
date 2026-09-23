@@ -17,7 +17,8 @@
     "L4-RUNTIME-FIX-2 adds the classifier-race suite (R1's executed two-classifier race) and the decision-abort suite (R2's forced post-write reservation refusal).",
     "See docs/agents/database-conformance.md.",
     "L5-PROOFS adds four acceptance suites (the generated exported-surface inventory, the six-role nine-case matrix, the protected set on three surfaces, the four-state predicate/RLS mutation proof); each runs in process against the real application. restart-and-expiry.test.ts is NOT named: its container-restart case is a guarded skip (L5_RESTART_CONTAINER=1) and the runner refuses a skipped test, so the coordinator runs that leg explicitly with the flag as its own step. world.ts, cast.ts, restart-harness.ts and role-case-*.ts are harnesses, not suites.",
-    "L3-PART-B-3 adds the settings-revision-routes suite (the two settings commands and settings.read by revision over in-process Hono), the envelope-faults suite (the omitted operationId and the two task.propose shapes over in-process Hono) and the settings-revision suite (the same three writes through executeCommand). handback-successor.test.ts is a pure unit suite and must not be named."
+    "L3-PART-B-3 adds the settings-revision-routes suite (the two settings commands and settings.read by revision over in-process Hono), the envelope-faults suite (the omitted operationId and the two task.propose shapes over in-process Hono) and the settings-revision suite (the same three writes through executeCommand). handback-successor.test.ts is a pure unit suite and must not be named.",
+    "RUNTIME-LIFECYCLE adds the five lifecycle suites (cancellation closes delegation and run, stale-version handback refused with retained report, proposal/handback lock order, cancel race, authority-loss classification) and control-scope (cancel/restart authorised on their own target); W-SCHEDULES adds the W01 before/after-commit, W03 handback-versus-proposal, W05 competing-reservation and eight-hour heartbeat schedules through the real command entry."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -61,7 +62,17 @@
     "tests/identity/external-party.test.ts",
     "tests/acceptance/external-party.test.ts",
     "tests/tenancy/restricted-calls.test.ts",
-    "tests/tenancy/restricted-calls-prefixes.test.ts"
+    "tests/tenancy/restricted-calls-prefixes.test.ts",
+    "tests/runtime/lifecycle-cancel.test.ts",
+    "tests/runtime/lifecycle-stale-handback.test.ts",
+    "tests/runtime/lifecycle-propose-handback.test.ts",
+    "tests/runtime/lifecycle-cancel-race.test.ts",
+    "tests/runtime/lifecycle-authority-loss.test.ts",
+    "tests/commands/control-scope.test.ts",
+    "tests/runtime/schedules-w01.test.ts",
+    "tests/runtime/schedules-w03.test.ts",
+    "tests/runtime/schedules-w05.test.ts",
+    "tests/runtime/schedules-heartbeat.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
