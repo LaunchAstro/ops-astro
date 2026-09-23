@@ -10,6 +10,7 @@
     "settings suites are the invariants; the three conformance suites are the",
     "catalogue, wrapper and runtime-statement proofs. statement-log.test.ts is",
     "a pure unit suite and must not be named (it moves the database counter by 0).",
+    "L3-SURFACE adds the surface-operations suite (task.comment, preset.plan, settings, audited reads, D06); L4-RUNTIME adds the gate and lease suites (G01-G04, G06, G07, W01-W06, I07).",
     "See docs/agents/database-conformance.md."
   ],
   "invariant": [
@@ -20,7 +21,10 @@
     "tests/identity/restricted-role.test.ts",
     "tests/records/preset-plan.test.ts",
     "tests/records/business-settings.test.ts",
-    "tests/tasks/comments.test.ts"
+    "tests/tasks/comments.test.ts",
+    "tests/commands/surface-operations.test.ts",
+    "tests/runtime/gate.test.ts",
+    "tests/runtime/lease.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
