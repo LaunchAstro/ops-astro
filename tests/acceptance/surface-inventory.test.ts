@@ -35,8 +35,8 @@ import {
 import { accepts, createCli, usage } from '../../apps/cli/client.ts';
 import {
   operationPath,
+  READ_NAMES,
   type OperationName,
-  type ReadName,
 } from '../../apps/web/src/operations/client.ts';
 import {
   agentPath,
@@ -55,13 +55,13 @@ if (serverUrl === undefined) {
 /**
  * The reads the mounted app's client has a `read()` verb for.
  *
- * Written out because it is what the *other* file's type says, and the point of
- * this constant is to be compared with the surface rather than derived from it:
- * a derivation would agree with itself. `ReadName` is a type and types do not
- * survive to runtime, so the comparison is made against this and the type
- * annotation below is what makes the two disagree at compile time if they drift.
+ * The client's own runtime list, `READ_NAMES`, from which `ReadName` is built.
+ * It used to be a hand-kept copy of the type, which could not fail when the
+ * union widened. Taking the client's list is not a derivation that agrees with
+ * itself: the case compares it with the server's `COMMAND_SURFACE`, the other
+ * side of the wire.
  */
-const WEB_READ_VERBS: readonly ReadName[] = ['task.read', 'task.board', 'person.list'];
+const WEB_READ_VERBS: readonly string[] = READ_NAMES;
 
 /**
  * Where a measured count goes.
@@ -226,30 +226,21 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
   });
 
   it('names the reads the mounted app cannot reach as reads, with the reason', () => {
-    // `OperationsClient.read()` takes `ReadName`, and `ReadName` is three names.
-    // The surface declares five reads. The other two are reachable only through
+    // `OperationsClient.read()` takes `ReadName`, and `ReadName` is five names.
+    // The surface declares seven reads. The other two are reachable only through
     // `mutate()`, which always sends an `operationId` — and a read carries no
     // operation identity, because it has nothing to replay. So they are reached
     // by the wrong verb rather than not at all, and that is the exception this
     // inventory records rather than papers over.
     const declaredReads = READS as readonly CommandName[];
-    const unreachableAsReads = declaredReads.filter(
-      (name) => !(WEB_READ_VERBS as readonly string[]).includes(name),
-    );
-    // Four, on this head. `task.queue` and `preset.plan` were always reached
-    // by the wrong verb; `settings.read` and `session.capabilities` arrived
-    // with L3-PART-B-2 and `ReadName` did not widen with them, so the settings
-    // screen reaches both by casting the name
-    // (`apps/web/src/screens/settings/reads.ts:23,26`) — which routes, because
-    // the path is built from the string, and type-checks only because the cast
-    // silences the union. Named here rather than papered over, so the day
-    // `ReadName` widens this case fails and the list is brought back down.
-    expect(unreachableAsReads).toStrictEqual([
-      'task.queue',
-      'preset.plan',
-      'settings.read',
-      'session.capabilities',
-    ]);
+    const unreachableAsReads = declaredReads.filter((name) => !WEB_READ_VERBS.includes(name));
+    // Two, on this head. `task.queue` and `preset.plan` were always reached by
+    // the wrong verb. `settings.read` and `session.capabilities` joined
+    // `READ_NAMES` with WEB-RECONCILE, which removed the settings screen's
+    // casts; `tests/surfaces/read-names.test.ts` asserts the same two. When a
+    // screen gains a read verb for either, this case fails and the list comes
+    // down with it.
+    expect(unreachableAsReads).toStrictEqual(['task.queue', 'preset.plan']);
     report('web read() reach', [
       `${String(WEB_READ_VERBS.length)} of ${String(declaredReads.length)} declared reads`,
       `${unreachableAsReads.join(' and ')} reachable only through mutate()`,
