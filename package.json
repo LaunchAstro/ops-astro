@@ -64,7 +64,8 @@
     "verify:slice": "node scripts/local/verify-slice.mjs",
     "test:api": "vitest run tests/api",
     "build:web": "pnpm --filter @launchastro/web exec vite build",
-    "verify:browser": "node tests/browser/slice-acceptance.mjs"
+    "verify:browser": "node tests/browser/slice-acceptance.mjs",
+    "verify:restart": "bash scripts/local/restart-proof.sh"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
