@@ -38,7 +38,13 @@ export interface Session {
   readonly loginId: string;
   readonly personId: string;
   readonly actorId: string;
-  readonly roleKey: string;
+  /**
+   * The membership's role key, or null for an external party: a mapped person
+   * with no membership whose whole standing is the record- or party-scoped
+   * grants they hold (minimum contract 8.1, R4). Null rather than a word, so
+   * no role a preset names can be mistaken for one.
+   */
+  readonly roleKey: string | null;
 }
 
 interface ResolutionRow {
@@ -82,9 +88,11 @@ const RESOLUTION = `
  *
  * Order matters and is the contract's: membership before actor. A login with
  * no active mapping, or a mapping to a person who is no longer a member, is
- * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection. A person who is a
- * member but has no active acting identity is `ACTOR_INACTIVE`, which says
- * more only because membership has already been established.
+ * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection. The one mapped
+ * non-member who is not refused there is an external party standing on a live
+ * share and holding no business grant, whose `roleKey` is null. A person with
+ * standing but no active acting identity is `ACTOR_INACTIVE`, which says more
+ * only because that standing has already been established.
  */
 export async function resolveLogin(
   tx: TenantQuery,
@@ -93,10 +101,13 @@ export async function resolveLogin(
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
-  if (found === undefined || found.person_id === null || found.membership_id === null) {
+  if (found === undefined || found.person_id === null) {
     return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
   }
-  if (found.actor_id === null || found.role_key === null) {
+  if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
+    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
+  }
+  if (found.actor_id === null) {
     return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
   }
 
@@ -121,6 +132,32 @@ export async function resolveLogin(
     personId: session.personId,
   });
   return session;
+}
+
+// An external party's standing, read under the same snapshot as the mapping.
+// A live share is a record- or party-scoped grant to the person or to their
+// acting identity. A live *business* grant disqualifies rather than helps: it
+// is a member's grant, and a person holding one without a membership is a
+// former member whose grants outlived them, who stays refused here exactly as
+// before. The per-call check in the serving transaction still decides what the
+// share reaches; this only decides whether there is anyone to ask about.
+const STANDING = `
+  select count(*) filter (where g.scope_kind <> 'business')::int as shares,
+         count(*) filter (where g.scope_kind = 'business')::int as business
+    from public.grants g
+    left join public.actors a
+      on a.business_id = g.business_id and a.id = g.subject_id and a.kind = 'person'
+   where g.revoked_at is null
+     and (g.expires_at is null or g.expires_at > now())
+     and ((g.subject_kind = 'person' and g.subject_id = $1)
+          or (g.subject_kind = 'actor' and a.person_id = $1))`;
+
+async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
+    personId,
+  ]);
+  const row = rows[0];
+  return row !== undefined && row.shares > 0 && row.business === 0;
 }
 
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */

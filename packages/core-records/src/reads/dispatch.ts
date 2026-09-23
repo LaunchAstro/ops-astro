@@ -33,11 +33,20 @@ import {
   type PresetPlanRefusal,
 } from '../records/preset-plan.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
-import { isInternalReader, readBoard, readTaskDetail, resolveTaskId } from './tasks.ts';
+import {
+  isInternalReader,
+  readBoard,
+  readSharedTask,
+  readTaskDetail,
+  resolveTaskId,
+} from './tasks.ts';
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
+
+/** The reads an external party is told NOT_FOUND about when its shares do not cover them. */
+const OUTSIDER_NOT_FOUND: ReadonlySet<string> = new Set(['task.read', 'task.board']);
 
 /**
  * Every read, audited, in the caller's own transaction (I13).
@@ -161,10 +170,10 @@ async function serveRead(
   // It answers what the caller already holds, so a grant in front of it could
   // only hide from a person the list of things they may do -- and a caller
   // refused it could rebuild the same list by attempting each operation one at
-  // a time. A login with no membership never arrives here at all: that is
-  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so
-  // "membership is the authority" is enforced upstream rather than assumed
-  // here. It is skipped rather than declared grantless because the declaration
+  // a time. A login with no standing never arrives here at all: that is
+  // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs, so standing
+  // (a membership, or an external party's live share) is enforced upstream
+  // rather than assumed here. An external party is shown its shares' pairs. It is skipped rather than declared grantless because the declaration
   // is what the route generator and the parity test read, and a row missing
   // its collection and action would be a special case in three more places.
   if (request.read !== 'session.capabilities') {
@@ -193,18 +202,39 @@ async function serveRead(
       scope:
         recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
     });
-    if (!authorised.ok) return served(fromAuthority(authorised.refusal));
+    if (!authorised.ok) {
+      // An external party (a session with no membership) stands on its shares
+      // alone, and minimum contract 8.2 case 7 names what it is told about
+      // anything outside them: "Sibling tasks and the board are NOT_FOUND."
+      // `SCOPE_NOT_GRANTED` means "in this business, exists, not yours", which
+      // is exactly the fact an outsider must not learn about a sibling. A
+      // member keeps the in-tenant code (I05); only the outsider's changes.
+      if (session.roleKey === null && OUTSIDER_NOT_FOUND.has(request.read)) {
+        return served(refuseNotFound());
+      }
+      return served(fromAuthority(authorised.refusal));
+    }
   }
 
   switch (request.read) {
     case 'task.read': {
-      const task =
-        recordId === undefined || spine === undefined
-          ? undefined
-          : await readTaskDetail(tx, spine.taskTypeId, recordId, {
-              commentTypeId: spine.taskCommentTypeId,
-              internal: isInternalReader(session.roleKey),
-            });
+      if (recordId === undefined || spine === undefined) return served(refuseNotFound());
+      // Internal readers get the detail; everyone else, the external party
+      // first among them, gets the shared view, which is built from the
+      // catalogue's `shared` fields and never from the detail with parts cut.
+      if (!isInternalReader(session.roleKey)) {
+        const sharedTask = await readSharedTask(
+          tx,
+          spine.taskTypeId,
+          recordId,
+          spine.taskCommentTypeId,
+        );
+        return served(sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask });
+      }
+      const task = await readTaskDetail(tx, spine.taskTypeId, recordId, {
+        commentTypeId: spine.taskCommentTypeId,
+        internal: true,
+      });
       // Not there, or there in another business: one answer, deliberately.
       return served(task === undefined ? refuseNotFound() : { ok: true, task });
     }

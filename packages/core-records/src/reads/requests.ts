@@ -95,6 +95,20 @@ export interface TaskDetail extends TaskSummary {
   readonly proposals: readonly ProposalView[];
 }
 
+/**
+ * What a reader outside the business is shown of one task (minimum contract
+ * 8.1 R4, 8.2 case 7): its identifier, the task fields the catalogue marks
+ * `shared`, and the client comments in their shared fields. Nothing else is
+ * on it, so there is no internal field to hide: history, proposals, the
+ * revision and every unclassified field are absent from the body, not blanked.
+ */
+export interface SharedTaskView {
+  readonly id: string;
+  /** Keyed by field key. Empty when the catalogue classifies no task field `shared`. */
+  readonly fields: Readonly<Record<string, unknown>>;
+  readonly comments: readonly CommentView[];
+}
+
 /** One field as a preset ships it, on the wire. Validated by L2's planner. */
 export interface PresetFieldRequest {
   readonly key: string;
@@ -146,6 +160,12 @@ export type ReadRequest =
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /**
+   * `task.read` for a reader outside the business. Its own key rather than a
+   * second shape under `task`, so a client that reads `task` can never be
+   * handed the narrower view and render its missing fields as empty.
+   */
+  | { readonly ok: true; readonly sharedTask: SharedTaskView }
   | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
   | { readonly ok: true; readonly persons: readonly PersonView[] }
   | { readonly ok: true; readonly queue: readonly QueuedWork[] }

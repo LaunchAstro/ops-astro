@@ -9,11 +9,12 @@
 // server's; and the grant check in `runRead` happens in that same transaction,
 // so a grant revoked a moment ago bites on this call rather than soon.
 //
-// A login that resolves to no membership never reaches a read at all: it is
+// A login that resolves to no standing never reaches a read at all: it is
 // `AUTH_NO_MEMBERSHIP` from the resolution, which is a refusal and not an empty
-// list. That is what arms `session.capabilities`, the one read that asks the
-// grant model nothing: membership is its whole authority, and this entry is
-// where membership is established rather than assumed.
+// list. Standing is a membership, or for an external party a live share (R4).
+// That is what arms `session.capabilities`, the one read that asks the grant
+// model nothing, and this entry is where standing is established rather than
+// assumed.
 //
 // Nothing here branches on which read it is. Every read added to
 // `reads/requests.ts` and served in `reads/dispatch.ts` reaches the database
