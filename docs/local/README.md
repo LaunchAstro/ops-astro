@@ -90,12 +90,12 @@ observed; a case that cannot run prints `unrun` with its reason.
 corepack pnpm verify:browser
 ```
 
-Drives the real browser acceptance cases through Playwright against the
-running application. **On this commit that script entry is not yet in the root
-manifest** — the browser-coverage work owns it. Until it lands, run the
-harnesses directly: `node tests/browser/slice-acceptance.mjs`,
-`node tests/browser/n6-revocation.mjs`,
-`node tests/browser/keyboard-and-widths.mjs`.
+Drives the browser acceptance cases through Playwright against the running
+application, so start the database, the identity service, the API and the web
+server first. Two further harnesses are not in that command and run on their
+own: `node tests/browser/n6-revocation.mjs` (a grant revoked underneath a live
+session) and `node tests/browser/keyboard-and-widths.mjs` (keyboard paths, and
+the width captures the gaps below are recorded from).
 
 ```
 corepack pnpm build
