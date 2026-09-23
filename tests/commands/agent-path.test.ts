@@ -298,6 +298,64 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     expect(entries.map((entry) => entry['reservationId'])).not.toContain(reservationId);
   });
 
+  it('answers session.capabilities with its own purpose, never the person’s grants', async () => {
+    // Before a pickup: no purpose, and the floor it may work from. This is
+    // reachable with no credential on purpose — refusing it for want of one
+    // would refuse the single call whose whole subject is that there is none.
+    const cold = await asAgent({ command: 'session.capabilities', operationId: randomUUID() });
+    expect(isCommandRefusal(cold)).toBe(false);
+    const before = detailOf(cold);
+    expect(before['agentActorId']).toBe(agentActorId);
+    expect(before['businessKey']).toBe('agent-path');
+    expect(before['purposeScope']).toBeNull();
+    // The authority the pre-pickup pair takes -- `task.queue` reads and
+    // `task.pickup` writes -- and not the delegating person's grants wearing
+    // the agent's name. `decider` holds `decide`, `assign` and `comment` on
+    // tasks as well, and none of them is here.
+    expect(before['grants']).toStrictEqual([
+      { collection: 'task', action: 'write' },
+      { collection: 'task', action: 'read' },
+    ]);
+    expect(Object.keys(before).toSorted()).toStrictEqual([
+      'agentActorId',
+      'businessKey',
+      'grants',
+      'purposeScope',
+    ]);
+
+    const subject = await createTask('a task an agent will ask its purpose about');
+    const reservationId = await approvedReservation(subject);
+    const pickedUp = await asAgent({
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId,
+    });
+    const credential = String(detailOf(pickedUp)['credential']);
+
+    const warm = await asAgent(
+      { command: 'session.capabilities', operationId: randomUUID() },
+      credential,
+    );
+    const after = detailOf(warm);
+    expect(after['purposeScope']).toStrictEqual({ kind: 'record', id: subject });
+    expect(after['agentActorId']).toBe(agentActorId);
+
+    // Settle it, so this case leaves the agent holding nothing: an agent
+    // actor may hold one live delegation per purpose, and a case that walked
+    // away from one would fail the next pickup rather than its own assertion.
+    const picked = detailOf(pickedUp);
+    await asAgent(
+      {
+        command: 'task.handback',
+        operationId: randomUUID(),
+        leaseId: String(picked['leaseId']),
+        fence: Number(picked['fence']),
+        outcome: 'completed',
+      },
+      credential,
+    );
+  });
+
   it('audits the agent under its own actor, and replays a repeated identity', async () => {
     const subject = await createTask('a pickup retried after a lost response');
     const reservationId = await approvedReservation(subject);

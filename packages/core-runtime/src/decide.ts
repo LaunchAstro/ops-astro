@@ -28,6 +28,7 @@ import {
   type Delegation,
 } from '../../core-records/src/authority/delegations.ts';
 import { acquire } from './locks.ts';
+import { affectedByVersions, classifyVersions } from './recovery.ts';
 import { CHAIN_GENESIS, chainHash, digestOf, sign, type SigningKey } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -150,15 +151,49 @@ export async function decide(
   // had earned. So this reads, and `openEnvelope` below writes under the locks.
   const existing = await existingEnvelope(tx, found.task_id);
 
+  // R2. The envelope's own cap is the cap this approval draws on, and the
+  // request's is a claim about it. Discovery returned only an envelope id
+  // before, so preflight checked the requested cap while `reserve` checked the
+  // envelope's stored one: an existing envelope with room, a requested cap
+  // with room and an exhausted actual cap passed preflight, wrote the signed
+  // decision and the approved gate, and then refused on a cap nothing had
+  // locked. Refused here, before the first write, and the canonical cap is
+  // what everything below uses.
+  if (existing !== undefined && existing.capId !== request.capId) {
+    return refuse(
+      'CAP_BINDING_MISMATCH',
+      `this task's envelope draws on cap ${existing.capId}, and the request names ${request.capId}`,
+      "Decide against the envelope's own cap, or close that envelope through its authorised boundary first.",
+    );
+  }
+  const capId = existing?.capId ?? request.capId;
+
+  // R8. The holds a rejection makes nonclaimable are released in the same
+  // transaction, so their accounting parents are discovered before the locks
+  // rather than reached through a helper afterwards.
+  const rejecting = request.decision === 'reject';
+  const lineageVersions = rejecting
+    ? (
+        await tx.query<{ readonly id: string }>(
+          `select id from public.proposal_versions where business_id = $1 and lineage_id = $2`,
+          [tx.businessId, found.lineage_id],
+        )
+      ).map((row) => row.id)
+    : [];
+
   // The complete set, in the contract's order. `acquire` sorts it, so the
   // listing order here is documentation and the statement order is the law.
-  await acquire(tx, [
-    { lockClass: 'cap', id: request.capId },
-    ...(existing === undefined ? [] : [{ lockClass: 'envelope' as const, id: existing }]),
+  // The chain lock is R10: the sequence below is business-wide and two
+  // decisions sharing no other row must still be ordered.
+  const locks = await acquire(tx, [
+    { lockClass: 'chain', id: 'gate_decisions' },
+    { lockClass: 'cap', id: capId },
+    ...(existing === undefined ? [] : [{ lockClass: 'envelope' as const, id: existing.id }]),
     { lockClass: 'task', id: found.task_id },
     { lockClass: 'run', id: found.run_id },
     { lockClass: 'lineage', id: found.lineage_id },
     { lockClass: 'gate', id: request.gateId },
+    ...(await affectedByVersions(tx, lineageVersions)),
   ]);
 
   // Re-read everything under the locks. Between discovery and here another
@@ -277,7 +312,7 @@ export async function decide(
   // copy as the second barrier; this one is what makes the refusal total.
   if (request.decision === 'approve') {
     const room = await budgetRoom(tx, {
-      capId: request.capId,
+      capId,
       taskId: found.task_id,
       wantedMinor: Number(version.maximum_minor),
     });
@@ -295,13 +330,19 @@ export async function decide(
   const payloadDigest = digestOf(payload);
   const signature = sign(request.signingKey, payloadDigest);
 
-  const previous = await tx.query<{ readonly hash: string; readonly seq: string }>(
-    `select hash, seq::text as seq from public.gate_decisions
+  // R10, second half. `seq::text as seq` made `order by seq desc` resolve to
+  // the *output* column, so the chain head was chosen lexically: with ten
+  // decisions in a business, '9' sorted above '10' and the next decision
+  // allocated 10 again. The alias differs from the column now, so the ordering
+  // is the bigint's; the chain lock above is what makes the allocation safe,
+  // and this is what makes it correct.
+  const previous = await tx.query<{ readonly hash: string; readonly at: string }>(
+    `select hash, seq::text as at from public.gate_decisions
       where business_id = $1 order by seq desc limit 1`,
     [tx.businessId],
   );
   const prevHash = previous[0]?.hash ?? CHAIN_GENESIS;
-  const seq = Number(previous[0]?.seq ?? 0) + 1;
+  const seq = Number(previous[0]?.at ?? 0) + 1;
 
   const decisionId = randomUUID();
   const hash = chainHash(prevHash, {
@@ -364,6 +405,10 @@ export async function decide(
         where business_id = $1 and id = $2`,
       [tx.businessId, gate.lineage_id],
     );
+    // R8, and this is what "not by this statement quietly zeroing a number"
+    // means in practice: the classifier releases each eligible hold under the
+    // locks this transaction already took for them.
+    await classifyVersions(tx, lineageVersions, 'lineage_rejected', gate.lineage_id, locks);
   }
 
   if (request.decision !== 'approve') {
@@ -381,7 +426,7 @@ export async function decide(
 
   // Under the locks now: the gate lock has already refused the loser of a
   // race, and the task lock serialises envelope creation for this task.
-  const envelope = await openEnvelope(tx, request, found.task_id, gate.version_id);
+  const envelope = await openEnvelope(tx, capId, found.task_id, gate.version_id);
   if (!envelope.ok) return envelope;
 
   const heldMinor = Number(version.maximum_minor);
@@ -392,7 +437,17 @@ export async function decide(
     stepId: gate.step_id,
     heldMinor,
   });
-  if (!reserved.ok) return reserved;
+  if (!reserved.ok) {
+    // R2. The signed decision and the approved gate are already written. A
+    // refusal returned from here is a refusal a caller can commit, and
+    // committing it is the half-approval the preflight above exists to
+    // prevent — so a reservation refusal this late is not an answer, it is a
+    // contradiction between two checks that hold the same locks. It aborts
+    // the transaction instead.
+    throw new Error(
+      `decide: preflight passed and reserve refused ${reserved.refusal.code} after the decision was written (${reserved.refusal.reason})`,
+    );
+  }
 
   return {
     ok: true,
@@ -410,41 +465,68 @@ export async function decide(
   };
 }
 
-/** Read-only discovery, so the lock set can include an envelope that exists. */
-async function existingEnvelope(tx: TenantQuery, taskId: string): Promise<string | undefined> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.task_envelopes
+/**
+ * Read-only discovery, so the lock set can include an envelope that exists —
+ * and, since R2, the cap that envelope actually draws on, which is the one
+ * preflight and reservation both have to use.
+ */
+async function existingEnvelope(
+  tx: TenantQuery,
+  taskId: string,
+): Promise<{ readonly id: string; readonly capId: string; readonly currency: string } | undefined> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly cap_id: string;
+    readonly currency: string;
+  }>(
+    `select id, cap_id, currency from public.task_envelopes
       where business_id = $1 and task_id = $2 and state = 'open'`,
     [tx.businessId, taskId],
   );
-  return rows[0]?.id;
+  const row = rows[0];
+  return row === undefined ? undefined : { id: row.id, capId: row.cap_id, currency: row.currency };
 }
 
 /** Open the task's envelope, or bind to the one it already has. Under the locks. */
 async function openEnvelope(
   tx: TenantQuery,
-  request: DecideRequest,
+  capId: string,
   taskId: string,
   versionId: string,
 ): Promise<RuntimeResult<{ readonly envelopeId: string }>> {
-  const existing = await tx.query<{ readonly id: string }>(
-    `select id from public.task_envelopes
+  const existing = await tx.query<{ readonly id: string; readonly currency: string }>(
+    `select id, currency from public.task_envelopes
       where business_id = $1 and task_id = $2 and state = 'open'`,
     [tx.businessId, taskId],
   );
   const open = existing[0];
-  if (open !== undefined) return { ok: true, value: { envelopeId: open.id } };
+  if (open !== undefined) {
+    // R2's other half: the envelope's currency is canonical too, and a version
+    // denominated in another one is not work this envelope can hold.
+    const proposed = await tx.query<{ readonly currency: string }>(
+      `select currency from public.proposal_versions where business_id = $1 and id = $2`,
+      [tx.businessId, versionId],
+    );
+    if (proposed[0]?.currency !== open.currency) {
+      return refuse(
+        'CAP_BINDING_MISMATCH',
+        `this task's envelope is in ${open.currency} and the version is in ${proposed[0]?.currency ?? 'nothing'}`,
+        'Propose the work in the currency the envelope holds.',
+      );
+    }
+    return { ok: true, value: { envelopeId: open.id } };
+  }
 
   const caps = await tx.query<{ readonly limit_minor: string; readonly currency: string }>(
     `select limit_minor::text as limit_minor, currency from public.budget_caps
       where business_id = $1 and id = $2`,
-    [tx.businessId, request.capId],
+    [tx.businessId, capId],
   );
   const cap = caps[0];
   if (cap === undefined) {
     return refuse(
       'BUDGET_UNAVAILABLE',
-      `no budget cap ${request.capId} in this business`,
+      `no budget cap ${capId} in this business`,
       'Provision the cap before approving work that draws on it.',
     );
   }
@@ -463,18 +545,22 @@ async function openEnvelope(
     `insert into public.task_envelopes
        (business_id, id, cap_id, task_id, maximum_minor, currency)
      values ($1, $2, $3, $4, $5, $6)`,
-    [tx.businessId, envelopeId, request.capId, taskId, version.maximum_minor, version.currency],
+    [tx.businessId, envelopeId, capId, taskId, version.maximum_minor, version.currency],
   );
   return { ok: true, value: { envelopeId } };
 }
 
 /**
- * The reservation, the immutable attempt and the held total, together. W05's
+ * The reservation, the immutable attempt and the held total, together.
+ * Exported because `pickup` needs exactly this when it opens a replacement
+ * hold on a still-approved version whose old lease expired (R5): the
+ * replacement has to meet the same budget authority as the original, and a
+ * second copy of this arithmetic is a second place W05 can drift. W05's
  * two distinct reasons live here: `BUDGET_UNAVAILABLE` is "this envelope has
  * no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
  * the wrong one raises the wrong ceiling.
  */
-async function reserve(
+export async function reserve(
   tx: TenantQuery,
   of: {
     readonly envelopeId: string;

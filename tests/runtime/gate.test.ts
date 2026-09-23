@@ -376,6 +376,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
           readonly version_id: string;
           readonly decision: string;
           readonly decided_by_person_id: string;
+          readonly payload: Record<string, unknown>;
           readonly payload_digest: string;
           readonly signature: string;
           readonly signing_key_id: string;
@@ -383,7 +384,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
           readonly hash: string;
         }>(
           `select id, seq::text as seq, gate_id, version_id, decision, decided_by_person_id,
-                payload_digest, signature, signing_key_id, prev_hash, hash
+                payload, payload_digest, signature, signing_key_id, prev_hash, hash
            from public.gate_decisions where business_id = $1 order by seq`,
           [fixture.businessId],
         ),

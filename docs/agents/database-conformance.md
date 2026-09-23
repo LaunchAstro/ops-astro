@@ -1,4 +1,4 @@
-# Database conformance, and why one of its jobs is red
+# Database conformance, and what each of its two jobs proves
 
 Item 6 of the PG0 product ticket asks for a hosted job that runs a part's
 named invariant suite and the affected conformance suites against a real
@@ -41,14 +41,50 @@ proves nothing about the product, and it must not be read as if it did.
 `database conformance` runs `pnpm run db:conformance` against a Postgres
 service container, reading `tests/db/named-suites.json`.
 
-**On this head it fails, and that is the correct result.** There is no product
-invariant suite and no conformance suite in this repository yet, so the
-manifest names none, and an empty manifest is a failure. The alternative is a
-green tick beside the words "database conformance" that would mean only that
-nothing ran. A check that passes when it did nothing is worse than no check,
-because it is quoted later as evidence.
+**The manifest is the authority.** It holds two lists of paths from the
+repository root, and the runner runs every suite in both:
 
-## The sequencing, stated plainly
+- `invariant`: a part's own named invariant suite, the one that proves the
+  thing that part exists to hold.
+- `conformance`: the conformance suites a change to that part affects.
+
+A part that lands adds its suites to the manifest, and that is the whole
+registration. No count of them is written down here, in the runner or in any
+other document, because a number written down is a number the next part makes
+wrong: read the manifest for the current set. Its `comment` array records which
+lane contributed which entries and why two suites are deliberately absent.
+
+**A pure unit suite must not be named.** The runner requires each named suite
+to move the database's transaction counter during its own run (rule 7 below),
+so naming a suite that touches no database fails the job, correctly. The
+manifest's comment names the two suites this applies to.
+
+`pnpm db:conformance` needs a database. The runner itself refuses without
+`DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
+child vitest process. The named suites then build their own throwaway
+databases through
+`packages/core-records/src/tenancy/testing/fresh-database.ts:80-82`, which
+takes `DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`: creating a
+database and a login role is the owner's work, and the local contract gives
+`DATABASE_URL` to the runtime role `app`, which owns nothing and may create
+nothing. So **export `DATABASE_ADMIN_URL` as well as `DATABASE_URL` when you
+run this locally**. In the hosted job one URL is enough, because the service
+container's URL is already the owner's.
+
+A green here means what the last line the runner prints says it means: the
+named suites ran against a real database and none of them skipped. It does not
+mean the product is correct, and it does not mean anything is accepted. It is
+the floor the other refusals stand on, not a verdict.
+
+## The sequencing, stated plainly: hosted publication and landing
+
+**Everything in this section is a publication and landing requirement for the
+hosted repository.** It describes what must be true before a port is dispatched
+there, and it is not a prerequisite for building locally: local construction is
+authorised while the public gates stay held, and
+[the local slice](../local/README.md) is the scope of what is being built. Read
+this section when landing a change publicly, not when starting the slice on
+your own machine. Nothing here records that any of it has happened.
 
 An earlier version of this file said that a job failing closed on a missing
 product suite cannot be bound as a required context before the first product
@@ -61,8 +97,8 @@ no new gate here for anyone to rule on.
 
 The ticket already settles the timing. Its acceptance criterion is that the
 hosted job "is bound as a required context before the first port dispatch"
-(`publication-v2/03-pg0-product.md:36`): before the first port is dispatched,
-not during or after the first port's pull request.
+(the PG0 product ticket, item 6, held outside this repository): before the
+first port is dispatched, not during or after the first port's pull request.
 
 The two context names are exactly:
 
@@ -80,16 +116,26 @@ The order:
    in `tests/db/named-suites.json`, and must pass `database conformance` on
    its own head.
 
-### The red on this head
+### What the job's result means now
 
-`database conformance` fails here, and that failure does not block PG0:
-neither context is bound on ruleset `23396133` today, so the result is visible
-without being merge-blocking. What the red shows is the runner refusing to
-pass vacuously over an empty manifest. It is not a broken job, and it is not a
-reason to soften either the missing-suite refusal or the empty-manifest
-refusal. Those two refusals are what make step 3 worth anything.
+The manifest is no longer empty. `tests/db/named-suites.json` names the suites
+the landed parts contributed, so a failure of `database conformance` is now a
+real one: a suite missing from disk, a skipped test, a run that executed
+nothing, a named suite the database never heard from, or vitest's own verdict.
+Read the failing line; the runner names the path it is talking about.
 
-No other sequencing conflict remains between this job and the ticket.
+Whether either context is bound as required on ruleset `23396133` is owner-only
+and is not recorded in this repository. Check the ruleset rather than inferring
+it from this page. Nothing here authorises binding it.
+
+The empty-manifest refusal stays in the runner even though the manifest is
+filled. It is what stops a later change emptying the list and collecting a
+green tick beside the words "database conformance" that would mean only that
+nothing ran. A check that passes when it did nothing is worse than no check,
+because it is quoted later as evidence. That refusal and the missing-suite one
+are what make step 3 worth anything.
+
+No sequencing conflict remains between this job and the ticket.
 
 ## What the runner enforces
 

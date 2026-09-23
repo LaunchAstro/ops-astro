@@ -27,10 +27,12 @@ hosted enforcement, and neither does a green `pnpm check`. Outside
 contributions remain closed.
 
 The proposed sequence is foundation, tasks and basic approval, agent work,
-Docs, richer review, then CRM. [Current decisions](docs/current-decisions.md)
-and the [first task specification](docs/plan/first-task.md) define the first
-slice's boundaries; [the local slice](docs/local/README.md) records what it
-actually does and where it falls short.
+Docs, richer review, then CRM. [The local slice](docs/local/README.md) is the
+boundary of what is built: what it does, which command proves each part, and
+where it falls short. [Current decisions](docs/current-decisions.md) carries
+the direction it was built against. The
+[first task specification](docs/plan/first-task.md) is the earlier 8 September
+proposal and differs from what was built, so read it as history.
 
 ## Run the local slice
 

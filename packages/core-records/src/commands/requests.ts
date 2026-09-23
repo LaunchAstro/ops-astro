@@ -97,6 +97,13 @@ export type CommandRequest =
       readonly fence: number;
       readonly outcome: string;
       readonly report?: FieldValues;
+      /**
+       * Declared so it can be refused rather than dropped on the floor. L4's
+       * `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any non-null
+       * value and this head never dispatches, so there is no honest number to
+       * put here; `null` and absent are the same thing.
+       */
+      readonly actualMinor?: number | null;
     } & Envelope)
   // The owning operations. Each writes the fields its name owns on the field
   // definition, so the payload is the values and nothing else.

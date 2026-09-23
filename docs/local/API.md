@@ -137,20 +137,22 @@ every other refusal here and with every success.
 
 The two settings commands take no `expectedRevision`: `business_settings`
 carries no revision column, so there is nothing for a caller to write against.
-That is a schema gap rather than a decision and it is recorded as one.
+That is a schema gap rather than a decision and it is recorded as one. The
+column is **queued** for a later lane; nothing in this part adds it, and
+`settings.read` carries no `revision` for the same reason — see below.
 
 ## The operations L4's runtime made possible
 
 `NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
 `DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
 
-| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                     |
-| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                               |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `SCOPE_NOT_GRANTED` 403 |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                       |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`                                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                     |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                    |
+| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                                 |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `GATE_NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422                                                                                                                   |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`                                                                    | `AUTH_NO_AGENT_IDENTITY` 401 on the person path, `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                           |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                |
 
 `task.propose` writes a proposal beside the task and leaves the task's own
 revision alone, so a caller may keep writing against the revision they hold.
@@ -166,6 +168,40 @@ never read. The signing key and the budget cap are not in the body: the key
 comes from the deployment's environment and the cap is the business's own,
 read rather than created, because a command that created the ceiling it then
 spent against could never be refused `BUDGET_EXHAUSTED`.
+
+Three of those codes arrived with lane L4-RUNTIME-FIX and are registered here
+with the statuses the runtime suggests. `LINEAGE_NOT_ON_TASK` 409 is
+`task.propose` naming a `lineageId` that belongs to a different task in the
+same business — the caller may hold it legitimately and it is still not this
+task's. `CAP_BINDING_MISMATCH` 409 is a decision whose version is in a currency
+the task's open envelope was not opened in; the cap half of that check is not
+reachable through a command, because every decision on a business reads the
+same cap. `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 is below.
+
+`task.handback` takes `actualMinor` only so that sending one is an answer
+rather than a silence. Nothing in this head dispatches, so no number here can
+be honest, and any non-null value is `ACTUAL_EXPENDITURE_UNSUPPORTED` 422
+naming the key; `null` and leaving it out are the same request. Its result
+carries `reportId`, the identity of the durable handback report, because a
+report nobody can name is a report nobody can read.
+
+**One refusal in this surface commits.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
+on `task.handback` are answered _after_ the runtime has written an append-only
+`handback_reports` row with `disposition = 'retained'`: a stale holder's work
+was still really done, and the refusal and the retained report are one fact.
+Every other refusal rolls its handler's savepoint back; these two release it,
+and the handler says which it is rather than a list of codes held somewhere
+else. `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately not one of them — it is
+refused before the first write, so there is nothing to keep.
+
+**A known gap, not a decision.** A `task.pickup` of a reservation whose lease
+has expired should recover it into a fresh hold with a new `reservationId` and
+`attemptId`. It does not: the second pickup mints a delegation for a purpose
+the agent still holds live and faults on
+`delegations_one_live_per_purpose_idx`, so the caller gets `500` with a
+non-JSON body instead of any refusal, and the aborted transaction writes no
+audit row for the attempt. `tests/api/task-runtime-routes.test.ts` records it
+as an expected failure so that fixing it is loud.
 
 `task.pickup` and `task.handback` refuse `AUTH_NO_AGENT_IDENTITY` 401 on the
 person path. A pickup mints a delegation for an agent identity a person's
@@ -284,9 +320,10 @@ answer and an internal note is absent from it rather than hidden in it (I09).
 
 ## Reads
 
-`task.read`, `task.board`, `person.list` and `preset.plan` are declared in
-`COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls
-the executor the composition root supplies:
+`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
+`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+with `kind: 'read'`. The boundary branches on that and calls the executor the
+composition root supplies:
 
 ```ts
 executeRead(database, businessId, presented, request) => Promise<unknown>
@@ -304,11 +341,66 @@ comments in the fields the catalogue marks `shared` (`id`, `audience`,
 `author`, `body`, `comment_type`, `posted_at`). External is the default, so a
 role nobody classified sees the client view rather than everything.
 
+| Read                   | Route                   | Body                     | Answer                                                                             | Refusals it can answer                                                         |
+| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401    |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`            | `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 401, `AUTH_SESSION_EXPIRED` 401 |
+
+`settings.read` takes **`read` on `settings`** while the two settings commands
+take `manage` on the same collection. That asymmetry is the decision: a setting
+is a business fact every member works against — a member who cannot see the
+four-eyes band cannot tell a refusal from a bug when their own work stops at a
+second approver — and changing one is an authority change. The seed gives
+`settings:read` to `admin` and to `member`; the write stays with `admin`.
+
+**`settings.read` carries no revision, because there is none.**
+`business_settings` has no revision column at all, so the projection has
+nothing to be stale against and offers a caller no number to send back. It
+carries `updatedAt` and `updatedByActorId` instead, which say when the value
+last changed and which actor changed it — null on a value nobody has written
+since it shipped. The column is queued for a later lane and this part adds no
+migration for it; inventing a number here would let a client believe in an
+optimistic-concurrency check the server cannot make.
+
+`session.capabilities` is the one read that **asks the grant model nothing**.
+It reports what the caller already holds, so a grant in front of it could only
+hide from a person the list of things they may do, and a caller refused it
+could rebuild the same list by attempting each operation one at a time.
+Membership is its whole authority and membership is established upstream: a
+login that resolves to none is `AUTH_NO_MEMBERSHIP` before any read runs. The
+grants are read live in the caller's own transaction through the same
+`effectiveGrants` the authority check uses, so a grant revoked a moment ago is
+missing from the answer rather than soon. It never carries a secret, and it
+never carries another person's grants: the subjects are the session's own and
+there is no parameter to point at somebody else.
+
+On the **agent prefix** the same name answers the agent's own capabilities and
+not the delegating person's, under the agent envelope's `detail` like every
+other agent answer: `agentActorId`, `businessKey`, the delegation's
+`purposeScope` — `{ kind: 'record', id }`, or `null` before a pickup — and
+`grants`, which is the authority the two pre-pickup operations take
+(`task.queue` reads and `task.pickup` writes on `task`). It is reachable with
+no credential on purpose: refusing it for want of one would refuse the single
+call whose whole subject is that there is none.
+
+**A read payload naming a fact the server owns is refused**
+`FIELD_NOT_WRITABLE` 422, naming the offending keys. It is the commands' own
+rule, applied by `reads/dispatch.ts` from `prepare.ts`'s `SYSTEM_OWNED_FIELDS`
+rather than from a second copy, so `actor_id`, `business_id`, `revision`,
+`updated_at` and the rest are refused on a read exactly as they are on a write
+(D06). This used to be a silent drop with a `200` on top, which is the weaker
+answer the accepted ledger rules out: a client that believed it had set
+`actor_id` got a success and no correction, so the mistake lived in the client
+and the server looked fine. The **attempted values** go to the audit row's
+`attempted` column and never to the response.
+
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable — and the task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
+`settings.read` and `session.capabilities` carry a **null subject**: neither is
+about one record, and naming one would make "who read this record" false.
 
 ## Verifying it
 

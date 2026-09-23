@@ -130,21 +130,37 @@ interface PickedUp {
   declaredIncompleteness: readonly string[];
 }
 
+interface SuccessorRequest {
+  proposedByActorId; // whose authority the caller checked, not this package
+  purpose: string;
+  maximumMinor: number; // inside the cap behind the envelope
+  currency: string; // the currency that envelope holds
+  payload: Record<string, unknown>;
+  step: { kind: string; payload: Record<string, unknown> };
+  expiresAt: Date;
+}
+
 interface HandbackRequest {
   leaseId;
   fence: number; // the fence it believes it owns
   outcome: 'completed' | 'failed';
   report: Record<string, unknown>;
   actualMinor: number | null; // null is this head's honest answer
+  successor?: SuccessorRequest; // optional: absent settles and proposes nothing
 }
 interface HandedBack {
   leaseId;
+  reportId; // the durable report this handback stored
   reservationId;
   attemptId;
   reservationState: 'actual' | 'abandoned' | 'held' | 'quarantined';
   classification: Classification | null;
   envelopeHeldMinor: number;
   envelopeActualMinor: number;
+  successorVersionId: string | null; // all four null when none was asked for
+  successorGateId: string | null;
+  successorRunId: string | null;
+  successorStepId: string | null;
 }
 ```
 
@@ -156,23 +172,27 @@ AUTHORITY.md gives: a module reaching into the command surface to add its own
 codes is the coupling the register exists to prevent. `SUGGESTED_STATUS` in
 `refusals.ts` carries the same table in code.
 
-| Code                        | Suggested status | Caller-visible                            |
-| --------------------------- | ---------------- | ----------------------------------------- |
-| `VERSION_SUPERSEDED`        | 409              | yes — re-read and decide the live version |
-| `EVIDENCE_MISMATCH`         | 409              | yes                                       |
-| `GATE_NOT_FOUND`            | 404              | yes                                       |
-| `GATE_ALREADY_DECIDED`      | 409              | yes — the loser of a decision race        |
-| `GATE_EXPIRED`              | 410              | yes                                       |
-| `LINEAGE_TERMINAL`          | 409              | yes                                       |
-| `CHANGE_ROUNDS_EXHAUSTED`   | 409              | yes                                       |
-| `BUDGET_UNAVAILABLE`        | 409              | yes — this envelope has no room           |
-| `BUDGET_EXHAUSTED`          | 402              | yes — the cap behind it has none          |
-| `PROPOSAL_OUT_OF_SCOPE`     | 403              | yes                                       |
-| `RESERVATION_NOT_CLAIMABLE` | 409              | yes                                       |
-| `LEASE_HELD`                | 409              | yes                                       |
-| `LEASE_NOT_OWNED`           | 403              | yes — a stale or foreign fence            |
-| `LEASE_EXPIRED`             | 410              | yes                                       |
-| `SCOPE_NOT_GRANTED`         | 403              | yes                                       |
+| Code                             | Suggested status | Caller-visible                            |
+| -------------------------------- | ---------------- | ----------------------------------------- |
+| `VERSION_SUPERSEDED`             | 409              | yes — re-read and decide the live version |
+| `EVIDENCE_MISMATCH`              | 409              | yes                                       |
+| `GATE_NOT_FOUND`                 | 404              | yes                                       |
+| `GATE_ALREADY_DECIDED`           | 409              | yes — the loser of a decision race        |
+| `GATE_EXPIRED`                   | 410              | yes                                       |
+| `LINEAGE_TERMINAL`               | 409              | yes                                       |
+| `CHANGE_ROUNDS_EXHAUSTED`        | 409              | yes                                       |
+| `BUDGET_UNAVAILABLE`             | 409              | yes — this envelope has no room           |
+| `BUDGET_EXHAUSTED`               | 402              | yes — the cap behind it has none          |
+| `PROPOSAL_OUT_OF_SCOPE`          | 403              | yes                                       |
+| `LINEAGE_NOT_ON_TASK`            | 409              | yes — the lineage is another task's       |
+| `CAP_BINDING_MISMATCH`           | 409              | yes — the envelope's cap is the cap       |
+| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422              | yes — this head observed no spending      |
+| `SUCCESSOR_OUT_OF_BOUNDS`        | 409              | yes — cap, currency or rounds             |
+| `RESERVATION_NOT_CLAIMABLE`      | 409              | yes                                       |
+| `LEASE_HELD`                     | 409              | yes                                       |
+| `LEASE_NOT_OWNED`                | 403              | yes — a stale or foreign fence            |
+| `LEASE_EXPIRED`                  | 410              | yes                                       |
+| `SCOPE_NOT_GRANTED`              | 403              | yes                                       |
 
 `decideAsAgent` returns L2's `DELEGATION_EXCLUDES_DECISION`, which AUTHORITY.md
 already tells L3 to register. It is not re-derived here.
@@ -202,12 +222,55 @@ The delegation expires **with** the lease — `pickup` passes the lease expiry a
 `expiresAt` — because a delegation outliving its lease is an agent still holding
 narrowed authority over work somebody else now owns.
 
+## The successor is part of the settlement
+
+T4: "where approval is required, create the successor proposal/run/step/evidence
+pack and pending gate in this same transaction through a lock-aware production
+proposal writer", and "a fault rolls back work settlement, accounting release,
+successor creation and the success receipt together". Both halves are built.
+
+The writer is `packages/core-runtime/src/proposal-writer.ts`. It holds the
+version, run, step, evidence-pack and gate writes once, and `propose` and
+`handback` both go through it, so the head has one proposal writer rather than
+two that drift. It takes the caller's `LockSet` and opens no transaction: it
+calls `LockSet.require` for the task, the lineage and — when the task already
+has them — the cap and the envelope a later decision will bind the version to,
+and throws if any is missing. That is the contract's "helpers receive the
+already-held lock context" as an argument rather than a comment, and it is why
+`handback` can create a successor without the thing T4 forbids: it never calls
+`propose`, which would check the wrong actor's authority and open a lock set of
+its own part-way through a transaction that already holds the lease.
+
+`propose` preallocates the identity of a lineage it is about to open **before**
+it acquires, so the whole set is one ordered call and the lineage lock is never
+taken after the reservation locks. T4 calls that "identity preparation, not a
+write or approval".
+
+`handback`'s successor input is optional and bounded. Absent is the ordinary
+handback, which settles and proposes nothing. Present is refused
+`SUCCESSOR_OUT_OF_BOUNDS`, before the first write, unless the ceiling is finite
+and positive, fits the room left in the cap behind the envelope, is denominated
+in that envelope's currency, and would not be the lineage's third formal round
+(G08). The successor is created **after** the classification, which is the order
+the facts come in: the classification is what makes the old attempt
+nonclaimable, and the successor is the work somebody may now approve instead. It
+is not approved and it opens no hold. A stale fence never reaches it — those
+paths retain their report and return — so a lease that cannot settle work
+cannot propose the next of it either.
+
 ## What the classifier will not do
 
 `recovery.ts` closes the lifecycle of work that is durably no longer claimable.
 It is invoked from inside the authorised operations that write those
 transitions, and `classifyUnderLocks` takes no lock of its own because its
 caller holds the complete set already.
+
+The cause a caller names is revalidated against the durable rows under the
+locks before anything is released: a lineage that is not cancelled does not
+support `lineage_cancelled`, and a live lease does not support
+`lease_expired_and_fenced`. The release itself is a guarded update that
+reports the row it changed, and the envelope subtraction uses that row's own
+amount, so a classifier that lost the race writes nothing.
 
 Startup, elapsed time, a missing claimant and `lease_id = null` are **not**
 abandonment triggers. An approved, unleased, currently authorised reservation
@@ -224,8 +287,18 @@ liability.
 
 ## The proofs
 
-`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 20 cases, all
-against a real Postgres migrated from empty.
+`tests/runtime/gate.test.ts`, `tests/runtime/lease.test.ts`,
+`tests/runtime/review-fixes.test.ts`, `tests/runtime/classifier-race.test.ts`
+and `tests/runtime/decision-abort.test.ts`, 39 cases, all against a real
+Postgres migrated from empty.
+
+**What these cases are and are not.** Each one below states what its own
+assertions cover, and nothing here is a claim beyond them. They are executed
+source regressions on a local database: they are not a runtime security
+certification, not an executed proof of the full 42 obligations, and not
+evidence about a restarted browser, API or Postgres process. Where a case
+establishes one direction of an obligation, the obligation is named as
+partly covered rather than proved.
 
 - The race is **forced, not hoped for**: the first transaction is held open on a
   barrier and the second is watched into `wait_event_type = 'Lock'` in
@@ -256,13 +329,84 @@ against a real Postgres migrated from empty.
   connection zero decisions, envelopes, reservations and attempts; committed,
   the same fresh-connection read finds all four and `replayRecordedTransitions`
   has nothing to do.
-- **The lock order is observed, not assumed**: two transactions each list cap,
-  envelope and gate in an order the contract forbids, and in different wrong
-  orders. `pg_locks` is asked which table the blocked one is parked on, and the
-  answer is `budget_caps` — the class `acquire` reached first — although it
-  listed the envelope first. Both complete, so there is no deadlock to detect.
-  With the sort removed from `acquire` the same case reports `task_envelopes`,
-  which is the crossing that deadlocks.
+- **`acquire` sorts, and that is what is observed**: two transactions each list
+  cap, envelope and gate in an order the contract forbids, and in different
+  wrong orders. `pg_locks` is asked which table the blocked one is parked on,
+  and the answer is `budget_caps` — the class `acquire` reached first —
+  although it listed the envelope first. With the sort removed from `acquire`
+  the same case reports `task_envelopes`, which is the crossing that deadlocks.
+  This covers `acquire` in isolation. It does not establish that every handler
+  passes `acquire` its complete set, which is a separate property: the
+  dcbc8e8 review found recovery bypassing it entirely, and the case below is
+  what now holds that half.
+- **The classifier asserts its caller's locks** (R1): `classifyUnderLocks`
+  takes a required `LockSet` and calls `LockSet.require` for the reservation
+  and for the envelope whose total it is about to move. A caller holding only
+  the task lock throws rather than releasing a hold. This makes "helpers
+  receive the already-held lock context" a runtime fact for this helper.
+- **The two-classifier race, executed** (R1), in
+  `tests/runtime/classifier-race.test.ts`: two backends classify one
+  reservation concurrently through `classifyUnderLocks`, each holding the
+  complete set through `acquire`, and the second is watched into
+  `wait_event_type = 'Lock'` in `pg_stat_activity` before the first commits, so
+  the interleaving is observed rather than slept through. Exactly one reports
+  `released: true`; the loser reports `released: false` and says another
+  transaction classified it first; the envelope's held total falls by the
+  hold's amount exactly once and its actual total does not move. This is the
+  schedule the earlier structural case could not establish, and it is what the
+  dcbc8e8 review's "two classifiers can both read `held`" asked for.
+- **The envelope's cap is the cap** (R2): a decision naming a cap the task's
+  existing envelope does not draw on is refused `CAP_BINDING_MISMATCH`, and
+  the case reads back that no decision row was written and the gate is still
+  pending. This covers the binding.
+- **The post-write reservation refusal aborts, executed** (R2), in
+  `tests/runtime/decision-abort.test.ts`: an owner-installed trigger shrinks
+  the envelope this approval opens, below the hold it is about to take, so
+  `decide`'s preflight passes on the cap alone, the signed decision row and the
+  approved gate are written, and `reserve` then refuses `BUDGET_UNAVAILABLE`
+  under the same locks. The call **throws**, and a new transaction reads back
+  zero decision rows, a still-pending gate, no reservation, no attempt, no
+  envelope for that task and unchanged business totals. The trigger rewrites a
+  value rather than raising on purpose: a trigger that raised would abort the
+  transaction by itself and would prove nothing about what `decide` does with a
+  refusal it was handed. With the trigger dropped the same gate approves, which
+  is what makes the abort an abort rather than an unapprovable fixture.
+- **A lineage belongs to one task** (R3): the refusal is asserted, the other
+  task's version is read back unsuperseded, and 0017's composite foreign key is
+  asserted separately by moving a run onto another task.
+- **Supersession and rejection release their own holds** (R8): the superseded
+  reservation is read back `abandoned` with `version_superseded` as its cause
+  and the envelope's held total back to zero, in the transaction that
+  superseded it and with no replay call.
+- **The decision chain is allocated under a lock** (R10): two approvals on
+  different tasks and different caps of one business run concurrently and both
+  commit with consecutive sequences. This case is what found the chain head
+  being read with `order by seq desc` against a text alias, which reused a
+  sequence from the tenth decision on.
+- **The report is durable** (R4): the settled report is read back by the
+  identity the result returned, and a stale fence's report is read back as
+  `retained` with the refusal code that retained it.
+- **The successor commits with the settlement, or not at all** (R4, T4): four
+  cases. The settlement's own transaction is read back holding the report, a
+  `pending` gate on the same lineage, version 2 with the successor's ceiling,
+  its run, its step and its evidence pack, the superseded old version, and no
+  hold on the new version — a successor is work to decide, not work approved. A
+  trigger arranged to raise on the successor's version insert, which
+  `writeProposal` reaches only after the report, the lease release and the
+  classifier have written, leaves **neither**: no report, no version 2, the
+  lease still `live`, the hold still `held`, the run still `claimed` and the
+  envelope still carrying the whole hold; with the trigger gone the same
+  handback settles and proposes. A successor past the cap, in another currency,
+  at a non-positive ceiling, or at a third formal round is refused
+  `SUCCESSOR_OUT_OF_BOUNDS` before any write, and the claim is read back live
+  and holding, then settled. A stale fence retains its report and creates no
+  successor: the lineage still has its one version and its one gate.
+- **An expired lease is classified by its owning transaction** (R5): the next
+  pickup fences the old lease, the old hold is read back `abandoned` under
+  `lease_expired_and_fenced`, a fresh reservation is read back `held` on the
+  same still-approved version, and the envelope carries one hold's worth rather
+  than two. A second case leaves a fenced lease with an unclassified hold and
+  asserts `replayRecordedTransitions` finishes it.
 - Append-only is asserted **twice**: the application role is refused by
   privilege, and the owner — who does hold `update` — is refused by the trigger.
   Without the second half a later migration granting `update` would silently
@@ -282,3 +426,11 @@ against a real Postgres migrated from empty.
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.
+- **No real process restart (W06).** Every case here is a transaction boundary
+  and a fresh connection to a server that never stopped. Restarting the
+  Postgres, API or browser process and reading the same facts back is lane
+  L5-PROOFS's, in `tests/acceptance/**`, which this package does not own.
+- **No settlement of actual expenditure.** `handback` refuses any non-null
+  `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
+  could settle; the settlement path belongs to the later authorised,
+  evidence-backed accounting work along with its own proofs.
