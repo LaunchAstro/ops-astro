@@ -24,7 +24,33 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-import type { AgentIdentity, Caller } from './world.ts';
+
+/**
+ * What a seeded person is, and what a seeded agent is.
+ *
+ * They live here rather than in `world.ts` because the enrolment functions
+ * below are the only things that build them: a type declared where it is not
+ * constructed is the import cycle `deps:cruise` caught when this file was
+ * first split out.
+ */
+export interface Caller {
+  /** The name the seed gives them, which is the name the matrix prints. */
+  readonly name: string;
+  readonly businessKey: string;
+  readonly personId: string | null;
+  readonly actorId: string | null;
+  readonly subject: string;
+  readonly presented: VerifiedSubject;
+  /** A signed bearer for this subject, already minted. */
+  readonly token: string;
+}
+
+export interface AgentIdentity {
+  readonly subject: string;
+  readonly presented: VerifiedSubject;
+  readonly actorId: string;
+  readonly token: string;
+}
 
 /** The deployment secret for this suite. Local, disposable, never a real one. */
 export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';

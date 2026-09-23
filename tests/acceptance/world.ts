@@ -41,6 +41,7 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { installSpine } from '../commands/fixture.ts';
+import type { AgentIdentity, Caller } from './cast.ts';
 import {
   ACCEPTANCE_SECRET,
   ADMIN_ACTIONS,
@@ -53,6 +54,7 @@ import {
 // Re-exported so every proof keeps one import for the fixture. The cast lives
 // next door for the per-file cap's sake, not because it is a separate concern.
 export { ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
+export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
@@ -61,29 +63,9 @@ import { executeAgentCommand } from '../../packages/core-records/src/commands/ag
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { InstalledTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
-import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 
 /** The server this suite reaches. Absent means the proofs are skipped, loudly. */
 export const serverUrl: string | undefined = databaseUrlFromEnvironment();
-
-export interface Caller {
-  /** The name the seed gives them, which is the name the matrix prints. */
-  readonly name: string;
-  readonly businessKey: string;
-  readonly personId: string | null;
-  readonly actorId: string | null;
-  readonly subject: string;
-  readonly presented: VerifiedSubject;
-  /** A signed bearer for this subject, already minted. */
-  readonly token: string;
-}
-
-export interface AgentIdentity {
-  readonly subject: string;
-  readonly presented: VerifiedSubject;
-  readonly actorId: string;
-  readonly token: string;
-}
 
 export interface World {
   readonly db: FreshDatabase;
