@@ -58,12 +58,13 @@
 // revoked share empties the page the same way a revoked grant does.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
-import { Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
+import { Spill } from '@launchastro/ui';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
+import { drawTaskState } from '../views/task-state.ts';
 import { describeRefusal, submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
@@ -368,7 +369,7 @@ function Loaded(props: LoadedProps): ReactElement {
           <span aria-hidden="true">›</span>
           <span>No board</span>
           <span className="sbact__meta">· {task.key}</span>
-          <Spill state={stateOf(task)} />
+          <Spill state={drawTaskState(task.state)} />
         </div>
         <h2 className="tpr__title">{task.title}</h2>
         <div className="card__sub">
@@ -476,20 +477,3 @@ function Loaded(props: LoadedProps): ReactElement {
     </div>
   );
 }
-
-function stateOf(task: Task): DrawnState {
-  // A task with no state is an incomplete record, not a crash and not a
-  // blank cell. It says so, in the vocabulary the projection already has for
-  // a word it cannot place, and the row stays on the screen.
-  if (task.state === null) return { word: 'No state', tone: 'wait', reference: 'unknown' };
-  const drawn = drawPinnedStepWord(TONE_BY_CATEGORY[task.state.machineCategory] ?? 'pending');
-  return { word: task.state.label, tone: drawn.tone, reference: 'new_behaviour' };
-}
-
-const TONE_BY_CATEGORY: Readonly<Record<string, string>> = {
-  unstarted: 'pending',
-  started: 'running',
-  backlog: 'waiting',
-  completed: 'done',
-  cancelled: 'refused',
-};

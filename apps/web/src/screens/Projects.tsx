@@ -13,11 +13,12 @@
 // stores is recorded rather than papered over by dropping the columns.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, drawPinnedStepWord, type BoardRow, type DrawnState } from '@launchastro/ui';
+import { Board, Empty, type BoardRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type { TaskBoardResult, TaskSummary } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
+import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 
@@ -194,39 +195,13 @@ function rowOf(task: TaskSummary): BoardRow {
     dueLabel: task.due === null ? null : dayOf(task.due),
     due: dueTone(task.due),
     stage: null,
-    state: stateOf(task),
+    state: drawTaskState(task.state),
     estimate: null,
     actual: null,
     group: groupOf(task),
     href: pathTo('agency:task-detail', { key: task.key }),
   };
 }
-
-/**
- * The stored state as a drawn one.
- *
- * The label is the server's, because task states are preset records and the
- * label on the record is the word the installation chose. The tone comes from
- * the machine category through the ported projection, so a state the
- * installation adds still draws with a tone rather than falling through to
- * nothing.
- */
-function stateOf(task: TaskSummary): DrawnState {
-  // A task with no state is an incomplete record, not a crash and not a
-  // blank cell. It says so, in the vocabulary the projection already has for
-  // a word it cannot place, and the row stays on the screen.
-  if (task.state === null) return { word: 'No state', tone: 'wait', reference: 'unknown' };
-  const drawn = drawPinnedStepWord(TONE_BY_CATEGORY[task.state.machineCategory] ?? 'pending');
-  return { word: task.state.label, tone: drawn.tone, reference: 'new_behaviour' };
-}
-
-const TONE_BY_CATEGORY: Readonly<Record<string, string>> = {
-  unstarted: 'pending',
-  started: 'running',
-  backlog: 'waiting',
-  completed: 'done',
-  cancelled: 'refused',
-};
 
 const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
   ...new Set(tasks.map((task) => groupOf(task))),
