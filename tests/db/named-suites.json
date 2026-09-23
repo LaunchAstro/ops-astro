@@ -59,7 +59,9 @@
     "tests/api/web-reads.test.ts",
     "tests/api/expiry-bound.test.ts",
     "tests/identity/external-party.test.ts",
-    "tests/acceptance/external-party.test.ts"
+    "tests/acceptance/external-party.test.ts",
+    "tests/tenancy/restricted-calls.test.ts",
+    "tests/tenancy/restricted-calls-prefixes.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
