@@ -15,12 +15,9 @@
 //      the network and released after the denial, cannot restore it;
 //   3. a later press still reads denied.
 //
-// **R4 is not a row here.** At this head the web's task screen reads
-// `result.task`, and an external party's `task.read` answers `sharedTask`, so
-// its page throws in `Loaded` (`apps/web/src/screens/TaskDetail.tsx:250`,
-// `task={value.task}` at `:180`) and draws nothing to invalidate. The
-// standalone run probes that and prints it as BLOCKED, with a screenshot, so
-// the gap stays visible without a row the runner would count as a failure.
+// R4, the external party on the same path, has rows of its own in
+// `r4-shared-page.mjs`, which borrows this file's sign-in, call and share
+// helpers so the two groups revoke the same way.
 //
 // Run: WEB_URL=... API_URL=... SHOT_DIR=... node tests/browser/i10-open-page.mjs
 
@@ -64,7 +61,7 @@ function gotrueUrl() {
 }
 
 /** A real sign-in: GoTrue's password grant, the one the web's form makes. */
-async function tokenOf(email) {
+export async function tokenOf(email) {
   const user = users.find((entry) => entry.email === email);
   const response = await fetch(`${gotrueUrl()}/token?grant_type=password`, {
     method: 'POST',
@@ -76,7 +73,7 @@ async function tokenOf(email) {
 }
 
 /** One call to the running API, as the web's client makes it. */
-async function callApi(token, operation, body) {
+export async function callApi(token, operation, body) {
   const response = await fetch(`${API}/api/b/alpha/${operation.replace('.', '/')}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -86,7 +83,7 @@ async function callApi(token, operation, body) {
 }
 
 /** Person and acting identity behind a synthetic login. */
-async function identityOf(admin, businessId, email) {
+export async function identityOf(admin, businessId, email) {
   const subject = users.find((entry) => entry.email === email)?.subject;
   const personId = await personOfLogin(admin, businessId, 'supabase', subject);
   const rows = await admin.execute(
@@ -97,7 +94,7 @@ async function identityOf(admin, businessId, email) {
 }
 
 /** ada creates a task over HTTP and shares it with one person through `shareRecord`. */
-async function sharedTask(given, email, title) {
+export async function sharedTask(given, email, title) {
   const { database, admin, alpha, adaToken } = given;
   const made = await callApi(adaToken, 'task.create', {
     operationId: randomUUID(),
@@ -238,41 +235,6 @@ export async function casesI10OpenPage(run) {
   }
 }
 
-/**
- * R4's page at this head, observed rather than asserted: see the header.
- * Returns what it saw so the standalone run can print it.
- */
-async function probeExternalPage(run) {
-  const { browser, database, admin, alpha } = run;
-  // The seed builds the external address rather than writing it; so does this.
-  const external = users.find((user) => user.role === 'external')?.email;
-  const adaToken = await tokenOf('ada@alpha.local');
-  const { recordId } = await sharedTask(
-    { database, admin, alpha, adaToken },
-    external,
-    `I10 R4 probe ${new Date().toISOString()}`,
-  );
-  const context = await browser.newContext({ viewport: VIEWPORT });
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', (error) => errors.push(String(error).slice(0, 160)));
-  try {
-    await signIn(page, external, 'alpha');
-    const answered = page.waitForResponse((response) => isTaskRead(new URL(response.url())));
-    await page.goto(`${WEB}/task/${recordId}`, { waitUntil: 'domcontentloaded' });
-    const read = await answered;
-    await page.waitForLoadState('networkidle');
-    return {
-      read: `${String(read.status())} ${(await read.text()).slice(0, 120)}`,
-      errors,
-      outcomes: await page.locator('[data-outcome]').count(),
-      shot: await shot(page, 'I10-R4-task-page-blank'),
-    };
-  } finally {
-    await context.close();
-  }
-}
-
 if (import.meta.url === `file://${process.argv[1]}`) {
   const browser = await chromium.launch();
   const database = connect(fromEnvFile('DATABASE_URL'), { source: 'i10-open-page' });
@@ -293,11 +255,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         ok: false,
       });
     }
-    const r4 = await probeExternalPage(run);
-    console.log(
-      `\nBLOCKED R4 open page: task.read answered ${r4.read}; page errors ` +
-        `${JSON.stringify(r4.errors)}; ${String(r4.outcomes)} data-outcome region(s); ${r4.shot}`,
-    );
     status = standaloneStatus('I10 open page', [
       'I10 open page, grant.revoke',
       'I10 older authorised cannot restore',
