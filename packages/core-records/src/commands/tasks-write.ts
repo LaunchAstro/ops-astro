@@ -30,6 +30,7 @@ import {
 } from '../tasks/placement.ts';
 import { fromRecords, refuseCommand } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { refuseCreateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { TaskStateRow } from '../tasks/state.ts';
@@ -85,6 +86,9 @@ export async function createTask(
   context: CommandContext,
   request: Extract<CommandRequest, { command: 'task.create' }>,
 ): Promise<HandlerOutcome> {
+  // First, because every check below reads `fields` as a map.
+  const operands = refuseCreateOperands(request.fields);
+  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields);
   if (spoofed !== undefined) return spoofed;
 

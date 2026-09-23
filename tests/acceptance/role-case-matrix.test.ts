@@ -181,6 +181,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           expect(own.status, caller.name).toBe(200);
           expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
+          // The one shape, which case (h) asserts on the agent prefix too.
+          expect(own.body['ok'], caller.name).toBe(true);
+          expect(own.body['detail'], caller.name).toBeUndefined();
           expect(own.body['personId'], caller.name).toBe(caller.personId);
           const held = (own.body['grants'] as readonly { collection: string; action: string }[])
             .map((one) => `${one.collection}:${one.action}`)
@@ -279,10 +282,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         );
         expect(own.status, declaration.name).toBe(200);
         expect(own.body['refused'], declaration.name).toBeUndefined();
-        // The agent answer is nested under `detail`, where every agent-prefix
-        // answer's payload goes; the person answer is flattened onto the body.
-        // Two shapes for one read, recorded here rather than smoothed over.
-        const beforeAny = own.body['detail'] as Record<string, unknown>;
+        // One shape on both prefixes: flattened beside `ok`, as case (e) asserts
+        // on the person prefix. It used to be nested under `detail` here, where
+        // the other agent answers' payloads go, so a client had to know which
+        // prefix it was on to read one read.
+        expect(own.body['ok'], declaration.name).toBe(true);
+        expect(own.body['detail'], declaration.name).toBeUndefined();
+        const beforeAny = own.body;
         expect(beforeAny['agentActorId'], declaration.name).toBeTypeOf('string');
         expect(beforeAny['purposeScope'], declaration.name).toBeNull();
         const reported = (beforeAny['grants'] as readonly { collection: string; action: string }[])
@@ -361,7 +367,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           'reachable with no delegation; its answer is the purpose, not a call under it',
         );
         expect(own.status, declaration.name).toBe(200);
-        const after = own.body['detail'] as Record<string, unknown>;
+        expect(own.body['ok'], declaration.name).toBe(true);
+        const after = own.body;
         expect(after['purposeScope'], declaration.name).toStrictEqual({
           kind: 'record',
           id: subject.id,
