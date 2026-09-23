@@ -18,7 +18,9 @@
     "packages/ui/**/*.ts",
     "packages/ui/**/*.tsx",
     "tests/surfaces/**/*.ts",
-    "tests/surfaces/**/*.tsx"
+    "tests/surfaces/**/*.tsx",
+    "tests/web/**/*.ts",
+    "tests/web/**/*.tsx"
   ],
   "exclude": ["**/node_modules", "**/dist"]
 }
