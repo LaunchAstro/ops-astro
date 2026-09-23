@@ -102,7 +102,7 @@ async function createField(
       field.valueType,
       slot,
       field.writeMode,
-      field.owningOperation,
+      field.owningOperations.length === 0 ? null : field.owningOperations,
       field.escalatingOperation,
       // Deny by default. Which fields a client projection may see is a product
       // policy for the portal slice, and a field that leaks because nobody
@@ -120,7 +120,8 @@ async function createField(
     valueType: field.valueType,
     slot,
     writeMode: field.writeMode,
-    owningOperation: field.owningOperation,
+    owningOperations: field.owningOperations,
+    owningOperation: field.owningOperations.length === 0 ? null : field.owningOperations.join(' '),
     escalatingOperation: field.escalatingOperation,
     visibilityClass: field.visibilityClass ?? 'internal',
     searchable: field.searchable ?? false,

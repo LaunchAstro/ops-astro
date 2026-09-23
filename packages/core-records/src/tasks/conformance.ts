@@ -42,7 +42,7 @@ interface TaskFieldRow {
   readonly key: string;
   readonly slot: string | null;
   readonly write_mode: string;
-  readonly owning_operation: string | null;
+  readonly owning_operation: readonly string[] | null;
   readonly escalating_operation: string | null;
   readonly origin: string;
 }
@@ -168,7 +168,7 @@ function absences(business: string, fields: Map<string, TaskFieldRow>): readonly
     findings.push({
       rule: 'the completion stamp is derived and no operation takes it as an input',
       object: `${business}:task.completed_at`,
-      detail: `names ${completedAt.owning_operation}, which would make it a writable field`,
+      detail: `names ${(completedAt.owning_operation ?? []).join(' ')}, which would make it a writable field`,
     });
   }
   return findings;

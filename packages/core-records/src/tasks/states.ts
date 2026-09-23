@@ -93,7 +93,7 @@ export const TASK_STATE_FIELDS: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_1',
     writeMode: 'system',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
     uniqueValue: true,
   },
@@ -103,7 +103,7 @@ export const TASK_STATE_FIELDS: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_2',
     writeMode: 'system',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -112,7 +112,7 @@ export const TASK_STATE_FIELDS: readonly SpineField[] = [
     valueType: 'text',
     slot: null,
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -121,7 +121,7 @@ export const TASK_STATE_FIELDS: readonly SpineField[] = [
     valueType: 'numeric',
     slot: 'num_1',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
 ];

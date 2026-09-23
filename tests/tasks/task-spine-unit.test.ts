@@ -81,7 +81,7 @@ describe('the spine declaration', () => {
       expect(['generic', 'operation', 'system']).toContain(field.writeMode);
       // The schema's own equality, restated where the rows are written: an
       // operation-owned field names one and nothing else does.
-      expect(field.owningOperation !== null).toBe(field.writeMode === 'operation');
+      expect(field.owningOperations.length > 0).toBe(field.writeMode === 'operation');
     }
   });
 
@@ -113,16 +113,21 @@ describe('the spine declaration', () => {
   it('shapes every operation name the way the schema constrains it', () => {
     const shape = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*( [a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)*$/u;
     for (const field of [...TASK_SPINE, ...TASK_STATE_FIELDS]) {
-      if (field.owningOperation !== null) expect(field.owningOperation).toMatch(shape);
+      if (field.owningOperations.length > 0) {
+        expect(field.owningOperations.join(' ')).toMatch(shape);
+        for (const name of field.owningOperations) expect(name).not.toContain(' ');
+      }
       if (field.escalatingOperation !== null) {
         expect(field.escalatingOperation).toMatch(/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u);
       }
     }
     // The one field with more than one owner, which is why the column holds a
     // list at all.
-    expect(TASK_SPINE.find((field) => field.key === 'state')?.owningOperation).toBe(
-      'task.complete task.reopen task.start',
-    );
+    expect(TASK_SPINE.find((field) => field.key === 'state')?.owningOperations).toStrictEqual([
+      'task.complete',
+      'task.reopen',
+      'task.start',
+    ]);
   });
 
   it('seeds the legacy’s five words, every one inside the five categories', () => {

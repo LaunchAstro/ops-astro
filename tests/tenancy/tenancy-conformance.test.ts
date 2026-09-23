@@ -81,6 +81,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0005_record_store',
         '0006_task_spine',
         '0007_command_envelope',
+        '0008_agent_authority',
+        '0009_settings_and_owning_operations',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -96,6 +98,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0005_record_store',
         '0006_task_spine',
         '0007_command_envelope',
+        '0008_agent_authority',
+        '0009_settings_and_owning_operations',
       ]);
     });
 

@@ -84,7 +84,7 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
         valueType: 'uuid',
         slot: 'uuid_1',
         writeMode: 'operation',
-        owningOperation: 'task.complete',
+        owningOperations: ['task.complete'],
       });
     });
   }, 90_000);
@@ -365,7 +365,7 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
       await whenSchemaIs(
         db.admin,
         `alter table public.field_defs drop constraint field_defs_operation_named;
-         update public.field_defs set owning_operation = 'task.assign' where key = 'email'`,
+         update public.field_defs set owning_operation = array['task.assign'] where key = 'email'`,
         (findings) => {
           expect(rules(findings)).toContain('only an operation-owned field names an operation');
         },

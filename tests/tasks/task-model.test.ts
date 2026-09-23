@@ -237,7 +237,7 @@ describe.skipIf(serverUrl === undefined)('the task model', () => {
     it('catches the completion stamp acquiring an owning operation', async () => {
       await whenTheModelIs(
         `update public.field_defs
-            set write_mode = 'operation', owning_operation = 'task.amend_completion'
+            set write_mode = 'operation', owning_operation = array['task.amend_completion']
           where record_type_id = '${taskTypeId}' and key = 'completed_at'`,
         (findings) => {
           expect(rules(findings)).toContain(
