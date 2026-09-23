@@ -15,10 +15,15 @@
 // copied here. After each step the live calls run against whatever tables and
 // functions exist at that moment.
 //
-// The seed is two businesses, written by the owner once `businesses` exists.
-// Every later table is empty at its prefix, so the tenancy filter is shown on
-// rows only for `businesses` here; the populated proof of the rest is the
-// full-schema suite. The worker role is created by 0008, but roles belong to
+// The seed is two businesses, written by the owner once `businesses` exists,
+// and then one row per business in every other tenant table that exists at
+// the prefix, so the tenancy filter is shown on rows and not on empty tables
+// (TC:108). The rows are the acceptance world's own, one per table, taken once
+// from a full-schema world and written by the owner with triggers and foreign
+// keys off, since an intermediate prefix has no journey to write them; the
+// three tables the journey leaves empty get a row made here. They are removed
+// again before the next migration, so no migration meets a row it did not
+// expect. The worker role is created by 0008, but roles belong to
 // the cluster rather than the database, so on a server where any database has
 // reached 0008 it exists at every prefix and is called there; where it does
 // not exist it is not called, and the tally says which.
@@ -35,6 +40,9 @@ import {
   proveEachPrefix,
 } from '../../packages/core-records/src/tenancy/testing/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import { createWorld } from '../acceptance/world.ts';
+import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
 import {
   APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
@@ -54,11 +62,134 @@ import {
   statementFor,
   tally,
   type CallerName,
+  type CatalogueTable,
   type Callers,
 } from './restricted-calls-cases.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
+
+/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  'public.person_identifiers': {
+    person_id: randomUUID(),
+    kind: 'email',
+    value: 'restricted-calls-seed',
+    observed_value: 'restricted-calls-seed',
+    source_system: 'restricted_calls',
+  },
+  'public.person_merges': {
+    surviving_person_id: randomUUID(),
+    absorbed_person_id: randomUUID(),
+    decided_by_actor_id: randomUUID(),
+    evidence: 'restricted_calls seed',
+  },
+  'public.record_links': {
+    link_type: 'restricted_calls',
+    from_record_id: randomUUID(),
+    to_record_id: randomUUID(),
+  },
+};
+
+type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
+
+/**
+ * Own rows per tenant table but `businesses`, from a world walked through the
+ * journey. Several per table, because an earlier prefix can carry a narrower
+ * check than the full schema, and the first row that meets it is the one used.
+ */
+async function referenceRows(): Promise<Reference> {
+  const world = await createWorld('rcpw');
+  try {
+    await walkTheOtherLineages(world);
+    await walkTheJourney(world);
+    const rows = new Map(Object.entries(UNREACHED).map(([name, row]) => [name, [row]]));
+    for (const table of await catalogueTables(world.db.admin)) {
+      if (!table.tenant || table.qualified === 'public.businesses') continue;
+      // oxlint-disable-next-line no-await-in-loop
+      const own = await world.db.admin.execute<{ j: string }>(
+        `select row_to_json(t)::text as j from ${table.qualified} t
+          where business_id = $1 order by 1 limit 20`,
+        [world.alpha],
+      );
+      if (own.length > 0) {
+        rows.set(
+          table.qualified,
+          own.map((row) => JSON.parse(row.j) as Record<string, unknown>),
+        );
+      }
+    }
+    return rows;
+  } finally {
+    await world.close();
+  }
+}
+
+/** Runs `text` as the owner with triggers and foreign keys off, returning the row count. */
+const asOwner = async (
+  admin: AdminConnection,
+  text: string,
+  parameters: readonly unknown[],
+): Promise<number> =>
+  await admin.transaction(async (execute) => {
+    await execute('set local session_replication_role = replica');
+    return (await execute(text, parameters)).length;
+  });
+
+/**
+ * Writes the reference row once per business into every tenant table at this
+ * prefix but `businesses`, with the columns the table has here; the rest take
+ * their defaults. Returns the tables it could not seed, with the reason.
+ */
+async function seedPrefix(
+  admin: AdminConnection,
+  tables: readonly CatalogueTable[],
+  reference: Reference,
+  businesses: readonly string[],
+): Promise<readonly string[]> {
+  const unseeded: string[] = [];
+  for (const table of tables) {
+    if (!table.tenant || table.qualified === 'public.businesses') continue;
+    const rows = reference.get(table.qualified) ?? [];
+    if (rows.length === 0) {
+      unseeded.push(`${table.qualified}: no reference row`);
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop
+    const present = await admin.execute<{ name: string }>(
+      `select attname as name from pg_attribute
+        where attrelid = $1::regclass and attnum > 0 and not attisdropped
+          and attgenerated = '' and attidentity <> 'a'`,
+      [table.qualified],
+    );
+    const names = present.map((column) => column.name);
+    for (const business of businesses) {
+      let reason = '';
+      for (const row of rows) {
+        const columns = names
+          .filter((name) => name in row || name === 'id' || name === 'business_id')
+          .map((name) => `"${name}"`)
+          .join(', ');
+        const values = JSON.stringify({ ...row, business_id: business, id: randomUUID() });
+        try {
+          // oxlint-disable-next-line no-await-in-loop
+          await asOwner(
+            admin,
+            `insert into ${table.qualified} (${columns})
+               select ${columns} from json_populate_record(null::${table.qualified}, $1::text::json)`,
+            [values],
+          );
+          reason = '';
+          break;
+        } catch (error) {
+          reason = error instanceof Error ? error.message : String(error);
+        }
+      }
+      if (reason !== '') unseeded.push(`${table.qualified}: ${reason}`);
+    }
+  }
+  return unseeded;
+}
 
 const CALLERS: readonly CallerName[] = [
   'login in the wrapper, own tenant',
@@ -73,14 +204,16 @@ const CALLERS: readonly CallerName[] = [
 describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every prefix', () => {
   let db: EmptyDatabase;
   let callers: Callers;
+  let reference: Reference;
   const alpha = randomUUID();
   const bravo = randomUUID();
   const counts: string[] = [];
 
   beforeAll(async () => {
+    reference = await referenceRows();
     db = await createEmptyDatabase({ part: 'rcp' });
     callers = openCallers(db, { own: alpha, other: bravo });
-  }, 60_000);
+  }, 180_000);
 
   afterAll(async () => {
     tally('prefix counts', counts);
@@ -118,7 +251,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
 
       const tables = await catalogueTables(db.admin);
       const functions = await catalogueFunctions(db.admin);
-      const wrong: string[] = [];
+      const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
       let calls = 0;
       let populated = 0;
 
@@ -181,6 +314,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
         [
           migration.version,
           `tables=${String(tables.length)}`,
+          `tenant=${String(tables.filter((table) => table.tenant).length)}`,
           `populated=${String(populated)}`,
           `functions=${String(functions.length)}`,
           `definers=${String(functions.filter((fn) => fn.definer).length)}`,
@@ -189,7 +323,17 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           `calls=${String(calls)}`,
         ].join('\t'),
       );
+      // The seed rows go before the next migration, which never saw them.
+      for (const table of tables) {
+        if (!table.tenant || table.qualified === 'public.businesses') continue;
+        // oxlint-disable-next-line no-await-in-loop
+        await asOwner(db.admin, `delete from ${table.qualified} where business_id = any($1)`, [
+          [alpha, bravo],
+        ]);
+      }
       expect(wrong).toStrictEqual([]);
+      // Every tenant table holds an own row, so no tenancy read was asked of nothing.
+      expect(populated).toBe(tables.filter((table) => table.tenant).length);
       expect(tables.length).toBeGreaterThan(0);
     }, 60_000);
   }

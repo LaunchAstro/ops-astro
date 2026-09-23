@@ -364,6 +364,35 @@ async function targetScopeOf(tx: TenantQuery, request: CommandRequest): Promise<
   return { kind: 'business', id: null };
 }
 
+/**
+ * The scope a `claim` command is authorised on: the task its reservation or
+ * lease belongs to, asked at record scope as the runtime asks it under its
+ * locks. Read-only and unlocked, like `targetScopeOf`. A body naming no such
+ * row is asked at business scope, so a foreign and a fabricated id get one
+ * answer and a caller holding nothing is refused `SCOPE_NOT_GRANTED`.
+ */
+async function claimScopeOf(tx: TenantQuery, request: CommandRequest): Promise<Scope> {
+  const named = request as unknown as Record<string, unknown>;
+  const lookups: readonly (readonly [string, string])[] = [
+    [
+      'reservationId',
+      `select run.task_id as id
+         from public.reservations res
+         join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+        where res.business_id = $1 and res.id = $2`,
+    ],
+    ['leaseId', 'select task_id as id from public.leases where business_id = $1 and id = $2'],
+  ];
+  for (const [field, sql] of lookups) {
+    const id = named[field];
+    if (typeof id !== 'string' || !UUID.test(id)) continue;
+    // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
+    const rows = await tx.query<{ readonly id: string }>(sql, [tx.businessId, id]);
+    if (rows[0] !== undefined) return { kind: 'record', id: rows[0].id };
+  }
+  return { kind: 'business', id: null };
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -398,7 +427,9 @@ export async function prepareCommand(
         ? { kind: 'record', id: recordId }
         : declaration.authorisedOn === 'target'
           ? await targetScopeOf(tx, request)
-          : { kind: 'business', id: null },
+          : declaration.authorisedOn === 'claim'
+            ? await claimScopeOf(tx, request)
+            : { kind: 'business', id: null },
   });
   if (!authorised.ok) return refused(fromAuthority(authorised.refusal));
 

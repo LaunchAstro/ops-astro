@@ -141,8 +141,11 @@ export interface CommandDeclaration {
    *   that row's own scope. A business-wide check would refuse a manager whose
    *   authority is exactly the target's scope; the handler then asks the full
    *   ceiling against the same row.
+   * - `claim`: the task the body's reservation or lease belongs to, so a
+   *   record-scoped writer works their own lease on that task. Own-lease work
+   *   names its task only through the claim and writes no task revision.
    */
-  readonly authorisedOn: 'record' | 'business' | 'target';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -223,8 +226,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // task first is the other half of a cycle with handback.
   declare('task.propose', 'write', { contractNine: true, targetLock: 'runtime' }),
   declare('task.decide', 'decide', { targetsExistingRecord: false, contractNine: true }),
-  declare('task.pickup', 'write', { targetsExistingRecord: false, contractNine: true }),
-  declare('task.handback', 'write', { targetsExistingRecord: false, contractNine: true }),
+  // Own-lease work is `write` on the task the reservation or lease belongs to,
+  // the scope the runtime and `grant.revoke` ask under their locks: a
+  // record-scoped writer picks up, renews and hands back on that task.
+  declare('task.pickup', 'write', {
+    targetsExistingRecord: false,
+    contractNine: true,
+    authorisedOn: 'claim',
+  }),
+  declare('task.handback', 'write', {
+    targetsExistingRecord: false,
+    contractNine: true,
+    authorisedOn: 'claim',
+  }),
 
   declare('task.start', 'write'),
   declare('task.assign', 'assign'),
@@ -290,9 +304,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `expectedRevision` because neither writes the task record.
   declare('task.cancel', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
   declare('task.restart', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
-  // The lease owner's. The person path refuses it as it refuses pickup and
-  // handback; the agent path checks the delegation, then the lease.
-  declare('task.heartbeat', 'write', { targetsExistingRecord: false }),
+  // The lease owner's, asked of the lease's task like pickup and handback; the
+  // agent path checks the delegation, then the lease.
+  declare('task.heartbeat', 'write', { targetsExistingRecord: false, authorisedOn: 'claim' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
