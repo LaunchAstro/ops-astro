@@ -666,21 +666,24 @@ async function replayCapabilities(
  * T4's evidence-only intake for an agent whose delegation has ended.
  *
  * Supersession, cancellation, settlement and plain expiry leave the original
- * agent's credential answering `DELEGATION_NOT_LIVE`, so its new handback is
- * refused before any lease is read. The refusal stands. A delegation revoked
- * for authority loss answers `DELEGATION_NARROWED` and is not taken here: R-B
- * holds that its handback changes nothing, report count included
- * (`tests/runtime/authority-loss-narrowed.test.ts`).
+ * agent's credential answering `DELEGATION_NOT_LIVE`; a delegation revoked for
+ * authority loss answers `DELEGATION_NARROWED` (R-B). Either way the new
+ * handback is refused before any lease is read, and the refusal stands: its
+ * code, its status and R-B's recorded cause are unchanged. T4 line 76 names
+ * "a revoked/narrowed agent" among the holders whose report is kept
+ * (ROOT-NARROWED-REPORT-RULING), so both codes reach here.
  * What this adds is the report: when the credential names a delegation of
- * this business and this authenticated agent that is no longer live, and the
- * presented lease and fence are that delegation's exactly, the report is kept
- * as one unaccepted `handback_reports` row naming the refusal
- * (`retainHistoricalReport`). Nothing is read back to the caller and nothing
- * else is written: no settlement, successor, lease, delegation or money.
+ * this business and this authenticated agent that is no longer live for the
+ * reason the refusal gave, and the presented lease and fence are that
+ * delegation's exactly, the report is kept as one unaccepted
+ * `handback_reports` row naming the refusal (`retainHistoricalReport`).
+ * Nothing is read back to the caller and nothing else is written: no
+ * settlement, successor, lease, delegation or money.
  *
- * Every other refusal, and any binding that does not hold, retains nothing.
- * A replay never reaches here: a settled handback's replay is answered from
- * its register row above, and only a new operation id is a new late report.
+ * The code alone authorises nothing. Every other refusal, and any binding that
+ * does not hold, retains nothing. A replay never reaches here: a refused
+ * handback's replay is answered from its register row above, and only a new
+ * operation id is a new late report.
  */
 async function retainLateHandback(
   tx: TenantQuery,
@@ -691,11 +694,16 @@ async function retainLateHandback(
   refusal: CommandRefusal,
 ): Promise<void> {
   if (request.command !== 'task.handback') return;
-  if (refusal.code !== 'DELEGATION_NOT_LIVE') return;
+  if (refusal.code !== 'DELEGATION_NOT_LIVE' && refusal.code !== 'DELEGATION_NARROWED') return;
   if (credential === undefined || credential === '') return;
   const leaseId = request['leaseId'];
   if (typeof leaseId !== 'string' || !UUID.test(leaseId)) return;
-  const historical = await resolveHistoricalDelegation(tx, session.actorId, credential);
+  const historical = await resolveHistoricalDelegation(
+    tx,
+    session.actorId,
+    credential,
+    refusal.code,
+  );
   if (historical === undefined) return;
   await retainHistoricalReport(tx, {
     leaseId,

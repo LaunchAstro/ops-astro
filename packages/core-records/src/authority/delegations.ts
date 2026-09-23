@@ -366,23 +366,35 @@ export async function resolveDelegation(
  *
  * Read-only, and it permits nothing. It exists for one caller: the agent
  * entry's evidence-only handback intake (TRANSACTION-CONTRACT T4), which keeps
- * a report produced under a delegation that was since settled, revoked or
- * naturally expired. The row is reached through the same binding
- * `resolveDelegation` uses (this business, this authenticated agent, this
- * credential digest) and only when that binding answers to no live
- * delegation, so it never stands in for `resolveDelegation` and never widens
- * what a live credential reaches. What it returns is an identity to bind a
- * historical lease to, not an authority.
+ * a report produced under a delegation that was since settled, revoked,
+ * narrowed by authority loss or naturally expired. The row is reached through
+ * the same binding `resolveDelegation` uses (this business, this
+ * authenticated agent, this credential digest) and only when that binding
+ * answers to no live delegation, so it never stands in for
+ * `resolveDelegation` and never widens what a live credential reaches. What
+ * it returns is an identity to bind a historical lease to, not an authority.
+ *
+ * `refusal` is the code `resolveDelegation` answered, and the row has to be
+ * the one that answer came from. `DELEGATION_NARROWED` is only R-B's durable
+ * cause: revoked for `authority_lost`, unsettled and unexpired, exactly the
+ * `narrowed` predicate above. A live delegation whose person has since lost a
+ * grant answers the same code from `checkDelegatedAuthority`, but it is still
+ * live, so it is not historical and nothing is returned for it.
  */
 export async function resolveHistoricalDelegation(
   tx: TenantQuery,
   agentActorId: string,
   credential: string,
+  refusal: 'DELEGATION_NOT_LIVE' | 'DELEGATION_NARROWED',
 ): Promise<{ readonly id: string } | undefined> {
+  const ended =
+    refusal === 'DELEGATION_NARROWED'
+      ? `revoked_at is not null and settled_at is null and expires_at > now()
+         and revocation_cause = 'authority_lost'`
+      : `(revoked_at is not null or settled_at is not null or expires_at <= now())`;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.delegations
-      where business_id = $1 and agent_actor_id = $2 and credential_hash = $3
-        and (revoked_at is not null or settled_at is not null or expires_at <= now())`,
+      where business_id = $1 and agent_actor_id = $2 and credential_hash = $3 and ${ended}`,
     [tx.businessId, agentActorId, digestOf(credential)],
   );
   const found = rows[0];

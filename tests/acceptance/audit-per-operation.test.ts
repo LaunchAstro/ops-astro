@@ -61,6 +61,18 @@ interface Cell {
 const READ_NAMES: ReadonlySet<CommandName> = new Set(READS);
 const LEASE_WORK: readonly CommandName[] = ['task.pickup', 'task.handback', 'task.heartbeat'];
 
+/** A domain-state digest without `handback_reports`, for I08's retained handback report. */
+const besideReports = (state: Readonly<Record<string, string>>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(state).map(([business, parts]) => [
+      business,
+      parts
+        .split(';')
+        .filter((part) => !part.startsWith('handback_reports='))
+        .join(';'),
+    ]),
+  );
+
 describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operation', () => {
   let w: IdentWorld;
   const covered = { applied: new Set<string>(), refused: new Set<string>() };
@@ -445,9 +457,40 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         // Green since 0d552f0: authority loss revokes the delegation with
         // `revocation_cause` authority_lost (0023), and `resolveDelegation`
         // answers that cause DELEGATION_NARROWED, case 6's code, for every
-        // route here, heartbeat and handback included.
+        // route here, heartbeat and handback included. Only the handback's
+        // report is kept, below.
         const cell = agentCell(agent, name, bodyFor(), p.credential, 'DELEGATION_NARROWED');
-        expect(await check(`narrowed ${name}`, name, cell)).toStrictEqual([]);
+        if (name !== 'task.handback') {
+          expect(await check(`narrowed ${name}`, name, cell)).toStrictEqual([]);
+          return;
+        }
+
+        // A handback carrying a report is T4 line 76's historical intake
+        // (ROOT-NARROWED-REPORT-RULING): the same refusal and audit, one
+        // unaccepted report appended, and every other table unchanged.
+        const before = await domainState(w.h, both());
+        const mark = await auditMark(w.h);
+        const answer = await cell.send();
+        expect(answer.code, JSON.stringify(answer.body).slice(0, 200)).toBe('DELEGATION_NARROWED');
+        expectAudited(`narrowed ${name}`, await auditSince(w.h, mark), {
+          businessId: world.alpha,
+          actorId: cell.actorId,
+          command: name,
+          operationId: String(cell.body['operationId']),
+          outcome: 'refused',
+          refusalCode: 'DELEGATION_NARROWED',
+          body: cell.body,
+        });
+        expect(besideReports(await domainState(w.h, both()))).toStrictEqual(besideReports(before));
+        const kept = await world.db.admin.execute<{
+          readonly disposition: string;
+          readonly refusal_code: string;
+        }>(`select disposition, refusal_code from public.handback_reports where lease_id = $1`, [
+          p.leaseId,
+        ]);
+        expect(kept.map((row) => [row.disposition, row.refusal_code])).toStrictEqual([
+          ['retained', 'DELEGATION_NARROWED'],
+        ]);
       }, 120_000);
     }
   });
