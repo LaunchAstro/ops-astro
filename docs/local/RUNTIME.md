@@ -224,7 +224,7 @@ liability.
 
 ## The proofs
 
-`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 12 cases, all
+`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 19 cases, all
 against a real Postgres migrated from empty.
 
 - The race is **forced, not hoped for**: the first transaction is held open on a
@@ -237,6 +237,25 @@ against a real Postgres migrated from empty.
   a full snapshot of every reservation, attempt, lease and envelope is compared
   before and after. A refusal that still released a hold passes the first
   assertion and fails the second.
+- **Two formal rounds, and no third** (G08): each round is a real
+  `request_changes` decision and a real new version, the superseded version's
+  gate refuses an approval across the round boundary (G04 holding across
+  rounds), and the third round is refused `CHANGE_ROUNDS_EXHAUSTED` with no
+  decision row written. The lineage stays live, so approving or rejecting is
+  still open — the cap bounds rounds, not the decision.
+- **Rejection is terminal** (G05): the rejected gate takes no second decision,
+  a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
+  lineage rather than on the gate, and the authorised restart is a new lineage
+  with a new version and a new pending gate beside the rejected one, never
+  over it.
+- **The cap's refusal is the cap's** (W05): an approval larger than the cap but
+  smaller than its envelope is refused `BUDGET_EXHAUSTED`, not
+  `BUDGET_UNAVAILABLE`, and no total moves.
+- **The interruption, both ways** (W01): the same production `propose` and
+  `decide` calls followed by a throw at the transaction boundary leave a fresh
+  connection zero decisions, envelopes, reservations and attempts; committed,
+  the same fresh-connection read finds all four and `replayRecordedTransitions`
+  has nothing to do.
 - Append-only is asserted **twice**: the application role is refused by
   privilege, and the owner — who does hold `update` — is refused by the trigger.
   Without the second half a later migration granting `update` would silently
@@ -253,8 +272,10 @@ against a real Postgres migrated from empty.
   reaching into another unit's trail.
 - **No HTTP surface and no registry entry.** L3 wires these onto
   `commands/register.ts` and `apps/api/status.ts`.
-- **No two-round Request Changes proof.** The cap is built — in `decide.ts`, in
-  `gates_round_bounded` and in `roundsUsed` — and it has no test of its own yet.
+- **No lock-order or deadlock proof.** `locks.ts` is asserted only by the one
+  forced approval race. Two transactions taking cap, envelope and gate in the
+  contract's order have not been watched into a forced interleaving, and the
+  wrong order has not been shown refused before Postgres detects it.
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.

@@ -268,6 +268,22 @@ export async function decide(
     }
   }
 
+  // W01 and T2: "approval/reservation cannot half-commit". The decision below
+  // is a signed, append-only row and the gate's state moves with it, so a
+  // budget refusal discovered *after* them leaves a gate marked approved that
+  // reserved nothing — and `reserve` is reached only after both are written.
+  // This is the same arithmetic `reserve` does, read-only, under the locks
+  // already held, and it runs before the first write. `reserve` keeps its own
+  // copy as the second barrier; this one is what makes the refusal total.
+  if (request.decision === 'approve') {
+    const room = await budgetRoom(tx, {
+      capId: request.capId,
+      taskId: found.task_id,
+      wantedMinor: Number(version.maximum_minor),
+    });
+    if (!room.ok) return room;
+  }
+
   const payload = {
     gate: gate.id,
     version: gate.version_id,
@@ -549,4 +565,64 @@ async function reserve(
   );
 
   return { ok: true, value: { reservationId, attemptId } };
+}
+
+/**
+ * Is there room, in the envelope this approval would use and in the cap behind
+ * it? Read-only, so it can be asked before anything is written. The two codes
+ * stay distinct here for the same reason they are distinct in `reserve` (W05):
+ * a caller told the wrong one raises the wrong ceiling.
+ */
+async function budgetRoom(
+  tx: TenantQuery,
+  of: { readonly capId: string; readonly taskId: string; readonly wantedMinor: number },
+): Promise<RuntimeResult<null>> {
+  const envelopes = await tx.query<{
+    readonly maximum_minor: string;
+    readonly held_minor: string;
+    readonly actual_minor: string;
+  }>(
+    `select maximum_minor::text as maximum_minor, held_minor::text as held_minor,
+            actual_minor::text as actual_minor
+       from public.task_envelopes
+      where business_id = $1 and task_id = $2 and state = 'open'`,
+    [tx.businessId, of.taskId],
+  );
+  const envelope = envelopes[0];
+  if (envelope !== undefined) {
+    const committed = Number(envelope.held_minor) + Number(envelope.actual_minor);
+    if (committed + of.wantedMinor > Number(envelope.maximum_minor)) {
+      return refuse(
+        'BUDGET_UNAVAILABLE',
+        `this task's envelope holds ${committed} of ${envelope.maximum_minor}, which leaves no room for ${of.wantedMinor}`,
+        'Raise the envelope through its authorised boundary, or propose bounded work that fits.',
+      );
+    }
+  }
+
+  const caps = await tx.query<{ readonly limit_minor: string; readonly committed: string }>(
+    `select c.limit_minor::text as limit_minor,
+            coalesce(sum(e.held_minor + e.actual_minor), 0)::text as committed
+       from public.budget_caps c
+       left join public.task_envelopes e on e.business_id = c.business_id and e.cap_id = c.id
+      where c.business_id = $1 and c.id = $2
+      group by c.limit_minor`,
+    [tx.businessId, of.capId],
+  );
+  const cap = caps[0];
+  if (cap === undefined) {
+    return refuse(
+      'BUDGET_UNAVAILABLE',
+      `no budget cap ${of.capId} in this business`,
+      'Provision the cap before approving work that draws on it.',
+    );
+  }
+  if (Number(cap.committed) + of.wantedMinor > Number(cap.limit_minor)) {
+    return refuse(
+      'BUDGET_EXHAUSTED',
+      `the cap behind this envelope has ${cap.committed} of ${cap.limit_minor} committed, so ${of.wantedMinor} does not fit`,
+      'The cap is the ceiling. Raising it is a separate authorised decision.',
+    );
+  }
+  return { ok: true, value: null };
 }
