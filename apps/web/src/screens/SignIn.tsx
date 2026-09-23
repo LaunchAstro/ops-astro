@@ -8,6 +8,10 @@
 // event: the server resolves the token's subject to a login in that business
 // and refuses when there is none.
 //
+// **The form comes back offering the business the person was interrupted in.**
+// A task address is business-local, so sign-in defaulting to `alpha` after an
+// interruption in Bravo is an invitation to reopen the wrong record.
+//
 // **The notice above the form does not say "expired".** A local token does last
 // an hour, but the API answers a missing, an expired and an unverifiable bearer
 // with the same 401 and the same `AUTH_UNKNOWN_LOGIN`, so expiry is a guess the
@@ -37,7 +41,10 @@ const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = 
 export function SignIn(props: SignInProps): ReactElement {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [businessKey, setBusinessKey] = useState('alpha');
+  // The business the interruption was in, when there was one: the form asks
+  // again for where the person was working, not for the first entry in the
+  // list. They may still choose another one, and App says so when they do.
+  const [businessKey, setBusinessKey] = useState(props.ended?.businessKey ?? 'alpha');
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,7 +73,7 @@ export function SignIn(props: SignInProps): ReactElement {
           <p className="signin__ended" role="status" data-reason="session-ended">
             Your session has ended and you need to sign in again. The server answered{' '}
             <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
-            in will take you back to where you were.
+            in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
           </p>
         )}
         <div className="field">

@@ -27,6 +27,8 @@ export interface Mounted {
   readonly click: (selector: string) => Promise<void>;
   /** Type into a control the way a person does, so React sees the change. */
   readonly type: (selector: string, value: string) => Promise<void>;
+  /** Choose an option in a `<select>`, the same way. */
+  readonly choose: (selector: string, value: string) => Promise<void>;
 }
 
 export async function mount(element: ReactElement): Promise<Mounted> {
@@ -75,6 +77,22 @@ export async function mount(element: ReactElement): Promise<Mounted> {
       await act(async () => {
         setter?.call(field, value);
         field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    },
+    choose: async (selector, value) => {
+      const target = host.querySelector(selector);
+      if (target === null) throw new Error(`nothing matches ${selector}`);
+      // Same reason as `type`: React's own value setter sits on the element,
+      // so the prototype setter plus a bubbling `change` is what choosing an
+      // option actually looks like to it.
+      const field = target as HTMLSelectElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      )?.set;
+      await act(async () => {
+        setter?.call(field, value);
+        field.dispatchEvent(new Event('change', { bubbles: true }));
       });
     },
   };

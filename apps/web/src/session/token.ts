@@ -49,16 +49,25 @@ export function grantKeyOf(session: Session | null): string {
 }
 
 /**
- * What was interrupted: the address the person was on, and the server's word
- * for why they are being asked again.
+ * What was interrupted: the address the person was on, the business that
+ * address meant, and the server's word for why they are being asked again.
  *
  * The code is carried rather than translated. `AUTH_UNKNOWN_LOGIN` is the one
  * the API gives for a missing, an expired and an unverifiable bearer alike, and
  * a client that rewrote it as "expired" would be claiming a distinction the
  * server refused to make.
+ *
+ * **The business is part of the address, even though it is not in it.** A task
+ * address is `/task/<key>` and the key is business-local: the business is what
+ * the client puts in the path prefix. So `/task/T-12` names one record in
+ * Bravo and a different one in Alpha, and an address remembered without its
+ * business is a string that may resolve to somebody else's task. It is kept
+ * here because it is not a credential -- it is the word in the URL prefix and
+ * the word printed in the top bar -- and the token is emphatically not kept.
  */
 export interface Interruption {
   readonly address: string;
+  readonly businessKey: string;
   readonly code: string;
 }
 
@@ -182,6 +191,7 @@ function isInterruption(value: unknown): value is Interruption {
     typeof body['address'] === 'string' &&
     body['address'].startsWith('/') &&
     !body['address'].startsWith('//') &&
+    typeof body['businessKey'] === 'string' &&
     typeof body['code'] === 'string'
   );
 }
