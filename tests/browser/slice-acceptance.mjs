@@ -24,7 +24,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { revokeGrant, issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { n6Cases } from './n6-revocation.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const SHOTS =
@@ -587,110 +588,20 @@ try {
     await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
       waitUntil: 'domcontentloaded',
     });
-    await page.waitForSelector('[data-task]', { timeout: 20_000 });
-    await page.waitForSelector('button:has-text("Save changes")', { timeout: 20_000 });
-    const beforeRevoke = await shot(page, 'N6-authorised');
-
-    // An authorised read, taken while the grant is live, held back so it can be
-    // offered to the projection after the denial has raised the floor. The page
-    // can only have one task read in flight at a time -- the loading state
-    // replaces the controls that would start a second -- so the ordering half of
-    // the case is driven through the application's own `authorised-read.ts` in
-    // the page, over the real client and the real API, rather than through a
-    // second click that cannot exist.
-    const captured = await page.evaluate(
-      async (given) => {
-        const { AuthorisedRead } = await import(given.modules.authorisedRead);
-        const { OperationsClient } = await import(given.modules.client);
-        const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-        const client = new OperationsClient({
-          base: '/api',
-          businessKey: session.businessKey,
-          token: session.token,
-          fetch: window.fetch.bind(window),
-        });
-        const drawn = [];
-        const projection = new AuthorisedRead({
-          grantKey: 'mia:alpha',
-          onState: (s) => drawn.push(s.outcome),
-        });
-        const older = projection.begin();
-        const authorised = await client.read('task.read', { recordId: given.taskId });
-        window.n6Held = { projection, client, older, authorised, drawn };
-        return { authorised: authorised.ok === true, title: authorised.value?.task?.title ?? null };
-      },
-      { taskId, modules: IN_PAGE },
-    );
-
-    miaPerson = (
-      await admin.execute(
-        `select p.id from public.people p where p.display_name = 'Mia Alpha' limit 1`,
-      )
-    )[0]?.id;
-    const revoked = await database.withBusiness(alpha, async (tx) => {
-      const live = await tx.query(
-        `select id from public.grants where subject_kind = 'person' and subject_id = $1
-           and collection = 'task' and action = 'read' and revoked_at is null`,
-        [miaPerson],
-      );
-      for (const grant of live) await revokeGrant(tx, grant.id);
-      return live.length;
+    const { records, personId } = await n6Cases({
+      page,
+      database,
+      admin,
+      businessId: alpha,
+      login: users.find((user) => user.email === 'mia@alpha.local'),
+      shot: async (name) => await shot(page, name),
     });
-
-    // The mounted page, rereading after the revocation. The reread is the
-    // address being opened again rather than a Save: the write path loads the
-    // target through the same task collection, so with `task:read` revoked the
-    // mutation is refused before it can ask for a reread.
-    await page.goto(`${WEB}/task/${encodeURIComponent(taskKey)}`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await page.waitForSelector('[data-outcome="denied"]', { timeout: 20_000 });
-    const deniedText = await page.locator('[data-outcome="denied"]').first().innerText();
-    record({
-      case: 'N6 revocation on the mounted page',
-      action: `revoked ${revoked} live task:read grant(s) for Mia Alpha through revokeGrant, with the page open, then rereaad from the page`,
-      observed: `the page drew data-outcome="denied" quoting ${JSON.stringify(deniedText.replace(/\s+/gu, ' ').slice(0, 90))}; no task fields remain`,
-      ok: /SCOPE_NOT_GRANTED/u.test(deniedText),
-      shot: await shot(page, 'N6-denied-after-revocation'),
-      extra: { authorised: beforeRevoke },
-    });
-
-    const ordering = await page.evaluate(
-      async (given) => {
-        const held = window.n6Held;
-        const newer = held.projection.begin();
-        const denied = await held.client.read('task.read', { recordId: given.taskId });
-        const acceptedDenial = held.projection.accept(newer, denied, 'mia:alpha');
-        // The older response, authorised and real, arriving after the denial.
-        const acceptedOlder = held.projection.accept(held.older, held.authorised, 'mia:alpha');
-        return {
-          deniedCode: denied.code ?? null,
-          acceptedDenial,
-          acceptedOlder,
-          outcome: held.projection.state.outcome,
-          value: held.projection.state.value,
-          drawn: held.drawn,
-        };
-      },
-      { taskId, modules: IN_PAGE },
-    );
-    record({
-      case: 'N6 an older in-flight response cannot restore',
-      action: `an authorised task.read taken before the revocation (${captured.authorised ? 'ok' : 'failed'}) was offered to the app's projection after the denial`,
-      observed: `denial ${ordering.deniedCode} accepted=${ordering.acceptedDenial}; the older authorised response accepted=${ordering.acceptedOlder}; the projection stays "${ordering.outcome}" with value ${JSON.stringify(ordering.value)}`,
-      ok:
-        captured.authorised === true &&
-        ordering.deniedCode === 'SCOPE_NOT_GRANTED' &&
-        ordering.acceptedDenial === true &&
-        ordering.acceptedOlder === false &&
-        ordering.outcome === 'denied' &&
-        ordering.value === null,
-      shot: await shot(page, 'N6-older-response-refused'),
-    });
+    miaPerson = personId;
+    for (const entry of records) record(entry);
   } catch (error) {
     record({
       case: 'N6 revocation on the mounted page',
-      action: 'revoke through revokeGrant with the page open, then reread',
+      action: 'revoke through revokeGrant with the page open, then press Refresh',
       observed: `the script did not reach the assertion: ${String(error).slice(0, 200)}`,
       ok: false,
       shot: await shot(page, 'N6-failed').catch(() => undefined),
