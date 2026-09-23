@@ -276,5 +276,20 @@ else
 fi
 
 echo
+echo "L. the secret scan reads what can be committed, and nothing else"
+# Its cases build their own throwaway repositories, so they live in their own
+# file; the counters here take its verdict. Wired in rather than given a step
+# of its own because this is where the gitleaks configuration is already
+# tested: case K above is the anchoring of the very allowlist the scan reads.
+if secrets_out="$(bash "$REPO_ROOT/tests/gate/secrets-scan-cases.sh" 2>&1)"; then
+  printf '%s\n' "$secrets_out" | grep -E '^  (PASS|FAIL) ' || true
+  pass "the secret scan's file list holds (tests/gate/secrets-scan-cases.sh)"
+else
+  printf '%s\n' "$secrets_out" | grep -E '^  (PASS|FAIL) ' || true
+  fail "the secret scan's file list holds (tests/gate/secrets-scan-cases.sh)" \
+    "$(printf '%s' "$secrets_out" | tail -3 | tr '\n' ' ')"
+fi
+
+echo
 echo "gate cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

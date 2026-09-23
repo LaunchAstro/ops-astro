@@ -12,6 +12,14 @@ useDefault = true
 # path, so an unanchored LICENSE also excludes src/LICENSE-private-config.json
 # from secret scanning, which is a perfectly good place to hide a credential.
 # Round four found it. tests/gate/gate-cases.sh case K keeps it anchored.
+#
+# There is no entry here for `.local/`, and there must not be one. That
+# directory holds the local runtime's generated credentials and is gitignored,
+# but gitignored is not never-tracked: an entry here would tell the scanner to
+# look away from a force-added `.local/x` too. The runtime scratch stays out of
+# the scan by being absent from the file list rather than exempted from it --
+# scripts/secrets-scan.mjs builds that list with `git ls-files`, so every path
+# git tracks is scanned wherever it sits.
 description = "The exact paths that carry no secrets and would otherwise be noisy"
 paths = [
   '''^LICENSE$''',
