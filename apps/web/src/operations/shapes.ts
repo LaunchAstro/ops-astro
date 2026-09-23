@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What the three reads return, as the slice contract declares them.
+// What the reads return, as the slice contract declares them.
 //
 // These are wire shapes and they live beside the client for the same reason
 // the refusal does: they describe JSON that crossed a network. The server's own
@@ -237,4 +237,40 @@ export interface TaskBoardResult {
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly TaskPerson[];
+}
+
+/**
+ * One row of `settings.read`.
+ *
+ * `revision` is optional and its absence is a fact about the server, not about
+ * the row: `business_settings` gained a revision column in `0020` and the
+ * projection does not yet send it, so the screen has to write correctly against
+ * both. A row with a revision is written with `expectedRevision`; a row without
+ * one is written as the two commands have always taken it.
+ */
+export interface SettingRow {
+  readonly key: string;
+  readonly value: unknown;
+  readonly valueType?: string;
+  readonly updatedAt?: string;
+  /** Null is a real answer: the row was written with no actor recorded. */
+  readonly updatedByActorId?: string | null | undefined;
+  readonly revision?: number;
+}
+
+export interface SettingsReadResult {
+  readonly ok: true;
+  readonly settings: readonly SettingRow[];
+}
+
+export interface Grant {
+  readonly collection: string;
+  readonly action: string;
+}
+
+export interface CapabilitiesResult {
+  readonly ok: true;
+  readonly personId: string;
+  readonly businessKey: string;
+  readonly grants: readonly Grant[];
 }

@@ -197,7 +197,8 @@ What this screen does not read back, and cannot:
   decide before it asks. A member without `task:decide` presses Approve once,
   reads the server's `SCOPE_NOT_GRANTED`, and the controls close. That is honest
   but it means the first press of a control a person may not use is always a
-  refused request. The same gap already applies to comments and settings.
+  refused request. The same gap applies to comments. It no longer applies to
+  `/settings`, which is the one screen that consults `session.capabilities`.
 - **No seeded identity holds `task:decide`.** `scripts/local-seed.mjs` gives its
   admin six `task` actions plus `person:read` and `settings:manage`, and
   `task.decide` takes the `decide` action (`commands/surface.ts`), so as the seed
@@ -222,34 +223,52 @@ What this screen does not read back, and cannot:
 ## The settings screen
 
 `/settings` draws the two settings the model classifies `operation`:
-`four_eyes_threshold` (a number of dollars, or off) and
-`client_sign_off_required` (on or off). Each is written through the command that
-owns it — `settings.set_four_eyes_threshold` and `settings.set_client_sign_off`
-— with an `operationId` and no `expectedRevision`, because `business_settings`
-carries no revision to be stale against.
+`four_eyes_threshold` and `client_sign_off_required`. Each is written through
+the command that owns it — `settings.set_four_eyes_threshold` and
+`settings.set_client_sign_off` — with an `operationId`, and with an
+`expectedRevision` when the read carried a revision for that row.
 
-**Nothing on this screen is read back, and the screen says so on the page.**
-`COMMAND_SURFACE` declares four reads — `task.read`, `task.board`,
-`person.list`, `preset.plan` — and none of them carries `business_settings`.
-So the screen opens on _not known_ and names the absent read in
-`p[data-settings="not-readable"]`. The number beside "Last confirmed by the
-server" is the last write **this browser** had confirmed by the command's own
-`detail` echo, held in `sessionStorage` under `ops-astro.settings.<business>`
-— the same rule the session lives under, never `localStorage`.
+**The values are the server's.** `settings.read` is asked on open and after
+every write, so the number beside a setting is the business's and not this
+browser's memory of its own write. Each row is drawn with its `updatedAt` in
+`p[data-settings="four-eyes-value"]` and `p[data-settings="four-eyes-updated"]`
+(and the same pair for `sign-off`). The read goes through `useRead`, so the
+generation counter and the denial floor apply to it as to any other read.
 
-Opening on the shipped default (`500`, `false`) was the alternative and it is
-worse: a person would be shown their business's threshold having never asked
-anybody, with no way to tell that number from a real one.
+The four states are drawn and none of them draws a value: `loading`, `denied`
+with the refusal verbatim, `unavailable` with the absence stated as an
+absence, and `empty` for a business holding no rows. The state is on
+`div[data-settings="read"]` as `data-outcome`. Where the read is refused or
+absent the screen falls back to the last write this browser had confirmed,
+held in `sessionStorage` under `ops-astro.settings.<business>`, drawn in
+`p[data-settings="four-eyes-known"]` and named as this browser's word in
+`p[data-settings="not-readable"]`. Exactly one of the two provenances is on
+the page at a time. Never the shipped default.
 
-The refusal rule is the comment form's: ask once, quote
-`SCOPE_NOT_GRANTED` verbatim in `p[data-settings="refusal"]`, close both
-controls, change nothing. Tabbing from the threshold box reaches
-`settings-four-eyes -> settings-four-eyes-off -> save-four-eyes ->
-settings-sign-off`. Photographed at 1480, 900 and 390 with no horizontal
-overflow (`parent-observations/web-comments/width-<w>-settings.png`). `/settings` carries a rail entry and the panel
-registry's one entry (`panels.ts`), whose dock tab navigates to the address
-rather than opening a drawer — the surface has a real address, and an address a
-person can quote is worth more than a panel they cannot.
+**The controls are opened by `session.capabilities`.** `settings:manage` in
+the grants opens them; its absence closes them and names the scope in
+`p[data-settings="capabilities-because"]`, sending nothing; a refused
+capability read closes them too, because a screen that cannot find out what
+somebody may do does not guess in their favour. An _unavailable_ capability
+read leaves them open — nobody decided anything, and closing on an absence
+would make the screen unusable against a build that has not landed the read.
+A `SCOPE_NOT_GRANTED` on a write closes them whatever the capabilities said,
+since a grant can be revoked between the read and the press. The state is on
+`div[data-settings="capabilities"]` as `data-outcome`.
+
+**`VERSION_STALE` is a conflict, not an error.** The screen rereads, draws the
+server's value beside the person's draft in `div[data-settings="conflict"]`
+with `conflict-server` and `conflict-draft`, quotes the refusal, and waits.
+The overwrite takes a second explicit press on
+`button[data-settings="confirm-four-eyes"]` and goes out against the reread
+revision. The screen never retries by itself.
+
+Keyboard path: `settings-four-eyes -> settings-four-eyes-off ->
+save-four-eyes -> settings-sign-off -> save-sign-off`. Measured at 1480, 900
+and 390 with 0px of horizontal overflow at each.
+
+Not built: the read carries `conversation_window_days` and
+`retention_window_days` and nothing in the web has a home for them.
 
 ## What the five read states mean
 
@@ -322,19 +341,19 @@ it, so run this when you want the table and not on every edit.
 The run is made of one module per case group, so a group can be read or
 changed without reading the rest:
 
-| File                     | Cases                                                                                           |
-| ------------------------ | ----------------------------------------------------------------------------------------------- |
-| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table                                     |
-| `cases-b.mjs`            | B1–B5, the journey and the reload                                                               |
-| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision                                            |
-| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                     |
-| `cases-n1-n2.mjs`        | another business, and a member with no grant                                                    |
-| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                                                     |
-| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail                                           |
-| `cases-b6-b7.mjs`        | the API down, and the process and database restart                                              |
-| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                      |
-| `cases-settings.mjs`     | S1 an admin sets the threshold, S2 a member is refused                                          |
-| `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused |
+| File                     | Cases                                                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table                                                                                                |
+| `cases-b.mjs`            | B1–B5, the journey and the reload                                                                                                                          |
+| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision                                                                                                       |
+| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                                                                                |
+| `cases-n1-n2.mjs`        | another business, and a member with no grant                                                                                                               |
+| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                                                                                                                |
+| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
+| `cases-b6-b7.mjs`        | the API down, and the process and database restart                                                                                                         |
+| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
+| `cases-settings.mjs`     | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
+| `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
@@ -391,9 +410,14 @@ places this build does not yet reach it.
   and `system`; the form offers the first two. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
   every system note on a task unreliable evidence of anything.
-- **No settings read exists**, so `/settings` cannot show what a business holds
-  — only what this browser last had confirmed. Named above and in the handback
-  for the lane that owns the read surface.
+- **The exact-revision path is proved only where the read sends a revision.**
+  The screen writes `expectedRevision` for a row whose `settings.read` answer
+  carried `revision`, and not otherwise. `business_settings` has the column
+  from migration `0020`; whether the running API's projection sends it depends
+  on which build is serving. Where it does not, the path and its `VERSION_STALE`
+  conflict are held by mounted cases alone, and browser row S5 records
+  `pending` with the reason. Where it does, S5 runs with no edit. Which of the
+  two happened is in S5's own row, not in this document.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
   implying it was kept. Preserving a draft across a sign-in would mean holding
