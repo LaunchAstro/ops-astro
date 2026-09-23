@@ -22,6 +22,16 @@
 // A client that minted a fresh identity on every retry could never exercise
 // either, so `operationId` is an argument with a default, not a hidden value.
 //
+// **A session that has ended is reported from here, once, for every call.** The
+// API answers a missing, an expired and an unverifiable bearer identically:
+// HTTP 401 with `AUTH_UNKNOWN_LOGIN` (`docs/local/API.md`). A token lives an
+// hour, so this arrives at an ordinary moment in an ordinary day, and it
+// arrives at whichever call happened to be next — a board read, a task read, a
+// save. Recognising it in each screen would be the same rule written five times
+// and forgotten in the sixth; recognising it here is one signal in one place,
+// and `onSessionEnded` is how the application hears it. The refusal is still
+// returned unchanged: this module reports, it does not swallow.
+//
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching the draft's `commands/requests.ts`. The slice contract named it in
 // prose as `operation_id` and the coordinator ruled on the camelCase spelling
@@ -101,6 +111,14 @@ export interface ClientOptions {
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
   readonly newOperationId?: () => string;
+  /**
+   * The session this client was given is one the API will not vouch for.
+   *
+   * Called only when a token was actually sent: a 401 with no bearer is a call
+   * nobody was signed in for, and ending a session that was never held would
+   * be reporting an event that did not happen.
+   */
+  readonly onSessionEnded?: (refusal: WireRefusal) => void;
 }
 
 export interface MutationOptions {
@@ -181,7 +199,16 @@ export class OperationsClient {
 
     const parsed: unknown = await response.json().catch(() => undefined);
 
-    if (isWireRefusal(parsed)) return parsed;
+    if (isWireRefusal(parsed)) {
+      if (
+        response.status === 401 &&
+        parsed.code === SESSION_ENDED &&
+        this.#options.token !== null
+      ) {
+        this.#options.onSessionEnded?.(parsed);
+      }
+      return parsed;
+    }
 
     if (!response.ok) {
       // A non-2xx with no refusal body is the server failing, not refusing.
@@ -194,6 +221,15 @@ export class OperationsClient {
     return { ok: true, value: parsed as T };
   }
 }
+
+/**
+ * The one code that means the bearer is no longer a credential.
+ *
+ * Paired with the 401 rather than trusted alone: the code names the decision
+ * and the status names the boundary that made it, and a 403 carrying this code
+ * would be a different answer than the one this rule is about.
+ */
+const SESSION_ENDED = 'AUTH_UNKNOWN_LOGIN';
 
 function isWireRefusal(value: unknown): value is WireRefusal {
   if (typeof value !== 'object' || value === null) return false;

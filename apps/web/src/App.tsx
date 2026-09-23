@@ -9,10 +9,10 @@
 // the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
 // — the words and tones a state may print — and not as a source of rows.
 
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell, type RailEntry } from '@launchastro/ui';
 import { ROUTES, matchRoute } from './routes.ts';
-import { OperationsClient } from './operations/client.ts';
+import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { Projects } from './screens/Projects.tsx';
@@ -33,11 +33,24 @@ export interface AppProps {
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
 
+  // The root address is not a screen and it is not a mistake either: it is how
+  // a person arrives. It leads to the board when there is a session and to
+  // sign-in when there is not, and the address bar is corrected to say so, so
+  // a reload lands on the same place a link would.
+  const here = props.path === '/' ? (session === null ? '/sign-in' : '/projects/') : props.path;
+  const navigate = props.navigate;
+  useEffect(() => {
+    if (here !== props.path) navigate(here);
+  }, [here, props.path, navigate]);
+
   const onSignedIn = useCallback(
     (next: Session) => {
+      // Spent here, so the next ordinary sign-in is not redirected by an
+      // interruption somebody already answered.
+      const back = props.sessions.takeInterruption();
       props.sessions.set(next);
       setSession(next);
-      props.navigate('/projects/');
+      props.navigate(back === null ? '/projects/' : back.address);
     },
     [props],
   );
@@ -48,6 +61,20 @@ export function App(props: AppProps): ReactElement {
     props.navigate('/sign-in');
   }, [props]);
 
+  // **The session ending is a fact about the application, not about a screen.**
+  // The client raises it once, from wherever the refusal arrived, and this is
+  // the only handler. Held in a ref rather than closed over by the client's
+  // memo: the address changes on every navigation and the client must not,
+  // because a new client is a new read of everything on the page.
+  const endedRef = useRef<(refusal: WireRefusal) => void>(() => undefined);
+  const hereRef = useRef(here);
+  hereRef.current = here;
+  endedRef.current = (refusal) => {
+    props.sessions.end({ address: hereRef.current, code: refusal.code });
+    setSession(null);
+    props.navigate('/sign-in');
+  };
+
   const client = useMemo(
     () =>
       new OperationsClient({
@@ -55,19 +82,12 @@ export function App(props: AppProps): ReactElement {
         businessKey: session?.businessKey ?? 'alpha',
         token: session?.token ?? null,
         fetch: props.fetch,
+        onSessionEnded: (refusal) => {
+          endedRef.current(refusal);
+        },
       }),
     [props.apiBase, props.fetch, session],
   );
-
-  // The root address is not a screen and it is not a mistake either: it is how
-  // a person arrives. It leads to the board when there is a session and to
-  // sign-in when there is not, and the address bar is corrected to say so, so
-  // a reload lands on the same place a link would.
-  const here = props.path === '/' ? (session === null ? '/sign-in' : '/projects/') : props.path;
-  const navigate = props.navigate;
-  useEffect(() => {
-    if (here !== props.path) navigate(here);
-  }, [here, props.path, navigate]);
 
   const match = matchRoute(here);
   const route = match?.route ?? null;
@@ -92,7 +112,12 @@ export function App(props: AppProps): ReactElement {
           }}
         />
       ) : (
-        <SignIn gotrueUrl={props.gotrueUrl} fetch={props.fetch} onSignedIn={onSignedIn} />
+        <SignIn
+          gotrueUrl={props.gotrueUrl}
+          fetch={props.fetch}
+          onSignedIn={onSignedIn}
+          ended={props.sessions.interruption}
+        />
       )
     ) : route.id === 'agency:projects-board' ? (
       <Projects
