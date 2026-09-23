@@ -15,6 +15,8 @@
 // Every row here is synthetic and lives in a throwaway database. The windows
 // are set through the settings writer and the trash is aged by moving
 // `deleted_at` back, an hour either side of each window, so nothing sleeps.
+// A missing or unusable window row is made by the admin connection, since no
+// writer should be able to make one.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -269,6 +271,63 @@ describe.skipIf(serverUrl === undefined)(
         expect(await present('alpha', [alphaRecent])).toStrictEqual(new Set([alphaRecent]));
       } finally {
         await setWindow('bravo', WINDOWS.bravo);
+      }
+    });
+
+    /**
+     * One purge in alpha that has to be refused `code` naming the window, with
+     * trash old enough under the real window still there and one refused row.
+     */
+    const refusedOnWindow = async (code: string, label: string) => {
+      const old = await trashedAgo('alpha', WINDOWS.alpha * 24 + 1);
+      const records = await recordCount('alpha');
+      const before = await audit('alpha');
+      const answer = await purge('alpha');
+      expect(isCommandRefusal(answer) && answer.code, label).toBe(code);
+      expect(isCommandRefusal(answer) && answer.names, label).toStrictEqual([
+        'retention_window_days',
+      ]);
+      expect(await recordCount('alpha'), label).toBe(records);
+      expect(await present('alpha', [old]), label).toStrictEqual(new Set([old]));
+      const added = (await audit('alpha')).slice(before.length);
+      expect(
+        added.map((event) => [event.command, event.outcome, event.refusal_code]),
+        label,
+      ).toStrictEqual([['task.purge', 'refused', code]]);
+    };
+
+    // The bad rows are made through the admin connection, never a writer: the
+    // settings writer is the one thing that should not be able to make them.
+    const alphaWindowRow = async (set: string, parameters: readonly unknown[] = []) =>
+      await db.admin.execute(
+        `update business_settings set ${set}
+          where business_id = $1 and key in ('retention_window_days', 'parked_retention_window_days')`,
+        [business.alpha, ...parameters],
+      );
+
+    it('refuses NOT_FOUND when the business has no window row, and purges nothing', async () => {
+      await alphaWindowRow(`key = 'parked_retention_window_days'`);
+      try {
+        await refusedOnWindow('NOT_FOUND', 'no row');
+      } finally {
+        await alphaWindowRow(`key = 'retention_window_days'`);
+      }
+    });
+
+    it('refuses a window that is null, a fraction or negative, and purges nothing', async () => {
+      try {
+        for (const [label, value] of [
+          ['null', `'null'::jsonb`],
+          ['fraction', `to_jsonb(1.5::numeric)`],
+          ['negative', `to_jsonb(-1::numeric)`],
+        ] as const) {
+          /* eslint-disable no-await-in-loop -- one bad value at a time */
+          await alphaWindowRow(`value = ${value}`);
+          await refusedOnWindow('FIELD_VALUE_INVALID', label);
+          /* eslint-enable no-await-in-loop */
+        }
+      } finally {
+        await alphaWindowRow(`value = to_jsonb($2::numeric)`, [WINDOWS.alpha]);
       }
     });
   },
