@@ -173,6 +173,36 @@ describe('the settings screen reads the server', () => {
     await page.unmount();
   });
 
+  it('says nothing about an actor the server sent as null', async () => {
+    // The live read answers `updatedByActorId: null` for a row the seed wrote,
+    // and `null` is a real answer: nobody, or nobody recorded. Printing it is
+    // the screen inventing an actor called "null" — the same defect as drawing
+    // a default, one field along.
+    const api = server({
+      settings: () =>
+        json({
+          ok: true,
+          settings: [
+            {
+              key: 'four_eyes_threshold',
+              value: 500,
+              valueType: 'numeric',
+              updatedAt: '2026-09-23T02:48:24.326Z',
+              updatedByActorId: null,
+            },
+          ],
+        }),
+    });
+    const page = await mount(screen(api.fetch));
+    await tick();
+
+    const line = page.find('[data-settings="four-eyes-updated"]')?.textContent ?? '';
+    expect(line).toContain('2026-09-23');
+    expect(line).not.toContain('null');
+    expect(line).not.toContain('by ');
+    await page.unmount();
+  });
+
   it('draws a refused read verbatim and falls back to what this browser confirmed', async () => {
     const api = server({ settings: () => refusal('SCOPE_NOT_GRANTED', 403) });
     const page = await mount(screen(api.fetch));

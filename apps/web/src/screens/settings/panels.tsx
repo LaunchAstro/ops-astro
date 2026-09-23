@@ -99,7 +99,15 @@ export function ValueLine(props: {
       {row.updatedAt === undefined ? null : (
         <p className="card__sub" data-settings={`${props.which}-updated`}>
           Last written {row.updatedAt}
-          {row.updatedByActorId === undefined ? '' : ` by ${row.updatedByActorId}`}
+          {/*
+            The live read answers `updatedByActorId: null` for a row the seed
+            wrote, and null is a real answer: nobody, or nobody recorded.
+            Printing it would be this screen inventing an actor called "null",
+            which is the same defect as drawing a default one field along.
+          */}
+          {row.updatedByActorId === undefined || row.updatedByActorId === null
+            ? ''
+            : ` by ${row.updatedByActorId}`}
           {row.revision === undefined ? '' : `, revision ${String(row.revision)}`}
         </p>
       )}

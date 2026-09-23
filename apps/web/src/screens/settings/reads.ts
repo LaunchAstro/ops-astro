@@ -45,7 +45,8 @@ export interface SettingRow {
   readonly value: unknown;
   readonly valueType?: string;
   readonly updatedAt?: string;
-  readonly updatedByActorId?: string;
+  /** Null is a real answer: the row was written with no actor recorded. */
+  readonly updatedByActorId?: string | null;
   readonly revision?: number;
 }
 

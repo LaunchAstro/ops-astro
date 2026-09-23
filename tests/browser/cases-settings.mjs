@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S1-S2: the two operation-classified business settings, written from a real
-// browser against the live API.
+// S1-S5: the two operation-classified business settings, read, opened by
+// capability and written from a real browser against the live API.
+//
+// **S1-S2 run against any build. S3-S5 need the two reads and say so.**
+// `settings.read` and `session.capabilities` are declared by lane L3-PART-B-2
+// and the API at `b15ed7e` carries neither, so the screen meets them as
+// `unavailable` and falls back: it draws this browser's own last confirmed
+// write, and it leaves the controls open and asks once. That is what S1-S2
+// exercise, and they pass on both sides of the landing. S3-S5 are about the
+// reads themselves -- a value that survives a cleared tab, controls closed
+// without a refused request, and a stale write drawn as a conflict -- and none
+// of them can mean anything until the reads answer. The group detects that
+// from the screen's own `data-outcome` and records them `pending` rather than
+// inventing a pass or quietly skipping them.
 //
 // **The seed grants nobody `settings:manage`, and this group says so out loud.**
 // `scripts/local-seed.mjs` gives its admin `task` read/write/assign/comment/
@@ -36,9 +48,17 @@ import {
   users,
 } from './harness.mjs';
 
+// S3-S5 are deliberately absent: a required row is one that must pass on this
+// build, and these three cannot until the reads land.
 const REQUIRED = ['S1', 'S2'];
 const SAVE = '[data-settings="save-four-eyes"]';
 const KNOWN = '[data-settings="four-eyes-known"]';
+const VALUE = '[data-settings="four-eyes-value"]';
+const READ = '[data-settings="read"]';
+const CAPS = '[data-settings="capabilities"]';
+const CONFLICT = '[data-settings="conflict"]';
+/** What the screen says the row's key is, in the two places that need it. */
+const KEY = 'four_eyes_threshold';
 
 /**
  * The person behind a seeded login, found by the subject GoTrue minted.
@@ -95,6 +115,48 @@ async function storedThreshold(admin, businessId) {
   return rows[0]?.value;
 }
 
+/**
+ * What the screen is showing for the four-eyes threshold, and whether the way
+ * it is showing it is coherent.
+ *
+ * Exactly one of the two lines must be on the page. Both would be two numbers
+ * with two provenances, one of them possibly stale; neither would be a screen
+ * that has quietly stopped saying anything. `text` is whichever one is there,
+ * so a caller can assert the number without caring which build it is on.
+ */
+async function whatIsShown(page) {
+  const fromServer = await page.locator(VALUE).count();
+  const fromBrowser = await page.locator(KNOWN).count();
+  const named = await page.locator('[data-settings="not-readable"]').count();
+  const outcome = await page.locator(READ).getAttribute('data-outcome');
+  const text =
+    fromServer === 1
+      ? await page.locator(VALUE).innerText()
+      : fromBrowser === 1
+        ? await page.locator(KNOWN).innerText()
+        : '';
+  const coherent = fromServer + fromBrowser === 1 && (fromServer === 1 ? named === 0 : named === 1);
+  return {
+    ok: coherent,
+    text,
+    observed:
+      `the read answered "${String(outcome)}" and the screen says "${text.trim()}" ` +
+      `(server line ${fromServer}, browser line ${fromBrowser}, absent-read notice ${named})`,
+  };
+}
+
+/** Wait until whichever line the build draws carries this value. */
+async function settledOn(page, value) {
+  await page
+    .waitForFunction(
+      ([v, a, b]) =>
+        [a, b].some((selector) => document.querySelector(selector)?.textContent?.includes(v)),
+      [value, VALUE, KNOWN],
+      { timeout: 15_000 },
+    )
+    .catch(() => undefined);
+}
+
 export async function casesSettings(run) {
   const context = await run.browser.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
@@ -114,62 +176,58 @@ async function settings(page, run) {
   await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(SAVE, { timeout: 15_000 });
 
-  // The screen opens on "not known" and says why, because no declared read
-  // carries these rows. That is a case of its own: a screen that opened on the
-  // shipped default would be telling a person a number nobody asked for.
-  const opened = await page.locator(KNOWN).innerText();
-  const named = await page.locator('[data-settings="not-readable"]').count();
+  // **S1 holds on both sides of the reads landing, and that is deliberate.**
+  // The screen has two honest openings and which one a person sees is a fact
+  // about the API, not about the screen: where `settings.read` answers, the
+  // server's own value is drawn and this browser's memory of its last write is
+  // not on the page at all; where it does not, the fallback is drawn and the
+  // screen names the read that is not answering. Asserting only one of them
+  // would make this row fail the day the other becomes true, for a reason that
+  // is not a defect. So the row asserts the pair: exactly one of them, never
+  // both, never neither.
+  const opened = await whatIsShown(page);
   record({
-    case: 'S1 the screen opens on unknown and names the missing read',
+    case: 'S1 the screen opens on the server, or says it could not ask',
     action: 'ada opened /settings',
-    observed: `it says "${opened.trim()}" and ${named === 1 ? 'names' : 'does not name'} the absent read`,
-    ok: opened.includes('not known') && named === 1,
-    shot: await shot(page, 'S1-settings-unknown'),
+    observed: opened.observed,
+    ok: opened.ok,
+    shot: await shot(page, 'S1-settings-opened'),
   });
 
   await withSettingsGrant(database, alpha, ada, async () => {
     await page.fill('#settings-four-eyes', '1234');
     await page.click(SAVE);
-    await page
-      .waitForFunction(
-        () =>
-          document.querySelector('[data-settings="four-eyes-known"]')?.textContent.includes('1234'),
-        undefined,
-        { timeout: 15_000 },
-      )
-      .catch(() => undefined);
+    await settledOn(page, '1234');
 
-    const confirmed = await page.locator(KNOWN).innerText();
+    const confirmed = await whatIsShown(page);
     const stored = await storedThreshold(admin, alpha);
     record({
       case: 'S1 an admin sets the threshold and the row holds it',
       action: 'ada set the four-eyes threshold to 1234 with settings:manage in hand',
-      observed: `the screen says "${confirmed.trim()}" and the row holds ${JSON.stringify(stored)}`,
-      ok: confirmed.includes('1234') && String(stored) === '1234',
+      observed: `${confirmed.observed}; the row holds ${JSON.stringify(stored)}`,
+      ok: confirmed.ok && confirmed.text.includes('1234') && String(stored) === '1234',
       shot: await shot(page, 'S1-threshold-written'),
     });
 
-    // A hard reload: a new document. The value stands because the tab kept the
-    // server's own confirmation, and the screen still says it is not a read.
+    // A hard reload: a new document. Where the read answers, the value comes
+    // back from the server; where it does not, it stands on the tab's memory of
+    // the server's own confirmation. Either way the screen says which.
     await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector(KNOWN, { timeout: 15_000 });
-    const after = await page.locator(KNOWN).innerText();
-    const stillNamed = await page.locator('[data-settings="not-readable"]').count();
+    await page.waitForSelector(SAVE, { timeout: 15_000 });
+    const after = await whatIsShown(page);
     const stillStored = await storedThreshold(admin, alpha);
     record({
       case: 'S1 it stands across a reload',
       action: 'hard-reloaded /settings',
-      observed:
-        `the screen says "${after.trim()}", the row still holds ${JSON.stringify(stillStored)}, ` +
-        `and it ${stillNamed === 1 ? 'still says' : 'no longer says'} the value is not read back`,
-      ok: after.includes('1234') && String(stillStored) === '1234' && stillNamed === 1,
+      observed: `${after.observed}; the row still holds ${JSON.stringify(stillStored)}`,
+      ok: after.ok && after.text.includes('1234') && String(stillStored) === '1234',
       shot: await shot(page, 'S1-threshold-after-reload'),
     });
 
     // Put the shared row back where it was found.
     await page.fill('#settings-four-eyes', String(was));
     await page.click(SAVE);
-    await page.waitForTimeout(800);
+    await settledOn(page, String(was));
     return undefined;
   });
 
@@ -182,9 +240,22 @@ async function settings(page, run) {
   });
 
   await refusedMember(page, admin, alpha);
+  await readCases(page, run, ada, was);
 }
 
-/** A member holding nothing on `settings`, asking once. */
+/**
+ * A member holding nothing on `settings`, and the value that does not move.
+ *
+ * **There are two ways this build can stop her and the row asserts whichever
+ * one is in force.** Where `session.capabilities` answers, the screen knows
+ * before she presses and the controls never open, so there is no request to
+ * refuse -- that is the whole point of the read, and S4 is the row that says
+ * so in its own words. Where the capability read does not answer, she asks
+ * once, the server refuses in its own words, and the controls close behind it.
+ * What S2 holds across both is the part that matters: she cannot change the
+ * value, she is told why, and she is never left pressing a button that will
+ * keep being refused.
+ */
 async function refusedMember(page, admin, alpha) {
   await page.evaluate(() => {
     sessionStorage.clear();
@@ -197,42 +268,291 @@ async function refusedMember(page, admin, alpha) {
 
   const sent = [];
   page.on('request', (request) => {
-    if (request.url().includes('/settings/')) sent.push(request.url());
+    // `/settings/set_`, not `/settings/`: `settings.read` lives under the same
+    // prefix, and counting it here would make the "asked once" assertion count
+    // a read as a refused write.
+    if (request.url().includes('/settings/set_')) sent.push(request.url());
   });
 
-  await page.fill('#settings-four-eyes', '4321');
-  await page.click(SAVE);
-  await page
-    .waitForSelector('[data-settings="refusal"]', { timeout: 15_000 })
-    .catch(() => undefined);
-  const quoted = await page
-    .locator('[data-settings="refusal"]')
+  const closedOnOpen = await page.locator(SAVE).isDisabled();
+  if (closedOnOpen) {
+    // The capability read got there first. Press anyway: a closed control that
+    // still sends is the defect this row would be blind to otherwise.
+    await page.click(SAVE, { force: true }).catch(() => undefined);
+    await page.waitForTimeout(500);
+  } else {
+    await page.fill('#settings-four-eyes', '4321');
+    await page.click(SAVE);
+    await page
+      .waitForSelector('[data-settings="refusal"]', { timeout: 15_000 })
+      .catch(() => undefined);
+    await page.click(SAVE, { force: true }).catch(() => undefined);
+    await page.waitForTimeout(500);
+  }
+
+  const told = await page
+    .locator('[data-settings="refusal"], [data-settings="capabilities-because"]')
+    .first()
     .innerText()
     .catch(() => '');
-  const afterFirst = sent.length;
-
-  await page.click(SAVE, { force: true }).catch(() => undefined);
-  await page.waitForTimeout(500);
   const disabled = await page.locator(SAVE).isDisabled();
   const signOffDisabled = await page.locator('[data-settings="save-sign-off"]').isDisabled();
   const after = await storedThreshold(admin, alpha);
+  // One request if she had to ask, none if the read spared her the asking.
+  const asked = closedOnOpen ? 0 : 1;
 
   record({
-    case: 'S2 a member is refused and the value is unchanged',
-    action: 'mia opened /settings and tried to set the threshold to 4321, twice',
+    case: 'S2 a member cannot change the value, and is told why',
+    action: `mia opened /settings and pressed save twice (controls ${closedOnOpen ? 'already closed' : 'open on arrival'})`,
     observed:
-      `the screen quoted "${quoted.slice(0, 80)}"; the controls are ` +
+      `the screen says "${told.replaceAll('\n', ' ').slice(0, 90)}"; the controls are ` +
       `${disabled && signOffDisabled ? 'closed' : 'still open'}; the row went from ` +
       `${JSON.stringify(before)} to ${JSON.stringify(after)}; ` +
-      `${String(afterFirst)} request(s) before the second press, ${String(sent.length)} after`,
+      `${String(sent.length)} write(s) left the browser, ${String(asked)} expected`,
     ok:
-      quoted.includes('SCOPE_NOT_GRANTED') &&
+      (closedOnOpen ? told.includes('settings:manage') : told.includes('SCOPE_NOT_GRANTED')) &&
       disabled &&
       signOffDisabled &&
       String(before) === String(after) &&
-      afterFirst === 1 &&
-      sent.length === 1,
+      sent.length === asked,
     shot: await shot(page, 'S2-settings-refused'),
+  });
+  page.removeAllListeners('request');
+}
+
+// ------------------------------------------------- S3-S5: the two reads
+
+/** What the screen says the settings read did. `unavailable` = no such read. */
+const readOutcome = (page) => page.locator(READ).getAttribute('data-outcome');
+
+/** The same for the capability read. */
+const capsOutcome = (page) => page.locator(CAPS).getAttribute('data-outcome');
+
+/**
+ * What the row's revision is, straight from the table.
+ *
+ * Undefined until lane SETTINGS-REVISION adds the column, which is the same
+ * signal the screen feature-detects on: no revision, no `expectedRevision`, no
+ * `VERSION_STALE` to draw. The query is written so a table without the column
+ * answers `undefined` rather than throwing, because a case that cannot run
+ * must record that it did not run, not take the group down with it.
+ */
+async function storedRevision(admin, businessId) {
+  const rows = await admin
+    .execute(
+      `select revision from public.business_settings
+        where business_id = $1 and key = $2`,
+      [businessId, KEY],
+    )
+    .catch(() => []);
+  return rows[0]?.revision;
+}
+
+/** Somebody else writes the row while this person is looking at it. */
+async function writtenByAnother(admin, businessId, value) {
+  await admin.execute(
+    `update public.business_settings
+        set value = $3, revision = revision + 1
+      where business_id = $1 and key = $2`,
+    [businessId, KEY, JSON.stringify(value)],
+  );
+}
+
+/** A row nobody can run yet, recorded as exactly that. */
+const notYet = (name, action, why) => {
+  record({ case: name, action, observed: why, pending: 'the reads have not landed' });
+};
+
+async function readCases(page, run, ada, was) {
+  const { database, admin, alpha } = run;
+
+  await signIn(page, 'ada@alpha.local', 'alpha');
+  await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(READ, { timeout: 15_000 });
+  const reads = await readOutcome(page);
+  const caps = await capsOutcome(page);
+
+  await s3(page, { database, admin, alpha, ada, was, reads });
+  await s4(page, { admin, alpha, caps });
+  await s5(page, { database, admin, alpha, ada, was, reads });
+}
+
+/**
+ * S3: the value on the screen came from the server, and nothing else could
+ * have put it there.
+ *
+ * The tab's own memory of its last confirmed write is cleared before the
+ * reload, so the fallback has nothing to draw. A number on the screen after
+ * that is the read's or it is nowhere.
+ */
+async function s3(page, context) {
+  const { database, admin, alpha, ada, was, reads } = context;
+  if (reads !== 'ready' && reads !== 'empty') {
+    notYet(
+      'S3 the value shown comes from the read after a reload',
+      "ada reloaded /settings with this tab's memory cleared",
+      `the settings read answered "${String(reads)}" — there is no read on this API yet`,
+    );
+    return;
+  }
+  await withSettingsGrant(database, alpha, ada, async () => {
+    await page.fill('#settings-four-eyes', '1234');
+    await page.click(SAVE);
+    await page
+      .waitForFunction((v) => document.querySelector(v)?.textContent?.includes('1234'), VALUE, {
+        timeout: 15_000,
+      })
+      .catch(() => undefined);
+
+    // The tab forgets. Only the server can answer now.
+    await page.evaluate(() => {
+      sessionStorage.removeItem(`ops-astro.settings.alpha`);
+    });
+    await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector(VALUE, { timeout: 15_000 });
+
+    const shown = await page.locator(VALUE).innerText();
+    const stored = await storedThreshold(admin, alpha);
+    const browserSaid = await page.locator(KNOWN).count();
+    record({
+      case: 'S3 the value shown comes from the read after a reload',
+      action: "ada wrote 1234, cleared this tab's memory of it and reloaded /settings",
+      observed:
+        `the screen says "${shown.trim()}", the row holds ${JSON.stringify(stored)}, and the ` +
+        `browser-confirmed line is ${browserSaid === 0 ? 'absent' : 'still drawn'}`,
+      ok: shown.includes('1234') && String(stored) === '1234' && browserSaid === 0,
+      shot: await shot(page, 'S3-value-from-read'),
+    });
+
+    await page.fill('#settings-four-eyes', String(was));
+    await page.click(SAVE);
+    await page.waitForTimeout(800);
+    return undefined;
+  });
+}
+
+/**
+ * S4: a member's controls are closed before anything is asked.
+ *
+ * The point is the absent request. Before `session.capabilities` the only way
+ * to find out that mia may not write was to write and be refused, which is S2.
+ * With the read, the screen knows, and the case fails if a request goes out.
+ */
+async function s4(page, context) {
+  const { admin, alpha, caps } = context;
+  if (caps !== 'ready' && caps !== 'empty') {
+    notYet(
+      "S4 a member's controls are closed by capability, with no request",
+      'mia opened /settings',
+      `the capability read answered "${String(caps)}" — there is no such read on this API yet`,
+    );
+    return;
+  }
+  const before = await storedThreshold(admin, alpha);
+  const sent = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/settings/set_')) sent.push(request.url());
+  });
+
+  await signIn(page, 'mia@alpha.local', 'alpha');
+  await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(SAVE, { timeout: 15_000 });
+
+  const disabled = await page.locator(SAVE).isDisabled();
+  const signOff = await page.locator('[data-settings="save-sign-off"]').isDisabled();
+  const said = await page
+    .locator('[data-settings="capabilities-because"]')
+    .innerText()
+    .catch(() => '');
+  await page.click(SAVE, { force: true }).catch(() => undefined);
+  await page.waitForTimeout(500);
+  const after = await storedThreshold(admin, alpha);
+
+  record({
+    case: "S4 a member's controls are closed by capability, with no request",
+    action: 'mia opened /settings and pressed save',
+    observed:
+      `the controls are ${disabled && signOff ? 'closed' : 'still open'}, the screen says ` +
+      `"${said.slice(0, 80)}", ${String(sent.length)} write(s) were sent, and the row went from ` +
+      `${JSON.stringify(before)} to ${JSON.stringify(after)}`,
+    ok:
+      disabled &&
+      signOff &&
+      said.includes('settings:manage') &&
+      sent.length === 0 &&
+      String(before) === String(after),
+    shot: await shot(page, 'S4-closed-by-capability'),
+  });
+}
+
+/**
+ * S5: somebody else wrote first, and the screen says so instead of losing it.
+ *
+ * `VERSION_STALE` is drawn with both numbers on the page — what the reread
+ * found and what this person asked for — and the overwrite needs a second
+ * explicit press. A screen that retried against the fresh revision by itself
+ * would turn "somebody else got there first" into "you silently overrode them",
+ * which is the failure this whole case exists to make visible.
+ */
+async function s5(page, context) {
+  const { database, admin, alpha, ada, was, reads } = context;
+  const revision = await storedRevision(admin, alpha);
+  if (reads !== 'ready' || revision === undefined) {
+    notYet(
+      'S5 a stale write is drawn as a conflict and needs a second press',
+      'ada pressed save after another writer moved the row',
+      revision === undefined
+        ? 'business_settings carries no revision column yet'
+        : `the settings read answered "${String(reads)}"`,
+    );
+    return;
+  }
+  await withSettingsGrant(database, alpha, ada, async () => {
+    await signIn(page, 'ada@alpha.local', 'alpha');
+    await page.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector(VALUE, { timeout: 15_000 });
+
+    // Ada types against the revision she was shown; somebody else writes.
+    await page.fill('#settings-four-eyes', '1200');
+    await writtenByAnother(admin, alpha, 999);
+    await page.click(SAVE);
+    await page.waitForSelector(CONFLICT, { timeout: 15_000 }).catch(() => undefined);
+
+    const drawn = await page
+      .locator(CONFLICT)
+      .innerText()
+      .catch(() => '');
+    const held = await storedThreshold(admin, alpha);
+    record({
+      case: 'S5 a stale write is drawn as a conflict and needs a second press',
+      action: 'ada pressed save after another writer moved the row to 999',
+      observed:
+        `the screen drew "${drawn.replaceAll('\n', ' ').slice(0, 110)}" and the row still ` +
+        `holds ${JSON.stringify(held)}`,
+      ok: drawn.includes('VERSION_STALE') && drawn.includes('999') && drawn.includes('1200'),
+      shot: await shot(page, 'S5-stale-conflict'),
+    });
+
+    await page.click('[data-settings="confirm-four-eyes"]');
+    await page
+      .waitForFunction((v) => document.querySelector(v)?.textContent?.includes('1200'), VALUE, {
+        timeout: 15_000,
+      })
+      .catch(() => undefined);
+    const over = await storedThreshold(admin, alpha);
+    const gone = await page.locator(CONFLICT).count();
+    record({
+      case: 'S5 the second press writes over it, against the reread revision',
+      action: "ada pressed the conflict's own button",
+      observed: `the row holds ${JSON.stringify(over)} and the conflict is ${gone === 0 ? 'gone' : 'still drawn'}`,
+      ok: String(over) === '1200' && gone === 0,
+      shot: await shot(page, 'S5-written-over'),
+    });
+
+    await page.fill('#settings-four-eyes', String(was));
+    await page.click(SAVE);
+    await page.waitForTimeout(800);
+    return undefined;
   });
 }
 
