@@ -90,4 +90,8 @@ try {
   await closeQuietly(admin);
 }
 
-process.exit(writeResults({ stamp, taskKey: state.taskKey, taskId: state.taskId }) === 0 ? 0 : 1);
+// Zero only when every row passed. `writeResults` returns the rows that did
+// not — failed, pending and unrun alike — so an incomplete run cannot leave
+// this command looking like an accepted one.
+const short = writeResults({ stamp, taskKey: state.taskKey, taskId: state.taskId });
+process.exit(short === 0 ? 0 : 1);

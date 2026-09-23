@@ -2,28 +2,19 @@
 //
 // D1: an unsaved title or due date is resolved explicitly, never silently.
 //
-// **This case is written against DRAFT-FIX's markup, not this head's.** Review
-// finding 2 was that a successful assign or lifecycle action started a read,
-// `RecordState` unmounted the form while it was in flight, and whatever the
-// person had typed died with it. The first fix held the drafts across the
-// refresh instead, and the delta review of `ac90768` held two P2 findings
-// against that: a draft saved with the freshly read revision can overwrite
-// another writer, and a late successful save clears newer typing. So silently
-// keeping the drafts is not the target either.
+// A dirty draft is resolved before anything else happens to the record: the Save
+// or Discard bar is on the screen, and Refresh, the assignee control and the
+// three lifecycle buttons are disabled until one of them is pressed. Nothing is
+// merged for the person -- merging is what produced the two overwrite findings
+// this replaced.
 //
-// The target, which DRAFT-FIX has landed on `slice/draft-fix`, is that a dirty
-// draft is resolved before anything else happens to the record: the Save or
-// Discard bar is on the screen, and Refresh, the assignee control and the three
-// lifecycle buttons are disabled until one of them is pressed.
+// The resolve bar is shipped behaviour, so its absence is a **failed** required
+// case, not a row pending a sibling lane. The four rows below record what the
+// screen actually did either way, so a failing run is still diagnosable, but the
+// command does not pass without them.
 //
-// Until that merges, the markup below is simply absent. This case says so --
-// every row is recorded `pending DRAFT-FIX` with what the screen actually did
-// -- rather than asserting the behaviour this head happens to have. The suite
-// does not fail on a pending row; the coordinator reruns it on the merged head,
-// where it must pass.
-//
-// Nothing here is a test-only hook in the product. Every selector it uses is
-// one DRAFT-FIX's handback lists as the screen's own.
+// Nothing here is a test-only hook in the product. Every selector it uses is one
+// the screen owns.
 
 import { WEB, outcomeOf, record, revisionOn, serverTask, shot, throughClient } from './harness.mjs';
 
@@ -87,7 +78,7 @@ export async function casesTaskDrafts(run) {
     .catch(() => false);
 
   if (!offered) {
-    await pendingRows(run, key);
+    await missingBarRows(run, key);
     return;
   }
 
@@ -98,26 +89,28 @@ export async function casesTaskDrafts(run) {
 }
 
 /**
- * This head has no resolve bar. Say what it does instead, in the same words the
- * merged head's rows will use, so the two runs are comparable.
+ * No resolve bar on a screen with an unsaved edit. That is the required
+ * behaviour missing, so every row fails -- and each one still says what the
+ * screen did instead, in the same words a passing run uses, so the two runs are
+ * comparable.
  */
-async function pendingRows(run, key) {
+async function missingBarRows(run, key) {
   const { page } = run;
   const locked = await lockedControls(page);
   const now = await inputs(page);
   record({
     case: 'D1 a dirty draft is resolved explicitly',
     action: `typed a title on /task/${key} and looked for ${CHOICE}`,
-    observed: `no resolve bar on the screen; Refresh disabled=${locked.refresh}, assignee disabled=${locked.assignee}, lifecycle disabled=${locked.lifecycle}; inputs hold ${JSON.stringify(now)} — the draft is kept silently, which the delta review of ac90768 holds two P2 findings against`,
-    pending: 'DRAFT-FIX',
+    observed: `no resolve bar on the screen; Refresh disabled=${locked.refresh}, assignee disabled=${locked.assignee}, lifecycle disabled=${locked.lifecycle}; inputs hold ${JSON.stringify(now)} — the unsaved edit is being kept silently instead of resolved`,
+    ok: false,
     shot: await shot(page, 'D1-no-resolve-bar'),
   });
   for (const what of ['Discard', 'Save', 'the stale-revision conflict']) {
     record({
       case: `D1 ${what.toLowerCase()} from the resolve bar`,
       action: `press ${what} on /task/${key}`,
-      observed: 'the control does not exist at this head',
-      pending: 'DRAFT-FIX',
+      observed: 'the control is not on the screen, so the behaviour cannot be exercised',
+      ok: false,
     });
   }
 }

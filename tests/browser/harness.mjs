@@ -53,9 +53,10 @@ export const passwordOf = (email) => users.find((user) => user.email === email)?
 export const results = [];
 
 /**
- * A case's verdict. `pending` is a case written against behaviour a sibling
- * lane is landing: it ran, it says what it saw, and it is neither a pass this
- * head has earned nor a failure the lane is asked to fix.
+ * A case's verdict. `pending` still labels a case whose sibling behaviour has
+ * not landed, because the label is what makes a partial run readable — but a
+ * pending or unrun row is counted against the command, not excused by it. See
+ * `writeResults`.
  */
 const verdictOf = (entry) =>
   entry.pending
@@ -226,7 +227,14 @@ export async function closeQuietly(pool) {
 
 /**
  * The results table a person reads, and the exit code the one command needs.
- * Returns the number that failed, so the entry point can exit on it.
+ *
+ * Returns the number of rows that did not pass: failed, pending and unrun
+ * together. A pending or unrun row is not a pass. The earlier version returned
+ * only `failed.length`, so a run that never reached a required case — or
+ * recorded it as pending a sibling lane — exited zero, and anything reading the
+ * exit code of `pnpm verify:browser` read an incomplete run as an accepted one.
+ * The table below still separates the three so a partial run can be diagnosed;
+ * it is only the count that stops forgiving them.
  */
 export function writeResults(given) {
   const pending = results.filter((entry) => entry.pending);
@@ -249,8 +257,9 @@ export function writeResults(given) {
     '',
   ];
   writeFileSync(`${SHOTS}/RESULTS.md`, `${lines.join('\n')}\n`);
+  const short = failed.length + pending.length + unrun;
   console.log(
-    `\nwrote ${SHOTS}/RESULTS.md — ${ran.length - failed.length}/${ran.length} passed, ${pending.length} pending`,
+    `\nwrote ${SHOTS}/RESULTS.md — ${ran.length - failed.length}/${ran.length} passed, ${failed.length} failed, ${unrun} unrun, ${pending.length} pending; ${short} row(s) short of acceptance`,
   );
-  return failed.length;
+  return short;
 }

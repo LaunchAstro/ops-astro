@@ -112,16 +112,21 @@ changed without reading the rest:
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).
 
-A case written against behaviour a sibling lane is still landing is recorded
-`pending <LANE>` rather than pass or fail: it ran, it says what it saw, and it
-does not fail the command. Nothing is pending on this head.
+`pnpm verify:browser` exits zero only when **every** row passed. `writeResults`
+returns the rows that did not — failed, pending and unrun together — so a run
+that stopped early, or that recorded a required case as pending a sibling lane,
+cannot leave the command looking like an accepted one. The `pending` and `unrun`
+labels stay in the table, because they are what makes a partial run readable;
+they just no longer buy a zero exit. Nothing is pending or unrun on this head.
 
 ### Cases address controls by attribute, not by text
 
-Two buttons on `/task/:key` read **Save changes**: the edit form's
-`form.taskform button[type="submit"]`, and the unsaved-changes bar's
-`button[data-draft-resolve="save"]` (`apps/web/src/screens/TaskDetail.tsx:485`
-and `:358`). A case that asks for the button by its name matches both and
+Two buttons on `/task/:key` read **Save changes**: the edit form's own
+`form#task-fields button[type="submit"]`, and the unsaved-changes bar's
+`button[data-draft-resolve="save"]` (`apps/web/src/screens/TaskDetail.tsx:507`
+and `:379`). Both submit the same form — the bar's is outside it and reaches it
+through `form="task-fields"`, so a cleared title is refused by whichever one is
+pressed. A case that asks for the button by its name matches both and
 fails on the ambiguity, so B4 presses the form's submit — the honest control
 for a case that edits the fields and then saves them. The three state buttons
 are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
