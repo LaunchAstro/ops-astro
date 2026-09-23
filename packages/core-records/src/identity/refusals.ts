@@ -26,6 +26,27 @@
  */
 export type IdentityRefusalCode = 'AUTH_UNKNOWN_LOGIN' | 'AUTH_NO_MEMBERSHIP' | 'ACTOR_INACTIVE';
 
+/**
+ * The two codes the agent path adds, kept in their own union rather than
+ * widened into `IdentityRefusalCode`.
+ *
+ * `commands/register.ts` derives its `RefusalCode` from that union, and the
+ * register is L3's. Widening it here would reach into the command surface from
+ * the identity module, which is the coupling the register exists to prevent.
+ * These are exported for L3 to register with the rest.
+ *
+ * `AUTH_NO_AGENT_IDENTITY` is the agent login path's one refusal: no login
+ * here, a login that belongs to a person, a deactivated mapping and a
+ * deactivated agent actor all produce it, for the reason
+ * `AUTH_NO_MEMBERSHIP` gives on the person side.
+ *
+ * `AUTH_SESSION_EXPIRED` is a verified token that has expired. It is its own
+ * code because a client has to tell "sign in again" from "you may not see
+ * this" and from "the server is broken". Only one of those is a re-login path,
+ * and a silent failure is none of them.
+ */
+export type AgentIdentityRefusalCode = 'AUTH_NO_AGENT_IDENTITY' | 'AUTH_SESSION_EXPIRED';
+
 export interface Refusal {
   readonly refused: true;
   readonly code: IdentityRefusalCode;
@@ -33,11 +54,25 @@ export interface Refusal {
   readonly fixes: readonly string[];
 }
 
+/** The same shape, in the agent path's codes. Separate so the register stays L3's. */
+export interface AgentRefusal {
+  readonly refused: true;
+  readonly code: AgentIdentityRefusalCode;
+  readonly fixes: readonly string[];
+}
+
 export function refuse(code: IdentityRefusalCode, fixes: readonly string[]): Refusal {
   return { refused: true, code, fixes };
 }
 
+export function refuseAgent(
+  code: AgentIdentityRefusalCode,
+  fixes: readonly string[],
+): AgentRefusal {
+  return { refused: true, code, fixes };
+}
+
 /** The discriminant, so a caller can tell a result from a refusal. */
-export function isRefusal(value: object): value is Refusal {
+export function isRefusal(value: object): value is Refusal | AgentRefusal {
   return 'refused' in value && value.refused === true;
 }
