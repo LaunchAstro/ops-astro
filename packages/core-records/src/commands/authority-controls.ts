@@ -26,7 +26,13 @@
 // The attempts it leaves without work authority are no longer claimable, so
 // the same transaction releases their leases and classifies their holds
 // through `classifyAuthorityLoss`, under the complete ordered lock set. Both
-// handlers discover before any runtime lock and write only after it.
+// handlers discover before any runtime lock and write only after it, and both
+// answer with the ids of the holds they classified and nothing else about them.
+//
+// EX-01. A person's own lease carries no delegation: its work authority is the
+// person's own live `write` on the task, read from their person and actor
+// subjects, which is exactly what pickup, renewal and handback check. A grant
+// revocation that costs a person that authority ends their lease the same way.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -38,8 +44,9 @@ import {
   type Scope,
 } from '../authority/grants.ts';
 import { revokeDelegation } from '../authority/delegations.ts';
-import { classifyAuthorityLoss } from '../../../core-runtime/src/recovery.ts';
+import { classifyAuthorityLoss, type Classification } from '../../../core-runtime/src/recovery.ts';
 import type { CommandContext } from './context.ts';
+import { declarationOf } from './surface.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
@@ -93,22 +100,42 @@ async function withinCeiling(
   );
 }
 
+/**
+ * The collection a person's own claim checks `write` in: `task.pickup`'s, so
+ * this and pickup cannot come to disagree about which grant a claim rests on.
+ */
+function claimCollection(): string {
+  const declared = declarationOf('task.pickup');
+  if (declared === undefined) throw new Error('grant.revoke: task.pickup is not declared');
+  return declared.collection;
+}
+
 /** A live attempt drawing on a person the revoked grant may have covered. */
 interface Dependent {
-  readonly delegation_id: string;
+  readonly lease_id: string;
+  /** Null for a person's own lease (EX-01), which draws on that person directly. */
+  readonly delegation_id: string | null;
   readonly person_id: string;
+  /** The holding actor of a person's own lease, whose grants pickup also read. */
+  readonly actor_id: string | null;
   readonly task_id: string;
   readonly collections: readonly string[];
 }
 
 /**
- * Read-only: the live leases whose delegating person the grant, or a grant
- * derived from it, names. A revocation collapses what the revoked grant
+ * Read-only: the live leases whose authority the grant, or a grant derived
+ * from it, may have carried. A revocation collapses what the revoked grant
  * issued (`grants.ts`), so its descendants' subjects are candidates too.
- * `write` only, because that is the work authority an attempt draws on; and
- * `person` only, because a delegation's ceiling is its person's own grants
- * (`checkDelegatedAuthority`). A candidate is not yet a loss: the person may
- * hold write through another grant, which is re-read under the locks.
+ *
+ * `write` only, because that is the work authority a claim draws on: the
+ * action `task.pickup`, `task.heartbeat` and `task.handback` are declared
+ * under (`surface.ts`), and the one person pickup, renewal and handback each
+ * re-read under their locks (T3 line 66: the person uses "the same work/lease
+ * contract"). An agent's lease draws on its delegating person, because a
+ * delegation's ceiling is that person's own grants (`checkDelegatedAuthority`).
+ * A person's own lease draws on the holder's person and actor subjects, the
+ * two `subjectsOf` gives their session. A candidate is not yet a loss: the
+ * holder may have write through another grant, which is re-read under the locks.
  */
 async function dependents(tx: TenantQuery, grantId: string): Promise<readonly Dependent[]> {
   return await tx.query<Dependent>(
@@ -120,7 +147,8 @@ async function dependents(tx: TenantQuery, grantId: string): Promise<readonly De
          from public.grants c join revoked p on c.parent_grant_id = p.id
         where c.business_id = $1
      )
-     select l.delegation_id, l.authorised_by_person_id as person_id, l.task_id, d.collections
+     select l.id as lease_id, l.delegation_id, l.authorised_by_person_id as person_id,
+            null::uuid as actor_id, l.task_id, d.collections
        from public.leases l
        join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
       where l.business_id = $1 and l.state = 'live'
@@ -128,16 +156,31 @@ async function dependents(tx: TenantQuery, grantId: string): Promise<readonly De
         and exists (select 1 from revoked r
                      where r.subject_kind = 'person' and r.subject_id = l.authorised_by_person_id
                        and r.action = 'write' and r.collection = any(d.collections))
-      order by l.delegation_id, l.task_id`,
-    [tx.businessId, grantId],
+     union all
+     select l.id as lease_id, null::uuid, a.person_id, l.holder_actor_id, l.task_id,
+            array[$3::text]
+       from public.leases l
+       join public.actors a
+         on a.business_id = l.business_id and a.id = l.holder_actor_id and a.kind = 'person'
+      where l.business_id = $1 and l.state = 'live' and l.delegation_id is null
+        and exists (select 1 from revoked r
+                     where r.action = 'write' and r.collection = $3
+                       and ((r.subject_kind = 'person' and r.subject_id = a.person_id)
+                            or (r.subject_kind = 'actor' and r.subject_id = l.holder_actor_id)))
+      order by lease_id`,
+    [tx.businessId, grantId, claimCollection()],
   );
 }
 
-/** Whether the delegating person still holds write on the attempt's task, in every collection. */
+/** Whether the attempt's holder of authority still holds write on its task, in every collection. */
 async function stillAuthorised(tx: TenantQuery, dependent: Dependent): Promise<boolean> {
+  const subjects = [
+    { kind: 'person' as const, id: dependent.person_id },
+    ...(dependent.actor_id === null ? [] : [{ kind: 'actor' as const, id: dependent.actor_id }]),
+  ];
   for (const collection of dependent.collections) {
     // eslint-disable-next-line no-await-in-loop -- one collection per delegation today
-    const held = await checkAuthority(tx, [{ kind: 'person', id: dependent.person_id }], {
+    const held = await checkAuthority(tx, subjects, {
       collection,
       action: 'write',
       scope: { kind: 'record', id: dependent.task_id },
@@ -146,6 +189,13 @@ async function stillAuthorised(tx: TenantQuery, dependent: Dependent): Promise<b
   }
   return true;
 }
+
+/**
+ * The holds a loss classified, by id only: the response says which work it
+ * ended and nothing about whose. One the classifier left held is not listed.
+ */
+const classifiedHolds = (classified: readonly Classification[]): readonly string[] =>
+  classified.filter((each) => each.state !== 'held').map((each) => each.reservationId);
 
 export async function revokeGrantAsManager(
   tx: TenantQuery,
@@ -189,7 +239,13 @@ export async function revokeGrantAsManager(
 
   const candidates = await dependents(tx, grantId);
   const loss = await classifyAuthorityLoss(tx, {
-    delegationIds: candidates.map((each) => each.delegation_id),
+    delegationIds: candidates.flatMap((each) =>
+      each.delegation_id === null ? [] : [each.delegation_id],
+    ),
+    personLeases: {
+      leaseIds: candidates.flatMap((each) => (each.delegation_id === null ? [each.lease_id] : [])),
+      causeId: grantId,
+    },
     revoke: async () => {
       // The candidate set is part of the lock set, so it is rechecked like
       // the rest of it: a pickup that committed in between is a lease these
@@ -206,15 +262,22 @@ export async function revokeGrantAsManager(
       // attempt whose person now holds no write on its task has lost its
       // work authority. One still covered by another live grant is untouched.
       const lost: string[] = [];
+      const lostLeases: string[] = [];
       for (const dependent of current) {
         // eslint-disable-next-line no-await-in-loop -- one per live attempt, each decisive
-        if (!(await stillAuthorised(tx, dependent))) lost.push(dependent.delegation_id);
+        if (await stillAuthorised(tx, dependent)) continue;
+        if (dependent.delegation_id === null) lostLeases.push(dependent.lease_id);
+        else lost.push(dependent.delegation_id);
       }
-      return { applied: true, value: revokedAt, lost };
+      return { applied: true, value: revokedAt, lost, lostLeases };
     },
   });
   if (!loss.applied || loss.value === null) return already;
-  return applied(grantId, null, { grantId, revokedAt: loss.value.toISOString() });
+  return applied(grantId, null, {
+    grantId,
+    revokedAt: loss.value.toISOString(),
+    classifiedHolds: classifiedHolds(loss.classified),
+  });
 }
 
 export async function revokeDelegationAsManager(
@@ -275,5 +338,9 @@ export async function revokeDelegationAsManager(
       ),
     );
   }
-  return applied(delegationId, null, { delegationId, revokedAt: revokedAt.toISOString() });
+  return applied(delegationId, null, {
+    delegationId,
+    revokedAt: revokedAt.toISOString(),
+    classifiedHolds: classifiedHolds(loss.classified),
+  });
 }

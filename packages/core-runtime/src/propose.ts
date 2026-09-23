@@ -222,9 +222,12 @@ export async function proposeUnderLocks(
     );
     const row = found[0];
     if (row === undefined) {
+      // Ruling 2 of 906613f: `lineageId` is the caller's, so a lineage in
+      // another business and one that names nothing get the same bytes. The
+      // reason names neither, because the id was the only thing that differed.
       return refuse(
         'GATE_NOT_FOUND',
-        `no proposal lineage ${lineageId} in this business`,
+        'no proposal lineage with that id in this business',
         'Propose without a lineage to open a new one.',
       );
     }
