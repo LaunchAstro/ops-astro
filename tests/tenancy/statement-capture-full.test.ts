@@ -28,6 +28,7 @@ import { createStatementLog } from '../../packages/core-records/src/tenancy/stat
 import { serverUrl } from '../acceptance/world.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import {
+  AGENT_PATH_RECIPES,
   AGENT_RECIPES,
   DRIVER_TYPE_LOOKUP,
   expectedShape,
@@ -118,6 +119,23 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
       });
       captured.positive.add(declaration.name);
     });
+  });
+
+  describe('the agent path, for an operation a person also performs', () => {
+    it.each(OPERATIONS.filter(([name]) => AGENT_PATH_RECIPES[name] !== undefined))(
+      '%s',
+      async (_name, declaration) => {
+        const recipe = AGENT_PATH_RECIPES[declaration.name];
+        if (recipe === undefined) throw new Error(`capture: no agent recipe ${declaration.name}`);
+        const call: CapturedCall = { name: declaration.name, ...(await recipe(harness)) };
+        const { answer, sent } = await observed.send(call);
+        expect({ status: answer.status, code: answer.code, shape: shapeOf(sent) }).toStrictEqual({
+          status: 200,
+          code: 'ok',
+          shape: expectedShape(declaration, 'agent', 'applied'),
+        });
+      },
+    );
   });
 
   describe('a refusal, by a member who holds no grant', () => {

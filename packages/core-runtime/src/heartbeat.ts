@@ -10,7 +10,10 @@
 // - **Owner only.** The caller is the lease's holder, presenting the very
 //   delegation the pickup minted with it, at the lease's fence, and that fence
 //   is still the task's newest. Anything else is `LEASE_NOT_OWNED`, the same
-//   answer `handback` gives a stale holder.
+//   answer `handback` gives a stale holder. A person's own lease has no
+//   delegation, so a person presents none and an agent's lease is never theirs
+//   (EX-01): the delegation on the lease must be exactly the one presented,
+//   and absent on both sides for a person.
 // - **Live only.** A lease that is released, expired or past its instant is
 //   `LEASE_EXPIRED` and is not revived: renewal extends a live claim, it never
 //   makes a new one. A settled, revoked or expired delegation is refused by the
@@ -25,6 +28,7 @@
 //   expires, and the next pickup fences it as it always did (W04).
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -43,6 +47,24 @@ export interface HeartbeatRequest {
   readonly renewSeconds: number;
 }
 
+/**
+ * A person renewing the lease their own pickup took. There is no delegation
+ * to present because none was minted: the person's authority is their own
+ * live grants, re-read here under the lease lock, so a person whose write was
+ * revoked since the pickup renews nothing.
+ */
+export interface PersonHeartbeatRequest {
+  readonly claimant: 'person';
+  readonly leaseId: string;
+  readonly fence: number;
+  /** The verified session's actor, never a body field. */
+  readonly holderActorId: string;
+  /** The session's own grant subjects: its person and its actor. */
+  readonly subjects: readonly Subject[];
+  readonly collection: string;
+  readonly renewSeconds: number;
+}
+
 export interface Renewed {
   readonly leaseId: string;
   readonly taskId: string;
@@ -52,8 +74,9 @@ export interface Renewed {
 
 export async function heartbeat(
   tx: TenantQuery,
-  request: HeartbeatRequest,
+  request: HeartbeatRequest | PersonHeartbeatRequest,
 ): Promise<RuntimeResult<Renewed>> {
+  const delegationId = 'claimant' in request ? null : request.delegationId;
   const notOwned = refuse(
     'LEASE_NOT_OWNED',
     `lease ${request.leaseId} is not this caller's at fence ${request.fence}`,
@@ -67,7 +90,7 @@ export async function heartbeat(
 
   await acquire(tx, [
     { lockClass: 'lease', id: request.leaseId },
-    { lockClass: 'delegation', id: request.delegationId },
+    ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
   ]);
 
   const leases = await tx.query<{
@@ -95,13 +118,32 @@ export async function heartbeat(
   if (
     lease === undefined ||
     lease.holder_actor_id !== request.holderActorId ||
-    lease.delegation_id !== request.delegationId ||
+    lease.delegation_id !== delegationId ||
     Number(lease.fence) !== request.fence ||
     lease.fence !== lease.current_fence
   ) {
     return notOwned;
   }
-  if (lease.state !== 'live' || lease.expired || !lease.delegation_live) {
+  // A person's lease carries no delegation, so its liveness is the person's
+  // own current authority instead, and losing it is the same answer.
+  const authorityLive =
+    'claimant' in request
+      ? (
+          await checkAuthority(tx, request.subjects, {
+            collection: request.collection,
+            action: 'write',
+            scope: { kind: 'record', id: lease.task_id },
+          })
+        ).ok
+      : lease.delegation_live;
+  if (!authorityLive && 'claimant' in request && lease.state === 'live' && !lease.expired) {
+    return refuse(
+      'SCOPE_NOT_GRANTED',
+      `no live grant of yours covers work on task ${lease.task_id} any more`,
+      'A lease is renewed under current rights. Ask a manager for write on this task.',
+    );
+  }
+  if (lease.state !== 'live' || lease.expired || !authorityLive) {
     return refuse(
       'LEASE_EXPIRED',
       `lease ${request.leaseId} is ${lease.expired ? 'past its expiry' : lease.state}; a heartbeat renews a live lease and never revives one`,
@@ -122,12 +164,18 @@ export async function heartbeat(
   const expiresAt = (renewed[0] as { readonly expires_at: Date }).expires_at;
   // Copied from the lease row in SQL, not through the `Date` above, which
   // keeps milliseconds where the column keeps microseconds.
+  if (delegationId === null) {
+    return {
+      ok: true,
+      value: { leaseId: request.leaseId, taskId: lease.task_id, fence: request.fence, expiresAt },
+    };
+  }
   await tx.query(
     `update public.delegations d set expires_at = l.expires_at
        from public.leases l
       where d.business_id = $1 and d.id = $2 and d.revoked_at is null and d.settled_at is null
         and l.business_id = $1 and l.id = $3`,
-    [tx.businessId, request.delegationId, request.leaseId],
+    [tx.businessId, delegationId, request.leaseId],
   );
 
   return {

@@ -226,36 +226,54 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // admin and sent by the member. Derived from `heldBy`, so a reseed that
     // widened or narrowed a member's grants changes the rows rather than
     // disagreeing with them. Runs before (f), which takes `mia`'s read away.
-    const agentOnly = new Map<string, Readonly<Record<string, unknown>>>([
-      ['task.pickup', { reservationId: randomUUID() }],
-      ['task.handback', { leaseId: randomUUID(), fence: 1, outcome: 'completed' }],
-      ['task.heartbeat', { leaseId: randomUUID(), fence: 1 }],
-    ]);
+    // Person work (EX-01) is a sequence on the member's own lease rather than
+    // three independent bodies: the member picks up approved work as
+    // themselves, renews that lease and hands it back. It is driven once per
+    // member, when the first of the three comes up in the surface's order.
+    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.handback']);
+    const drivenFor = new Set<string>();
+    const pairOf = (name: string): string => {
+      const declaration = COMMAND_SURFACE.find((each) => each.name === name);
+      if (declaration === undefined) throw new Error(`matrix: no declaration ${name}`);
+      return harness.pairFor(declaration);
+    };
+    async function driveOwnLease(
+      caller: (typeof harness.otherCallers)[number],
+      grants: ReadonlySet<string>,
+    ): Promise<void> {
+      if (drivenFor.has(caller.name)) return;
+      drivenFor.add(caller.name);
+      if (!grants.has(pairOf('task.pickup'))) return;
+      const pickupDeclaration = COMMAND_SURFACE.find((each) => each.name === 'task.pickup');
+      if (pickupDeclaration === undefined) throw new Error('matrix: no task.pickup');
+      const prepared = await harness.positiveBody(pickupDeclaration);
+      if ('exception' in prepared) throw new Error('matrix: task.pickup has no body');
+      const picked = await harness.asPerson('task.pickup', prepared.body, 'alpha', caller);
+      observe(caller.name, 'e-member-positive', 'task.pickup', picked, SUCCESS);
+      const lease = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const own = { leaseId: lease['leaseId'], fence: lease['fence'] };
+      if (grants.has(pairOf('task.heartbeat'))) {
+        const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
+      }
+      if (grants.has(pairOf('task.handback'))) {
+        const settled = await harness.asPerson(
+          'task.handback',
+          { ...own, outcome: 'completed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.handback', settled, SUCCESS);
+      }
+    }
     for (const caller of harness.otherCallers) {
       const grants = harness.heldBy.get(caller.name);
       if (grants === undefined) continue;
       for (const declaration of COMMAND_SURFACE) {
         if (!grants.has(harness.pairFor(declaration))) continue;
-        const onAgentPath = agentOnly.get(declaration.name);
-        if (onAgentPath !== undefined) {
-          // Called, and recorded as missing coverage rather than passed. The
-          // product answers `AUTH_NO_AGENT_IDENTITY` to every person
-          // (`handlers.ts:107-119`), but person pickup is required (transaction
-          // contract T3 line 66, minimum contract line 331, ledger line 30),
-          // and the root routes person pickup, heartbeat and handback on the
-          // person's own lease to PERSON-WORK (ROOT-L6-74d583c-DISPOSITION.md
-          // lines 31-35). Asserting today's refusal would pin the gap; the
-          // observed answer goes in the row so the change is visible.
+        if (personWork.has(declaration.name)) {
           // eslint-disable-next-line no-await-in-loop
-          const answer = await harness.asPerson(declaration.name, onAgentPath, 'alpha', caller);
-          except(
-            caller.name,
-            'e-member-positive',
-            declaration.name,
-            `missing coverage: observed ${answer.code} ${String(answer.status)}; person ` +
-              'work is required (T3 line 66, minimum contract 331); owner PERSON-WORK',
-          );
-          expect(answer.body['refused'], declaration.name).toBe(true);
+          await driveOwnLease(caller, grants);
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
@@ -477,14 +495,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // is done with it. First the handback: the person path is refused by design
     // even for the admin, and the lease holder's own handback settles it.
     // A person naming the agent's lease is refused and writes nothing: the
-    // agent's own handback below still settles it. No code is asserted, because
-    // person handback is PERSON-WORK's to build (see the member-positive case).
+    // agent's own handback below still settles it. A person hands back only a
+    // lease their own pickup took (EX-01), so the answer is not-owned.
     const byPerson = await harness.asPerson('task.handback', {
       leaseId: siblingLease['leaseId'],
       fence: siblingLease['fence'],
       outcome: 'completed',
     });
     expect(byPerson.body['refused'], 'a person does not settle an agent lease').toBe(true);
+    expect(byPerson.body['code']).toBe('LEASE_NOT_OWNED');
     const siblingCredential = String(siblingLease['credential']);
     const handedBack = await harness.asAgent(
       'task.handback',

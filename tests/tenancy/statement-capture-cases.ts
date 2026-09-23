@@ -296,11 +296,44 @@ async function pickedUp(harness: Harness): Promise<Record<string, unknown>> {
 }
 
 /**
- * The five operations `role-case-bodies.ts` answers with an exception rather
- * than a body. Each is the positive call the matrix points elsewhere for,
- * built from the same journey its comment names.
+ * The operations `role-case-bodies.ts` answers with an exception rather than a
+ * body. Each is the positive call the matrix points elsewhere for, built from
+ * the same journey its comment names. `task.pickup`, `task.heartbeat` and
+ * `task.handback` left this list when person work became positive (EX-01):
+ * the matrix now has a person body for each, and their agent calls are
+ * captured separately below so the agent path stays covered.
  */
 export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
+  'delegation.revoke': async (harness) => {
+    const picked = await pickedUp(harness);
+    return { prefix: 'person', body: { delegationId: picked['delegationId'] } };
+  },
+  'grant.revoke': async (harness) => {
+    // A grant of its own to take away, issued to `noah` so no other case
+    // loses the authority it runs on. The revocation is the route.
+    const { world } = harness;
+    const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const issued = await issueGrant(tx, [], {
+        subject: { kind: 'person', id: world.noah.personId as string },
+        scope: { kind: 'business', id: null },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: world.ada.actorId as string,
+      });
+      if (!issued.ok) throw new Error(`capture: grant refused ${issued.refusal.code}`);
+      return issued.value;
+    });
+    return { prefix: 'person', body: { grantId } };
+  },
+};
+
+/**
+ * The agent's own call for the operations a person now performs too. The
+ * person body is the positive case above; these keep the agent prefix's
+ * statement shape under the same capture, from the journey the matrix names.
+ */
+export const AGENT_PATH_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
   'task.pickup': async (harness) => {
     await endLive(harness);
     return { prefix: 'agent', body: { reservationId: await reservation(harness) } };
@@ -325,27 +358,5 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       },
       credential: String(picked['credential']),
     };
-  },
-  'delegation.revoke': async (harness) => {
-    const picked = await pickedUp(harness);
-    return { prefix: 'person', body: { delegationId: picked['delegationId'] } };
-  },
-  'grant.revoke': async (harness) => {
-    // A grant of its own to take away, issued to `noah` so no other case
-    // loses the authority it runs on. The revocation is the route.
-    const { world } = harness;
-    const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
-      const issued = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: world.noah.personId as string },
-        scope: { kind: 'business', id: null },
-        collection: 'task',
-        action: 'read',
-        parentGrantId: null,
-        grantedByActorId: world.ada.actorId as string,
-      });
-      if (!issued.ok) throw new Error(`capture: grant refused ${issued.refusal.code}`);
-      return issued.value;
-    });
-    return { prefix: 'person', body: { grantId } };
   },
 };
