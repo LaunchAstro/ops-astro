@@ -115,6 +115,22 @@ async function ensure(tx, find, insert) {
   return await insert();
 }
 
+/**
+ * Whether this business already carries the task comment type.
+ *
+ * Read before `installTaskSpine`, because afterwards the answer is always yes
+ * and the installer's `installed` flag is about the task type rather than this
+ * one. One statement, no writes, and it is the seed's own question about what
+ * its log should say.
+ */
+async function hasCommentType(tx) {
+  const rows = await tx.query(
+    `select 1 from public.record_types where business_id = $1 and key = 'task_comment' limit 1`,
+    [tx.businessId],
+  );
+  return rows.length > 0;
+}
+
 async function businessIdFor(admin, key) {
   const rows = await admin.execute('select id from public.businesses where key = $1', [key]);
   if (rows[0]) return rows[0].id;
@@ -316,10 +332,22 @@ try {
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop
     await database.withBusiness(businessIds[tag], async (tx) => {
+      // Three outcomes, not two. `installed` means "this call installed the
+      // task type", so a business that already had `task` and `task_state` and
+      // has just acquired `task_comment` reports `false` and used to be logged
+      // as "already there" -- a line that says nothing happened about the one
+      // run that changed the business's model. The installer is not the place
+      // to fix that: `installed` answers exactly the question its name asks and
+      // two callers read it that way. What the seed can do is look first, which
+      // is the only place the difference is visible.
+      const hadComments = await hasCommentType(tx);
       const spine = await installTaskSpine(tx);
-      console.log(
-        `local-seed: ${BUSINESS_KEYS[tag]} task spine ${spine.installed ? 'installed' : 'already there'}`,
-      );
+      const what = spine.installed
+        ? 'installed'
+        : hadComments
+          ? 'already there'
+          : 'upgraded with the comment type';
+      console.log(`local-seed: ${BUSINESS_KEYS[tag]} task spine ${what}`);
       // After the spine, because both are record-model installs for the same
       // business and reading a seed that installs them in one order and
       // reports them in another is how a reader stops trusting the log.
