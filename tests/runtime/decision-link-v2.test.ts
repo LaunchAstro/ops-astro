@@ -77,7 +77,7 @@ describe('the decision link', () => {
   it('reads the version from the signed payload: absent is v1, 2 is v2, anything else is unknown', () => {
     expect(linkVersionOf({ note: 'x' })).toBe(1);
     expect(linkVersionOf({ note: 'x', link: 2 })).toBe(2);
-    expect(linkVersionOf({ note: 'x', link: 3 })).toBeUndefined();
+    expect(linkVersionOf({ note: 'x', link: 4 })).toBeUndefined();
     expect(linkVersionOf({ note: 'x', link: '2' })).toBeUndefined();
   });
 });

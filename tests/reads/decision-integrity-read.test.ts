@@ -314,13 +314,13 @@ describe.skipIf(serverUrl === undefined)('decision integrity on the proposal rea
       await expectIntegrityFault(world, other.taskId, /seq 1: hash does not cover the row/u);
     }, 60_000);
 
-    it('reports a decision written now as link v2', async () => {
+    it('reports a decision written now as link v3 (decision-v3.test.ts)', async () => {
       world = await createWorld('dint');
       const task = await decided(world);
       const answer = await readTask(world, task.taskId);
       expect(answer.status).toBe(200);
-      expect(decisionsOf(answer)[0]?.['linkVersion']).toBe(2);
-      expect((await onlyRow(world)).payload['link']).toBe(2);
+      expect(decisionsOf(answer)[0]?.['linkVersion']).toBe(3);
+      expect((await onlyRow(world)).payload['link']).toBe(3);
     }, 60_000);
 
     it('verifies a stored v1 row as v1, reports it as v1, and does not rewrite it', async () => {

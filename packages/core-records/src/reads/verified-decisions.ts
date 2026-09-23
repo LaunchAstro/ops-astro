@@ -33,12 +33,25 @@
 // "verified" is the defect this file exists to remove.
 //
 // **Each row is checked under its own link version and its own key.** A v2
-// link (`signing.ts`, `LinkVersion`) covers the round, the time, the lineage,
-// the acting actor, the evidence digest and the key id as well; a v1 row is
-// verified as v1, never rewritten, and the read reports `linkVersion: 1` so
-// nobody takes it for more than it covers. Keys come from a resolver, so a row
+// or v3 link (`signing.ts`, `LinkVersion`) covers the round, the time, the
+// lineage, the acting actor, the evidence digest and the key id as well; a v1
+// row is verified as v1, never rewritten, and the read reports `linkVersion: 1`
+// so nobody takes it for more than it covers. Keys come from a resolver, so a row
 // signed under a retained older key id verifies with that key, and an id the
 // resolver does not know fails.
+//
+// **A column shown is a column signed, or the read says it is not.** The
+// chain proves the payload was signed and the link covers the columns, but
+// the link hash is unkeyed: a writer who changes a column and recomputes every
+// later link leaves a chain that holds. So after `verifyChain` each row's
+// columns are compared with its own signed payload (`boundColumns`), and any
+// difference is the same named failure. Every format signed the gate, version,
+// decision, person and evidence digest, so those are bound on every row: a
+// fabricated signer, a flipped decision or an approval copied onto another
+// gate fails on v1 and v2 as well. v3 also signed the round, time, lineage,
+// acting actor, id, sequence, previous link and key id, so on v3 those are
+// bound too; on v1 and v2 they are covered by the unkeyed link alone, and the
+// proposal read lists what each row's signature covers (`signedFields`).
 //
 // One check sits beside `verifyChain` for every row: its `lineage_id` must be
 // the lineage its gate's version belongs to. The gate and version are covered
@@ -152,6 +165,14 @@ function verified(
     linkFields,
   );
   if (broken !== null) throw new DecisionIntegrityError(broken);
+  for (const row of versioned) {
+    const unsigned = boundColumns(row).find(([, column, signed]) => column !== signed);
+    if (unsigned !== undefined) {
+      throw new DecisionIntegrityError(
+        `seq ${row.seq}: ${unsigned[0]} is not what the signature covers`,
+      );
+    }
+  }
 
   const wanted = new Set(lineageIds);
   const returned = versioned.filter((row) => wanted.has(row.lineage_id));
@@ -163,6 +184,35 @@ function verified(
     }
   }
   return returned;
+}
+
+/**
+ * Each bound column, its stored value and the value its row's signed payload
+ * holds for it, in the order a failure names them. Only the fields a format
+ * signed are here: a v1 or v2 row has no signed round to compare, and
+ * pretending otherwise would fail every honest legacy row.
+ */
+function boundColumns(row: VerifiedDecision): readonly (readonly [string, unknown, unknown])[] {
+  const signed = row.payload;
+  const always = [
+    ['gate_id', row.gate_id, signed['gate']],
+    ['version_id', row.version_id, signed['version']],
+    ['decision', row.decision, signed['decision']],
+    ['decided_by_person_id', row.decided_by_person_id, signed['by']],
+    ['evidence_digest', row.evidence_digest, signed['evidence']],
+  ] as const;
+  if (row.link_version !== 3) return always;
+  return [
+    ...always,
+    ['id', row.id, signed['id']],
+    ['seq', Number(row.seq), signed['seq']],
+    ['prev_hash', row.prev_hash, signed['prev']],
+    ['lineage_id', row.lineage_id, signed['lineage']],
+    ['round', row.round, signed['round']],
+    ['decided_by_actor_id', row.decided_by_actor_id, signed['actor']],
+    ['decided_at', row.decided_at_text, signed['decidedAt']],
+    ['signing_key_id', row.signing_key_id, signed['key']],
+  ];
 }
 
 /** The gate state each decision moves its gate to (`decide.ts`). */

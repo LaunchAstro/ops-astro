@@ -66,11 +66,16 @@ export {
 export {
   canonicalise,
   chainHash,
+  decisionPayload,
   digestOf,
+  linkVersionOf,
   sign,
   verify,
   verifyChain,
   CHAIN_GENESIS,
+  LINK_VERSION,
+  type DecisionPayloadFields,
+  type LinkVersion,
   type SigningKey,
 } from './signing.ts';
 export { acquire, LOCK_ORDER, type LockClass, type LockRequest, type LockSet } from './locks.ts';

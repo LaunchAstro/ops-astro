@@ -22,7 +22,8 @@
     "RUNTIME-LIFECYCLE adds the five lifecycle suites (cancellation closes delegation and run, stale-version handback refused with retained report, proposal/handback lock order, cancel race, authority-loss classification) and control-scope (cancel/restart authorised on their own target); W-SCHEDULES adds the W01 before/after-commit, W03 handback-versus-proposal, W05 competing-reservation and eight-hour heartbeat schedules through the real command entry.",
     "PERSON-WORK adds person-work-http (EX-01 person pickup, renewal and handback on the person route, wrong-owner and lost-rights refusals) and person-work-schedules (grant.revoke against pickup, R5 fresh replacement, three competing claimants, an agent on a person's lease of its own task).",
     "AUTHORITY-LOSS adds authority-loss-person-lease (grant.revoke classifies a person's own lease, write as work authority, the run back to planned, revoke responses listing classified holds, replay exactly once) and gate-reason-lineage (task.propose and task.restart answer a foreign and a fabricated lineage id byte-identically, audited at home).",
-    "PICKUP-REPLAY adds pickup-replay-lost-response (a lost pickup response replayed with the same derived credential and handles under current rights, lease and approval binding, no plaintext token or key bytes stored) and pickup-replay-keys (fixed HMAC encoding, keyring parsing and provisioning, rotation with retained read keys, closed failure on a missing key or corrupt metadata, legacy rows kept legacy)."
+    "PICKUP-REPLAY adds pickup-replay-lost-response (a lost pickup response replayed with the same derived credential and handles under current rights, lease and approval binding, no plaintext token or key bytes stored) and pickup-replay-keys (fixed HMAC encoding, keyring parsing and provisioning, rotation with retained read keys, closed failure on a missing key or corrupt metadata, legacy rows kept legacy).",
+    "DECISION-V3 names verified-decisions (the chain, payload and key checks on the proposal read) and decision-v3 (columns bound to the signed payload on v1, v2 and v3 with the unkeyed chain recomputed: a fabricated signer, a transplanted approval, every v3 field and link, the per-format signedFields label, and the pinned v3 bytes)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -60,6 +61,8 @@
     "tests/tenancy/production-lookup.test.ts",
     "tests/reads/gate-expiry.test.ts",
     "tests/reads/decision-integrity-read.test.ts",
+    "tests/reads/verified-decisions.test.ts",
+    "tests/reads/decision-v3.test.ts",
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
     "tests/api/web-reads.test.ts",

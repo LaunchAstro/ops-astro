@@ -101,16 +101,22 @@ export function chainHash(previous: string, fields: Record<string, unknown>): st
  *   A decision says which it is in its **signed payload** (`link: 2`; absent
  *   is v1), so turning a v2 row into a v1 one to escape the wider check means
  *   changing the payload, which breaks the digest, which breaks the signature.
+ * - **v3** links the same fields as v2, with `link: 3`. What changes is the
+ *   payload (`decisionPayload`): it signs the round, time, lineage, acting
+ *   actor, id, place in the chain and previous link as well. The link hash is
+ *   unkeyed, so on v1 and v2 a writer who recomputes every later link can
+ *   still change what only the link covers; on v3 the read compares each of
+ *   those columns with the signed payload and the change fails there.
  *
  * `decidedAt` is text in one fixed spelling, `DECIDED_AT_TEXT`, rendered by
  * the database from the stored `timestamptz` on both sides: a JavaScript
  * `Date` holds milliseconds and the column holds microseconds, so a link over
  * a `Date` would not survive its own round trip.
  */
-export type LinkVersion = 1 | 2;
+export type LinkVersion = 1 | 2 | 3;
 
 /** The version `decide` writes now. */
-export const LINK_VERSION: LinkVersion = 2;
+export const LINK_VERSION: LinkVersion = 3;
 
 /** The row's own fields, in the names the link uses. */
 export interface DecisionLinkFields {
@@ -148,7 +154,7 @@ export function decisionLink(
   if (version === 1) return v1;
   return {
     ...v1,
-    link: 2,
+    link: version,
     round: fields.round,
     decidedAt: fields.decidedAt,
     lineage: fields.lineage,
@@ -164,7 +170,59 @@ export function decisionLink(
  */
 export function linkVersionOf(payload: Record<string, unknown>): LinkVersion | undefined {
   if (!('link' in payload)) return 1;
-  return payload['link'] === 2 ? 2 : undefined;
+  const link = payload['link'];
+  return link === 2 || link === 3 ? link : undefined;
+}
+
+/** What `decide` signs for a new decision: every field the read shows or links. */
+export interface DecisionPayloadFields {
+  readonly id: string;
+  readonly seq: number;
+  readonly prev: string;
+  readonly gate: string;
+  readonly version: string;
+  readonly lineage: string;
+  readonly round: number;
+  readonly decision: string;
+  readonly by: string;
+  readonly actor: string;
+  readonly decidedAt: string;
+  readonly note: string;
+  readonly evidence: string;
+  readonly key: string;
+}
+
+/**
+ * The v3 signed payload. **Pinned**: the version is `link: 3` inside it, and
+ * its bytes are `canonicalise` of exactly these keys (sorted at every depth,
+ * `JSON.stringify` spelling), which `digestOf` hashes and `sign` signs. A key
+ * added, dropped or renamed here is a new version, never a change to v3: a v3
+ * row already stored is verified against these keys forever.
+ *
+ * `prev` and `seq` put the chain-link context inside the signature, so a row
+ * moved along the chain, or a chain with a row removed under it, no longer
+ * matches what was signed even after every unkeyed link is recomputed.
+ * `key` repeats the signing key id the HMAC input already carries, so the
+ * shown column is bound to the payload the same way as every other.
+ */
+export function decisionPayload(fields: DecisionPayloadFields): Record<string, unknown> {
+  return {
+    link: 3,
+    id: fields.id,
+    seq: fields.seq,
+    prev: fields.prev,
+    gate: fields.gate,
+    version: fields.version,
+    lineage: fields.lineage,
+    round: fields.round,
+    decision: fields.decision,
+    by: fields.by,
+    actor: fields.actor,
+    decidedAt: fields.decidedAt,
+    note: fields.note,
+    evidence: fields.evidence,
+    key: fields.key,
+  };
 }
 
 /**
