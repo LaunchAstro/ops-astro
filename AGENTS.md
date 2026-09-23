@@ -20,6 +20,10 @@ work. Read [model roles](docs/agents/model-roles.md) for fresh context,
 independent review, and written handoffs. Run the
 [session check](docs/agents/session-check.md) before implementation.
 
+Implementing against what is already built? Start at
+[the local slice](docs/local/README.md): it has the start sequence, how a
+request travels, which command proves what, and the limits.
+
 ## Build and review
 
 One owner, ticket branch, and isolated worktree per ticket. Normal ticket
