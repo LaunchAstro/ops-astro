@@ -77,6 +77,12 @@ describe('the runtime refusal codes L3 registers', () => {
       // the caller asks for, so a successor outside the purpose the work was
       // held under is an ordinary request the runtime refuses.
       'SUCCESSOR_OUT_OF_BOUNDS',
+      // Reached through the command envelope in
+      // `tests/commands/unproduced-reach.test.ts`: a person approving a gate
+      // proposed with a one-second window, and a third request for changes on
+      // one lineage.
+      'GATE_EXPIRED',
+      'CHANGE_ROUNDS_EXHAUSTED',
     ] as const) {
       expect(UNPRODUCED_CODES.has(code), code).toBe(false);
     }
