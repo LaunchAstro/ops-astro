@@ -70,6 +70,8 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   LINEAGE_TERMINAL: 409,
   CHANGE_ROUNDS_EXHAUSTED: 409,
   RESERVATION_NOT_CLAIMABLE: 409,
+  DELEGATION_ALREADY_LIVE: 409,
+  SUCCESSOR_OUT_OF_BOUNDS: 409,
   // Both are "something on this task has already been bound and does not
   // match", not a malformed request: the lineage belongs to another task and
   // the envelope draws on another cap or another currency. Re-reading the task

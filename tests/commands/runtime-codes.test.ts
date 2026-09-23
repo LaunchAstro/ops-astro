@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// L4's eighteen refusal codes, as L3 registers them.
+// L4's nineteen refusal codes, as L3 registers them.
 //
 // `RuntimeRefusalCode` is exported from `core-runtime` and deliberately not
 // added to `commands/register.ts` by that package: the register is this unit's
@@ -30,8 +30,8 @@ import { statusFor } from '../../apps/api/status.ts';
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all eighteen', () => {
-    expect(RUNTIME_CODES).toHaveLength(18);
+  it('registers all nineteen', () => {
+    expect(RUNTIME_CODES).toHaveLength(19);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -43,7 +43,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all eighteen are caller-visible', () => {
+  it('shows every one of them to the caller, because all nineteen are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }
@@ -73,8 +73,30 @@ describe('the runtime refusal codes L3 registers', () => {
       'LINEAGE_NOT_ON_TASK',
       'CAP_BINDING_MISMATCH',
       'ACTUAL_EXPENDITURE_UNSUPPORTED',
+      // L4-RUNTIME-FIX-2's successor code. `task.handback` takes the successor
+      // the caller asks for, so a successor outside the purpose the work was
+      // held under is an ordinary request the runtime refuses.
+      'SUCCESSOR_OUT_OF_BOUNDS',
     ] as const) {
       expect(UNPRODUCED_CODES.has(code), code).toBe(false);
     }
+  });
+});
+
+// `DELEGATION_ALREADY_LIVE` is not a runtime code -- it is an authority
+// refusal, registered here because the register is this unit's file, and named
+// by the coordinator so that this branch and L2-DELEGATION-FIX's meet on one
+// spelling. Its emitter lands in `authority/delegations.ts`, which this lane
+// never edits, so the case checks the registration and the status and says in
+// as many words that nothing here produces it yet.
+describe('the delegation code registered for the sibling branch', () => {
+  it('registers it, gives it 409, and shows it to the caller', () => {
+    expect(registeredRefusal('DELEGATION_ALREADY_LIVE')).toBeDefined();
+    expect(statusFor('DELEGATION_ALREADY_LIVE')).toBe(409);
+    expect(CALLER_VISIBLE.has('DELEGATION_ALREADY_LIVE')).toBe(true);
+  });
+
+  it('leaves it on the unproduced list until the emitter lands', () => {
+    expect(UNPRODUCED_CODES.has('DELEGATION_ALREADY_LIVE')).toBe(true);
   });
 });
