@@ -215,7 +215,7 @@ refusal-writes-anyway failure this proof exists to catch is reachable.
 ## Item 5: the restart proof (W06), as one named run
 
 ```sh
-pnpm verify:restart -- --evidence .local/restart-proof/<name>.txt
+pnpm verify:restart --evidence .local/restart-proof/<name>.txt
 # defaults, declared in scripts/local/restart-proof.sh:
 #   --name ops-astro-restart-proof-pg  --port 54398  --api-port 8798
 ```

@@ -35,6 +35,8 @@ while [ $# -gt 0 ]; do
     --port) PORT=$2; shift 2 ;;
     --api-port) API_PORT=$2; shift 2 ;;
     --evidence) EVIDENCE=$2; shift 2 ;;
+    # A package manager may forward the separator itself.
+    --) shift ;;
     *) echo "restart-proof: unknown argument $1" >&2; exit 2 ;;
   esac
 done
