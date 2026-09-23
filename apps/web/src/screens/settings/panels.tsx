@@ -18,7 +18,8 @@ import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { describeRefusal } from '../../records/submit.ts';
-import { holdsManage, inWords, type CapabilitiesResult, type SettingRow } from './reads.ts';
+import type { CapabilitiesResult, SettingRow } from '../../operations/shapes.ts';
+import { holdsManage, inWords } from './reads.ts';
 import type { Conflict, Draft, Which } from './use-settings.ts';
 
 export const draftInWords = (draft: Draft): string =>

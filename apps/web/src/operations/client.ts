@@ -49,16 +49,30 @@ import {
 } from '../../../../packages/core-records/src/commands/surface.ts';
 
 /**
- * The three reads the contract adds to the surface, named here as their own
- * type.
+ * The reads the contract adds to the surface, named here as their own type.
  *
  * They are declared in `COMMAND_SURFACE` with `kind: 'read'` by the lane that
  * owns `packages/core-records`. This union exists so that this lane's files
  * typecheck against the surface as it stands today and keep their meaning when
  * the read declarations land: the names are the same strings either way, and
  * `operationPath` below derives all of them through the one `pathOf`.
+ *
+ * It cannot drift from the server unnoticed: `tests/surfaces/read-names.test.ts`
+ * holds that every name here is declared on `COMMAND_SURFACE` with
+ * `kind: 'read'`. A name the server does not declare fails that case rather
+ * than reaching a route at runtime and 404ing in front of a person. The names
+ * are an array and the union is read off it, so the list the case walks is the
+ * list the type is made of rather than a copy of it kept in step by hand.
  */
-export type ReadName = 'task.read' | 'task.board' | 'person.list';
+export const READ_NAMES = [
+  'task.read',
+  'task.board',
+  'person.list',
+  'settings.read',
+  'session.capabilities',
+] as const;
+
+export type ReadName = (typeof READ_NAMES)[number];
 
 export type OperationName = CommandName | ReadName;
 

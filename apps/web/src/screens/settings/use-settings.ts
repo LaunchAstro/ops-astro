@@ -35,6 +35,11 @@ import {
 import type { ReadState } from '../../data/authorised-read.ts';
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import type {
+  CapabilitiesResult,
+  SettingRow,
+  SettingsReadResult,
+} from '../../operations/shapes.ts';
 import {
   FOUR_EYES,
   SESSION_CAPABILITIES,
@@ -42,9 +47,6 @@ import {
   SIGN_OFF,
   holdsManage,
   settingOf,
-  type CapabilitiesResult,
-  type SettingRow,
-  type SettingsReadResult,
 } from './reads.ts';
 
 /** The narrow part of `Storage` this screen uses, so a test can hand it one. */
