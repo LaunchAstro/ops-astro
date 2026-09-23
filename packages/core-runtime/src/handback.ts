@@ -19,6 +19,7 @@
 // no lock of its own, which is the "helpers receive the already-held lock
 // context" rule as an argument rather than as a comment.
 
+import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { acquire } from './locks.ts';
@@ -41,6 +42,8 @@ export interface HandbackRequest {
 
 export interface HandedBack {
   readonly leaseId: string;
+  /** The durable report this handback stored (R4). Its identity, not its content. */
+  readonly reportId: string;
   readonly reservationId: string;
   readonly attemptId: string;
   readonly reservationState: 'actual' | 'abandoned' | 'held' | 'quarantined';
@@ -117,16 +120,46 @@ export async function handback(
     current_fence: string;
   };
 
-  // The fence check, before anything is written. Three distinct causes, each
-  // with its own code, because a caller told the wrong one retries wrongly.
+  /**
+   * R4. A stale holder's work was still really done, and T4 keeps it: the
+   * report is retained separately, and the refusal is still the answer. The
+   * row records which refusal retained it, so a reader can tell a retained
+   * report from a settlement without joining anything.
+   */
+  const retain = async (code: 'LEASE_NOT_OWNED' | 'LEASE_EXPIRED'): Promise<void> => {
+    await tx.query(
+      `insert into public.handback_reports
+         (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
+          outcome, refusal_code, report)
+       values ($1, $2, $3, $4, $5, $6, 'retained', $7, $8, $9::text::jsonb)`,
+      [
+        tx.businessId,
+        randomUUID(),
+        request.leaseId,
+        found.reservation_id,
+        found.run_id,
+        request.fence,
+        request.outcome,
+        code,
+        JSON.stringify(request.report),
+      ],
+    );
+  };
+
+  // The fence check, before anything else is written. Three distinct causes,
+  // each with its own code, because a caller told the wrong one retries
+  // wrongly. Nothing below changes the task, the gate, the current lease or
+  // any money; the retained report is append-only evidence.
   if (Number(lease.fence) !== request.fence) {
+    await retain('LEASE_NOT_OWNED');
     return refuse(
       'LEASE_NOT_OWNED',
       `lease ${request.leaseId} holds fence ${lease.fence}, and fence ${request.fence} was presented`,
-      'Read the fence from the pickup that issued the lease.',
+      'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
     );
   }
   if (Number(lease.fence) < Number(lease.current_fence)) {
+    await retain('LEASE_NOT_OWNED');
     return refuse(
       'LEASE_NOT_OWNED',
       `fence ${request.fence} has been superseded by ${lease.current_fence} on this task`,
@@ -134,17 +167,19 @@ export async function handback(
     );
   }
   if (lease.state !== 'live') {
+    await retain('LEASE_EXPIRED');
     return refuse(
       'LEASE_EXPIRED',
       `lease ${request.leaseId} is ${lease.state}`,
-      'A settled or expired lease cannot settle work. Pick the work up again.',
+      'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
     );
   }
   if (lease.expired) {
+    await retain('LEASE_EXPIRED');
     return refuse(
       'LEASE_EXPIRED',
       `lease ${request.leaseId} expired before this handback`,
-      'Pick the work up again under a new lease and a new fence.',
+      'Pick the work up again under a new lease and a new fence. The report is retained.',
     );
   }
 
@@ -167,6 +202,27 @@ export async function handback(
     [tx.businessId, found.reservation_id],
   );
   const attempt = attempts[0] as { id: string; marked: boolean };
+
+  // R4. The work, retained. It commits with the settlement below or with
+  // neither of them, which is what makes it the handback's evidence rather
+  // than a note somebody wrote near it.
+  const reportId = randomUUID();
+  await tx.query(
+    `insert into public.handback_reports
+       (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
+        outcome, refusal_code, report)
+     values ($1, $2, $3, $4, $5, $6, 'settled', $7, null, $8::text::jsonb)`,
+    [
+      tx.businessId,
+      reportId,
+      request.leaseId,
+      found.reservation_id,
+      found.run_id,
+      request.fence,
+      request.outcome,
+      JSON.stringify(request.report),
+    ],
+  );
 
   await tx.query(
     `update public.leases set state = 'released', released_at = now()
@@ -229,6 +285,7 @@ export async function handback(
     ok: true,
     value: {
       leaseId: request.leaseId,
+      reportId,
       reservationId: found.reservation_id,
       attemptId: attempt.id,
       reservationState,

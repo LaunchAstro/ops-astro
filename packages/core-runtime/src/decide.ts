@@ -330,13 +330,19 @@ export async function decide(
   const payloadDigest = digestOf(payload);
   const signature = sign(request.signingKey, payloadDigest);
 
-  const previous = await tx.query<{ readonly hash: string; readonly seq: string }>(
-    `select hash, seq::text as seq from public.gate_decisions
+  // R10, second half. `seq::text as seq` made `order by seq desc` resolve to
+  // the *output* column, so the chain head was chosen lexically: with ten
+  // decisions in a business, '9' sorted above '10' and the next decision
+  // allocated 10 again. The alias differs from the column now, so the ordering
+  // is the bigint's; the chain lock above is what makes the allocation safe,
+  // and this is what makes it correct.
+  const previous = await tx.query<{ readonly hash: string; readonly at: string }>(
+    `select hash, seq::text as at from public.gate_decisions
       where business_id = $1 order by seq desc limit 1`,
     [tx.businessId],
   );
   const prevHash = previous[0]?.hash ?? CHAIN_GENESIS;
-  const seq = Number(previous[0]?.seq ?? 0) + 1;
+  const seq = Number(previous[0]?.at ?? 0) + 1;
 
   const decisionId = randomUUID();
   const hash = chainHash(prevHash, {

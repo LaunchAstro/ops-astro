@@ -178,6 +178,83 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(honest.value.reservationState).toBe('abandoned');
   });
 
+  // R4. The report is durable, its identity comes back, and a stale holder's
+  // report is retained rather than discarded.
+  it('R4: handback stores its report durably and returns its identity', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+
+    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      pickup(tx, {
+        reservationId: decided.value.reservationId as string,
+        agentActorId: fixture.agentActorId,
+        authorisedByPersonId: fixture.decider.personId,
+        mintedByActorId: fixture.decider.actorId,
+        collection: TASK_COLLECTION,
+        leaseSeconds: 3_600,
+      }),
+    );
+    if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
+
+    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: claimed.value.leaseId,
+        fence: claimed.value.fence,
+        outcome: 'completed',
+        report: { draft: 'the brief, 200 words', words: 200 },
+        actualMinor: null,
+      }),
+    );
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+
+    const stored = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly disposition: string;
+        readonly report: Record<string, unknown>;
+        readonly refusal_code: string | null;
+      }>(
+        `select disposition, report, refusal_code from public.handback_reports
+          where business_id = $1 and id = $2`,
+        [fixture.businessId, settled.value.reportId],
+      );
+      return rows[0];
+    });
+    expect(stored?.disposition).toBe('settled');
+    expect(stored?.refusal_code).toBeNull();
+    expect(stored?.report).toEqual({ draft: 'the brief, 200 words', words: 200 });
+
+    // A stale fence cannot settle, and its report is retained anyway.
+    const late = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      handback(tx, {
+        leaseId: claimed.value.leaseId,
+        fence: claimed.value.fence,
+        outcome: 'failed',
+        report: { note: 'the work the replaced holder had done' },
+        actualMinor: null,
+      }),
+    );
+    expect(late.ok).toBe(false);
+    if (late.ok) return;
+    expect(late.refusal.code).toBe('LEASE_EXPIRED');
+
+    const retained = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly disposition: string;
+        readonly refusal_code: string | null;
+      }>(
+        `select disposition, refusal_code from public.handback_reports
+          where business_id = $1 and lease_id = $2 and disposition = 'retained'`,
+        [fixture.businessId, claimed.value.leaseId],
+      );
+      return rows;
+    });
+    expect(retained).toHaveLength(1);
+    expect(retained[0]?.refusal_code).toBe('LEASE_EXPIRED');
+  });
+
   // R3. A lineage belongs to one task, and the request has to name that task.
   it('R3: propose refuses a lineage whose task is not the requested one', async () => {
     const other = await newTask(database.app, fixture.businessId, fixture.decider);
