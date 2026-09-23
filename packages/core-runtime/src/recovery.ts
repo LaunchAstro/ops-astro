@@ -305,6 +305,16 @@ function locksFor(affected: readonly Affected[]): readonly LockRequest[] {
 const SAME_SET = <T>(left: readonly T[], right: readonly T[]): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+/**
+ * N1. Whether a rediscovered set needs only locks this transaction already
+ * holds. A concurrent handback or classification that committed between
+ * discovery and the locks can only shrink a set (a hold is no longer held, a
+ * lease no longer live), and proceeding with the smaller set extends nothing.
+ * A set that needs a lock not held is the case the contract rolls back.
+ */
+const COVERED = (locks: LockSet, requests: readonly LockRequest[]): boolean =>
+  requests.every((request) => locks.has(request.lockClass, request.id));
+
 /** A live lease on the work being closed, and the delegation it was issued under. */
 interface LiveWork {
   readonly lease_id: string;
@@ -582,12 +592,16 @@ export async function cancelAndClassify(
     { lockClass: 'lineage', id: request.lineageId },
   ]);
 
-  // Rechecked under the locks and before the first write: a set that moved
+  // Rechecked under the locks and before the first write. A set that grew
   // means this transaction holds the wrong rows, and it rolls back rather
-  // than extending its locks backwards.
+  // than extending its locks backwards; a set that only shrank (a handback
+  // committed in between, N1) is covered by the locks held and goes on.
   const after = await discover();
   const workAfter = await discoverLiveWork(tx, { lineageId: request.lineageId });
-  if (!SAME_SET(before, after) || !SAME_SET(workBefore, workAfter)) {
+  if (
+    (!SAME_SET(before, after) || !SAME_SET(workBefore, workAfter)) &&
+    !COVERED(locks, [...locksFor(after), ...liveWorkLocks(workAfter)])
+  ) {
     throw new Error(
       'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
     );
