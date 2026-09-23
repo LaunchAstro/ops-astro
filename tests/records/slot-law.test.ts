@@ -46,6 +46,7 @@ function definition(
     valueType: 'text',
     slot: null,
     writeMode: 'generic',
+    owningOperations: [],
     owningOperation: null,
     escalatingOperation: null,
     visibilityClass: 'internal',

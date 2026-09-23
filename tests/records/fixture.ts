@@ -23,7 +23,7 @@ export interface FieldSeed {
   readonly valueType: FieldValueType;
   readonly slot?: string;
   readonly writeMode?: WriteMode;
-  readonly owningOperation?: string;
+  readonly owningOperations?: readonly string[];
   readonly visibilityClass?: VisibilityClass;
   readonly searchable?: boolean;
   readonly uniqueValue?: boolean;
@@ -62,7 +62,7 @@ export async function insertField(
       seed.valueType,
       seed.slot ?? null,
       seed.writeMode ?? 'generic',
-      seed.owningOperation ?? null,
+      seed.owningOperations ?? null,
       seed.visibilityClass ?? 'internal',
       seed.searchable ?? false,
       seed.uniqueValue ?? false,

@@ -35,6 +35,17 @@ export interface FieldDefinition {
   /** Null means the field lives in `data` and cannot be filtered, sorted or grouped. */
   readonly slot: string | null;
   readonly writeMode: WriteMode;
+  /**
+   * The operations that own a protected field, and empty for one no operation
+   * owns. `text[]` in the schema since 0009.
+   */
+  readonly owningOperations: readonly string[];
+  /**
+   * The same list in the spelling 0004 shipped: the names joined by single
+   * spaces, or null when there are none. Derived, never stored, and kept so
+   * that the command register and its tests read one model while they move to
+   * the array. New readers take `owningOperations`.
+   */
   readonly owningOperation: string | null;
   /**
    * The operation that owns this field when the write crosses an access

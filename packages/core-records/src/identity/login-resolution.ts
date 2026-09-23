@@ -27,12 +27,10 @@
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import { refuse, type Refusal } from './refusals.ts';
+import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import type { VerifiedSubject } from './verified-subject.ts';
 
-/** A subject the auth provider has already verified. Never from a request body. */
-export interface VerifiedSubject {
-  readonly provider: string;
-  readonly subject: string;
-}
+export type { VerifiedSubject } from './verified-subject.ts';
 
 /** What a resolved call runs as. The business is the server's value, not the caller's. */
 export interface Session {
@@ -96,19 +94,48 @@ export async function resolveLogin(
   const found = rows[0];
 
   if (found === undefined || found.person_id === null || found.membership_id === null) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
   }
   if (found.actor_id === null || found.role_key === null) {
-    return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
+    return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
   }
 
-  return {
+  const session: Session = {
     businessId: tx.businessId,
     loginId: found.login_id,
     personId: found.person_id,
     actorId: found.actor_id,
     roleKey: found.role_key,
   };
+  // The attempt and what it resolved to commit together with whatever the
+  // caller goes on to do. I13 asks for every attempt, which includes the ones
+  // that succeeded and the ones whose transaction later rolled back — those
+  // roll back with it, and a recorded attempt for work that never happened
+  // would be the worse trail.
+  await recordAuthenticationAttempt(tx, {
+    owner: 'person_login',
+    presented,
+    outcome: 'resolved',
+    loginId: session.loginId,
+    actorId: session.actorId,
+    personId: session.personId,
+  });
+  return session;
+}
+
+/** A refusal and its record commit together, so nobody is turned away unrecorded. */
+async function recordRefusal(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  refusal: Refusal,
+): Promise<Refusal> {
+  await recordAuthenticationAttempt(tx, {
+    owner: 'person_login',
+    presented,
+    outcome: 'refused',
+    refusalCode: refusal.code,
+  });
+  return refusal;
 }
 
 /**

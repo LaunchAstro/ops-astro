@@ -23,7 +23,7 @@ interface FieldRow {
   readonly value_type: FieldValueType;
   readonly slot: string | null;
   readonly write_mode: WriteMode;
-  readonly owning_operation: string | null;
+  readonly owning_operation: readonly string[] | null;
   readonly escalating_operation: string | null;
   readonly visibility_class: VisibilityClass;
   readonly searchable: boolean;
@@ -52,7 +52,8 @@ export async function readFieldDefinitions(
     valueType: row.value_type,
     slot: row.slot,
     writeMode: row.write_mode,
-    owningOperation: row.owning_operation,
+    owningOperations: row.owning_operation ?? [],
+    owningOperation: joinOperations(row.owning_operation),
     escalatingOperation: row.escalating_operation,
     visibilityClass: row.visibility_class,
     searchable: row.searchable,
@@ -60,4 +61,14 @@ export async function readFieldDefinitions(
     origin: row.origin,
     deactivatedAt: row.deactivated_at,
   }));
+}
+
+/**
+ * The spelling 0004's readers branch on, from the column 0009 holds.
+ *
+ * Null rather than empty for an unowned field, because that is the value those
+ * readers test, and an empty string would look like a name.
+ */
+function joinOperations(stored: readonly string[] | null): string | null {
+  return stored === null || stored.length === 0 ? null : stored.join(' ');
 }

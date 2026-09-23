@@ -44,7 +44,7 @@ interface FieldRow {
   readonly slot: string | null;
   readonly origin: string;
   readonly write_mode: string | null;
-  readonly owning_operation: string | null;
+  readonly owning_operation: readonly string[] | null;
   readonly visibility_class: string | null;
 }
 
@@ -183,7 +183,7 @@ export async function domainModelConformance(read: Read): Promise<readonly Findi
       findings.push({
         rule: 'only an operation-owned field names an operation',
         object: where,
-        detail: `write mode is ${row.write_mode ?? 'null'} and names ${row.owning_operation}`,
+        detail: `write mode is ${row.write_mode ?? 'null'} and names ${(row.owning_operation ?? []).join(' ')}`,
       });
     }
     if (row.slot === null) continue;

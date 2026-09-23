@@ -22,11 +22,14 @@ import { planSlotAssignment, type FieldDefinition } from '../records/fields.ts';
 import { readSlotTable, type Slot } from '../records/slots.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { TASK_SPINE, TASK_TYPE_KEY, type SpineField } from './spine.ts';
+import { COMMENT_SPINE, COMMENT_TYPE_KEY } from './comments.ts';
 import { TASK_STATE_FIELDS, TASK_STATE_SEED, TASK_STATE_TYPE_KEY } from './states.ts';
 
 export interface InstalledTaskSpine {
   readonly taskTypeId: string;
   readonly taskStateTypeId: string;
+  /** The comment type, installed beside the task type so D01 covers it too. */
+  readonly taskCommentTypeId: string;
   /** The five seeded states by key, so a caller need not read them back. */
   readonly stateIds: Readonly<Record<string, string>>;
   /** True when this call wrote the rows; false when they were already there. */
@@ -102,7 +105,7 @@ async function createField(
       field.valueType,
       slot,
       field.writeMode,
-      field.owningOperation,
+      field.owningOperations.length === 0 ? null : field.owningOperations,
       field.escalatingOperation,
       // Deny by default. Which fields a client projection may see is a product
       // policy for the portal slice, and a field that leaks because nobody
@@ -120,7 +123,8 @@ async function createField(
     valueType: field.valueType,
     slot,
     writeMode: field.writeMode,
-    owningOperation: field.owningOperation,
+    owningOperations: field.owningOperations,
+    owningOperation: field.owningOperations.length === 0 ? null : field.owningOperations.join(' '),
     escalatingOperation: field.escalatingOperation,
     visibilityClass: field.visibilityClass ?? 'internal',
     searchable: field.searchable ?? false,
@@ -216,9 +220,14 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
     if (stateTypeId === undefined) {
       throw new Error('installTaskSpine: the task type is installed and the state type is not');
     }
+    const commentTypeId = await findRecordType(tx, COMMENT_TYPE_KEY);
+    if (commentTypeId === undefined) {
+      throw new Error('installTaskSpine: the task type is installed and the comment type is not');
+    }
     return {
       taskTypeId: existing,
       taskStateTypeId: stateTypeId,
+      taskCommentTypeId: commentTypeId,
       stateIds: await readStates(tx, stateTypeId),
       installed: false,
     };
@@ -235,5 +244,10 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
   const taskTypeId = await createRecordType(tx, TASK_TYPE_KEY, 'Task');
   await createFields(tx, taskTypeId, TASK_SPINE, slots);
 
-  return { taskTypeId, taskStateTypeId, stateIds, installed: true };
+  // The comment type last: it points at a task, and a type whose referent does
+  // not exist yet is the same ordering mistake the state type avoids above.
+  const taskCommentTypeId = await createRecordType(tx, COMMENT_TYPE_KEY, 'Task comment');
+  await createFields(tx, taskCommentTypeId, COMMENT_SPINE, slots);
+
+  return { taskTypeId, taskStateTypeId, taskCommentTypeId, stateIds, installed: true };
 }

@@ -31,11 +31,13 @@ export interface SpineField {
   readonly slot: string | null;
   readonly writeMode: WriteMode;
   /**
-   * The operations that own a protected field. More than one for `state`,
-   * because completing, reopening and starting are three commands over one
-   * field (minimum contract, 5.2), and the column holds them space-separated.
+   * The operations that own a protected field; empty for one no operation
+   * owns. More than one for `state`: completing, reopening and starting are
+   * three commands over one field (minimum contract, 5.2). A list rather than
+   * a string holding a list since 0009, because a reader who forgets to split
+   * sees one operation named `task.complete task.reopen task.start`.
    */
-  readonly owningOperation: string | null;
+  readonly owningOperations: readonly string[];
   /**
    * The operation that owns this field **when the write crosses an access
    * boundary**, while an ordinary write inside the caller's existing reach is
@@ -69,7 +71,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     // Three commands over one field. The refusal names all three, because a
     // caller told only "call task.complete" would be told the wrong thing
     // two-thirds of the time.
-    owningOperation: 'task.complete task.reopen task.start',
+    owningOperations: ['task.complete', 'task.reopen', 'task.start'],
     escalatingOperation: null,
   },
   {
@@ -78,7 +80,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_2',
     writeMode: 'operation',
-    owningOperation: 'task.assign',
+    owningOperations: ['task.assign'],
     escalatingOperation: null,
   },
   {
@@ -87,7 +89,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_3',
     writeMode: 'operation',
-    owningOperation: 'task.assign',
+    owningOperations: ['task.assign'],
     escalatingOperation: null,
   },
   {
@@ -96,7 +98,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_4',
     writeMode: 'operation',
-    owningOperation: 'task.reparent',
+    owningOperations: ['task.reparent'],
     escalatingOperation: null,
   },
   {
@@ -105,7 +107,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_5',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: 'task.move',
   },
   {
@@ -114,7 +116,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_6',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: 'task.move',
   },
   {
@@ -125,7 +127,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_7',
     writeMode: 'operation',
-    owningOperation: 'task.set_party',
+    owningOperations: ['task.set_party'],
     escalatingOperation: null,
   },
   {
@@ -134,7 +136,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_1',
     writeMode: 'system',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
     uniqueValue: true,
   },
@@ -146,7 +148,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_2',
     writeMode: 'system',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -155,7 +157,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_3',
     writeMode: 'operation',
-    owningOperation: 'task.triage',
+    owningOperations: ['task.triage'],
     escalatingOperation: null,
   },
   {
@@ -164,7 +166,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_4',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
     searchable: true,
   },
@@ -176,7 +178,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_5',
     writeMode: 'operation',
-    owningOperation: 'task.set_stage',
+    owningOperations: ['task.set_stage'],
     escalatingOperation: null,
   },
   {
@@ -185,7 +187,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_6',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -194,7 +196,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'timestamptz',
     slot: 'ts_1',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -207,7 +209,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'timestamptz',
     slot: 'ts_2',
     writeMode: 'system',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -216,7 +218,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'numeric',
     slot: 'num_1',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -228,7 +230,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'numeric',
     slot: 'num_2',
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
   {
@@ -240,7 +242,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'boolean',
     slot: 'bool_1',
     writeMode: 'operation',
-    owningOperation: 'task.set_audience',
+    owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
   {
@@ -251,7 +253,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: null,
     writeMode: 'generic',
-    owningOperation: null,
+    owningOperations: [],
     escalatingOperation: null,
   },
 ];

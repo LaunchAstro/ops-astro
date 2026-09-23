@@ -132,3 +132,40 @@ export async function countRows(tx: TenantQuery, table: string): Promise<number>
   );
   return Number(rows[0]?.count ?? '-1');
 }
+
+/** An agent actor: an acting identity with no person of its own (0002, actors). */
+export async function insertAgentActor(tx: TenantQuery, active = true): Promise<string> {
+  const actorId = randomUUID();
+  await tx.query(
+    `insert into actors (business_id, id, kind, person_id, active, deactivated_at)
+     values ($1, $2, 'agent', null, $3, $4)`,
+    [tx.businessId, actorId, active, active ? null : new Date()],
+  );
+  return actorId;
+}
+
+/** The agent half of the login mapping, which `person_logins` deliberately cannot hold. */
+export async function insertAgentMapping(
+  tx: TenantQuery,
+  loginId: string,
+  actorId: string,
+  linkedByActorId: string,
+  active = true,
+): Promise<string> {
+  const mappingId = randomUUID();
+  await tx.query(
+    `insert into actor_logins
+       (business_id, id, login_id, actor_id, active, linked_by_actor_id, deactivated_at)
+     values ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      tx.businessId,
+      mappingId,
+      loginId,
+      actorId,
+      active,
+      linkedByActorId,
+      active ? null : new Date(),
+    ],
+  );
+  return mappingId;
+}
