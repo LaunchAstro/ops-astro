@@ -202,6 +202,30 @@ export async function defaultDenyConformance(
     }
   }
 
+  // Ownership, not only grants. An owner may drop and recreate what it owns,
+  // and `revoke` said to a table's owner changes nothing. The separation is
+  // only real if the roles the application connects as own none of it.
+  const owned = await read<{
+    readonly schema: string;
+    readonly name: string;
+    readonly owner: string;
+  }>(
+    `select n.nspname as schema, c.relname as name, pg_get_userbyid(c.relowner) as owner
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname not like 'pg\\_%' and n.nspname <> 'information_schema'
+        and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        and pg_get_userbyid(c.relowner) = any($1::text[])
+      order by 1, 2`,
+    [[roles.application, roles.restricted]],
+  );
+  for (const relation of owned) {
+    findings.push({
+      rule: 'the owner is separate: no table is owned by a role the application connects as',
+      object: `${relation.schema}.${relation.name}`,
+      detail: `owned by ${relation.owner}, not by ${roles.owner}`,
+    });
+  }
+
   const roleRows = await read<{
     readonly rolname: string;
     readonly rolsuper: boolean;

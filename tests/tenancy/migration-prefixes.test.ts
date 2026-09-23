@@ -17,10 +17,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import {
+  APPLICATION_ROLE,
   createEmptyDatabase,
   databaseUrlFromEnvironment,
   type EmptyDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { defaultDenyConformance } from '../../packages/core-records/src/tenancy/privileges.ts';
 import {
   describePrefix,
   firstFailing,
@@ -85,6 +87,67 @@ describe.skipIf(serverUrl === undefined)('M01/M02: every migration prefix', () =
     it('finds nothing wrong at any prefix', () => {
       const failing = firstFailing(proofs);
       expect(failing === undefined ? '' : describePrefix(failing)).toBe('');
+    });
+  });
+
+  // Default deny is a set of rules, and a rule that has only ever been run
+  // against a schema satisfying it has not been shown to notice anything. Each
+  // one is broken here inside a transaction that is rolled back. DDL is
+  // transactional, so nothing below lands.
+  describe('the default-deny rules notice', () => {
+    class Rollback extends Error {}
+
+    const whenSchemaIs = async (breakage: string, expected: string): Promise<void> => {
+      const roles = {
+        owner: 'postgres',
+        application: APPLICATION_ROLE,
+        restricted: db.restrictedRole,
+      };
+      try {
+        await db.admin.transaction(async (execute) => {
+          await execute(breakage);
+          const findings = await defaultDenyConformance(execute, roles);
+          expect(findings.map((finding) => finding.rule)).toContain(expected);
+          throw new Rollback();
+        });
+      } catch (error) {
+        if (!(error instanceof Rollback)) throw error;
+      }
+    };
+
+    it('catches a table handed to a role the application connects as', async () => {
+      await whenSchemaIs(
+        `alter table public.businesses owner to ${APPLICATION_ROLE}`,
+        'the owner is separate: no table is owned by a role the application connects as',
+      );
+    });
+
+    it('catches TRUNCATE, which no policy would have filtered', async () => {
+      await whenSchemaIs(
+        `grant truncate on public.businesses to ${APPLICATION_ROLE}`,
+        'the application role never holds TRUNCATE, which row security does not filter',
+      );
+    });
+
+    it('catches CREATE handed back to the application role', async () => {
+      await whenSchemaIs(
+        `grant create on schema public to ${APPLICATION_ROLE}`,
+        'the application role may create nothing, in any schema',
+      );
+    });
+
+    it('catches a function PUBLIC may execute', async () => {
+      await whenSchemaIs(
+        `grant execute on function public.app_business_id() to public`,
+        'no privilege is granted to PUBLIC, which is every role there will ever be',
+      );
+    });
+
+    it('catches a table the restricted role was granted directly', async () => {
+      await whenSchemaIs(
+        `grant select on public.records to ${db.restrictedRole}`,
+        'a role outside the application group reaches no table and no function',
+      );
     });
   });
 
