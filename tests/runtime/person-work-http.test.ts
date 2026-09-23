@@ -158,7 +158,9 @@ describe.skipIf(serverUrl === undefined)('person work on the person route (EX-01
     expect(detail['budgetEnvelope']).toMatchObject({ currency: 'AUD', heldMinor: 2_500 });
     expect(detail['declaredIncompleteness']).toHaveLength(3);
     expect(detail['permittedOperations']).toContain('task.handback');
-    expect(detail['excludedOperations']).toContain('effect dispatch');
+    expect(detail['excludedOperations']).toContainEqual(
+      expect.objectContaining({ operation: 'effect dispatch' }),
+    );
     // No agent half, and no placeholder for one.
     expect(Object.keys(detail)).not.toContain('credential');
     expect(Object.keys(detail)).not.toContain('delegationId');
