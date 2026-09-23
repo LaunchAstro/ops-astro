@@ -135,14 +135,17 @@ export async function resolveLogin(
 }
 
 // An external party's standing, read under the same snapshot as the mapping.
-// A live share is a record- or party-scoped grant to the person or to their
-// acting identity. A live *business* grant disqualifies rather than helps: it
+// A live share is a record- or party-scoped *read* grant to the person or to
+// their acting identity, which is what `shareRecord` issues and all R4 reaches.
+// A scoped `comment` or `write` grant is not a share and stands for nothing
+// here, so a row a share would never carry cannot turn a non-member into a
+// session (Sol 6 AUTHORITY-2). A live *business* grant disqualifies rather than helps: it
 // is a member's grant, and a person holding one without a membership is a
 // former member whose grants outlived them, who stays refused here exactly as
 // before. The per-call check in the serving transaction still decides what the
 // share reaches; this only decides whether there is anyone to ask about.
 const STANDING = `
-  select count(*) filter (where g.scope_kind <> 'business')::int as shares,
+  select count(*) filter (where g.scope_kind <> 'business' and g.action = 'read')::int as shares,
          count(*) filter (where g.scope_kind = 'business')::int as business
     from public.grants g
     left join public.actors a

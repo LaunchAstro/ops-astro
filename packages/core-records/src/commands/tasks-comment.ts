@@ -12,8 +12,10 @@
 // **What this handler decides, and what it does not.** It decides that the
 // audience and the kind are values the model has, because a comment addressed
 // to an audience nobody defined is a comment whose readers are undecided. It
-// does not widen *who may write in an audience*: a person holding `comment`
-// writes in either, as before. A delegated agent is narrower. It reaches this
+// does not widen *who may write in an audience*: a member holding `comment`
+// writes in either, as before. An external party (R4, no membership) writes
+// in `client` alone whatever grant rows it holds, so no provisioned `comment`
+// grant carries an outsider to a team note. A delegated agent is narrower. It reaches this
 // through `writeTaskComment` with `internal` alone, so a client-visible comment
 // stays a person's act and the agent is told `AUDIENCE_NOT_PERMITTED`
 // (`agent-envelope.ts`). Whether writing to the client should be the `share`
@@ -33,6 +35,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
+const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
 const TYPES: ReadonlySet<string> = new Set<CommentType>(['note', 'client', 'system']);
 
 /** What a person writing on a task writes, when they say nothing else. */
@@ -68,7 +71,7 @@ export async function commentOnTask(
       target,
       authorActorId: context.session.actorId,
       entryPoint: context.entryPoint,
-      audiences: AUDIENCES,
+      audiences: context.session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES,
     },
     body,
     audience,
@@ -84,8 +87,8 @@ export interface CommentTarget {
   readonly authorActorId: string;
   readonly entryPoint: EntryPoint;
   /**
-   * The audiences this caller may write in. A person holding `comment` writes
-   * in either; a delegated agent is narrower (`agent-envelope.ts`), and an
+   * The audiences this caller may write in. A member holding `comment` writes
+   * in either; an external party and a delegated agent are narrower (`agent-envelope.ts`), and an
    * audience outside this set is `AUDIENCE_NOT_PERMITTED` rather than the
    * shape refusal an unknown audience gets.
    */

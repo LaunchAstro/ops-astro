@@ -52,6 +52,14 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
+/** The one write an external party (R4) may reach, and then only in the client audience. */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+
+const EXTERNAL_FIXES: readonly string[] = [
+  'A person without a membership may read what was shared with them and nothing more.',
+  'Ask an administrator of this business for a membership to do this.',
+];
+
 const NOT_FOUND_FIXES: readonly string[] = [
   'Check the identifier against the one you were given.',
   'If you believe it exists, ask someone who can already see it to share it with you.',
@@ -419,6 +427,13 @@ export async function prepareCommand(
   // its handler, which asks the resolved row's own ceiling.
   const recordId =
     'recordId' in request && typeof request.recordId === 'string' ? request.recordId : undefined;
+  // R4 before any grant row. A session with no membership stands on a read
+  // share, and whatever else a row may say it holds, it writes nothing but a
+  // client-audience comment (minimum contract 8.1 R4; the audience is
+  // `tasks-comment.ts`'s to narrow).
+  if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
+    return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
+  }
   const authorised = await checkAuthority(tx, subjectsOf(session), {
     // From the declaration, never written in here: see `CommandDeclaration`.
     collection: declaration.collection,

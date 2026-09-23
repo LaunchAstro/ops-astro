@@ -617,6 +617,38 @@ describe.skipIf(serverUrl === undefined)('narrowed and retired agent report inta
       expect(await protectedState(x)).toBe(before);
     }, 120_000);
 
+    it(`${path.label}: actualMinor 1 is the operand refusal, and nothing is retained`, async () => {
+      // Sol 6 AUTHORITY-3. The restricted intake keeps an otherwise valid
+      // report; a handback claiming spend is not one (API.md, every non-null
+      // actualMinor is ACTUAL_EXPENDITURE_UNSUPPORTED), whatever its authority.
+      const x = await work(`${path.label}_spend`, path.shortWrite);
+      await path.lose(x);
+      const before = await protectedState(x);
+      const sent = lostBody(x, { actualMinor: 1 });
+      const answer = await w.agent(x.agent, 'task.handback', sent, x.credential);
+      console.log(
+        `${path.label} actualMinor 1: ${answer.status} ${answer.code}, ` +
+          `${(await retained(x.leaseId)).length} retained`,
+      );
+      expect({ status: answer.status, code: answer.code }).toStrictEqual({
+        status: 422,
+        code: 'ACTUAL_EXPENDITURE_UNSUPPORTED',
+      });
+      expect(await retained(x.leaseId)).toHaveLength(0);
+      expect(await refusals(sent['operationId'], 'ACTUAL_EXPENDITURE_UNSUPPORTED')).toBe(1);
+      expect(
+        await count(`select count(*)::text as n from public.audit_events where operation_id = $1`, [
+          sent['operationId'],
+        ]),
+      ).toBe(1);
+      expect(await protectedState(x)).toBe(before);
+
+      // A null actual is the same request as none, and is still retained.
+      const valid = lostBody(x, { actualMinor: null });
+      expect((await w.agent(x.agent, 'task.handback', valid, x.credential)).code).toBe(path.code);
+      expect(await retained(x.leaseId)).toHaveLength(1);
+    }, 120_000);
+
     it(`${path.label}: a fault after the retained row rolls it back with the receipt and the audit`, async () => {
       const x = await work(`${path.label}_fault`, path.shortWrite);
       await path.lose(x);

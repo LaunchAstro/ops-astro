@@ -235,7 +235,14 @@ async function runAgentCommand(
     );
   }
 
-  if (!OPERATION_ID.test(request.operationId)) {
+  // `typeof` first, as the person envelope asks it (`envelope.ts`). The pattern
+  // coerces what it is given, so a number or a one-element array would pass as
+  // the string it prints as, and register or collide with a later request that
+  // sent that string; an absent identity would pass as `"undefined"` and reach
+  // the register's bound parameter as a fault. The type is the envelope's to
+  // hold, whatever the boundary in front of it passes through (Sol 6
+  // AUTHORITY-4).
+  if (typeof request.operationId !== 'string' || !OPERATION_ID.test(request.operationId)) {
     return await settle(
       tx,
       session,
@@ -827,6 +834,11 @@ const REPORT_FIXES: readonly string[] = [
   'Send report as an object of named values, or leave it out.',
 ];
 
+const ACTUAL_MINOR_FIXES: readonly string[] = [
+  'Leave actualMinor out, or send null: nothing in this head dispatches.',
+  'A number here would claim the work ran and cost that much.',
+];
+
 /**
  * The request's system-owned fields refused, then its operands read.
  *
@@ -870,6 +882,21 @@ async function parseOperands(
       return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
     }
     operands = { report: report as Readonly<Record<string, unknown>> };
+  }
+  // Any non-null actual is refused here, before authority is read, and not
+  // only by the runtime past it. A handback refused on authority reaches the
+  // restricted report intake (`retainLateHandback`), which keeps an otherwise
+  // valid report; one claiming spend nothing in this head can have made is
+  // not one, and is kept by no path (API.md; Sol 6 AUTHORITY-3). `null` and
+  // absent are the same request.
+  if (request.command === 'task.handback' && 'actualMinor' in request) {
+    const actualMinor = request['actualMinor'];
+    if (actualMinor !== null && actualMinor !== undefined) {
+      return refused(
+        refuseCommand('ACTUAL_EXPENDITURE_UNSUPPORTED', ['actualMinor'], ACTUAL_MINOR_FIXES),
+        { actualMinor },
+      );
+    }
   }
   return operands;
 }

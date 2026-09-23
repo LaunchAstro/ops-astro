@@ -39,7 +39,8 @@
     "AGENT-BOUNDARY-2 adds agent-pickup-payload (W02 a: person and agent pickup answers field by field against their rows, and the handbackShape derived from task.handback), and extends historical-handback-intake to a narrowed agent (DELEGATION_NARROWED keeps one retained report) with second-agent, cross-business, forged, lease, fence, replay and rollback controls on both paths.",
     "ACCEPTANCE-ROWS names i10-inflight (I10: a read admitted and held open in its transaction while grant.revoke commits, then refused on the next call) and board-not-found (task.board on a foreign, fabricated or malformed board refused, never an empty success), the two suites L6 section 9 item 13 left unnamed for this lane; role-case-matrix now carries a named (c)/(d) row for all 35 operations and I07 on one live gate, and identifier-negatives the SC2 audit (9/9 at home, none in bravo). It adds identifier-timing (I04: 26 identifier-bearing operations, 30 alternating foreign/fabricated pairs after 5 discarded, Mann-Whitney |z| <= 3.29 or a median bound of max(2 ms, 20 percent), and a 15 ms injected delay flagged). cd-alternatives.ts is a harness, not a suite.",
     "RETRY-BOUNDS adds retry-bounds (the terminal side of both bounded retries: task.cancel losing its discovery on both attempts, two command transactions and one failed-audit transaction; an agent pickup losing operations_identity_key on both attempts, staged because no schedule reaches it, two transactions and no audit event; grant.revoke taking its grant row before any runtime lock, with the waiters observed while a pickup is parked).",
-    "SOL-RUNTIME-FIX adds cap-exact-and-post-lock-clock (Sol 6 RUNTIME-1 to 3 through the command entry: a USD version under an AUD cap refused CAP_BINDING_MISMATCH with nothing moved; a cap of 2^53 + 1 filled exactly and one more unit refused BUDGET_EXHAUSTED, totals read as SQL text; a decide parked on its gate and a heartbeat parked on its lease past the deadline refused GATE_EXPIRED and LEASE_EXPIRED with no decision and no changed lease or delegation expiry)."
+    "SOL-RUNTIME-FIX adds cap-exact-and-post-lock-clock (Sol 6 RUNTIME-1 to 3 through the command entry: a USD version under an AUD cap refused CAP_BINDING_MISMATCH with nothing moved; a cap of 2^53 + 1 filled exactly and one more unit refused BUDGET_EXHAUSTED, totals read as SQL text; a decide parked on its gate and a heartbeat parked on its lease past the deadline refused GATE_EXPIRED and LEASE_EXPIRED with no decision and no changed lease or delegation expiry).",
+    "SOL-AUTHORITY-FIX adds non-member-grants (R4 against provisioned record-scoped comment and write grants: alone they are no standing, beside a read share they write no team note and no update, the client audience only on a held comment grant, the shared projection unchanged) and agent-operation-id (a number, array, null or absent agent operationId is OPERATION_ID_REQUIRED with no register row; the string registers), and extends historical-handback-intake with actualMinor 1 on the narrowed, retired and grant-expired paths (ACTUAL_EXPENDITURE_UNSUPPORTED, nothing retained)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -145,7 +146,9 @@
     "tests/acceptance/i10-inflight.test.ts",
     "tests/commands/board-not-found.test.ts",
     "tests/acceptance/identifier-timing.test.ts",
-    "tests/runtime/cap-exact-and-post-lock-clock.test.ts"
+    "tests/runtime/cap-exact-and-post-lock-clock.test.ts",
+    "tests/authority/non-member-grants.test.ts",
+    "tests/commands/agent-operation-id.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
