@@ -84,19 +84,33 @@ describe('the runtime refusal codes L3 registers', () => {
 });
 
 // `DELEGATION_ALREADY_LIVE` is not a runtime code -- it is an authority
-// refusal, registered here because the register is this unit's file, and named
-// by the coordinator so that this branch and L2-DELEGATION-FIX's meet on one
-// spelling. Its emitter lands in `authority/delegations.ts`, which this lane
-// never edits, so the case checks the registration and the status and says in
-// as many words that nothing here produces it yet.
-describe('the delegation code registered for the sibling branch', () => {
+// refusal, and it is not one of the nineteen above. `mintDelegation` in
+// `authority/delegations.ts` raises it for a second live delegation under a
+// purpose the agent already holds; `task.pickup` in `core-runtime` mints
+// through that function and hands the refusal back as an `AnyRefusal`, and
+// `fromRuntime` (`commands/tasks-runtime.ts`) registers it like any runtime
+// code. That is the same road `DELEGATION_NOT_LIVE` and
+// `DELEGATION_OUT_OF_PURPOSE` already travel, and neither is counted in the
+// nineteen either: the census above is `SUGGESTED_STATUS`, the runtime's own
+// codes and the statuses it asked for, and a code the runtime passes through
+// without owning is not the runtime's to suggest a status for. So it is not
+// counted there, and the case below holds it to the list that matters to a
+// caller -- produced or not. The HTTP proof is the pickup case in
+// `tests/api/task-runtime-routes.test.ts` ("refuses a second live delegation
+// for one purpose instead of faulting"), which asserts the 409 and the audit
+// row.
+describe('the delegation code a pickup now produces', () => {
   it('registers it, gives it 409, and shows it to the caller', () => {
     expect(registeredRefusal('DELEGATION_ALREADY_LIVE')).toBeDefined();
     expect(statusFor('DELEGATION_ALREADY_LIVE')).toBe(409);
     expect(CALLER_VISIBLE.has('DELEGATION_ALREADY_LIVE')).toBe(true);
   });
 
-  it('leaves it on the unproduced list until the emitter lands', () => {
-    expect(UNPRODUCED_CODES.has('DELEGATION_ALREADY_LIVE')).toBe(true);
+  it('is not one of the runtime codes, so the nineteen do not count it', () => {
+    expect(RUNTIME_CODES).not.toContain('DELEGATION_ALREADY_LIVE');
+  });
+
+  it('has come off the unproduced list, because a pickup reaches it', () => {
+    expect(UNPRODUCED_CODES.has('DELEGATION_ALREADY_LIVE')).toBe(false);
   });
 });

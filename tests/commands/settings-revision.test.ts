@@ -43,8 +43,6 @@ if (serverUrl === undefined) {
   console.warn('settings revision: DATABASE_URL is unset, so nothing below ran.');
 }
 
-type Command = Parameters<typeof executeCommand>[4];
-
 describe.skipIf(serverUrl === undefined)('the settings commands write against a revision', () => {
   let db: FreshDatabase;
   let alpha: string;
@@ -64,7 +62,7 @@ describe.skipIf(serverUrl === undefined)('the settings commands write against a 
       operationId: `band-${randomUUID()}`,
       value,
       ...(expectedRevision === undefined ? {} : { expectedRevision }),
-    } as unknown as Command);
+    });
 
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'l3rev' });
@@ -125,7 +123,7 @@ describe.skipIf(serverUrl === undefined)('the settings commands write against a 
       command: 'settings.set_client_sign_off',
       operationId: `sign-${randomUUID()}`,
       value: true,
-    } as unknown as Command);
+    });
     expect(isCommandRefusal(applied)).toBe(false);
     const current = await db.app.withBusiness(
       alpha,
@@ -137,7 +135,7 @@ describe.skipIf(serverUrl === undefined)('the settings commands write against a 
       operationId: `sign-${randomUUID()}`,
       value: false,
       expectedRevision: (current?.revision ?? 1) - 1,
-    } as unknown as Command);
+    });
     expect(isCommandRefusal(refusal) ? refusal.code : '').toBe('VERSION_STALE');
     const after = await db.app.withBusiness(
       alpha,
