@@ -60,6 +60,8 @@ import {
   resolveDelegation,
   type Delegation,
 } from '../authority/delegations.ts';
+import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
+import { delegationCredentialKeys } from './runtime-config.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
@@ -252,11 +254,17 @@ async function runAgentCommand(
     // content"), so a read repeated after its grant or delegation went answers
     // today's refusal rather than yesterday's task. The register row stays as
     // it was: the operation happened, and nothing here repeats it.
-    const current = isCommandRefusal(replayed)
+    //
+    // A pickup is the one replay that hands something back beyond the receipt:
+    // the credential the lost response carried, derived again once the
+    // current rights and the receipt's own lease have been checked.
+    const released: CommandResult | undefined = isCommandRefusal(replayed)
       ? undefined
-      : await authoriseReplay(tx, session, credential, request, replayed);
-    if (current !== undefined) {
-      const visible = asCallerVisible(current);
+      : request.command === 'task.pickup'
+        ? await replayPickup(tx, session, replayed)
+        : await authoriseReplay(tx, session, credential, request, replayed);
+    if (released !== undefined && isCommandRefusal(released)) {
+      const visible = asCallerVisible(released);
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: request.command,
@@ -277,7 +285,7 @@ async function runAgentCommand(
       subjectRecordId: isCommandRefusal(replayed) ? null : replayed.recordId,
       payloadDigest: digest,
     });
-    return replayed;
+    return released ?? replayed;
   }
 
   // The request's own shape, before any authority is read: a system-owned
@@ -674,7 +682,11 @@ function parseOperands(request: AgentRequest): AgentOperands | Refused {
   return operands;
 }
 
-/** The note a replayed pickup carries in place of its credential. */
+/**
+ * The note a replayed pickup carries in place of its credential, when its
+ * delegation predates derivation (`legacy-random`) and nothing can give the
+ * credential back.
+ */
 export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
 
 /**
@@ -683,35 +695,166 @@ export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
  * The credential is "stored by hash" (TRANSACTION-CONTRACT) and
  * `delegations.credential_hash` is that store. A register row holding it in
  * the clear would be a second, readable copy, and a replay would hand it to
- * whoever repeated the operation id. So the first answer carries it once and
- * the stored one says, by a code, that it is not there: a pickup whose
- * response was lost replays its handles, and the lease it names is held until
- * it expires or is cancelled, because nobody can recover the credential.
+ * whoever repeated the operation id. So the row keeps every handle and a null
+ * credential; `replayPickup` derives the credential again rather than reading
+ * it from anywhere.
  */
 function storable(handle: CommandHandle): CommandHandle {
   if (!('credential' in handle.detail)) return handle;
-  return {
-    ...handle,
-    detail: { ...handle.detail, credential: null, credentialNote: CREDENTIAL_NOT_REPLAYED },
+  return { ...handle, detail: { ...handle.detail, credential: null } };
+}
+
+const PICKUP_REPLAY_FIXES: readonly string[] = [
+  'The work this pickup claimed is no longer yours to resume.',
+  'Re-read the queue.',
+];
+
+interface PickupBindingRow {
+  readonly credential_scheme: string;
+  readonly credential_key_id: string | null;
+  readonly credential_hash: string;
+  readonly lease_live: boolean;
+  readonly approval_current: boolean;
+}
+
+/**
+ * A pickup's replay, which is the case where the agent lost the answer that
+ * carried its credential and so has none to present (root ruling 6: the
+ * deliberate exception to "no credential, no call").
+ *
+ * In order, and every step reads the rows as they are now:
+ *
+ * 1. The delegation the receipt names is still live and still this agent's.
+ * 2. The delegating person's current grants still cover the pickup's purpose.
+ * 3. The receipt's lease, reservation, attempt and delegation are still bound
+ *    to one another, to this agent, and to the receipt's task and version. The
+ *    lease is live and unexpired, the hold is held, and the approval behind it
+ *    is still current.
+ * 4. Only then is the credential derived under the delegation's pinned scheme
+ *    and key id, and its digest compared with the one stored at mint.
+ *
+ * A missing key or a digest that does not match is a closed failure. The
+ * receipt is not rewritten, nothing is minted in its place, and no lease,
+ * hold, expiry or delegation is touched. A `legacy-random` delegation answers
+ * its receipt with no credential and says why, because a digest cannot give
+ * random bytes back.
+ */
+async function replayPickup(
+  tx: TenantQuery,
+  session: AgentSession,
+  stored: CommandHandle,
+): Promise<CommandResult> {
+  const detail = stored.detail;
+  const named = (key: string): string => {
+    const value = detail[key];
+    return typeof value === 'string' && UUID.test(value) ? value : '';
   };
+  const delegationId = named('delegationId');
+  const held = await heldDelegation(tx, session, 'live', delegationId);
+  if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
+
+  const declaration = declarationOf('task.pickup');
+  const decision = await checkDelegatedAuthority(tx, held, {
+    collection: declaration?.collection ?? 'task',
+    action: declaration?.action ?? 'write',
+    scope: held.purposeScope,
+  });
+  if (!decision.ok) return fromRuntime(decision.refusal);
+
+  const rows = await tx.query<PickupBindingRow>(
+    `select d.credential_scheme, d.credential_key_id, d.credential_hash,
+            (l.state = 'live' and l.expires_at > now() and res.state = 'held') as lease_live,
+            (g.state = 'approved' and lin.state = 'live' and ver.superseded_at is null)
+              as approval_current
+       from public.leases l
+       join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+       join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+       join public.attempts att
+         on att.business_id = l.business_id and att.reservation_id = res.id and att.lease_id = l.id
+       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+       join public.proposal_versions ver
+         on ver.business_id = res.business_id and ver.id = res.version_id
+       join public.proposal_lineages lin
+         on lin.business_id = res.business_id and lin.id = run.lineage_id
+       join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
+      where l.business_id = $1 and l.id = $2 and d.id = $3 and res.id = $4 and att.id = $5
+        and l.holder_actor_id = $6 and d.agent_actor_id = $6
+        and l.task_id = $7 and res.version_id = $8`,
+    [
+      tx.businessId,
+      named('leaseId'),
+      delegationId,
+      named('reservationId'),
+      named('attemptId'),
+      session.actorId,
+      named('taskId'),
+      named('versionId'),
+    ],
+  );
+  const bound = rows[0];
+  if (bound === undefined) return refuseCommand('LEASE_NOT_OWNED', [], PICKUP_REPLAY_FIXES);
+  if (!bound.lease_live) return refuseCommand('LEASE_EXPIRED', [], PICKUP_REPLAY_FIXES);
+  if (!bound.approval_current) {
+    return refuseCommand('RESERVATION_NOT_CLAIMABLE', [], PICKUP_REPLAY_FIXES);
+  }
+
+  // `credential` is read by the spread below and then replaced; the note, if
+  // an older row carries one, does not survive into a derived answer.
+  const { credentialNote: _note, ...handles } = detail;
+  if (bound.credential_scheme === LEGACY_SCHEME) {
+    return {
+      ...stored,
+      detail: { ...handles, credential: null, credentialNote: CREDENTIAL_NOT_REPLAYED },
+    };
+  }
+  const keyId = bound.credential_key_id;
+  const keys = delegationCredentialKeys();
+  const credential =
+    bound.credential_scheme !== DERIVED_SCHEME || keyId === null || !keys.ok
+      ? undefined
+      : keys.keys.derive(keyId, {
+          businessId: tx.businessId,
+          agentActorId: session.actorId,
+          delegationId,
+        });
+  if (credential === undefined) {
+    return refuseCommand(
+      'DEPENDENCY_NOT_LANDED',
+      ['task.pickup', `delegation credential key ${keyId ?? 'unrecorded'}`],
+      [
+        'This deployment does not hold the key this delegation was minted under.',
+        'Restore that key; the pickup is unchanged and replays once it is back.',
+      ],
+    );
+  }
+  if (digestOf(credential) !== bound.credential_hash) {
+    return refuseCommand(
+      'DEPENDENCY_NOT_LANDED',
+      ['task.pickup', 'delegation credential integrity'],
+      [
+        'The credential derived for this pickup does not match the one it was issued.',
+        'Nothing was reissued. Restore the key this delegation was minted under.',
+      ],
+    );
+  }
+  return { ...stored, detail: { ...handles, credential } };
 }
 
 /**
  * Whether a stored success may be released to the rights held now.
  *
- * Most operations answer to the same check a fresh call does. Two cannot:
+ * Most operations answer to the same check a fresh call does. A pickup has its
+ * own path (`replayPickup`). A handback cannot answer to the fresh check
+ * either: it settles its own delegation, so the credential that made it no
+ * longer resolves as live. Its receipt is released to that same credential,
+ * for that delegation's own lease, while the delegation was settled rather
+ * than revoked and has not expired, and the person's grants still cover it.
+ * With no credential at all, a handback replay is what any bare agent call
+ * outside the queue and pickup is (root ruling 6): an exclusion, with nothing
+ * of the receipt in it.
  *
- * - A pickup's replay is the case where the agent lost the answer that carried
- *   its credential, so it has none to present. It is checked against the
- *   delegation the pickup minted, by its stored id: still live, still this
- *   agent's, and still inside the authorising person's current grants.
- * - A handback settles its own delegation, so the credential that made it no
- *   longer resolves as live. Its receipt is released to that same credential,
- *   for that delegation's own lease, while the delegation was settled rather
- *   than revoked and has not expired, and the person's grants still cover it.
- *
- * Neither repeats anything. Both return the refusal, not the stored detail,
- * when the rights are gone.
+ * Nothing here repeats anything. The refusal comes back, not the stored
+ * detail, when the rights are gone.
  */
 async function authoriseReplay(
   tx: TenantQuery,
@@ -720,21 +863,19 @@ async function authoriseReplay(
   request: AgentRequest,
   stored: CommandHandle,
 ): Promise<CommandRefusal | undefined> {
-  if (request.command !== 'task.pickup' && request.command !== 'task.handback') {
+  if (request.command !== 'task.handback') {
     return await authorise(tx, session, credential, request);
   }
-  const held =
-    request.command === 'task.pickup'
-      ? await heldDelegation(tx, session, 'live', String(stored.detail['delegationId'] ?? ''))
-      : credential === undefined || credential === ''
-        ? undefined
-        : await heldDelegation(
-            tx,
-            session,
-            'settled',
-            String(stored.detail['leaseId'] ?? ''),
-            credential,
-          );
+  if (credential === undefined || credential === '') {
+    return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
+  }
+  const held = await heldDelegation(
+    tx,
+    session,
+    'settled',
+    String(stored.detail['leaseId'] ?? ''),
+    credential,
+  );
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
   const declaration = declarationOf(request.command);
   const decision = await checkDelegatedAuthority(tx, held, {

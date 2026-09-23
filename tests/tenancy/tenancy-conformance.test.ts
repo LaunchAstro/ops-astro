@@ -95,6 +95,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0019_runtime_active_hold_uniqueness',
         '0020_business_settings_revision',
         '0021_runtime_gate_version_binding',
+        '0022_delegation_credential_scheme',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -124,6 +125,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0019_runtime_active_hold_uniqueness',
         '0020_business_settings_revision',
         '0021_runtime_gate_version_binding',
+        '0022_delegation_credential_scheme',
       ]);
     });
 

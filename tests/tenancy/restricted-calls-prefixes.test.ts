@@ -88,9 +88,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
     await db?.drop();
   });
 
-  it('has twenty-one migrations on disk, 0001 to 0021, and covers each below', () => {
+  it('has twenty-two migrations on disk, 0001 to 0022, and covers each below', () => {
     expect(onDisk.map((migration) => migration.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: 21 }, (_, i) => String(i + 1).padStart(4, '0')),
+      Array.from({ length: 22 }, (_, i) => String(i + 1).padStart(4, '0')),
     );
   });
 

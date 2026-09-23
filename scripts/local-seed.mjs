@@ -31,6 +31,7 @@ import {
 } from '../packages/core-records/src/records/business-settings.ts';
 import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
+import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -722,6 +723,19 @@ try {
   console.log(
     `local-seed: gate signing key ${gateKey.id} ` +
       `${gateKey.fresh ? 'generated into' : 'read back from'} .local/gate.env`,
+  );
+
+  // The delegation credential keyring, provisioned once and then only read, by
+  // the same function the API uses. It is its own key, never the gate key
+  // above, and an existing file is never rewritten: every live delegation's
+  // pickup replay depends on the key it was minted under (`credential-keys.ts`).
+  const credentialFile = `${root}.local/delegation.env`;
+  const credentialExisted = existsSync(credentialFile);
+  const credentialKeys = ensureCredentialKeyFile(credentialFile);
+  if (!credentialKeys.ok) throw new Error(`local-seed: ${credentialKeys.problem}`);
+  console.log(
+    `local-seed: delegation credential key ${credentialKeys.keys.activeKeyId} ` +
+      `${credentialExisted ? 'read back from' : 'generated into'} .local/delegation.env`,
   );
 
   const { agents, fresh: agentsFresh } = readAgents();

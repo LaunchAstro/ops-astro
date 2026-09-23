@@ -125,9 +125,9 @@ describe.skipIf(serverUrl === undefined)('an agent replay under current rights',
     });
     expect(isCommandRefusal(again)).toBe(false);
     const replayed = detailOf(again);
-    expect(JSON.stringify(again)).not.toContain(picked.credential);
-    expect(replayed['credential']).toBeNull();
-    expect(replayed['credentialNote']).toBe('CREDENTIAL_NOT_REPLAYED');
+    // Derived again, not read back (PICKUP-REPLAY): the same credential.
+    expect(replayed['credential']).toBe(picked.credential);
+    expect(replayed).not.toHaveProperty('credentialNote');
     for (const handle of ['leaseId', 'fence', 'delegationId', 'reservationId', 'taskId']) {
       expect(replayed[handle], handle).toStrictEqual(picked.detail[handle]);
     }
@@ -172,7 +172,8 @@ describe.skipIf(serverUrl === undefined)('an agent replay under current rights',
     const first = await world.asAgent(handback, picked.credential);
     expect(isCommandRefusal(first)).toBe(false);
     expect(await world.asAgent(handback, picked.credential)).toStrictEqual(first);
-    expect(codeOf(await world.asAgent(handback))).toBe('DELEGATION_NOT_LIVE');
+    // Bare, it is an exclusion like any bare call (root ruling 6).
+    expect(codeOf(await world.asAgent(handback))).toBe('DELEGATION_EXCLUDES_OPERATION');
     expect(codeOf(await world.asAgent(handback, 'not-the-credential'))).toBe('DELEGATION_NOT_LIVE');
 
     const reports = await world.db.admin.execute<{ readonly n: string }>(

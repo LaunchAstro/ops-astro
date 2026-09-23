@@ -37,8 +37,13 @@
 // authority on its next call, and no code path can widen it, because no code
 // path here reads a permission the delegation stored.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import {
+  configuredCredentialKeys,
+  DERIVED_SCHEME,
+  type CredentialKeysDecision,
+} from './credential-keys.ts';
 import { effectiveGrants, type Action, type ScopeRequest } from './grants.ts';
 
 export type DelegationRefusalCode =
@@ -106,8 +111,10 @@ export interface MintRequest {
 export interface MintedDelegation {
   readonly delegation: Delegation;
   /**
-   * Returned once, to the authorised caller. Only its digest is stored, so
-   * this value cannot be recovered from the database afterwards.
+   * Returned to the authorised caller. Only its digest is stored, so the
+   * database alone cannot give it back. It is derived from the delegation's
+   * fixed identity under the key named in `credential_key_id`, which is what
+   * lets a pickup replay recompute it (`credential-keys.ts`).
    */
   readonly credential: string;
 }
@@ -166,7 +173,12 @@ function delegationOf(row: DelegationRow): Delegation {
 export async function mintDelegation(
   tx: TenantQuery,
   request: MintRequest,
+  keys: CredentialKeysDecision = configuredCredentialKeys(),
 ): Promise<DelegationDecision<MintedDelegation>> {
+  // Not a decision about the caller, so not a refusal code of this module.
+  // The command layer answers `DEPENDENCY_NOT_LANDED` before it gets here;
+  // reaching this line without a key is a fault in whoever called it.
+  if (!keys.ok) throw new Error(`delegations: no delegation credential key: ${keys.problem}`);
   if (request.actions.includes('decide')) {
     return refuse(
       'DELEGATION_EXCLUDES_DECISION',
@@ -239,12 +251,22 @@ export async function mintDelegation(
     await settleDelegation(tx, held.id);
   }
 
-  const credential = randomBytes(32).toString('base64url');
+  // The id is chosen here rather than by the database because the credential
+  // is derived from it, and the digest has to be in the same insert.
+  const id = randomUUID();
+  const keyId = keys.keys.activeKeyId;
+  const credential = keys.keys.derive(keyId, {
+    businessId: tx.businessId,
+    agentActorId: request.agentActorId,
+    delegationId: id,
+  });
+  if (credential === undefined) throw new Error(`delegations: active key ${keyId} is not held`);
   const rows = await tx.query<DelegationRow>(
     `insert into public.delegations
        (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-        collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at,
+        credential_scheme, credential_key_id)
+     values ($1, $12, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14)
      on conflict (business_id, agent_actor_id, purpose)
        where revoked_at is null and settled_at is null do nothing
      returning id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
@@ -261,6 +283,9 @@ export async function mintDelegation(
       request.purposeScope.id,
       digestOf(credential),
       request.expiresAt,
+      id,
+      DERIVED_SCHEME,
+      keyId,
     ],
   );
   const written = rows[0];
