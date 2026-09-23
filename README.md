@@ -12,18 +12,41 @@ attribution and independent review.
 
 ## Status
 
-This repository contains documentation, development tooling, checks, vendored
-skills, and empty product directories. There is no application, execution
-engine, installer, release, or deployed service. Local tooling checks do not
-prove product behaviour or hosted enforcement. Outside contributions remain
-closed.
+The tree holds a local task slice a person can start and use on their own
+machine: a React and Vite web application, a Hono API that runs as TypeScript
+source under Node 24, a real local Postgres with the tenancy and record
+migrations applied, a Supabase Auth (GoTrue) adapter for sign-in, and
+fixed-slot task records. Sign in, create a task, assign it, change its state,
+reload, and the saved result is still there, because it is in Postgres.
+
+Nothing is deployed and nothing is released. There is no installer, no hosted
+service, and no published package. The proposed L1-L6 sequence is not
+complete. Local tooling checks prove that this checkout builds, types, lints
+and passes its own tests; they prove nothing about a hosted deployment or
+hosted enforcement, and neither does a green `pnpm check`. Outside
+contributions remain closed.
 
 The proposed sequence is foundation, tasks and basic approval, agent work,
-Docs, richer review, then CRM. The first product slice is a local task flow
-with real persistence, a deterministic worker, and synthetic data.
-[Current decisions](docs/current-decisions.md) and the
-[first task specification](docs/plan/first-task.md) define its boundaries.
-Product implementation waits for the full build-loop rehearsal.
+Docs, richer review, then CRM. [Current decisions](docs/current-decisions.md)
+and the [first task specification](docs/plan/first-task.md) define the first
+slice's boundaries; [the local slice](docs/local/README.md) records what it
+actually does and where it falls short.
+
+## Run the local slice
+
+[The local slice](docs/local/README.md) has the prerequisites, the start
+sequence, the local address, where the synthetic credentials live, the verify
+commands, and the exact limitations. In short: with Node 24, pnpm through
+corepack and Docker present, `corepack pnpm install`, then
+
+```
+corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
+  && corepack pnpm auth:seed && corepack pnpm db:seed
+```
+
+then `corepack pnpm api:up` and `corepack pnpm web:up`. Everything it starts
+is a container or a process on a loopback port of your own machine.
+`corepack pnpm build` builds the web bundle; it packages and deploys nothing.
 
 ## Start here
 
