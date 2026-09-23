@@ -23,6 +23,7 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
@@ -51,7 +52,9 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
   const read = async (request: ReadRequest, who: Member = mia) =>
     await executeRead(db.app, alpha, who.presented, request);
 
-  const countRows = async (table: 'field_defs' | 'business_settings' | 'audit_events') =>
+  const countRows = async (
+    table: 'field_defs' | 'business_settings' | 'audit_events' | 'records',
+  ) =>
     await db.app.withBusiness(alpha, async (tx) => {
       const rows = await tx.query<{ readonly n: string }>(
         `select count(*)::text as n from ${table} where business_id = $1`,
@@ -302,6 +305,14 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
   });
 
   describe('system-field injection against every payload this lane adds (D06)', () => {
+    // The contract is a **typed refusal and unchanged domain state**
+    // (CONTRACT-LEDGER D06), not "refused or ignored". These cases said either
+    // answer would do and the weaker one was what the boundary gave: the
+    // fields were dropped and the ordinary mutation went through, so a caller
+    // who believed they had set `actor_id` got a success and no correction.
+    // Each case below now requires the refusal, requires the domain state to
+    // be exactly what it was, and carries its own positive control so a
+    // boundary that refused everything could not pass.
     const SYSTEM_FIELDS = {
       business_id: randomUUID(),
       actor_id: randomUUID(),
@@ -309,24 +320,74 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
       revision: 99,
     };
 
-    it('task.comment: refused or ignored, with the database unchanged', async () => {
-      const before = await countRows('audit_events');
-      const result = await run({
-        command: 'task.comment',
-        operationId: `spoof-${randomUUID()}`,
-        recordId: taskId,
-        expectedRevision: taskRevision,
-        body: 'Spoofed',
-        audience: 'internal',
-        ...SYSTEM_FIELDS,
-      } as unknown as Command);
-      // Either answer discharges D06: what may not happen is the value landing.
-      if (!isCommandRefusal(result)) {
-        const detail = await read({ read: 'task.read', recordId: taskId });
-        expect('task' in detail && detail.task.revision).toBe(taskRevision);
-      }
-      expect(await countRows('audit_events')).toBeGreaterThan(before);
-      // The positive control: the same payload without the system fields.
+    const readSetting = async (key: string) =>
+      await db.app.withBusiness(alpha, async (tx) => {
+        const rows = await tx.query<{
+          readonly value: unknown;
+          readonly updated_by_actor_id: string | null;
+          readonly updated_at: Date;
+        }>(
+          `select value, updated_by_actor_id, updated_at from business_settings
+            where business_id = $1 and key = $2`,
+          [tx.businessId, key],
+        );
+        return rows[0];
+      });
+
+    const commentCount = async () =>
+      await db.app.withBusiness(alpha, async (tx) => {
+        const rows = await tx.query<{ readonly n: string }>(
+          `select count(*)::text as n from records r
+             join record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+            where r.business_id = $1 and t.key = 'task_comment'`,
+          [tx.businessId],
+        );
+        return Number(rows[0]?.n ?? '0');
+      });
+
+    /** The refusal and the audit row it left, for one injected payload. */
+    const injectAndAudit = async (command: Command, operationId: string) => {
+      const result = await run(command);
+      const events = await db.app.withBusiness(alpha, async (tx) => {
+        const all = await readAuditEvents(tx);
+        return all.filter((event) => event.operation_id === operationId);
+      });
+      return { result, events };
+    };
+
+    it('task.comment: refused, no comment written, and the ordinary payload still works', async () => {
+      const before = await commentCount();
+      const operationId = `spoof-${randomUUID()}`;
+      const { result, events } = await injectAndAudit(
+        {
+          command: 'task.comment',
+          operationId,
+          recordId: taskId,
+          expectedRevision: taskRevision,
+          body: 'Spoofed',
+          audience: 'internal',
+          ...SYSTEM_FIELDS,
+        } as unknown as Command,
+        operationId,
+      );
+      expect(isCommandRefusal(result)).toBe(true);
+      expect(isCommandRefusal(result) ? result.code : '').toBe('FIELD_NOT_WRITABLE');
+      // The names are the keys, so an author can see which ones to remove.
+      expect(isCommandRefusal(result) ? [...result.names].toSorted() : []).toStrictEqual([
+        'actor_id',
+        'business_id',
+        'created_at',
+        'revision',
+      ]);
+      // Unchanged domain state: no comment, and the task's own revision stands.
+      expect(await commentCount()).toBe(before);
+      const detail = await read({ read: 'task.read', recordId: taskId });
+      expect('task' in detail && detail.task.revision).toBe(taskRevision);
+      // Recorded through the envelope's audit path like every other refusal.
+      expect(events).toHaveLength(1);
+      expect(events[0]?.outcome).toBe('refused');
+      expect(events[0]?.refusal_code).toBe('FIELD_NOT_WRITABLE');
+
       const control = await run({
         command: 'task.comment',
         operationId: `control-${randomUUID()}`,
@@ -336,67 +397,132 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
         audience: 'internal',
       });
       expect(isCommandRefusal(control)).toBe(false);
+      expect(await commentCount()).toBe(before + 1);
     });
 
-    it('settings.set_four_eyes_threshold: the injected actor is not the recorded one', async () => {
-      await run({
+    it('settings.set_four_eyes_threshold: refused, and the stored setting is untouched', async () => {
+      const control = await run({
         command: 'settings.set_four_eyes_threshold',
-        operationId: `spoof-${randomUUID()}`,
+        operationId: `control-${randomUUID()}`,
         value: 750,
-        ...SYSTEM_FIELDS,
-      } as unknown as Command);
-      const row = await db.app.withBusiness(alpha, async (tx) => {
-        const rows = await tx.query<{ readonly updated_by_actor_id: string | null }>(
-          `select updated_by_actor_id from business_settings
-            where business_id = $1 and key = 'four_eyes_threshold'`,
-          [tx.businessId],
-        );
-        return rows[0];
       });
-      expect(row?.updated_by_actor_id).not.toBe(SYSTEM_FIELDS.actor_id);
-      // The positive control: it really did write, and as the real actor.
-      expect(row?.updated_by_actor_id).toBe(mia.actorId);
+      expect(isCommandRefusal(control)).toBe(false);
+      const before = await readSetting('four_eyes_threshold');
+      expect(before?.updated_by_actor_id).toBe(mia.actorId);
+
+      const operationId = `spoof-${randomUUID()}`;
+      const { result, events } = await injectAndAudit(
+        {
+          command: 'settings.set_four_eyes_threshold',
+          operationId,
+          value: 1_250,
+          ...SYSTEM_FIELDS,
+        } as unknown as Command,
+        operationId,
+      );
+      expect(isCommandRefusal(result) ? result.code : '').toBe('FIELD_NOT_WRITABLE');
+      const after = await readSetting('four_eyes_threshold');
+      // The value the injected payload also carried did not land, which is the
+      // half the old case could not see: it only checked the actor.
+      expect(after?.value).toStrictEqual(before?.value);
+      expect(after?.updated_at.getTime()).toBe(before?.updated_at.getTime());
+      expect(after?.updated_by_actor_id).toBe(mia.actorId);
+      expect(events[0]?.refusal_code).toBe('FIELD_NOT_WRITABLE');
     });
 
-    it('settings.set_client_sign_off: an injected revision reaches nothing', async () => {
-      const before = await db.app.withBusiness(alpha, async (tx) => {
-        const rows = await tx.query<{ readonly updated_at: Date }>(
-          `select updated_at from business_settings
-            where business_id = $1 and key = 'client_sign_off_required'`,
-          [tx.businessId],
-        );
-        return rows[0]?.updated_at;
-      });
-      const result = await run({
+    it('settings.set_client_sign_off: refused, and the stored setting is untouched', async () => {
+      const control = await run({
         command: 'settings.set_client_sign_off',
-        operationId: `spoof-${randomUUID()}`,
+        operationId: `control-${randomUUID()}`,
         value: false,
+      });
+      expect(isCommandRefusal(control)).toBe(false);
+      const before = await readSetting('client_sign_off_required');
+      expect(before?.value).toBe(false);
+
+      const operationId = `spoof-${randomUUID()}`;
+      const { result, events } = await injectAndAudit(
+        {
+          command: 'settings.set_client_sign_off',
+          operationId,
+          value: true,
+          ...SYSTEM_FIELDS,
+        } as unknown as Command,
+        operationId,
+      );
+      expect(isCommandRefusal(result) ? result.code : '').toBe('FIELD_NOT_WRITABLE');
+      const after = await readSetting('client_sign_off_required');
+      expect(after?.value).toBe(false);
+      expect(after?.updated_at.getTime()).toBe(before?.updated_at.getTime());
+      expect(after?.updated_by_actor_id).toBe(mia.actorId);
+      expect(events[0]?.refusal_code).toBe('FIELD_NOT_WRITABLE');
+    });
+
+    it('task.propose and task.decide: the same refusal, and no proposal opened', async () => {
+      const before = await countRows('audit_events');
+      const proposeId = `spoof-${randomUUID()}`;
+      const proposed = await run({
+        command: 'task.propose',
+        operationId: proposeId,
+        recordId: taskId,
+        expectedRevision: taskRevision,
+        purpose: 'draft_the_reply',
+        maximumMinor: 1_000,
+        currency: 'AUD',
+        payload: {},
+        step: { kind: 'compose', payload: {} },
         ...SYSTEM_FIELDS,
       } as unknown as Command);
-      const row = await db.app.withBusiness(alpha, async (tx) => {
-        const rows = await tx.query<{
-          readonly value: unknown;
-          readonly updated_by_actor_id: string | null;
-          readonly updated_at: Date;
-        }>(
-          `select value, updated_by_actor_id, updated_at from business_settings
-            where business_id = $1 and key = 'client_sign_off_required'`,
-          [tx.businessId],
+      expect(isCommandRefusal(proposed) ? proposed.code : '').toBe('FIELD_NOT_WRITABLE');
+
+      const lineages = await db.app.withBusiness(alpha, async (tx) => {
+        const rows = await tx.query<{ readonly n: string }>(
+          `select count(*)::text as n from public.proposal_lineages
+            where business_id = $1 and task_id = $2`,
+          [tx.businessId, taskId],
         );
-        return rows[0];
+        return Number(rows[0]?.n ?? '0');
       });
-      // `revision` and `created_at` are not columns of this table and not
-      // fields of this command, so there is nowhere for them to land; what the
-      // case proves is that the actor and the time stayed the server's.
-      expect(row?.updated_by_actor_id).not.toBe(SYSTEM_FIELDS.actor_id);
-      expect(row?.updated_by_actor_id).toBe(mia.actorId);
-      expect(row?.updated_at.getTime()).toBeGreaterThanOrEqual(before?.getTime() ?? 0);
-      expect(new Date(SYSTEM_FIELDS.created_at).getTime()).toBeLessThan(
-        row?.updated_at.getTime() ?? 0,
-      );
-      // The positive control: the write itself landed.
-      expect(isCommandRefusal(result)).toBe(false);
-      expect(row?.value).toBe(false);
+      expect(lineages).toBe(0);
+
+      const decided = await run({
+        command: 'task.decide',
+        operationId: `spoof-${randomUUID()}`,
+        gateId: randomUUID(),
+        versionId: randomUUID(),
+        decision: 'approve',
+        note: 'no',
+        ...SYSTEM_FIELDS,
+      } as unknown as Command);
+      expect(isCommandRefusal(decided) ? decided.code : '').toBe('FIELD_NOT_WRITABLE');
+      // Both refusals are on the trail, like every other refusal.
+      expect(await countRows('audit_events')).toBeGreaterThan(before + 1);
+    });
+
+    it('task.pickup and task.handback: refused at the boundary before the agent path', async () => {
+      for (const command of [
+        {
+          command: 'task.pickup',
+          operationId: `spoof-${randomUUID()}`,
+          reservationId: randomUUID(),
+          ...SYSTEM_FIELDS,
+        },
+        {
+          command: 'task.handback',
+          operationId: `spoof-${randomUUID()}`,
+          leaseId: randomUUID(),
+          fence: 1,
+          outcome: 'completed',
+          ...SYSTEM_FIELDS,
+        },
+      ]) {
+        // Sequential: each is a separate attempt with its own register row.
+        // eslint-disable-next-line no-await-in-loop
+        const result = await run(command as unknown as Command);
+        expect(isCommandRefusal(result) ? result.code : '', command.command).toBe(
+          'FIELD_NOT_WRITABLE',
+        );
+      }
     });
 
     it('preset.plan: a field carrying system keys still plans nothing into them', async () => {
@@ -409,7 +535,10 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
         ...SYSTEM_FIELDS,
       } as unknown as ReadRequest);
       expect(await countRows('field_defs')).toBe(before);
-      // The positive control: the plan itself came back.
+      // A read takes no command envelope, so the boundary rule above does not
+      // reach it. What discharges D06 here is that the keys land nowhere: the
+      // planner reads the three fields it declares and the injected ones are
+      // not among them.
       expect('plan' in result).toBe(true);
     });
   });
