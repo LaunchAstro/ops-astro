@@ -99,6 +99,8 @@ describe('the refusal register', () => {
       // `DELEGATION_EXCLUDES_OPERATION`, `GATE_EXPIRED` and
       // `CHANGE_ROUNDS_EXHAUSTED` came off together, each reached through the
       // command envelope in `tests/commands/unproduced-reach.test.ts`.
+      // `LEASE_HELD` came off when two lineages on one task, under an envelope
+      // an earlier handback left open, reached it (`tests/commands/lease-held-reach.test.ts`).
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXPIRED',
       'DELEGATION_REVOKED',
@@ -106,7 +108,6 @@ describe('the refusal register', () => {
       'EVIDENCE_MISMATCH',
       'GATE_PENDING',
       'LEASE_EXPIRED',
-      'LEASE_HELD',
       'PROPOSAL_SCOPE_EXCEEDED',
       'PROPOSAL_SUPERSEDED',
       'TASK_NOT_PICKABLE',

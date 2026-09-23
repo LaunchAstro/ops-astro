@@ -405,7 +405,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'PROPOSAL_SUPERSEDED',
   'PROPOSAL_SCOPE_EXCEEDED',
   'TASK_NOT_PICKABLE',
-  // The three L4 codes that need something no caller can reach.
+  // The two L4 codes that need something no caller can reach.
   //
   // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
   // disagree, and `propose` writes both from one value, so only an amended row
@@ -414,18 +414,20 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // mints the delegation with the lease's own expiry, so an expired lease
   // arrives as `DELEGATION_NOT_LIVE`; a newer pickup answers
   // `LEASE_NOT_OWNED`; and the handback that settles a lease settles its
-  // delegation too. `LEASE_HELD` needs a second pickup of a reservation
-  // already leased, and the second pickup meets `RESERVATION_NOT_CLAIMABLE`
-  // first: the reservation has left `held` by then.
+  // delegation too.
   //
   // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` came off this list when a
   // command case reached each (`tests/commands/unproduced-reach.test.ts`):
   // `task.propose` takes `expiresInSeconds`, so a one-second window closes
   // before the decision, and `task.propose` on a lineage plus `task.decide`
-  // reach the third round.
+  // reach the third round. `LEASE_HELD` came off the same way
+  // (`tests/commands/lease-held-reach.test.ts`). A second pickup of the *same*
+  // reservation meets `RESERVATION_NOT_CLAIMABLE` first, but pickup keeps a
+  // reservation `held`, and a handback releases its hold without closing the
+  // task's envelope, so two new lineages approved on one task give two held
+  // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
-  'LEASE_HELD',
   // L4's three review-fix codes are deliberately **not** on this list, and
   // each is a command path rather than a module one.
   //
