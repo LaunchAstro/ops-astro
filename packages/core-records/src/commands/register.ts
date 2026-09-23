@@ -391,15 +391,10 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // this head's one-task purpose does not distinguish.
   'DELEGATION_NARROWED',
   'DELEGATION_WIDENS',
-  // `DELEGATION_ALREADY_LIVE` is registered here and unreachable **on this
-  // branch by design**. The name is pinned so that two branches meet: lane
-  // L2-DELEGATION-FIX emits it from `authority/delegations.ts` for a second
-  // mint under a purpose the agent already holds live -- today that violates
-  // `delegations_one_live_per_purpose_idx` and reaches the caller as a 503
-  // (L3-PART-B-2 handback, note 10). Registering the code is this unit's file;
-  // producing it is not. It comes off this list in the commit that lands the
-  // emitter, which is the visible diff this list exists to produce.
-  'DELEGATION_ALREADY_LIVE',
+  // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
+  // `authority/delegations.ts` refuses a second mint under a purpose the agent
+  // already holds live, and `task.pickup` reaches it as a 409 instead of the
+  // 503 the unique index used to raise.
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXCLUDES_OPERATION',
   'DELEGATION_EXPIRED',
