@@ -375,11 +375,13 @@ export async function resolveDelegation(
  * it returns is an identity to bind a historical lease to, not an authority.
  *
  * `refusal` is the code `resolveDelegation` answered, and the row has to be
- * the one that answer came from. `DELEGATION_NARROWED` is only R-B's durable
- * cause: revoked for `authority_lost`, unsettled and unexpired, exactly the
- * `narrowed` predicate above. A live delegation whose person has since lost a
- * grant answers the same code from `checkDelegatedAuthority`, but it is still
- * live, so it is not historical and nothing is returned for it.
+ * the one that answer came from. `DELEGATION_NARROWED` here is only R-B's
+ * durable cause: revoked for `authority_lost`, unsettled and unexpired,
+ * exactly the `narrowed` predicate above. A live delegation whose person has
+ * since lost a grant, by expiry as much as by revocation, answers the same
+ * code from `checkDelegatedAuthority`; it is still live, so it is not
+ * historical, nothing is returned for it here, and `resolveNarrowedDelegation`
+ * is its own question.
  */
 export async function resolveHistoricalDelegation(
   tx: TenantQuery,
@@ -399,6 +401,40 @@ export async function resolveHistoricalDelegation(
   );
   const found = rows[0];
   return found === undefined ? undefined : { id: found.id };
+}
+
+/**
+ * The live delegation a presented credential names, when what it draws on no
+ * longer covers `request` (REVIEW-AGENT-BOUNDARY 62307d5 N1).
+ *
+ * The other half of T4 line 76's "narrowed agent". A person's grant can reach
+ * its `expires_at` while the delegation minted against it at pickup runs to
+ * the lease's end, and passing time writes no `revoked_at` and no
+ * `authority_lost`, so `resolveHistoricalDelegation` finds nothing. Here the
+ * credential is resolved as live through `resolveDelegation`'s own binding
+ * (this business, this authenticated agent, this digest), and then asked
+ * `checkDelegatedAuthority` for exactly `request`. The identity comes back only
+ * when that check refuses with `DELEGATION_NARROWED`, which it reaches only
+ * after the decision exclusion, the purpose's collection and action, and the
+ * one-task ceiling have passed: the purpose reaches this record, and the
+ * person's grants no longer cover it. The caller's refusal code is not
+ * consulted; it is recomputed.
+ *
+ * Read-only, like its sibling, and it permits nothing. The delegation stays
+ * live and unrevoked; nothing is recorded for it, and nothing it answers
+ * changes what the credential reaches.
+ */
+export async function resolveNarrowedDelegation(
+  tx: TenantQuery,
+  agentActorId: string,
+  credential: string,
+  request: ScopeRequest,
+): Promise<{ readonly id: string } | undefined> {
+  const resolved = await resolveDelegation(tx, agentActorId, credential);
+  if (!resolved.ok) return undefined;
+  const reach = await checkDelegatedAuthority(tx, resolved.value, request);
+  if (reach.ok || reach.refusal.code !== 'DELEGATION_NARROWED') return undefined;
+  return { id: resolved.value.id };
 }
 
 /**

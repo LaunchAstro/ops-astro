@@ -60,6 +60,7 @@ import {
   digestOf,
   resolveDelegation,
   resolveHistoricalDelegation,
+  resolveNarrowedDelegation,
   type Delegation,
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
@@ -159,13 +160,15 @@ export async function executeAgentCommand(
   // here" cannot tell a door it can open from one it cannot.
   if (presented === 'expired') return asCallerVisible(fromAgentIdentity(refuseExpiredSession()));
 
-  // One bounded retry on a lost identity claim, as the person entry takes
-  // (`envelope.ts`, `executeCommand`). A same-operationId retry in flight
-  // behind its original read no register row, then lost
-  // `operations_identity_key` to the original's commit; its whole transaction
-  // is gone, so the second attempt reads the committed row and replays it
-  // rather than answering a fault (DB-PROOF-GAPS-B F1). A second collision
-  // propagates.
+  // One bounded retry, on the shared predicate the person entry takes
+  // (`envelope.ts`, `executeCommand`; `isRetryableViolation`). It admits a lost
+  // identity claim: a same-operationId retry in flight behind its original
+  // read no register row, then lost `operations_identity_key` to the
+  // original's commit; its whole transaction is gone, so the second attempt
+  // reads the committed row and replays it rather than answering a fault
+  // (DB-PROOF-GAPS-B F1). The predicate is not identity-only: it also admits
+  // `AffectedSetChanged` and a lost unique-value claim, under the same single
+  // retry. A second retryable failure of any kind propagates.
   for (let attempts = 0; ; attempts += 1) {
     try {
       // Sequential by definition: the retry exists only because the first lost.
@@ -690,10 +693,19 @@ async function replayCapabilities(
  * code, its status and R-B's recorded cause are unchanged. T4 line 76 names
  * "a revoked/narrowed agent" among the holders whose report is kept
  * (ROOT-NARROWED-REPORT-RULING), so both codes reach here.
+ *
+ * A narrowed delegation need not have been revoked. When the person's write
+ * grant reaches its own expiry the delegation stays live, the authority check
+ * answers `DELEGATION_NARROWED`, and no durable cause is ever written
+ * (REVIEW-AGENT-BOUNDARY 62307d5 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). That
+ * case is resolved again here, not inferred from the code: the credential must
+ * still resolve live for this business and this agent, and the check on the
+ * presented lease's own task must refuse it as narrowed (`narrowedOnLease`).
+ *
  * What this adds is the report: when the credential names a delegation of
- * this business and this authenticated agent that is no longer live for the
- * reason the refusal gave, and the presented lease and fence are that
- * delegation's exactly, the report is kept as one unaccepted
+ * this business and this authenticated agent that is not live, or no longer
+ * covered, for the reason the refusal gave, and the presented lease and fence
+ * are that delegation's exactly, the report is kept as one unaccepted
  * `handback_reports` row naming the refusal (`retainHistoricalReport`).
  * Nothing is read back to the caller and nothing else is written: no
  * settlement, successor, lease, delegation or money.
@@ -716,12 +728,11 @@ async function retainLateHandback(
   if (credential === undefined || credential === '') return;
   const leaseId = request['leaseId'];
   if (typeof leaseId !== 'string' || !UUID.test(leaseId)) return;
-  const historical = await resolveHistoricalDelegation(
-    tx,
-    session.actorId,
-    credential,
-    refusal.code,
-  );
+  const historical =
+    (await resolveHistoricalDelegation(tx, session.actorId, credential, refusal.code)) ??
+    (refusal.code === 'DELEGATION_NARROWED'
+      ? await narrowedOnLease(tx, session, credential, leaseId)
+      : undefined);
   if (historical === undefined) return;
   await retainHistoricalReport(tx, {
     leaseId,
@@ -731,6 +742,35 @@ async function retainLateHandback(
     outcome: String(request['outcome'] ?? ''),
     report: operands.report ?? {},
     refusalCode: refusal.code,
+  });
+}
+
+/**
+ * The live delegation this credential names, when the handback's own task is
+ * within its purpose and its person no longer holds the write that covers it.
+ *
+ * The task is the presented lease's, read as `subjectTaskId` reads it but with
+ * no fallback: a lease that is not this business's names no task, and nothing
+ * is kept for it. Whether the lease is also this delegation's, this agent's
+ * and this fence's is `retainHistoricalReport`'s exact binding, after this.
+ */
+async function narrowedOnLease(
+  tx: TenantQuery,
+  session: AgentSession,
+  credential: string,
+  leaseId: string,
+): Promise<{ readonly id: string } | undefined> {
+  const rows = await tx.query<{ readonly task_id: string }>(
+    `select task_id from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, leaseId],
+  );
+  const taskId = rows[0]?.task_id;
+  if (taskId === undefined) return undefined;
+  const declaration = declarationOf('task.handback');
+  return await resolveNarrowedDelegation(tx, session.actorId, credential, {
+    collection: declaration?.collection ?? 'task',
+    action: declaration?.action ?? 'write',
+    scope: { kind: 'record', id: taskId },
   });
 }
 
