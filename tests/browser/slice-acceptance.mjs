@@ -33,6 +33,7 @@ import { casesN3toN5 } from './cases-n3-n5.mjs';
 import { caseN7, casesN6 } from './cases-n6-n7.mjs';
 import { casesCreateRetry } from './cases-create-retry.mjs';
 import { casesTaskDrafts } from './cases-task-drafts.mjs';
+import { casesSessionExpiry } from './cases-session-expiry.mjs';
 import { casesN1toN2 } from './cases-n1-n2.mjs';
 import { casesB6toB7 } from './cases-b6-b7.mjs';
 
@@ -73,6 +74,7 @@ try {
   await casesN1toN2(run);
   await casesN6(run);
   await casesTaskDrafts(run);
+  await casesSessionExpiry(run);
   await casesB6toB7(run);
   await context.close();
 } catch (error) {

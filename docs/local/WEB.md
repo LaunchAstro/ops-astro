@@ -33,6 +33,33 @@ account gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
 The synthetic credentials live in `.local/synthetic-users.json`, which the API
 lane's auth seed writes and which is gitignored.
 
+### When the session ends
+
+A local access token lives for one hour, and the API answers a missing, an
+expired and an unverifiable bearer identically: HTTP 401 with
+`AUTH_UNKNOWN_LOGIN` (`docs/local/API.md`). So the application does not say
+"expired" — it cannot know that — and it does not leave the person on a refusal
+they cannot act on either.
+
+The client is the one place that recognises it (`operations/client.ts`), for a
+read and a mutation alike. When it arrives while a session is held, the
+application drops the session, remembers the address the person was on, and goes
+to `/sign-in`, where a notice (`role="status"`,
+`data-reason="session-ended"`) says the session has ended, quotes
+`AUTH_UNKNOWN_LOGIN` as the server's own word, and says that anything unsaved
+was not saved. Signing in again returns to the remembered address — a task page
+stays a task page — and with nothing remembered it goes to `/projects/`.
+
+The address is kept in `sessionStorage` under `ops-astro.return-to`, beside the
+session itself and under the same rule: never `localStorage`, gone when the tab
+is, and spent the moment it is used. Signing out clears it too, so an ordinary
+sign-in is never redirected by an interruption somebody already answered.
+
+No refresh-token call, no token inspection and no decoding anywhere in the web:
+the hour is the server's to decide and the browser only ever finds out by being
+refused. `tests/surfaces/session-ended.test.tsx` holds the three rules and
+SX1–SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real browser.
+
 ## Addresses
 
 | Address      | What it draws                                                                          |
@@ -145,6 +172,11 @@ places this build does not yet reach it.
   are not stored by this build, so the registry is empty rather than carrying a
   tab that opens onto nothing.
 - Comments and subtasks are not built. The task page shows history only.
+- An unsaved edit does not survive re-login. When the session ends the draft
+  goes with the screen, and the notice on `/sign-in` says so rather than
+  implying it was kept. Preserving a draft across a sign-in would mean holding
+  edited record content for an unauthenticated tab, which is a larger decision
+  than this slice makes.
 - Fonts and icons are not fetched. The redistribution question (#32) is open, so
   the families are a stack with real fallbacks and the brand is its own words.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light

@@ -28,6 +28,24 @@
   width: min(28rem, 100%);
 }
 
+/* The session-ended notice. Bordered rather than coloured: the surface has one
+   interactive signal and this is not it, and a notice that shouts is a notice
+   people learn to look past. */
+.signin__ended {
+  margin-block-end: var(--sp-3, 0.75rem);
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  border: 1px solid var(--border-strong, #9a9a9a);
+  border-radius: var(--r-2, 0.25rem);
+  background: var(--surface-2, #f4f4f4);
+  color: var(--text, #111);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.signin__ended code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 .field {
   display: flex;
   flex-direction: column;

@@ -7,16 +7,26 @@
 // have chosen before the first call. Choosing the wrong one is not a security
 // event: the server resolves the token's subject to a login in that business
 // and refuses when there is none.
+//
+// **The notice above the form does not say "expired".** A local token does last
+// an hour, but the API answers a missing, an expired and an unverifiable bearer
+// with the same 401 and the same `AUTH_UNKNOWN_LOGIN`, so expiry is a guess the
+// application is in no position to make. It says what it knows: the session has
+// ended, this is the word the server used, and anything unsaved is gone. The
+// code is printed because a refusal a person cannot quote is a refusal they
+// cannot get help with -- the same rule the read states follow.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { FieldError } from '@launchastro/ui';
 import { signIn } from '../session/sign-in.ts';
-import type { Session } from '../session/token.ts';
+import type { Interruption, Session } from '../session/token.ts';
 
 export interface SignInProps {
   readonly gotrueUrl: string;
   readonly fetch: typeof globalThis.fetch;
   readonly onSignedIn: (session: Session) => void;
+  /** Set when the person was put here by a session that ended under them. */
+  readonly ended: Interruption | null;
 }
 
 const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = [
@@ -52,6 +62,13 @@ export function SignIn(props: SignInProps): ReactElement {
     <div className="signin">
       <form className="signin__form taskform" onSubmit={onSubmit}>
         <h2 className="tpr__title">Sign in</h2>
+        {props.ended === null ? null : (
+          <p className="signin__ended" role="status" data-reason="session-ended">
+            Your session has ended and you need to sign in again. The server answered{' '}
+            <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
+            in will take you back to where you were.
+          </p>
+        )}
         <div className="field">
           <label className="tf__k" htmlFor="signin-email">
             Email
