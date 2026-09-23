@@ -36,11 +36,12 @@ rather than the last line of one.
 
 ## Commands
 
-```sh
-export PATH=…/toolchain/node-v24.21.0-darwin-arm64/bin:$PATH
+Node 24 must be on the path, as [the slice's prerequisites](README.md#prerequisites)
+state; the major is pinned in `.nvmrc`.
 
+```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
-node scripts/db-migrate.mjs      # apply migrations 0001..0007, in order, once each
+node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
 node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
@@ -53,9 +54,19 @@ act: `docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata
 
 ## What the schema is
 
-Migrations `0001_tenancy` to `0007_command_envelope`, ported from
-`ops-astro-t1-draft@60f2009`. `0008` to `0014` — runtime, leases, gates, budget
-— belong to later units and are not here.
+**`migrations/` is the authority.** The directory holds every migration from
+`0001_tenancy` onward, `db-migrate.mjs` applies whatever is in it in order, and
+the prefix harness below reads the same directory. No number here or in any
+suite says which migration is the last one, because a number written down is a
+number the next migration makes wrong.
+
+The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
+identity, grant, record and command-envelope spine ported from
+`ops-astro-t1-draft@60f2009`. What was added after them belongs to two
+companions rather than to this file: the agent-authority, settings and
+delegation migrations are described in [AUTHORITY.md](AUTHORITY.md), and the
+proposal, gate, decision, budget, lease and attempt migrations in
+[RUNTIME.md](RUNTIME.md). Read `ls migrations/` for the current set.
 
 There is **no `tasks` table**. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -137,9 +148,9 @@ tenant's rows without a policy being consulted — and no superuser or
 denied" is answered with a catalogue: this tree has `ops` and `public` and no
 `storage` schema, which is an absence rather than a denial.
 
-**Adding `0008` extends the proof by itself.** The prefixes are read from
-`migrations/`; there is no list here, in the suite or in a manifest. Write
-`migrations/0008_*.sql` and it is covered.
+**A new migration extends the proof by itself.** The prefixes are read from
+`migrations/`; there is no list here, in the suite or in a manifest. Add the
+next `migrations/NNNN_*.sql` and it is covered.
 
 ## What a write is checked against
 
