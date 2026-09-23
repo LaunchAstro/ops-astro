@@ -34,34 +34,34 @@
 // about the product a person actually signs into.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { insertBusiness } from '../identity/fixture.ts';
+import { installSpine } from '../commands/fixture.ts';
 import {
-  insertActor,
-  insertBusiness,
-  insertLogin,
-  insertMapping,
-  insertMembership,
-  insertPerson,
-} from '../identity/fixture.ts';
-import { grantTo, installSpine, WHOLE_BUSINESS } from '../commands/fixture.ts';
+  ACCEPTANCE_SECRET,
+  ADMIN_ACTIONS,
+  ADMIN_COLLECTIONS,
+  MEMBER_ACTIONS,
+  enrolAgent,
+  enrolCaller,
+} from './cast.ts';
+
+// Re-exported so every proof keeps one import for the fixture. The cast lives
+// next door for the per-file cap's sake, not because it is a separate concern.
+export { ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import type { Action } from '../../packages/core-records/src/authority/grants.ts';
+import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { InstalledTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-
-/** The deployment secret for this suite. Local, disposable, never a real one. */
-export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
 
 /** The server this suite reaches. Absent means the proofs are skipped, loudly. */
 export const serverUrl: string | undefined = databaseUrlFromEnvironment();
@@ -101,132 +101,6 @@ export interface World {
   readonly api: ReturnType<typeof createApi>;
   close(): Promise<void>;
 }
-
-/**
- * The grants each seeded role holds, copied from `GRANTS_BY_ROLE` in the seed.
- *
- * `noah` is absent on purpose and that absence is the whole of case N2: a
- * member with no grant must be told `SCOPE_NOT_GRANTED` and never handed an
- * empty list, and a fixture that quietly granted him something would have
- * turned that case into a tautology.
- */
-const ADMIN_ACTIONS: readonly Action[] = [
-  'read',
-  'write',
-  'assign',
-  'comment',
-  'decide',
-  'share',
-  'manage',
-];
-const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'comment'];
-
-/**
- * The collections an administrator holds authority over.
- *
- * `task` is not the whole surface any more. `person.list` asks about `person`,
- * the two settings commands about `settings`, and `preset.plan` about the
- * record family it names — so an administrator granted only on tasks is
- * refused `SCOPE_NOT_GRANTED` on four declarations, and a matrix built on that
- * fixture would have recorded four missing positive controls as product
- * failures. The grant is per collection because the surface says it is.
- */
-const ADMIN_COLLECTIONS: readonly string[] = ['task', 'person', 'settings', 'preset'];
-
-export async function tokenFor(
-  subject: string,
-  options: { readonly expiresIn?: number } = {},
-): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 3600),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
-}
-
-async function enrolCaller(
-  world: Pick<World, 'db'>,
-  businessId: BusinessId,
-  businessKey: string,
-  name: string,
-  options: {
-    readonly membership: boolean;
-    readonly actions: readonly Action[];
-    readonly collections: readonly string[];
-  },
-): Promise<Caller> {
-  const subject = `${name}-${randomUUID()}`;
-  const identity = await world.db.app.withBusiness(businessId, async (tx) => {
-    const personId = await insertPerson(tx, name);
-    const actorId = await insertActor(tx, personId);
-    // A login with no membership is `orphan`: verified by the provider, known
-    // to no business, which is `AUTH_NO_MEMBERSHIP` and not `AUTH_UNKNOWN_LOGIN`.
-    if (options.membership) await insertMembership(tx, personId);
-    const loginId = await insertLogin(tx, subject);
-    await insertMapping(tx, loginId, personId, actorId);
-    return { personId, actorId };
-  });
-  const member = { ...identity, presented: { provider: 'supabase', subject } as VerifiedSubject };
-  if (options.actions.length > 0) {
-    await world.db.app.withBusiness(businessId, async (tx: TenantQuery) => {
-      for (const collection of options.collections) {
-        for (const action of options.actions) {
-          // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
-          await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-        }
-      }
-    });
-  }
-  return {
-    name,
-    businessKey,
-    personId: identity.personId,
-    actorId: identity.actorId,
-    subject,
-    presented: member.presented,
-    token: await tokenFor(subject),
-  };
-}
-
-/**
- * The agent identity, written the way `scripts/local-seed.mjs` writes it: an
- * actor of kind `agent`, a login of its own, and a row in `actor_logins` and in
- * neither person table. The address is built rather than written out, which is
- * also what keeps it out of `scripts/public-content-check.mjs`'s way.
- */
-async function enrolAgent(
-  db: FreshDatabase,
-  businessId: BusinessId,
-  linkedBy: string,
-): Promise<AgentIdentity> {
-  const subject = ['agent', randomUUID()].join('-');
-  const actorId = randomUUID();
-  await db.app.withBusiness(businessId, async (tx) => {
-    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
-      businessId,
-      actorId,
-    ]);
-    const loginId = await insertLogin(tx, subject);
-    await tx.query(
-      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
-       values ($1, $2, $3, $4, $5)`,
-      [businessId, randomUUID(), loginId, actorId, linkedBy],
-    );
-  });
-  return {
-    subject,
-    presented: { provider: 'supabase', subject },
-    actorId,
-    token: await tokenFor(subject),
-  };
-}
-
 /**
  * Build the world.
  *
@@ -256,27 +130,27 @@ export async function createWorld(part: string): Promise<World> {
     });
   }
 
-  const ada = await enrolCaller({ db }, alpha, 'alpha', 'ada', {
+  const ada = await enrolCaller(db, alpha, 'alpha', 'ada', {
     membership: true,
     actions: ADMIN_ACTIONS,
     collections: ADMIN_COLLECTIONS,
   });
-  const mia = await enrolCaller({ db }, alpha, 'alpha', 'mia', {
+  const mia = await enrolCaller(db, alpha, 'alpha', 'mia', {
     membership: true,
     actions: MEMBER_ACTIONS,
     collections: ['task'],
   });
-  const noah = await enrolCaller({ db }, alpha, 'alpha', 'noah', {
+  const noah = await enrolCaller(db, alpha, 'alpha', 'noah', {
     membership: true,
     actions: [],
     collections: [],
   });
-  const orphan = await enrolCaller({ db }, alpha, 'alpha', 'orphan', {
+  const orphan = await enrolCaller(db, alpha, 'alpha', 'orphan', {
     membership: false,
     actions: [],
     collections: [],
   });
-  const bea = await enrolCaller({ db }, bravo, 'bravo', 'bea', {
+  const bea = await enrolCaller(db, bravo, 'bravo', 'bea', {
     membership: true,
     actions: MEMBER_ACTIONS,
     collections: ['task'],
