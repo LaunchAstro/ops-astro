@@ -336,13 +336,24 @@ async function discoverEligible(
   const rows = await tx.query<Affected>(
     `select ${AFFECTED_COLUMNS},
             case when lin.state in ('rejected', 'cancelled') then 'lineage_' || lin.state
-                 else 'version_superseded' end as cause,
-            case when lin.state in ('rejected', 'cancelled') then lin.id else ver.id end as cause_id
+                 when ver.superseded_at is not null then 'version_superseded'
+                 else 'lease_expired_and_fenced' end as cause,
+            case when lin.state in ('rejected', 'cancelled') then lin.id
+                 when ver.superseded_at is not null then ver.id
+                 else res.lease_id end as cause_id
        ${AFFECTED_JOINS}
+       left join public.leases lease on lease.business_id = res.business_id and lease.id = res.lease_id
       where res.business_id = $1
         and res.state = 'held'
         and ($2::uuid is null or lin.id = $2::uuid)
-        and (lin.state in ('rejected', 'cancelled') or ver.superseded_at is not null)
+        and (lin.state in ('rejected', 'cancelled')
+             or ver.superseded_at is not null
+             -- R5. A hold still bound to a lease the server has already fenced
+             -- has a recorded transition and no classification, which is the
+             -- exactly-once case W04 asks recovery to finish. It is still not
+             -- a clock: the lease's own terminal state is the fact, and a live
+             -- lease -- expired by its timestamp or not -- is not in this set.
+             or lease.state in ('expired', 'released'))
       order by res.id`,
     [tx.businessId, lineageId],
   );

@@ -551,12 +551,16 @@ async function openEnvelope(
 }
 
 /**
- * The reservation, the immutable attempt and the held total, together. W05's
+ * The reservation, the immutable attempt and the held total, together.
+ * Exported because `pickup` needs exactly this when it opens a replacement
+ * hold on a still-approved version whose old lease expired (R5): the
+ * replacement has to meet the same budget authority as the original, and a
+ * second copy of this arithmetic is a second place W05 can drift. W05's
  * two distinct reasons live here: `BUDGET_UNAVAILABLE` is "this envelope has
  * no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
  * the wrong one raises the wrong ceiling.
  */
-async function reserve(
+export async function reserve(
   tx: TenantQuery,
   of: {
     readonly envelopeId: string;

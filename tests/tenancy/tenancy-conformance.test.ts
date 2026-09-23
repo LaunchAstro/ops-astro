@@ -92,6 +92,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0016_delegation_purpose_scope',
         '0017_runtime_lineage_task_binding',
         '0018_runtime_handback_reports',
+        '0019_runtime_active_hold_uniqueness',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -118,6 +119,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0016_delegation_purpose_scope',
         '0017_runtime_lineage_task_binding',
         '0018_runtime_handback_reports',
+        '0019_runtime_active_hold_uniqueness',
       ]);
     });
 

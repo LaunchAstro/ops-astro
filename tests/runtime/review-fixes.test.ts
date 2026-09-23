@@ -19,7 +19,10 @@ import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { handback } from '../../packages/core-runtime/src/handback.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
-import { classifyUnderLocks } from '../../packages/core-runtime/src/recovery.ts';
+import {
+  classifyUnderLocks,
+  replayRecordedTransitions,
+} from '../../packages/core-runtime/src/recovery.ts';
 import { verifyChain } from '../../packages/core-runtime/src/signing.ts';
 import {
   buildFixture,
@@ -502,6 +505,122 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       envelopeTotals(tx, envelopeId),
     );
     expect(totals.held).toBe(0);
+  });
+
+  // R5. An expired lease is discovered, fenced and classified by the owning
+  // transaction, and the still-approved version takes a fresh hold.
+  it('R5: an expired lease is classified and the approved version is picked up again', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const envelopeId = decided.value.envelopeId as string;
+    const first = decided.value.reservationId as string;
+
+    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      pickup(tx, {
+        reservationId: first,
+        agentActorId: fixture.agentActorId,
+        authorisedByPersonId: fixture.decider.personId,
+        mintedByActorId: fixture.decider.actorId,
+        collection: TASK_COLLECTION,
+        leaseSeconds: 3_600,
+      }),
+    );
+    if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
+
+    // The server's clock, moved by the server. Nothing here sleeps.
+    await database.admin.execute(
+      `update public.leases set expires_at = now() - interval '1 minute' where id = $1`,
+      [claimed.value.leaseId],
+    );
+    await database.admin.execute(`update public.delegations set settled_at = now() where id = $1`, [
+      claimed.value.delegation.delegation.id,
+    ]);
+
+    const again = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      pickup(tx, {
+        reservationId: first,
+        agentActorId: fixture.agentActorId,
+        authorisedByPersonId: fixture.decider.personId,
+        mintedByActorId: fixture.decider.actorId,
+        collection: TASK_COLLECTION,
+        leaseSeconds: 3_600,
+      }),
+    );
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+
+    // A fresh attempt and a fresh hold, never the abandoned one revived.
+    expect(again.value.reservationId).not.toBe(first);
+    expect(again.value.fence).toBeGreaterThan(claimed.value.fence);
+
+    const state = await database.app.withBusiness(fixture.businessId, async (tx) => {
+      const rows = await tx.query<{
+        readonly id: string;
+        readonly state: string;
+        readonly cause: string | null;
+      }>(
+        `select id, state, classified_cause as cause from public.reservations
+          where business_id = $1 and version_id = $2 order by created_at`,
+        [fixture.businessId, proposed.versionId],
+      );
+      return rows;
+    });
+    expect(state).toHaveLength(2);
+    expect(state[0]).toMatchObject({
+      id: first,
+      state: 'abandoned',
+      cause: 'lease_expired_and_fenced',
+    });
+    expect(state[1]?.state).toBe('held');
+
+    // One hold's worth of the envelope, not two.
+    const totals = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      envelopeTotals(tx, envelopeId),
+    );
+    expect(totals.held).toBe(5_000);
+
+    // The fixture's agent holds one live delegation per purpose, so this case
+    // settles the one it minted rather than leaving it for the next case.
+    await database.admin.execute(`update public.delegations set settled_at = now() where id = $1`, [
+      again.value.delegation.delegation.id,
+    ]);
+  });
+
+  // R5, the replay half: a fenced lease's hold is discoverable by recovery.
+  it('R5: bounded replay discovers a hold left behind a fenced lease', async () => {
+    const task = await newTask(database.app, fixture.businessId, fixture.decider);
+    const proposed = await proposeOn(database, fixture, { taskId: task });
+    const decided = await decideOn(database, fixture, proposed);
+    if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    const reservationId = decided.value.reservationId as string;
+
+    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      pickup(tx, {
+        reservationId,
+        agentActorId: fixture.agentActorId,
+        authorisedByPersonId: fixture.decider.personId,
+        mintedByActorId: fixture.decider.actorId,
+        collection: TASK_COLLECTION,
+        leaseSeconds: 3_600,
+      }),
+    );
+    if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
+
+    // The fence committed; the classification did not. That is the crash the
+    // replay exists for, and age is not what makes it discoverable.
+    await database.admin.execute(
+      `update public.leases set state = 'expired', released_at = now() where id = $1`,
+      [claimed.value.leaseId],
+    );
+
+    const replayed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      replayRecordedTransitions(tx),
+    );
+    const mine = replayed.find((one) => one.reservationId === reservationId);
+    expect(mine?.released).toBe(true);
+    expect(mine?.reason).toContain('lease_expired_and_fenced');
   });
 
   // R1. The classifier will not run outside the locks its caller must hold.
