@@ -22,6 +22,7 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
+import { affectedByVersions, classifyVersions } from './recovery.ts';
 import { digestOf } from './signing.ts';
 import { renderEvidence } from './evidence.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -79,11 +80,27 @@ export async function propose(
     );
   }
 
-  // The lineage and the task, in the contract's order: task before lineage.
+  // The lineage, the task, and — R8 — every parent of the holds this proposal
+  // is about to make nonclaimable. Supersession that leaves version 1's hold
+  // consuming the envelope makes approving version 2 fail for room it is
+  // entitled to, and discovering those accounting parents after the lineage
+  // lock would be the backwards acquisition T5 forbids. Discovery first,
+  // acquisition second, writes third.
   const lineageId = request.lineageId ?? null;
-  await acquire(tx, [
+  const liveVersions =
+    lineageId === null
+      ? []
+      : (
+          await tx.query<{ readonly id: string }>(
+            `select id from public.proposal_versions
+              where business_id = $1 and lineage_id = $2 and superseded_at is null`,
+            [tx.businessId, lineageId],
+          )
+        ).map((row) => row.id);
+  const locks = await acquire(tx, [
     { lockClass: 'task', id: request.taskId },
     ...(lineageId === null ? [] : [{ lockClass: 'lineage' as const, id: lineageId }]),
+    ...(await affectedByVersions(tx, liveVersions)),
   ]);
 
   let lineage: LineageRow;
@@ -107,6 +124,19 @@ export async function propose(
         'GATE_NOT_FOUND',
         `no proposal lineage ${lineageId} in this business`,
         'Propose without a lineage to open a new one.',
+      );
+    }
+    // R3. A lineage belongs to one task, and the authority checked above was
+    // checked on `request.taskId`. Without this, a caller authorised on task A
+    // could name a live lineage on task B in the same business, supersede B's
+    // version under A's authority, and leave a run whose lineage and task
+    // describe two different pieces of work. Tenancy does not prevent it:
+    // both tasks are in one business.
+    if (row.task_id !== request.taskId) {
+      return refuse(
+        'LINEAGE_NOT_ON_TASK',
+        `lineage ${lineageId} belongs to task ${row.task_id}, not to the ${request.taskId} this proposal names`,
+        'Propose against the task the lineage was opened on, or open a new lineage on this one.',
       );
     }
     // G05: a rejected or cancelled lineage stays terminal. A new version in it
@@ -145,6 +175,14 @@ export async function propose(
     // make a third round reachable by proposing again.
     const carried = rounds[0];
     round = carried === undefined ? await roundsUsed(tx, lineage.id) : Number(carried.used);
+  }
+
+  // R8. The hold the superseded version owns is released here, in the
+  // transaction that made it nonclaimable, under the locks discovered for it
+  // above. Leaving it for a later unrelated replay is what made the business-
+  // wide sweep from cancellation look necessary.
+  if (previous !== undefined) {
+    await classifyVersions(tx, [previous.id], 'version_superseded', previous.id, locks);
   }
 
   const versionNumbers = await tx.query<{ readonly next: string }>(

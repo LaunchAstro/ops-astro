@@ -209,6 +209,13 @@ It is invoked from inside the authorised operations that write those
 transitions, and `classifyUnderLocks` takes no lock of its own because its
 caller holds the complete set already.
 
+The cause a caller names is revalidated against the durable rows under the
+locks before anything is released: a lineage that is not cancelled does not
+support `lineage_cancelled`, and a live lease does not support
+`lease_expired_and_fenced`. The release itself is a guarded update that
+reports the row it changed, and the envelope subtraction uses that row's own
+amount, so a classifier that lost the race writes nothing.
+
 Startup, elapsed time, a missing claimant and `lease_id = null` are **not**
 abandonment triggers. An approved, unleased, currently authorised reservation
 stays held across a restart and stays pickupable; the restart proof asserts
@@ -224,8 +231,17 @@ liability.
 
 ## The proofs
 
-`tests/runtime/gate.test.ts` and `tests/runtime/lease.test.ts`, 20 cases, all
-against a real Postgres migrated from empty.
+`tests/runtime/gate.test.ts`, `tests/runtime/lease.test.ts` and
+`tests/runtime/review-fixes.test.ts`, 33 cases, all against a real Postgres
+migrated from empty.
+
+**What these cases are and are not.** Each one below states what its own
+assertions cover, and nothing here is a claim beyond them. They are executed
+source regressions on a local database: they are not a runtime security
+certification, not an executed proof of the full 42 obligations, and not
+evidence about a restarted browser, API or Postgres process. Where a case
+establishes one direction of an obligation, the obligation is named as
+partly covered rather than proved.
 
 - The race is **forced, not hoped for**: the first transaction is held open on a
   barrier and the second is watched into `wait_event_type = 'Lock'` in
@@ -256,13 +272,50 @@ against a real Postgres migrated from empty.
   connection zero decisions, envelopes, reservations and attempts; committed,
   the same fresh-connection read finds all four and `replayRecordedTransitions`
   has nothing to do.
-- **The lock order is observed, not assumed**: two transactions each list cap,
-  envelope and gate in an order the contract forbids, and in different wrong
-  orders. `pg_locks` is asked which table the blocked one is parked on, and the
-  answer is `budget_caps` — the class `acquire` reached first — although it
-  listed the envelope first. Both complete, so there is no deadlock to detect.
-  With the sort removed from `acquire` the same case reports `task_envelopes`,
-  which is the crossing that deadlocks.
+- **`acquire` sorts, and that is what is observed**: two transactions each list
+  cap, envelope and gate in an order the contract forbids, and in different
+  wrong orders. `pg_locks` is asked which table the blocked one is parked on,
+  and the answer is `budget_caps` — the class `acquire` reached first —
+  although it listed the envelope first. With the sort removed from `acquire`
+  the same case reports `task_envelopes`, which is the crossing that deadlocks.
+  This covers `acquire` in isolation. It does not establish that every handler
+  passes `acquire` its complete set, which is a separate property: the
+  dcbc8e8 review found recovery bypassing it entirely, and the case below is
+  what now holds that half.
+- **The classifier asserts its caller's locks** (R1): `classifyUnderLocks`
+  takes a required `LockSet` and calls `LockSet.require` for the reservation
+  and for the envelope whose total it is about to move. A caller holding only
+  the task lock throws rather than releasing a hold. This makes "helpers
+  receive the already-held lock context" a runtime fact for this helper; it is
+  not an executed two-classifier concurrency schedule.
+- **The envelope's cap is the cap** (R2): a decision naming a cap the task's
+  existing envelope does not draw on is refused `CAP_BINDING_MISMATCH`, and
+  the case reads back that no decision row was written and the gate is still
+  pending. This covers the binding. The post-write reservation refusal aborts
+  rather than returning, which is asserted by the type of the failure, not by
+  a case that forces it.
+- **A lineage belongs to one task** (R3): the refusal is asserted, the other
+  task's version is read back unsuperseded, and 0017's composite foreign key is
+  asserted separately by moving a run onto another task.
+- **Supersession and rejection release their own holds** (R8): the superseded
+  reservation is read back `abandoned` with `version_superseded` as its cause
+  and the envelope's held total back to zero, in the transaction that
+  superseded it and with no replay call.
+- **The decision chain is allocated under a lock** (R10): two approvals on
+  different tasks and different caps of one business run concurrently and both
+  commit with consecutive sequences. This case is what found the chain head
+  being read with `order by seq desc` against a text alias, which reused a
+  sequence from the tenth decision on.
+- **The report is durable** (R4): the settled report is read back by the
+  identity the result returned, and a stale fence's report is read back as
+  `retained` with the refusal code that retained it. The successor proposal
+  T4 also requires is **not built**, and no case asserts one.
+- **An expired lease is classified by its owning transaction** (R5): the next
+  pickup fences the old lease, the old hold is read back `abandoned` under
+  `lease_expired_and_fenced`, a fresh reservation is read back `held` on the
+  same still-approved version, and the envelope carries one hold's worth rather
+  than two. A second case leaves a fenced lease with an unclassified hold and
+  asserts `replayRecordedTransitions` finishes it.
 - Append-only is asserted **twice**: the application role is refused by
   privilege, and the owner — who does hold `update` — is refused by the trigger.
   Without the second half a later migration granting `update` would silently
@@ -282,3 +335,13 @@ against a real Postgres migrated from empty.
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
   every other command.
+- **No successor proposal from handback.** T4's "create the successor
+  proposal, run, step, evidence pack and pending gate in this same
+  transaction through a lock-aware production proposal writer" is unbuilt.
+  `handback` takes no successor input and returns no successor handles, and
+  the durable report added for R4 is the retention half of that requirement
+  only.
+- **No settlement of actual expenditure.** `handback` refuses any non-null
+  `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
+  could settle; the settlement path belongs to the later authorised,
+  evidence-backed accounting work along with its own proofs.

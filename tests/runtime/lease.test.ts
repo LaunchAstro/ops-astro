@@ -31,6 +31,7 @@ import {
   classifyUnderLocks,
   replayRecordedTransitions,
 } from '../../packages/core-runtime/src/recovery.ts';
+import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import { resolveDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import {
   buildFixture,
@@ -555,12 +556,21 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
     const classified = await database.app.withBusiness(
       fixture.businessId,
       async (tx) =>
-        await classifyUnderLocks(tx, {
-          reservationId: work.reservationId,
-          // Even with a terminal cause, the marker wins.
-          cause: 'lineage_cancelled',
-          causeId: work.lineageId,
-        }),
+        await classifyUnderLocks(
+          tx,
+          {
+            reservationId: work.reservationId,
+            // Even with a terminal cause, the marker wins.
+            cause: 'lineage_cancelled',
+            causeId: work.lineageId,
+          },
+          // R1: the classifier now asserts the locks its caller must hold, so
+          // this direct invocation takes them the way an owning operation does.
+          await acquire(tx, [
+            { lockClass: 'envelope', id: work.envelopeId },
+            { lockClass: 'reservation', id: work.reservationId },
+          ]),
+        ),
     );
     expect(classified.released).toBe(false);
     expect(classified.state).toBe('quarantined');
@@ -594,11 +604,18 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
     const again = await database.app.withBusiness(
       fixture.businessId,
       async (tx) =>
-        await classifyUnderLocks(tx, {
-          reservationId: work.reservationId,
-          cause: 'lineage_cancelled',
-          causeId: work.lineageId,
-        }),
+        await classifyUnderLocks(
+          tx,
+          {
+            reservationId: work.reservationId,
+            cause: 'lineage_cancelled',
+            causeId: work.lineageId,
+          },
+          await acquire(tx, [
+            { lockClass: 'envelope', id: work.envelopeId },
+            { lockClass: 'reservation', id: work.reservationId },
+          ]),
+        ),
     );
     expect(again.released).toBe(false);
     expect(again.state).toBe('quarantined');

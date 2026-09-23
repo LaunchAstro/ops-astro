@@ -27,6 +27,8 @@ import {
   type MintRequest,
 } from '../../core-records/src/authority/delegations.ts';
 import { acquire } from './locks.ts';
+import { reserve } from './decide.ts';
+import { classifyUnderLocks } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 export interface QueueEntry {
@@ -148,12 +150,19 @@ export async function pickup(
     readonly task_id: string;
     readonly lineage_id: string;
     readonly purpose: string;
+    readonly lease_id: string | null;
+    readonly cap_id: string;
+    readonly step_id: string;
   }>(
-    `select res.envelope_id, res.version_id, res.run_id, run.task_id, run.lineage_id, ver.purpose
+    `select res.envelope_id, res.version_id, res.run_id, res.lease_id, env.cap_id,
+            run.task_id, run.lineage_id, step.id as step_id, ver.purpose
        from public.reservations res
+       join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+       join public.planned_steps step on step.business_id = res.business_id and step.run_id = run.id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
-      where res.business_id = $1 and res.id = $2`,
+      where res.business_id = $1 and res.id = $2
+      order by step.ordinal limit 1`,
     [tx.businessId, request.reservationId],
   );
   const found = discovered[0];
@@ -171,12 +180,18 @@ export async function pickup(
     [tx.businessId, found.task_id],
   );
 
-  await acquire(tx, [
+  // R5. The cap is in the set because a replacement hold reads its committed
+  // total, and the reservation's own lease is in it because that is the lease
+  // this transaction may have to fence. Discovering either of them after the
+  // reservation lock would be the backwards acquisition the contract forbids.
+  const locks = await acquire(tx, [
+    { lockClass: 'cap', id: found.cap_id },
     { lockClass: 'envelope', id: found.envelope_id },
     { lockClass: 'task', id: found.task_id },
     { lockClass: 'run', id: found.run_id },
     { lockClass: 'lineage', id: found.lineage_id },
     ...(live[0] === undefined ? [] : [{ lockClass: 'lease' as const, id: live[0].id }]),
+    ...(found.lease_id === null ? [] : [{ lockClass: 'lease' as const, id: found.lease_id }]),
     { lockClass: 'reservation', id: request.reservationId },
   ]);
 
@@ -190,17 +205,24 @@ export async function pickup(
     readonly attempt_id: string;
     readonly attempt_state: string;
     readonly marked: boolean;
+    readonly bound_lease_state: string | null;
+    readonly bound_lease_expired: boolean | null;
+    readonly held_minor: string;
   }>(
-    `select res.state, res.lease_id, g.state as gate_state, lin.state as lineage_state,
+    `select res.state, res.lease_id, res.held_minor::text as held_minor,
+            g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
-            (att.dispatch_marker or att.observed) as marked
+            (att.dispatch_marker or att.observed) as marked,
+            bound.state as bound_lease_state,
+            (bound.expires_at <= now()) as bound_lease_expired
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
        join public.proposal_lineages lin on lin.business_id = res.business_id and lin.id = run.lineage_id
        join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+       left join public.leases bound on bound.business_id = res.business_id and bound.id = res.lease_id
       where res.business_id = $1 and res.id = $2`,
     [tx.businessId, request.reservationId],
   );
@@ -219,10 +241,65 @@ export async function pickup(
       'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
     );
   }
-  if (state.state !== 'held' || state.lease_id !== null) {
+  /**
+   * R5. The expired-lease lifecycle, and it starts here because this was the
+   * branch that made it unreachable: a reservation with a non-null `lease_id`
+   * refused before anything looked at whether that lease had expired, so the
+   * old identity was never fenced, its hold was never classified, and the only
+   * expiry branch in the file applied to a *different* unleased reservation on
+   * the same task.
+   *
+   * The owning transaction does the whole thing. It fences the old lease,
+   * classifies the old hold under the locks it already holds, and then opens a
+   * fresh hold on the still-approved version — which 0019 permits, because one
+   * active hold per version is the accepted rule and one hold ever was not.
+   * The abandoned reservation is never revived; the replacement is a new row.
+   */
+  let reservationId = request.reservationId;
+  let attemptId = state.attempt_id;
+  if (state.state === 'held' && state.lease_id !== null) {
+    if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
+      return refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `reservation ${request.reservationId} is already claimed by lease ${state.lease_id}`,
+        'Wait for it to be handed back. A live claim is never stolen.',
+      );
+    }
+    await tx.query(
+      `update public.leases set state = 'expired', released_at = now()
+        where business_id = $1 and id = $2 and state = 'live'`,
+      [tx.businessId, state.lease_id],
+    );
+    const classified = await classifyUnderLocks(
+      tx,
+      {
+        reservationId: request.reservationId,
+        cause: 'lease_expired_and_fenced',
+        causeId: state.lease_id,
+      },
+      locks,
+    );
+    if (!classified.released) {
+      return refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `the hold behind lease ${state.lease_id} could not be released: ${classified.reason}`,
+        'A retained or quarantined hold goes to its recorded owner, not to a worker.',
+      );
+    }
+    const replacement = await reserve(tx, {
+      envelopeId: found.envelope_id,
+      versionId: found.version_id,
+      runId: found.run_id,
+      stepId: found.step_id,
+      heldMinor: Number(state.held_minor),
+    });
+    if (!replacement.ok) return replacement;
+    reservationId = replacement.value.reservationId;
+    attemptId = replacement.value.attemptId;
+  } else if (state.state !== 'held') {
     return refuse(
       'RESERVATION_NOT_CLAIMABLE',
-      `reservation ${request.reservationId} is ${state.state}${state.lease_id === null ? '' : ' and already claimed'}`,
+      `reservation ${request.reservationId} is ${state.state}`,
       'A terminal reservation is never revived. Replacement work gets a fresh attempt.',
     );
   }
@@ -293,7 +370,7 @@ export async function pickup(
       leaseId,
       found.task_id,
       found.run_id,
-      request.reservationId,
+      reservationId,
       minted.value.delegation.id,
       request.agentActorId,
       request.authorisedByPersonId,
@@ -306,12 +383,12 @@ export async function pickup(
   await tx.query(
     `update public.reservations set lease_id = $3
       where business_id = $1 and id = $2 and lease_id is null`,
-    [tx.businessId, request.reservationId, leaseId],
+    [tx.businessId, reservationId, leaseId],
   );
   await tx.query(
     `update public.attempts set state = 'dispatched', lease_id = $3
       where business_id = $1 and id = $2 and state = 'reserved'`,
-    [tx.businessId, state.attempt_id, leaseId],
+    [tx.businessId, attemptId, leaseId],
   );
   await tx.query(
     `update public.planned_runs set state = 'claimed' where business_id = $1 and id = $2`,
@@ -324,8 +401,8 @@ export async function pickup(
       leaseId,
       fence,
       delegation: minted.value,
-      reservationId: request.reservationId,
-      attemptId: state.attempt_id,
+      reservationId,
+      attemptId,
       taskId: found.task_id,
       runId: found.run_id,
       versionId: found.version_id,
