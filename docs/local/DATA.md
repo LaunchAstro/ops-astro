@@ -24,15 +24,15 @@ server find a cluster in a directory it does not use and refuse to start.
 
 `scripts/local/db-up.sh` writes both into `.local/db.env`, which is gitignored.
 
-- `DATABASE_ADMIN_URL` — the owner. Migrations, the seed, and the test harness,
-  which creates a throwaway database per run.
-- `DATABASE_URL` — the runtime role `app`, a member of the group role
+- `DATABASE_ADMIN_URL` is the owner. The migrations, the seed and the test
+  harness use it, and the harness creates a throwaway database per run.
+- `DATABASE_URL` is the runtime role `app`, a member of the group role
   `ops_astro_app` that the migrations grant to. It owns nothing, may create
   nothing, and cannot bypass row security.
 
-Two roles rather than one is what makes runtime DDL a refusal from the server
-instead of a convention, and what makes `force row level security` the barrier
-rather than the last line of one.
+With two roles, the server refuses runtime DDL instead of a convention
+forbidding it, and `force row level security` is the barrier rather than the
+last line of one.
 
 ## Commands
 
@@ -89,7 +89,7 @@ machine category of the state record the task points at.
 
 Every field carries a write mode, slotted or not. A null write mode is named per
 field (`every field has a non-null write mode`,
-`packages/core-records/src/records/conformance.ts:170-176`).
+`packages/core-records/src/records/conformance.ts`).
 
 ## What the tenancy proofs are
 
@@ -98,18 +98,19 @@ migrated from empty. `DATABASE_URL` unset means they print that nothing ran
 rather than showing a green tick, and `scripts/db-conformance.mjs` fails a run
 in which a named suite skipped.
 
-| Suite                               | What it holds                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `statement-log.test.ts`             | The reading of SQL the no-DDL law depends on: quoting, dollar quoting, comments.                  |
-| `tenancy-conformance.test.ts`       | The catalogue rules and the composite-key linter, every one of them broken on purpose and caught. |
-| `tenancy-wrapper.test.ts`           | The barrier between two businesses on the wrapper itself.                                         |
-| `pooled-crossover.test.ts`          | A→B on one physical backend.                                                                      |
-| `migration-prefixes.test.ts`        | Every rule after every migration prefix, with three separated roles.                              |
-| `runtime-statements.test.ts`        | What six real task commands and reads send. It makes no coverage claim.                           |
-| `statement-capture-full.test.ts`    | T04 and M03 over every operation in `COMMAND_SURFACE`, a positive call and a refusal each.        |
-| `restricted-calls.test.ts`          | I06 and M02 at the full schema: every table and function called by each restricted role.          |
-| `restricted-calls-prefixes.test.ts` | The same calls at every migration prefix, through `proveEachPrefix`.                              |
-| `production-lookup.test.ts`         | I14 on the shipped `lockTask`: the tenant predicate and the forced policy, each removed.          |
+| Suite                               | What it holds                                                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `statement-log.test.ts`             | The reading of SQL the no-DDL law depends on: quoting, dollar quoting, comments.                     |
+| `tenancy-conformance.test.ts`       | The catalogue rules and the composite-key linter, every one of them broken on purpose and caught.    |
+| `tenancy-wrapper.test.ts`           | The barrier between two businesses on the wrapper itself.                                            |
+| `wrapper-mutation.test.ts`          | T04 and T05 as named mutations of the wrapper, on a disposable source copy, beside the restored run. |
+| `pooled-crossover.test.ts`          | A→B on one physical backend.                                                                         |
+| `migration-prefixes.test.ts`        | Every rule after every migration prefix, with three separated roles.                                 |
+| `runtime-statements.test.ts`        | What six real task commands and reads send. It makes no coverage claim.                              |
+| `statement-capture-full.test.ts`    | T04 and M03 over every operation in `COMMAND_SURFACE`, a positive call and a refusal each.           |
+| `restricted-calls.test.ts`          | I06 and M02 at the full schema: every table and function called by each restricted role.             |
+| `restricted-calls-prefixes.test.ts` | The same calls at every migration prefix, through `proveEachPrefix`.                                 |
+| `production-lookup.test.ts`         | I14 on the shipped `lockTask`: the tenant predicate and the forced policy, each removed.             |
 
 `statement-capture-full.test.ts` reads its operation list from the registry, so
 an operation added without a case fails. Each call runs on a logged `max: 1`
@@ -119,9 +120,9 @@ work savepoint released on success or rolled back on refusal
 (`statement-capture-cases.ts` is its harness, not a suite). The runtime
 connection sends one statement outside a transaction: the `postgres` driver's
 per-connection lookup of array types in `pg_type` (`fetch_types`), which the
-suite asserts exactly (`DRIVER_TYPE_LOOKUP`, `statement-capture-cases.ts:160-173`).
-Turning `fetch_types` off in `tenancy/database.ts` would remove it. That is a
-product decision nobody has made.
+suite asserts exactly (`DRIVER_TYPE_LOOKUP` in `statement-capture-cases.ts`).
+Turning `fetch_types` off in `tenancy/database.ts` would remove it. Nobody has
+made that product decision.
 
 The restricted-calls suites call as the application login (inside and outside
 the wrapper, own and other tenant), the application group, an outsider,
@@ -192,11 +193,11 @@ the server's.
 
 Default deny is nothing granted to `PUBLIC`, nothing reachable by a role
 outside the group, no `CREATE` on any schema, no `TRUNCATE` for the application
-role — row security does not filter `TRUNCATE`, so holding it empties every
-tenant's rows without a policy being consulted — and no superuser or
-`bypassrls`. The harness also names the schemas it found, so "storage is
-denied" is answered with a catalogue: this tree has `ops` and `public` and no
-`storage` schema, which is an absence rather than a denial.
+role, and no superuser or `bypassrls`. `TRUNCATE` is on the list because row
+security does not filter it: a role holding it empties every tenant's rows
+without consulting a policy. The harness also names the schemas it found, so
+"storage is denied" is answered with a catalogue: this tree has `ops` and
+`public` and no `storage` schema, which is an absence rather than a denial.
 
 **A new migration extends the proof by itself.** The prefixes are read from
 `migrations/`; there is no list here, in the suite or in a manifest. Add the
@@ -209,26 +210,32 @@ rule held in one handler is a rule the next handler forgets.
 
 **The target is locked before its revision is compared.** A targeted write reads
 its record `for update` and only then compares `expectedRevision`. Without the
-lock two writes presenting the same revision each read the record as it stood
-before the other's uncommitted write, both passed the comparison, and the second
-silently restored what the first had replaced — while telling its caller
-`applied`. With it the second waits, re-reads the committed revision and is
-refused `VERSION_STALE`. Optimistic concurrency is only as good as the row the
-comparison reads.
+lock, two writes presenting the same revision each read the record as it stood
+before the other's uncommitted write, and both passed the comparison. The second
+then restored what the first had replaced and still told its caller `applied`.
+With the lock, the second waits, re-reads the committed revision and is refused
+`VERSION_STALE`. Optimistic concurrency is only as good as the row the
+comparison reads. A declaration with `targetLock: 'runtime'` (`task.propose`) is
+the one exception: `prepareCommand` only reads that task, because the runtime
+takes its own locks in its own order, and the handler compares the revision once
+it holds them.
 
 **The authority target comes from the declaration, not the body.** Each
-declaration's `authorisedOn` names it (`commands/surface.ts:135-145`). `record`
-is checked against the task named in `recordId`; that is every command with
-`targetsExistingRecord`, and `task.cancel` and `task.restart`, which name their
-task without writing it. `target` is checked at the scope of the grant or
-delegation being revoked (`grant.revoke`, `delegation.revoke`;
-`prepare.ts:277-297`). Every other command is checked against the business,
-whatever identifiers its body carries (`prepare.ts:317-334`). Deriving
-it from `request.recordId` instead let a record-scoped grant turn a refused
-`task.create` into an accepted one by naming the record it did hold. An
-identifier an untargeted command has no use for is now refused
-`COMMAND_BODY_INVALID` naming the field, rather than ignored: a body whose
-identifier the server quietly drops is a body the caller believes was honoured.
+declaration's `authorisedOn` names it (`CommandDeclaration` in
+`commands/surface.ts`). `record` is checked against the task named in
+`recordId`; that is every command with `targetsExistingRecord`, and
+`task.cancel` and `task.restart`, which name their task without writing it.
+`target` is checked at the scope of the grant or delegation being revoked
+(`grant.revoke`, `delegation.revoke`; `targetScopeOf` in `prepare.ts`). `claim`
+is checked against the task that the body's reservation or lease belongs to
+(`task.pickup`, `task.handback`, `task.heartbeat`; `claimScopeOf`). Every other
+command is checked against the business, whatever identifiers its body carries.
+Deriving the scope from `request.recordId` instead let a record-scoped grant
+turn a refused `task.create` into an accepted one by naming the record it did
+hold. An identifier an untargeted command has no use for is now refused
+`COMMAND_BODY_INVALID` naming the field, rather than ignored
+(`refuseIrrelevantTarget`): a body whose identifier the server quietly drops is
+a body the caller believes was honoured.
 
 ### A setting is checked against its revision
 
@@ -239,12 +246,12 @@ The default is what upgrades an installation that already had settings: every
 existing row starts at 1, so no reader ever meets a null revision.
 
 The revision moves in one place. `writeBusinessSetting`
-(`packages/core-records/src/records/business-settings.ts:346`) reads the row
+(`packages/core-records/src/records/business-settings.ts`) reads the row
 `for update`, compares the caller's `expectedRevision` when one is sent, and
-then writes the value and `revision = revision + 1` in one statement (`:388`),
-so the row never holds a new value at an old revision. A mismatch is refused
+then writes the value and `revision = revision + 1` in one statement, so the
+row never holds a new value at an old revision. A mismatch is refused
 `VERSION_STALE` naming `revision=<current>`, and the value is left as it was.
-Both settings commands write through it (`commands/settings-write.ts:114`), so
+Both settings commands write through it (`commands/settings-write.ts`), so
 every command write moves the revision by exactly one, and `settings.read`
 hands the current number back.
 
@@ -285,35 +292,39 @@ and `task.read` answers it `sharedTask` rather than the task
 
 `scripts/local-seed.mjs` creates businesses `alpha` and `bravo`, the five
 identities the slice contract names, their `logins` on provider `supabase`,
-memberships and grants. It is idempotent by lookup: a second run finds every row
-and inserts none.
+memberships and grants. It also installs each business's task spine and
+business settings, enrols one agent login per business with a budget cap
+(recorded in `.local/synthetic-agents.json`), and creates `.local/gate.env` and
+`.local/delegation.env` once, reading them back on every later run. It is
+idempotent by lookup: a second run finds every row and inserts none.
 
 **It never seeds a task.** A seeded task is a task nobody created, and it would
 make every acceptance case pass without the product working.
 
 Two identities carry negative cases:
 
-- `noah@alpha.local` — a real member of A with **no grants**, for "an
+- `noah@alpha.local` is a real member of A with **no grants**, for "an
   authenticated member without task collection scope" (N2).
-- `orphan@alpha.local` — a verified login with no mapping and no membership,
+- `orphan@alpha.local` is a verified login with no mapping and no membership,
   for `AUTH_NO_MEMBERSHIP` (N2's second half).
 
 The seed enrols one external party (R4). It adds an entry with
 `role: 'external'` to `.local/synthetic-users.json`, creates its GoTrue user,
 and gives it a login and an acting identity with no membership and no business
-grant (`scripts/local-seed.mjs:613-641`, `:758-766`). It shares a task with it
-only when rerun with `LOCAL_SEED_SHARE_TASK` naming a task by key or id, through
-`shareRecord` under the admin's own `share` grant (`:652-676`, `:793-797`).
-The tests make their own with `tests/acceptance/world.ts`'s `enrolExternal`.
+grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedExternalUser`).
+It shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK` naming a
+task by key or id, through `shareRecord` under the admin's own `share` grant
+(`shareWithExternal`). The tests make their own with
+`tests/acceptance/world.ts`'s `enrolExternal`.
 
 **Carry the existing external entry before seeding against a shared GoTrue.**
 When `.local/synthetic-users.json` has no `role: 'external'` entry, the seed
 writes a new one with a new password and then sets that password on the GoTrue
-user (`:613-641`). Against a GoTrue other checkouts also use, that resets the
-external party's password for all of them. Copy the existing entry into the
-file first.
+user (`ensureExternalEntry`, `seedExternalUser`). Against a GoTrue that other
+checkouts also use, that resets the external party's password for all of them.
+Copy the existing entry into the file first.
 
-Identity comes from `.local/synthetic-users.json`, which SLICE-API writes
-because the GoTrue subjects are its to mint. Until that file exists the seed
-writes a placeholder with random subjects and says on every run that those
-identities cannot sign in.
+Identity comes from `.local/synthetic-users.json`, which `auth:seed`
+(`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
+mint. Until that file exists the seed writes a placeholder with random subjects
+and says on every run that those identities cannot sign in.

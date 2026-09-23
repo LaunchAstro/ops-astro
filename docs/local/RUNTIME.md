@@ -13,7 +13,10 @@ says what is not. Implemented and tested is not reviewed or accepted. An
 independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
-and accepted, read "proved" below as "a test asserts it", not as "done".
+and accepted, read "proved" below as "a test asserts it", not as "done". The
+cases added by the grant-expiry-intake, projection-snapshot and retry-bounds
+lanes passed on their lane branches. The joint gates on the head that merged
+them, b282216, have not been run.
 
 ## The shape of it
 
@@ -32,6 +35,15 @@ constraint keeping it null, the attempt names no provider or model, and
 `pickup` returns its `declaredIncompleteness` in the payload rather than
 leaving a caller to discover it.
 
+At this head an attempt in state `dispatched` is bound to a live lease and
+nothing more. Pickup sets `state = 'dispatched'` and the attempt's `lease_id`
+together (`pickup.ts`, `pickup`). `dispatch_marker` stays false, since no code
+path sets it, and nothing is dispatched outside the database. Migration 0014
+declares `dispatched` as an attempt state and keeps `dispatch_marker` as a
+separate column (`migrations/0014_runtime_attempts.sql`,
+`attempts_state_known`). The name stays: renaming the state needs a migration
+and changes no behaviour.
+
 A gate is bound to its version, not only to its business, since migration
 0021 (`migrations/0021_runtime_gate_version_binding.sql:38-56`). Three
 composite foreign keys hold it: the gate's run plans the gate's version
@@ -42,40 +54,45 @@ step cannot be written, so it cannot be decided (ledger G01).
 
 ## The one rule the whole thing rests on
 
-**Discover, lock, re-read, then write.** The lock order is the contract's — cap,
+**Discover, lock, re-read, then write.** The lock order is the contract's: cap,
 envelope, task, run, step, lineage, gate, lease, delegation, reservation,
-operation — with one class in front of it, and it is in `locks.ts` as code
-rather than in four handlers as prose. `acquire` takes the whole set, sorts it
-by class and by key inside a class, and issues the statements in that order, so
-a handler that lists a lease before a cap still takes the cap first.
+operation. One class goes in front of it. The order is code in `locks.ts`, not
+prose repeated in four handlers. `acquire` takes the whole set, sorts it by
+class and by key inside a class, and issues the statements in that order, so a
+handler that lists a lease before a cap still takes the cap first.
 
-The class in front is `chain`, the business's decision chain (R10,
+The class in front is `chain`, the business's decision chain (R10, `LOCK_ORDER`,
 `locks.ts:26-45`). It has no row, so it is a transaction-scoped advisory lock
-(`:105-110`). `task.decide` takes it before the cap (`decide.ts:189`), so a
-second approval racing in the same business waits on the chain lock, not on the
-cap row.
+(`:105-110`). `task.decide` takes it before the cap (the `chain` request in
+`decide`, `decide.ts`), so a second approval racing in the same business waits
+on the chain lock, not on the cap row.
 
-`task.propose` takes cap, envelope, task, lineage, then the superseded
-version's holds, live lease and delegation, in one ordered call
-(`propose.ts:107-176`). It is declared `targetLock: 'runtime'`
-(`commands/surface.ts:224`), so the command envelope only reads the task and
-does not lock it (`commands/prepare.ts:337-345`). The expected revision is
-compared once the runtime's locks are held (`commands/tasks-runtime.ts:202-209`).
+`task.propose` takes cap, envelope, task, lineage, then the superseded version's
+holds, live lease and delegation, in one ordered call (`lockProposal`,
+`propose.ts:107-176`). It is declared `targetLock: 'runtime'`
+(`COMMAND_SURFACE`, `commands/surface.ts`), so the command envelope only reads
+the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
+`proposeOnTask` compares the expected revision once the runtime's locks are held
+(`commands/tasks-runtime.ts`).
 
-Grants stay outside that order. `task.pickup` share-locks the grant chain
-behind the claim's authority before it acquires the runtime set: the
-claimant's own grants in the collection and every grant they descend from
-(`holdCoveringGrants`, `pickup.ts:226-250`, called at `:304`). That mirrors
-`grant.revoke`, which takes `for update` on the revoked grant before any
-runtime lock (`commands/authority-controls.ts:221-222`). A revocation that
-locks first is seen by the pickup's authority read, and one that locks second
-waits for the pickup to commit and then finds its lease. Neither side waits on
-a grant while it holds runtime locks.
+Grants stay outside that order. `task.pickup` share-locks the grant chain behind
+the claim's authority before it acquires the runtime set: the claimant's own
+grants in the collection and every grant they descend from
+(`holdCoveringGrants`, `pickup.ts`, called from `pickup`). That mirrors
+`grant.revoke`, which takes `for update` on the revoked grant before any runtime
+lock (`revokeGrantAsManager`, `commands/authority-controls.ts`). The two
+serialise on the grant row. A revocation that locks first is seen by the
+pickup's authority read. One that locks second waits for the pickup to commit
+and then finds its lease in its first discovery. So a pickup cannot grow a
+revocation's affected set between discovery and locks. Neither side waits on a
+grant while it holds runtime locks. `tests/runtime/retry-bounds.test.ts` traces
+the order on a real run: the revocation's first locking statement is its grant
+row, and it waits on the parked pickup's transaction for that row.
 
 The proof that this matters is concrete. `decide.ts` originally opened the
-task's envelope **before** acquiring its locks, which is a write before the
-lock set. Two approvals racing one task both found no envelope, both inserted,
-and the loser met `duplicate key value violates unique constraint
+task's envelope before acquiring its locks, which is a write before the lock
+set. Two approvals racing one task both found no envelope, both inserted, and
+the loser met `duplicate key value violates unique constraint
 "task_envelopes_task_open_idx"` instead of the typed `GATE_ALREADY_DECIDED` it
 had earned. The gate race proof caught it; envelope creation now happens under
 the locks, and the discovery pass before them only reads.
@@ -202,82 +219,82 @@ interface HandedBack {
 }
 ```
 
-**The operands on the command surface.** On `task.pickup` and
-`task.heartbeat`, for a person and an agent alike, a present `leaseSeconds`
-must be a whole number of seconds from 1 to 3600. `null`, a fraction or
-anything else is `FIELD_VALUE_INVALID` 422. Leaving it out gives 15 minutes,
-for a pickup and a renewal alike (`readLeaseSeconds`,
-`commands/tasks-runtime.ts:902-925`; defaults at `:339` and `:893`). A present
-handback `report` must be an object: `null`, an array or a string is
-`FIELD_VALUE_INVALID` (`:656-671`, on both prefixes). The pickup's brief lists
-`excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
-`:470-490`).
+**The operands on the command surface.** On `task.pickup` and `task.heartbeat`,
+for a person and an agent alike, a present `leaseSeconds` must be a whole number
+of seconds from 1 to 3600. `null`, a fraction or anything else is
+`FIELD_VALUE_INVALID` 422. Leaving it out gives 15 minutes, for a pickup and a
+renewal alike (`readLeaseSeconds`, with `DEFAULT_LEASE_SECONDS` and
+`DEFAULT_RENEWAL_SECONDS`, in `commands/tasks-runtime.ts`). A present handback
+`report` must be an object: `null`, an array or a string is
+`FIELD_VALUE_INVALID` on both prefixes (the report check in that file's
+handback `settle`). The pickup's brief lists `excludedOperations` as
+`{ operation, reason }` pairs (`exclusionsFor`).
 
 ### Refusal codes, as L3 registered them
 
 `RuntimeRefusalCode` is exported as this package's own type and is deliberately
-**not** added to `commands/register.ts`, which is L3's file, for the reason
+not added to `commands/register.ts`, which is L3's file, for the reason
 AUTHORITY.md gives: a module reaching into the command surface to add its own
 codes is the coupling the register exists to prevent. `SUGGESTED_STATUS` in
-`refusals.ts` carries the same table in code. L3 has registered every code
-below at the status suggested here (`apps/api/status.ts`), and
-`fromRuntime` (`commands/tasks-runtime.ts:72`) carries a runtime refusal onto
-the command surface unchanged. Each operation's refusals, with their routes,
-are in [API.md](API.md#the-operations-l4s-runtime-made-possible).
+`refusals.ts` carries the same table in code. L3 has registered every code below
+at the status suggested here (`apps/api/status.ts`), and `fromRuntime`
+(`commands/tasks-runtime.ts`) carries a runtime refusal onto the command surface
+unchanged. Each operation's refusals, with their routes, are in
+[API.md](API.md#the-operations-l4s-runtime-made-possible).
 
-| Code                             | Status | Caller-visible                                                  |
-| -------------------------------- | ------ | --------------------------------------------------------------- |
-| `VERSION_SUPERSEDED`             | 409    | yes — re-read and decide the live version                       |
-| `EVIDENCE_MISMATCH`              | 409    | yes                                                             |
-| `GATE_NOT_FOUND`                 | 404    | yes                                                             |
-| `GATE_ALREADY_DECIDED`           | 409    | yes — the loser of a decision race                              |
-| `GATE_EXPIRED`                   | 410    | yes                                                             |
-| `LINEAGE_TERMINAL`               | 409    | yes                                                             |
-| `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                                             |
-| `BUDGET_UNAVAILABLE`             | 409    | yes — this envelope has no room                                 |
-| `BUDGET_EXHAUSTED`               | 402    | yes — the cap behind it has none                                |
-| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                             |
-| `LINEAGE_NOT_ON_TASK`            | 409    | yes — the lineage is another task's                             |
-| `CAP_BINDING_MISMATCH`           | 409    | yes — the envelope's cap is the cap                             |
-| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes — this head observed no spending                            |
-| `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes — cap, currency or rounds                                   |
-| `RESERVATION_NOT_CLAIMABLE`      | 409    | yes — one answer for none, unapproved and already picked up     |
-| `LEASE_HELD`                     | 409    | yes — two held reservations on one task                         |
-| `LEASE_NOT_OWNED`                | 403    | yes — a stale or foreign fence                                  |
-| `LEASE_EXPIRED`                  | 410    | yes                                                             |
-| `SCOPE_NOT_GRANTED`              | 403    | yes                                                             |
-| `TRANSITION_NOT_PERMITTED`       | 409    | yes — restart of a live, completed or already restarted lineage |
+| Code                             | Status | Caller-visible                                                 |
+| -------------------------------- | ------ | -------------------------------------------------------------- |
+| `VERSION_SUPERSEDED`             | 409    | yes, re-read and decide the live version                       |
+| `EVIDENCE_MISMATCH`              | 409    | yes                                                            |
+| `GATE_NOT_FOUND`                 | 404    | yes                                                            |
+| `GATE_ALREADY_DECIDED`           | 409    | yes, the loser of a decision race                              |
+| `GATE_EXPIRED`                   | 410    | yes                                                            |
+| `LINEAGE_TERMINAL`               | 409    | yes                                                            |
+| `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                                            |
+| `BUDGET_UNAVAILABLE`             | 409    | yes, this envelope has no room                                 |
+| `BUDGET_EXHAUSTED`               | 402    | yes, the cap behind it has none                                |
+| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                            |
+| `LINEAGE_NOT_ON_TASK`            | 409    | yes, the lineage is another task's                             |
+| `CAP_BINDING_MISMATCH`           | 409    | yes, the envelope's cap is the cap                             |
+| `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes, this head observed no spending                            |
+| `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes, cap, currency or rounds                                   |
+| `RESERVATION_NOT_CLAIMABLE`      | 409    | yes, one answer for none, unapproved and already picked up     |
+| `LEASE_HELD`                     | 409    | yes, two held reservations on one task                         |
+| `LEASE_NOT_OWNED`                | 403    | yes, a stale or foreign fence                                  |
+| `LEASE_EXPIRED`                  | 410    | yes                                                            |
+| `SCOPE_NOT_GRANTED`              | 403    | yes                                                            |
+| `TRANSITION_NOT_PERMITTED`       | 409    | yes, restart of a live, completed or already restarted lineage |
 
 `decideAsAgent` returns L2's `DELEGATION_EXCLUDES_DECISION`, which L3 registered
 from AUTHORITY.md's table. It is not re-derived here.
 
-`RESERVATION_NOT_CLAIMABLE` gives the same two sentences whether the
-reservation does not exist, has no approval behind it, or is already picked up
-by another live lease (`NOT_CLAIMABLE_REASON`, `pickup.ts:187-197`;
-`commands/tasks-runtime.ts:435`, `:446`). The holding lease is never named.
+`RESERVATION_NOT_CLAIMABLE` gives the same two sentences whether the reservation
+does not exist, has no approval behind it, or is already picked up by another
+live lease (`NOT_CLAIMABLE_REASON` and `NOT_CLAIMABLE_FIX`, `pickup.ts`;
+`claim`, `commands/tasks-runtime.ts`). The holding lease is never named.
 
-`LEASE_HELD` is reachable. Two lineages approved on one task, under an
-envelope an earlier handback left open, give two held reservations, and the
-second pickup meets the first one's live lease (`commands/register.ts:421-427`,
-`tests/commands/lease-held-reach.test.ts`). Its reason still names the task
-(`pickup.ts:479-483`).
+`LEASE_HELD` is reachable. Two lineages approved on one task, under an envelope
+an earlier handback left open, give two held reservations, and the second pickup
+meets the first one's live lease (the note beside `UNPRODUCED_CODES` in
+`commands/register.ts`; `tests/commands/lease-held-reach.test.ts`). Its reason
+still names the task (`pickup.ts:479-483`).
 
 `LEASE_NOT_OWNED` for a lease the caller does not hold, on heartbeat and
 handback, is a constant that echoes neither the presented lease nor the fence
-(`heartbeat.ts:80-87`, `handback.ts:144-150`, `:213-218`). A stale or
-superseded fence on a lease the caller does hold still names the lease and the
-fences (`handback.ts:266-280`). `DELEGATION_OUT_OF_PURPOSE` for a call on
-another resource names the delegation's own scope and not the presented one
-(`authority/delegations.ts:405-414`).
+(`notOwned` in `heartbeat`, `heartbeat.ts`; `handback.ts:144-150`, `:213-218`).
+A stale or superseded fence on a lease the caller does hold still names the
+lease and the fences (`handback.ts:266-282`). `DELEGATION_OUT_OF_PURPOSE` for a
+call on another resource names the delegation's own scope and not the presented
+one (`checkDelegatedAuthority`, `authority/delegations.ts`).
 
 ## Why the money is two columns
 
 `task_envelopes` carries `held_minor` and `actual_minor` separately, and the
-reservation's terminal state is **`abandoned`, never a zero `actual`.** A
-released hold that wrote `actual_minor = 0` would be a claim that the work ran
-and cost nothing. Nothing in this head runs, so that claim would be an
-invention, and the schema refuses it: `reservations_actual_only_when_actual`
-makes carrying a number and being `actual` the same fact.
+reservation's terminal state is `abandoned`, never a zero `actual`. A released
+hold that wrote `actual_minor = 0` would be a claim that the work ran and cost
+nothing. Nothing in this head runs, so that claim would be an invention, and the
+schema refuses it: `reservations_actual_only_when_actual` makes carrying a
+number and being `actual` the same fact.
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
@@ -318,43 +335,72 @@ Over it is `FIELD_VALUE_INVALID` 422 and nothing is written
 
 ## A decision is verified before a read returns it
 
-`task.read` verifies every decision it returns before it answers
-(`core-records/src/reads/verified-decisions.ts`, called from `proposals.ts:255`).
-It walks the business's decision chain from genesis to the newest decision the
-read returns. For each row it recomputes the payload digest from the stored
-JSON, then checks the signature and the link hash with the deployment's key,
-`GATE_SIGNING_KEY_ID` and `GATE_SIGNING_SECRET` (`signing.ts:78-114`). A
-decision that does not verify fails the read. So do stored decisions when no
+`task.read` verifies every decision it returns before it answers.
+`readTaskProposals` (`core-records/src/reads/proposals.ts`) calls
+`readVerifiedProjection` (`core-records/src/reads/verified-decisions.ts`). The
+read walks the business's decision chain from genesis to the newest decision it
+returns. For each row it recomputes the payload digest from the stored JSON,
+then checks the signature and the link hash (`verifyChain`,
+`core-runtime/src/signing.ts`). Each row is checked under its own link version,
+1, 2 or 3, which its signed payload names (`linkVersionOf`), and under the key
+its `signing_key_id` names. After the chain holds, the read compares each row's
+columns with its own signed payload (`boundColumns`). It then checks the
+decisions against what the gates and lineages record (U1, `missingDecisions`). A
+decided gate has the one decision that moved it, a decision's gate is in the
+state that decision produced, a gate-rejected lineage has its rejection, and no
+gate reaches a round its requested changes do not account for.
+
+A decision that does not verify fails the read. So do stored decisions when no
 key is configured. The failure is `DecisionIntegrityError`, code
-`DECISION_INTEGRITY` (`verified-decisions.ts:44-51`). Over HTTP it is a fault,
-5xx with no task in the body, not a refusal. Verifying writes nothing: the
-stored rows are left as they were found. `tests/reads/verified-decisions.test.ts`
-tampers as the database owner and asserts each failure, and that a clean read
-changes nothing.
+`DECISION_INTEGRITY`. Over HTTP it is a fault, 500 with fixed words and no task
+in the body (`ReadIntegrityFault`, `reads/dispatch.ts`), not a refusal.
+Verifying writes nothing: the stored rows are left as they were found.
+`tests/reads/verified-decisions.test.ts` and
+`tests/reads/decision-integrity-read.test.ts` tamper as the database owner and
+assert each failure, and that a clean read changes nothing.
 
 The chain and the gate and lineage facts it is checked against are read in one
-statement, so they are one snapshot (`readSnapshot`, `verified-decisions.ts:322`).
-The read runs read-committed, where each statement sees what was committed when
-it began. A chain read before a `task.decide` commits and a gate read after it
-would find an approved gate with no decision and fault on intact evidence. One
-statement answers the old view or the new one. Nothing else changes isolation
-or takes a lock. `tests/reads/decision-snapshot.test.ts` pauses the read after
-each statement, commits a real `task.decide` on another connection, and checks
-that the read answers without `DECISION_INTEGRITY`. It covers the first decision
-on a pending gate, a later decision on a lineage that already has one, and the
-proposal projection. A genuinely missing decision still fails the same read.
+statement, so they are one snapshot (`readSnapshot`). The read runs
+read-committed, where each statement sees what was committed when it began. A
+chain read before a `task.decide` commits and a gate read after it would find an
+approved gate with no decision and fault on intact evidence. One statement
+answers the old view or the new one. Nothing else changes isolation or takes a
+lock. `tests/reads/decision-snapshot.test.ts` pauses the read, commits a real
+`task.decide` on another connection, and checks that the read answers without
+`DECISION_INTEGRITY`. It covers the first decision on a pending gate and a later
+decision on a lineage that already has one. A genuinely missing decision still
+fails the same read.
+
+The proposal read takes its versions, gates and reservations in that same
+statement (`readVerifiedProjection`), so one answer never shows a gate `pending`
+beside its own verified decision. `tests/reads/projection-snapshot.test.ts` and
+`tests/surfaces/proposal-snapshot.test.tsx` assert that relation and the
+decision controls the page draws from it.
 
 Its limits:
 
-- The link covers the decision's id, sequence, gate, version, decision,
-  deciding person, payload digest and signature (`verified-decisions.ts:146-157`).
-  It does not cover `round`, `decided_at`, the acting identity or the evidence
-  digest, so those read as stored.
-- Removing the newest decision is not caught by the chain. The walk ends at
-  the newest decision still stored, and nothing it reads links to the removed
-  one.
-- There is one signing key. A row signed under an earlier key id fails the
-  read (`signing.ts:99-100`).
+- A v1 row's link covers its id, sequence, gate, version, decision, deciding
+  person, payload digest and signature, and not its round, decision time,
+  lineage, acting identity, evidence digest or key id (`decisionLink`,
+  `signing.ts`). v2 and v3 links cover those too, but the link hash is unkeyed.
+  On v1 and v2 rows the signed payload does not hold the round, time, lineage,
+  acting identity, id, sequence or previous link, so a writer with owner access
+  who recomputes every later link can change them and the read still verifies.
+  v3 signs them, and the read compares each with the payload. On every version
+  the gate, version, decision, deciding person and evidence digest are compared
+  with the signed payload. The read labels each decision with its `linkVersion`
+  and the `signedFields` its signature covers. v1 and v2 rows are verified as
+  they are and never rewritten.
+- U1 compares the decisions only with gate and lineage state. Removing the
+  newest decision is caught while its gate, its lineage or a later round still
+  records the outcome. A writer with owner access who removes it and also
+  returns the gate to `pending`, with the lineage live and no later round,
+  leaves a chain and facts that agree, and the read does not see it.
+- The verifier resolves each row's key id, so a chain that spans a key change
+  can verify. The read's resolver holds only the configured key
+  (`configuredKeys`, `proposals.ts`), so a row signed under an earlier key id
+  fails the read as an unknown signing key. Retaining an older key is a
+  configuration change this head has not made.
 
 ## Why the lease is fenced
 
@@ -364,66 +410,115 @@ fence and nothing changes: `LEASE_NOT_OWNED` on a superseded or mismatched
 fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately; it cannot settle the replacement's work.
 
-A handback names a lease, not a task. The agent envelope reads the task from
-the lease before the delegation check (`subjectTaskId`, `commands/agent-envelope.ts:418-446`), so
-a handback naming a lease on another task is outside the one-task purpose and
-is refused `DELEGATION_OUT_OF_PURPOSE` before any handback write (matrix case
-(i), `tests/acceptance/role-case-matrix.test.ts:430-449`). `LEASE_NOT_OWNED`
-stays the answer for a stale fence on the agent's own task.
+A handback names a lease, not a task. The agent envelope reads the task from the
+lease before the delegation check (`subjectTaskId`,
+`commands/agent-envelope.ts`), so a handback naming a lease on another task is
+outside the one-task purpose and is refused `DELEGATION_OUT_OF_PURPOSE` before
+any handback write (matrix case (i),
+`tests/acceptance/role-case-matrix.test.ts`). `LEASE_NOT_OWNED` stays the answer
+for a stale fence on the agent's own task.
 
 **Superseded work cannot settle.** Proposing a new version retires the
-superseded version's live lease and delegation in the same ordered lock set:
-the lease is released and the delegation revoked (`propose.ts:150-176`, `:280`;
-`recovery.ts:368-386`). Under its full lock set, `handback` then checks that
-the lease still binds a live version on a live lineage. If the version was
-superseded, or the lineage is no longer live, it keeps the report as
-`retained`, refuses `LEASE_NOT_OWNED` naming the cause, and settles nothing
-(`handback.ts:244-287`). `tests/runtime/lifecycle-stale-handback.test.ts` holds
-four cases, with and without a successor.
+superseded version's live lease and delegation in the same ordered lock set. The
+lease is released and the delegation revoked (`lockProposal` and
+`proposeUnderLocks`, `propose.ts`; `retireWork`, `recovery.ts`). Under its full
+lock set, `handback` then checks that the lease still binds a live version on a
+live lineage. If the version was superseded, or the lineage is no longer live,
+it keeps the report as `retained`, refuses `LEASE_NOT_OWNED` naming the cause,
+and settles nothing (the binding check after the fence checks in `handback`,
+`handback.ts`). `tests/runtime/lifecycle-stale-handback.test.ts` holds four
+cases, with and without a successor.
 
-**A retired or narrowed agent's late report is still kept** (T4 lines 76 and
-78, runtime review C2, ROOT-NARROWED-REPORT-RULING). Supersession, cancellation, settlement and plain expiry leave the original agent's credential answering to no live delegation,
-so the agent entry refuses its new handback `DELEGATION_NOT_LIVE` before
-`handback` is reached. A delegation revoked for authority loss answers
-`DELEGATION_NARROWED` (R-B). The refusal, its status and R-B's recorded cause
-stand, and the report is kept by an evidence-only intake (`retainLateHandback`,
-`commands/agent-envelope.ts:706`): the credential must name a delegation of this
-business and this authenticated agent that is no longer live for the reason
-the refusal gave, which for `DELEGATION_NARROWED` is only an unsettled,
-unexpired `authority_lost` revocation (`resolveHistoricalDelegation`,
-`authority/delegations.ts:384`), and the presented lease and fence must be that
-delegation's exactly (`retainHistoricalReport`, `handback.ts:518`). Then one
-`retained` row naming the refusal is appended, beside the refused audit row. No
-lease, delegation, run, attempt, reservation, gate, envelope or successor is
-written, and nothing is read back to the caller. A wrong lease, fence or
-credential, another agent's credential, another business, a heartbeat, any
-other call and any other refusal retain nothing. A refused or settled
-handback's replay is answered from its register row and retains no second row;
-the same identity with other operands is `OPERATION_ID_REUSED`; only a new
-operation id is a new late report. A fault after the retained row rolls back
-the row, the register row and the audit row together.
-`tests/runtime/historical-handback-intake.test.ts` holds both paths over HTTP.
+**A retired or narrowed agent's late report is still kept** (T4 lines 76 and 78,
+runtime review C2, ROOT-NARROWED-REPORT-RULING,
+ROOT-GRANT-EXPIRY-INTAKE-RULING). Supersession, cancellation, settlement and
+plain expiry leave the original agent's credential answering to no live
+delegation, so the agent entry refuses its new handback `DELEGATION_NOT_LIVE`
+before `handback` is reached. A narrowed agent's handback answers
+`DELEGATION_NARROWED`. The refusal and its status stand, and an evidence-only
+intake keeps the report (`retainLateHandback`, `commands/agent-envelope.ts`).
+The credential must name a delegation of this business and this authenticated
+agent, and it must be narrowed or no longer live for the reason the refusal
+gave:
 
-**The agent entry retries a lost identity claim once**, as the person entry
-does (`executeAgentCommand`, `commands/agent-envelope.ts:149`, with
-`isRetryableViolation`). A same-operationId retry in flight behind its
-original loses `operations_identity_key` to the original's commit, its whole
-transaction rolls back, and the second attempt reads the committed register
-row and replays it; a second collision propagates (DB-PROOF-GAPS-B F1,
-`tests/runtime/l6-schedules.test.ts` "W02 (b)").
+- For `DELEGATION_NOT_LIVE`, the delegation is revoked, settled or expired
+  (`resolveHistoricalDelegation`, `authority/delegations.ts`).
+- For `DELEGATION_NARROWED`, there are two cases. In the first, the delegation
+  carries an unsettled, unexpired `authority_lost` revocation (R-B), and that
+  recorded cause stands (`resolveHistoricalDelegation`). In the second, the
+  delegation is still live, but the delegating person's `write` grant covering
+  the task has since lapsed, by expiry or otherwise. The intake then runs only
+  when `resolveHistoricalDelegation` finds nothing, and it has its own binding
+  check. `narrowedOnLease` reads the task from the presented lease, with no
+  fallback: a lease outside this business names no task, and nothing is kept.
+  `resolveNarrowedDelegation` resolves the credential as live through
+  `resolveDelegation`'s own binding (this business, this authenticated agent,
+  this credential digest). It then runs `checkDelegatedAuthority` for
+  `task.handback`'s collection and action on that task, and returns the
+  delegation only when the check answers `DELEGATION_NARROWED`. The check
+  reaches that answer only after the decision exclusion, the purpose's
+  collection and action, and the one-task ceiling have passed. The caller's
+  refusal code is recomputed, never trusted. Nothing is revoked, no
+  `authority_lost` cause is written, and the delegation stays live. A lease on
+  another task answers `DELEGATION_OUT_OF_PURPOSE` first, because the delegation
+  is live, and retains nothing.
+
+The presented lease and fence must then be that delegation's exactly: the lease
+names that delegation, this agent holds it, and the fence is the one it was
+issued (`retainHistoricalReport`, `handback.ts`). One `retained` row naming the
+refusal is appended, beside the refused audit row. No lease, delegation, run,
+attempt, reservation, gate, envelope or successor is written, and nothing is
+read back to the caller. A wrong lease, fence or credential, another agent's
+credential, another business, a heartbeat, any other call and any other refusal
+retain nothing. A refused or settled handback's replay is answered from its
+register row and retains no second row. The same identity with other operands is
+`OPERATION_ID_REUSED`, and only a new operation id is a new late report. A fault
+after the retained row rolls back the row, the register row and the audit row
+together. `tests/runtime/historical-handback-intake.test.ts` holds the retired,
+narrowed and grant-expired paths over HTTP.
+
+**Both command entries retry once.** The agent entry (`executeAgentCommand`,
+`commands/agent-envelope.ts`) and the person entry (`executeCommand`,
+`commands/envelope.ts`) share the `isRetryableViolation` predicate
+(`register-store.ts`) and the same single-retry bound. The predicate admits a
+lost identity claim (`operations_identity_key`), a lost unique-value claim
+(`record_unique_values_claim_idx`) and `AffectedSetChanged`. The identity case
+is the one an agent reaches. A same-operationId retry in flight behind its
+original loses `operations_identity_key` to the original's commit, and its whole
+transaction rolls back. The second attempt reads the committed register row and
+replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+The agent predicate admits `AffectedSetChanged`, but no agent command reaches a
+thrower of it today. `cancelAndClassify`, `classifyAuthorityLoss` and
+`replayRecordedTransitions` raise it, and only `task.cancel`, `grant.revoke`,
+`delegation.revoke` and startup recovery call them. None of those is on the
+agent's `AGENT_SURFACE`. Admitting it gives the agent no cancellation authority
+and adds no command retry at startup.
+
+A second loss reaches the caller as a fault. The person entry then writes one
+`failed` audit event in a transaction of its own, which is not a command
+attempt. The agent entry writes none. A second `operations_identity_key` loss is
+not reachable by a schedule. The retry reads the register by the constraint's
+exact key, and the register is append-only, so the retry replays the first
+winner. `tests/runtime/retry-bounds.test.ts` forces a person `task.cancel` to
+lose its discovery twice and asserts two command attempts, one failed-audit
+transaction and nothing committed. Its agent double collision is a staged
+control: the test commits and then removes a register row under the append-only
+trigger's bypass, a state no schedule produces.
 
 **An abandoned hold is replaced, never revived** (R5). At pickup, a hold that
-ended without settling, because its lease expired or the authority behind it
-was lost, on a version still approved and current on a live lineage, is
-replaced by a fresh hold and a fresh attempt on that version, under the locks
-the pickup already holds (`pickup.ts:392-452`). The abandoned reservation stays
+ended without settling, because its lease expired or the authority behind it was
+lost, on a version still approved and current on a live lineage, is replaced by
+a fresh hold and a fresh attempt on that version, under the locks the pickup
+already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A settled hold, a quarantined one, or a version already holding
-elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`:369-375`, `replaceable` at
-`:615-630`).
+elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`).
 
-The delegation expires **with** the lease — `pickup` passes the lease expiry as
-`expiresAt` — because a delegation outliving its lease is an agent still holding
-narrowed authority over work somebody else now owns.
+The delegation expires with the lease: `pickup` passes the lease expiry as
+`expiresAt`. A delegation outliving its lease would be an agent still holding
+narrowed authority over work somebody else now owns. The delegation's expiry is
+the lease's and is not clamped to the person's earliest grant expiry
+(`mintDelegation`, `authority/delegations.ts`). Between the two, the agent is
+narrowed, not ended.
 
 ## The successor is part of the settlement
 
@@ -436,16 +531,16 @@ The writer is `packages/core-runtime/src/proposal-writer.ts`. It holds the
 version, run, step, evidence-pack and gate writes once, and `propose` and
 `handback` both go through it, so the head has one proposal writer rather than
 two that drift. It takes the caller's `LockSet` and opens no transaction: it
-calls `LockSet.require` for the task, the lineage and — when the task already
-has them — the cap and the envelope a later decision will bind the version to,
-and throws if any is missing. That is the contract's "helpers receive the
-already-held lock context" as an argument rather than a comment, and it is why
-`handback` can create a successor without the thing T4 forbids: it never calls
-`propose`, which would check the wrong actor's authority and open a lock set of
-its own part-way through a transaction that already holds the lease.
+calls `LockSet.require` for the task and the lineage. When the task already has
+a cap and an envelope that a later decision will bind the version to, it
+requires those too. It throws if any is missing. That is the contract's "helpers
+receive the already-held lock context" as an argument rather than a comment, and
+it is why `handback` can create a successor without the thing T4 forbids: it
+never calls `propose`, which would check the wrong actor's authority and open a
+lock set of its own part-way through a transaction that already holds the lease.
 
-`propose` preallocates the identity of a lineage it is about to open **before**
-it acquires, so the whole set is one ordered call and the lineage lock is never
+`propose` preallocates the identity of a lineage it is about to open before it
+acquires, so the whole set is one ordered call and the lineage lock is never
 taken after the reservation locks. T4 calls that "identity preparation, not a
 write or approval".
 
@@ -454,33 +549,33 @@ handback, which settles and proposes nothing. Present is refused
 `SUCCESSOR_OUT_OF_BOUNDS`, before the first write, unless the ceiling is finite
 and positive, fits the room left in the cap behind the envelope, is denominated
 in that envelope's currency, and would not be the lineage's third formal round
-(G08). The successor is created **after** the classification, which is the order
-the facts come in: the classification is what makes the old attempt
-nonclaimable, and the successor is the work somebody may now approve instead. It
-is not approved and it opens no hold. A stale fence never reaches it — those
-paths retain their report and return — so a lease that cannot settle work
-cannot propose the next of it either.
+(G08). The successor is created after the classification, which is the order the
+facts come in: the classification is what makes the old attempt nonclaimable,
+and the successor is the work somebody may now approve instead. It is not
+approved and it opens no hold. A stale fence never reaches it, because those
+paths retain their report and return. So a lease that cannot settle work cannot
+propose the next of it either.
 
 **On the command surface.** L3 carries the successor through `task.handback`
-(`commands/tasks-runtime.ts`, `readSuccessor` at `:563`). The body's
-`successor` is read and checked before the runtime is reached, and
-`proposedByActorId` is not a body field: the agent actor of the session
-proposes it (`:653`). A body that names it under either spelling is refused
-`FIELD_NOT_WRITABLE` (`:530`). `expiresAt` is optional there and defaults to
-the same week `task.propose` uses. The result carries the four successor
-handles, all null when none was asked for. The body and the refusals are in
+(`readSuccessor`, `commands/tasks-runtime.ts`). The body's `successor` is read
+and checked before the runtime is reached, and `proposedByActorId` is not a body
+field: the agent actor of the session proposes it. A body that names it under
+either spelling is refused `FIELD_NOT_WRITABLE` (`SUCCESSOR_SERVER_OWNED`). The
+expiry is `expiresInSeconds`, optional, read through the same `expiryFrom` as
+`task.propose`, so it defaults to the same week and has the same seven-day
+maximum. A body naming `successor.expiresAt` is refused `FIELD_VALUE_INVALID`.
+The result carries the four successor handles, all null when none was asked for.
+The body and the refusals are in
 [API.md](API.md#the-operations-l4s-runtime-made-possible).
 `tests/commands/handback-successor.test.ts` holds the reading of the body with
 no database, and the `task.handback and its successor` block in
-`tests/api/task-runtime-routes.test.ts` (`:574`) holds it over HTTP. That block
-covers no successor, an in-bounds successor committed with the settlement, a
-body naming the actor, and `SUCCESSOR_OUT_OF_BOUNDS` settling nothing.
+`tests/api/task-runtime-routes.test.ts` holds it over HTTP. That block covers no
+successor, an in-bounds successor committed with the settlement, a body naming
+the actor, and `SUCCESSOR_OUT_OF_BOUNDS` settling nothing.
 
-One seam is open. `SuccessorRequest` pins an absolute `expiresAt`, while
-`task.propose` takes `expiresInSeconds` and computes the instant on the server.
-The surface refuses a past or malformed instant, so neither of the failures
-`task.propose`'s duration guards against can be reached. There are still two
-spellings for one concept.
+Inside the runtime, `SuccessorRequest` still carries an absolute `expiresAt`.
+The command surface computes that instant on the server from `expiresInSeconds`,
+so a caller has one spelling, the same as `task.propose`'s.
 
 ## What the classifier will not do
 
@@ -496,7 +591,7 @@ support `lineage_cancelled`, and a live lease does not support
 reports the row it changed, and the envelope subtraction uses that row's own
 amount, so a classifier that lost the race writes nothing.
 
-Startup, elapsed time, a missing claimant and `lease_id = null` are **not**
+Startup, elapsed time, a missing claimant and `lease_id = null` are not
 abandonment triggers. An approved, unleased, currently authorised reservation
 stays held across a restart and stays pickupable; the restart proof asserts
 exactly that, and then asserts that `replayRecordedTransitions` run on that
@@ -504,37 +599,42 @@ restart returns an empty list. Only after a recorded terminal transition does
 the same call release it, once, with the cause and the cause's identity on the
 row.
 
-A `dispatch_marker` or an `observed` attempt always keeps its **full hold**, as
-`quarantined`, even when the work is otherwise terminal — and 0014's trigger
+A `dispatch_marker` or an `observed` attempt always keeps its full hold, as
+`quarantined`, even when the work is otherwise terminal, and 0014's trigger
 refuses to let either flag be lowered. Work refusal must never erase a real
 liability.
 
 ### Restart recovery at API startup
 
 TRANSACTION-CONTRACT lines 84 and 92: a first-head restart resumes the same
-bounded classifier. **An API process start or restart is the resume entry.**
-`apps/api/server.ts` awaits `recoverInstallation` (`apps/api/recovery-entry.ts`)
-after its dependencies are validated and before `serve` binds the port. There
-is no database-only reconnect callback: if Postgres restarts under a running
-API, the replay runs at the API's next start, and nothing polls.
+bounded classifier. An API process start or restart is the resume entry. `main`
+in `apps/api/server.ts` awaits `recoverInstallation`
+(`apps/api/recovery-entry.ts`) after its dependencies and the delegation
+credential keyring are validated and before `serve` binds the port. There is no
+database-only reconnect callback: if Postgres restarts under a running API, the
+replay runs at the API's next start, and nothing polls.
 
 - **Scope.** `RECOVERY_BUSINESS_KEYS`, from the environment or
   `.local/recovery.env`: comma-separated business keys, de-duplicated, each
   resolved on its own through `createBusinessResolver`, or the literal `none`.
-  Unset, blank, an empty entry, `none` beside a key, or a key that resolves to
-  no business stops the start with exit 1 and names the setting, before any
-  replay. No request, seed, fixture or scan of `public.businesses` supplies the
-  set; the administrative connection runs only the key lookups.
+  Unset, blank, an empty entry, an entry holding whitespace, `none` beside a
+  key, or a key that resolves to no business stops the start with exit 1 and
+  names the setting, before any replay (`parseRecoveryScope`,
+  `recoverInstallation`). The literal `none` logs that there are no installation
+  businesses and serves. No request, seed, fixture or scan of
+  `public.businesses` supplies the set. The administrative connection runs only
+  the key lookups.
 - **One transaction per business.** Each business runs
   `database.withBusiness(id, tx => replayRecordedTransitions(tx))` as the
   application role, with the tenant set by `set_config(..., true)` inside that
   transaction, one business after another.
-- **Failure.** A failed replay, including the classifier's refusal when
-  discovery changed under its locks (`recovery.ts:443-449`), rolls that
-  business back and exits 1 with `restart recovery for business "<key>" rolled
-back: <reason>`. There is no automatic retry: the next normal start runs the
-  replay again in a fresh transaction. A business that committed before the
-  failure stays committed and has nothing left to replay.
+- **Failure.** A failed replay, including `AffectedSetChanged` when discovery
+  changed under the classifier's locks (`lockAndClassify`, `recovery.ts`), rolls
+  that business back. The process exits 1 with
+  `restart recovery for business "<key>" rolled back: <reason>`. There is no
+  automatic retry: the next normal start runs the replay again in a fresh
+  transaction. A business that committed before the failure stays committed
+  and has nothing left to replay.
 - **Record.** After each commit the server logs `restart recovery: <key>
 committed, <n> classified, <r> released, <q> quarantined`. The durable record
   is the classifier's own: `classified_cause` and `classified_cause_id` on the
@@ -564,14 +664,14 @@ evidence about a restarted browser, API or Postgres process. Where a case
 establishes one direction of an obligation, the obligation is named as
 partly covered rather than proved.
 
-- The race is **forced, not hoped for**: the first transaction is held open on a
+- The race is forced, not hoped for. The first transaction is held open on a
   barrier and the second is watched into `wait_event_type = 'Lock'` in
   `pg_stat_activity` before the barrier releases. A run that cannot establish
   the interleaving throws rather than passing quietly. It needs a second
   physical connection, because the fixture's pool is `max: 1` and on one handle
   the second caller queues on the _pool_ and never reaches the gate row.
-- The stale fence is asserted **twice**: the refusal carries the right code, and
-  a full snapshot of every reservation, attempt, lease and envelope is compared
+- The stale fence is asserted twice. The refusal carries the right code, and a
+  full snapshot of every reservation, attempt, lease and envelope is compared
   before and after. A refusal that still released a hold passes the first
   assertion and fails the second.
 - **Two formal rounds, and no third** (G08): each round is a real
@@ -579,7 +679,7 @@ partly covered rather than proved.
   gate refuses an approval across the round boundary (G04 holding across
   rounds), and the third round is refused `CHANGE_ROUNDS_EXHAUSTED` with no
   decision row written. The lineage stays live, so approving or rejecting is
-  still open — the cap bounds rounds, not the decision.
+  still open. The cap bounds rounds, not the decision.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
@@ -596,12 +696,12 @@ partly covered rather than proved.
 - **`acquire` sorts, and that is what is observed**: two transactions each list
   cap, envelope and gate in an order the contract forbids, and in different
   wrong orders. `pg_locks` is asked which table the blocked one is parked on,
-  and the answer is `budget_caps` — the class `acquire` reached first —
-  although it listed the envelope first. With the sort removed from `acquire`
-  the same case reports `task_envelopes`, which is the crossing that deadlocks.
-  This covers `acquire` in isolation. It does not establish that every handler
-  passes `acquire` its complete set, which is a separate property: the
-  dcbc8e8 review found recovery bypassing it entirely, and the case below is
+  and the answer is `budget_caps`, the class `acquire` reached first, although
+  the transaction listed the envelope first. With the sort removed from
+  `acquire` the same case reports `task_envelopes`, which is the crossing that
+  deadlocks. This covers `acquire` in isolation. It does not establish that
+  every handler passes `acquire` its complete set, which is a separate property:
+  the dcbc8e8 review found recovery bypassing it entirely, and the case below is
   what now holds that half.
 - **The classifier asserts its caller's locks** (R1): `classifyUnderLocks`
   takes a required `LockSet` and calls `LockSet.require` for the reservation
@@ -624,14 +724,14 @@ partly covered rather than proved.
   the case reads back that no decision row was written and the gate is still
   pending. This covers the binding.
 - **The post-write reservation refusal aborts, executed** (R2), in
-  `tests/runtime/decision-abort.test.ts`: an owner-installed trigger shrinks
-  the envelope this approval opens, below the hold it is about to take, so
+  `tests/runtime/decision-abort.test.ts`: an owner-installed trigger shrinks the
+  envelope this approval opens, below the hold it is about to take, so
   `decide`'s preflight passes on the cap alone, the signed decision row and the
   approved gate are written, and `reserve` then refuses `BUDGET_UNAVAILABLE`
-  under the same locks. The call **throws**, and a new transaction reads back
-  zero decision rows, a still-pending gate, no reservation, no attempt, no
-  envelope for that task and unchanged business totals. The trigger rewrites a
-  value rather than raising on purpose: a trigger that raised would abort the
+  under the same locks. The call throws, and a new transaction reads back zero
+  decision rows, a still-pending gate, no reservation, no attempt, no envelope
+  for that task and unchanged business totals. The trigger rewrites a value
+  rather than raising on purpose: a trigger that raised would abort the
   transaction by itself and would prove nothing about what `decide` does with a
   refusal it was handed. With the trigger dropped the same gate approves, which
   is what makes the abort an abort rather than an unapprovable fixture.
@@ -654,48 +754,47 @@ partly covered rather than proved.
   cases. The settlement's own transaction is read back holding the report, a
   `pending` gate on the same lineage, version 2 with the successor's ceiling,
   its run, its step and its evidence pack, the superseded old version, and no
-  hold on the new version — a successor is work to decide, not work approved. A
+  hold on the new version. A successor is work to decide, not work approved. A
   trigger arranged to raise on the successor's version insert, which
   `writeProposal` reaches only after the report, the lease release and the
-  classifier have written, leaves **neither**: no report, no version 2, the
-  lease still `live`, the hold still `held`, the run still `claimed` and the
-  envelope still carrying the whole hold; with the trigger gone the same
-  handback settles and proposes. A successor past the cap, in another currency,
-  at a non-positive ceiling, or at a third formal round is refused
-  `SUCCESSOR_OUT_OF_BOUNDS` before any write, and the claim is read back live
-  and holding, then settled. A stale fence retains its report and creates no
-  successor: the lineage still has its one version and its one gate.
+  classifier have written, leaves neither: no report, no version 2, the lease
+  still `live`, the hold still `held`, the run still `claimed` and the envelope
+  still carrying the whole hold; with the trigger gone the same handback settles
+  and proposes. A successor past the cap, in another currency, at a non-positive
+  ceiling, or at a third formal round is refused `SUCCESSOR_OUT_OF_BOUNDS`
+  before any write, and the claim is read back live and holding, then settled. A
+  stale fence retains its report and creates no successor: the lineage still has
+  its one version and its one gate.
 - **An expired lease is classified by its owning transaction** (R5): the next
   pickup fences the old lease, the old hold is read back `abandoned` under
   `lease_expired_and_fenced`, a fresh reservation is read back `held` on the
   same still-approved version, and the envelope carries one hold's worth rather
   than two. A second case leaves a fenced lease with an unclassified hold and
-  asserts `replayRecordedTransitions` finishes it. Until lane
-  L2-DELEGATION-FIX this was **unreachable through a command**: the delegation
-  expires with the lease and `delegations_one_live_per_purpose_idx` does not
-  read expiry, so the spent delegation held the slot and the second pickup
-  raised 23505 rather than recovering. `mintDelegation` now settles the spent
-  row in the same transaction as the fresh hold (AUTHORITY.md,
-  `DELEGATION_ALREADY_LIVE`), so the recovery is proved end to end over HTTP as
-  well as in the runtime, with the abandoned credential answering
-  `DELEGATION_NOT_LIVE` and the new one working.
+  asserts `replayRecordedTransitions` finishes it. Until lane L2-DELEGATION-FIX
+  this was unreachable through a command. The delegation expires with the lease
+  and `delegations_one_live_per_purpose_idx` does not read expiry, so the spent
+  delegation held the slot and the second pickup raised 23505 rather than
+  recovering. `mintDelegation` now settles the spent row in the same transaction
+  as the fresh hold (AUTHORITY.md, `DELEGATION_ALREADY_LIVE`), so the recovery
+  is proved end to end over HTTP as well as in the runtime, with the abandoned
+  credential answering `DELEGATION_NOT_LIVE` and the new one working.
 - **The schedules go through the command entry** (W01, W03, W05 and the
   heartbeat), in `tests/runtime/schedules-*.test.ts`. The helper cases above
   call `propose` and `handback` directly. These run a person's body through
   `executeCommand` and an agent's through `executeAgentCommand`, the functions
-  the HTTP boundary mounts (`schedules-harness.ts:1-21`). A third connection
-  holds a row the racers need. Each racer starts only once the one before it is
-  seen parked in `pg_locks`, and then the holder lets go. The order is
-  observed, not slept through. W01 cuts the connection at `COMMIT` with an
+  the HTTP boundary mounts (the header of `schedules-harness.ts`). A third
+  connection holds a row the racers need. Each racer starts only once the one
+  before it is seen parked in `pg_locks`, and then the holder lets go. The order
+  is observed, not slept through. W01 cuts the connection at `COMMIT` with an
   in-test TCP relay, `cutProxy`: once before the server receives the commit and
-  once after it commits (`schedules-harness.ts:402-425`). `connect` defaults to
-  a pool of one (`tenancy/database.ts:68`), so each racer needs a `Database` of
-  its own. Two calls through one `Database` queue in the client and never meet
-  in the server.
-- Append-only is asserted **twice**: the application role is refused by
-  privilege, and the owner — who does hold `update` — is refused by the trigger.
-  Without the second half a later migration granting `update` would silently
-  make the trail amendable.
+  once after it commits (`cutProxy`, `schedules-harness.ts`). `connect` defaults
+  to a pool of one (`tenancy/database.ts:68`), so each racer needs a `Database`
+  of its own. Two calls through one `Database` queue in the client and never
+  meet in the server.
+- Append-only is asserted twice. The application role is refused by privilege,
+  and the owner, who does hold `update`, is refused by the trigger. Without the
+  second half a later migration granting `update` would make the trail amendable
+  without anyone noticing.
 
 ## The work controls
 
@@ -703,71 +802,72 @@ The ledger's support controls reach this package through declared operations
 ([API.md, "The support controls"](API.md#the-support-controls)), never through
 direct SQL.
 
-- **Cancellation** is `cancelAndClassify` (`recovery.ts:557-642`), reached by
+- **Cancellation** is `cancelAndClassify` (`recovery.ts`), reached by
   `task.cancel`. In one transaction under the complete ordered lock set, it
   makes the lineage terminal, releases each live lease on the lineage, revokes
   the delegation each lease was issued under, ends `planned` and `claimed` runs
   as `cancelled`, and classifies the lineage's own holds. The delegation's
-  recorded cause is `work_retired` (`recovery.ts:403`). A run already handed
-  back keeps that state. The cancelled agent's next call answers
+  recorded cause is `work_retired` (`retireWork`). A run already handed back
+  keeps that state. The cancelled agent's next call answers
   `DELEGATION_NOT_LIVE`, and the same agent can pick up a restarted lineage
   (`tests/runtime/lifecycle-cancel.test.ts`). A handback that commits between
   discovery and the locks leaves a smaller set, and the cancellation goes on
-  with it (`tests/runtime/lifecycle-cancel-race.test.ts`). A set that grew (a
-  pickup committed its lease in between) rolls back with nothing written and
-  raises `AffectedSetChanged` (`recovery.ts`), as do recovery replay and
-  authority loss. The person command entry retries it once, in a fresh
-  transaction that discovers again (`isRetryableViolation`,
-  `register-store.ts`), so the first request answers with the applied cancel;
-  a second loss surfaces as a fault and is recorded as one
-  (`tests/runtime/cancel-rediscover.test.ts`). Startup recovery does not
-  retry: a changed set there fails the start.
+  with it (`tests/runtime/lifecycle-cancel-race.test.ts`). A set that grew
+  because a pickup committed its lease in between rolls back with nothing
+  written and raises `AffectedSetChanged`. Recovery replay and authority loss
+  raise it on any change to their set. The person command entry retries it once,
+  in a fresh transaction that discovers again (`isRetryableViolation`,
+  `register-store.ts`), so the first request answers with the applied cancel
+  (`tests/runtime/cancel-rediscover.test.ts`). A second loss reaches the caller
+  as a fault, with one `failed` audit event
+  (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry: a
+  changed set there fails the start.
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
-  (`commands/surface.ts:305-306`, `authorisedOn: 'record'`;
+  (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `commands/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or
-  lease belongs to (`authorisedOn: 'claim'`, `commands/surface.ts:229-241`,
-  `:309`), the scope the runtime and `grant.revoke` ask under their locks. A
-  record-scoped writer works their own lease on that task. An id that resolves
-  to nothing is asked at business scope, so a foreign and a fabricated id get
-  the same answer (`claimScopeOf`, `commands/prepare.ts:368-395`).
+  lease belongs to (`authorisedOn: 'claim'`, the same file), the scope the
+  runtime and `grant.revoke` ask under their locks. A record-scoped writer works
+  their own lease on that task. An id that resolves to nothing is asked at
+  business scope, so a foreign and a fabricated id get the same answer
+  (`claimScopeOf`, `commands/prepare.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
-  (`recovery.ts:704-828`, called from `commands/authority-controls.ts:241` and
-  `:315`). Work authority for a claim is `write` on the task collection, the
-  action `task.pickup`, `task.heartbeat` and `task.handback` are declared under.
-  Losing `read` or `comment` does not end a claim (`dependents`,
-  `authority-controls.ts:125-174`). Under the ordered lock set:
-  - An agent's attempt that lost its work authority has its delegation
-    revoked, its live lease released and its holds classified
-    `authority_revoked`, with the delegation as the recorded cause. The
-    delegation's `revocation_cause` is `authority_lost`, written in the same
-    transaction (`recovery.ts:784-791`, migration 0023). The agent's next call
-    on its still unexpired credential answers `DELEGATION_NARROWED`, and
-    nothing is reactivated.
+  (`recovery.ts`, called from `revokeGrantAsManager` and
+  `revokeDelegationAsManager` in `commands/authority-controls.ts`). Work
+  authority for a claim is `write` on the task collection, the action
+  `task.pickup`, `task.heartbeat` and `task.handback` are declared under. Losing
+  `read` or `comment` does not end a claim (`dependents`,
+  `authority-controls.ts`). Under the ordered lock set:
+  - An agent's attempt that lost its work authority has its delegation revoked,
+    its live lease released and its holds classified `authority_revoked`, with
+    the delegation as the recorded cause. The delegation's `revocation_cause` is
+    `authority_lost`, written in the same transaction (`classifyAuthorityLoss`,
+    migration 0023). The agent's next call on its still unexpired credential
+    answers `DELEGATION_NARROWED`, and nothing is reactivated.
   - `grant.revoke` also ends a person's own lease. When the revoked grant, or
     one it issued, was the holder's `write` on the task collection, through
     their person or actor subject, and no other live `write` covers the task,
     the same transaction releases the lease and classifies its hold
-    `authority_revoked`, with the grant id as the recorded cause
-    (`authority-controls.ts:241-275`).
+    `authority_revoked`, with the grant id as the recorded cause (`personLeases`
+    in `revokeGrantAsManager`).
   - The recheck after the revocation asks `write` at record scope on the task
-    (`stillAuthorised`, `:176-192`). A holder whose business-wide `write` is
-    revoked while a record-scoped `write` on the task remains keeps the lease,
-    and can renew and hand it back. So does an attempt whose person still
-    holds `write` through another grant.
+    (`stillAuthorised`). A holder whose business-wide `write` is revoked while a
+    record-scoped `write` on the task remains keeps the lease, and can renew and
+    hand it back. So does an attempt whose person still holds `write` through
+    another grant.
   - Each run whose claim ended goes back to `planned`, not to a terminal state
-    (`reopenRuns`, `recovery.ts:418-430`). The abandoned hold is never revived:
-    a claimant with current authority gets a fresh hold and attempt
+    (`reopenRuns`, `recovery.ts`). The abandoned hold is never revived: a
+    claimant with current authority gets a fresh hold and attempt
     ([Why the lease is fenced](#why-the-lease-is-fenced)).
   - Both revocations answer with `detail.classifiedHolds`: the ids of the
     reservations the revocation classified, and nothing else about them
-    (`authority-controls.ts:193-198`).
+    (`classifiedHolds`, `authority-controls.ts`).
   - A marked or observed attempt keeps its full hold as `quarantined`.
 
-  `replayRecordedTransitions` also finds a revocation that committed without
-  its classification (`recovery.ts:462`, `:476-480`). Its production caller is
+  `replayRecordedTransitions` also finds a revocation that committed without its
+  classification (`discoverEligible`, `recovery.ts`). Its production caller is
   API startup ("Restart recovery at API startup" above); the classifier cases
   are in `tests/runtime/lifecycle-authority-loss.test.ts` (six cases).
 
@@ -784,25 +884,25 @@ direct SQL.
 - **Heartbeat** is `heartbeat` (`heartbeat.ts`), reached by `task.heartbeat` on
   both prefixes. Under the lease and delegation locks, the caller must be the
   holder and send the task's newest fence, or it is `LEASE_NOT_OWNED`. An agent
-  presents the lease's own delegation. A person renews their own
-  delegation-free lease under their current `write` on the task
-  (`heartbeat.ts:130-147`). A lease that is not live, is past its
-  instant, or whose delegation is settled, revoked or expired is
-  `LEASE_EXPIRED` and is not revived. One renewal reaches at most
-  `MAXIMUM_RENEWAL_SECONDS` (3600) past now and never past
-  `MAXIMUM_LEASE_LIFETIME_SECONDS` (8 hours) after the pickup. The delegation's
-  expiry is copied from the lease row. **No timer grants authority**: nothing
-  runs on its own, a lease that stops beating expires, and the next pickup
-  fences it as before. Bounded unstarted recovery stays the owning operations'
-  classifier (W04), reached by pickup, cancellation and restart replay, with
-  no sweeper added.
-- **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in
-  total, are lane constants (`heartbeat.ts:32-34`), not an owner policy. They
-  are lane L3-CONTROLS's choice and await root or owner confirmation. The
-  8-hour total is enforced in SQL as
-  `greatest(expires_at, least(now() + renewal, acquired_at + 8 hours))`
-  (`heartbeat.ts:112-120`). So past it a beat keeps `expires_at` and never
-  extends it, and a renewal never shortens a lease.
+  presents the lease's own delegation. A person renews their own delegation-free
+  lease under their current `write` on the task (`checkAuthority` in
+  `heartbeat`). A lease that is not live, is past its instant, or whose
+  delegation is settled, revoked or expired is `LEASE_EXPIRED` and is not
+  revived. One renewal reaches at most `MAXIMUM_RENEWAL_SECONDS` (3600) past now
+  and never past `MAXIMUM_LEASE_LIFETIME_SECONDS` (8 hours) after the pickup.
+  The delegation's expiry is copied from the lease row. No timer grants
+  authority. Nothing runs on its own, a lease that stops beating expires, and
+  the next pickup fences it as before. Bounded unstarted recovery stays the
+  owning operations' classifier (W04), reached by pickup, cancellation and
+  restart replay, with no sweeper added.
+- **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
+  are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
+  `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They
+  are lane L3-CONTROLS's choice and await root or owner confirmation. The 8-hour
+  total is enforced in SQL as
+  `greatest(expires_at, least(now() + renewal, acquired_at + 8 hours))` (the
+  renewal's `update` in `heartbeat`). So past it a beat keeps `expires_at` and
+  never extends it, and a renewal never shortens a lease.
   `tests/runtime/schedules-heartbeat.test.ts` reaches the boundary by moving
   the lease's `acquired_at` back on the database clock, then beats through
   `task.heartbeat`.
@@ -810,11 +910,12 @@ direct SQL.
 ## The delegation credential key
 
 An agent's pickup returns its delegation credential once, and the delegation
-keeps only its digest. So that a lost pickup response can be answered again,
-the credential is derived rather than drawn. It is HMAC-SHA256 over
+keeps only its digest. So that a lost pickup response can be answered again, the
+credential is derived rather than drawn. It is HMAC-SHA256 over
 `["ops-astro/delegation-credential/v1", keyId, businessId, agentActorId, delegationId]`
-under a dedicated delegation credential key (`credentialEncoding`,
-`authority/credential-keys.ts:83-91`; minted at `authority/delegations.ts:254-263`).
+under a dedicated delegation credential key
+(`credentialEncoding`, `authority/credential-keys.ts:83-91`; minted in
+`mintDelegation`, `authority/delegations.ts`).
 
 - **Custody.** The key is never the gate-signing key or the Supabase JWT
   secret. It lives outside the database and outside tracked files:
@@ -837,16 +938,17 @@ under a dedicated delegation credential key (`credentialEncoding`,
   Keep every old id while any live delegation minted under it may still need a
   pickup replay; a heartbeat can extend that. Never replace the bytes under an
   existing id. Ordinary replay never rotates or revokes a credential.
-- **A missing or malformed key.** A keyring that is malformed or half
-  configured stops the API at boot with the reason, never the bytes
-  (`apps/api/server.ts:169-176`). An agent `task.pickup` without a usable
-  keyring refuses `DEPENDENCY_NOT_LANDED` before claiming anything
-  (`commands/tasks-runtime.ts:365-382`). A replay whose delegation names a key
-  this process does not hold answers `DEPENDENCY_NOT_LANDED`
+- **A missing or malformed key.** A keyring that is malformed or half configured
+  stops the API at boot with the reason, never the bytes (the `credentialKeys`
+  check in `main`, `apps/api/server.ts`). An agent `task.pickup` without a
+  usable keyring refuses `DEPENDENCY_NOT_LANDED` before claiming anything
+  (`pickupReservation`, `commands/tasks-runtime.ts`). A replay whose delegation
+  names a key this process does not hold answers `DEPENDENCY_NOT_LANDED`
   `['task.pickup', 'delegation credential key <id>']`. A derived token whose
   digest does not match answers `DEPENDENCY_NOT_LANDED`
   `['task.pickup', 'delegation credential integrity']`. Neither rewrites the
-  receipt or mints a replacement (`commands/agent-envelope.ts:840-858`).
+  receipt or mints a replacement (`replayPickup`,
+  `commands/agent-envelope.ts`).
 
 **The pickup replay.** A lost pickup response is retried with the identical
 operation id and body and no delegation credential. It returns the original
@@ -856,16 +958,16 @@ reservation, attempt and approved version are still bound, live and current.
 Otherwise it gives the current refusal (`DELEGATION_NOT_LIVE`,
 `DELEGATION_NARROWED`, `LEASE_NOT_OWNED`, `LEASE_EXPIRED`,
 `RESERVATION_NOT_CLAIMABLE`) and no receipt content (`replayPickup`,
-`commands/agent-envelope.ts:762-861`). The register keeps the handles with a
-null credential (`storable`, `:722-725`).
+`commands/agent-envelope.ts`). The register keeps the handles with a null
+credential (`storable`).
 
 **The legacy limit.** Delegations minted before migration 0022 are
 `credential_scheme = 'legacy-random'`. Their random credentials cannot be
 recovered from their SHA-256 digests. Tokens already delivered stay valid. A
-lost response on a legacy pickup replays its handles with `credential: null`
-and `CREDENTIAL_NOT_REPLAYED` (`agent-envelope.ts:824-829`). Recovery is
-`task.cancel`, or a new pickup once the old lease has expired. No migration or
-code path relabels a legacy row as derivable, and 0022's trigger forbids it.
+lost response on a legacy pickup replays its handles with `credential: null` and
+`CREDENTIAL_NOT_REPLAYED` (`replayPickup`). Recovery is `task.cancel`, or a new
+pickup once the old lease has expired. No migration or code path relabels a
+legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
@@ -896,13 +998,16 @@ code path relabels a legacy row as derivable, and 0022's trigger forbids it.
   `task.restart`. The browser leg (B6) carries a gate, lease and attempt across
   a restart on a lane stack; its run at the integrated candidate is pending.
   The coverage table and the open items are in `docs/local/PROOFS.md`.
-- **No full cover for a decision on read.** The verified read leaves `round`,
-  `decided_at`, the acting identity and the evidence digest outside the link,
-  does not catch removal of the newest decision, and knows one signing key
+- **No full cover for a decision on read.** On v1 and v2 rows the round,
+  decision time, lineage, acting identity, id, sequence and previous link are
+  covered at most by the unkeyed link. U1 does not see a newest decision removed
+  together with its gate's outcome. The read's resolver knows one signing key
   ([A decision is verified before a read returns it](#a-decision-is-verified-before-a-read-returns-it)).
-- **No production caller of `replayRecordedTransitions`.** The owning
-  operations classify their own transitions, and the replay is exercised by the
-  tests only ([The work controls](#the-work-controls)).
+- **No replay outside API startup.** The owning operations classify their own
+  transitions. `replayRecordedTransitions` runs in production only when an API
+  process starts. Nothing polls, and a Postgres restart under a running API
+  waits for the API's next start
+  ([Restart recovery at API startup](#restart-recovery-at-api-startup)).
 - **No settlement of actual expenditure.** `handback` refuses any non-null
   `actualMinor` (R6). This head dispatches nothing, so it observes nothing it
   could settle; the settlement path belongs to the later authorised,

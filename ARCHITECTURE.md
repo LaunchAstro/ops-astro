@@ -25,18 +25,18 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Worker                      | `apps/worker`              | Not built                                                                                                         |
 | Declarative presets         | `presets`                  | Not built                                                                                                         |
 
-The four rows marked not built are empty directories. The rest are source with
-tests beside them, run against a real local Postgres on one machine:
-[the local slice](docs/local/README.md) holds the commands, the evidence and
-the limits. A green tooling run proves this checkout builds, types, lints and
+The four rows marked not built are empty directories holding only a
+`.gitkeep`. The rest are source with tests beside them, run against a real
+local Postgres on one machine. [The local slice](docs/local/README.md) holds
+the commands, the evidence and the limits. A green tooling run proves this checkout builds, types, lints and
 passes its own tests. It proves nothing about a deployment, and there is no
 deployment.
 
 **No provider dispatch and no worker effect exist.** The runtime makes no
 provider call: `planned_steps.dispatched_at` carries a constraint keeping it
 null, and an attempt names no provider and no model. An earlier proposal
-described a deterministic worker performing one local effect; that part was
-not built. [The runtime](docs/local/RUNTIME.md) says where the seam is.
+described a deterministic worker that performs one local effect. That part
+was not built. [The runtime](docs/local/RUNTIME.md) says where the seam is.
 
 ## Runtime and data
 

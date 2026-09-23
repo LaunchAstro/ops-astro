@@ -9,15 +9,15 @@ bash scripts/agent-session-check.sh
 Use `--expect` to print the facts a fresh agent session must be able to
 identify. The script inspects repository instructions, router wording,
 vendored skills, local configuration, and required tools. Read a failure before
-trying a workaround. Do not edit global configuration merely to make a
+trying a workaround. Do not edit global configuration just to make a
 repository check pass.
 
 ## Inspect loaded context
 
 The committed Claude configuration disables automatic memory. The committed
 Codex project configuration disables memory generation and injection for new
-trusted project sessions. User/global settings are not edited by the
-repository. Project policy is not proof of the current session's effective
+trusted project sessions. The repository does not edit user or global
+settings. Project policy is not proof of the current session's effective
 configuration; Codex skips project layers when the project is untrusted.
 
 For an explicitly memory-off Codex startup, these command-line overrides

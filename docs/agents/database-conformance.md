@@ -4,8 +4,8 @@ Item 6 of the PG0 product ticket asks for a hosted job that runs a part's
 named invariant suite and the affected conformance suites against a real
 database, and fails when any database test skips.
 
-Two things are kept apart here, deliberately, because collapsing them is the
-failure the ticket names.
+This file keeps two things apart, because collapsing them is the failure the
+ticket names.
 
 ## Proving the gate
 
@@ -25,15 +25,15 @@ throwaway Postgres of their own, run controlled fixture suites through
 - a missing `DATABASE_URL` is refused rather than skipped.
 
 These probes need Docker. When it is not there they used to skip, and
-`pnpm run db:cases` exited 0 with eight probes unrun — including in CI, where
-that made `database conformance gate` green over a job that had proved
-nothing. A skip is what this file exists to refuse, and skipping the whole
+`pnpm run db:cases` exited 0 with eight probes unrun. That happened in CI
+too, where it made `database conformance gate` green over a job that had
+proved nothing. A skip is what this file exists to refuse, and skipping the whole
 file is the largest skip available. So the probes now read `CI`: with it set
 and no database reachable they fail, naming the reason, and the job goes red.
 Locally, with `CI` unset, the skip and its message stay, because a developer
 without Docker is not a broken hosted job.
 
-This job is green, and what it proves is that the enforcement works. It
+When this job is green, what it proves is that the enforcement works. It
 proves nothing about the product, and it must not be read as if it did.
 
 ## Claiming product conformance
@@ -75,8 +75,8 @@ names the container (`restart-and-expiry.test.ts:135-139`), which
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
 child vitest process. The named suites then build their own throwaway
 databases through
-`packages/core-records/src/tenancy/testing/fresh-database.ts:80-82`, which
-takes `DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`: creating a
+`databaseUrlFromEnvironment` in
+`packages/core-records/src/tenancy/testing/fresh-database.ts`, which takes `DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`: creating a
 database and a login role is the owner's work, and the local contract gives
 `DATABASE_URL` to the runtime role `app`, which owns nothing and may create
 nothing. So **export `DATABASE_ADMIN_URL` as well as `DATABASE_URL` when you
@@ -88,7 +88,7 @@ named suites ran against a real database and none of them skipped. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.
 
-## The sequencing, stated plainly: hosted publication and landing
+## The sequencing: hosted publication and landing
 
 **Everything in this section is a publication and landing requirement for the
 hosted repository.** It describes what must be true before a port is dispatched
@@ -177,9 +177,9 @@ belongs to no suite in particular. Two named suites, one reaching the database
 and one holding nothing but `expect(1 + 1).toBe(2)`, both passed: the first
 moved the counter and the second was carried by it. So the runner spawns
 vitest once per named suite and reads the counter either side of each, and a
-suite whose own run moved nothing is named on its own line. That is the cost
-of the rule — one vitest process per suite instead of one for the manifest —
-and it is what makes the number belong to a path rather than to a total.
+suite whose own run moved nothing is named on its own line. The rule costs
+one vitest process per suite instead of one for the manifest, and that cost is
+what makes the number belong to a path rather than to a total.
 
 Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because those
 three read aggregates and an aggregate has no idea which file it came from or
@@ -187,9 +187,9 @@ how the run ended. Both were observed, not theorised: the runner returned exit
 0 on each.
 
 Rule 8 is the named-but-undiscovered suite. A manifest can name a file that
-exists on disk and sits outside vitest's discovery — the runner's disk check
-passes, vitest never loads the file however loudly the manifest names it, the
-other named suites supply the counts, and the summary reads "2 named suite(s),
+exists on disk and sits outside vitest's discovery. The runner's disk check
+passes, vitest never loads the file, the other named suites supply the counts,
+and the summary reads "2 named suite(s),
 1 test(s): 1 passed". So every manifest path must now be bound to an entry in
 `testResults`, and a suite absent from the report is a failure naming the path.
 Aggregate counts never satisfy this on their own.

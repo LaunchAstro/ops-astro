@@ -4,10 +4,10 @@
 sit. The permission that would rest on it is a draft in
 `LICENSE-EXCEPTIONS.md` and is not granted.
 
-Nothing described here is built. This repository holds no product preset, executable product skill,
-product wire protocol, or software development kit. Vendored development
-skills are listed separately in NOTICE. The file
-exists so the boundary is written down before anything crosses it.
+Nothing described here is built. This repository holds no product preset,
+executable product skill, product wire protocol, or software development kit.
+NOTICE lists the vendored development skills separately. This file exists so
+the boundary is written down before anything crosses it.
 
 ## Why a boundary at all
 
@@ -21,8 +21,9 @@ written second.
 
 ## The rule in one line
 
-A preset is data. A skill is a separate process. These are intended technical boundaries. The draft exception has no legal
-effect until it is approved and granted.
+A preset is data. A skill is a separate process. These are intended technical
+boundaries. The draft exception has no legal effect until it is approved and
+granted.
 
 ## Presets: data only
 
@@ -50,8 +51,9 @@ rule. No preset exists, so no check does.
 ## Skills: separate processes
 
 A skill runs as its own process and talks to the core over a versioned
-message protocol. No core internal type appears on the wire. This separates execution and integration responsibilities. Whether that
-boundary supports the intended legal exception remains for counsel.
+message protocol. No core internal type appears on the wire. This separates
+execution and integration responsibilities. Whether that boundary supports the
+intended legal exception remains for counsel.
 
 ## The kit
 
@@ -68,8 +70,8 @@ intended to reach it.
 
 ## Open questions for counsel
 
-- Whether the data-only rule survives contact with a preset expressive enough
-  to be useful.
+- Whether the data-only rule still holds for a preset expressive enough to be
+  useful.
 - Whether "no core internal type on the wire" is a strong enough line, or
   whether the protocol has to be versioned and published separately for the
   argument to hold.

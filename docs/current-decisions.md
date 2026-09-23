@@ -75,8 +75,9 @@ the slice is accepted.
 
 The proposed roadmap is foundation, tasks and basic approval, agent work,
 Docs, richer review, and CRM. No dates or fixed slice totals are established.
-The [first task specification](plan/first-task.md) is the next bounded product
-proposal and does not release its draft tickets.
+The [first task specification](plan/first-task.md) is the 8 September
+product proposal. The slice that was built differs from it, and it does not
+release its draft tickets.
 
 The full build-loop rehearsal precedes product code. A green conformance
 proof is required before merging changes to the eight protected components.

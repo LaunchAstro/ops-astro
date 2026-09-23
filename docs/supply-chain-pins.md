@@ -82,9 +82,9 @@ comparing this page with the lockfile should find them agreeing.
 | `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin. |
 
 **The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
-7.0.2 and **no alternative parser installed**, `depcruise` pointed at a tree of
+7.0.2 and no alternative parser installed, `depcruise` pointed at a tree of
 three TypeScript modules printed `no dependency violations found (0 modules, 0
-dependencies cruised)` and **exited 0**. Over a mixed tree it cruised the
+dependencies cruised)` and exited 0. Over a mixed tree it cruised the
 JavaScript, skipped the TypeScript, printed nothing on stderr and exited 0.
 This was measured against 18.4.0 rather than assumed fixed from the 18.3.0 the
 ticket named, and it is not fixed.
@@ -105,9 +105,9 @@ while the runner reported that the tree had been read.
 
 Raising `dependency-cruiser` is an ordinary reviewed change, like any other
 dependency bump: it merges once every required check is green, and the
-notification rules above apply to it unchanged. When a release supports
-TypeScript 7, `@swc/core` may become removable; the cases above are what will
-tell whoever tries.
+notification rules below apply to it unchanged. When a release supports
+TypeScript 7, `@swc/core` may become removable, and
+`tests/ci/deps-cruise-cases.mjs` will show whether it is.
 
 ## Raising a pin
 
@@ -124,8 +124,8 @@ the point of it.
 
 The npm dependency tree is pinned by `pnpm-lock.yaml`, which is committed, and
 `pnpm install --frozen-lockfile` refuses to drift from it. Renovate proposes
-updates; they merge like any other change, and never by Renovate itself. Like
-any other change, an agent invokes that merge on Nathan's credential, because
+updates; they merge like any other change, and never by Renovate itself. An
+agent invokes that merge on Nathan's credential, because
 his is the only account with push access, once every required check is green
 on the head being merged, and it notifies him afterwards naming the pull
 request and the merged revision. That notification records what happened; it
@@ -133,3 +133,8 @@ does not ask permission. The decisions
 [Contributing](../CONTRIBUTING.md#who-invokes-the-merge) reserves to Nathan
 are not reachable by a green check, and a reduction of any check's tier is one
 of them, so no pin here is loosened by a dependency update merging.
+
+The local GoTrue container is not pinned by digest.
+`scripts/local/auth-up.sh` names it by tag, `public.ecr.aws/supabase/gotrue:v2.192.0`,
+and `scripts/pins-check.mjs` reads only the workflows, so nothing checks it.
+The local Postgres container uses the digest recorded above.

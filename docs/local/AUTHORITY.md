@@ -3,9 +3,9 @@
 # Authority and the domain model, as lane L2 built them
 
 What a caller is, what it may do, and where those two questions are answered.
-The data side — migrations, slots, records, tasks — is [DATA.md](DATA.md), which
-lane L1 owns this round; this file is the identity, authority and model half and
-cross-references it rather than restating it.
+The data side (migrations, slots, records, tasks) is [DATA.md](DATA.md), which
+lane L1 owns this round. This file is the identity, authority and model half,
+and it cross-references DATA.md rather than restating it.
 
 Nothing here is a plan. Every mechanism below is implemented in the tree with a
 test beside it, and [what is not here](#what-is-not-here) says what is not.
@@ -19,26 +19,25 @@ A person's login, an agent login and a delegation credential are distinct
 identity model exists to prevent, and it is the failure that arrives one layer
 up from the one migration 0002 guards.
 
-| Credential   | Resolves through               | To                                | Confers                                              |
-| ------------ | ------------------------------ | --------------------------------- | ---------------------------------------------------- |
-| A person's   | `identity/login-resolution.ts` | `Session` (person, actor, role)   | membership, and nothing else — authority is `grants` |
-| An agent's   | `identity/agent-login.ts`      | `AgentSession` (actor, no person) | nothing at all                                       |
-| A delegation | `authority/delegations.ts`     | `Delegation`                      | nothing stored; an intersection computed per call    |
+| Credential   | Resolves through               | To                                | Confers                                             |
+| ------------ | ------------------------------ | --------------------------------- | --------------------------------------------------- |
+| A person's   | `identity/login-resolution.ts` | `Session` (person, actor, role)   | membership, and nothing else; authority is `grants` |
+| An agent's   | `identity/agent-login.ts`      | `AgentSession` (actor, no person) | nothing at all                                      |
+| A delegation | `authority/delegations.ts`     | `Delegation`                      | nothing stored; an intersection computed per call   |
 
 A login is in `person_logins` or in `actor_logins`, never both. Two triggers in
 0008 hold that from either side, because a login in both would make the order in
 which the resolver reads them the thing that decides who the caller is.
 
-`AgentSession` has no `personId` field. Not null — absent. A field that is
-sometimes a person is a field some later `??` fills in.
+`AgentSession` has no `personId` field. It is absent, not null. A field that
+is sometimes a person is a field some later `??` fills in.
 
 A delegation credential minted since migration 0022 is derived, not drawn: an
-HMAC of the delegation's fixed identity under a dedicated delegation
-credential key, which is never the gate-signing key or the Supabase JWT
-secret. The key lives in the environment or in the gitignored
-`.local/delegation.env`, and the database stores only the digest, the scheme
-and the key id. Custody, backup, rotation and the pickup replay it makes
-possible are in
+HMAC of the delegation's fixed identity under a dedicated delegation credential
+key, which is never the gate-signing key or the Supabase JWT secret. The key
+lives in the environment or in the gitignored `.local/delegation.env`, and the
+database stores only the digest, the scheme and the key id. Custody, backup,
+rotation and the pickup replay it makes possible are in
 [RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key).
 
 ## What the agent may do: the intersection, per call
@@ -50,9 +49,9 @@ copies nothing at mint time. On every call it asks `effectiveGrants` what the
 
 So the order of its checks is load-bearing:
 
-1. `DELEGATION_EXCLUDES_DECISION` — first, so a decision is never reported as
+1. `DELEGATION_EXCLUDES_DECISION`, first, so a decision is never reported as
    something else. **I07.**
-2. `DELEGATION_OUT_OF_PURPOSE` — before any grant is read, so an agent probing
+2. `DELEGATION_OUT_OF_PURPOSE`, before any grant is read, so an agent probing
    outside its purpose learns nothing about what its person holds. Three ways
    to be outside it: a collection the purpose does not reach, an action it does
    not carry, and a **scope that is not exactly the one task it was minted
@@ -61,7 +60,7 @@ So the order of its checks is load-bearing:
    the stored scope a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
    request under a delegation is refused here too.
-3. `DELEGATION_ALREADY_LIVE` — the agent already holds a live delegation for
+3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
    on `(business_id, agent_actor_id, purpose)` where `revoked_at is null and
 settled_at is null`, so the key is the purpose _word_, not the purpose
@@ -71,23 +70,27 @@ settled_at is null`, so the key is the purpose _word_, not the purpose
    slot after it stops permitting anything; `mintDelegation` settles a spent
    row in the serving transaction rather than refusing on it, which is what
    makes RUNTIME.md's R5 recovery reachable. The refusal exists because the
-   index alone delivered the decision as a 23505 — a 500 in process, a 503
+   index alone delivered the decision as a 23505: a 500 in process, a 503
    `SERVICE_UNAVAILABLE` from the deployment, and no audit row for the attempt,
-   the serving transaction having aborted.
+   because the serving transaction had aborted.
 
-4. `DELEGATION_NARROWED` — the purpose reaches the call and the person's live
+4. `DELEGATION_NARROWED`: the purpose reaches the call and the person's live
    grants no longer cover it. **I08**, and by name: substituting
    `SCOPE_NOT_GRANTED` would say the agent was never authorised, when what
    happened is the authority it drew on was taken away.
 
-Revoking the person's grant therefore collapses the agent on its next call.
-There is no path that widens it, because there is no stored permission to widen.
+Revoking the person's grant therefore collapses the agent on its next call,
+and so does the grant reaching its own expiry. A delegation's expiry is the
+lease's, not clamped to the person's earliest grant expiry (`task.pickup`
+mints it with the lease's `expiresAt`; `mintDelegation` stores it as given).
+Between the two the agent is narrowed, not ended. There is no path that widens
+it, because there is no stored permission to widen.
 
 `delegations_never_decide` in 0008 is the same rule as a constraint: a
 delegation carrying `decide` cannot be written at all. `authority/index.ts`
-exports no decide path either, so I07 is held three times — by the schema, by
+exports no decide path either, so I07 is held three times: by the schema, by
 the check order, and by what the module does not offer. On an ordinary insert
-the constraint Postgres actually reports is `delegations_actions_known`
+the constraint Postgres reports is `delegations_actions_known`
 (`0008:188`), because `decide` is not among the known delegation actions;
 `delegations_never_decide` (`0008:186`) is the named second barrier behind it
 (`tests/db/decision-never-delegated.test.ts` shows each). The migration stays
@@ -125,7 +128,7 @@ interface MintRequest {
   readonly collections: readonly string[]
   readonly actions: readonly Action[]     // never `decide`
   readonly purposeScope: PurposeScope     // the picked-up task's record id, mandatory
-  readonly expiresAt: Date                // L4's, from the lease contract
+  readonly expiresAt: Date                // the lease's; not clamped to the person's grants
 }
 
 // The resolved delegation exposes the same `purposeScope`, read back from
@@ -196,81 +199,82 @@ code is the coupling the register exists to prevent. L3 has registered every one
 of them, with the HTTP status in `apps/api/status.ts`. The last column says
 whether a caller can meet the code on this head, and where that is shown.
 
-| Code                                                                         | Status | Reachable on this head                                                                        |
-| ---------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                           |
-| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                              |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                           |
-| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                           |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                           |
-| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant between pickup and the agent's next call |
-| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                           |
-| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                     |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                  |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                      |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                           |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                           |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                           |
+| Code                                                                         | Status | Reachable on this head                                                                                                 |
+| ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |
+| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
+| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                                              |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                    |
 
 The "no" rows are the reasons `UNPRODUCED_CODES` gives for them
-(`commands/register.ts:381`), where the refusal-register tests assert them by
+(`commands/register.ts`), where the refusal-register tests assert them by
 name.
 
-**`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope raises
-it, not `checkDelegatedAuthority`, for an operation an agent may not call
-whatever it holds: anything outside `AGENT_SURFACE`
-(`commands/agent-envelope.ts:119-128`, refused at `:196-212`), and anything in that
-set with no agent branch, which falls to the default (`:594-601`). It is 403 and
-not `DELEGATION_NOT_LIVE` 401 because a live credential would not change the
-answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it over
-every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts:394-396`).
+**`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
+(`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`, for an
+operation an agent may not call whatever it holds: anything outside
+`AGENT_SURFACE`, which `runAgentCommand` refuses first, and anything in that set
+with no agent branch, which falls to the default case of `serve`. It is 403
+and not `DELEGATION_NOT_LIVE` 401 because a live credential would not change
+the answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
+over every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts`).
 
 It is also the answer to an agent call that presents no delegation credential,
-which is an agent before any pickup (`agent-envelope.ts:362-366`). Such a call
-reaches `task.queue` and `task.pickup` (`BEFORE_PICKUP`, `:116`) and nothing
-else. `task.decide` without a credential is `DELEGATION_EXCLUDES_DECISION`, so a
-decision is still named as one. `session.capabilities` is in `AGENT_SURFACE`
-but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way.
-After a pickup it answers that delegation's purpose only while the delegation
-and the delegating person's current grants intersect on the purpose record
-(`read`); otherwise it is `DELEGATION_NARROWED` (`:394-401`). Its `grants` are
-that intersection, computed on every call (`capabilitiesOf`, `:612`): each
-collection and action the purpose carries that the person's effective grants
-still cover on the purpose record. A person who keeps `read` and loses
-`write`, by revocation or by expiry, leaves an agent told `read` and not
-`write`. The pre-pickup pair is not a grant and is not reported. A credential
-that is presented but not live stays `DELEGATION_NOT_LIVE` (from
-`resolveDelegation`).
+which is an agent before any pickup (`authorise`). Such a call reaches
+`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. `task.decide`
+without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
+named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
+`BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
+it answers that delegation's purpose only while the delegation and the
+delegating person's current grants intersect on the purpose record (`read`);
+otherwise it is `DELEGATION_NARROWED` (`authorise`). Its `grants` are that
+intersection, computed on every call (`capabilitiesOf`): each collection and
+action the purpose carries that the person's effective grants still cover on the
+purpose record. A person who keeps `read` and whose `write` expires leaves an
+agent told `read` and not `write`. A `grant.revoke` that leaves the person
+without `write` on the task revokes the delegation itself for `authority_lost`
+([Revocation](#revocation)), so the agent is told `DELEGATION_NARROWED` instead.
+The pre-pickup pair is not a grant and is not reported. A credential that is
+presented but not live stays `DELEGATION_NOT_LIVE`, or `DELEGATION_NARROWED`
+when it was revoked for `authority_lost` (`resolveDelegation`).
 
-The same holds on replay. A bare agent replay of a handback, with no
-credential, answers `DELEGATION_EXCLUDES_OPERATION` without receipt content,
-and a presented credential that is not live stays `DELEGATION_NOT_LIVE`
-(`authoriseReplay`). A capabilities replay is authorised as a fresh call and
-projected again for the credential presented now (`replayCapabilities`,
-`:649`), so a replay under another delegation never releases the first
-delegation's `purposeScope`. A pickup replay is the one exception to "no
-credential, no call"
+The same holds on replay. A bare agent replay of a handback, with no credential,
+answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
+credential that is not live stays `DELEGATION_NOT_LIVE` (`authoriseReplay`). A
+capabilities replay is authorised as a fresh call and projected again for the
+credential presented now (`replayCapabilities`), so a replay under another
+delegation never releases the first delegation's `purposeScope`. A pickup replay
+is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 
-**An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)):
-`task.comment` has an agent branch (`agent-envelope.ts:522`), and the matrix's
-case (i) asserts the saved comment identity. The agent may write in the
-`internal` audience only (`AGENT_AUDIENCES`, `:133`); a `client` comment is
+**An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)).
+`task.comment` has an agent branch (the `task.comment` case of `serve`), and
+the matrix's case (i) asserts the saved comment identity. The agent may write
+in the `internal` audience only (`AGENT_AUDIENCES`). A `client` comment is
 `AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
 lane L3-CONTROLS's choice and awaits root or owner confirmation.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
-(`authority/delegations.ts:231-238`, and `:268-276` for two first mints racing)
-and reaches a caller as 409 through `task.pickup`.
+(`authority/delegations.ts`, for a sequential second mint and for two first
+mints racing) and reaches a caller as 409 through `task.pickup`.
 `tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
 `tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
 audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
-(`commands/register.ts:391-394`). `tests/commands/runtime-codes.test.ts:113-115`
-asserts that it stays off, and `:103-107` that it is registered at 409 and
-caller-visible. It is not one of the nineteen runtime codes (`:109-111`): the
-runtime passes it through from the authority layer as `DELEGATION_NOT_LIVE` and
-`DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
+(`commands/register.ts`). `tests/commands/runtime-codes.test.ts:121-123`
+asserts that it stays off, and `:111-115` that it is registered at 409 and
+caller-visible. It is not one of the twenty runtime codes (`:117-119`). The
+runtime passes it through from the authority layer, as `DELEGATION_NOT_LIVE`
+and `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
 ## The expired session
 
@@ -279,7 +283,7 @@ token has expired: a typed `AUTH_SESSION_EXPIRED` refusal a client can turn into
 a re-login path. Never an empty result, never a 500, never a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
 "the server is broken", and only one of those is a door they can open. The
-browser half — holding the draft, re-authenticating, resuming — is L5's.
+browser half (holding the draft, re-authenticating, resuming) is L5's.
 
 ## The external party (R4)
 
@@ -306,11 +310,11 @@ only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:613-641`, run at `:758-766`). It gets a login and an acting identity,
-  and no membership and no business grant (`:115-118`, `:267-269`). The seed
+  user (`:612-642`, run at `:772-780`). It gets a login and an acting identity,
+  and no membership and no business grant (`:116-119`, `:268-270`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:652-676`, `:793-797`).
+  (`:653-673`, `:807-817`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -321,7 +325,7 @@ only".
 `authentication_attempts` (0008) is I13's **separate authentication-attempt
 owner**. The domain audit records what a command did; this records who got
 through and who did not, which is a different question with a different reader,
-and on the refusals it is the only record there is — a refused attempt never
+and on the refusals it is the only record there is. A refused attempt never
 becomes an operation, so it has no audit event to hang off.
 
 - Written by both login paths, inside the caller's own transaction, so a
@@ -352,8 +356,8 @@ Both come from the same array and cannot disagree. New readers take the array.
 comment type's classifications are asserted in `tests/tasks/comments.test.ts`.
 
 **The free slots are indexed** (0009). `planSlotAssignment` refuses an unindexed
-slot — correctly, since the whole point of a slot is a value that can be
-filtered — and 0005 indexed only the sixteen the spine reserves. So every one of
+slot, correctly, since the whole point of a slot is a value that can be
+filtered, and 0005 indexed only the sixteen the spine reserves. So every one of
 the twenty free columns was unusable and `preset.plan`'s only possible answer
 was `SLOT_INDEX_ABSENT`. All 38 slots are now indexed; 18 are still reserved,
 and the two counts are now separate assertions rather than one.
@@ -372,7 +376,7 @@ them makes "who sees this" a property of "what this is", which is how a leak
 arrives with the next kind of comment.
 
 `externalCommentProjection` is an allowlist in both directions (I09). The
-comments are the ones addressed to the client — an internal note is **absent**
+comments are the ones addressed to the client. An internal note is **absent**
 from the body, not hidden in it. The fields are the ones the catalogue marks
 `shared`, read from the definitions passed in rather than a list held in the
 module, so classifying a field is the only way to expose it. The test takes
@@ -380,7 +384,7 @@ module, so classifying a field is the only way to expose it. The test takes
 
 Comments are **stored and projected through the API**: `task.read` carries them,
 in full for an internal reader and through `externalCommentProjection` for every
-other role — see the "Reads" heading in `docs/local/API.md`.
+other role. See [API.md, "Reads"](API.md#reads).
 
 ## preset.plan
 
@@ -394,7 +398,7 @@ authorised operation.
 **The authority is the family's, not a blanket preset grant.** The accepted
 clause is "existing collection-manager/manage authority bounded to the owned
 record family", with "no new role power" beside it. So the planner resolves
-`recordTypeKey` to its record type and checks `manage` on _that family_ — the
+`recordTypeKey` to its record type and checks `manage` on _that family_: the
 collection the type's records belong to. There is no collection column on
 `record_types` yet, so the record type's key is the family (`task` records are
 the `task` collection); `familyOf` is the single place that learns otherwise
@@ -412,14 +416,14 @@ field named once is still `no_change`; named twice it is still a duplicate
 request. This is ordinary invalid input that a validated dry run rejects rather
 than promising an apply that the index will refuse.
 
-"Unclassified" is both halves — absent, and present but not one of the three
+"Unclassified" is both halves: absent, and present but not one of the three
 modes the model has. A preset shipping `write_mode: 'sometimes'` has not been
 decided about either, and defaulting it to `generic` opens a field nobody
 opened.
 
 The database's own refusal is **not** the mechanism. `field_defs.write_mode` is
 `not null` with no default, so an unclassified field is already impossible to
-insert — but that refusal arrives mid-apply and as a constraint violation rather
+insert, but that refusal arrives mid-apply and as a constraint violation rather
 than as an answer about the preset. D05 says so explicitly, and the test counts
 `field_defs` before and after to prove the plan touched nothing.
 
@@ -438,7 +442,7 @@ the named rows:
 
 The classification is the point, not the values. A setting that decides whether
 a second approver is needed is an authority change wearing configuration's
-clothes — the same category the task spine protects. Installing is additive: a
+clothes, the same category the task spine protects. Installing is additive: a
 second install adds what a later release named and resets nothing, because the
 alternative is an upgrade that quietly returns a business's retention window to
 the shipped default.
@@ -458,11 +462,12 @@ among the first slice's operations.
 administrators editing one row from two browser tabs both wrote, and the second
 silently replaced a value chosen before the first existed. The column starts at
 1, an upgraded row starts there too, and both readers hand it back as
-`BusinessSetting.revision`. [DATA.md](DATA.md#a-setting-is-checked-against-its-revision)
-has the column and how a write moves it.
+`BusinessSetting.revision`.
+[DATA.md](DATA.md#a-setting-is-checked-against-its-revision) has the column and
+how a write moves it.
 
-`writeBusinessSetting` (`records/business-settings.ts:346`) is the one writer.
-It locks the row (`:354`), compares the `expectedRevision` the caller read, and
+`writeBusinessSetting` (`records/business-settings.ts:345`) is the one writer.
+It locks the row (`:353`), compares the `expectedRevision` the caller read, and
 answers a mismatch with `SettingRevisionStale`: the code `VERSION_STALE`,
 `names` of `revision=<the one the row is at>`, returned and never thrown. It
 never tells the caller the value it tried to write. An absent `expectedRevision`
@@ -476,9 +481,7 @@ move the revision and both answer `VERSION_STALE` 409 to a stale one;
 `settings.read` projects the revision on every row (`reads/settings.ts:76`).
 `tests/records/business-settings.test.ts` holds the writer, including two
 administrators writing at once (its `describe` at `:287`), and
-`tests/commands/settings-revision.test.ts` holds the command path. The comment
-at `records/business-settings.ts:57-61` still says no command calls the writer;
-that is out of date since the commands were wired to it.
+`tests/commands/settings-revision.test.ts` holds the command path.
 
 ## Revocation
 
@@ -489,8 +492,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
   grant's scope, or the delegation's purpose scope
-  (`commands/surface.ts:281-285`, `authorisedOn: 'target'`;
-  `commands/prepare.ts:277-297`). A manager whose `manage` covers exactly that
+  (`commands/surface.ts:295-299`, `authorisedOn: 'target'`; `targetScopeOf`,
+  `commands/prepare.ts`). A manager whose `manage` covers exactly that
   scope reaches the handler. A body naming no such row is asked at business
   scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
   the handler runs. So is a manager whose `manage` does not cover the revoked
@@ -534,16 +537,34 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   the ids of the reservations the revocation classified (`:193-198`).
 - A delegation revoked because `grant.revoke` removed the authority it draws
   on is revoked in the same transaction, with `authority_lost` as its recorded
-  cause. The bound agent's next call on its still unexpired
-  credential answers `DELEGATION_NARROWED`, and nothing is reactivated. A
-  handback on it keeps its report as one unaccepted `retained` row naming that
-  code and changes nothing else (T4 line 76; RUNTIME.md, "A retired or
-  narrowed agent's late report is still kept"). An
-  explicit `delegation.revoke`, cancellation or supersession, expiry,
-  settlement, another agent, another business, an unknown token and a
-  revocation from before 0023 answer `DELEGATION_NOT_LIVE`. When more than one
-  terminal fact holds, settled comes first, then expired, then the recorded
-  cause (`resolveDelegation`, `authority/delegations.ts:307-362`).
+  cause. The bound agent's next call on its still unexpired credential answers
+  `DELEGATION_NARROWED`, and nothing is reactivated. An explicit
+  `delegation.revoke`, cancellation or supersession, expiry, settlement,
+  another agent, another business, an unknown token and a revocation from
+  before 0023 answer `DELEGATION_NOT_LIVE`. When more than one terminal fact
+  holds, settled comes first, then expired, then the recorded cause
+  (`resolveDelegation`, `authority/delegations.ts`).
+- A narrowed agent's handback report is retained in two cases (T4 line 76).
+  Its delegation was revoked for `authority_lost` (R-B), or its delegation is
+  still live and the delegating person's write grant covering the handback's
+  task has since expired or otherwise lapsed. The first case is found through
+  the recorded cause (`resolveHistoricalDelegation`). The second has no
+  recorded cause, because passing time writes none, so it is checked again
+  (`resolveNarrowedDelegation`, reached through `narrowedOnLease` in
+  `commands/agent-envelope.ts`). The credential must still resolve live for
+  this business and agent, and the authority check on the presented lease's
+  own task must answer `DELEGATION_NARROWED`. That answer comes only after the
+  decision exclusion, the purpose's collection and action, and the one-task
+  ceiling have passed. The check runs again rather than trusting the refusal
+  the caller was given. Nothing is revoked and the delegation stays live. In
+  both cases the presented lease and fence must be exactly that delegation's
+  (`retainHistoricalReport`), and the handback keeps one unaccepted `retained`
+  row naming `DELEGATION_NARROWED` and changes nothing else
+  ([RUNTIME.md, "Why the lease is fenced"](RUNTIME.md#why-the-lease-is-fenced)).
+  Another agent, another business, a forged credential, another task's lease,
+  an unknown lease and a wrong fence retain nothing.
+  `tests/runtime/historical-handback-intake.test.ts` holds both paths,
+  including the grant-expired cases.
 - `delegations.revocation_cause` (migration 0023) is one of `authority_lost`,
   `delegation_revoked` or `work_retired`. It is written once with
   `revoked_at` and a trigger fixes it; the first terminal write wins. Rows
@@ -562,15 +583,15 @@ runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 lease belongs to (`authorisedOn: 'claim'`, `:229-241`, `:309`), the scope the
 runtime and `grant.revoke` ask. A record-scoped writer works their own lease
 on that task. An id that resolves to nothing is asked at business scope, so a
-foreign and a fabricated id get the same answer
-(`commands/prepare.ts:368-395`). A restart of a live, completed or already
-restarted lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
+foreign and a fabricated id get the same answer (`claimScopeOf`,
+`commands/prepare.ts`). A restart of a live, completed or already restarted
+lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
 
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with **no privilege
-anywhere** — no schema, no table, no function — and the revokes are written out
+anywhere** (no schema, no table, no function), and the revokes are written out
 rather than left implied, because a privilege nobody granted and one somebody
 revoked read the same in the catalogue and only one of them was decided (I01
 R6). Work reaches the database through an authorised delegation and the
@@ -590,9 +611,10 @@ all four callers this section used to list as missing are built:
   into the command surface and the HTTP boundary ([API.md](API.md)), with a
   second entry point for agents ("The agent's own entry point" in API.md). The
   web client draws them ([WEB.md](WEB.md)). L5's assembled proofs drive them
-  ([PROOFS.md](PROOFS.md)). There is no CLI.
+  ([PROOFS.md](PROOFS.md)). The command line reaches the same routes
+  ([CLI.md](CLI.md)).
 - **The delegation caller.** `task.pickup` mints the delegation through
-  `mintDelegation` (`packages/core-runtime/src/pickup.ts:139`), and
+  `mintDelegation` (`packages/core-runtime/src/pickup.ts:184`), and
   `task.handback` settles it ([RUNTIME.md](RUNTIME.md)).
 - **The external comment read.** `task.read` serves the shared view to an
   external party and `externalCommentProjection` to every agent ("Reads" in

@@ -33,6 +33,6 @@ not retroactively certify this initial candidate.
 
 Use the pull request template to record review evidence for the final head.
 A subsequent commit invalidates stale review evidence. Required security
-review refers to that same revision. The ruleset and check's existence must
-be verified on the hosted repository; a local checkpoint alone cannot enforce
-merging behaviour.
+review refers to that same revision. Verify that the ruleset and the check exist
+on the hosted repository; a local checkpoint alone cannot enforce merging
+behaviour.

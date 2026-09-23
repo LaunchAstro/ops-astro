@@ -18,20 +18,20 @@ scripts/local/web-up.sh
 is strict: if 5190 is taken the script fails rather than moving, because
 evidence with the wrong address in it is worse than no evidence.
 
-The database, the identity service and the API belong to the other two lanes and
-this script starts none of them. Start those first; the board will report the
-API as unavailable until they are up, which is the intended reading.
+This script starts none of the database, the identity service or the API.
+Start those first ([README.md](README.md#start-it)). Until they are up the board
+reports the API as unavailable, which is the intended reading.
 
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token — the API verifies the signature.
+application never mints or inspects a token. The API verifies the signature.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix; it
 is a routing choice and not a claim, so picking `bravo` with an alpha-only
 account gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
 
-The synthetic credentials live in `.local/synthetic-users.json`, which the API
-lane's auth seed writes and which is gitignored.
+The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
+which `auth:seed` writes.
 
 ### When the session ends
 
@@ -45,15 +45,15 @@ not a guess: whoever sent it held a credential this server issued a session for,
 so being told the session ran out gives them nothing they could not already
 prove, and it gives them the re-login door.
 
-Both codes mean the same thing to the screen — the session has ended — and the
-client (`operations/client.ts`) is the one place that recognises them, for a read
-and a mutation alike. It raises `onSessionEnded` with the refusal the server
+Both codes mean the same thing to the screen: the session has ended. The client
+(`operations/client.ts`) is the one place that recognises them, for a read and a
+mutation alike. It raises `onSessionEnded` with the refusal the server
 sent, and on that signal the application drops the session, remembers the address
 the person was on, and goes to `/sign-in`, where a notice (`role="status"`,
 `data-reason="session-ended"`) says the session has ended, quotes the server's
 own code so the person can repeat it, and says that anything unsaved was not
-saved. Signing in again returns to the remembered address — a task page stays a
-task page — and with nothing remembered it goes to `/projects/`.
+saved. Signing in again returns to the remembered address, so a task page stays
+a task page. With nothing remembered it goes to `/projects/`.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
@@ -65,8 +65,8 @@ refusal of an old token cannot sign a person out of the session that replaced
 it.
 
 **An address is remembered with the business it meant.** A task key is
-business-local — the business is the `/api/b/<key>` prefix, not part of
-`/task/<key>` — so the same address names a different record in each business.
+business-local. The business is the `/api/b/<key>` prefix, not part of
+`/task/<key>`, so the same address names a different record in each business.
 The interruption keeps the business key beside the address, sign-in comes back
 offering that business rather than the first in the list, and the held address
 is reopened only when the new session is in the same business. Choosing another
@@ -83,17 +83,18 @@ somebody already answered.
 
 No refresh-token call, no token inspection and no decoding anywhere in the web:
 the hour is the server's to decide and the browser only ever finds out by being
-refused. `tests/surfaces/session-ended.test.tsx` holds the three rules and
-SX1–SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real browser.
+refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
+SX1 to SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real
+browser.
 
 ## Addresses
 
 | Address      | What it draws                                                                                    |
 | ------------ | ------------------------------------------------------------------------------------------------ |
 | `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` with `board: null` — the unboarded tasks — and the create form                      |
+| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
 | `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings. It reads nothing — see below                     |
+| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -128,7 +129,7 @@ clothes.
 in this build, so the screen cannot know whether a person holds `comment` before
 it asks. It asks once; on `SCOPE_NOT_GRANTED` it draws the server's own code in
 `p[data-comment="refusal"]`, disables the box and the button, and says why. A
-second press reaches nothing — C2 counts the requests rather than trusting the
+second press reaches nothing; C2 counts the requests rather than trusting the
 `disabled` attribute. Anything else the server refuses (an empty body, an
 audience it does not have) is reported and the box stays open, because that is
 something the person can fix.
@@ -150,13 +151,13 @@ The task page draws every proposal on the task under the comments, out of the
 drawn beside it, from one answer, so the page cannot offer a decision on
 something it never displayed.
 
-Per lineage it draws the lineage's state, then its versions newest first — the
-purpose, the ceiling as money with the currency the proposal named, the payload
-digest, the payload, and the evidence pack with its renderer and its digest —
-then the gate's state, round and expiry, then the decision chain as stored rows
-with their sequence, decision, round, decider, instant and stored hash, then the
-reservation with what it held, what the work reported spending, and its lease and
-attempt.
+Per lineage it draws the lineage's state, then its versions newest first. Each
+version shows the purpose, the ceiling as money with the currency the proposal
+named, the payload digest, the payload, and the evidence pack with its renderer
+and its digest. After the versions come the gate's state, round and expiry, then
+the decision chain as stored rows with their sequence, decision, round, decider,
+instant and stored hash, then the reservation with what it held, what the work
+reported spending, and its lease and attempt.
 
 **Nothing on this screen is recomputed.** The evidence body and the payload are
 printed as they were stored, because evidence that changed between the decision
@@ -208,7 +209,8 @@ What this screen does not read back, and cannot:
   applies to comments.
 - **Only the seeded admin holds `task:decide`.** `scripts/local-seed.mjs` gives
   its admin `task:decide` beside six other `task` actions, `person:read`,
-  `settings:manage` and `settings:read` (`scripts/local-seed.mjs:69-101`); a
+  `settings:manage` and `settings:read` (`GRANTS_BY_ROLE` in
+  `scripts/local-seed.mjs`); a
   member holds neither `decide` nor `manage`. So the admin in each business can
   approve through the product and a member cannot. The browser case still
   issues its own `task:decide` grant through the authority path and revokes it
@@ -225,15 +227,15 @@ What this screen does not read back, and cannot:
   quotes whichever it gets and rereads either way; `cases-proposals.mjs` proves
   `VERSION_SUPERSEDED` through the client, where a `lineageId` can be named, and
   the screen's own path separately.
-- The agent's own path — pickup, handback, the queue — has no surface here. The
-  records are stored and projected; the web does not draw them yet.
+- The agent's own path has no surface here. Pickup, handback and the queue are
+  stored and projected; the web does not draw them yet.
 
 ## The settings screen
 
 `/settings` draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
-the command that owns it — `settings.set_four_eyes_threshold` and
-`settings.set_client_sign_off` — with an `operationId`, and with an
+the command that owns it, `settings.set_four_eyes_threshold` or
+`settings.set_client_sign_off`, with an `operationId`, and with an
 `expectedRevision` when the read carried a revision for that row.
 
 **The values are the server's.** `settings.read` is asked on open and after
@@ -258,7 +260,7 @@ the grants opens them; its absence closes them and names the scope in
 `p[data-settings="capabilities-because"]`, sending nothing; a refused
 capability read closes them too, because a screen that cannot find out what
 somebody may do does not guess in their favour. An _unavailable_ capability
-read leaves them open — nobody decided anything, and closing on an absence
+read leaves them open: nobody decided anything, and closing on an absence
 would make the screen unusable against a build that has not landed the read.
 A `SCOPE_NOT_GRANTED` on a write closes them whatever the capabilities said,
 since a grant can be revoked between the read and the press. The state is on
@@ -282,13 +284,13 @@ Not built: the read carries `conversation_window_days` and
 
 `views/record-state.tsx` draws each one differently and never substitutes data:
 
-- **loading** — the read is in flight.
-- **ready** — rows arrived.
-- **empty** — you are permitted to see the collection and it has no rows. Not a
+- `loading`: the read is in flight.
+- `ready`: rows arrived.
+- `empty`: you are permitted to see the collection and it has no rows. Not a
   failure, and never drawn as one.
-- **denied** — the server refused. Its code is shown verbatim, because a refusal
+- `denied`: the server refused. Its code is shown verbatim, because a refusal
   a person cannot quote is a refusal they cannot get help with.
-- **unavailable** — the API did not answer. Nothing has been decided about your
+- `unavailable`: the API did not answer. Nothing has been decided about your
   access.
 
 There is no path from a failed read to sample data anywhere in this application.
@@ -311,7 +313,7 @@ stubbed `fetch`, and the generation/denial ordering in `authorised-read.ts`. The
 for itself what it needs and a new one needs nothing added anywhere else.
 
 None of them touches the API, and none discharges a browser acceptance case.
-They prove the wiring; B1–B7 prove the product.
+They prove the wiring; B1 to B7 prove the product.
 
 ## The browser checklist, in one command
 
@@ -322,8 +324,8 @@ pnpm verify:browser
 That runs `tests/browser/slice-acceptance.mjs` against the stack already
 serving on 5190/8790, writes every case into `RESULTS.md` with a screenshot
 each, and exits non-zero if any case failed. It is the whole checklist in one
-place: B1–B7, N1–N7 including the real N6 revocation harness, and the two review
-findings' browser cases.
+place: B1 to B7, N1 to N7 including the real N6 revocation harness, and every
+other case group in the table below.
 
 The screenshots and `RESULTS.md` go to the directory `SHOT_DIR` names, which
 defaults to `.local/evidence/browser` inside the repository and is created if it
@@ -341,32 +343,35 @@ mounted page, and B6 then restarts the API and stops and starts a Postgres
 container, keeping its volume (`cases-b6-b7.mjs`). Before it stops anything B6
 makes two tasks of its own, one with a pending gate and one approved and picked
 up by the alpha agent so it has a lease and an attempt, and afterwards the alpha
-agent hands that lease back to the restarted API. The settings cases issue a live `settings:manage` grant of
-their own through `issueGrant`, revoke it in a `finally` and put back the
-threshold they wrote (`cases-settings.mjs`), the proposal cases do the same with
-`task:decide` so their result does not depend on the seed (`cases-proposals.mjs`), and N6
-revokes a grant through `revokeGrant` for real. Each of those restores what it changed, but it changes
+agent hands that lease back to the restarted API. The settings cases issue a
+live `settings:manage` grant of their own through `issueGrant`, revoke it in a
+`finally` and put back the threshold they wrote (`cases-settings.mjs`). The
+proposal cases do the same with `task:decide`, so their result does not depend
+on the seed (`cases-proposals.mjs`), and N6 revokes a grant through
+`revokeGrant` for real. Each of those restores what it changed, but it changes
 it, so run this when you want the table and not on every edit.
 
 The run is made of one module per case group, so a group can be read or
 changed without reading the rest:
 
-| File                     | Cases                                                                                                                                                      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `harness.mjs`            | sign-in, the in-page client, screenshots, the results table                                                                                                |
-| `cases-b.mjs`            | B1–B5, the journey and the reload                                                                                                                          |
-| `cases-n3-n5.mjs`        | protected fields, system fields, replay and revision                                                                                                       |
-| `cases-n6-n7.mjs`        | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                                                                                |
-| `cases-n1-n2.mjs`        | another business, and a member with no grant                                                                                                               |
-| `cases-create-retry.mjs` | R1, retrying a create whose answer was lost                                                                                                                |
-| `cases-task-drafts.mjs`  | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
-| `cases-b6-b7.mjs`        | the API down, the process and database restart, and a pending gate, a lease and an attempt across it                                                       |
-| `cases-comments.mjs`     | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
-| `cases-settings.mjs`     | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
-| `cases-proposals.mjs`    | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
-| `i10-open-page.mjs`      | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
-| `r4-shared-page.mjs`     | R4, an external party's shared task page, revoked through `grant.revoke` while open                                                                        |
-| `surface-final.mjs`      | D03 and D05 through the page's own client, and R4X the external party's reads                                                                              |
+| File                       | Cases                                                                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness.mjs`              | sign-in, the in-page client, screenshots, the results table                                                                                                |
+| `cases-b.mjs`              | B1 to B5, the journey and the reload                                                                                                                       |
+| `cases-n3-n5.mjs`          | protected fields, system fields, replay and revision                                                                                                       |
+| `cases-n6-n7.mjs`          | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                                                                                |
+| `cases-n1-n2.mjs`          | another business, and a member with no grant                                                                                                               |
+| `cases-create-retry.mjs`   | R1, retrying a create whose answer was lost                                                                                                                |
+| `cases-task-drafts.mjs`    | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
+| `cases-session-expiry.mjs` | SX1 to SX3, an ended session reaching sign-in and returning to the same task                                                                               |
+| `cases-b6-b7.mjs`          | the API down, the process and database restart, and a pending gate, a lease and an attempt across it                                                       |
+| `cases-comments.mjs`       | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
+| `cases-settings.mjs`       | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |
+| `capabilities-denied.mjs`  | CD1 a member's capability read drawn, CD2 a member with no grant drawn as denied with no write sent                                                        |
+| `cases-proposals.mjs`      | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
+| `i10-open-page.mjs`        | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
+| `r4-shared-page.mjs`       | R4, an external party's shared task page, revoked through `grant.revoke` while open                                                                        |
+| `surface-final.mjs`        | D03 and D05 through the page's own client, and R4X the external party's reads                                                                              |
 
 ### What B6 restarts
 
@@ -425,10 +430,11 @@ shared page: the shared view opens, the next fetch after `grant.revoke` is
 denied, an authorised response held from before cannot restore it, and a later
 read stays denied. They run after I10 (`slice-acceptance.mjs:99`). The revoked
 read answers 403 `AUTH_NO_MEMBERSHIP`, because with its only share gone the
-party has no standing left to resolve
-(`packages/core-records/src/identity/login-resolution.ts:107-108`). An
-unshared sibling task or the board answers `NOT_FOUND` while the share is live
-(`packages/core-records/src/reads/dispatch.ts:321-322`). Neither leaks content.
+party has no standing left to resolve (`resolveLogin` and `standsOnShares` in
+`packages/core-records/src/identity/login-resolution.ts`). An unshared sibling
+task or the board answers `NOT_FOUND` while the share is live
+(`OUTSIDER_NOT_FOUND` in `packages/core-records/src/reads/dispatch.ts`). Neither
+leaks content.
 
 `surface-final.mjs` runs after R4 (`slice-acceptance.mjs:100`). D03:
 `task.update` naming `client`, `client_visible` or `delegate` is refused
@@ -440,24 +446,25 @@ board, and is refused the shared task after `grant.revoke`. Every call is
 `operations/client.ts` inside the page. Both files also run on their own.
 
 `pnpm verify:browser` exits zero only when **every** row passed. `writeResults`
-returns the rows that did not — failed, pending and unrun together — so a run
+returns the rows that did not pass, whether failed, pending or unrun, so a run
 that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
-labels stay in the table, because they are what makes a partial run readable;
-they just no longer buy a zero exit. `verify:browser` has not been run at
-`906613f`, so this head has no browser result, pending or otherwise
+labels stay in the table, because they make a partial run readable; they no
+longer buy a zero exit. No `verify:browser` result is recorded at `b282216`, so
+at this head the browser checklist is unrun
 ([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 
 ### Cases address controls by attribute, not by text
 
 Two buttons on `/task/:key` read **Save changes**: the edit form's own
 `form#task-fields button[type="submit"]`, and the unsaved-changes bar's
-`button[data-draft-resolve="save"]` (`apps/web/src/screens/TaskDetail.tsx:507`
-and `:379`). Both submit the same form — the bar's is outside it and reaches it
-through `form="task-fields"`, so a cleared title is refused by whichever one is
-pressed. A case that asks for the button by its name matches both and
-fails on the ambiguity, so B4 presses the form's submit — the honest control
-for a case that edits the fields and then saves them. The three state buttons
+`button[data-draft-resolve="save"]` (both drawn by `Loaded` in
+`apps/web/src/screens/TaskDetail.tsx`). Both submit the same form. The bar's
+button is outside it and reaches it through `form="task-fields"`, so whichever
+one is pressed, a cleared title is refused. A case that asks for the button by
+its name matches both and fails on the ambiguity, so B4 presses the form's
+submit, the honest control for a case that edits the fields and then saves
+them. The three state buttons
 are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
 the same reason: an attribute the screen owns cannot be made ambiguous by a
 second control that happens to share a word.
@@ -476,10 +483,10 @@ places this build does not yet reach it.
   projection", served by `packages/core-records/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
   the panel registry stays empty until there is a surface for a tab to open onto.
-- Subtasks are not built. Comments are, and the task page draws them; the
-  mockup's tabbed Internal / Client / All activity conversation is not — the
-  comments are one list with each row's audience on it, and history stays its
-  own section below.
+- Subtasks are not built. Comments are, and the task page draws them. The
+  mockup's tabbed Internal / Client / All activity conversation is not built:
+  the comments are one list with each row's audience on it, and history stays
+  its own section below.
 - **`system` is not offered as a comment kind.** The API takes `note`, `client`
   and `system`; the form offers the first two. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
@@ -488,10 +495,10 @@ places this build does not yet reach it.
   The screen writes `expectedRevision` for a row whose `settings.read` answer
   carried `revision`, and not otherwise. `business_settings` has the column
   from migration `0020`, and on this head `settings.read` projects it on every
-  row (`packages/core-records/src/reads/settings.ts:76`). A running API built
-  from an older head does not send it. Where it does not, the path and its `VERSION_STALE`
-  conflict are held by mounted cases alone, and browser row S5 records
-  `pending` with the reason. Where it does, S5 runs with no edit. Which of the
+  row (`readSettings` in `packages/core-records/src/reads/settings.ts`). A
+  running API built from an older head does not send it. Where it does not, the
+  path and its `VERSION_STALE` conflict are held by mounted cases alone, and
+  browser row S5 records `pending` with the reason. Where it does, S5 runs with no edit. Which of the
   two happened is in S5's own row, not in this document.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
@@ -503,8 +510,8 @@ places this build does not yet reach it.
   `/task/<key>` names a different record in each business; the application goes
   to the new business's board and says which business the held address belonged
   to. Offering to switch back, or carrying more than one interruption, is not
-  built. The interruption keeps the business key -- the word in the URL prefix,
-  never the token.
+  built. The interruption keeps the business key, which is the word in the URL
+  prefix, and never the token.
 - Fonts and icons are not fetched. The redistribution question (#32) is open, so
   the families are a stack with real fallbacks and the brand is its own words.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
