@@ -76,6 +76,71 @@ table exactly:
 There is no `status` column and no second coarse field: "is this done" is the
 machine category of the state record the task points at.
 
+## What the tenancy proofs are
+
+Six suites under `tests/tenancy/`, each against its own database migrated from
+empty. `DATABASE_URL` unset means they print that nothing ran rather than
+showing a green tick, and `scripts/db-conformance.mjs` fails a run in which a
+named suite skipped.
+
+| Suite                         | What it holds                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `statement-log.test.ts`       | The reading of SQL the no-DDL law depends on: quoting, dollar quoting, comments.                  |
+| `tenancy-conformance.test.ts` | The catalogue rules and the composite-key linter, every one of them broken on purpose and caught. |
+| `tenancy-wrapper.test.ts`     | The barrier between two businesses on the wrapper itself.                                         |
+| `pooled-crossover.test.ts`    | A→B on one physical backend.                                                                      |
+| `migration-prefixes.test.ts`  | Every rule after every migration prefix, with three separated roles.                              |
+| `runtime-statements.test.ts`  | What a real task command and read actually send.                                                  |
+
+### The pooled crossover
+
+The wrapper suite drives a handle itself; that is not the pooled failure. The
+pooled one is that A's operation finishes, the pool hands the same backend to
+B, and something A left on the session is still there. Asking inside B's
+transaction cannot answer it, because B's own `SET LOCAL` overwrites whatever
+was left before B can read it.
+
+So `pooled-crossover.test.ts` runs two real `task.create` commands over one
+pool of size 1, records `pg_backend_pid()` at every step and asserts a single
+backend, and reads the connection **between** the transactions through
+`connectObserved`. That factory is the only supported door onto a pooled
+connection outside the wrapper, and it exists for this proof. `connect`, which
+is what the application gets, has no such door.
+
+What the mutation showed, with the wrapper's `set_config` `is_local` argument
+temporarily `false`: the setting survives A's commit, a no-setting read on the
+reused backend returns A's rows, and the setting is still A's after a rollback.
+What it did **not** show is B reading A's row, because B's own setup overwrites
+the session-wide value first. That case passes under the leak, so it is not
+what the proof rests on.
+
+### The migration prefixes
+
+A conformance set run against the end state answers a question nobody asked.
+An installation is really in the state after `0001`, and a deploy that stops
+between two migrations leaves it in one of them. So
+`packages/core-records/src/tenancy/testing/prefix-harness.ts` applies the
+migrations one at a time and, after each, runs the tenancy catalogue, the
+composite-key linter and the default-deny set in
+`packages/core-records/src/tenancy/privileges.ts`.
+
+Three roles, separated: the owner builds, `ops_astro_app` is granted what the
+migrations grant it, and a third login that is a member of nothing stands for
+every other role the cluster will ever have. It connects, so its refusals are
+the server's.
+
+Default deny is nothing granted to `PUBLIC`, nothing reachable by a role
+outside the group, no `CREATE` on any schema, no `TRUNCATE` for the application
+role — row security does not filter `TRUNCATE`, so holding it empties every
+tenant's rows without a policy being consulted — and no superuser or
+`bypassrls`. The harness also names the schemas it found, so "storage is
+denied" is answered with a catalogue: this tree has `ops` and `public` and no
+`storage` schema, which is an absence rather than a denial.
+
+**Adding `0008` extends the proof by itself.** The prefixes are read from
+`migrations/`; there is no list here, in the suite or in a manifest. Write
+`migrations/0008_*.sql` and it is covered.
+
 ## What a write is checked against
 
 Two rules, both in `packages/core-records/src/commands/prepare.ts`, because a
