@@ -57,7 +57,9 @@
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
     "tests/api/web-reads.test.ts",
-    "tests/api/expiry-bound.test.ts"
+    "tests/api/expiry-bound.test.ts",
+    "tests/identity/external-party.test.ts",
+    "tests/acceptance/external-party.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
