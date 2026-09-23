@@ -29,6 +29,7 @@
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -96,6 +97,12 @@ export async function heartbeat(
     ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
   ]);
 
+  // Sol 6 RUNTIME-3: `now()` is when this transaction began, and a heartbeat
+  // that waited on the lease lock past the expiry would still see the lease
+  // live. The clock read here, after the locks, is the one instant the expiry,
+  // the delegation's liveness and the renewal below all use.
+  const lockedAt = await lockedInstant(tx);
+
   const leases = await tx.query<{
     readonly task_id: string;
     readonly state: string;
@@ -107,15 +114,15 @@ export async function heartbeat(
     readonly delegation_live: boolean;
   }>(
     `select l.task_id, l.state, l.fence::text as fence, l.holder_actor_id, l.delegation_id,
-            (l.expires_at <= now()) as expired,
+            (l.expires_at <= $3::timestamptz) as expired,
             (select max(fence) from public.leases
               where business_id = l.business_id and task_id = l.task_id)::text as current_fence,
             exists (select 1 from public.delegations d
                      where d.business_id = l.business_id and d.id = l.delegation_id
                        and d.revoked_at is null and d.settled_at is null
-                       and d.expires_at > now()) as delegation_live
+                       and d.expires_at > $3::timestamptz) as delegation_live
        from public.leases l where l.business_id = $1 and l.id = $2`,
-    [tx.businessId, request.leaseId],
+    [tx.businessId, request.leaseId, lockedAt],
   );
   const lease = leases[0];
   if (
@@ -158,11 +165,17 @@ export async function heartbeat(
     `update public.leases
         set expires_at = greatest(
               expires_at,
-              least(now() + make_interval(secs => $3),
+              least($5::timestamptz + make_interval(secs => $3),
                     acquired_at + make_interval(secs => $4)))
       where business_id = $1 and id = $2 and state = 'live'
       returning expires_at`,
-    [tx.businessId, request.leaseId, request.renewSeconds, MAXIMUM_LEASE_LIFETIME_SECONDS],
+    [
+      tx.businessId,
+      request.leaseId,
+      request.renewSeconds,
+      MAXIMUM_LEASE_LIFETIME_SECONDS,
+      lockedAt,
+    ],
   );
   const expiresAt = (renewed[0] as { readonly expires_at: Date }).expires_at;
   // Copied from the lease row in SQL, not through the `Date` above, which
