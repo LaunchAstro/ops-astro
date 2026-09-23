@@ -432,7 +432,7 @@ async function subjectTaskId(
 ): Promise<string> {
   if (
     (request.command === 'task.handback' || request.command === 'task.heartbeat') &&
-    typeof request['leaseId'] === 'string'
+    UUID.test(String(request['leaseId']))
   ) {
     const rows = await tx.query<{ readonly task_id: string }>(
       `select task_id from public.leases where business_id = $1 and id = $2`,

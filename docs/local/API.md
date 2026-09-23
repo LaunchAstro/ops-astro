@@ -328,8 +328,8 @@ spent against could never be refused `BUDGET_EXHAUSTED`.
 
 A gate not visible in the caller's business, foreign or fabricated, answers
 `NOT_FOUND` 404 with a constant body that carries no id, and the refusal is
-audited in the caller's business (`commands/tasks-runtime.ts:248-252`,
-`:313-319`). `GATE_NOT_FOUND` is no longer a `task.decide` answer: the runtime's
+audited in the caller's business (`commands/tasks-runtime.ts:249-253`,
+`:314-320`). `GATE_NOT_FOUND` is no longer a `task.decide` answer: the runtime's
 code is translated before it leaves the handler.
 
 Three of those codes arrived with lane L4-RUNTIME-FIX and are registered here
@@ -398,7 +398,7 @@ prefix `task.pickup`, `task.heartbeat` and `task.handback` are served on a
 lease that carries no delegation: the holder is the session's own actor, the
 authority is the session's own live grants, re-read under the claim's locks,
 and no credential is minted (`commands/handlers.ts:102-112`,
-`commands/tasks-runtime.ts:394-421`). The agent does the same on its own entry
+`commands/tasks-runtime.ts:394-416`). The agent does the same on its own entry
 point, below, with the delegation its pickup minted. Neither reaches the
 other's lease. A person's `reservationId` that is not a string is
 `COMMAND_BODY_INVALID` 400, and a person's handback of a lease that is not
@@ -413,14 +413,31 @@ holds the person path.
 `budgetEnvelope { envelopeId, currency, heldMinor }`, `permittedOperations`
 and `excludedOperations`, each exclusion with its reason. Only the agent's
 answer adds `delegationId`, `credential` and `purposeScope`; a person's carries
-none of them and no placeholder (`commands/tasks-runtime.ts:497-529`).
+none of them and no placeholder (`commands/tasks-runtime.ts:500-532`).
 `authorisedByPersonId` is read from the approving decision, never from the
 body.
 
 **`RESERVATION_NOT_CLAIMABLE` 409 is one answer** for a reservation that does
 not exist, one with no approval behind it and one another live lease holds.
-The holding lease is never named (`commands/tasks-runtime.ts:437-446`,
+The holding lease is never named (`commands/tasks-runtime.ts:440-447`,
 `core-runtime/src/pickup.ts:194-197`, `:394`).
+
+**A malformed reservation or lease id answers as a fabricated one, on both
+prefixes.** A `reservationId` or `leaseId` that is not a uuid, `""` and
+`"not-a-uuid"` included, names nothing. `task.pickup` answers
+`RESERVATION_NOT_CLAIMABLE` 409, and `task.heartbeat` and `task.handback`
+answer `LEASE_NOT_OWNED` 403, in the same bytes as a well-formed id that names
+nothing (root ruling 2). The refusal is audited in the caller's business and
+nothing is written. The check is one shape test, `isIdentifier`
+(`commands/operands.ts:111`), called where both claimants meet
+(`commands/tasks-runtime.ts:433`, `:702`, `:954`). The agent envelope's
+lease lookup checks the same shape with its own pattern
+(`commands/agent-envelope.ts:130`, `:435`). A malformed id never reaches a
+uuid parameter, so it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps for
+real faults. The agent envelope reads `reservationId` as a string, so a
+number there is the same answer. On the person route a non-string
+`reservationId` is still `COMMAND_BODY_INVALID` 400. Proof:
+`tests/api/id-operand-shape.test.ts`.
 
 **A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
 422, naming the keys, with nothing written (D06). `business_id`, `actor_id`,
@@ -527,10 +544,10 @@ cites are in `commands/agent-envelope.ts`: a name outside `AGENT_SURFACE`
 | `task.complete`                    | `surface.ts:222` | `handlers.ts:43` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.reopen`                      | `surface.ts:223` | `handlers.ts:45` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.comment`                     | `surface.ts:224` | `handlers.ts:71` → `tasks-comment.ts:52` `commentOnTask`                           | served under a live delegation, `internal` audience only (`:522`, audience `:555`) |
-| `task.propose`                     | `surface.ts:227` | `handlers.ts:88` → `tasks-runtime.ts:148` `proposeOnTask`                          | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
-| `task.decide`                      | `surface.ts:228` | `handlers.ts:90` → `tasks-runtime.ts:254` `decideOnGate`                           | refused `DELEGATION_EXCLUDES_DECISION` (`:363-365`, `:389-400`)                    |
+| `task.propose`                     | `surface.ts:227` | `handlers.ts:88` → `tasks-runtime.ts:149` `proposeOnTask`                          | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
+| `task.decide`                      | `surface.ts:228` | `handlers.ts:90` → `tasks-runtime.ts:255` `decideOnGate`                           | refused `DELEGATION_EXCLUDES_DECISION` (`:363-365`, `:389-400`)                    |
 | `task.pickup`                      | `surface.ts:232` | `handlers.ts:107` → `tasks-runtime.ts:394` `pickupAsPerson`                        | served before a pickup (`:116`, `:490`)                                            |
-| `task.handback`                    | `surface.ts:237` | `handlers.ts:111` → `tasks-runtime.ts:619` `handbackOwnLease`                      | served under a live delegation (`:500`)                                            |
+| `task.handback`                    | `surface.ts:237` | `handlers.ts:111` → `tasks-runtime.ts:622` `handbackOwnLease`                      | served under a live delegation (`:500`)                                            |
 | `task.start`                       | `surface.ts:243` | `handlers.ts:47` → `tasks-state.ts:114` `setState`                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.assign`                      | `surface.ts:244` | `handlers.ts:50` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                                            |
 | `task.triage`                      | `surface.ts:245` | `handlers.ts:51` → `tasks-state.ts:183` `writeOwnedFields`                         | refused `DELEGATION_EXCLUDES_OPERATION`                                            |

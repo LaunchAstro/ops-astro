@@ -98,3 +98,16 @@ export function refuseReadOperands(
       return undefined;
   }
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/**
+ * Could this operand be an identifier at all? Every id column is a uuid, and a
+ * string that is not one would reach a bound parameter and be raised on by the
+ * server: a caller's typo answered as an outage (TRANSACTION-CONTRACT TC:11).
+ * A malformed id names nothing, so the operation that owns the operand answers
+ * it exactly as it answers a well-formed id that names nothing (root ruling 2).
+ */
+export function isIdentifier(value: unknown): value is string {
+  return typeof value === 'string' && UUID.test(value);
+}

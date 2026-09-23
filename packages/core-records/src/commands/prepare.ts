@@ -257,7 +257,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
  */
 function refuseMalformedIdentifier(request: CommandRequest): Refused | undefined {
   const named = request as unknown as Record<string, unknown>;
-  const malformed = IDENTIFIER_FIELDS.filter((field) => {
+  const malformed = shapedHere(request.command).filter((field) => {
     const value = named[field];
     return typeof value === 'string' && !UUID.test(value);
   });
@@ -504,4 +504,24 @@ export async function lockTask(
   );
   const row = rows[0];
   return row === undefined ? undefined : { ...row, revision: Number(row.revision) };
+}
+
+/**
+ * The runtime handlers shape their own operand (`isIdentifier`, called from
+ * `tasks-runtime.ts`) and answer a malformed one in their own code,
+ * RESERVATION_NOT_CLAIMABLE or LEASE_NOT_OWNED, byte for byte as they answer
+ * a fabricated one. A generic NOT_FOUND here told the two apart; the agent
+ * envelope, which never comes through here, reached SQL and faulted. Any
+ * other command naming these fields is still answered here.
+ */
+const RUNTIME_SHAPED: Readonly<Record<string, string>> = {
+  'task.pickup': 'reservationId',
+  'task.heartbeat': 'leaseId',
+  'task.handback': 'leaseId',
+};
+
+/** The identifier fields `refuseMalformedIdentifier` shapes for this command. */
+function shapedHere(command: string): readonly string[] {
+  const own = RUNTIME_SHAPED[command];
+  return IDENTIFIER_FIELDS.filter((field) => field !== own);
 }

@@ -56,6 +56,7 @@ import {
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import type { HandbackHolder } from '../../../core-runtime/src/handback.ts';
 import type { CommandContext } from './context.ts';
+import { isIdentifier } from './operands.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import {
@@ -336,7 +337,6 @@ export async function decideOnGate(
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
-const LEASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const MAXIMUM_LEASE_SECONDS = 60 * 60;
 
 export interface PickupFields {
@@ -408,11 +408,6 @@ export async function pickupAsPerson(
       ),
     );
   }
-  if (!LEASE_UUID.test(named)) {
-    return refused(
-      refuseCommand('RESERVATION_NOT_CLAIMABLE', [], [NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX]),
-    );
-  }
   return await claim(tx, context.declaration.collection, fields, {
     claimant: 'person',
     personId: context.session.personId,
@@ -432,6 +427,14 @@ async function claim(
 ): Promise<HandlerOutcome> {
   const seconds = readLeaseSeconds(fields, DEFAULT_LEASE_SECONDS, MAXIMUM_LEASE_SECONDS);
   if (typeof seconds !== 'number') return seconds;
+  // Both claimants come through here, the agent's envelope with whatever
+  // string it was sent. A reservation id that cannot exist names nothing, and
+  // answers as one that does not exist, before it reaches a uuid parameter.
+  if (!isIdentifier(fields.reservationId)) {
+    return refused(
+      refuseCommand('RESERVATION_NOT_CLAIMABLE', [], [NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX]),
+    );
+  }
 
   const approver = await approvingPerson(tx, fields.reservationId);
   if (approver === undefined) {
@@ -621,12 +624,6 @@ export async function handbackOwnLease(
   context: CommandContext,
   fields: HandbackFields,
 ): Promise<HandlerOutcome> {
-  const named: unknown = fields.leaseId;
-  if (typeof named !== 'string' || !LEASE_UUID.test(named)) {
-    return refused(
-      refuseCommand('LEASE_NOT_OWNED', [], ['Hand back the lease your own pickup was issued.']),
-    );
-  }
   return await settle(tx, fields, context.session.actorId, {
     claimant: 'person',
     actorId: context.session.actorId,
@@ -699,6 +696,12 @@ async function settle(
     successor = read.successor;
   }
 
+  // Both claimants come through here. A lease id that cannot exist names
+  // nothing, and answers in the runtime's own bytes for a lease that does not
+  // exist (`core-runtime/src/handback.ts:145-150`), never at a uuid parameter.
+  if (!isIdentifier(fields.leaseId)) {
+    return refused(refuseCommand('LEASE_NOT_OWNED', [], NO_SUCH_LEASE));
+  }
   const result = await handback(tx, {
     leaseId: fields.leaseId,
     fence: fields.fence,
@@ -948,8 +951,8 @@ export async function renewLease(
       refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
     );
   }
-  if (typeof fields.leaseId !== 'string' || !LEASE_UUID.test(fields.leaseId)) {
-    return refused(refuseCommand('LEASE_NOT_OWNED', [], ['Renew the lease this pickup issued.']));
+  if (!isIdentifier(fields.leaseId)) {
+    return refused(refuseCommand('LEASE_NOT_OWNED', [], NOT_THIS_CALLERS_LEASE));
   }
   const result = await renew({
     leaseId: fields.leaseId,
@@ -986,3 +989,15 @@ export async function heartbeatOwnLease(
       }),
   );
 }
+
+// A malformed lease id is answered in the bytes the runtime gives a well-formed
+// one that names nothing (root ruling 2), before it reaches a uuid parameter:
+// `core-runtime/src/handback.ts:145-150` and `core-runtime/src/heartbeat.ts:82-87`.
+const NO_SUCH_LEASE: readonly string[] = [
+  'no such lease in this business',
+  'Hand back the lease this claim was issued.',
+];
+const NOT_THIS_CALLERS_LEASE: readonly string[] = [
+  "the named lease is not this caller's at the presented fence",
+  'Renew the lease this pickup issued, at the fence it handed back.',
+];
