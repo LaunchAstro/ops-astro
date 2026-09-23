@@ -64,6 +64,7 @@
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
     "tests/tenancy/tenancy-wrapper.test.ts",
-    "tests/tenancy/runtime-statements.test.ts"
+    "tests/tenancy/runtime-statements.test.ts",
+    "tests/tenancy/statement-capture-full.test.ts"
   ]
 }
