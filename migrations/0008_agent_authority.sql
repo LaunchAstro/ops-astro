@@ -92,6 +92,8 @@ begin
 end;
 $$;
 
+revoke execute on function public.login_is_a_person_or_an_agent() from public;
+
 create trigger actor_logins_login_is_not_a_person
   before insert or update on public.actor_logins
   for each row execute function public.login_is_a_person_or_an_agent();
@@ -242,6 +244,8 @@ begin
   return new;
 end;
 $$;
+
+revoke execute on function public.delegations_agent_is_an_agent() from public;
 
 create trigger delegations_agent_is_an_agent
   before insert or update on public.delegations
