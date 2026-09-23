@@ -19,9 +19,10 @@
 // never real.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { HistoryEntry, TaskDetail, TaskSummary } from './requests.ts';
+import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import { externalCommentProjection, readTaskComments } from '../tasks/comments.ts';
 import { readFieldDefinitions } from '../records/field-store.ts';
+import { isLive } from '../records/fields.ts';
 import { READS } from '../commands/surface.ts';
 import { readTaskProposals } from './proposals.ts';
 
@@ -176,8 +177,8 @@ export async function resolveTaskId(
  */
 const INTERNAL_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
 
-export function isInternalReader(roleKey: string): boolean {
-  return INTERNAL_ROLES.has(roleKey);
+export function isInternalReader(roleKey: string | null): boolean {
+  return roleKey !== null && INTERNAL_ROLES.has(roleKey);
 }
 
 async function commentsFor(
@@ -234,6 +235,44 @@ export async function readTaskDetail(
     // what the proposer put in it and what the decision was about. An external
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
+  };
+}
+
+/**
+ * One task as a reader outside the business sees it, or nothing at all.
+ *
+ * Built up from the catalogue rather than down from `readTaskDetail`: the
+ * field values are read only for the definitions marked `shared`, so a field
+ * nobody classified never leaves the database on this path, and the comments
+ * are `externalCommentProjection`, the same allowlist the agent reader uses.
+ * A slotted field is read from its slot, which is the projection the trigger
+ * keeps, and an unslotted one from `data`.
+ */
+export async function readSharedTask(
+  tx: TenantQuery,
+  taskTypeId: string,
+  recordId: string,
+  commentTypeId: string | undefined,
+): Promise<SharedTaskView | undefined> {
+  if (!UUID.test(recordId)) return undefined;
+  const rows = await tx.query<Readonly<Record<string, unknown>>>(
+    `select r.* from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
+        and r.deleted_at is null`,
+    [tx.businessId, taskTypeId, recordId],
+  );
+  const row = rows[0];
+  if (row === undefined) return undefined;
+  const data = (row['data'] ?? {}) as Readonly<Record<string, unknown>>;
+  const fields: Record<string, unknown> = {};
+  for (const field of await readFieldDefinitions(tx, taskTypeId)) {
+    if (!isLive(field) || field.visibilityClass !== 'shared') continue;
+    fields[field.key] = field.slot === null ? (data[field.key] ?? null) : (row[field.slot] ?? null);
+  }
+  return {
+    id: recordId,
+    fields,
+    comments: await commentsFor(tx, commentTypeId, recordId, false),
   };
 }
 

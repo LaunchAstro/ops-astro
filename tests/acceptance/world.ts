@@ -39,7 +39,13 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { insertBusiness } from '../identity/fixture.ts';
+import {
+  insertActor,
+  insertBusiness,
+  insertLogin,
+  insertMapping,
+  insertPerson,
+} from '../identity/fixture.ts';
 import { installSpine } from '../commands/fixture.ts';
 import type { AgentIdentity, Caller } from './cast.ts';
 import {
@@ -49,6 +55,7 @@ import {
   MEMBER_ACTIONS,
   enrolAgent,
   enrolCaller,
+  tokenFor,
 } from './cast.ts';
 
 // Re-exported so every proof keeps one import for the fixture. The cast lives
@@ -262,3 +269,33 @@ export const personPath = (businessKey: string, path: string): string =>
   `/api/b/${businessKey}${path}`;
 export const agentPath = (businessKey: string, path: string): string =>
   `/api/a/b/${businessKey}${path}`;
+
+/**
+ * R4: an external party of `alpha` (minimum contract 8.1), shaped as the seed
+ * mints its external login.
+ *
+ * A person, an acting identity, a login and its mapping, and **no
+ * membership**. It is not in `createWorld` because every proof there counts
+ * alpha's people, and a sixth person would change answers that have nothing to
+ * do with it. Nothing is shared here: a share is `shareRecord`'s to issue, and
+ * a fixture that wrote the grant would be the one thing the proof must not
+ * lean on. Until something is shared the login resolves to nothing at all.
+ */
+export async function enrolExternal(world: World): Promise<Caller> {
+  const subject = `ext-${randomUUID()}`;
+  const identity = await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const personId = await insertPerson(tx, 'ext');
+    const actorId = await insertActor(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, subject), personId, world.ada.actorId as string);
+    return { personId, actorId };
+  });
+  return {
+    name: 'ext',
+    businessKey: 'alpha',
+    personId: identity.personId,
+    actorId: identity.actorId,
+    subject,
+    presented: { provider: 'supabase', subject },
+    token: await tokenFor(subject),
+  };
+}
