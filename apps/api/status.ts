@@ -94,6 +94,7 @@ const STATUS: Readonly<Record<RefusalCode, number>> = {
   // The preset itself is wrong, and it comes back naming the field keys so the
   // author can classify them.
   PRESET_FIELD_UNCLASSIFIED: 422,
+  PRESET_FIELD_DUPLICATE: 422,
 
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest

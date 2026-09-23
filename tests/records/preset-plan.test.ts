@@ -59,7 +59,9 @@ describe.skipIf(serverUrl === undefined)('preset.plan', () => {
       const issued = await issueGrant(tx, [{ kind: 'person', id: personId }], {
         subject: { kind: 'person', id: personId },
         scope: { kind: 'business', id: null },
-        collection: 'preset',
+        // Finding 3: the grant a legitimate planner holds is `manage` on the
+        // family being planned, not a blanket `preset` collection.
+        collection: 'task',
         action: 'manage',
         parentGrantId: null,
         grantedByActorId: actorId,

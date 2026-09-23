@@ -42,7 +42,14 @@ So the order of its checks is load-bearing:
 1. `DELEGATION_EXCLUDES_DECISION` — first, so a decision is never reported as
    something else. **I07.**
 2. `DELEGATION_OUT_OF_PURPOSE` — before any grant is read, so an agent probing
-   outside its purpose learns nothing about what its person holds.
+   outside its purpose learns nothing about what its person holds. Three ways
+   to be outside it: a collection the purpose does not reach, an action it does
+   not carry, and a **scope that is not exactly the one task it was minted
+   for**. The last is the one-task ceiling: R5 is "R1's delegated agent,
+   purpose-scoped to one task", and R1's own grant is business-wide, so without
+   the stored scope a call on a sibling task reaches that same grant and passes
+   exactly as a call on the picked-up task does. A business- or party-scoped
+   request under a delegation is refused here too.
 3. `DELEGATION_NARROWED` — the purpose reaches the call and the person's live
    grants no longer cover it. **I08**, and by name: substituting
    `SCOPE_NOT_GRANTED` would say the agent was never authorised, when what
@@ -74,6 +81,24 @@ type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
+
+/** `record` only. Record- and actor-scoped *minting* stays deferred; this is the ceiling. */
+interface PurposeScope { readonly kind: 'record'; readonly id: string }
+
+interface MintRequest {
+  readonly agentActorId: string
+  readonly delegatePersonId: string
+  readonly mintedByActorId: string        // the authorising person's acting identity
+  readonly purpose: string
+  readonly collections: readonly string[]
+  readonly actions: readonly Action[]     // never `decide`
+  readonly purposeScope: PurposeScope     // the picked-up task's record id, mandatory
+  readonly expiresAt: Date                // L4's, from the lease contract
+}
+
+// The resolved delegation exposes the same `purposeScope`, read back from
+// `delegations.purpose_scope_kind` / `purpose_scope_id` (migration 0016).
+interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope }
 ```
 
 ```ts
@@ -98,7 +123,11 @@ externalCommentProjection(comments, fields: readonly FieldDefinition[]): readonl
 planPresetSync(tx, planner: Planner, request: PresetSyncRequest): Promise<PresetPlanDecision<PresetPlan>>
 type PresetPlanRefusalCode =
   | 'PRESET_FIELD_UNCLASSIFIED' | 'PRESET_TYPE_UNKNOWN'
-  | 'PRESET_FIELD_UNPLACEABLE' | 'SCOPE_NOT_GRANTED'
+  | 'PRESET_FIELD_UNPLACEABLE' | 'PRESET_FIELD_DUPLICATE' | 'SCOPE_NOT_GRANTED'
+
+// `PresetSyncRequest` is unchanged. The authority it asks for is not: `manage`
+// on the family named by `recordTypeKey`, not on a blanket `preset` collection.
+// L3's `preset.plan` must keep passing the request's own `recordTypeKey`.
 
 // records/business-settings.ts
 installBusinessSettings(tx): Promise<void>
@@ -117,18 +146,20 @@ register is L3's file. A model module reaching into the command surface to add a
 code is the coupling the register exists to prevent. L3 registers them with the
 rest, with HTTP statuses in `apps/api/status.ts`:
 
-| Code                           | Suggested status | Caller-visible                  |
-| ------------------------------ | ---------------- | ------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`       | 401              | yes                             |
-| `AUTH_SESSION_EXPIRED`         | 401              | yes — this is the re-login path |
-| `DELEGATION_EXCLUDES_DECISION` | 403              | yes                             |
-| `DELEGATION_OUT_OF_PURPOSE`    | 403              | yes                             |
-| `DELEGATION_NARROWED`          | 403              | yes                             |
-| `DELEGATION_NOT_LIVE`          | 401              | yes                             |
-| `DELEGATION_WIDENS`            | 403              | yes (mint time only)            |
-| `PRESET_FIELD_UNCLASSIFIED`    | 422              | yes, with the field keys        |
-| `PRESET_TYPE_UNKNOWN`          | 404              | yes                             |
-| `PRESET_FIELD_UNPLACEABLE`     | 409              | yes                             |
+| Code                                                                         | Suggested status | Caller-visible                  |
+| ---------------------------------------------------------------------------- | ---------------- | ------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401              | yes                             |
+| `AUTH_SESSION_EXPIRED`                                                       | 401              | yes — this is the re-login path |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403              | yes                             |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403              | yes                             |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403              | yes                             |
+| `DELEGATION_NARROWED`                                                        | 403              | yes                             |
+| `DELEGATION_NOT_LIVE`                                                        | 401              | yes                             |
+| `DELEGATION_WIDENS`                                                          | 403              | yes (mint time only)            |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422              | yes, with the field keys        |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404              | yes                             |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409              | yes                             |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422              | yes                             |
 
 ## The expired session
 
@@ -212,6 +243,27 @@ applied the good half and refused the bad one leaves a business half-synced to a
 preset nobody approved, and the next run cannot tell what it decided from what
 it inherited. It writes nothing even on success; applying is a separate
 authorised operation.
+
+**The authority is the family's, not a blanket preset grant.** The accepted
+clause is "existing collection-manager/manage authority bounded to the owned
+record family", with "no new role power" beside it. So the planner resolves
+`recordTypeKey` to its record type and checks `manage` on _that family_ — the
+collection the type's records belong to. There is no collection column on
+`record_types` yet, so the record type's key is the family (`task` records are
+the `task` collection); `familyOf` is the single place that learns otherwise
+when the tree grows a real mapping. Checking a `preset` collection instead
+refused the legitimate manager of the task family and admitted a blanket holder
+to every installed type, which is the opposite of what the clause bounds. The
+type is read before the check but `PRESET_TYPE_UNKNOWN` is returned after it, so
+an unauthorised caller still learns nothing about what is installed.
+
+**Duplicate new keys refuse.** `field_defs_key_idx` permits one key per business
+and type, so two entries claiming one key cannot both be created. Uniqueness is
+checked across the whole request before any action is built, and the refusal
+names the keys: `PRESET_FIELD_DUPLICATE`, zero actions, no writes. An installed
+field named once is still `no_change`; named twice it is still a duplicate
+request. This is ordinary invalid input that a validated dry run rejects rather
+than promising an apply that the index will refuse.
 
 "Unclassified" is both halves — absent, and present but not one of the three
 modes the model has. A preset shipping `write_mode: 'sometimes'` has not been

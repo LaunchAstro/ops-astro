@@ -44,7 +44,9 @@ export type PresetPlanRefusalCode =
   | 'PRESET_TYPE_UNKNOWN'
   /** The field cannot be placed: no free slot of its type, or none indexed. */
   | 'PRESET_FIELD_UNPLACEABLE'
-  /** The caller holds no live `manage` grant on presets. */
+  /** Two entries of one request claim the same field key. */
+  | 'PRESET_FIELD_DUPLICATE'
+  /** The caller holds no live `manage` grant on the record family being planned. */
   | 'SCOPE_NOT_GRANTED';
 
 export interface PresetPlanRefusal {
@@ -96,8 +98,32 @@ export interface Planner {
 
 const WRITE_MODES = new Set(['generic', 'operation', 'system']);
 const VISIBILITY_CLASSES = new Set(['internal', 'shared']);
-const PRESET_COLLECTION = 'preset';
 const PRESET_ORIGIN: FieldOrigin = 'preset';
+
+/**
+ * The collection a record type's records belong to.
+ *
+ * The accepted clause is "existing collection-manager/manage authority bounded
+ * to the owned record family", with "no new role power" in the same row. There
+ * is no collection column on `record_types` yet, so the record type's own key
+ * *is* the family — `task` records are the `task` collection, which is the
+ * collection every grant in this tree already names. When the tree grows a real
+ * type-to-collection mapping this is the one place that has to learn about it.
+ */
+function familyOf(recordTypeKey: string): string {
+  return recordTypeKey;
+}
+
+/** The field keys claimed more than once by one request. */
+function duplicated(fields: readonly PresetField[]): readonly string[] {
+  const seen = new Set<string>();
+  const twice = new Set<string>();
+  for (const field of fields) {
+    if (seen.has(field.key)) twice.add(field.key);
+    seen.add(field.key);
+  }
+  return [...twice].toSorted();
+}
 
 function refuse(
   code: PresetPlanRefusalCode,
@@ -147,10 +173,20 @@ async function slotTable(tx: TenantQuery): Promise<readonly Slot[]> {
  * Plan a preset sync. Reads authority, reads the model, writes nothing.
  *
  * The order is deliberate. Authority first, so an unauthorised caller learns
- * nothing about what is installed. The classification of the whole preset
- * next, so the refusal is about the preset rather than about the first field
- * that happened to fail. Placement last, because a field that cannot be
- * placed is a different answer from one that was never classified.
+ * nothing about what is installed — including whether the type it named exists,
+ * which is why `PRESET_TYPE_UNKNOWN` waits until after the check even though
+ * the type is read before it. The classification of the whole preset next, so
+ * the refusal is about the preset rather than about the first field that
+ * happened to fail. Placement last, because a field that cannot be placed is a
+ * different answer from one that was never classified.
+ *
+ * The authority asked for is `manage` on **the family being planned**, not on a
+ * blanket `preset` collection. Checking `preset` refused the legitimate manager
+ * of the task family and admitted a blanket holder to every installed type,
+ * which is the opposite of what the clause bounds. The scope is the business
+ * because the plan is about the business's model of that type; a narrower grant
+ * of the same collection and action satisfies a narrower request when one
+ * exists, and `effectiveGrants` already handles that.
  */
 export async function planPresetSync(
   tx: TenantQuery,
@@ -161,13 +197,39 @@ export async function planPresetSync(
     { kind: 'person', id: planner.personId },
     { kind: 'actor', id: planner.actorId },
   ];
+  const typeId = await recordTypeId(tx, request.recordTypeKey);
+  const family = familyOf(request.recordTypeKey);
   const authorised = await checkAuthority(tx, subjects, {
-    collection: PRESET_COLLECTION,
+    collection: family,
     action: 'manage',
     scope: { kind: 'business', id: null },
   });
   if (!authorised.ok) {
-    return refuse('SCOPE_NOT_GRANTED', [], [authorised.refusal.reason, authorised.refusal.fix]);
+    return refuse(
+      'SCOPE_NOT_GRANTED',
+      [family],
+      [`${authorised.refusal.reason}: this plan needs manage on ${family}`, authorised.refusal.fix],
+    );
+  }
+
+  if (typeId === undefined) {
+    return refuse(
+      'PRESET_TYPE_UNKNOWN',
+      [request.recordTypeKey],
+      ['This business has no record type by that key. Install the type before syncing a preset.'],
+    );
+  }
+
+  // Before any action is built, and before the model is read: two entries
+  // claiming one key cannot both be created, `field_defs_key_idx` permits one
+  // key per business and type, and a plan that returned two creates would be a
+  // dry run promising something the apply cannot do.
+  const twice = duplicated(request.fields);
+  if (twice.length > 0) {
+    return refuse('PRESET_FIELD_DUPLICATE', twice, [
+      'One preset names each field key once. Two entries claiming one key cannot both be created.',
+      'Nothing of this plan was applied.',
+    ]);
   }
 
   const unclear = unclassified(request.fields);
@@ -177,15 +239,6 @@ export async function planPresetSync(
       'An operation-owned field names its operations, and no other field names any.',
       'Nothing of this plan was applied.',
     ]);
-  }
-
-  const typeId = await recordTypeId(tx, request.recordTypeKey);
-  if (typeId === undefined) {
-    return refuse(
-      'PRESET_TYPE_UNKNOWN',
-      [request.recordTypeKey],
-      ['This business has no record type by that key. Install the type before syncing a preset.'],
-    );
   }
 
   const installed = await readFieldDefinitions(tx, typeId);

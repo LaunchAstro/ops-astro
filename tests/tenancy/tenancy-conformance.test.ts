@@ -88,6 +88,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0012_runtime_decisions',
         '0013_runtime_budget_and_leases',
         '0014_runtime_attempts',
+        '0015_login_kind_serialised',
+        '0016_delegation_purpose_scope',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -110,6 +112,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0012_runtime_decisions',
         '0013_runtime_budget_and_leases',
         '0014_runtime_attempts',
+        '0015_login_kind_serialised',
+        '0016_delegation_purpose_scope',
       ]);
     });
 
