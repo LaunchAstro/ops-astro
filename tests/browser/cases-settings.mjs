@@ -3,33 +3,30 @@
 // S1-S5: the two operation-classified business settings, read, opened by
 // capability and written from a real browser against the live API.
 //
-// **S1-S2 run against any build. S3-S5 need the two reads and say so.**
-// `settings.read` and `session.capabilities` are declared by lane L3-PART-B-2
-// and the API at `b15ed7e` carries neither, so the screen meets them as
-// `unavailable` and falls back: it draws this browser's own last confirmed
-// write, and it leaves the controls open and asks once. That is what S1-S2
-// exercise, and they pass on both sides of the landing. S3-S5 are about the
-// reads themselves -- a value that survives a cleared tab, controls closed
-// without a refused request, and a stale write drawn as a conflict -- and none
-// of them can mean anything until the reads answer. The group detects that
-// from the screen's own `data-outcome` and records them `pending` rather than
-// inventing a pass or quietly skipping them.
+// **S1-S2 run against any build. S3-S4 need the two reads; S5 needs a revision.**
+// `settings.read` and `session.capabilities` are declared on the surface and
+// answer on the live API. Against a build without them the screen meets them
+// as `unavailable` and falls back: it draws this browser's own last confirmed
+// write, and it leaves the controls open and asks once. S1-S2 assert the pair
+// and pass on both sides. S3-S4 are about the reads themselves -- a value that
+// survives a cleared tab, and controls closed without a refused request -- and
+// S5 is about a stale write drawn as a conflict, which needs `settings.read` to
+// carry the row's `revision`. Each detects its own precondition, from the
+// screen's `data-outcome` and from the read's answer, and records `pending`
+// rather than inventing a pass or quietly skipping.
 //
-// **The seed grants nobody `settings:manage`, and this group says so out loud.**
-// `scripts/local-seed.mjs` gives its admin `task` read/write/assign/comment/
-// share/manage and `person:read`; the settings commands take `manage` on the
-// `settings` collection (`commands/surface.ts`), which is a collection no
-// seeded identity holds anything on. So S1 cannot run as the seed stands: it
-// issues the grant itself through `issueGrant` -- the authority path, the same
-// one `n6-revocation.mjs` uses to revoke one -- and takes it back in a
-// `finally`, leaving the business's grants as it found them. The gap belongs to
-// the seed's lane and is named in the handback rather than patched here.
+// **The seed grants its admin `settings:manage`** (`scripts/local-seed.mjs`,
+// since `1148a07`), so ada can write as seeded. The group still issues the
+// grant itself through `issueGrant` -- the authority path, the same one
+// `n6-revocation.mjs` uses to revoke one -- and takes it back in a `finally`,
+// so a row does not pass or fail on what the seed happens to hold that day,
+// and the business's grants are left as the group found them.
 //
 // **The value is put back too.** `four_eyes_threshold` is a shared row, not a
 // task this run created, so S1 restores it to what it read before it wrote.
 //
-// S2 needs no provisioning at all: mia holds nothing on `settings`, which is
-// the point of the case.
+// S2 and S4 need no provisioning at all: mia holds nothing on `settings`
+// beyond `read`, which is the point of both.
 //
 // Run: node tests/browser/cases-settings.mjs  (or through slice-acceptance)
 
@@ -49,9 +46,9 @@ import {
   users,
 } from './harness.mjs';
 
-// S3-S5 are deliberately absent: a required row is one that must pass on this
-// build, and these three cannot until the reads land.
-const REQUIRED = ['S1', 'S2'];
+// S5 is deliberately absent: a required row is one that must pass on this
+// build, and S5 cannot until `settings.read` carries a revision.
+const REQUIRED = ['S1', 'S2', 'S3', 'S4'];
 const SAVE = '[data-settings="save-four-eyes"]';
 const KNOWN = '[data-settings="four-eyes-known"]';
 const VALUE = '[data-settings="four-eyes-value"]';
@@ -433,7 +430,7 @@ async function writtenByAnother(admin, businessId, value) {
 
 /** A row nobody can run yet, recorded as exactly that. */
 const notYet = (name, action, why) => {
-  record({ case: name, action, observed: why, pending: 'the reads have not landed' });
+  record({ case: name, action, observed: why, pending: 'its precondition has not landed' });
 };
 
 async function readCases(page, run, ada, was) {
