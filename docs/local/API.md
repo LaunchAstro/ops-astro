@@ -327,10 +327,19 @@ proposals: {
 
 Three things about the shape are load-bearing. `gate.expired` is the
 **server's** answer, so a client with a skewed clock cannot disagree with the
-gate about whether it may still be decided. The decision links are the stored
-rows, hash and all, so a reader can check the chain rather than trust a summary
+gate about whether it may still be decided. The owner decision of 23 September
+2026 governs it: show expired on read and preserve the stored record.
+
+- A gate stored `pending` whose `expiresAt` is at or before the database's
+  `now()` reads `state: 'expired'`, `expired: true`. The row itself stays
+  `pending`, and `task.decide` on it still answers `GATE_EXPIRED` 410.
+- The boundary is inclusive, the same `expires_at <= now()` as that refusal.
+- A decided gate (approved, rejected, changes-requested or superseded) reads
+  its stored `state` and `expired: false` whatever the clock says.
+
+Second, the decision links are the stored rows, hash and all, so a reader can check the chain rather than trust a summary
 of it — nothing here recomputes a hash, because handing back a recomputed value
-as though it were the stored one would make a tampered row invisible. And the
+as though it were the stored one would make a tampered row invisible. Third, the
 evidence pack is the renderer's output **as stored**, never re-rendered on
 read: evidence that changed between the decision and the display is the one
 thing a gate cannot survive.

@@ -26,6 +26,19 @@
 // The evidence pack's body is the renderer's output as stored. It is not
 // re-rendered on read: an evidence pack that changed between the decision and
 // the display is the one thing a gate cannot survive.
+//
+// **A pending gate past its deadline reads `expired`.** This is Nathan's
+// decision of 23 September 2026: show expired on read, preserve the stored
+// record. Nothing writes `expired` to `gates.state` (no timer, no migration),
+// so the stored row stays `pending` and this read derives the state instead.
+// Three rules keep the derivation honest:
+// - the clock is the database's `now()`, inside the statement that reads the
+//   gate, never the application's;
+// - the boundary is inclusive, `expires_at <= now()`, the same predicate as
+//   the decide path's `GATE_EXPIRED` refusal (`core-runtime/src/decide.ts`),
+//   so the page never offers a decision that the refusal would turn down;
+// - only an otherwise pending gate expires. An approved, rejected, sent-back
+//   or superseded gate reads its stored outcome whatever the clock says.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -77,10 +90,17 @@ export interface AttemptView {
 
 export interface GateView {
   readonly id: string;
+  /**
+   * The stored state, except that a stored `pending` at or past `expiresAt`
+   * reads `expired`. See the head of this file.
+   */
   readonly state: string;
   readonly round: number;
   readonly expiresAt: string;
-  /** The server's own answer, so a client with a skewed clock cannot disagree. */
+  /**
+   * The server's own answer, so a client with a skewed clock cannot disagree.
+   * True only for an otherwise pending gate: a decided gate is not expired.
+   */
   readonly expired: boolean;
   readonly payloadDigest: string;
 }
@@ -160,10 +180,11 @@ export async function readTaskProposals(
             pack.rendered_digest  as evidence_digest,
             pack.rendered         as evidence_body,
             g.id                  as gate_id,
-            g.state               as gate_state,
+            case when g.state = 'pending' and g.expires_at <= now()
+                 then 'expired' else g.state end as gate_state,
             g.round               as gate_round,
             g.expires_at          as gate_expires_at,
-            (g.expires_at <= now()) as gate_expired
+            (g.state = 'pending' and g.expires_at <= now()) as gate_expired
        from public.proposal_lineages lin
        join public.proposal_versions ver
          on ver.business_id = lin.business_id and ver.lineage_id = lin.id

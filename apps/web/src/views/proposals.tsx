@@ -25,6 +25,12 @@
 // certain to refuse or hide one it would have accepted, and the gate — not the
 // reader's laptop — is what the deadline belongs to.
 //
+// **Only an undecided gate expires.** `task.read` reads a gate stored `pending`
+// past its deadline as `state: 'expired'` (Nathan's decision, 23 September
+// 2026: show expired on read, preserve the stored record). A decided gate keeps
+// its outcome whatever the clock says, so `lapsed` below draws an approved,
+// rejected or sent-back gate by its outcome even if `expired` arrived true.
+//
 // **A refused decision is quoted and the page is read again.** A refusal like
 // `VERSION_SUPERSEDED` is the server saying this page is no longer describing
 // the record, so the answer to it is a fresh read rather than a retry. The
@@ -229,12 +235,15 @@ function Version(props: VersionProps): ReactElement {
       ) : (
         <div
           className="card__sub"
-          data-gate-expired={String(gate.expired)}
-          data-gate-state={gate.state}
+          data-gate-expired={String(lapsed(gate))}
+          data-gate-state={lapsed(gate) ? 'expired' : gate.state}
         >
-          Gate {gate.state}, round {gate.round}
-          {gate.expiresAt === null ? null : <span> · expires {gate.expiresAt}</span>}
-          {gate.expired ? <span data-gate="expired"> · the server says it has expired</span> : null}
+          Gate {lapsed(gate) ? 'expired' : gate.state}, round {gate.round}
+          {gate.expiresAt === null ? null : lapsed(gate) ? (
+            <span data-gate="expired"> · deadline {gate.expiresAt} passed with no decision</span>
+          ) : (
+            <span> · expires {gate.expiresAt}</span>
+          )}
         </div>
       )}
 
@@ -250,6 +259,14 @@ function Version(props: VersionProps): ReactElement {
       )}
     </div>
   );
+}
+
+/**
+ * Whether the gate passed its deadline undecided, on the server's answer.
+ * A decided gate never reads as expired, whatever `expired` says.
+ */
+function lapsed(gate: NonNullable<ProposalVersion['gate']>): boolean {
+  return gate.state === 'expired' || (gate.state === 'pending' && gate.expired);
 }
 
 interface DecideProps {
@@ -268,8 +285,8 @@ function Decide(props: DecideProps): ReactElement {
   // Three reasons a decision is not on offer, and the person is told which.
   const why = closed
     ? 'The server refused your decision on this gate, so the controls are closed rather than asking again on your behalf.'
-    : gate.expired
-      ? 'This gate has expired, on the server’s own answer, so nobody may decide it now.'
+    : lapsed(gate)
+      ? `This gate expired: its deadline${gate.expiresAt === null ? '' : `, ${gate.expiresAt},`} passed without a decision, on the server’s own clock, so nobody may decide it now. A new version of the proposal raises a new gate.`
       : gate.state === 'pending'
         ? null
         : `This gate is ${gate.state} and a decided gate is not decided twice.`;
