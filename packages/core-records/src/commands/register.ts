@@ -366,17 +366,19 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
  * HTTP boundary produces it: a request nothing verified is refused with it
  * before any command runs.
  *
- * **`WRONG_BUSINESS` is on this list and that is a finding rather than a
- * shortcut.** Minimum contract 4.4 says the audit records it while the caller
- * sees `NOT_FOUND`. Telling "another business holds this identifier" from "no
- * such identifier" needs a read that is not scoped to the caller's business,
- * and the tenancy law forbids one: row security is forced, the application
- * role owns nothing, and a definer-rights function that answered the question
- * is exactly what case T1-N14 exists to attack. So a cross-business probe is
- * recorded as `NOT_FOUND` — the same thing the caller is told — and the code
- * stays registered, audit-only and unreachable. The translation mechanism it
- * exists for is tested; what is missing is a reader outside the tenant, and
- * the isolation suite (T1h) is the one place in the slice that has one.
+ * **`WRONG_BUSINESS` is on this list by contract, not as a gap.** Minimum
+ * contract 4.4 (`research/minimum-contract-2026-09-10/CONTRACT.md:365-371`,
+ * corrected 14 September 2026) registers it as unproducible and struck the
+ * requirement that the audit record it; 8.2 case 1 (`:491`) repeats the
+ * correction. Telling "another business holds this identifier" from "no such
+ * identifier" needs a read that is not scoped to the caller's business, and
+ * the tenancy law forbids one: row security is forced, the application role
+ * owns nothing, and a definer-rights function that answered the question is
+ * exactly what case T1-N14 exists to attack. So a cross-business probe is
+ * refused `NOT_FOUND` to the caller and audited as `NOT_FOUND` in the prober's
+ * own business, and the probed business is not told (the known limit the
+ * contract records at `:371`). The code stays registered and unreachable;
+ * `tests/tenancy/production-lookup.test.ts` asserts it absent from the audit.
  */
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',

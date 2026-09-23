@@ -253,6 +253,20 @@ async function serveRead(
     }
     case 'task.board': {
       if (spine === undefined) throw new Error('runRead: task.board reached without the spine');
+      // A board is a task record, so one that is not alpha's is refused the
+      // way `task.move` refuses it, and never listed as a board with nothing
+      // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
+      // business's identifier and case 3 says a denied list is never an empty
+      // success. Foreign, fabricated, malformed and trashed all get the one
+      // answer. `null` is the list of tasks on no board and is not a lookup.
+      // An absent operand is not a board either; refusing it is the operand
+      // check's job (`commands/operands.ts`), not a lookup's.
+      if (
+        typeof request.board === 'string' &&
+        !(await boardExists(tx, spine.taskTypeId, request.board))
+      ) {
+        return served(refuseNotFound());
+      }
       return served({ ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) });
     }
     case 'person.list':
@@ -310,4 +324,17 @@ async function serveRead(
  */
 function fromPresetPlan(refusal: PresetPlanRefusal): CommandRefusal {
   return refuseCommand(refusal.code, refusal.names, refusal.fixes);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** Whether `board` names a live task in the caller's business: `task.move`'s own check. */
+async function boardExists(tx: TenantQuery, taskTypeId: string, board: string): Promise<boolean> {
+  if (!UUID.test(board)) return false;
+  const found = await tx.query<{ readonly id: string }>(
+    `select id from records
+      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
+    [tx.businessId, taskTypeId, board],
+  );
+  return found.length > 0;
 }
