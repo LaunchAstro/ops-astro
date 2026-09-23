@@ -48,6 +48,15 @@ const agentPath = (name: Parameters<typeof pathOf>[0]): string =>
 const detailOf = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] as Record<string, unknown> | undefined) ?? {};
 
+/** The successor's caller-supplied half. The actor is never in it. */
+const successorBody = (maximumMinor: number): Readonly<Record<string, unknown>> => ({
+  purpose: 'draft_the_reply',
+  maximumMinor,
+  currency: 'AUD',
+  payload: { instruction: 'the client asked for a second pass' },
+  step: { kind: 'compose', payload: { tone: 'plain' } },
+});
+
 describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP', () => {
   let fixture: ApiFixture;
   let api: Hono;
@@ -461,6 +470,227 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
 
       // Retained, not settled: the lease is untouched and the rightful holder
       // can still hand back under the fence it owns.
+      const proper = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+        },
+        String(picked['credential']),
+      );
+      expect(proper.status).toBe(200);
+      expect(detailOf(proper)['reservationState']).toBe('abandoned');
+    });
+  });
+
+  // T4's successor half, over HTTP. The runtime already writes the successor
+  // under the handback's own locks; what these cases prove is the surface:
+  // that a caller can ask for one, that the four durable handles come back in
+  // the same answer as the settlement, and that an out-of-bounds successor
+  // settles nothing at all.
+  describe('task.handback and its successor', () => {
+    it('hands back four null handles when no successor is asked for', async () => {
+      const { reservationId } = await approvedReservation(
+        'work handed back with nothing to follow it',
+        'draft_the_reply_no_successor',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+
+      const handedBack = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+          report: { wrote: 'a draft that finished the job' },
+        },
+        String(picked['credential']),
+      );
+
+      expect(handedBack.status).toBe(200);
+      const settled = detailOf(handedBack);
+      // The settlement is exactly what it was before the successor existed.
+      expect(settled['reservationId']).toBe(reservationId);
+      expect(settled['reservationState']).toBe('abandoned');
+      expect(String(settled['reportId'])).toMatch(/^[0-9a-f-]{36}$/u);
+      // All four together, because "no successor" is one fact and not four.
+      expect(settled['successorVersionId']).toBeNull();
+      expect(settled['successorGateId']).toBeNull();
+      expect(settled['successorRunId']).toBeNull();
+      expect(settled['successorStepId']).toBeNull();
+
+      const gates = await fixture.db.admin.execute<{ readonly pending: string }>(
+        `select count(*)::text as pending
+           from public.gates g
+           join public.proposal_versions v
+             on v.business_id = g.business_id and v.id = g.version_id
+           join public.planned_runs r
+             on r.business_id = v.business_id and r.lineage_id = v.lineage_id
+          where g.business_id = $1 and g.state = 'pending' and r.id = $2`,
+        [fixture.business, picked['runId']],
+      );
+      expect(gates[0]?.pending).toBe('0');
+    });
+
+    it('settles and proposes the successor in one transaction', async () => {
+      const { reservationId } = await approvedReservation(
+        'work that asks for a second round',
+        'draft_the_reply_successor',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+
+      const handedBack = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+          report: { wrote: 'a draft, and it needs another pass' },
+          successor: successorBody(2_500),
+        },
+        String(picked['credential']),
+      );
+
+      expect(handedBack.status).toBe(200);
+      const settled = detailOf(handedBack);
+      expect(settled['reservationState']).toBe('abandoned');
+      for (const handle of [
+        'successorVersionId',
+        'successorGateId',
+        'successorRunId',
+        'successorStepId',
+      ]) {
+        expect(String(settled[handle]), handle).toMatch(/^[0-9a-f-]{36}$/u);
+      }
+
+      // The point of the case. One read, on the administrative connection,
+      // after the serving transaction committed: the successor's pending gate
+      // and the handback's settled report in the same row. If either half had
+      // been committed without the other this query returns nothing.
+      const together = await fixture.db.admin.execute<{
+        readonly gate_state: string;
+        readonly round: string;
+        readonly proposed_by: string;
+        readonly maximum_minor: string;
+        readonly disposition: string;
+        readonly report_outcome: string;
+      }>(
+        `select g.state as gate_state, g.round::text as round,
+                v.proposed_by_actor_id as proposed_by,
+                v.maximum_minor::text as maximum_minor,
+                h.disposition, h.outcome as report_outcome
+           from public.gates g
+           join public.proposal_versions v
+             on v.business_id = g.business_id and v.id = g.version_id
+           cross join public.handback_reports h
+          where g.business_id = $1 and g.id = $2
+            and h.business_id = $1 and h.id = $3`,
+        [fixture.business, settled['successorGateId'], settled['reportId']],
+      );
+      expect(together).toHaveLength(1);
+      expect(together[0]?.gate_state).toBe('pending');
+      expect(together[0]?.disposition).toBe('settled');
+      expect(together[0]?.report_outcome).toBe('completed');
+      expect(together[0]?.maximum_minor).toBe('2500');
+      // The agent actor of the session, never a value the body supplied.
+      expect(together[0]?.proposed_by).toBe(fixture.agentActorId);
+    });
+
+    it('refuses a body that names the actor the successor is proposed by', async () => {
+      const { reservationId } = await approvedReservation(
+        'work whose successor claims an author',
+        'draft_the_reply_successor_actor',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+
+      const answer = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+          successor: { ...successorBody(2_500), proposedByActorId: fixture.member.actorId },
+        },
+        String(picked['credential']),
+      );
+
+      expect(answer.body['refused']).toBe(true);
+      expect(answer.body['code']).toBe('FIELD_NOT_WRITABLE');
+      expect(answer.body['names']).toEqual(['successor.proposedByActorId']);
+    });
+
+    it('refuses an out-of-bounds successor and settles nothing', async () => {
+      const { reservationId } = await approvedReservation(
+        'work whose successor asks for more than the cap holds',
+        'draft_the_reply_successor_bounds',
+      );
+      const picked = detailOf(
+        await asAgent('task.pickup', { operationId: randomUUID(), reservationId }),
+      );
+
+      const answer = await asAgent(
+        'task.handback',
+        {
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+          outcome: 'completed',
+          report: { wrote: 'a draft, and then asked for the moon' },
+          successor: successorBody(5_000_000),
+        },
+        String(picked['credential']),
+      );
+
+      expect(answer.status).toBe(409);
+      expect(answer.body['refused']).toBe(true);
+      expect(answer.body['code']).toBe('SUCCESSOR_OUT_OF_BOUNDS');
+
+      // Unlike the stale-fence refusals, this one keeps nothing: the lease is
+      // still live, the hold is still held and no report was written. Read on
+      // the administrative connection after the serving transaction ended.
+      const rows = await fixture.db.admin.execute<{
+        readonly lease_state: string;
+        readonly still_running: boolean;
+        readonly reservation_state: string;
+        readonly reports: string;
+        readonly pending_gates: string;
+      }>(
+        `select l.state as lease_state, (l.expires_at > now()) as still_running,
+                res.state as reservation_state,
+                (select count(*) from public.handback_reports h
+                  where h.business_id = l.business_id and h.lease_id = l.id)::text as reports,
+                (select count(*) from public.gates g
+                   join public.proposal_versions v
+                     on v.business_id = g.business_id and v.id = g.version_id
+                   join public.planned_runs r
+                     on r.business_id = v.business_id and r.lineage_id = v.lineage_id
+                  where g.business_id = l.business_id and g.state = 'pending'
+                    and r.id = l.run_id)::text as pending_gates
+           from public.leases l
+           join public.reservations res
+             on res.business_id = l.business_id and res.id = l.reservation_id
+          where l.business_id = $1 and l.id = $2`,
+        [fixture.business, picked['leaseId']],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.lease_state).toBe('live');
+      expect(rows[0]?.still_running).toBe(true);
+      expect(rows[0]?.reservation_state).toBe('held');
+      expect(rows[0]?.reports).toBe('0');
+      expect(rows[0]?.pending_gates).toBe('0');
+
+      // And the holder can still hand back under the fence it owns.
       const proper = await asAgent(
         'task.handback',
         {

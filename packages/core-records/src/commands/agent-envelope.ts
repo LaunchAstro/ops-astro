@@ -403,19 +403,29 @@ async function serve(
         },
       );
     case 'task.handback':
-      return await handbackLease(tx, {
-        leaseId: String(request['leaseId'] ?? ''),
-        fence: Number(request['fence']),
-        outcome: String(request['outcome'] ?? ''),
-        // Carried through rather than dropped here, so that sending a number
-        // is the refusal `handbackLease` spells out instead of a silence.
-        ...('actualMinor' in request
-          ? { actualMinor: request['actualMinor'] as number | null }
-          : {}),
-        ...(typeof request['report'] === 'object' && request['report'] !== null
-          ? { report: request['report'] as Readonly<Record<string, unknown>> }
-          : {}),
-      });
+      return await handbackLease(
+        tx,
+        {
+          leaseId: String(request['leaseId'] ?? ''),
+          fence: Number(request['fence']),
+          outcome: String(request['outcome'] ?? ''),
+          // Carried through rather than dropped here, so that sending a number
+          // is the refusal `handbackLease` spells out instead of a silence.
+          ...('actualMinor' in request
+            ? { actualMinor: request['actualMinor'] as number | null }
+            : {}),
+          ...(typeof request['report'] === 'object' && request['report'] !== null
+            ? { report: request['report'] as Readonly<Record<string, unknown>> }
+            : {}),
+          // The successor, untouched and unread. Whether the body is a shape
+          // at all is `handbackLease`'s question, and a key checked here would
+          // be a key checked twice; a key dropped here would be the silence
+          // D06 refuses. What this entry point contributes is the half the
+          // body may not carry: the agent actor below, never `proposedByActorId`.
+          ...('successor' in request ? { successor: request['successor'] } : {}),
+        },
+        session.actorId,
+      );
     case 'task.read': {
       const spine = await readTaskSpine(tx);
       const task = await readTaskDetail(tx, spine.taskTypeId, String(request['recordId'] ?? ''), {
