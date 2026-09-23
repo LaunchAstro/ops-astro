@@ -80,17 +80,21 @@ export async function classifyUnderLocks(
     readonly lineage_state: string;
     readonly lineage_id: string;
     readonly superseded: boolean;
+    readonly delegation_id: string | null;
+    readonly delegation_revoked: boolean;
   }>(
     `select res.state, res.envelope_id, res.held_minor::text as held_minor,
             att.id as attempt_id, (att.dispatch_marker or att.observed) as marked,
             l.state as lease_state, lin.state as lineage_state, lin.id as lineage_id,
-            (ver.superseded_at is not null) as superseded
+            (ver.superseded_at is not null) as superseded,
+            l.delegation_id, coalesce(d.revoked_at is not null, false) as delegation_revoked
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_lineages lin on lin.business_id = res.business_id and lin.id = run.lineage_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
        left join public.leases l on l.business_id = res.business_id and l.id = res.lease_id
+       left join public.delegations d on d.business_id = res.business_id and d.id = l.delegation_id
       where res.business_id = $1 and res.id = $2`,
     [tx.businessId, request.reservationId],
   );
@@ -119,6 +123,12 @@ export async function classifyUnderLocks(
   // set as well. Discovering it here and taking it here would be the late
   // envelope lock the contract forbids.
   locks.require('envelope', row.envelope_id);
+  // F4. The revocation this cause names is a delegation row, and the contract
+  // locks it after the lease. Reading `revoked_at` as the fact means reading
+  // it under that lock, not beside it.
+  if (request.cause === 'authority_revoked' && row.delegation_id !== null) {
+    locks.require('delegation', row.delegation_id);
+  }
 
   if (row.marked) {
     await tx.query(
@@ -199,6 +209,7 @@ interface CauseRow {
   readonly lease_state: string | null;
   readonly lineage_state: string;
   readonly superseded: boolean;
+  readonly delegation_revoked: boolean;
 }
 
 /**
@@ -229,9 +240,13 @@ function supportsCause(cause: NonclaimableCause, row: CauseRow): string | null {
     case 'version_superseded':
       return row.superseded ? null : "this attempt's version is still the live one";
     case 'authority_revoked':
-      // The revocation lives in L2's grant and delegation rows, which the
-      // owning operation has already re-read under these same locks.
-      return null;
+      // F4. The durable fact is the revocation of the delegation this
+      // attempt's lease was issued under. A grant revocation reaches here only
+      // through the delegation it cost its authority, which `grant.revoke`
+      // revokes in the same transaction, so one fact covers both.
+      return row.delegation_revoked
+        ? null
+        : "no revocation is recorded on the delegation this attempt's lease was issued under";
   }
 }
 
@@ -383,6 +398,19 @@ async function lockAndClassify(
 
   const classified: Classification[] = [];
   for (const row of after) {
+    // F4. A revocation that committed without its classification also left
+    // its lease live, because the old handler wrote only the timestamp. The
+    // lease and delegation are already in this set, so finishing the
+    // transition here fences them rather than leaving an inert live claim on
+    // the task until it expires.
+    if (row.cause === 'authority_revoked' && row.lease_id !== null) {
+      // eslint-disable-next-line no-await-in-loop
+      await retireWork(
+        tx,
+        [{ lease_id: row.lease_id, run_id: row.run_id, delegation_id: row.delegation_id }],
+        locks,
+      );
+    }
     // One at a time, inside the caller's transaction. Running these in
     // parallel would interleave their reads of the same envelope totals.
     // eslint-disable-next-line no-await-in-loop
@@ -402,9 +430,9 @@ async function lockAndClassify(
  * same classifier over them under the complete ordered lock set (R1).
  *
  * It manufactures no eligibility. The query below asks only about rows whose
- * lineage is terminal or whose version is superseded — facts another
- * authorised operation wrote — and never about age, a missing claimant or a
- * null lease.
+ * lineage is terminal, whose version is superseded, whose lease was fenced or
+ * whose delegation was revoked. Each is a fact another authorised operation
+ * wrote, and none is age, a missing claimant or a null lease.
  */
 export async function replayRecordedTransitions(
   tx: TenantQuery,
@@ -421,17 +449,25 @@ async function discoverEligible(
     `select ${AFFECTED_COLUMNS},
             case when lin.state in ('rejected', 'cancelled') then 'lineage_' || lin.state
                  when ver.superseded_at is not null then 'version_superseded'
+                 when held_delegation.revoked_at is not null then 'authority_revoked'
                  else 'lease_expired_and_fenced' end as cause,
             case when lin.state in ('rejected', 'cancelled') then lin.id
                  when ver.superseded_at is not null then ver.id
+                 when held_delegation.revoked_at is not null then held_delegation.id
                  else res.lease_id end as cause_id
        ${AFFECTED_JOINS}
        left join public.leases lease on lease.business_id = res.business_id and lease.id = res.lease_id
+       left join public.delegations held_delegation
+         on held_delegation.business_id = res.business_id
+        and held_delegation.id = held_lease.delegation_id
       where res.business_id = $1
         and res.state = 'held'
         and ($2::uuid is null or lin.id = $2::uuid)
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
+             -- F4. A revocation that committed without its classification:
+             -- the delegation row records it, and the lease may still be live.
+             or held_delegation.revoked_at is not null
              -- R5. A hold still bound to a lease the server has already fenced
              -- has a recorded transition and no classification, which is the
              -- exactly-once case W04 asks recovery to finish. It is still not
@@ -586,4 +622,106 @@ export async function cancelAndClassify(
     classified.push(one);
   }
   return { ok: true, value: classified };
+}
+
+/** What a revocation wrote under the locks, and whose work authority it cost. */
+export type RevocationWrite<T> =
+  | { readonly applied: false; readonly value: T }
+  | { readonly applied: true; readonly value: T; readonly lost: readonly string[] };
+
+export interface AuthorityLoss<T> {
+  readonly value: T;
+  readonly applied: boolean;
+  readonly classified: readonly Classification[];
+}
+
+/**
+ * F4. Recorded authority loss, as an owning transition: `delegation.revoke`
+ * and `grant.revoke` both end here.
+ *
+ * `delegationIds` is every delegation the revocation might cost its work
+ * authority, discovered by the caller before any lock. This discovers the live
+ * leases issued under them and the holds bound to those leases, takes the
+ * complete set (cap, envelope, task, run, lineage, lease, delegation,
+ * reservation) in `LOCK_ORDER`, and re-reads it. Only then does `revoke` run:
+ * it writes the revocation itself and names, from what it re-read under the
+ * locks, the delegations that actually lost authority. Each of those is
+ * revoked, its live lease released and fenced, and its holds classified as
+ * `authority_revoked` with the delegation as the recorded cause.
+ *
+ * A marked or observed attempt is quarantined by the classifier with its full
+ * hold, exactly as it is under every other cause.
+ */
+export async function classifyAuthorityLoss<T>(
+  tx: TenantQuery,
+  request: {
+    readonly delegationIds: readonly string[];
+    readonly revoke: (locks: LockSet) => Promise<RevocationWrite<T>>;
+  },
+): Promise<AuthorityLoss<T>> {
+  const ids = [...new Set(request.delegationIds)].toSorted();
+  const discoverWork = async (): Promise<readonly LiveWork[]> =>
+    await tx.query<LiveWork>(
+      `select l.id as lease_id, l.run_id, l.delegation_id
+         from public.leases l
+        where l.business_id = $1 and l.state = 'live' and l.delegation_id = any($2::uuid[])
+        order by l.id`,
+      [tx.businessId, ids],
+    );
+  const discoverHeld = async (): Promise<readonly Affected[]> =>
+    await tx.query<Affected>(
+      `select ${AFFECTED_COLUMNS}, 'authority_revoked' as cause,
+              held_lease.delegation_id as cause_id
+         ${AFFECTED_JOINS}
+        where res.business_id = $1 and res.state = 'held'
+          and held_lease.state = 'live' and held_lease.delegation_id = any($2::uuid[])
+        order by res.id`,
+      [tx.businessId, ids],
+    );
+
+  const workBefore = await discoverWork();
+  const heldBefore = await discoverHeld();
+  const locks = await acquire(tx, [
+    ...locksFor(heldBefore),
+    ...liveWorkLocks(workBefore),
+    // A delegation with no live lease is still the row being revoked.
+    ...ids.map((id) => ({ lockClass: 'delegation' as const, id })),
+  ]);
+  const workAfter = await discoverWork();
+  const heldAfter = await discoverHeld();
+  if (!SAME_SET(workBefore, workAfter) || !SAME_SET(heldBefore, heldAfter)) {
+    throw new Error(
+      'authority loss: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
+    );
+  }
+
+  const written = await request.revoke(locks);
+  if (!written.applied) return { value: written.value, applied: false, classified: [] };
+
+  const lost = new Set(written.lost);
+  const classified: Classification[] = [];
+  for (const id of ids.filter((each) => lost.has(each))) {
+    locks.require('delegation', id);
+    // Revoked here as well as by `delegation.revoke`'s own write, because a
+    // grant revocation costs the delegation its authority without touching
+    // its row, and the classifier's fact is that row's `revoked_at`.
+    // eslint-disable-next-line no-await-in-loop
+    await revokeDelegation(tx, id);
+    // eslint-disable-next-line no-await-in-loop
+    await retireWork(
+      tx,
+      workAfter.filter((row) => row.delegation_id === id),
+      locks,
+    );
+    for (const row of heldAfter.filter((each) => each.delegation_id === id)) {
+      // eslint-disable-next-line no-await-in-loop
+      const one = await classifyUnderLocks(
+        tx,
+        { reservationId: row.reservation_id, cause: 'authority_revoked', causeId: id },
+        locks,
+      );
+      classified.push(one);
+    }
+  }
+  return { value: written.value, applied: true, classified };
 }
