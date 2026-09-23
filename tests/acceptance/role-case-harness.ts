@@ -75,6 +75,7 @@ export interface Harness {
   probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
   positiveBody(declaration: CommandDeclaration): Promise<Prepared>;
   approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
+  reserve(task: Task, purpose: string): Promise<Answer>;
   activeRoleKeys(): Promise<readonly string[]>;
   writeBothComments(taskId: string): Promise<readonly Answer[]>;
   close(): Promise<void>;
@@ -239,19 +240,32 @@ export async function createHarness(part: string): Promise<Harness> {
   }> {
     const subject = await freshTask('the one task this delegation is for');
     const sibling = await freshTask('a sibling the agent may not reach');
+    const decided = await reserve(subject, PROPOSAL.purpose);
+    return { subject, sibling, decided };
+  }
+
+  /**
+   * A proposal on `task` for `purpose`, approved by the admin, answering with
+   * the decision (its `detail` names the reservation an agent picks up).
+   *
+   * The purpose is a parameter because a live delegation is one per agent and
+   * purpose (`delegations.ts`, `DELEGATION_ALREADY_LIVE`): a second pickup by
+   * the same agent needs a second purpose, not a second agent.
+   */
+  async function reserve(task: Task, purpose: string): Promise<Answer> {
     const proposed = await asPerson('task.propose', {
-      recordId: subject.id,
-      expectedRevision: subject.revision,
+      recordId: task.id,
+      expectedRevision: await revisionOf(task.id),
       ...PROPOSAL,
+      purpose,
     });
     const gate = proposed.body['detail'] as Record<string, string>;
-    const decided = await asPerson('task.decide', {
+    return await asPerson('task.decide', {
       gateId: gate['gateId'],
       versionId: gate['versionId'],
       decision: 'approve',
       note: 'approved so an agent can work it',
     });
-    return { subject, sibling, decided };
   }
 
   /** Every role this business's active memberships carry; R4 adds none (case (g)). */
@@ -302,6 +316,7 @@ export async function createHarness(part: string): Promise<Harness> {
       freshTask,
     }),
     approvedReservation,
+    reserve,
     activeRoleKeys,
     writeBothComments,
     close: async () => {

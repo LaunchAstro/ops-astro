@@ -142,17 +142,20 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       for (const declaration of COMMAND_SURFACE) {
         const pair = harness.pairFor(declaration);
         if (grants !== undefined && grants.has(pair)) {
-          // Held, so this is not a no-grant row. Recorded rather than dropped,
-          // so the matrix still has a row for every role against every
-          // endpoint. **Missing coverage**, and not a pass: case (a) drives
-          // the admin, not this caller, so nothing here asserts this caller's
-          // own success. Only `mia`'s `task.read` is asserted, under case (f).
-          // A member-positive sweep over each caller's held pairs would close it.
+          // Held, so this caller is not R2 for this operation: the minimum
+          // contract's R2 is a member *without* that grant (CONTRACT.md:481)
+          // and case 3 is R2 against every endpoint (CONTRACT.md:493). A
+          // refusal manufactured for a caller who holds the grant would be a
+          // wrong answer, not a stricter test. So the cell is not applicable,
+          // and it says where the two real rows are: `noah`, who holds
+          // nothing, is refused on this operation above, and this caller's own
+          // success is the next case's positive control.
           except(
             caller.name,
             'e-no-grant',
             declaration.name,
-            `missing coverage: holds ${pair}; no row asserts this caller's success`,
+            `not applicable: holds ${pair}, so not R2 (minimum contract CONTRACT.md:481, ` +
+              `case 3 at :493); noah is refused here; own row in e-member-positive`,
           );
           continue;
         }
@@ -226,6 +229,56 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       }
     }
     expect(failures('e-no-grant')).toStrictEqual([]);
+  }, 300_000);
+
+  it('(e) and its control: a member succeeds on every operation it holds', async () => {
+    // The other half of case (e), and the reason it means anything for a
+    // member who holds grants: every pair such a caller holds is driven with
+    // the same minimal valid body case (a) gives the admin, set up by the
+    // admin and sent by the member. Derived from `heldBy`, so a reseed that
+    // widened or narrowed a member's grants changes the rows rather than
+    // disagreeing with them. Runs before (f), which takes `mia`'s read away.
+    const agentOnly = new Map<string, Readonly<Record<string, unknown>>>([
+      ['task.pickup', { reservationId: randomUUID() }],
+      ['task.handback', { leaseId: randomUUID(), fence: 1, outcome: 'completed' }],
+      ['task.heartbeat', { leaseId: randomUUID(), fence: 1 }],
+    ]);
+    for (const caller of harness.otherCallers) {
+      const grants = harness.heldBy.get(caller.name);
+      if (grants === undefined) continue;
+      for (const declaration of COMMAND_SURFACE) {
+        if (!grants.has(harness.pairFor(declaration))) continue;
+        const onAgentPath = agentOnly.get(declaration.name);
+        if (onAgentPath !== undefined) {
+          // Called, and recorded as missing coverage rather than passed. The
+          // product answers `AUTH_NO_AGENT_IDENTITY` to every person
+          // (`handlers.ts:107-119`), but person pickup is required (transaction
+          // contract T3 line 66, minimum contract line 331, ledger line 30),
+          // and the root routes person pickup, heartbeat and handback on the
+          // person's own lease to PERSON-WORK (ROOT-L6-74d583c-DISPOSITION.md
+          // lines 31-35). Asserting today's refusal would pin the gap; the
+          // observed answer goes in the row so the change is visible.
+          // eslint-disable-next-line no-await-in-loop
+          const answer = await harness.asPerson(declaration.name, onAgentPath, 'alpha', caller);
+          except(
+            caller.name,
+            'e-member-positive',
+            declaration.name,
+            `missing coverage: observed ${answer.code} ${String(answer.status)}; person ` +
+              'work is required (T3 line 66, minimum contract 331); owner PERSON-WORK',
+          );
+          expect(answer.body['refused'], declaration.name).toBe(true);
+          continue;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const prepared = await harness.positiveBody(declaration);
+        if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
+        // eslint-disable-next-line no-await-in-loop
+        const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', declaration.name, answer, SUCCESS);
+      }
+    }
+    expect(failures('e-member-positive')).toStrictEqual([]);
   }, 300_000);
 
   it('(f) refuses a read that succeeded once, after the grant is revoked', async () => {
@@ -345,6 +398,23 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     const credential = String(picked['credential']);
     expect(picked['taskId']).toBe(subject.id);
 
+    // A second live delegation, on the sibling and for another purpose, so the
+    // handback row below has a real lease outside this credential's purpose to
+    // name. One agent may hold one live delegation per purpose
+    // (`DELEGATION_ALREADY_LIVE`), so a second purpose is a second pickup by
+    // the same login rather than a second agent.
+    const siblingDecided = await harness.reserve(sibling, 'draft_the_sibling_reply');
+    observe('ada', 'k-handback', 'task.decide (sibling)', siblingDecided, SUCCESS);
+    const siblingReservation = (siblingDecided.body['detail'] as Record<string, unknown>)[
+      'reservationId'
+    ];
+    const siblingPickup = await harness.asAgent('task.pickup', {
+      reservationId: siblingReservation,
+    });
+    observe('agent-before-pickup', 'k-handback', 'task.pickup (sibling)', siblingPickup, SUCCESS);
+    const siblingLease = siblingPickup.body['detail'] as Record<string, unknown>;
+    expect(siblingLease['taskId']).toBe(sibling.id);
+
     // (i) I07's one-task ceiling. The sibling is really there and the agent may
     // really not reach it, so `DELEGATION_OUT_OF_PURPOSE` and never
     // `NOT_FOUND`: the second would tell a probing agent the task does not
@@ -408,20 +478,32 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       }
       if (declaration.name === 'task.handback') {
         // A handback names a lease, not a record, and `subjectTaskId` resolves
-        // its task through that lease precisely so an agent cannot name its own
-        // task while settling somebody else's. A fabricated lease resolves to
-        // nothing and falls back to this delegation's own scope, so the call is
-        // *inside* the purpose by construction and proves nothing about the
-        // ceiling. Recorded rather than dressed up as a refusal it is not.
-        // **Missing coverage**: no row here hands back a lease outside the
-        // purpose. A handback naming a lease another delegation holds, expecting
-        // `LEASE_NOT_OWNED`, would close it.
-        except(
+        // its task through that lease (`agent-envelope.ts:363-378`) so an agent
+        // cannot name its own task while settling somebody else's. So the
+        // sibling is reached the only way a handback can reach it: by naming
+        // the lease the *other* delegation holds on it, at that lease's own
+        // fence. The lease's task is the sibling, which is outside this
+        // credential's purpose, so `DELEGATION_OUT_OF_PURPOSE` before any
+        // handback write: no report is retained and the lease is still live.
+        // eslint-disable-next-line no-await-in-loop
+        const answer = await harness.asAgent(
+          declaration.name,
+          { leaseId: siblingLease['leaseId'], fence: siblingLease['fence'], outcome: 'completed' },
+          credential,
+        );
+        observe(
           'agent-after-pickup',
           table,
           declaration.name,
-          'missing coverage: its task comes from the lease; no out-of-purpose lease is tried',
+          answer,
+          refusal('DELEGATION_OUT_OF_PURPOSE'),
         );
+        // eslint-disable-next-line no-await-in-loop
+        const untouched = await harness.world.db.admin.execute<{ readonly n: string }>(
+          `select (select count(*) from public.handback_reports where lease_id = $1)::text as n`,
+          [siblingLease['leaseId']],
+        );
+        expect(untouched[0]?.n, 'no report for a lease outside the purpose').toBe('0');
         continue;
       }
       const expected = refusal(
@@ -439,6 +521,72 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);
     }
+
+    // (k) The operations the admin's positive control could not reach from the
+    // person path, driven for real on the sibling delegation now that the table
+    // is done with it. First the handback: the person path is refused by design
+    // even for the admin, and the lease holder's own handback settles it.
+    // A person naming the agent's lease is refused and writes nothing: the
+    // agent's own handback below still settles it. No code is asserted, because
+    // person handback is PERSON-WORK's to build (see the member-positive case).
+    const byPerson = await harness.asPerson('task.handback', {
+      leaseId: siblingLease['leaseId'],
+      fence: siblingLease['fence'],
+      outcome: 'completed',
+    });
+    expect(byPerson.body['refused'], 'a person does not settle an agent lease').toBe(true);
+    const siblingCredential = String(siblingLease['credential']);
+    const handedBack = await harness.asAgent(
+      'task.handback',
+      { leaseId: siblingLease['leaseId'], fence: siblingLease['fence'], outcome: 'completed' },
+      siblingCredential,
+    );
+    observe('agent-after-pickup', 'k-handback', 'task.handback (own lease)', handedBack, SUCCESS);
+    const settled = handedBack.body['detail'] as Record<string, unknown>;
+    expect(settled['reservationId']).toBe(siblingReservation);
+    // Settled: the handed-back credential is no longer a live delegation.
+    const afterHandback = await harness.asAgent(
+      'task.read',
+      { recordId: sibling.id },
+      siblingCredential,
+    );
+    const notLive = refusal('DELEGATION_NOT_LIVE');
+    observe('agent-after-pickup', 'k-handback', 'task.read (settled)', afterHandback, notLive);
+
+    // Then the revocation, through `delegation.revoke` by the admin, on a third
+    // live delegation made for the purpose: the journey's own credential is
+    // still needed below. The member who holds no `manage` is refused first.
+    const revokable = await harness.freshTask('a task whose delegation is revoked');
+    const revokeDecided = await harness.reserve(revokable, 'draft_the_revoked_reply');
+    const revokePickup = await harness.asAgent('task.pickup', {
+      reservationId: (revokeDecided.body['detail'] as Record<string, unknown>)['reservationId'],
+    });
+    observe('agent-before-pickup', 'k-revoke', 'task.pickup', revokePickup, SUCCESS);
+    const toRevoke = revokePickup.body['detail'] as Record<string, unknown>;
+    const revokedCredential = String(toRevoke['credential']);
+    const liveRead = await harness.asAgent(
+      'task.read',
+      { recordId: revokable.id },
+      revokedCredential,
+    );
+    observe('agent-after-pickup', 'k-revoke', 'task.read (before)', liveRead, SUCCESS);
+    const noManage = await harness.asPerson(
+      'delegation.revoke',
+      { delegationId: toRevoke['delegationId'] },
+      'alpha',
+      harness.world.noah,
+    );
+    observe('noah', 'k-revoke', 'delegation.revoke', noManage, refusal('SCOPE_NOT_GRANTED'));
+    const revokedDelegation = await harness.asPerson('delegation.revoke', {
+      delegationId: toRevoke['delegationId'],
+    });
+    observe('ada', 'k-revoke', 'delegation.revoke', revokedDelegation, SUCCESS);
+    const afterRevoke = await harness.asAgent(
+      'task.read',
+      { recordId: revokable.id },
+      revokedCredential,
+    );
+    observe('agent-after-pickup', 'k-revoke', 'task.read (after)', afterRevoke, notLive);
 
     // The agent's own task, with an action its delegation carries. `comment` is
     // one of the three `pickup` mints and `task.comment` is in `AGENT_SURFACE`,
@@ -597,6 +745,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'j-decision-control',
       'j-decision-excluded',
       'g-external-projection',
+      'k-handback',
+      'k-revoke',
     ]) {
       expect(failures(kase), kase).toStrictEqual([]);
     }
