@@ -5,10 +5,19 @@
     "its change affects go in `conformance`. Both are paths from the repository",
     "root. The runner fails when a named suite is missing, when any test in one",
     "of them is skipped, and when a run ends with zero tests having executed.",
-    "It is empty because no product invariant or conformance suite exists on",
-    "this tree yet, and an empty manifest is a failure, not a pass. See",
-    "docs/agents/database-conformance.md for why that is deliberate."
+    "Filled by the L1-TENANCY lane's handback: the pooled crossover and the",
+    "prefix harness are the invariants; the three conformance suites are the",
+    "catalogue, wrapper and runtime-statement proofs. statement-log.test.ts is",
+    "a pure unit suite and must not be named (it moves the database counter by 0).",
+    "See docs/agents/database-conformance.md."
   ],
-  "invariant": [],
-  "conformance": []
+  "invariant": [
+    "tests/tenancy/pooled-crossover.test.ts",
+    "tests/tenancy/migration-prefixes.test.ts"
+  ],
+  "conformance": [
+    "tests/tenancy/tenancy-conformance.test.ts",
+    "tests/tenancy/tenancy-wrapper.test.ts",
+    "tests/tenancy/runtime-statements.test.ts"
+  ]
 }
