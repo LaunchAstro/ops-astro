@@ -15,6 +15,25 @@
 // enforcing it — the generic submission module sends what it is given, so a
 // protected field posted to the wrong operation is refused by the server and
 // the refusal is what a person reads (N3).
+//
+// **An unsaved edit is resolved, never merged.** Two rounds of draft work tried
+// to keep typing alive across a refresh and each round found another way for it
+// to be lost or to overwrite somebody else. So this screen stops merging. While
+// the title or due date is unsaved the screen has one question on it — Save or
+// Discard — and assignment, the lifecycle buttons and Refresh are disabled
+// until it is answered. Nothing reads a draft across a refresh because no
+// refresh can start while one exists.
+//
+// **A draft remembers where it started.** It records the revision and the field
+// values it began from, and its save sends *that* revision as
+// `expectedRevision`. A concurrent writer who moved the record on gets the
+// server's `VERSION_STALE` and the person is shown a conflict to resolve,
+// rather than their form quietly carrying a revision it was never checked
+// against and erasing the other writer's field.
+//
+// **Nothing is editable while its own request is in flight.** The inputs are
+// disabled for the length of a save, and a settlement clears only the exact
+// draft generation it submitted, so a slow response cannot delete newer typing.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty, Spill, drawPinnedStepWord, type DrawnState } from '@launchastro/ui';
@@ -23,11 +42,12 @@ import {
   isUnavailable,
   type CallResult,
   type OperationsClient,
+  type WireRefusal,
 } from '../operations/client.ts';
 import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { describeFailure, submitEdit } from '../records/submit.ts';
+import { describeFailure, describeRefusal, submitEdit } from '../records/submit.ts';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -35,10 +55,23 @@ export interface TaskDetailProps {
   readonly taskKey: string;
 }
 
-/** The unsaved title and due date, and the read they belong to. */
+/** Where an unsaved edit began: the revision, and the values as they stood. */
+interface DraftBase {
+  readonly revision: number;
+  readonly title: string;
+  readonly due: string;
+}
+
+/** An unsaved title and due date, and everything needed to settle it safely. */
 interface Draft {
   /** Grant and task together: a draft belongs to one task under one grant. */
   readonly identity: string;
+  /**
+   * Bumped by every keystroke. A save settles the generation it submitted and
+   * no other, so a response that arrives after further typing clears nothing.
+   */
+  readonly generation: number;
+  readonly base: DraftBase;
   readonly title: string;
   readonly due: string;
 }
@@ -51,14 +84,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
     deps: [props.taskKey],
   });
 
-  // **Drafts live above the read, not inside it.** A successful assign or
-  // lifecycle action reloads, `RecordState` draws `loading` and unmounts
-  // `Loaded`, and anything held in `Loaded` dies with it — which is how an
-  // unsaved title and due date used to disappear (review finding 2). Held
-  // here they survive the refresh and seed the remounted form.
-  //
-  // They are still dropped exactly where they were before: a different task,
-  // a different grant, or a read the server denied. A draft that outlived its
+  // **The draft lives above the read.** `RecordState` unmounts `Loaded` while a
+  // read is in flight, and the draft has to outlive that to be settled at all.
+  // It is still dropped exactly where it always was: a different task, a
+  // different grant, or a read the server denied. A draft that outlived its
   // authority would be stale authorised data left on the screen, which is the
   // thing that must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
@@ -79,14 +108,26 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
         in a unit test: press it twice and the answers may come back in either
         order, and the older one must not win.
 
-        It is also an authorised refresh of the same task under the same grant,
-        which is exactly the case the drafts above are held for: pressing it
-        with unsaved text in the inputs must not throw that text away.
+        It is disabled while an edit is unsaved. A refresh is the moment a draft
+        and the server's values would have to be reconciled, and this screen
+        does not reconcile them — the person does, with the Save or Discard
+        choice the form is showing them.
       */}
       <div className="btnrow">
-        <button className="btn" type="button" data-refresh="task" onClick={reload}>
+        <button
+          className="btn"
+          type="button"
+          data-refresh="task"
+          disabled={held !== null}
+          onClick={reload}
+        >
           Refresh
         </button>
+        {held === null ? null : (
+          <span className="sbact__meta" data-draft-resolve="why">
+            Save or discard your unsaved changes before refreshing.
+          </span>
+        )}
       </div>
       <RecordState state={state} subject="task" onRetry={reload}>
         {(value) => (
@@ -95,14 +136,38 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
             grantKey={props.grantKey}
             task={value.task}
             draft={held}
-            onDraft={(title, due) => {
-              setDraft({ identity, title, due });
+            onDraft={(next, base) => {
+              if (next === null) {
+                setDraft(null);
+                return;
+              }
+              setDraft((current) =>
+                current !== null && current.identity === identity
+                  ? {
+                      ...current,
+                      title: next.title,
+                      due: next.due,
+                      generation: current.generation + 1,
+                    }
+                  : { identity, generation: 1, base, title: next.title, due: next.due },
+              );
             }}
-            onSaved={() => {
-              // The fields command resolves the draft: what the server now
-              // holds is the answer, so the refreshed read is what the form
-              // shows.
+            onSaved={(generation) => {
+              // Only the generation that was submitted. A save that settles
+              // after further typing has answered a question nobody is asking
+              // any more, and clearing the newer draft here is exactly how the
+              // person's newer text used to disappear.
+              setDraft((current) =>
+                current !== null &&
+                current.identity === identity &&
+                current.generation === generation
+                  ? null
+                  : current,
+              );
+            }}
+            onDiscard={() => {
               setDraft(null);
+              reload();
             }}
             onChanged={reload}
           />
@@ -116,20 +181,31 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
-  /** An unsaved edit that outlived the last refresh, or nothing. */
+  /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
-  readonly onDraft: (title: string, due: string) => void;
-  readonly onSaved: () => void;
+  readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
+  readonly onSaved: (generation: number) => void;
+  readonly onDiscard: () => void;
   readonly onChanged: () => void;
 }
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
   const [because, setBecause] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<WireRefusal | null>(null);
   const [busy, setBusy] = useState(false);
   const saved = { title: task.title, due: task.due === null ? '' : task.due.slice(0, 10) };
   const [title, setTitle] = useState(props.draft?.title ?? saved.title);
   const [due, setDue] = useState(props.draft?.due ?? saved.due);
+
+  // Where this edit began. An existing draft keeps its own starting point; a
+  // first keystroke takes the record as it stands right now.
+  const base: DraftBase = props.draft?.base ?? {
+    revision: task.revision,
+    title: saved.title,
+    due: saved.due,
+  };
+  const dirty = props.draft !== null;
 
   /** Every keystroke lands in both places: this form, and the draft above it. */
   const edit = (next: { title?: string; due?: string }): void => {
@@ -137,7 +213,12 @@ function Loaded(props: LoadedProps): ReactElement {
     const nextDue = next.due ?? due;
     setTitle(nextTitle);
     setDue(nextDue);
-    props.onDraft(nextTitle, nextDue);
+    // Typed back to where it started is not an unsaved edit. Holding a draft
+    // there would lock the other controls for no reason a person could see.
+    props.onDraft(
+      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
+      base,
+    );
   };
 
   const people = useRead<PersonListResult>({
@@ -148,19 +229,29 @@ function Loaded(props: LoadedProps): ReactElement {
   });
 
   /** One place every write lands, so every refusal is shown the same way. */
-  const after = (result: CallResult<unknown>, resolvesDraft: boolean): void => {
+  const after = (result: CallResult<unknown>, settles: number | null): void => {
     setBusy(false);
+    if (isRefusal(result) && result.code === 'VERSION_STALE') {
+      // Somebody else moved the record on while this edit was being made. The
+      // draft stays on the screen — it is the person's work — and the screen
+      // asks them to resolve it rather than resending against a revision they
+      // never saw.
+      setConflict(result);
+      setBecause(null);
+      return;
+    }
     const failure = isRefusal(result) || isUnavailable(result) ? describeFailure(result) : null;
     setBecause(failure);
     if (failure !== null) return;
-    if (resolvesDraft) props.onSaved();
+    if (settles !== null) props.onSaved(settles);
     props.onChanged();
   };
 
-  const run = (work: Promise<CallResult<unknown>>, resolvesDraft = false): void => {
+  const run = (work: Promise<CallResult<unknown>>, settles: number | null = null): void => {
     setBusy(true);
     setBecause(null);
-    void work.then((result) => after(result, resolvesDraft));
+    setConflict(null);
+    void work.then((result) => after(result, settles));
   };
 
   const lifecycle = (command: 'task.start' | 'task.complete' | 'task.reopen'): void => {
@@ -170,21 +261,29 @@ function Loaded(props: LoadedProps): ReactElement {
     );
   };
 
-  const onFields = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
+  const saveFields = (): void => {
     // Both ordinary fields in one edit, through the generic submission module.
     // `due` is sent as null when it has been cleared: an absent field is "do
     // not change" and an explicit null is "there is no due date", and the two
     // are different instructions.
+    //
+    // The revision is the draft's, not the screen's. That is the whole of the
+    // stale-edit protection: an edit begun at revision N is offered at N, and
+    // if the record has moved the server says so.
     run(
       submitEdit(client, {
         command: 'task.update',
         recordId: task.id,
-        expectedRevision: task.revision,
+        expectedRevision: base.revision,
         fields: { title, due: due === '' ? null : due },
       }),
-      true,
+      props.draft?.generation ?? null,
     );
+  };
+
+  const onFields = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    saveFields();
   };
 
   const onAssign = (personId: string): void => {
@@ -223,6 +322,58 @@ function Loaded(props: LoadedProps): ReactElement {
         </p>
       )}
 
+      {conflict === null ? null : (
+        <section className="sb__sect" role="alert" data-conflict="version">
+          <div className="sb__sh">
+            <span className="sb__k">Somebody else changed this task</span>
+          </div>
+          <p className="field__error">{describeRefusal(conflict)}</p>
+          <p className="card__sub">
+            Your edit was made against revision {base.revision}. Copy anything you want to keep,
+            then read the task again and make the change on top of theirs.
+          </p>
+          <ul className="card__sub" data-conflict="unsaved">
+            <li>Title: {title}</li>
+            <li>Due date: {due === '' ? 'none' : due}</li>
+          </ul>
+          <button className="btn" type="button" data-conflict="reload" onClick={props.onDiscard}>
+            Read it again and start from theirs
+          </button>
+        </section>
+      )}
+
+      {!dirty ? null : (
+        <section className="sb__sect" data-draft-resolve="choice">
+          <div className="sb__sh">
+            <span className="sb__k">Unsaved changes</span>
+          </div>
+          <p className="card__sub">
+            The title or due date has been edited and not saved. Assigning, changing the state and
+            refreshing are unavailable until this is settled — nothing here is merged for you.
+          </p>
+          <div className="btnrow">
+            <button
+              className="btn btn--primary"
+              type="button"
+              data-draft-resolve="save"
+              disabled={busy}
+              onClick={saveFields}
+            >
+              Save changes
+            </button>
+            <button
+              className="btn"
+              type="button"
+              data-draft-resolve="discard"
+              disabled={busy}
+              onClick={props.onDiscard}
+            >
+              Discard changes
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="sb__sect">
         <div className="sb__sh">
           <span className="sb__k">State</span>
@@ -231,7 +382,8 @@ function Loaded(props: LoadedProps): ReactElement {
           <button
             className="btn"
             type="button"
-            disabled={busy}
+            data-lifecycle="start"
+            disabled={busy || dirty}
             onClick={() => {
               lifecycle('task.start');
             }}
@@ -241,7 +393,8 @@ function Loaded(props: LoadedProps): ReactElement {
           <button
             className="btn"
             type="button"
-            disabled={busy}
+            data-lifecycle="complete"
+            disabled={busy || dirty}
             onClick={() => {
               lifecycle('task.complete');
             }}
@@ -251,7 +404,8 @@ function Loaded(props: LoadedProps): ReactElement {
           <button
             className="btn"
             type="button"
-            disabled={busy}
+            data-lifecycle="reopen"
+            disabled={busy || dirty}
             onClick={() => {
               lifecycle('task.reopen');
             }}
@@ -270,7 +424,7 @@ function Loaded(props: LoadedProps): ReactElement {
             <select
               className="input"
               aria-label="Assignee"
-              disabled={busy}
+              disabled={busy || dirty}
               value={task.assignee?.personId ?? ''}
               onChange={(event) => {
                 onAssign(event.target.value);
@@ -295,11 +449,18 @@ function Loaded(props: LoadedProps): ReactElement {
           <label className="tf__k" htmlFor="task-title">
             Title
           </label>
+          {/*
+            Disabled while the save is in flight. An input that stays live
+            during its own request invites the person to type something the
+            response is about to throw away, and no amount of care on the
+            settlement side makes that typing visible to the server.
+          */}
           <input
             id="task-title"
             className="input"
             type="text"
             required
+            disabled={busy}
             value={title}
             onChange={(event) => {
               edit({ title: event.target.value });
@@ -314,6 +475,7 @@ function Loaded(props: LoadedProps): ReactElement {
             id="task-due"
             className="input"
             type="date"
+            disabled={busy}
             value={due}
             onChange={(event) => {
               edit({ due: event.target.value });

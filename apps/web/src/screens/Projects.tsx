@@ -34,6 +34,10 @@ export interface ProjectsProps {
 
 export function Projects(props: ProjectsProps): ReactElement {
   const client = props.client;
+  // While this is true the create is in flight and the form is not editable:
+  // the input, the submit and `Start a different task` are all disabled. A
+  // person who can type a second title during the first create is a person
+  // whose second title a delayed success will wipe.
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [because, setBecause] = useState<string | null>(null);
@@ -90,7 +94,12 @@ export function Projects(props: ProjectsProps): ReactElement {
         return;
       }
       setPending(null);
-      setTitle('');
+      // Clear only the text this create was for. The input is disabled while
+      // the request is in flight so there should be nothing newer, but a
+      // settlement that clears whatever happens to be in the box is the same
+      // defect as the task form's: a late success erasing the next task's
+      // title. Bind it to what was submitted and it cannot.
+      setTitle((current) => (current.trim() === attempt.title ? '' : current));
       reload();
     })();
   };
@@ -117,6 +126,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             type="text"
             required
             placeholder="What needs doing"
+            disabled={creating}
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
@@ -132,7 +142,13 @@ export function Projects(props: ProjectsProps): ReactElement {
           {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
         </button>
         {pending === null ? null : (
-          <button className="btn" type="button" data-attempt="discard" onClick={startNew}>
+          <button
+            className="btn"
+            type="button"
+            data-attempt="discard"
+            disabled={creating}
+            onClick={startNew}
+          >
             Start a different task
           </button>
         )}

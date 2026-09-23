@@ -1,20 +1,24 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Unsaved title and due-date drafts across an assignment, through the real
-// screen.
+// Unsaved title and due-date edits on the real task screen, and the rule that
+// replaced two rounds of draft merging: **an unsaved edit is resolved, not
+// merged.**
 //
-// The review's second finding is a lifetime one: the drafts used to live in
-// the component `RecordState` unmounts while the refreshing read is in flight,
-// so a successful assign or lifecycle action silently threw away whatever the
-// person had typed. Nothing on the screen said so and nothing asked.
+// The review's two holding findings were both merge failures. Finding 1: a
+// refresh handed the draft a revision it had never been checked against, so a
+// save could erase a second writer's field with no conflict anywhere. Finding
+// 2: a save that settled after further typing cleared the newer draft, so the
+// newer text vanished. Extending the merge was the thing that kept producing
+// these, so the screen stopped: while an edit is unsaved, assignment, the
+// lifecycle buttons and Refresh are disabled and the person answers Save or
+// Discard.
 //
-// This drives the real `TaskDetailScreen` over a stubbed transport with a real
-// read round trip in between, because the bug only appears once the read
-// actually goes away and comes back. It also holds the other half of the
-// finding in place: a draft must **not** outlive its task, its grant or an
-// authorised-read denial, since stale authorised data left on screen is the
-// failure the whole read module exists to prevent.
+// These cases drive the real `TaskDetailScreen` over a stubbed transport that
+// keeps a revision and refuses a stale one the way the server does. They hold
+// the other half in place too: an edit must **not** outlive its task, its grant
+// or an authorised-read denial, since stale authorised text left on screen is
+// the failure the whole read module exists to prevent.
 
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -88,6 +92,12 @@ function server(options: { readonly denyReads?: boolean } = {}) {
   // assertions want a fact rather than a hope.
   let gate: Promise<void> | null = null;
   let open: (() => void) | null = null;
+  // The same device for a write. A save that answers inside the flush that
+  // started it is a save with no in-flight moment, and the in-flight moment is
+  // the whole of finding 2.
+  let mutationGate: Promise<void> | null = null;
+  let openMutation: (() => void) | null = null;
+  const updates: Record<string, unknown>[] = [];
 
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -125,6 +135,35 @@ function server(options: { readonly denyReads?: boolean } = {}) {
       task.revision += 1;
       return json({ recordId: task.id, revision: task.revision });
     }
+
+    if (at.endsWith('/task/update')) {
+      updates.push(body);
+      // The server's stale-edit protection, in the two lines that matter: the
+      // revision the caller made the edit against is compared with the one the
+      // record actually holds, and a caller that is behind is refused rather
+      // than applied. Without this the test could not tell a fix from a
+      // silent overwrite.
+      const expected = Number(body['expectedRevision']);
+      const held = mutationGate;
+      mutationGate = null;
+      await (held ?? Promise.resolve());
+      if (expected !== task.revision) {
+        return json(
+          {
+            refused: true,
+            code: 'VERSION_STALE',
+            names: [`revision=${String(task.revision)}`],
+            fixes: ['Read the task again and make the change on top of the current one.'],
+          },
+          409,
+        );
+      }
+      const fields = body['fields'] as Record<string, unknown>;
+      task.title = String(fields['title']);
+      task.due = fields['due'] === null ? null : String(fields['due']);
+      task.revision += 1;
+      return json({ recordId: task.id, revision: task.revision });
+    }
     throw new Error(`unrouted ${at}`);
   }) as unknown as typeof globalThis.fetch;
 
@@ -132,6 +171,21 @@ function server(options: { readonly denyReads?: boolean } = {}) {
     fetch,
     task,
     reads,
+    updates,
+    /** Somebody else saves a due date. The record moves on; this screen is behind. */
+    secondWriterSetsDue: (iso: string) => {
+      task.due = iso;
+      task.revision += 1;
+    },
+    /** The next mutation stops here until `releaseMutation` is called. */
+    holdMutation: () => {
+      mutationGate = new Promise<void>((resolve) => {
+        openMutation = resolve;
+      });
+    },
+    releaseMutation: () => {
+      openMutation?.();
+    },
     deny: () => {
       denied = true;
     },
@@ -173,8 +227,85 @@ async function choose(host: HTMLElement, selector: string, value: string): Promi
 const valueOf = (host: HTMLElement, selector: string): string =>
   (host.querySelector(selector) as HTMLInputElement).value;
 
-describe('unsaved details across an assignment', () => {
-  it('survive a successful assign and the refreshed read that follows it', async () => {
+const disabledOf = (host: HTMLElement, selector: string): boolean => {
+  const found = host.querySelector(selector) as HTMLInputElement | null;
+  if (found === null) throw new Error(`nothing matches ${selector}`);
+  return found.disabled;
+};
+
+describe('an unsaved edit is resolved, not merged', () => {
+  it('is offered at the revision it began from, so a second writer is not erased', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+    expect(view.text()).toContain('Revision 3');
+
+    // The person starts editing the title against revision 3.
+    await view.type('#task-title', 'A title nobody has saved yet');
+
+    // Somebody else saves a due date. The record is now at revision 4 and this
+    // screen has never seen it. This is the review's finding-1 example.
+    api.secondWriterSetsDue('2026-12-24');
+
+    // Refresh is the control that used to attach the newer revision to the
+    // older edit. It is not available while the edit is unsaved.
+    expect(disabledOf(view.host, 'button[data-refresh="task"]')).toBe(true);
+
+    await view.click('button[data-draft-resolve="save"]');
+    await tick();
+
+    // The save went out against revision 3, not 4, so the server refused it.
+    expect(api.updates[0]?.['expectedRevision']).toBe(3);
+    expect(view.find('[data-conflict="version"]')).not.toBeNull();
+    expect(view.text()).toContain('VERSION_STALE');
+
+    // The other writer's due date is still there and the title is still theirs:
+    // nothing was overwritten, silently or otherwise.
+    expect(api.task.due).toBe('2026-12-24');
+    expect(api.task.title).toBe(TASK.title);
+    expect(api.task.revision).toBe(4);
+
+    // Resolving reads the task again and starts from what the server holds.
+    await view.click('button[data-conflict="reload"]');
+    await tick();
+    expect(valueOf(view.host, '#task-due')).toBe('2026-12-24');
+    expect(valueOf(view.host, '#task-title')).toBe(TASK.title);
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+
+    await view.unmount();
+  });
+
+  it('holds the assignee, the lifecycle and Refresh until Save or Discard is answered', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+
+    // Clean: everything is available.
+    expect(disabledOf(view.host, 'button[data-refresh="task"]')).toBe(false);
+    expect(disabledOf(view.host, 'select[aria-label="Assignee"]')).toBe(false);
+    expect(disabledOf(view.host, 'button[data-lifecycle="start"]')).toBe(false);
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+
+    await view.type('#task-due', '2026-11-30');
+
+    // Dirty: the choice is on the screen and the silent paths are shut. Each of
+    // these controls used to reload the task underneath the unsaved edit.
+    expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+    expect(disabledOf(view.host, 'button[data-refresh="task"]')).toBe(true);
+    expect(disabledOf(view.host, 'select[aria-label="Assignee"]')).toBe(true);
+    expect(disabledOf(view.host, 'button[data-lifecycle="start"]')).toBe(true);
+    expect(disabledOf(view.host, 'button[data-lifecycle="complete"]')).toBe(true);
+    expect(disabledOf(view.host, 'button[data-lifecycle="reopen"]')).toBe(true);
+    expect(api.reads).toHaveLength(1);
+
+    await view.unmount();
+  });
+
+  it('is discarded on request, and the saved values come back', async () => {
     const api = server();
     const view = await mount(
       <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
@@ -182,75 +313,97 @@ describe('unsaved details across an assignment', () => {
     await tick();
 
     await view.type('#task-title', 'A title nobody has saved yet');
-    await view.type('#task-due', '2026-11-30');
-    expect(valueOf(view.host, '#task-title')).toBe('A title nobody has saved yet');
+    await view.click('button[data-draft-resolve="discard"]');
+    await tick();
 
-    // Hold the refreshing read open, so the state between the successful
-    // assign and the arriving data can be observed rather than raced for.
-    api.hold();
+    expect(valueOf(view.host, '#task-title')).toBe(TASK.title);
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+    expect(api.updates).toHaveLength(0);
+
+    // Released: the assignment the edit was blocking now goes through.
+    expect(disabledOf(view.host, 'select[aria-label="Assignee"]')).toBe(false);
     await choose(view.host, 'select[aria-label="Assignee"]', 'p2');
-    await until(
-      'the refreshing read reached the screen',
-      () => view.find('[data-outcome="loading"]') !== null,
-      Date.now() + 5000,
-    );
-
-    // The refresh is on the screen and the form is not: this is the moment the
-    // drafts used to die, and asserting it here is what stops this test
-    // passing for the wrong reason.
-    expect(view.find('#task-title')).toBeNull();
-
-    api.release();
     await tick();
-
-    // The assign really happened and the read really went round again, so the
-    // form on screen is a fresh mount, not the one that was typed into.
     expect(api.task.assignee?.personId).toBe('p2');
-    expect(api.reads.length).toBeGreaterThan(1);
-    expect(view.text()).toContain('Revision 4');
-
-    expect(valueOf(view.host, '#task-title')).toBe('A title nobody has saved yet');
-    expect(valueOf(view.host, '#task-due')).toBe('2026-11-30');
 
     await view.unmount();
   });
 
-  it('survive the Refresh button, which is an authorised reread of the same task', async () => {
+  it('is saved on request, and the saved values are what the screen then shows', async () => {
     const api = server();
     const view = await mount(
       <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
     );
     await tick();
 
-    await view.type('#task-title', 'A title nobody has saved yet');
+    await view.type('#task-title', 'A title somebody did save');
     await view.type('#task-due', '2026-11-30');
-
-    // Refresh is the other way a read of this task starts over, and it is the
-    // one a person presses *because* they suspect the screen is behind. Doing
-    // that with unsaved text in the inputs must not be how they lose it. The
-    // read is held open so the intermediate state is observed rather than
-    // raced for, exactly as in the assignment case.
-    const before = api.reads.length;
-    api.hold();
-    await view.click('button[data-refresh="task"]');
-    await until(
-      'the refresh reached the screen',
-      () => view.find('[data-outcome="loading"]') !== null,
-      Date.now() + 5000,
-    );
-    expect(view.find('#task-title')).toBeNull();
-
-    api.release();
+    await view.click('button[data-draft-resolve="save"]');
     await tick();
 
-    expect(api.reads.length).toBeGreaterThan(before);
-    expect(valueOf(view.host, '#task-title')).toBe('A title nobody has saved yet');
-    expect(valueOf(view.host, '#task-due')).toBe('2026-11-30');
+    expect(api.task.title).toBe('A title somebody did save');
+    expect(api.task.due).toBe('2026-11-30');
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+    expect(view.find('[data-conflict="version"]')).toBeNull();
+    expect(valueOf(view.host, '#task-title')).toBe('A title somebody did save');
+    expect(disabledOf(view.host, 'button[data-refresh="task"]')).toBe(false);
 
     await view.unmount();
   });
 
-  it('are dropped when the grant changes, so no stale authorised text remains', async () => {
+  it('cannot be edited while the save it belongs to is in flight', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+
+    await view.type('#task-title', 'The text that was submitted');
+
+    // Hold the save open, so the in-flight moment is a fact rather than a race.
+    // This is the moment finding 2 lives in: typing here used to be possible
+    // and the arriving response used to delete it.
+    api.holdMutation();
+    await view.click('.taskform button[type="submit"]');
+    await until('the save reached the wire', () => api.updates.length === 1, Date.now() + 5000);
+
+    expect(disabledOf(view.host, '#task-title')).toBe(true);
+    expect(disabledOf(view.host, '#task-due')).toBe(true);
+    expect(disabledOf(view.host, '.taskform button[type="submit"]')).toBe(true);
+    expect(disabledOf(view.host, 'button[data-draft-resolve="save"]')).toBe(true);
+    expect(disabledOf(view.host, 'button[data-draft-resolve="discard"]')).toBe(true);
+
+    api.releaseMutation();
+    await tick();
+
+    // One save, one applied edit, and the settled screen shows it.
+    expect(api.updates).toHaveLength(1);
+    expect(api.task.title).toBe('The text that was submitted');
+    expect(valueOf(view.host, '#task-title')).toBe('The text that was submitted');
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+
+    await view.unmount();
+  });
+
+  it('is dropped when the task changes, so one task never shows another one edit', async () => {
+    const api = server();
+    const held = client(api.fetch);
+    const view = await mount(
+      <TaskDetailScreen client={held} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await tick();
+
+    await view.type('#task-title', 'A title nobody has saved yet');
+    await view.render(<TaskDetailScreen client={held} grantKey="alpha:mia" taskKey="TSK-2" />);
+    await tick();
+
+    expect(valueOf(view.host, '#task-title')).toBe(TASK.title);
+    expect(view.find('[data-draft-resolve="choice"]')).toBeNull();
+
+    await view.unmount();
+  });
+
+  it('is dropped when the grant changes, so no stale authorised text remains', async () => {
     const api = server();
     const held = client(api.fetch);
     const view = await mount(
@@ -267,7 +420,7 @@ describe('unsaved details across an assignment', () => {
     await view.unmount();
   });
 
-  it('are dropped when the read is denied', async () => {
+  it('is dropped when the read is denied', async () => {
     const api = server();
     const held = client(api.fetch);
     const view = await mount(
