@@ -21,7 +21,20 @@ export const root = fileURLToPath(new URL('../..', import.meta.url));
 // evidence without first recreating someone else's local folder. `SHOT_DIR`
 // still wins, which is how a run collects its evidence somewhere else.
 export const SHOTS = process.env.SHOT_DIR ?? `${root}.local/evidence/browser`;
-export const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
+// **The default stays, and it says so out loud.** `pnpm verify:browser` runs
+// `slice-acceptance.mjs` with no `WEB_URL` in the manifest and reaches every
+// case group through this constant, so dropping the default would break the
+// registered run rather than any script that forgot the override -- and the
+// manifest is not this lane's file to edit. Keeping it silent is what let three
+// throwaway probe scripts sign in and create tasks against another worktree's
+// front end on 5190 while their author read the wrong application. So a run
+// that did not choose its own port is told which one it got, on its first line,
+// where a person diagnosing a missing screen will see it.
+const WEB_DEFAULT = 'http://127.0.0.1:5190';
+if (process.env.WEB_URL === undefined) {
+  process.stderr.write(`browser cases: no WEB_URL, using the default ${WEB_DEFAULT}\n`);
+}
+export const WEB = process.env.WEB_URL ?? WEB_DEFAULT;
 export const API = process.env.API_URL ?? 'http://127.0.0.1:8790';
 export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 
