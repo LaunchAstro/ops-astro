@@ -288,10 +288,11 @@ describe.skipIf(serverUrl === undefined)('task.cancel, task.restart and task.hea
       ).toBe(0);
     });
 
-    it('belongs to the agent: the person prefix refuses it', async () => {
+    it("on the person prefix renews only the person's own lease: a random one is not owned", async () => {
+      // EX-01: a person renews the lease their own pickup took (person-work-http.test.ts).
       const answer = await c.asPerson('task.heartbeat', { leaseId: crypto.randomUUID(), fence: 1 });
-      expect(answer.status).toBe(401);
-      expect(answer.body['code']).toBe('AUTH_NO_AGENT_IDENTITY');
+      expect(answer.status).toBe(403);
+      expect(answer.body['code']).toBe('LEASE_NOT_OWNED');
     });
   });
 });

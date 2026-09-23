@@ -360,7 +360,7 @@ describe.skipIf(serverUrl === undefined)('propose and decide through the command
     expect(attempt?.state).toBe('reserved');
   });
 
-  it('refuses a person who tries to pick work up, because a pickup mints an agent a delegation', async () => {
+  it('refuses a person pickup of a reservation nobody approved (EX-01: person pickup is positive)', async () => {
     const operationId = randomUUID();
     const outcome = await call({
       command: 'task.pickup',
@@ -368,8 +368,8 @@ describe.skipIf(serverUrl === undefined)('propose and decide through the command
       reservationId: randomUUID(),
     });
     expect(isCommandRefusal(outcome)).toBe(true);
-    expect(isCommandRefusal(outcome) ? outcome.code : '').toBe('AUTH_NO_AGENT_IDENTITY');
+    expect(isCommandRefusal(outcome) ? outcome.code : '').toBe('RESERVATION_NOT_CLAIMABLE');
     const events = await auditFor(operationId);
-    expect(events[0]?.refusal_code).toBe('AUTH_NO_AGENT_IDENTITY');
+    expect(events[0]?.refusal_code).toBe('RESERVATION_NOT_CLAIMABLE');
   });
 });
