@@ -13,7 +13,10 @@
 // unchanged rather than re-deriving it — a second module that decides for
 // itself what an agent may decide is a second place that rule can drift.
 
-import type { DelegationRefusal } from '../../core-records/src/authority/delegations.ts';
+import type {
+  DelegationRefusal,
+  DelegationRefusalCode,
+} from '../../core-records/src/authority/delegations.ts';
 
 export type RuntimeRefusalCode =
   /** The gate names a version that is no longer the live one. */
@@ -72,16 +75,20 @@ export function refuse(
 }
 
 export function isRuntimeRefusal(refusal: AnyRefusal): refusal is RuntimeRefusal {
-  return !DELEGATION_CODES.has(refusal.code);
+  return !Object.hasOwn(DELEGATION_CODES, refusal.code);
 }
 
-const DELEGATION_CODES: ReadonlySet<string> = new Set([
-  'DELEGATION_EXCLUDES_DECISION',
-  'DELEGATION_OUT_OF_PURPOSE',
-  'DELEGATION_NARROWED',
-  'DELEGATION_NOT_LIVE',
-  'DELEGATION_WIDENS',
-]);
+// A record over L2's union rather than a list, so a delegation code L2 adds is
+// a type error here instead of a code this module silently claims as its own.
+// `DELEGATION_ALREADY_LIVE` was claimed that way until it was added.
+const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
+  DELEGATION_EXCLUDES_DECISION: true,
+  DELEGATION_OUT_OF_PURPOSE: true,
+  DELEGATION_NARROWED: true,
+  DELEGATION_NOT_LIVE: true,
+  DELEGATION_WIDENS: true,
+  DELEGATION_ALREADY_LIVE: true,
+};
 
 /**
  * The status L3 should give each code when it registers them in

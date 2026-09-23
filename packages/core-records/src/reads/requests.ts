@@ -133,8 +133,8 @@ export type ReadRequest =
    * a setting is a business fact every member works against, and deciding who
    * must agree before money moves is not.
    *
-   * It carries **no revision**, because `business_settings` has no revision
-   * column to carry. See `reads/settings.ts`.
+   * Each setting carries the revision 0020 added, which is what a settings
+   * write sends back as `expectedRevision`. See `reads/settings.ts`.
    */
   | { readonly read: 'settings.read' }
   /**

@@ -62,7 +62,7 @@ import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
  * A runtime or delegation refusal as the command register spells it.
  *
  * Every code in both unions is registered (`tests/commands/runtime-codes.test.ts`
- * asserts the fifteen), so `refuseCommand` cannot be handed a spelling the
+ * asserts the nineteen), so `refuseCommand` cannot be handed a spelling the
  * register has never heard of; if it ever is, its own constructor raises
  * rather than inventing one. The reason and the fix go into `fixes` beside
  * each other for the same reason `fromAuthority` puts them there: both are
@@ -74,6 +74,19 @@ export function fromRuntime(refusal: AnyRefusal): CommandRefusal {
 
 /** The window a proposal's gate stays open for, when the caller names none. */
 const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * A caller's `expiresInSeconds` as an instant on the server's clock, or
+ * `undefined` when it is not a whole number of seconds greater than zero.
+ * Absent is the default week. `task.propose` and `task.handback`'s successor
+ * both read their expiry through this one function, so the two are bounded
+ * the same way and cannot drift apart.
+ */
+function expiryFrom(seconds: unknown): Date | undefined {
+  const value = seconds ?? DEFAULT_EXPIRY_SECONDS;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return undefined;
+  return new Date(Date.now() + value * 1000);
+}
 
 export interface ProposeFields {
   readonly purpose: string;
@@ -106,8 +119,9 @@ function isStep(step: unknown): step is { readonly kind: string; readonly payloa
  * The expiry is named as a duration and turned into an instant **here**,
  * rather than taken as a date from the body. A caller who could post an
  * absolute `expiresAt` could post one in the past and raise a gate nobody can
- * decide, or one ten years out and hold a ceiling open indefinitely; a
- * duration the server adds to its own clock can do neither.
+ * decide; a duration the server adds to its own clock cannot. There is no
+ * upper bound on the duration yet, so a very long one still holds a gate open
+ * for as long as it names.
  */
 export async function proposeOnTask(
   tx: TenantQuery,
@@ -146,8 +160,8 @@ export async function proposeOnTask(
     );
   }
 
-  const seconds = fields.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS;
-  if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+  const expiresAt = expiryFrom(fields.expiresInSeconds);
+  if (expiresAt === undefined) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',
@@ -168,7 +182,7 @@ export async function proposeOnTask(
     currency: fields.currency,
     payload: { ...fields.payload },
     step: { kind: fields.step.kind, payload: { ...fields.step.payload } },
-    expiresAt: new Date(Date.now() + seconds * 1000),
+    expiresAt,
     ...(fields.lineageId === undefined ? {} : { lineageId: fields.lineageId }),
   });
   if (!result.ok) return refused(fromRuntime(result.refusal));
@@ -549,7 +563,7 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
  * The caller's half of a successor, checked key by key.
  *
  * The half a caller sends is `purpose`, `maximumMinor`, `currency`, `payload`,
- * `step` and `expiresAt`. The actor is the session's and is added here, after
+ * `step` and `expiresInSeconds`. The actor is the session's and is added here, after
  * a body carrying one of its spellings has been refused: `FIELD_NOT_WRITABLE`
  * naming the key, which is the answer `prepare.ts` gives for every other field
  * the server owns. Overwriting it quietly would leave a caller believing it
@@ -560,7 +574,7 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
  * own locks and answers with `SUCCESSOR_OUT_OF_BOUNDS`. A second copy of those
  * three here would be a second answer to one question.
  */
-function readSuccessor(raw: unknown, agentActorId: string | undefined): ReadSuccessor {
+export function readSuccessor(raw: unknown, agentActorId: string | undefined): ReadSuccessor {
   if (!isObject(raw)) {
     return invalidSuccessor(
       'successor',
@@ -631,21 +645,25 @@ function readSuccessor(raw: unknown, agentActorId: string | undefined): ReadSucc
     );
   }
 
-  // Absent is the server's own week ahead, as `proposeOnTask` computes one. A
-  // named instant is read here and refused when it is not one or has already
-  // passed: a gate that opened in the past is a gate nobody can decide.
-  const named = raw['expiresAt'];
-  let expiresAt = new Date(Date.now() + DEFAULT_EXPIRY_SECONDS * 1000);
-  if (named !== undefined && named !== null) {
-    const parsed = typeof named === 'string' ? new Date(named) : new Date(Number.NaN);
-    if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
-      return invalidSuccessor(
-        'successor.expiresAt',
-        'Name an ISO-8601 instant in the future, or leave it out for a week.',
-        named,
-      );
-    }
-    expiresAt = parsed;
+  // A duration, turned into an instant here exactly as `proposeOnTask` turns
+  // its own, so the caller never names the instant. The absolute spelling this
+  // field used to take is refused by name rather than ignored: a caller still
+  // sending it would otherwise get the default week while believing it had
+  // chosen a date. L4's `SuccessorRequest` still takes the instant.
+  if ('expiresAt' in raw) {
+    return invalidSuccessor(
+      'successor.expiresAt',
+      'A successor names its expiry as expiresInSeconds, a duration the server adds to its own clock.',
+      raw['expiresAt'],
+    );
+  }
+  const expiresAt = expiryFrom(raw['expiresInSeconds']);
+  if (expiresAt === undefined) {
+    return invalidSuccessor(
+      'successor.expiresInSeconds',
+      'Name a whole number of seconds greater than zero, or leave it out for a week.',
+      raw['expiresInSeconds'],
+    );
   }
 
   return {

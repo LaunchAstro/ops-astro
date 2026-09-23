@@ -3,7 +3,7 @@
 // `task.handback` and the successor it may ask for.
 //
 // The successor's caller-supplied half is `purpose`, `maximumMinor`,
-// `currency`, `payload`, `step` and `expiresAt`. `proposedByActorId` is not in
+// `currency`, `payload`, `step` and `expiresInSeconds`. `proposedByActorId` is not in
 // it and never can be: L4's `writeProposal` records the version as coming from
 // whoever that field names, so a body that could fill it would be a body
 // choosing whose authority the successor is recorded under -- the same claim
@@ -18,7 +18,10 @@
 // `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import { handbackLease } from '../../packages/core-records/src/commands/tasks-runtime.ts';
+import {
+  handbackLease,
+  readSuccessor,
+} from '../../packages/core-records/src/commands/tasks-runtime.ts';
 import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
@@ -81,7 +84,13 @@ describe('task.handback and the successor proposal', () => {
     ['currency', { currency: null }],
     ['payload', { payload: 'not an object' }],
     ['step', { step: { kind: 7, payload: {} } }],
-    ['expiresAt', { expiresAt: 'the day after never' }],
+    ['expiresInSeconds', { expiresInSeconds: 'a week' }],
+    ['expiresInSeconds', { expiresInSeconds: 0 }],
+    ['expiresInSeconds', { expiresInSeconds: -60 }],
+    ['expiresInSeconds', { expiresInSeconds: 1.5 }],
+    // The absolute spelling the successor used to take. A caller still sending
+    // it is told so by name rather than handed the default week in silence.
+    ['expiresAt', { expiresAt: '2099-01-01T00:00:00Z' }],
   ])('refuses a successor whose %s is not what it has to be', async (name, broken) => {
     const outcome = await handbackLease(
       untouched,
@@ -92,6 +101,28 @@ describe('task.handback and the successor proposal', () => {
     if (!isRefused(outcome)) throw new Error('unreachable');
     expect(outcome.refusal.code).toBe('FIELD_VALUE_INVALID');
     expect(outcome.refusal.names).toEqual([`successor.${name}`]);
+  });
+
+  // The successor's expiry is a duration the server adds to its own clock, as
+  // `task.propose`'s is, so a caller cannot hold a ceiling open to an instant
+  // of its choosing.
+  it('turns expiresInSeconds into an instant on the server clock', () => {
+    const before = Date.now();
+    const read = readSuccessor({ ...wellFormed, expiresInSeconds: 90 }, AGENT);
+    const after = Date.now();
+    if (!('successor' in read)) throw new Error('refused a well-formed successor');
+    const at = read.successor.expiresAt.getTime();
+    expect(at).toBeGreaterThanOrEqual(before + 90_000);
+    expect(at).toBeLessThanOrEqual(after + 90_000);
+  });
+
+  it('gives a successor with no expiry the week propose gives', () => {
+    const before = Date.now();
+    const read = readSuccessor({ ...wellFormed }, AGENT);
+    if (!('successor' in read)) throw new Error('refused a well-formed successor');
+    expect(read.successor.expiresAt.getTime()).toBeGreaterThanOrEqual(
+      before + 7 * 24 * 60 * 60 * 1000,
+    );
   });
 
   it('refuses a successor asked for without an agent identity to record it against', async () => {

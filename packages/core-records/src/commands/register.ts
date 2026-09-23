@@ -387,16 +387,17 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // route to revoke it through. `DELEGATION_WIDENS` is a mint refusal and
   // `task.pickup` mints from the authorising person's own live grants, so it
   // cannot construct a widening one. The other three name a delegation
-  // lifecycle — excluded operations, intake, an explicit revocation — that
+  // lifecycle — intake, expiry as its own answer, an explicit revocation — that
   // this head's one-task purpose does not distinguish.
   'DELEGATION_NARROWED',
   'DELEGATION_WIDENS',
   // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
   // already holds live, and `task.pickup` reaches it as a 409 instead of the
-  // 503 the unique index used to raise.
+  // 503 the unique index used to raise. `DELEGATION_EXCLUDES_OPERATION` came
+  // off too: `agent-envelope.ts` refuses with it any operation outside
+  // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
   'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXCLUDES_OPERATION',
   'DELEGATION_EXPIRED',
   'DELEGATION_REVOKED',
   // T2 spellings the runtime did not adopt. It raises `GATE_ALREADY_DECIDED`
@@ -405,22 +406,27 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'PROPOSAL_SUPERSEDED',
   'PROPOSAL_SCOPE_EXCEEDED',
   'TASK_NOT_PICKABLE',
-  // The four L4 codes that need something no caller can reach.
+  // The three L4 codes that need something no caller can reach.
   //
   // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
   // disagree, and `propose` writes both from one value, so only an amended row
-  // produces it. `GATE_EXPIRED` and `LEASE_EXPIRED` need the wall clock to
-  // pass an expiry the server chose, between two calls. `LEASE_HELD` needs a
-  // second pickup of a reservation already leased, and the second pickup meets
-  // `RESERVATION_NOT_CLAIMABLE` first: the reservation has left `held` by
-  // then. `CHANGE_ROUNDS_EXHAUSTED` is reachable and proven in
-  // `tests/runtime/gate.test.ts` against the module rather than through a
-  // command, so it stays named until a command case reaches it.
+  // produces it. `LEASE_EXPIRED` needs a handback on a lease that has expired
+  // or left `live`, and the agent path meets something else first: `pickup`
+  // mints the delegation with the lease's own expiry, so an expired lease
+  // arrives as `DELEGATION_NOT_LIVE`; a newer pickup answers
+  // `LEASE_NOT_OWNED`; and the handback that settles a lease settles its
+  // delegation too. `LEASE_HELD` needs a second pickup of a reservation
+  // already leased, and the second pickup meets `RESERVATION_NOT_CLAIMABLE`
+  // first: the reservation has left `held` by then.
+  //
+  // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` came off this list when a
+  // command case reached each (`tests/commands/unproduced-reach.test.ts`):
+  // `task.propose` takes `expiresInSeconds`, so a one-second window closes
+  // before the decision, and `task.propose` on a lineage plus `task.decide`
+  // reach the third round.
   'EVIDENCE_MISMATCH',
-  'GATE_EXPIRED',
   'LEASE_EXPIRED',
   'LEASE_HELD',
-  'CHANGE_ROUNDS_EXHAUSTED',
   // L4's three review-fix codes are deliberately **not** on this list, and
   // each is a command path rather than a module one.
   //

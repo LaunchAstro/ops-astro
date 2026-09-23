@@ -24,6 +24,7 @@ import {
 import { readTaskSpine } from '../commands/context.ts';
 import { declarationOf } from '../commands/surface.ts';
 import { SYSTEM_OWNED_FIXES, claimedSystemOwnedFields } from '../commands/prepare.ts';
+import { refuseReadOperands } from '../commands/operands.ts';
 import { writeAuditEvent } from '../commands/audit.ts';
 import { payloadDigest } from '../commands/digest.ts';
 import {
@@ -138,6 +139,12 @@ async function serveRead(
       attempted: claimed.values,
     };
   }
+  // An absent or mistyped operand is refused next, before it reaches a bound
+  // parameter and answers a fault (checklist B7). It used to be refused at the
+  // HTTP boundary, which left a refused read with no audit row; here it is
+  // audited like every other refused read (I13).
+  const operands = refuseReadOperands(request.read, request as Readonly<Record<string, unknown>>);
+  if (operands !== undefined) return { outcome: operands, subjectRecordId: null };
   const needsSpine = request.read === 'task.read' || request.read === 'task.board';
   const spine = needsSpine ? await readTaskSpine(tx) : undefined;
   const recordId =

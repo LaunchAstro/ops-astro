@@ -8,16 +8,14 @@
 // own timestamp, so a lineage already in the database cannot make a case pass,
 // and nothing here reaches a task another case owns.
 //
-// **The seed grants nobody `decide`, and this group says so out loud.**
-// `scripts/local-seed.mjs` gives its admin `task` read/write/assign/comment/
-// share/manage, `person:read` and `settings:manage`. `task.propose` takes
-// `write`, which ada holds; `task.decide` takes the `decide` action on the
-// `task` collection (`commands/surface.ts` declares it), and that is an action
-// no seeded role holds at all. So P2 and P3 cannot run as the seed stands: each
-// issues the grant itself through `issueGrant` -- the authority path, the same
-// one `n6-revocation.mjs` uses to revoke one -- and takes it back in a
-// `finally`, leaving the business's grants as it found them. The gap belongs to
-// the seed's lane and is named in the handback rather than patched here.
+// **P2 and P3 issue their own `decide` grant.** `task.propose` takes `write`
+// and `task.decide` takes the `decide` action on the `task` collection
+// (`commands/surface.ts` declares it). When this file was written no seeded
+// role held `decide`; `scripts/local-seed.mjs` now grants it to the admin. The
+// cases still issue the grant themselves through `issueGrant` -- the authority
+// path, the same one `n6-revocation.mjs` uses to revoke one -- and take it back
+// in a `finally`, so they do not depend on the seed and leave the business's
+// grants as they found them.
 //
 // **P1 fills the form, and the first draft of this file could not.** The form
 // was sending `step` as a bare string where the command's contract is

@@ -91,15 +91,15 @@ describe('the refusal register', () => {
       // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
       // `authority/delegations.ts` refuses a second live mint under one
       // purpose, and `task.pickup` reaches it (`tests/api/task-runtime-routes.test.ts`).
-      'CHANGE_ROUNDS_EXHAUSTED',
+      // `DELEGATION_EXCLUDES_OPERATION`, `GATE_EXPIRED` and
+      // `CHANGE_ROUNDS_EXHAUSTED` came off together, each reached through the
+      // command envelope in `tests/commands/unproduced-reach.test.ts`.
       'DELEGATION_EXCLUDES_INTAKE',
-      'DELEGATION_EXCLUDES_OPERATION',
       'DELEGATION_EXPIRED',
       'DELEGATION_NARROWED',
       'DELEGATION_REVOKED',
       'DELEGATION_WIDENS',
       'EVIDENCE_MISMATCH',
-      'GATE_EXPIRED',
       'GATE_PENDING',
       'LEASE_EXPIRED',
       'LEASE_HELD',
