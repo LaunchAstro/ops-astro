@@ -24,7 +24,12 @@ import {
   classifyUnderLocks,
   replayRecordedTransitions,
 } from '../../packages/core-runtime/src/recovery.ts';
-import { verifyChain } from '../../packages/core-runtime/src/signing.ts';
+import {
+  decidedAtText,
+  decisionLink,
+  linkVersionOf,
+  verifyChain,
+} from '../../packages/core-runtime/src/signing.ts';
 import {
   buildFixture,
   envelopeTotals,
@@ -916,9 +921,16 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       readonly version_id: string;
       readonly decision: string;
       readonly decided_by_person_id: string;
+      readonly decided_by_actor_id: string;
+      readonly lineage_id: string;
+      readonly round: number;
+      readonly decided_at: string;
+      readonly evidence_digest: string;
     }>(
       `select id, seq::int as seq, prev_hash, hash, payload, payload_digest, signature,
-              signing_key_id, gate_id, version_id, decision, decided_by_person_id
+              signing_key_id, gate_id, version_id, decision, decided_by_person_id,
+              decided_by_actor_id, lineage_id, round, evidence_digest,
+              ${decidedAtText('decided_at')} as decided_at
          from public.gate_decisions where business_id = $1 order by seq`,
       [fixture.businessId],
     );
@@ -926,7 +938,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     type Row = (typeof rows)[number];
     const broken = verifyChain(TEST_SIGNING_KEY, rows, (row) => {
       const full = row as Row;
-      return {
+      return decisionLink(linkVersionOf(full.payload) ?? 1, {
         id: full.id,
         seq: Number(full.seq),
         gate: full.gate_id,
@@ -935,7 +947,13 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
         person: full.decided_by_person_id,
         payloadDigest: full.payload_digest,
         signature: full.signature,
-      };
+        round: full.round,
+        decidedAt: full.decided_at,
+        lineage: full.lineage_id,
+        actor: full.decided_by_actor_id,
+        evidence: full.evidence_digest,
+        key: full.signing_key_id,
+      });
     });
     expect(broken).toMatch(/payload/u);
   });
