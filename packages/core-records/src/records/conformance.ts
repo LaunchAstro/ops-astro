@@ -165,11 +165,13 @@ export async function domainModelConformance(read: Read): Promise<readonly Findi
 
   for (const row of rows) {
     const where = `${row.record_type_key}.${row.key}`;
-    if (row.slot !== null && (row.write_mode === null || row.write_mode === '')) {
+    // Every field, slotted or not: an unslotted field such as `task_state.label`
+    // written through `data` is as unclassified as a slotted one.
+    if (row.write_mode === null || row.write_mode === '') {
       findings.push({
-        rule: 'every slot-assigned field has a non-null write mode',
+        rule: 'every field has a non-null write mode',
         object: where,
-        detail: 'the field is slotted and unclassified',
+        detail: `the field is ${row.slot === null ? 'unslotted' : 'slotted'} and unclassified`,
       });
     }
     if (row.write_mode === 'operation' && row.owning_operation === null) {

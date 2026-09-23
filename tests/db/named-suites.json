@@ -72,7 +72,10 @@
     "tests/runtime/schedules-w01.test.ts",
     "tests/runtime/schedules-w03.test.ts",
     "tests/runtime/schedules-w05.test.ts",
-    "tests/runtime/schedules-heartbeat.test.ts"
+    "tests/runtime/schedules-heartbeat.test.ts",
+    "tests/runtime/gate-negatives.test.ts",
+    "tests/records/model-negatives.test.ts",
+    "tests/commands/gate-not-found.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

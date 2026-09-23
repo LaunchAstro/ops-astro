@@ -10,11 +10,21 @@
 // than another (minimum contract 5.1).
 //
 // The one rule this file adds to the engine's is the provenance one. `source`
-// and `intake_state` in a payload are refused `SOURCE_SPOOFED` rather than the
-// engine's `FIELD_NOT_WRITABLE` or `TRANSITION_PROTECTED`, because claiming
-// provenance is a different mistake from writing a derived field: a body that
-// says it was created by a person, or that it has already been accepted, is
-// claiming an authority that did not happen (minimum contract 6.1). The
+// in a payload is refused `SOURCE_SPOOFED` rather than the engine's
+// `FIELD_NOT_WRITABLE`, because claiming provenance is a different mistake from
+// writing a derived field: a body that says it was created by a person is
+// claiming an authority that did not happen (minimum contract 6.1).
+//
+// `intake_state` is the precedence case (the root's D03 ruling). On
+// `task.create` it is `SOURCE_SPOOFED` too: minimum contract line 324 names it
+// for that command. On `task.update` any value, `accepted` included, goes to
+// the engine and is `TRANSITION_PROTECTED` naming `task.triage`: SPEC T1-N3
+// (task-demo spec line 155) and ledger D03 (line 75) require exactly that for a
+// generic edit, and minimum contract lines 325 and 398 agree. That
+// takes precedence over section 6.1 line 437, which answered `SOURCE_SPOOFED`
+// to a body carrying `intake_state: accepted` without naming an operation. A
+// generic editor cannot confer approval either way; the difference is that the
+// caller is told which operation can. Either answer writes nothing, and the
 // attempted value goes to the audit event and never to the response.
 
 import { randomUUID } from 'node:crypto';
@@ -36,17 +46,25 @@ import type { CommandContext } from './context.ts';
 import type { TaskStateRow } from '../tasks/state.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
-/** The two fields a body can use to claim a provenance it does not have. */
-const SPOOFABLE: readonly string[] = ['source', 'intake_state'];
+/** The fields a create body can use to claim a provenance it does not have. */
+const SPOOFABLE_ON_CREATE: readonly string[] = ['source', 'intake_state'];
 
-function refuseSpoof(fields: FieldValues): HandlerOutcome | undefined {
-  const claimed = SPOOFABLE.filter((key) => key in fields).toSorted();
+/** On update `intake_state` is the operation-owned field it is; see the top. */
+const SPOOFABLE_ON_UPDATE: readonly string[] = ['source'];
+
+function refuseSpoof(
+  fields: FieldValues,
+  spoofable: readonly string[],
+): HandlerOutcome | undefined {
+  const claimed = spoofable.filter((key) => key in fields).toSorted();
   if (claimed.length === 0) return undefined;
   const attempted = Object.fromEntries(claimed.map((key) => [key, fields[key]]));
   return refused(
     refuseCommand('SOURCE_SPOOFED', claimed, [
       '`source` is derived by the server from the authenticated actor and the entry point.',
-      '`intake_state` is conferred by a decision, never by the body that asks for it.',
+      ...(claimed.includes('intake_state')
+        ? ['`intake_state` is conferred by a decision, never by the body that asks for it.']
+        : []),
       'The attempted value goes to the audit, not to the response.',
     ]),
     attempted,
@@ -89,7 +107,7 @@ export async function createTask(
   // First, because every check below reads `fields` as a map.
   const operands = refuseCreateOperands(request.fields);
   if (operands !== undefined) return refused(operands);
-  const spoofed = refuseSpoof(request.fields);
+  const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_CREATE);
   if (spoofed !== undefined) return spoofed;
 
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
@@ -167,7 +185,7 @@ export async function updateTask(
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
 
-  const spoofed = refuseSpoof(request.fields);
+  const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_UPDATE);
   if (spoofed !== undefined) return spoofed;
 
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);

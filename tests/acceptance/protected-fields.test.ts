@@ -20,10 +20,13 @@
 // **Three codes, not one, and the difference is the point.** A field an
 // operation owns is `TRANSITION_PROTECTED` and names the operation to call
 // instead. A field the server derives is `FIELD_NOT_WRITABLE`, because no
-// operation takes it as an input on any surface. `source` and `intake_state`
-// are `SOURCE_SPOOFED`: claiming a provenance is a different mistake from
-// writing a derived field, and `commands/tasks-write.ts` refuses them before
-// the engine ever classifies them.
+// operation takes it as an input on any surface. `source` is `SOURCE_SPOOFED`:
+// claiming a provenance is a different mistake from writing a derived field,
+// and `commands/tasks-write.ts` refuses it before the engine classifies it.
+// `intake_state` is `SOURCE_SPOOFED` on `task.create` only (minimum contract
+// line 324); on `task.update` any value, `accepted` included, is
+// `TRANSITION_PROTECTED` naming `task.triage` (SPEC T1-N3 line 155, ledger D03
+// line 75, over section 6.1 line 437 by the root's D03 ruling).
 //
 // **The database read is the assertion this file exists for.** A refusal that
 // still wrote is worse than no refusal at all: the caller is told no and the
@@ -59,14 +62,15 @@ if (serverUrl === undefined) {
 }
 
 /**
- * The two fields a body can use to claim a provenance it does not have.
+ * The fields a `task.update` body is refused `SOURCE_SPOOFED` for.
  *
- * `commands/tasks-write.ts:38` holds this list as `SPOOFABLE` and does not
+ * `commands/tasks-write.ts` holds this as `SPOOFABLE_ON_UPDATE` and does not
  * export it, so it is restated here rather than read. That is the one hand-kept
  * fact in this file and it is named as such: if that module's list changes, the
  * cases for those keys fail on the code rather than passing quietly.
+ * `intake_state` is not on it: on update it is the operation-owned field it is.
  */
-const PROVENANCE_FIELDS: ReadonlySet<string> = new Set(['source', 'intake_state']);
+const PROVENANCE_FIELDS: ReadonlySet<string> = new Set(['source']);
 
 const spineField = (key: string): SpineField => {
   const found = TASK_SPINE.find((field) => field.key === key);
@@ -163,6 +167,59 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     );
   }
 
+  /**
+   * One `task.update` against the subject, through the named surface. The API
+   * and the CLI carry a status, and it must be the register's own rather than a
+   * number this boundary chose: `statusFor` is the table `apps/api/status.ts`
+   * keeps, and asking it proves the boundary used it.
+   */
+  async function attemptUpdate(
+    surface: string,
+    fields: Readonly<Record<string, unknown>>,
+    expectedRevision: number,
+  ): Promise<{ code: string; names: readonly string[]; body: unknown; status?: number }> {
+    if (surface === 'api') {
+      const answer = await command('task.update', {
+        recordId: subjectId,
+        expectedRevision,
+        fields,
+      });
+      return {
+        code: answer.code,
+        names: answer.body['names'] as readonly string[],
+        body: answer.body,
+        status: answer.status,
+      };
+    }
+    if (surface === 'cli') {
+      const answer = await cli.run('task.update', {
+        operationId: randomUUID(),
+        recordId: subjectId,
+        expectedRevision,
+        fields,
+      });
+      const refusal = answer.body as Record<string, unknown>;
+      return {
+        code: String(refusal['code']),
+        names: refusal['names'] as readonly string[],
+        body: refusal,
+        status: answer.status,
+      };
+    }
+    // The mounted app's own path, unfiltered on purpose: `submit.ts` sends
+    // every field it is handed precisely so this refusal stays reachable from
+    // the application a person uses.
+    const result = await submitEdit(web, {
+      command: 'task.update',
+      recordId: subjectId,
+      expectedRevision,
+      fields,
+    });
+    expect(isRefusal(result), `web surface answered ${JSON.stringify(result)}`).toBe(true);
+    const refusal = result as { readonly code: string; readonly names: readonly string[] };
+    return { code: refusal.code, names: refusal.names, body: refusal };
+  }
+
   beforeAll(async () => {
     world = await createWorld('prot');
     cli = createCli({
@@ -213,52 +270,12 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     const fields = { [test.key]: value };
     const before = await stored(subjectId);
 
-    let code: string;
-    let names: readonly string[];
-    let body: unknown;
-    if (test.surface === 'api') {
-      const answer = await command('task.update', {
-        recordId: subjectId,
-        expectedRevision: before.revision,
-        fields,
-      });
-      // Only the API surface carries the status, and it must be the register's
-      // own rather than a number this boundary chose: `statusFor` is the table
-      // `apps/api/status.ts` keeps, and asking it here proves the boundary used
-      // it instead of proving that a constant equals itself.
-      expect(answer.status).toBe(statusFor(expectedCode(field)));
-      code = answer.code;
-      names = answer.body['names'] as readonly string[];
-      body = answer.body;
-    } else if (test.surface === 'cli') {
-      const answer = await cli.run('task.update', {
-        operationId: randomUUID(),
-        recordId: subjectId,
-        expectedRevision: before.revision,
-        fields,
-      });
-      const refusal = answer.body as Record<string, unknown>;
-      expect(answer.status).toBe(statusFor(expectedCode(field)));
-      code = String(refusal['code']);
-      names = refusal['names'] as readonly string[];
-      body = refusal;
-    } else {
-      // The mounted app's own path, unfiltered on purpose: `submit.ts` sends
-      // every field it is handed precisely so this refusal stays reachable from
-      // the application a person uses.
-      const result = await submitEdit(web, {
-        command: 'task.update',
-        recordId: subjectId,
-        expectedRevision: before.revision,
-        fields,
-      });
-      expect(isRefusal(result), `web surface answered ${JSON.stringify(result)}`).toBe(true);
-      const refusal = result as { readonly code: string; readonly names: readonly string[] };
-      code = refusal.code;
-      names = refusal.names;
-      body = refusal;
-    }
-
+    const { code, names, body, status } = await attemptUpdate(
+      test.surface,
+      fields,
+      before.revision,
+    );
+    if (status !== undefined) expect(status).toBe(statusFor(expectedCode(field)));
     expect(code).toBe(expectedCode(field));
     expect(names).toStrictEqual(expectedNames(field));
     // The attempted value goes to the audit, never to the response. A refusal
@@ -286,6 +303,125 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     expect(after.data).toStrictEqual(baseline.data);
     expect(after.slots).toStrictEqual(baseline.slots);
     expect(after.revision).toBe(baseline.revision);
+  });
+
+  /**
+   * D03, the root's intake-state ruling. On `task.update` any `intake_state`
+   * value, `accepted` included, is `TRANSITION_PROTECTED` naming `task.triage`:
+   * a generic editor cannot confer approval, and SPEC T1-N3 (line 155) and
+   * ledger D03 (line 75) take precedence over minimum contract section 6.1
+   * (line 437) for that operation. `task.create` keeps `SOURCE_SPOOFED`
+   * (minimum contract line 324), and so does `source` on either command.
+   * Generated over the values a caller could send, each on every surface.
+   */
+  describe('D03: intake_state on task.update names task.triage; task.create keeps SOURCE_SPOOFED', () => {
+    const INTAKE_VALUES: readonly unknown[] = [
+      'accepted',
+      'pending_triage',
+      'probe-intake_state',
+      '',
+      null,
+      42,
+    ];
+    const triage = spineField('intake_state');
+    const UPDATE_CASES = INTAKE_VALUES.flatMap((value) =>
+      SURFACES.map((surface) => ({ value, surface, label: JSON.stringify(value) })),
+    );
+
+    it('derives task.triage as the owner from the spine', () => {
+      expect(triage.writeMode).toBe('operation');
+      expect(triage.owningOperations).toStrictEqual(['task.triage']);
+    });
+
+    it.each(UPDATE_CASES)(
+      'refuses task.update intake_state=$label through $surface as TRANSITION_PROTECTED',
+      async ({ value, surface }) => {
+        const before = await stored(subjectId);
+        const { code, names, body, status } = await attemptUpdate(
+          surface,
+          { intake_state: value },
+          before.revision,
+        );
+        if (status !== undefined) expect(status).toBe(statusFor('TRANSITION_PROTECTED'));
+        expect(code).toBe('TRANSITION_PROTECTED');
+        expect(names).toStrictEqual(['intake_state=task.triage']);
+        expect(Object.keys(body as object).toSorted()).toStrictEqual([
+          'code',
+          'fixes',
+          'names',
+          'refused',
+        ]);
+        if (typeof value === 'string' && value !== '') {
+          expect(JSON.stringify(body)).not.toContain(value);
+        }
+        const after = await stored(subjectId);
+        expect(after).toStrictEqual(before);
+        expect(after.data).toStrictEqual(baseline.data);
+      },
+    );
+
+    it('keeps source first on an update that also claims acceptance', async () => {
+      const before = await stored(subjectId);
+      const { code, names, body } = await attemptUpdate(
+        'api',
+        { source: 'person:api', intake_state: 'accepted' },
+        before.revision,
+      );
+      expect(code).toBe('SOURCE_SPOOFED');
+      expect(names).toStrictEqual(['source']);
+      expect(JSON.stringify(body)).not.toContain('accepted');
+      expect(await stored(subjectId)).toStrictEqual(before);
+    });
+
+    async function taskCount(): Promise<number> {
+      const rows = await world.db.admin.execute<{ n: number }>(
+        `select count(*)::int as n from public.records`,
+      );
+      return rows[0]?.n ?? -1;
+    }
+
+    const CREATE_CASES = [
+      ...INTAKE_VALUES.map((value) => ({ key: 'intake_state', value })),
+      { key: 'source', value: 'person:api' },
+    ].flatMap((each) =>
+      ['api', 'cli'].map((surface) => ({
+        key: each.key,
+        value: each.value,
+        surface,
+        label: JSON.stringify(each.value),
+      })),
+    );
+
+    it.each(CREATE_CASES)(
+      'refuses task.create $key=$label through $surface as SOURCE_SPOOFED, creating nothing',
+      async ({ key, value, surface }) => {
+        const count = await taskCount();
+        const fields = { title: `D03 create ${key}`, [key]: value };
+        let code: string;
+        let names: readonly string[];
+        let body: unknown;
+        let status: number;
+        if (surface === 'api') {
+          const answer = await command('task.create', { fields });
+          ({ code, status, body } = answer);
+          names = answer.body['names'] as readonly string[];
+        } else {
+          const answer = await cli.run('task.create', { operationId: randomUUID(), fields });
+          const refusal = answer.body as Record<string, unknown>;
+          code = String(refusal['code']);
+          names = refusal['names'] as readonly string[];
+          body = refusal;
+          status = answer.status;
+        }
+        expect(status).toBe(statusFor('SOURCE_SPOOFED'));
+        expect(code).toBe('SOURCE_SPOOFED');
+        expect(names).toStrictEqual([key]);
+        if (typeof value === 'string' && value !== '') {
+          expect(JSON.stringify(body)).not.toContain(value);
+        }
+        expect(await taskCount()).toBe(count);
+      },
+    );
   });
 
   /**
