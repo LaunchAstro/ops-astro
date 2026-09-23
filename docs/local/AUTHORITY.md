@@ -32,6 +32,15 @@ which the resolver reads them the thing that decides who the caller is.
 `AgentSession` has no `personId` field. Not null — absent. A field that is
 sometimes a person is a field some later `??` fills in.
 
+A delegation credential minted since migration 0022 is derived, not drawn: an
+HMAC of the delegation's fixed identity under a dedicated delegation
+credential key, which is never the gate-signing key or the Supabase JWT
+secret. The key lives in the environment or in the gitignored
+`.local/delegation.env`, and the database stores only the digest, the scheme
+and the key id. Custody, backup, rotation and the pickup replay it makes
+possible are in
+[RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key).
+
 ## What the agent may do: the intersection, per call
 
 `checkDelegatedAuthority(tx, delegation, request)` is the whole mechanism, and
@@ -89,7 +98,7 @@ surface. A rearrangement behind it is not a change to what L3 imports.
 mintDelegation(tx, MintRequest): Promise<DelegationDecision<MintedDelegation>>
 resolveDelegation(tx, agentActorId: string, credential: string): Promise<DelegationDecision<Delegation>>
 checkDelegatedAuthority(tx, delegation: Delegation, request: ScopeRequest): Promise<DelegationDecision<readonly string[]>>
-revokeDelegation(tx, delegationId: string): Promise<void>
+revokeDelegation(tx, delegationId: string, cause?: RevocationCause): Promise<Date | null>
 settleDelegation(tx, delegationId: string): Promise<void>
 digestOf(credential: string): string
 
@@ -97,6 +106,7 @@ type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
   | 'DELEGATION_ALREADY_LIVE'
+type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_retired' // absent: 'delegation_revoked'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
 
 /** `record` only. Record- and actor-scoped *minting* stays deferred; this is the ceiling. */
@@ -212,14 +222,23 @@ answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it over
 every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts:394-396`).
 
 It is also the answer to an agent call that presents no delegation credential,
-which is an agent before any pickup (`agent-envelope.ts:354-358`). Such a call
-reaches `task.queue` and `task.pickup` (`BEFORE_PICKUP`, `:114`) and nothing
+which is an agent before any pickup (`agent-envelope.ts:362-366`). Such a call
+reaches `task.queue` and `task.pickup` (`BEFORE_PICKUP`, `:116`) and nothing
 else. `task.decide` without a credential is `DELEGATION_EXCLUDES_DECISION`, so a
 decision is still named as one. `session.capabilities` is in `AGENT_SURFACE`
-but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way, and
-under a live delegation it answers that delegation's purpose (`:365`). A
-credential that is presented but not live stays `DELEGATION_NOT_LIVE`
-(`:359-360`, from `resolveDelegation`).
+but not in `BEFORE_PICKUP`, so before a pickup it is refused the same way.
+After a pickup it answers that delegation's purpose only while the delegation
+and the delegating person's current grants intersect on the purpose record
+(`read`); otherwise it is `DELEGATION_NARROWED` (`:371-385`). A credential
+that is presented but not live stays `DELEGATION_NOT_LIVE` (`:367-368`, from
+`resolveDelegation`).
+
+The same holds on replay. A bare agent replay of a handback, with no
+credential, answers `DELEGATION_EXCLUDES_OPERATION` without receipt content,
+and a presented credential that is not live stays `DELEGATION_NOT_LIVE`
+(`authoriseReplay`, `:877-897`). A pickup replay is the one exception to "no
+credential, no call"
+([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)):
 `task.comment` has an agent branch (`agent-envelope.ts:460`), and the matrix's
@@ -472,14 +491,52 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   `SCOPE_NOT_GRANTED` for a member on a record grant.
 - A revocation that leaves an attempt without work authority releases its
   lease and classifies its hold `authority_revoked` in the same transaction
-  ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
+  ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)). Work
+  authority for a claim is `write` on the task collection, the action
+  `task.pickup`, `task.heartbeat` and `task.handback` are declared under.
+  Losing `read` or `comment` does not end a claim.
+- `grant.revoke` also ends a person's own lease. When the revoked grant, or one
+  it issued, was the holder's `write` on the task collection, through their
+  person or actor subject, and no other live `write` covers the task, the same
+  transaction releases the lease and classifies its hold `authority_revoked`,
+  with the grant id as the recorded cause
+  (`commands/authority-controls.ts:140-174`, `:241-275`). A holder whose
+  business-wide `write` is revoked while a record-scoped `write` on the task
+  remains keeps the lease, and can renew and hand it back (`:176-192`).
+- After authority loss the run returns to `planned`. The abandoned hold is
+  never revived; a claimant with current authority gets a fresh hold and
+  attempt.
+- `grant.revoke` and `delegation.revoke` answer with `detail.classifiedHolds`:
+  the ids of the reservations the revocation classified (`:193-198`).
+- A delegation revoked because `grant.revoke` removed the authority it draws
+  on is revoked in the same transaction, with `authority_lost` as its recorded
+  cause. The bound agent's next call on its still unexpired
+  credential answers `DELEGATION_NARROWED`, and nothing is reactivated. An
+  explicit `delegation.revoke`, cancellation or supersession, expiry,
+  settlement, another agent, another business, an unknown token and a
+  revocation from before 0023 answer `DELEGATION_NOT_LIVE`. When more than one
+  terminal fact holds, settled comes first, then expired, then the recorded
+  cause (`resolveDelegation`, `authority/delegations.ts:307-362`).
+- `delegations.revocation_cause` (migration 0023) is one of `authority_lost`,
+  `delegation_revoked` or `work_retired`. It is written once with
+  `revoked_at` and a trigger fixes it; the first terminal write wins. Rows
+  revoked before 0023 keep a null cause.
+- `task.propose` with a `lineageId` that is not in the caller's business
+  answers `GATE_NOT_FOUND` with a constant reason, so a foreign id and a
+  fabricated id get identical bytes (`core-runtime/src/propose.ts:224-232`).
 
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 `task.cancel` and `task.restart` are authorised on the task named in
 `recordId`, so a record-scoped `write` grant is enough
-(`commands/surface.ts:291-292`). A restart of a live, completed or already
+(`commands/surface.ts:305-306`). `task.pickup`, `task.heartbeat` and
+`task.handback` are authorised as `write` on the task their reservation or
+lease belongs to (`authorisedOn: 'claim'`, `:229-241`, `:309`), the scope the
+runtime and `grant.revoke` ask. A record-scoped writer works their own lease
+on that task. An id that resolves to nothing is asked at business scope, so a
+foreign and a fabricated id get the same answer
+(`commands/prepare.ts:368-395`). A restart of a live, completed or already
 restarted lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
 

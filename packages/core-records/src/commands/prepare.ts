@@ -95,9 +95,10 @@ export function expectedRevisionOf(request: CommandRequest): number | undefined 
  * body is well-formed JSON of well-formed keys, so calling it invalid would
  * send an author looking for a syntax mistake; what is wrong is that one of
  * its fields is the server's to write. `SOURCE_SPOOFED` stays what it is —
- * `tasks-write.ts` uses it for `source` and `intake_state` *inside `fields`*,
- * where the mistake is claiming a provenance rather than writing a derived
- * value — and the two are told apart by where the key appears.
+ * `tasks-write.ts` uses it for `source` *inside `fields`*, and for
+ * `intake_state` there on create only (on update that is `TRANSITION_PROTECTED`
+ * naming `task.triage`), where the mistake is claiming a provenance rather than
+ * writing a derived value — and the two are told apart by where the key appears.
  *
  * The check is here, in the one place every command is prepared, rather than
  * in each handler. A rule held in one handler is a rule the next handler

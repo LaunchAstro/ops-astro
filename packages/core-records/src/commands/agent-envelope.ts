@@ -203,7 +203,7 @@ async function runAgentCommand(
         'DELEGATION_EXCLUDES_OPERATION',
         [request.command],
         [
-          'An agent reaches the queue, a pickup, its own task and a handback.',
+          'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, heartbeat, handback and its capabilities.',
           'Every other operation belongs to a person.',
         ],
       ),
