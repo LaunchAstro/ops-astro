@@ -33,7 +33,12 @@ export {
   type PickupRequest,
   type QueueEntry,
 } from './pickup.ts';
-export { handback, type HandbackRequest, type HandedBack } from './handback.ts';
+export {
+  handback,
+  type HandbackRequest,
+  type HandedBack,
+  type SuccessorRequest,
+} from './handback.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
