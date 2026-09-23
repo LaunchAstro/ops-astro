@@ -70,9 +70,53 @@ export const READ_NAMES = [
   'person.list',
   'settings.read',
   'session.capabilities',
+  // The last two reads, which the client reached only through `mutate()` and
+  // so with an operation identity a read does not carry (SPEC-ADJUDICATE (b)).
+  // The same permission applies as on the API and the command line: the
+  // server's `reads/dispatch.ts` asks it, not this list.
+  'task.queue',
+  'preset.plan',
 ] as const;
 
 export type ReadName = (typeof READ_NAMES)[number];
+
+/** One approved, held, unpicked piece of work, as `task.queue` answers it. */
+export interface QueueEntryWire {
+  readonly reservationId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly versionId: string;
+  readonly lineageId: string;
+  readonly purpose: string;
+  readonly heldMinor: number;
+}
+
+/** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
+export interface QueueRead {
+  readonly ok: true;
+  readonly queue: readonly QueueEntryWire[];
+}
+
+/** What `preset.plan` is asked: a record family, a preset key and its fields. */
+export interface PresetPlanRequest {
+  readonly recordTypeKey: string;
+  readonly presetKey: string;
+  readonly fields: readonly Readonly<Record<string, unknown>>[];
+}
+
+/**
+ * `preset.plan`'s answer: a dry-run plan that installs and approves nothing.
+ * The actions are the planner's own words and this client does not interpret
+ * them, so they stay records rather than a union this file would have to track.
+ */
+export interface PresetPlanRead {
+  readonly ok: true;
+  readonly plan: {
+    readonly recordTypeId: string;
+    readonly presetKey: string;
+    readonly actions: readonly Readonly<Record<string, unknown>>[];
+  };
+}
 
 export type OperationName = CommandName | ReadName;
 
