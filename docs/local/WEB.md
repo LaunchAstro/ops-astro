@@ -410,13 +410,14 @@ places this build does not yet reach it.
   and `system`; the form offers the first two. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
   every system note on a task unreliable evidence of anything.
-- **`settings.read` carries no revision.** `business_settings` gained a
-  `revision` column in migration `0020`, and the projection
-  (`packages/core-records/src/reads/settings.ts`) does not yet send it — so the
-  screen has no revision to write an `expectedRevision` from. Its exact-revision
-  path and its `VERSION_STALE` conflict are held by mounted cases and by browser
-  row S5, which stands down until the projection sends one and runs with no edit
-  when it does.
+- **The exact-revision path is proved only where the read sends a revision.**
+  The screen writes `expectedRevision` for a row whose `settings.read` answer
+  carried `revision`, and not otherwise. `business_settings` has the column
+  from migration `0020`; whether the running API's projection sends it depends
+  on which build is serving. Where it does not, the path and its `VERSION_STALE`
+  conflict are held by mounted cases alone, and browser row S5 records
+  `pending` with the reason. Where it does, S5 runs with no edit. Which of the
+  two happened is in S5's own row, not in this document.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
   implying it was kept. Preserving a draft across a sign-in would mean holding
