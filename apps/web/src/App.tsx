@@ -66,10 +66,24 @@ export function App(props: AppProps): ReactElement {
   // the only handler. Held in a ref rather than closed over by the client's
   // memo: the address changes on every navigation and the client must not,
   // because a new client is a new read of everything on the page.
-  const endedRef = useRef<(refusal: WireRefusal) => void>(() => undefined);
+  //
+  // **A refusal belongs to the session that made the request.** A client keeps
+  // the bearer it was built with, and a call can be answered long after that
+  // bearer stopped being anybody's session: two reads leave together, the first
+  // 401 sends the person to sign-in, they sign in, and then the second arrives.
+  // Acting on it would clear the session that replaced the one it was refusing
+  // — signing the person out of a session no server ever refused. So the
+  // session the client was built with comes back with the notification and the
+  // whole action, not only the storage clear, is gated on it still being the
+  // one in hand. Identity is the test: `setSession` is the only way a session
+  // gets here, and every sign-in mints a new object.
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
   const hereRef = useRef(here);
   hereRef.current = here;
-  endedRef.current = (refusal) => {
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  endedRef.current = (from, refusal) => {
+    if (sessionRef.current !== from) return;
     props.sessions.end({ address: hereRef.current, code: refusal.code });
     setSession(null);
     props.navigate('/sign-in');
@@ -83,7 +97,9 @@ export function App(props: AppProps): ReactElement {
         token: session?.token ?? null,
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
-          endedRef.current(refusal);
+          // `session` here is this client's own generation, captured when it
+          // was built, and not whatever is current when the answer lands.
+          if (session !== null) endedRef.current(session, refusal);
         },
       }),
     [props.apiBase, props.fetch, session],

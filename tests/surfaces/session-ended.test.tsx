@@ -27,6 +27,8 @@ import { SessionStore, type StorageLike } from '../../apps/web/src/session/token
 import { mount, settle, type Mounted } from './mount.tsx';
 
 const SESSION = { token: 'the-hour-old-token', businessKey: 'alpha', email: 'mia@alpha.local' };
+/** What the stand-in identity provider hands back on a fresh sign-in. */
+const FRESH_TOKEN = 'a-fresh-token';
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -254,6 +256,93 @@ describe('a session the API will not vouch for any more', () => {
     expect(sessions.session).not.toBeNull();
     expect(store.held.get('ops-astro.session')).toBeDefined();
     expect(seen).not.toContain('/sign-in');
+    await view.unmount();
+  });
+});
+
+// A server that judges every call by the bearer it actually carried, rather
+// than by a flag the test flips. That is the whole of this group: two requests
+// leave on the old token, and the second one comes back after the person has
+// already signed in again. A stand-in that answered "the session has ended"
+// globally could not tell the two sessions apart and so could not show the
+// defect at all.
+function byBearer(): {
+  readonly fetch: typeof globalThis.fetch;
+  /** Answer the old-token read that is still in flight. */
+  readonly deliverTheDelayedRefusal: () => void;
+} {
+  let deliver: ((response: Response) => void) | null = null;
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    const at = String(url);
+    if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
+
+    if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+    if (at.endsWith('/person/list')) {
+      // The old token's people read never comes back on its own. The test
+      // holds it, signs in again, and only then lets the 401 arrive.
+      if (!stale) return json({ ok: true, persons: PEOPLE });
+      return new Promise<Response>((resolve) => {
+        deliver = resolve;
+      });
+    }
+    return stale ? unknownLogin() : json({ recordId: TASK.id, revision: TASK.revision + 1 });
+  }) as unknown as typeof globalThis.fetch;
+
+  return {
+    fetch,
+    deliverTheDelayedRefusal: () => {
+      if (deliver === null) throw new Error('no old-token read was in flight');
+      deliver(unknownLogin());
+    },
+  };
+}
+
+describe('a refusal that belongs to a session which is already over', () => {
+  it('does not end the session that replaced it', async () => {
+    const api = byBearer();
+    const store = storage(SIGNED_IN);
+    const sessions = new SessionStore(store.like);
+    const seen: string[] = [];
+    const view = await mount(
+      <Harness start="/task/TSK-1" sessions={sessions} fetch={api.fetch} seen={seen} />,
+    );
+    await settle();
+    await settle();
+    // Two calls are now out on the hour-old token: the task read, answered,
+    // and the people read, which the stand-in is holding.
+    expect(view.text()).toContain('Wire the board to the API');
+
+    // The first refusal: the mutation. This is the one that puts the person on
+    // sign-in, and it is correct.
+    await view.click('button[data-lifecycle="complete"]');
+    await settle();
+    await settle();
+    expect(view.find('[data-reason="session-ended"]')).not.toBeNull();
+    expect(sessions.session).toBeNull();
+
+    await signInAgain(view);
+    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(seen.at(-1)).toBe('/task/TSK-1');
+    expect(view.text()).toContain('Wire the board to the API');
+
+    // And now the hour-old people read is answered, long after the token it
+    // carried stopped being anybody's session.
+    api.deliverTheDelayedRefusal();
+    await settle();
+    await settle();
+
+    // The new session is untouched: in memory, in storage, on the screen, and
+    // at the address the person was returned to.
+    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(store.held.get('ops-astro.session')).toBeDefined();
+    expect(view.find('[data-reason="session-ended"]')).toBeNull();
+    expect(view.find('#signin-email')).toBeNull();
+    expect(view.text()).toContain('Wire the board to the API');
+    expect(seen.at(-1)).toBe('/task/TSK-1');
+    // Nothing was remembered to return to, because nothing was interrupted.
+    expect([...store.held.keys()].some((key) => key.includes('return'))).toBe(false);
     await view.unmount();
   });
 });
