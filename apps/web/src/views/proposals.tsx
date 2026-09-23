@@ -476,7 +476,15 @@ function Propose(props: ProposeProps): ReactElement {
           maximumMinor: minorOf(maximum),
           currency,
           payload: { step: purpose },
-          step: purpose,
+          // **`step` is an object, not the purpose again.** The contract is
+          // `{ kind, payload }` (`commands/requests.ts`), and `proposeOnTask`
+          // writes `step.kind` straight into `planned_steps.kind`, which is
+          // `not null`. Sending the slug as a bare string put null in that
+          // column and the handler threw, which the API reports as a 503 — so
+          // the screen said "the API answered 503" and the person had no idea
+          // their proposal was well formed and the client was not. The browser
+          // case is what found it; the mounted stand-in had accepted anything.
+          step: { kind: purpose, payload: { step: purpose } },
         },
         // The revision the page is holding. A proposal made against a task that
         // has moved on is the server's `VERSION_STALE`, not a silent write.
@@ -521,6 +529,15 @@ function Propose(props: ProposeProps): ReactElement {
         <label className="tf__k" htmlFor="propose-purpose">
           What it is for
         </label>
+        {/*
+          The pattern is the database's own
+          (`proposal_versions_purpose_shape`, migration 0010), asked for here
+          rather than discovered as a failure: a purpose with a dot or a capital
+          in it violates that check inside the handler, and the API reports a
+          violated check as a 503 rather than as a refusal a person could act
+          on. Asking for the shape the column accepts is the difference between
+          a form that tells you and a form that breaks.
+        */}
         <input
           className="input"
           disabled={busy || closed}
@@ -528,10 +545,15 @@ function Propose(props: ProposeProps): ReactElement {
           onChange={(event) => {
             setPurpose(event.target.value);
           }}
+          pattern="[a-z][a-z0-9_]{0,62}"
           required
+          title="Lower case, digits and underscores, starting with a letter."
           type="text"
           value={purpose}
         />
+        <p className="card__sub">
+          Lower case, digits and underscores, such as client_renewal_quote.
+        </p>
       </div>
       <div className="field">
         <label className="tf__k" htmlFor="propose-maximum">

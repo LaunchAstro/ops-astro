@@ -114,7 +114,7 @@ function server(options: ServerOptions = {}) {
   const liveVersion = {
     versionId: LIVE_VERSION,
     version: 2,
-    purpose: 'client.renewal.quote',
+    purpose: 'client_renewal_quote',
     maximumMinor: 250_000,
     currency: 'AUD',
     payloadDigest: 'digest-live',
@@ -133,7 +133,7 @@ function server(options: ServerOptions = {}) {
   const staleVersion = {
     versionId: STALE_VERSION,
     version: 1,
-    purpose: 'client.renewal.quote',
+    purpose: 'client_renewal_quote',
     maximumMinor: 100_000,
     currency: 'AUD',
     payloadDigest: 'digest-stale',
@@ -304,7 +304,7 @@ describe('the proposal evidence on the task page', () => {
 
     const live = page.find(`[data-version-id="${LIVE_VERSION}"]`);
     const said = live?.textContent ?? '';
-    expect(said).toContain('client.renewal.quote');
+    expect(said).toContain('client_renewal_quote');
     expect(said).toContain('digest-live');
     // The ceiling is money and is drawn as money, with the currency the
     // proposal named rather than a currency the screen assumed.
@@ -378,7 +378,7 @@ describe('the propose form', () => {
     const readsBefore = reads.length;
 
     // eslint-disable-next-line no-console
-    await page.type('#propose-purpose', 'client.renewal.quote');
+    await page.type('#propose-purpose', 'client_renewal_quote');
     await page.type('#propose-maximum', '3000');
     await page.choose('#propose-currency', 'AUD');
     await page.click('[data-propose="submit"]');
@@ -391,11 +391,20 @@ describe('the propose form', () => {
     // moved on is the server's `VERSION_STALE` rather than a silent write.
     expect(sent['expectedRevision']).toBe(7);
     expect(sent['operationId']).toBe('operation-1');
-    expect(sent['purpose']).toBe('client.renewal.quote');
+    expect(sent['purpose']).toBe('client_renewal_quote');
     // Money crosses the wire in minor units, so the form's dollars are
     // converted once, here, rather than in three places that can disagree.
     expect(sent['maximumMinor']).toBe(300_000);
     expect(sent['currency']).toBe('AUD');
+    // **The step is an object.** `proposeOnTask` writes `step.kind` into
+    // `planned_steps.kind`, which is `not null`, so a bare string put null in
+    // that column and the live API answered 503. This assertion is the one that
+    // was missing when the browser case found it.
+    expect(sent['step']).toEqual({
+      kind: 'client_renewal_quote',
+      payload: { step: 'client_renewal_quote' },
+    });
+    expect(sent['payload']).toEqual({ step: 'client_renewal_quote' });
 
     // The new version is on the screen because the page read the task again.
     expect(reads.length).toBeGreaterThan(readsBefore);
@@ -411,7 +420,7 @@ describe('the propose form', () => {
     const page = await mount(screenFor(client));
     await tick();
 
-    await page.type('#propose-purpose', 'something.out.of.scope');
+    await page.type('#propose-purpose', 'something_out_of_scope');
     await page.type('#propose-maximum', '10');
     await page.click('[data-propose="submit"]');
     await tick();
@@ -420,6 +429,25 @@ describe('the propose form', () => {
     expect(page.find('[data-propose="refusal"]')?.textContent).toContain('PROPOSAL_OUT_OF_SCOPE');
     // The refusal did not invent a version to show for it.
     expect(page.find('[data-version-id="v-3333"]')).toBeNull();
+
+    await page.unmount();
+  });
+
+  it('will not send a purpose the database would reject', async () => {
+    // The column's own check is `^[a-z][a-z0-9_]{0,62}$` (migration 0010), and a
+    // violated check arrives from the API as a 503 rather than as a refusal
+    // anybody can act on. So the form asks for the shape instead of discovering
+    // it, and a dotted slug never leaves the browser.
+    const { client, proposed } = server();
+    const page = await mount(screenFor(client));
+    await tick();
+
+    await page.type('#propose-purpose', 'client.renewal.quote');
+    await page.type('#propose-maximum', '10');
+    await page.click('[data-propose="submit"]');
+    await tick();
+
+    expect(proposed).toHaveLength(0);
 
     await page.unmount();
   });
