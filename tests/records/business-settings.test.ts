@@ -390,10 +390,13 @@ describe.skipIf(serverUrl === undefined)(
 
     beforeAll(async () => {
       const onDisk = readMigrations('migrations');
-      const revisionMigration = onDisk.at(-1);
-      expect(revisionMigration?.version).toBe('0020_business_settings_revision');
+      // Found by name, not taken as the last: later migrations follow it.
+      const revision = onDisk.findIndex(
+        (migration) => migration.version === '0020_business_settings_revision',
+      );
+      expect(revision).toBeGreaterThan(0);
       db = await createEmptyDatabase({ part: 'l2sup' });
-      await applyMigrations(db.admin, onDisk.slice(0, -1));
+      await applyMigrations(db.admin, onDisk.slice(0, revision));
       business = await insertBusiness(db.app, 'before');
       await db.app.withBusiness(business, installBusinessSettings);
       await applyMigrations(db.admin, onDisk);
