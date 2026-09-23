@@ -96,6 +96,18 @@ export type RefusalCode =
   | 'PROPOSAL_SUPERSEDED'
   | 'PROPOSAL_SCOPE_EXCEEDED'
   | 'FOUR_EYES_REQUIRED'
+  // L4's bounded runtime, `core-runtime/src/refusals.ts`. Eight of its fifteen
+  // are the seven above plus `SCOPE_NOT_GRANTED`, already registered by the
+  // parts that named them first; these eight are new spellings and they come
+  // in here rather than being invented a second time in a handler.
+  | 'VERSION_SUPERSEDED'
+  | 'EVIDENCE_MISMATCH'
+  | 'GATE_NOT_FOUND'
+  | 'GATE_EXPIRED'
+  | 'LINEAGE_TERMINAL'
+  | 'CHANGE_ROUNDS_EXHAUSTED'
+  | 'PROPOSAL_OUT_OF_SCOPE'
+  | 'RESERVATION_NOT_CLAIMABLE'
   // Budget, T1k.
   | 'BUDGET_UNAVAILABLE'
   | 'BUDGET_EXHAUSTED';
@@ -269,6 +281,27 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
 
   entry('BUDGET_UNAVAILABLE', 'No committed reservation covers this attempt', 'contract 4.4'),
   entry('BUDGET_EXHAUSTED', 'The reservation is spent', 'contract 4.4'),
+
+  entry('VERSION_SUPERSEDED', 'A later version of this proposal is the live one', 'L4 RUNTIME.md'),
+  entry(
+    'EVIDENCE_MISMATCH',
+    'The gate\u2019s digest and the version\u2019s disagree',
+    'L4 RUNTIME.md',
+  ),
+  entry('GATE_NOT_FOUND', 'No gate by that identity in this business', 'L4 RUNTIME.md'),
+  entry('GATE_EXPIRED', 'The gate\u2019s decision window has closed', 'L4 RUNTIME.md'),
+  entry('LINEAGE_TERMINAL', 'The lineage is rejected or cancelled', 'L4 RUNTIME.md'),
+  entry('CHANGE_ROUNDS_EXHAUSTED', 'Two formal rounds are used and there is no third', 'spec G08'),
+  entry(
+    'PROPOSAL_OUT_OF_SCOPE',
+    'The proposal reaches past the caller\u2019s authority',
+    'L4 RUNTIME.md',
+  ),
+  entry(
+    'RESERVATION_NOT_CLAIMABLE',
+    'The reservation is not approved, held and unpicked',
+    'L4 RUNTIME.md',
+  ),
 ];
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
@@ -316,28 +349,40 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
   'AUDIENCE_NOT_PERMITTED',
-  // The five agent codes L2 exported. Every one of them is produced by a
-  // module in this tree and by no *operation* in it: the agent's own API path
-  // is part B of L3 and waits on L4's mechanisms, so nothing a caller can
-  // reach mints, resolves or presents a delegation. They come off this list
-  // when that path lands, which is the diff this list exists to produce.
-  'AUTH_NO_AGENT_IDENTITY',
-  'AUTH_SESSION_EXPIRED',
-  'DELEGATION_NOT_LIVE',
-  'DELEGATION_OUT_OF_PURPOSE',
+  // Delegation codes no reachable operation raises. `DELEGATION_NARROWED`
+  // needs the delegating person's grant revoked between a pickup and the
+  // agent's next call, and there is still no authenticated grant-control
+  // route to revoke it through. `DELEGATION_WIDENS` is a mint refusal and
+  // `task.pickup` mints from the authorising person's own live grants, so it
+  // cannot construct a widening one. The other three name a delegation
+  // lifecycle — excluded operations, intake, an explicit revocation — that
+  // this head's one-task purpose does not distinguish.
+  'DELEGATION_NARROWED',
   'DELEGATION_WIDENS',
-  'DELEGATION_EXCLUDES_DECISION',
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXCLUDES_OPERATION',
   'DELEGATION_EXPIRED',
-  'DELEGATION_NARROWED',
   'DELEGATION_REVOKED',
-  'GATE_ALREADY_DECIDED',
+  // T2 spellings the runtime did not adopt. It raises `GATE_ALREADY_DECIDED`
+  // where these say pending and superseded, and nothing produces these two.
   'GATE_PENDING',
+  'PROPOSAL_SUPERSEDED',
+  'PROPOSAL_SCOPE_EXCEEDED',
+  'TASK_NOT_PICKABLE',
+  // The four L4 codes that need something no caller can reach.
+  //
+  // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
+  // disagree, and `propose` writes both from one value, so only an amended row
+  // produces it. `GATE_EXPIRED` and `LEASE_EXPIRED` need the wall clock to
+  // pass an expiry the server chose, between two calls. `LEASE_HELD` needs a
+  // second pickup of a reservation already leased, and the second pickup meets
+  // `RESERVATION_NOT_CLAIMABLE` first: the reservation has left `held` by
+  // then. `CHANGE_ROUNDS_EXHAUSTED` is reachable and proven in
+  // `tests/runtime/gate.test.ts` against the module rather than through a
+  // command, so it stays named until a command case reaches it.
+  'EVIDENCE_MISMATCH',
+  'GATE_EXPIRED',
   'LEASE_EXPIRED',
   'LEASE_HELD',
-  'LEASE_NOT_OWNED',
-  'PROPOSAL_SCOPE_EXCEEDED',
-  'PROPOSAL_SUPERSEDED',
-  'TASK_NOT_PICKABLE',
+  'CHANGE_ROUNDS_EXHAUSTED',
 ]);

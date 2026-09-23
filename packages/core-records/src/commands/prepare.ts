@@ -81,7 +81,11 @@ const IDENTIFIER_FIELDS: readonly string[] = [
   'beforeId',
   'board',
   'boardSection',
-  'gateInstanceId',
+  'gateId',
+  'versionId',
+  'lineageId',
+  'reservationId',
+  'leaseId',
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -124,9 +128,9 @@ const BODY_FIXES: readonly string[] = [
  */
 const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
   'task.create': ['parentId', 'board', 'boardSection'],
-  'task.decide': ['gateInstanceId'],
-  'task.handback': ['recordId'],
-  'task.pickup': ['recordId'],
+  'task.decide': ['gateId', 'versionId'],
+  'task.handback': ['leaseId'],
+  'task.pickup': ['reservationId'],
   'task.purge': [],
   'task.restore': ['batchId'],
   // Neither settings command names a record. The setting is chosen by the

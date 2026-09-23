@@ -23,6 +23,7 @@ import type { HistoryEntry, TaskDetail, TaskSummary } from './requests.ts';
 import { externalCommentProjection, readTaskComments } from '../tasks/comments.ts';
 import { readFieldDefinitions } from '../records/field-store.ts';
 import { READS } from '../commands/surface.ts';
+import { readTaskProposals } from './proposals.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -227,6 +228,12 @@ export async function readTaskDetail(
     description: row.description,
     history: await historyOf(tx, row.id),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
+    // The proposals go to every reader of the detail, internal or external,
+    // because the projection carries no comment body and no field value the
+    // catalogue classifies -- it carries the proposal's own payload, which is
+    // what the proposer put in it and what the decision was about. An external
+    // reader who may see the task may see what somebody proposed doing to it.
+    proposals: await readTaskProposals(tx, row.id),
   };
 }
 

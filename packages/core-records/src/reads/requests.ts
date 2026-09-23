@@ -18,6 +18,8 @@
 // A read does write an audit event. See `dispatch.ts`.
 
 import type { PresetPlan } from '../records/preset-plan.ts';
+import type { ProposalView } from './proposals.ts';
+import type { QueuedWork } from './queue.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -69,6 +71,19 @@ export interface TaskDetail extends TaskSummary {
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
+  /**
+   * Every proposal on this task, newest lineage first, with its stored version,
+   * digest, evidence pack, gate state and expiry, its decision chain and the
+   * reservation, lease and attempt an approval produced.
+   *
+   * It is on the detail rather than behind a read of its own because a task
+   * page that showed the evidence and then had to fetch the version separately
+   * could offer a decision on a version it never displayed, and the exact
+   * version is the whole of what `decide` compares. One read, one answer, one
+   * `versionId` for the button to carry. See `reads/proposals.ts` and the
+   * "Proposal projection" heading in `docs/local/API.md`.
+   */
+  readonly proposals: readonly ProposalView[];
 }
 
 /** One field as a preset ships it, on the wire. Validated by L2's planner. */
@@ -88,6 +103,8 @@ export type ReadRequest =
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   | { readonly read: 'task.board'; readonly board: string | null }
   | { readonly read: 'person.list' }
+  /** Approved, held and unpicked. A projection; reading it claims nothing. */
+  | { readonly read: 'task.queue' }
   /**
    * What a preset would do to this business's model, computed without doing
    * any of it. It is a read because it writes nothing — including on success,
@@ -106,4 +123,5 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
   | { readonly ok: true; readonly persons: readonly PersonView[] }
+  | { readonly ok: true; readonly queue: readonly QueuedWork[] }
   | { readonly ok: true; readonly plan: PresetPlan };

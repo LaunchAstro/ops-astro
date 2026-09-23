@@ -33,6 +33,7 @@ import {
 import type { ReadRequest, ReadResult } from './requests.ts';
 import { isInternalReader, readBoard, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { listPeople } from './people.ts';
+import { readQueue } from './queue.ts';
 
 /**
  * Every read, audited, in the caller's own transaction (I13).
@@ -166,6 +167,11 @@ async function serveRead(
     }
     case 'person.list':
       return served({ ok: true, persons: await listPeople(tx) });
+    case 'task.queue':
+      // No subject record: the queue is about the business's outstanding work
+      // rather than about one task, and naming one of the tasks on it in the
+      // audit row would make "who read this record" false for the others.
+      return served({ ok: true, queue: await readQueue(tx) });
     case 'preset.plan': {
       // L2's planner checks the same authority again, from its own module, and
       // that repetition is deliberate: the guarantee "this plan was authorised"
