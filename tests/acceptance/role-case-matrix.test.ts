@@ -40,6 +40,8 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
+import { alternativeFor } from './cd-alternatives.ts';
+import { PROPOSAL } from './role-case-bodies.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/matrix: DATABASE_URL is unset, so nothing below ran.');
@@ -124,6 +126,28 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     }
     expect(failures('c-foreign-record')).toStrictEqual([]);
     expect(failures('d-fabricated-id')).toStrictEqual([]);
+
+    // Root ruling 3 and ledger I03: every declared operation stays in the
+    // matrix. Each one the swap above does not reach gets one named row, saying
+    // where its foreign-against-fabricated comparison is executed instead or
+    // why a target-free operation has none. The reasons live in
+    // `cd-alternatives.ts`; a declaration it does not know throws here, so a new
+    // operation cannot fall out of the count quietly.
+    let named = 0;
+    for (const declaration of COMMAND_SURFACE) {
+      if (targeted.includes(declaration)) continue;
+      const reason = alternativeFor(declaration.name);
+      if (reason === undefined) {
+        throw new Error(`matrix: ${declaration.name} has no (c)/(d) row and no named reason`);
+      }
+      except('ada', 'cd-not-applicable', declaration.name, reason);
+      named += 1;
+    }
+    expect(targeted.length + named).toBe(COMMAND_SURFACE.length);
+    console.log(
+      `matrix (c)/(d): ${String(targeted.length + named)}/${String(COMMAND_SURFACE.length)} ` +
+        `operations, ${String(targeted.length)} compared here, ${String(named)} named rows`,
+    );
   }, 120_000);
 
   it('(e) refuses every caller who holds nothing, and never answers empty', async () => {
@@ -319,10 +343,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
 
   it('(h), (i), (j) and (g): the agent journey, generated over the whole table', async () => {
     const { subject, sibling, decided } = await harness.approvedReservation();
-    // (j)'s control, taken first: the person who authorises the work is the one
-    // who decides, and their decision succeeds. Without it, the agent's
-    // exclusion below would only prove that this gate refuses everybody.
-    observe('ada', 'j-decision-control', 'task.decide', decided, SUCCESS);
+    // The approval the agent's reservation comes from. (j) itself is below, on
+    // a gate of its own that is still undecided when the agent tries it.
+    observe('ada', 'h-reservation-approved', 'task.decide', decided, SUCCESS);
     const detail = decided.body['detail'] as Record<string, unknown>;
     const reservationId = String(detail['reservationId']);
 
@@ -599,16 +622,89 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       refusal('LEASE_NOT_OWNED'),
     );
 
-    // (j) The decision, excluded from every delegation and checked first in the
-    // order so it is never reported as something else, beside the person's own
-    // successful decision recorded at the top of this case.
+    // (j) I07, on one live gate. The decision is excluded from every
+    // delegation and checked first in the order, so it is never reported as
+    // something else. A real proposal gives gate G at version V, still
+    // pending. R5, the agent under its live credential, decides {G, V} and is
+    // refused with G still pending and no decision row. Then R1, the admin,
+    // decides the same {G, V} and it applies as one signed decision. Without
+    // the second half the refusal would only prove that this gate refuses
+    // everybody; without the same G and V it would prove nothing about this gate.
+    const gateTask = await harness.freshTask('a task whose one gate both callers decide');
+    const proposed = await harness.asPerson('task.propose', {
+      recordId: gateTask.id,
+      expectedRevision: gateTask.revision,
+      ...PROPOSAL,
+      purpose: 'draft_the_contested_reply',
+    });
+    observe('ada', 'j-live-gate', 'task.propose', proposed, SUCCESS);
+    const proposal = proposed.body['detail'] as Record<string, string>;
+    const gate = { gateId: String(proposal['gateId']), versionId: String(proposal['versionId']) };
+    const gateState = async (): Promise<{ state: string; decisions: string }> => {
+      const [row] = await harness.world.db.admin.execute<{ state: string; decisions: string }>(
+        `select g.state, (select count(*) from public.gate_decisions d
+                           where d.gate_id = g.id and d.version_id = $2)::text as decisions
+           from public.gates g where g.id = $1 and g.version_id = $2`,
+        [gate.gateId, gate.versionId],
+      );
+      return row ?? { state: 'absent', decisions: 'absent' };
+    };
+    expect(await gateState(), 'G is live and undecided').toStrictEqual({
+      state: 'pending',
+      decisions: '0',
+    });
+    const onG = `task.decide gate=${gate.gateId} version=${gate.versionId}`;
+    const agentActor = harness.world.agent.actorId;
     const agentDecides = await harness.asAgent(
       'task.decide',
-      { gateId: randomUUID(), versionId: randomUUID(), decision: 'approve', note: 'not mine' },
+      { ...gate, decision: 'approve', note: 'not mine to decide' },
       credential,
     );
     const noDecision = refusal('DELEGATION_EXCLUDES_DECISION');
-    observe('agent-after-pickup', 'j-decision-excluded', 'task.decide', agentDecides, noDecision);
+    observe(
+      'agent-after-pickup',
+      'j-decision-excluded',
+      `${onG} by=${agentActor}`,
+      agentDecides,
+      noDecision,
+    );
+    expect(await gateState(), 'after R5: still pending, 0 decisions').toStrictEqual({
+      state: 'pending',
+      decisions: '0',
+    });
+    const adaDecides = await harness.asPerson('task.decide', {
+      ...gate,
+      decision: 'approve',
+      note: 'the person decides the gate the agent could not',
+    });
+    const adaActor = String(harness.world.ada.actorId);
+    observe('ada', 'j-decision-control', `${onG} by=${adaActor}`, adaDecides, SUCCESS);
+    const signed = await harness.world.db.admin.execute<{
+      readonly id: string;
+      readonly person: string;
+      readonly actor: string;
+      readonly signed: boolean;
+    }>(
+      `select id::text, decided_by_person_id::text as person, decided_by_actor_id::text as actor,
+              length(signature) > 0 as signed
+         from public.gate_decisions where gate_id = $1 and version_id = $2`,
+      [gate.gateId, gate.versionId],
+    );
+    expect(signed, 'one signed decision on {G, V}, by the admin').toEqual([
+      {
+        id: expect.any(String),
+        person: harness.world.ada.personId,
+        actor: adaActor,
+        signed: true,
+      },
+    ]);
+    console.log(
+      `I07 receipt: gate=${gate.gateId} version=${gate.versionId}; ` +
+        `R5 agent actor=${agentActor} delegation=${String(picked['delegationId'])} ` +
+        `-> ${agentDecides.code} (gate pending, 0 decisions); ` +
+        `R1 ada person=${String(harness.world.ada.personId)} actor=${adaActor} ` +
+        `-> ${adaDecides.code}, decision=${String(signed[0]?.id)} signed`,
+    );
 
     // (g) I09, minimum contract 8.2 case 7, through R4 itself. The party is
     // `enrolExternal`'s: a person of alpha with a login and no membership, so
@@ -708,6 +804,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'i-inside-ceiling',
       table,
       'i-narrowed',
+      'h-reservation-approved',
+      'j-live-gate',
       'j-decision-control',
       'j-decision-excluded',
       'g-external-projection',

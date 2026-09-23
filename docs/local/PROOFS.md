@@ -729,6 +729,43 @@ Four suites close the L6 rows G04, G05, W02 (b, c), W04 (schedules) and W05
   agent route, `leaseSeconds` of 3600 renews the lease and its delegation to it;
   3601 is `FIELD_VALUE_INVALID` naming `leaseSeconds`, audited, and moves neither.
 
+## L6 acceptance rows: I03, I04 and I07 (ACCEPTANCE-ROWS)
+
+These close L6 rows I03, I04 and I07 under root ruling 3 at 906613f and root
+ruling 9 at 6f15252 (`parent-observations/runs/6f15252/L6/DISPOSITIONS.md`).
+The last three suites below are named in `tests/db/named-suites.json`, beside
+`i10-inflight` and `board-not-found`, which section 9 item 13 left unnamed.
+Tested in the lane run on `209eb29`.
+
+- **I03, 35/35:** `role-case-matrix.test.ts` (c)/(d). The swap compares 16
+  operations, and each of the other 19 has one `cd-not-applicable` row, with
+  its reason taken from `tests/acceptance/cd-alternatives.ts`. The 10
+  identifier-bearing rows each name the executed identifier-negatives case
+  that compares a foreign and a fabricated operand by status and raw bytes.
+  The 9 target-free rows say "not applicable: target-free (SC2)". A
+  declaration with no row throws. The matrix is 384 rows: 338 pass, 0 fail,
+  46 named exceptions. Only the 19 rows moved the exceptions (27 before).
+- **SC2 audit, 9/9:** `identifier-negatives.test.ts`, target-free case. Each
+  aimed probe (`recordId` naming bravo's task) is `COMMAND_BODY_INVALID`,
+  writes one refused audit row in alpha (actor, command, operation, code and
+  digest only) and writes none in bravo.
+- **I04, 26/26:** `identifier-timing.test.ts`. Each identifier-bearing
+  operation gets 5 discarded warm-up pairs, then 30 alternating foreign and
+  fabricated pairs, and every sample must be the expected refusal. A pair of
+  distributions is outside only when both of two tests fail: a two-sided
+  Mann-Whitney U with |z| <= 3.29, and a median difference within max(2 ms,
+  20 percent). Medians ran 7.9 to 13.5 ms, with a largest |z| of 2.38 and a
+  largest difference of 1.35 ms (`task.decide`). Non-vacuity: a 15 ms delay on
+  one arm of `task.read` is flagged (z = -6.65). The timing is in process,
+  not over a network.
+- **I07, one live gate:** matrix case (j). A real `task.propose` gives gate G
+  at version V, still pending. The agent (R5), under its live credential,
+  decides {G, V} and gets `DELEGATION_EXCLUDES_DECISION`, and G stays pending
+  with 0 decisions. The admin (R1) then decides the same {G, V}, and it
+  applies as one signed `gate_decisions` row by the admin. Both rows carry G,
+  V and the deciding actor, and the run prints an `I07 receipt:` line with
+  both identities.
+
 ## Engineering rulings, and how far each is proved
 
 The build's root ruled on contract questions the lanes raised at `906613f`,
