@@ -8,16 +8,14 @@
 // substitute except the port: the database is a throwaway one migrated from
 // empty, the tokens are real HS256 bearers the real Supabase adapter verifies,
 // the reads go through `reads/execute.ts` and the agent prefix through
-// `commands/agent-envelope.ts`, exactly as `apps/api/server.ts` wires them.
+// `commands/agent-envelope.ts`.
 //
-// **Why the composition root is duplicated here rather than imported.**
-// `apps/api/server.ts` ends in a top-level `await main()`, so importing it to
-// reach `createBusinessResolver` would bind a port, connect to the deployment's
-// own database and `process.exit(1)` when the environment is not a server's.
-// What this module copies is that file's wiring and nothing else, and copying
-// it is what makes a second instance buildable at all: `composeApi` is a
-// function, so calling it twice is two composition roots over one database,
-// which is the restart the journey case needs.
+// **The composition root is the server's own.** `compose` calls `composeApi`
+// from `apps/api/server.ts`, the wiring the server listens with, so there is
+// no copy here to drift from it. Importing that file starts nothing: its
+// `main` runs only as the process's entry. `composeApi` is a function, so
+// calling it twice is two composition roots over one database, each with an
+// empty resolver cache, which is the restart the journey case needs.
 
 import { randomUUID } from 'node:crypto';
 import { sign } from 'hono/jwt';
@@ -26,17 +24,20 @@ import {
   createFreshDatabase,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import type {
-  AdminConnection,
-  BusinessId,
-} from '../../packages/core-records/src/tenancy/database.ts';
+import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import type { ReadExecutor } from '../../apps/api/app.ts';
+import { composeApi } from '../../apps/api/server.ts';
+
+/**
+ * The business key to its identifier, on the administrative connection: the
+ * server's own resolver, re-exported for the cases that build a boundary
+ * around a second connection.
+ */
+export { createBusinessResolver } from '../../apps/api/server.ts';
 
 /** The HS256 secret this deployment's GoTrue would sign with. Local to the run. */
 export const SECRET = 'a-local-test-secret-for-the-api-journey-cases';
@@ -67,36 +68,9 @@ export interface ApiFixture {
    * first one did with it.
    */
   readonly environment: GateEnvironment;
-  /** Build a composition root: a fresh boundary, resolver cache and gate read. */
+  /** A composition root from `composeApi`: a fresh boundary, resolver cache and gate read. */
   compose(): Hono;
   drop(): Promise<void>;
-}
-
-/**
- * The business key to its identifier, on the administrative connection.
- *
- * The same lookup `apps/api/server.ts` performs, with the same cache of
- * successes only, so that a second instance starts with an empty one: a
- * resolver that survived the restart would be the process memory this
- * journey's restart leg exists to rule out.
- */
-export function createBusinessResolver(
-  admin: AdminConnection,
-): (businessKey: string) => Promise<string | undefined> {
-  const known = new Map<string, string>();
-  return async function resolveBusiness(businessKey: string): Promise<string | undefined> {
-    if (businessKey === '') return undefined;
-    const cached = known.get(businessKey);
-    if (cached !== undefined) return cached;
-    const rows = await admin.execute<{ id: string }>(
-      'select id from public.businesses where key = $1',
-      [businessKey],
-    );
-    const id = rows[0]?.id;
-    if (id === undefined) return undefined;
-    known.set(businessKey, id);
-    return id;
-  };
 }
 
 /**
@@ -223,13 +197,12 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
       // "re-read from `process.env`" a step and not an assumption.
       process.env['GATE_SIGNING_KEY_ID'] = environment.GATE_SIGNING_KEY_ID;
       process.env['GATE_SIGNING_SECRET'] = environment.GATE_SIGNING_SECRET;
-      return createApi({
+      return composeApi({
         database: db.app,
-        verify: createSupabaseVerifier({ secret: SECRET }),
-        resolveBusiness: createBusinessResolver(db.admin),
+        admin: db.admin,
+        secret: SECRET,
         executeRead: executeRead as unknown as ReadExecutor,
-        executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
-      });
+      }).app;
     },
     async drop(): Promise<void> {
       await db.drop();

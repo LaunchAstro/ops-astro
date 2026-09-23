@@ -36,7 +36,10 @@ import type { Context } from 'hono';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { agentAnswer } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import {
+  agentAnswer,
+  type AgentRequest,
+} from '../../packages/core-records/src/commands/agent-envelope.ts';
 import {
   isCommandRefusal,
   refuseCommand,
@@ -104,6 +107,14 @@ export interface ApiOptions {
    */
   readonly executeRead?: ReadExecutor;
   /**
+   * The person path's command envelope. Injected like the other two executors
+   * so the composition root names every executor the boundary calls. Absent
+   * means the envelope in `commands/envelope.ts`, which is what every
+   * deployment runs; a test that asks only the transport's questions can hand
+   * in its own.
+   */
+  readonly executeCommand?: CommandExecutor;
+  /**
    * The agent's own entry point.
    *
    * Injected like `verify` and `executeRead` rather than imported here,
@@ -116,18 +127,21 @@ export interface ApiOptions {
   readonly executeAgentCommand?: AgentExecutor;
 }
 
+/** The person path's executor: `commands/envelope.ts`'s signature. */
+export type CommandExecutor = typeof executeCommand;
+
 /**
  * The agent path's executor. The credential travels beside the request, not
- * inside it, which is why it is an argument rather than a body field.
+ * inside it, which is why it is an argument rather than a body field. The
+ * request is the agent envelope's own type, so `executeAgentCommand` is one
+ * without a cast.
  */
 export type AgentExecutor = (
   database: Database,
   businessId: string,
   presented: VerifiedSubject | 'expired',
   credential: string | undefined,
-  request: { readonly command: string; readonly operationId: string } & Readonly<
-    Record<string, unknown>
-  >,
+  request: AgentRequest,
 ) => Promise<unknown>;
 
 /**
@@ -144,6 +158,7 @@ export const DELEGATION_HEADER = 'x-agent-delegation';
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
   const routes = new Hono();
+  const executePerson = options.executeCommand ?? executeCommand;
 
   for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
     routes.post(pathOf(declaration.name), async (context) => {
@@ -192,7 +207,7 @@ export function createApi(options: ApiOptions): Hono {
       }
 
       const request = { ...body, command: declaration.name } as CommandRequest;
-      const result = await executeCommand(options.database, businessId, presented, 'api', request);
+      const result = await executePerson(options.database, businessId, presented, 'api', request);
 
       if (isCommandRefusal(result)) return refuse(context, result);
       return context.json({ ...result }, 200);
