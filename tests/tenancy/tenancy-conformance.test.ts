@@ -97,6 +97,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0021_runtime_gate_version_binding',
         '0022_delegation_credential_scheme',
         '0023_delegation_revocation_cause',
+        '0024_cap_envelope_currency_binding',
+        '0025_cap_ceiling_at_commit',
       ]);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
@@ -128,6 +130,8 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         '0021_runtime_gate_version_binding',
         '0022_delegation_credential_scheme',
         '0023_delegation_revocation_cause',
+        '0024_cap_envelope_currency_binding',
+        '0025_cap_ceiling_at_commit',
       ]);
     });
 
