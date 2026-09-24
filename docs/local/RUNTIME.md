@@ -60,9 +60,18 @@ Since migration 0030 its evidence pack is bound as well
 `tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`).
 `gates_pack_in_same_version` requires the gate's pack to be a pack of its
 version, a foreign key on `(business_id, evidence_pack_id, version_id)`. The
-trigger `gates_version_fixed_once_decided` refuses a change to a gate's version
-once a decision names the gate or the gate has left `pending`, so it covers a
-superseded or expired gate as well as a decided one.
+trigger `gates_version_fixed_once_decided` runs before an update of
+`gates.version_id` that changes the value. It refuses the change when the stored
+state is anything but `pending`, or when a row in `gate_decisions` names the
+gate, whatever the gate's state; the second rule covers a decided gate whose
+state was reset to `pending`. So a decided or superseded gate keeps its version.
+An expired gate is stored as `pending`: no runtime path writes the state
+`expired`, which the read derives from `expires_at`
+(`packages/core-records/src/reads/proposals.ts:248-249`). So an undecided gate
+past its expiry is not covered, the residual left to Nathan. Migration 0030
+takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
+and holds it until it commits, so no gate can change between that check and the
+trigger's creation (`tests/runtime/final-r3r-0030-upgrade-race.test.ts`).
 
 ## The one rule the whole thing rests on
 
@@ -689,6 +698,15 @@ identity case is the one an agent reaches. A same-operationId retry in flight
 behind its original loses `operations_identity_key` to the original's commit, and its whole
 transaction rolls back. The second attempt reads the committed register row and
 replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+
+**A trash can deadlock, and the retry answers from the winner's commit.**
+`trashSubtree` (`tasks/trash.ts`) locks the rows it walks in id order, but that
+orders only its own locks: the envelope has already locked the root, and a move
+or reparent its target, outside that order. So nested trashes, or a trash
+against a move, reparent or restore, can deadlock. The server rolls the victim
+back whole, and the envelope's one `40P01` retry answers from what the winner
+committed: a nested trash applies without the winner's batch
+(`tests/commands/final-r3-place.test.ts`, R4-RUNTIME-7).
 
 Discover, lock and recheck is one module, `core-runtime/src/rediscovery.ts`.
 `lockRediscovered` discovers without locks, takes the complete set in
