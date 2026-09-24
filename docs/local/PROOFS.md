@@ -997,6 +997,14 @@ expanded, read from the file rather than from a run.
   decide parked on its gate and a heartbeat parked on its lease until the
   database clock passes the deadline answer `GATE_EXPIRED` and
   `LEASE_EXPIRED`, because each reads the clock after its locks are held.
+- **Lease expiry and successor bounds, SOL6-RUNTIME-FIX-2.**
+  `tests/runtime/lease-expiry-post-lock-clock.test.ts`, 3 tests (RUNTIME-1).
+  A handback that waited on the cap past its lease's expiry is `LEASE_EXPIRED`
+  with its report retained. A pickup that waited the same way fences the
+  expired claim. The same agent replaces its own claim after waiting past the
+  delegation's expiry. `tests/runtime/successor-bounds-exact.test.ts`, 1 test
+  (RUNTIME-2): with 2 left in the cap, a successor ceiling of 4 is refused and
+  a ceiling of 2 is accepted.
   Tested (merge trial, `faf3285`).
 - **R4, spend and the agent's operation id, SOL-AUTHORITY-FIX.**
   `tests/authority/non-member-grants.test.ts`, 3 tests. Record-scoped

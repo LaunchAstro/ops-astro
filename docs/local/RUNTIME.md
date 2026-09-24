@@ -287,7 +287,7 @@ handback, is a constant that echoes neither the presented lease nor the fence
 (`notOwned` in `heartbeat`, `heartbeat.ts`; in `handback`, `handback.ts`, "no
 such lease in this business" and "the named lease is not this caller's").
 A stale or superseded fence on a lease the caller does hold still names the
-lease and the fences (`staleVerdict`, `handback.ts`). `DELEGATION_OUT_OF_PURPOSE` for a
+lease and the fences (`fenceVerdict`, `handback.ts`). `DELEGATION_OUT_OF_PURPOSE` for a
 call on another resource names the delegation's own scope and not the presented
 one (`checkDelegatedAuthority`, `authority/delegations.ts`).
 
@@ -435,6 +435,13 @@ task under the task lock. A holder whose lease was replaced presents the old
 fence and nothing changes: `LEASE_NOT_OWNED` on a superseded or mismatched
 fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately; it cannot settle the replacement's work.
+
+Handback and pickup judge lease expiry on the database clock, read once their
+locks are held (`lockedInstant`, `clock.ts`), not on `now()`, which is when the
+transaction began. A command that waited on a lock past a lease's expiry treats
+the lease as expired: handback retains the report and refuses `LEASE_EXPIRED`,
+and pickup fences the lease and classifies its hold. A new lease's expiry is
+that instant plus the requested seconds, truncated to milliseconds.
 
 Leases end through `endLease` in `recovery.ts`, as `released` or `expired`, and
 only a live lease is ended. One already ended keeps the end and the
@@ -610,7 +617,10 @@ facts come in: the classification is what makes the old attempt nonclaimable,
 and the successor is the work somebody may now approve instead. It is not
 approved and it opens no hold. A stale fence never reaches it, because those
 paths retain their report and return. So a lease that cannot settle work cannot
-propose the next of it either.
+propose the next of it either. The successor's ceiling is compared with the
+cap's remaining room as exact integers (`bigint`) read from SQL text, so the
+check holds above 2^53, as the cap's own does
+([Why the money is two columns](#why-the-money-is-two-columns)).
 
 **On the command surface.** L3 carries the successor through `task.handback`
 (`readSuccessor`, `commands/successor.ts`). The body's `successor` is read

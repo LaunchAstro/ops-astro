@@ -69,8 +69,11 @@ settled_at is null`, so the key is the purpose _word_, not the purpose
    not in the predicate, so a delegation nobody settled goes on holding the
    slot after it stops permitting anything; `mintDelegation` settles a spent
    row in the serving transaction rather than refusing on it, which is what
-   makes RUNTIME.md's R5 recovery reachable. The refusal exists because the
-   index alone delivered the decision as a 23505: a 500 in process, a 503
+   makes RUNTIME.md's R5 recovery reachable. A mint that meets the agent's
+   unsettled delegation for the same purpose judges that row's expiry after
+   locking it, on `clock_timestamp()`: an expired one is settled and replaced,
+   so an agent can replace its own claim after waiting past the expiry. The
+   refusal exists because the index alone delivered the decision as a 23505: a 500 in process, a 503
    `SERVICE_UNAVAILABLE` from the deployment, and no audit row for the attempt,
    because the serving transaction had aborted.
 
