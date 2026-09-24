@@ -4,17 +4,14 @@
 // `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a lineage that is
 // live, completed or already restarted (`core-runtime/src/propose.ts`).
 //
-// `RuntimeRefusalCode` is exported from `core-runtime` and deliberately not
-// added to `commands/register.ts` by that package: the register is this unit's
-// file, and a module reaching into the command surface to add its own codes is
-// the coupling the register exists to prevent (RUNTIME.md, "Refusal codes L3
-// must register"). So the wiring is here, and these are the cases that fail
-// when it is missing.
-//
-// Two assertions, and the second is the one with teeth. Registering a code is
-// a line; giving it the status the runtime asked for is a decision, and a code
-// registered with a status the runtime did not suggest is a caller told the
-// wrong thing about whether to retry, re-read or raise a ceiling.
+// `RuntimeRefusalCode` is read off the register's rows marked `runtime`, and
+// each row carries its status, so a runtime code cannot be unregistered or
+// carry a second status the way it could when `core-runtime` spelled its own
+// union and `SUGGESTED_STATUS` beside `apps/api/status.ts` (architecture review
+// bbdf2b2, candidate 2). What was a four-way parity check is now a derivation
+// check: `SUGGESTED_STATUS` and `statusFor` are two views of one column and
+// the cases below hold them to it. The statuses themselves are pinned by
+// value in `tests/commands/refusal-catalogue.test.ts`.
 
 import { describe, expect, it } from 'vitest';
 import {
