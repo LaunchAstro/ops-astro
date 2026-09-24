@@ -375,7 +375,7 @@ export async function decide(
   // through a JavaScript `Date`, which keeps milliseconds and drops the
   // microseconds the signature and hash saw.
   const clock = await tx.query<{ readonly at: string }>(`select ${decidedAtText('now()')} as at`);
-  const decidedAt = clock[0]?.at ?? '';
+  const decidedAt = only(clock, 'decide: the database clock').at;
 
   // v3 (`signing.ts`, `decisionPayload`): everything the row shows or links
   // is inside what is signed, including its place in the chain, so a writer

@@ -212,5 +212,73 @@ describe.skipIf(serverUrl === undefined)(
       );
       expect(envelope).toEqual([{ held: '1000' }]);
     }, 30_000);
+
+    it('lets the same agent replace its own claim after waiting on the cap past its expiry', async () => {
+      const { decision, picked } = await liveWork(
+        s,
+        'replaced by its agent across its expiry',
+        1_000,
+      );
+      await expireSoon(s, picked['leaseId']);
+      const oldReservation = String(decision['reservationId']);
+
+      const pickerDb = racer(s);
+      const holder = await holdRows(s, 'budget_caps', [s.capId]);
+      let answer;
+      try {
+        const picking = asAgent(
+          s,
+          {
+            command: 'task.pickup',
+            operationId: randomUUID(),
+            reservationId: oldReservation,
+            leaseSeconds: 600,
+          },
+          undefined,
+          pickerDb,
+        );
+        await awaitParked(s, 'budget_caps', 1);
+        expect(await startedBefore(s, leaseExpiry, picked['leaseId'])).toBe(true);
+        await waitPast(s, leaseExpiry, picked['leaseId']);
+        await holder.release();
+        answer = await picking;
+      } finally {
+        await holder.release().catch(() => undefined);
+        await pickerDb.close();
+      }
+
+      // The agent's own delegation for this purpose expired with its lease, so
+      // the mint settles it rather than refusing DELEGATION_ALREADY_LIVE.
+      const replaced = appliedDetail(answer, 'agent task.pickup across the expiry');
+      expect(replaced['reservationId']).not.toBe(oldReservation);
+      expect(replaced['fence']).toBe(Number(picked['fence']) + 1);
+      const delegations = await rows<{
+        readonly lease: string;
+        readonly settled: boolean;
+        readonly matches: boolean;
+      }>(
+        s,
+        `select l.id as lease, (d.settled_at is not null) as settled,
+                (d.expires_at = l.expires_at) as matches
+           from public.leases l
+           join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+          where l.business_id = $1 and l.id in ($2, $3)
+          order by l.fence`,
+        [s.business, picked['leaseId'], replaced['leaseId']],
+      );
+      expect(delegations.map((row) => [row.lease, row.settled, row.matches])).toStrictEqual([
+        [picked['leaseId'], true, true],
+        [replaced['leaseId'], false, true],
+      ]);
+      const held = await rows<{ readonly n: string }>(
+        s,
+        `select count(*)::text as n from public.reservations r
+           join public.reservations old on old.business_id = r.business_id
+                                        and old.version_id = r.version_id
+          where r.business_id = $1 and old.id = $2 and r.state = 'held'`,
+        [s.business, oldReservation],
+      );
+      expect(held[0]?.n).toBe('1');
+    }, 30_000);
   },
 );
