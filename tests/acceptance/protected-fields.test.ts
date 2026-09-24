@@ -264,46 +264,52 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     SURFACES.map((surface) => ({ key, surface })),
   );
 
-  it.each(CASES)('refuses $key through the $surface surface, and writes nothing', async (test) => {
-    const field = spineField(test.key);
-    const value = probeValue(field);
-    const fields = { [test.key]: value };
-    const before = await stored(subjectId);
+  // Timeout only (TEST-TIMEOUTS): this case ran past the 5 s default while the
+  // machine was busy and passes alone; the assertions are unchanged.
+  it.each(CASES)(
+    'refuses $key through the $surface surface, and writes nothing',
+    async (test) => {
+      const field = spineField(test.key);
+      const value = probeValue(field);
+      const fields = { [test.key]: value };
+      const before = await stored(subjectId);
 
-    const { code, names, body, status } = await attemptUpdate(
-      test.surface,
-      fields,
-      before.revision,
-    );
-    if (status !== undefined) expect(status).toBe(statusFor(expectedCode(field)));
-    expect(code).toBe(expectedCode(field));
-    expect(names).toStrictEqual(expectedNames(field));
-    // The attempted value goes to the audit, never to the response. A refusal
-    // that echoes the value back has handed the caller a receipt for a write
-    // that did not happen. The general form of that is the shape: the wire
-    // refusal is four keys and there is no fifth for a value to ride out in.
-    expect(Object.keys(body as object).toSorted()).toStrictEqual([
-      'code',
-      'fixes',
-      'names',
-      'refused',
-    ]);
-    // And the specific form, for the values a refusal could plausibly repeat.
-    // A boolean is excluded rather than asserted loosely: `client_visible`'s
-    // only two values are `true` and `false`, and the envelope's own
-    // `refused: true` makes "does the body contain it" unfalsifiable for that
-    // field. A check that cannot fail is not evidence, so it is not claimed.
-    if (typeof value === 'string') expect(JSON.stringify(body)).not.toContain(value);
+      const { code, names, body, status } = await attemptUpdate(
+        test.surface,
+        fields,
+        before.revision,
+      );
+      if (status !== undefined) expect(status).toBe(statusFor(expectedCode(field)));
+      expect(code).toBe(expectedCode(field));
+      expect(names).toStrictEqual(expectedNames(field));
+      // The attempted value goes to the audit, never to the response. A refusal
+      // that echoes the value back has handed the caller a receipt for a write
+      // that did not happen. The general form of that is the shape: the wire
+      // refusal is four keys and there is no fifth for a value to ride out in.
+      expect(Object.keys(body as object).toSorted()).toStrictEqual([
+        'code',
+        'fixes',
+        'names',
+        'refused',
+      ]);
+      // And the specific form, for the values a refusal could plausibly repeat.
+      // A boolean is excluded rather than asserted loosely: `client_visible`'s
+      // only two values are `true` and `false`, and the envelope's own
+      // `refused: true` makes "does the body contain it" unfalsifiable for that
+      // field. A check that cannot fail is not evidence, so it is not claimed.
+      if (typeof value === 'string') expect(JSON.stringify(body)).not.toContain(value);
 
-    // And now the only question that matters. The stored `data`, the projected
-    // slot and the revision are all read from the row itself, because a server
-    // that refuses in the response and writes in the transaction is exactly the
-    // failure this proof exists to catch.
-    const after = await stored(subjectId);
-    expect(after.data).toStrictEqual(baseline.data);
-    expect(after.slots).toStrictEqual(baseline.slots);
-    expect(after.revision).toBe(baseline.revision);
-  });
+      // And now the only question that matters. The stored `data`, the projected
+      // slot and the revision are all read from the row itself, because a server
+      // that refuses in the response and writes in the transaction is exactly the
+      // failure this proof exists to catch.
+      const after = await stored(subjectId);
+      expect(after.data).toStrictEqual(baseline.data);
+      expect(after.slots).toStrictEqual(baseline.slots);
+      expect(after.revision).toBe(baseline.revision);
+    },
+    30_000,
+  );
 
   /**
    * D03, the root's intake-state ruling. On `task.update` any `intake_state`

@@ -314,6 +314,8 @@ describe.skipIf(serverUrl === undefined)(
       }
     });
 
+    // Timeout only (TEST-TIMEOUTS): this case ran past the 5 s default while the
+    // machine was busy and passes alone; the assertions are unchanged.
     it('refuses a window that is null, a fraction or negative, and purges nothing', async () => {
       try {
         for (const [label, value] of [
@@ -329,6 +331,6 @@ describe.skipIf(serverUrl === undefined)(
       } finally {
         await alphaWindowRow(`value = to_jsonb($2::numeric)`, [WINDOWS.alpha]);
       }
-    });
+    }, 30_000);
   },
 );

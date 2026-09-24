@@ -160,6 +160,8 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     }
   });
 
+  // Timeout only (TEST-TIMEOUTS): this case ran past the 5 s default while the
+  // machine was busy and passes alone; the assertions are unchanged.
   it('reaches every declaration through the command line', async () => {
     const cli = createCli({
       businessKey: 'alpha',
@@ -211,7 +213,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     const invented = await cli.run('task.invent', minimalEnvelope());
     expect(invented.status).toBe(404);
     expect((invented.body as Record<string, unknown>)['code']).toBe('COMMAND_UNKNOWN');
-  });
+  }, 30_000);
 
   it('spells every declaration the same way on all four surfaces', () => {
     const disagreements: string[] = [];

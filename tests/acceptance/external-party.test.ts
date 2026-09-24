@@ -197,6 +197,9 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     }
   });
 
+  // Timeout only (TEST-TIMEOUTS): every write in the surface is sent one at a
+  // time over HTTP, which takes about 5 s alone and ran past the 5 s default
+  // while the machine was busy. The assertions are unchanged.
   it('item 3: every write is refused on authority, nothing moves, and every attempt is audited', async () => {
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
@@ -265,5 +268,5 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     expect(appliedWrites).toStrictEqual([]);
     const refusedReads = audited.filter((row) => row.outcome === 'refused').map((r) => r.command);
     expect(refusedReads).toEqual(expect.arrayContaining(['task.read', 'task.board', 'task.queue']));
-  });
+  }, 30_000);
 });
