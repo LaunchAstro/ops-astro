@@ -12,11 +12,14 @@
 // request with those fields nowhere to go (checklist N7). The signature is
 // what this function reads and the signature is all it reads.
 //
-// **A bad token and a missing token are the same answer.** Expired, forged,
-// unsigned (`alg: none`), signed with the wrong secret, missing a `sub`, or
-// simply absent: all of them return nothing, and the boundary turns nothing
-// into one `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated
-// caller which of their guesses was closer.
+// **A bad token and a missing token are the same answer.** Forged, unsigned
+// (`alg: none`), signed with the wrong secret, missing a `sub`, or simply
+// absent: all of them return nothing, and the boundary turns nothing into one
+// `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
+// which of their guesses was closer. The one exception is a bearer whose
+// signature verifies against this secret and whose `exp` has passed: it
+// returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
+// `Verified` and `signatureVerifies`).
 //
 // **It verifies; it does not decode.** `hono/jwt` checks the HS256 signature
 // and `exp` against the secret the local GoTrue was started with. There is no
