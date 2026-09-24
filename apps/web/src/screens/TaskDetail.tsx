@@ -31,6 +31,21 @@
 // rather than their form quietly carrying a revision it was never checked
 // against and erasing the other writer's field.
 //
+// **A save whose answer was lost is sent again as the same attempt.** The
+// draft holds the `operationId` of a save whose outcome is unknown, with the
+// generation it was for, and a Save of that same generation resends it. The
+// server replays a known attempt without comparing the revision
+// (`docs/local/API.md`, "A replay of a stored success"), so a save that did
+// commit is answered as the success it was rather than as `VERSION_STALE`,
+// which this page would draw as somebody else's change. A keystroke is a new
+// generation and so a new attempt.
+//
+// **What was typed in the comment box and the propose form is held here too.**
+// Every reread remounts them, and a comment refused `VERSION_STALE` has only a
+// reread as its way forward. Neither write moves the revision or overlaps a
+// field on the page, so holding the words across a reread merges nothing, and
+// unlike the title and due date they do not stop a refresh.
+//
 // **Nothing is editable while its own request is in flight.** The inputs are
 // disabled for the length of a save, and a settlement clears only the exact
 // draft generation it submitted, so a slow response cannot delete newer typing.
@@ -69,14 +84,14 @@ import { Spill } from '@launchastro/ui';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
-import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { Proposals, type DecisionNote, type ProposeDraft } from '../views/proposals.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { describeRefusal, submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
-import { Comments } from './task/Comments.tsx';
+import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
 import { History } from './task/History.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
@@ -106,6 +121,13 @@ interface Draft {
   readonly base: DraftBase;
   readonly title: string;
   readonly due: string;
+  /** A save whose outcome is unknown: its `operationId` and the generation it sent. */
+  readonly attempt: SaveAttempt | null;
+}
+
+interface SaveAttempt {
+  readonly operationId: string;
+  readonly generation: number;
 }
 
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
@@ -142,6 +164,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
+  const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
+  const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
 
   return (
     <div className="stack">
@@ -193,6 +217,17 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onProposeRefused={setProposeRefusal}
               moved={moved}
               onMoved={setMoved}
+              commentDraft={commentDraft}
+              onCommentDraft={setCommentDraft}
+              proposeDraft={proposeDraft}
+              onProposeDraft={setProposeDraft}
+              onAttempt={(attempt) => {
+                setDraft((current) =>
+                  current !== null && current.identity === identity
+                    ? { ...current, attempt }
+                    : current,
+                );
+              }}
               onDraft={(next, base) => {
                 if (next === null) {
                   setDraft(null);
@@ -206,7 +241,14 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                         due: next.due,
                         generation: current.generation + 1,
                       }
-                    : { identity, generation: 1, base, title: next.title, due: next.due },
+                    : {
+                        identity,
+                        generation: 1,
+                        base,
+                        title: next.title,
+                        due: next.due,
+                        attempt: null,
+                      },
                 );
               }}
               onSaved={(generation) => {
@@ -275,6 +317,13 @@ interface LoadedProps {
   /** The last stale lifecycle or assignee press, quoted across its reread. */
   readonly moved: string | null;
   readonly onMoved: (because: string | null) => void;
+  /** The unsent comment and proposal, held so a reread keeps what was typed. */
+  readonly commentDraft: CommentDraft | null;
+  readonly onCommentDraft: (next: CommentDraft | null) => void;
+  readonly proposeDraft: ProposeDraft | null;
+  readonly onProposeDraft: (next: ProposeDraft | null) => void;
+  /** Record, or forget, the draft save whose outcome is unknown. */
+  readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
   readonly onSaved: (generation: number) => void;
   readonly onDiscard: () => void;
@@ -346,6 +395,9 @@ function Loaded(props: LoadedProps): ReactElement {
     setFromFields(draftSave);
     props.onMoved(null);
     send(work, (settlement) => {
+      // A draft save's attempt outlives only an unknown outcome. Any answer
+      // from the server settles it, and resending it would replay that answer.
+      if (draftSave && settlement.kind !== 'unknown') props.onAttempt(null);
       if (settlement.kind === 'stale' && !draftSave) {
         // Nothing unsaved was in this press, so there is nothing to resolve:
         // the server's words are kept across the reread that follows.
@@ -375,6 +427,15 @@ function Loaded(props: LoadedProps): ReactElement {
     // The revision is the draft's, not the screen's. That is the whole of the
     // stale-edit protection: an edit begun at revision N is offered at N, and
     // if the record has moved the server says so.
+    const generation = props.draft?.generation ?? null;
+    const held = props.draft?.attempt ?? null;
+    const attempt =
+      held !== null && generation !== null && held.generation === generation
+        ? held
+        : generation === null
+          ? null
+          : { operationId: client.newOperationId(), generation };
+    if (attempt !== null) props.onAttempt(attempt);
     run(
       () =>
         submitEdit(client, {
@@ -382,8 +443,9 @@ function Loaded(props: LoadedProps): ReactElement {
           recordId: task.id,
           expectedRevision: base.revision,
           fields: { title, due: due === '' ? null : due },
+          ...(attempt === null ? {} : { operationId: attempt.operationId }),
         }),
-      props.draft?.generation ?? null,
+      generation,
       true,
     );
   };
@@ -537,6 +599,8 @@ function Loaded(props: LoadedProps): ReactElement {
         refusal={props.commentRefusal}
         onRefused={props.onCommentRefused}
         onPosted={props.onChanged}
+        draft={props.commentDraft}
+        onDraft={props.onCommentDraft}
       />
 
       <Proposals
@@ -546,6 +610,8 @@ function Loaded(props: LoadedProps): ReactElement {
         onDecided={props.onDecided}
         onProposeRefused={props.onProposeRefused}
         proposeRefusal={props.proposeRefusal}
+        proposeDraft={props.proposeDraft}
+        onProposeDraft={props.onProposeDraft}
         proposals={task.proposals}
         recordId={task.id}
         revision={task.revision}

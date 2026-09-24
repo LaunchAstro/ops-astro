@@ -20,8 +20,14 @@
 // only the `operationId` tells the register that the retry of an unchanged box
 // is the comment it already has. Changing the text, the audience or the kind is
 // a different comment and gets a new one.
+//
+// **What the person typed is held above the read** (`TaskDetail.tsx`), with
+// the attempt, because every reread of the task remounts this box. A comment
+// refused `VERSION_STALE` rereads the task, keeps the text, and quotes the
+// refusal, so the next press goes out against the revision the page now shows.
+// `task.comment` leaves the revision alone, so there is nothing to merge.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskComment } from '../../operations/shapes.ts';
@@ -41,7 +47,28 @@ export interface CommentsProps {
   readonly refusal: string | null;
   readonly onRefused: (because: string) => void;
   readonly onPosted: () => void;
+  /** The unsent comment, held above the read so a reread keeps it. Null is an empty box. */
+  readonly draft: CommentDraft | null;
+  readonly onDraft: (next: CommentDraft | null) => void;
 }
+
+/** An unsent comment: the words, the attempt whose outcome is unknown, and a stale refusal. */
+export interface CommentDraft {
+  readonly body: string;
+  readonly audience: string;
+  readonly kind: string;
+  readonly pending: PendingComment | null;
+  /** The server's `VERSION_STALE`, quoted across the reread it caused. */
+  readonly stale: string | null;
+}
+
+const EMPTY: CommentDraft = {
+  body: '',
+  audience: 'internal',
+  kind: 'note',
+  pending: null,
+  stale: null,
+};
 
 /** The two audiences the model has. Who may read it, which is not what it is. */
 const AUDIENCES: readonly { readonly value: string; readonly label: string }[] = [
@@ -63,7 +90,7 @@ const KINDS: readonly { readonly value: string; readonly label: string }[] = [
 ];
 
 /** A comment whose outcome is not known, held so the retry is the same attempt. */
-interface PendingComment {
+export interface PendingComment {
   readonly operationId: string;
   readonly body: string;
   readonly audience: string;
@@ -71,10 +98,11 @@ interface PendingComment {
 }
 
 export function Comments(props: CommentsProps): ReactElement {
-  const [body, setBody] = useState('');
-  const [audience, setAudience] = useState('internal');
-  const [kind, setKind] = useState('note');
-  const [pending, setPending] = useState<PendingComment | null>(null);
+  const current = props.draft ?? EMPTY;
+  const { body, audience, kind, pending } = current;
+  const put = (next: Partial<CommentDraft>): void => {
+    props.onDraft({ ...current, ...next });
+  };
   const same = (attempt: PendingComment | null): attempt is PendingComment =>
     attempt !== null &&
     attempt.body === body &&
@@ -99,7 +127,7 @@ export function Comments(props: CommentsProps): ReactElement {
     const attempt = same(pending)
       ? pending
       : { operationId: props.client.newOperationId(), body, audience, kind };
-    setPending(attempt);
+    put({ pending: attempt, stale: null });
     run(
       () =>
         props.client.mutate(
@@ -110,12 +138,20 @@ export function Comments(props: CommentsProps): ReactElement {
       (settlement) => {
         // An unknown outcome keeps the attempt; any answer from the server ends it.
         if (settlement.kind === 'unknown') return;
-        setPending(null);
         if (settlement.kind === 'closed') props.onRefused(settlement.because);
-        if (settlement.kind !== 'ok') return;
+        if (settlement.kind === 'stale') {
+          // The task moved on. Keep the words, read the task again, and say why.
+          props.onDraft({ ...current, pending: null, stale: settlement.because });
+          props.onPosted();
+          return;
+        }
+        if (settlement.kind !== 'ok') {
+          props.onDraft({ ...current, pending: null, stale: null });
+          return;
+        }
         // Emptied because it has been stored, and the list is reread rather
         // than appended to: what is on the screen is what the server has.
-        setBody('');
+        props.onDraft(null);
         props.onPosted();
       },
     );
@@ -161,7 +197,16 @@ export function Comments(props: CommentsProps): ReactElement {
           {because}
         </p>
       )}
-      {because === null || !same(pending) ? null : (
+      {current.stale === null ? null : (
+        <div role="alert" data-comment="stale">
+          <p className="field__error">{current.stale}</p>
+          <p className="card__sub">
+            Somebody else moved this task on before your comment was stored, so it was not. The task
+            has been read again and your comment is still here: post it again if it still applies.
+          </p>
+        </div>
+      )}
+      {busy || !same(pending) ? null : (
         <p className="card__sub" data-comment="unresolved">
           This comment may already have been stored. Posting again sends the same attempt, so the
           server answers with the original result rather than storing it twice.
@@ -189,7 +234,7 @@ export function Comments(props: CommentsProps): ReactElement {
             disabled={locked}
             value={body}
             onChange={(event) => {
-              setBody(event.target.value);
+              put({ body: event.target.value });
             }}
           />
         </div>
@@ -203,7 +248,7 @@ export function Comments(props: CommentsProps): ReactElement {
             disabled={locked}
             value={audience}
             onChange={(event) => {
-              setAudience(event.target.value);
+              put({ audience: event.target.value });
             }}
           >
             {AUDIENCES.map((choice) => (
@@ -223,7 +268,7 @@ export function Comments(props: CommentsProps): ReactElement {
             disabled={locked}
             value={kind}
             onChange={(event) => {
-              setKind(event.target.value);
+              put({ kind: event.target.value });
             }}
           >
             {KINDS.map((choice) => (
