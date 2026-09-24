@@ -14,9 +14,10 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at 158d6de and again at d6787c5, the head these docs
-describe (`pnpm test` 5,398 passed and 24 skipped, `tests/acceptance` 3,850 and
-16, `db:conformance` 114 named suites, 4,741 of 4,741).
+joint gates were green at 158d6de, at d6787c5 and again at c53aa25, the head
+these docs describe (`pnpm test` 5,465 passed and 24 skipped,
+`tests/acceptance` 3,852 and 16, `db:conformance` 125 named suites, 4,789 of
+4,789).
 [PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
