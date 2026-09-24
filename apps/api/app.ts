@@ -40,7 +40,7 @@ import {
 } from '../../packages/core-records/src/identity/login-resolution.ts';
 import {
   NO_AGENT_FIXES,
-  refuseExpiredSession,
+  EXPIRED_FIXES,
 } from '../../packages/core-records/src/identity/agent-login.ts';
 import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
@@ -304,10 +304,6 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
-// The canonical expired refusal's fixes, read from the agent envelope's own
-// constructor rather than copied, so the door and `refuseExpiredSession`
-// cannot drift apart. `tests/api/admission-enumeration.test.ts` pins the bytes.
-const EXPIRED_FIXES = refuseExpiredSession().fixes;
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
 /** A body that is not an object is refused rather than coerced into one. */

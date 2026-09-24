@@ -110,8 +110,14 @@ export async function resolveAgentLogin(
  * The browser half of this is L5's; what is fixed here is the code it reads.
  */
 export function refuseExpiredSession(): AgentRefusal {
-  return refuseAgent('AUTH_SESSION_EXPIRED', [
-    'The session has expired. Sign in again to continue.',
-    'Nothing was changed by this call.',
-  ]);
+  return refuseAgent('AUTH_SESSION_EXPIRED', EXPIRED_FIXES);
 }
+
+/**
+ * The expired refusal's fixes, one copy for both prefixes: the HTTP door
+ * answers an expired bearer with these before any envelope runs.
+ */
+export const EXPIRED_FIXES = [
+  'The session has expired. Sign in again to continue.',
+  'Nothing was changed by this call.',
+] as const;
