@@ -13,12 +13,48 @@
 //    large for a double, is a usage error with no request sent (exit 2). It is
 //    never re-serialised as null (`docs/local/API.md`, `COMMAND_BODY_INVALID`).
 
+import { spawn } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { runCli } from './cli-process-harness.ts';
+
+const ROOT = join(import.meta.dirname, '..', '..');
+
+interface Run {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/**
+ * `apps/cli/main.ts` as its own process, once. Kept here rather than taken
+ * from `cli-process-harness.ts`, which reaches the database harness: this file
+ * opens no database.
+ */
+async function runCli(
+  args: readonly string[],
+  env: Readonly<Record<string, string>>,
+): Promise<Run> {
+  const child = spawn(process.execPath, ['apps/cli/main.ts', ...args], {
+    cwd: ROOT,
+    env: { PATH: process.env['PATH'] ?? '', ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString('utf8');
+  });
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString('utf8');
+  });
+  const code = await new Promise<number | null>((resolve) => {
+    child.once('close', resolve);
+  });
+  return { code, stdout, stderr };
+}
 
 type Handler = (request: IncomingMessage, raw: string, response: ServerResponse) => void;
 
