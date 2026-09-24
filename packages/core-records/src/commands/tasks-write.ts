@@ -53,6 +53,16 @@ const SPOOFABLE_ON_CREATE: readonly string[] = ['source', 'intake_state'];
 /** On update `intake_state` is the operation-owned field it is; see the top. */
 const SPOOFABLE_ON_UPDATE: readonly string[] = ['source'];
 
+/**
+ * A create places a task through its operands, never through `fields`.
+ * `board` and `board_section` are generic on `task.update`, so the engine
+ * lets them through; read from `fields` on a create they would bypass
+ * `planTaskPlacement`: a subtask would keep a section the constraint then
+ * rejects as a fault, or a board its parent is not on, and a top-level task
+ * would be ranked against another board's siblings.
+ */
+const PLACED_BY_OPERAND: readonly string[] = ['board', 'board_section'];
+
 function refuseSpoof(
   fields: FieldValues,
   spoofable: readonly string[],
@@ -120,6 +130,16 @@ export async function createTask(
   const mistyped = refuseWrongValueType(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
+  const placedInFields = PLACED_BY_OPERAND.filter((key) => key in request.fields);
+  if (placedInFields.length > 0) {
+    return refused(
+      refuseCommand('PLACEMENT_IS_DERIVED', placedInFields, [
+        'Send board and boardSection as operands beside fields, not inside them.',
+        'A subtask takes its parent’s board and no section.',
+      ]),
+    );
+  }
+
   const placement = await planTaskPlacement(tx, context.spine.taskTypeId, {
     parentId: request.parentId ?? null,
     board: request.board ?? null,
@@ -131,7 +151,7 @@ export async function createTask(
   const named =
     request.stateKey === undefined
       ? undefined
-      : context.spine.states.find((state) => state.key === request.stateKey)?.id;
+      : context.spine.states.find((state) => state.key === request.stateKey);
   if (request.stateKey !== undefined && named === undefined) {
     return refused(
       refuseCommand(
@@ -141,7 +161,21 @@ export async function createTask(
       ),
     );
   }
-  const stateId = named ?? initialStateId(context.spine.states);
+  // A completed state is reached only by `task.complete`, which writes the
+  // stamp in the same act and leaves the completion event in the history
+  // (specification 14.1 points 2 and 5; DATA.md: `state` is written by
+  // `task.start`, `task.complete` and `task.reopen`). A create that named one
+  // would be a third writer: a completed task with no stamp and no event.
+  if (named?.machineCategory === 'completed') {
+    return refused(
+      refuseCommand(
+        'TRANSITION_PROTECTED',
+        ['state=task.complete'],
+        ['Create the task, then call task.complete, which stamps and records the completion.'],
+      ),
+    );
+  }
+  const stateId = named?.id ?? initialStateId(context.spine.states);
 
   const id = randomUUID();
   const data: Record<string, unknown> = {
@@ -150,6 +184,7 @@ export async function createTask(
     source: deriveSource('person', context.entryPoint),
     board_rank: placement.boardRank,
     ...(stateId === undefined ? {} : { state: stateId }),
+    // From the placement alone: `fields` cannot carry either (refused above).
     ...(placement.board === null ? {} : { board: placement.board }),
     ...(placement.boardSection === null ? {} : { board_section: placement.boardSection }),
     ...(request.parentId === null || request.parentId === undefined
