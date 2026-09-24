@@ -142,10 +142,14 @@ const shallow = (() => {
 const hashTokens = (text: string): string[] =>
   [...text.matchAll(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-])/gu)].map((match) => match[0]);
 
-/** A whole comment line in a script or test: `//`, `/*` or a block's ` * `. */
-const isCommentLine = (line: string): boolean => /^\s*(?:\/\/|\/\*|\*)/u.test(line);
+/**
+ * A line that cites a head in prose: a whole comment line in a script or test
+ * (`//`, `/*` or a block's ` * `), or a `describe` or `it` title.
+ */
+const isCommentLine = (line: string): boolean =>
+  /^\s*(?:\/\/|\/\*|\*|(?:describe|it)(?:\.\w+)*\(\s*['`])/u.test(line);
 
-describe.skipIf(shallow)('commit hashes cited in docs and code comments (#41)', () => {
+describe.skipIf(shallow)('commit hashes cited in docs, code comments and test titles (#41)', () => {
   it('resolve in the history of this head', () => {
     const cited: { readonly file: string; readonly hash: string }[] = [];
     // A hash inside a path names an evidence directory outside the

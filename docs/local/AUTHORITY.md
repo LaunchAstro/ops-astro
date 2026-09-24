@@ -29,6 +29,13 @@ A login is in `person_logins` or in `actor_logins`, never both. Two triggers in
 0008 hold that from either side, because a login in both would make the order in
 which the resolver reads them the thing that decides who the caller is.
 
+Identity history is deactivated or reversed, never deleted. Since migration 0028,
+Nathan's approved backstop, the application role holds no `delete` on
+`person_logins` or `person_merges`, which matches `actor_logins` (granted without
+it in 0008). No code deletes either
+(`migrations/0028_identity_history_no_delete.sql`;
+`tests/runtime/final-r1-fr1-migrations.test.ts`).
+
 `AgentSession` has no `personId` field. It is absent, not null. A field that
 is sometimes a person is a field some later `??` fills in.
 
