@@ -22,6 +22,15 @@
 //      refuse it and stay at 0029.
 //
 // Every move is the application role's, inside `withBusiness`.
+//
+// SOL-R3R2-1, the same upgrade against a live proposal. A proposal writes
+// `gates` and `evidence_packs` in both orders: a first version inserts its
+// pack and then its gate, and a successor first supersedes the old gate, then
+// inserts its pack and its gate (`proposal-writer.ts`). 0030 locks `gates` and
+// builds an index on `evidence_packs`, so a lock on either table first is
+// inverted by one of the two. Each schedule below pauses a real `propose` at
+// one statement, overlaps 0030 as the runner applies it, and requires both to
+// commit, with 0030 recorded and the proposal's gate within its rules.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -194,6 +203,80 @@ async function stagedAt0029(part: string): Promise<Staged> {
   return { db, watch, fixture, gateId: gate.gateId, decidedVersionId: gate.versionId, target };
 }
 
+interface Bare {
+  readonly db: EmptyDatabase;
+  readonly watch: AdminConnection;
+  readonly fixture: RuntimeFixture;
+  readonly taskId: string;
+}
+
+/** A 0029 database with one task, and an owner connection that watches. */
+async function bareAt0029(part: string): Promise<Bare> {
+  const db = await createEmptyDatabase({ part });
+  await applyMigrations(db.admin, THROUGH_0029);
+  const fixture = await buildFixture(db.app, `race-0030-${part}`);
+  const taskId = await newTask(db.app, fixture.businessId, fixture.decider);
+  const url = new URL(serverUrl ?? '');
+  url.pathname = `/${db.name}`;
+  return { db, watch: connectAsAdmin(url.toString()), fixture, taskId };
+}
+
+/** `propose` on the task, as a first version or as a successor in `lineageId`. */
+async function proposeOn(tx: TenantQuery, on: Bare, lineageId?: string) {
+  const result = await propose(tx, {
+    taskId: on.taskId,
+    ...(lineageId === undefined ? {} : { lineageId }),
+    collection: TASK_COLLECTION,
+    proposedByActorId: on.fixture.decider.actorId,
+    subjects: subjectsOf(on.fixture.decider),
+    purpose: 'draft_the_brief',
+    maximumMinor: 5_000,
+    currency: 'AUD',
+    payload: { instruction: 'draft it' },
+    step: { kind: 'local.draft', payload: { words: 200 } },
+    expiresAt: new Date(Date.now() + 3_600_000),
+  });
+  if (!result.ok) throw new Error(`propose refused ${result.refusal.code}`);
+  return result.value;
+}
+
+/** The transaction, held at the first statement `at` matches until `release` resolves. */
+function pausedAt(
+  tx: TenantQuery,
+  at: RegExp,
+  reached: () => void,
+  release: Promise<void>,
+): TenantQuery {
+  let paused = false;
+  return {
+    businessId: tx.businessId,
+    async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
+      if (!paused && at.test(text)) {
+        paused = true;
+        reached();
+        await release;
+      }
+      return await tx.query<Row>(text, parameters);
+    },
+  };
+}
+
+/** 0030 exactly as the runner applies it: its statements, then its ledger row, in one transaction. */
+async function applyUpgrade(db: EmptyDatabase): Promise<void> {
+  const upgrade = UPGRADE;
+  if (upgrade === undefined) throw new Error('no 0030 on disk');
+  await db.admin.transaction(async (execute) => {
+    for (const statement of upgrade.statements) {
+      // oxlint-disable-next-line no-await-in-loop
+      await execute(statement);
+    }
+    await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
+      upgrade.version,
+      upgrade.checksum,
+    ]);
+  });
+}
+
 /** The move: the decided gate onto the staged version, with its run, step and pack. */
 async function move(tx: TenantQuery, on: Staged): Promise<void> {
   await tx.query(
@@ -264,11 +347,15 @@ describe.skipIf(serverUrl === undefined)(
   '0030 against a decided-gate move made during its upgrade',
   () => {
     let staged: Staged | undefined;
+    let bare: Bare | undefined;
 
     afterEach(async () => {
       await staged?.watch.close();
       await staged?.db.drop();
       staged = undefined;
+      await bare?.watch.close();
+      await bare?.db.drop();
+      bare = undefined;
     });
 
     it('makes the move wait while 0030 is between its check and its trigger, then refuses it', async () => {
@@ -311,6 +398,77 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect(moved).toMatchObject({ refused: VERSION_FIXED });
       expect(await lastApplied(on.db)).not.toBe('0029');
+    }, 120_000);
+
+    /**
+     * A proposal held at `at` with its earlier writes made, 0030 started, then
+     * the proposal released. Both must commit, and the proposal's gate must be
+     * within 0030's rules once it has.
+     */
+    async function proposalAcrossUpgrade(part: string, successor: boolean, at: RegExp) {
+      const on = await bareAt0029(part);
+      bare = on;
+      const lineageId = successor
+        ? (await on.db.app.withBusiness(on.fixture.businessId, (tx) => proposeOn(tx, on))).lineageId
+        : undefined;
+      const reached = latch();
+      const release = latch();
+      let gateId: string | undefined;
+      const proposing = settle(
+        on.db.app.withBusiness(on.fixture.businessId, async (tx) => {
+          ({ gateId } = await proposeOn(
+            pausedAt(tx, at, reached.resolve, release.promise),
+            on,
+            lineageId,
+          ));
+        }),
+      );
+      await reached.promise;
+      const upgrading = settle(applyUpgrade(on.db));
+      const during = await committedOrWaiting(on.watch, upgrading).finally(() => {
+        release.resolve();
+      });
+      const [proposed, upgraded] = [await proposing, await upgrading];
+      const [gate] = await on.db.admin.execute<{ readonly own_pack: boolean }>(
+        `select exists (select 1 from public.evidence_packs p
+                         where p.business_id = g.business_id and p.id = g.evidence_pack_id
+                           and p.version_id = g.version_id) as own_pack
+           from public.gates g where g.id = $1`,
+        [gateId ?? randomUUID()],
+      );
+      const [installed] = await on.db.admin.execute<{ readonly n: number }>(
+        `select count(*)::int as n from pg_constraint
+          where conname = 'gates_pack_in_same_version' and convalidated`,
+      );
+      return {
+        during,
+        proposed: 'refused' in proposed ? proposed.refused : 'committed',
+        upgraded: 'refused' in upgraded ? upgraded.refused : 'committed',
+        last: await lastApplied(on.db),
+        ownPack: gate?.own_pack,
+        keyInstalled: installed?.n,
+      };
+    }
+
+    const bothCommitted = {
+      during: 'waiting',
+      proposed: 'committed',
+      upgraded: 'committed',
+      last: '0030',
+      ownPack: true,
+      keyInstalled: 1,
+    };
+
+    it('serialises with a first proposal held between its evidence pack and its gate', async () => {
+      expect(
+        await proposalAcrossUpgrade('race0030pack', false, /insert into public\.gates\b/u),
+      ).toStrictEqual(bothCommitted);
+    }, 120_000);
+
+    it('serialises with a successor held between superseding the old gate and its pack', async () => {
+      expect(
+        await proposalAcrossUpgrade('race0030succ', true, /insert into public\.evidence_packs\b/u),
+      ).toStrictEqual(bothCommitted);
     }, 120_000);
 
     it('makes the upgrade wait for a move already in flight, then refuses the upgrade at 0029', async () => {

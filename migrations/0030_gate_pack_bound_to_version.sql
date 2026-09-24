@@ -45,10 +45,25 @@
 -- the `alter table` and `create trigger` below take on `gates` anyway, so the
 -- migration never has to upgrade its lock. A move already in flight is
 -- waited for and then judged by the check; one that starts later waits and
--- is then refused by the trigger. Only `gates` is locked: rule 1 is checked
--- again by the foreign key under its own lock, and a lock on
--- `gate_decisions` would hold nothing once this commits.
+-- is then refused by the trigger. Rule 1 is checked again by the foreign key
+-- under its own lock, and a lock on `gate_decisions` would hold nothing once
+-- this commits.
+--
+-- The index and the foreign key below also lock `evidence_packs`, and a
+-- proposal writes both tables in either order: a first version inserts its
+-- pack and then its gate, and a successor supersedes the old gate first
+-- (`proposal-writer.ts`). Whichever of the two this took first, one of those
+-- would hold the other and the two would deadlock (SOL-R3R2-1). So
+-- `proposal_versions` is locked before either. Every write of a pack, and every
+-- proposal's write of a gate, comes after its proposal's first write to
+-- `proposal_versions` in the same transaction, so a proposal in flight is
+-- waited for whole and one that starts later waits for this. SHARE is the
+-- weakest mode that conflicts with that INSERT and UPDATE, and nothing below
+-- locks `proposal_versions` again, so it is never upgraded. `decide.ts`
+-- writes `gates` and neither of the others, so it only delays the `gates`
+-- lock.
 
+lock table public.proposal_versions in share mode;
 lock table public.gates in share row exclusive mode;
 
 do $$
