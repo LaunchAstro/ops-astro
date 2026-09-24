@@ -84,7 +84,8 @@ describe.skipIf(serverUrl === undefined)('task trash and retention', () => {
     const counts = await db.app.withBusiness(businessId, async (tx) => {
       const spine = await installTaskSpine(tx);
       const actorId = await insertActor(tx, await insertPerson(tx, 'a deleter'));
-      const board = crypto.randomUUID();
+      // A board is a live task here (R2-RUNTIME-19): a fabricated id is refused.
+      const board = await createTask(tx, spine, { title: 'a board', parentId: null });
       await createTask(tx, spine, { title: 'stays', parentId: null, board });
       const going = await createTask(tx, spine, { title: 'goes', parentId: null, board });
       const live = async (): Promise<number> => {
