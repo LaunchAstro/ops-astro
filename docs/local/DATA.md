@@ -86,7 +86,7 @@ One run is one transaction. Every pending file's statements run in order,
 each file's ledger row is written after its statements, and there is one
 commit at the end, so a refused or failed run leaves the database at the
 version it started at (SOL-FR6-2). A failed statement's error says so and
-names that version. Where a migration's header says a failing install "stays
+names that version, the last one in the ledger. Where a migration's header says a failing install "stays
 at" the version before it, that means the version the run started at, which
 is earlier when the run held several files. A file holding a statement
 PostgreSQL will not run inside a transaction block, or one that would end the
@@ -99,18 +99,29 @@ database, tablespace and subscription commands, and
 text cannot say which relations are. Transaction control (`BEGIN`, `COMMIT`,
 `SAVEPOINT`, `PREPARE TRANSACTION` and the rest) is refused too.
 `ALTER TYPE ... ADD VALUE` is not refused: PostgreSQL runs it inside a
-transaction block, but the new value cannot be used until the run's one commit,
-so a later file in the same run that uses it fails and the run rolls back
-whole. The guard reads a statement with the same scanner that splits the
-files, and that scanner follows PostgreSQL's own lexer where a token starts. So
-a nested block comment cannot hide a `COMMIT` (SOL-FR7-1), nor can `$$` at the
-end of an identifier or the last `e` of a word read as an `E''` prefix
-(SOL-FR9-1), and a word inside a comment or a quoted string is not read as
-part of the statement. None of the files on disk holds one of these. Behind
-the guard, the runner sends each statement over the extended query protocol,
-so if a statement the scanner read as one still holds two commands, PostgreSQL
-refuses it ("cannot insert multiple commands into a prepared statement") and
-the run rolls back whole (`oneCommandEach` in `tenancy/database.ts`).
+transaction block. A use of the new value later in the same run fails, and
+rolls the run back whole, when the enum type was committed before the run, as
+on every upgrade. When the type was created earlier in the same run, as on a
+fresh install, the use succeeds, so a fresh-install gate cannot catch it. Ship
+an `ADD VALUE` and its first use in different releases. The guard reads a
+statement with the same scanner that splits the files, and that scanner reads
+comments, strings, identifiers and numbers as PostgreSQL 18's lexer (`scan.l`)
+does. So a nested block comment cannot hide a `COMMIT` (SOL-FR7-1), nor can
+`$$` at the end of an identifier or the last `e` of a word read as an `E''`
+prefix (SOL-FR9-1), nor a line comment that a lone carriage return ends, nor
+an `E''` string continued on the next line (FR11-SCANNER). A word inside a
+comment or a quoted string is not read as part of the statement. A piece that
+is more than comments and whitespace is sent, never dropped, so PostgreSQL
+refuses what it cannot read. None of the files on disk holds one of these.
+Behind the guard, the runner sends each statement over the extended query
+protocol, so if a statement the scanner read as one still holds two commands,
+PostgreSQL refuses it ("cannot insert multiple commands into a prepared
+statement") and the run rolls back whole (`oneCommandEach` in
+`tenancy/database.ts`). After each statement the runner also asks the server
+for its transaction's id. If it has changed, a statement ended the run's
+transaction, so the runner stops at once and says which file and statement
+did it, and that work before it in the run may be committed. That error never
+says nothing was applied.
 
 A session can connect after that first look. So the runner looks again inside
 the transaction, before each file's first statement and once more after the

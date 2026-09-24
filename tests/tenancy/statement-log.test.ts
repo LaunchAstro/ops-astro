@@ -87,6 +87,85 @@ describe('splitStatements', () => {
   });
 });
 
+// FR11-SCANNER: scan.l (REL_18_STABLE) read rule by rule. Each row is a text
+// and the pieces PostgreSQL's lexer finds in it; the rows marked red failed at
+// b17d8cf, the rest pin a rule the scanner already followed.
+describe('splitStatements against scan.l', () => {
+  it.each([
+    // R8-AUTHORITY-5, R8-SURFACE-6 (red): newline is [\n\r], so a lone CR ends
+    // a line comment and the statement after it is read, not dropped.
+    [
+      'create table a (id int);\n-- c\rcreate table b (id int);',
+      ['create table a (id int)', '-- c\rcreate table b (id int)'],
+    ],
+    ['select 1; -- c\rselect 2;', ['select 1', '-- c\rselect 2']],
+    [
+      'create table a (id int);\n-- b follows\rcreate table b (id int);',
+      ['create table a (id int)', '-- b follows\rcreate table b (id int)'],
+    ],
+    ['select 1 -- n\r; drop table t', ['select 1 -- n', 'drop table t']],
+    // R8-THERMO-7 (red): a closing quote, whitespace holding a newline (or a
+    // line comment and a newline), and a quote continue the string in the
+    // state it was in (<xqs>{quotecontinue}), so an E string stays an E string.
+    [`select E'a'\n'\\'' ; commit; --'`, [`select E'a'\n'\\''`, 'commit']],
+    [`select e'a'\r'\\'' ; commit; --'`, [`select e'a'\r'\\''`, 'commit']],
+    [`select E'a' -- c\n'\\'' ; commit; --'`, [`select E'a' -- c\n'\\''`, 'commit']],
+    [`select E'a'\n-- c\n  '\\'' ; commit; --'`, [`select E'a'\n-- c\n  '\\''`, 'commit']],
+    [`select E'a'\n'b'\n'\\'' ; commit; --'`, [`select E'a'\n'b'\n'\\''`, 'commit']],
+    // No newline, or a block comment in the gap, is no continuation: the next
+    // quote opens a plain string, where a backslash is a plain character.
+    [`select E'a' '\\'' ; commit; --'`, [`select E'a' '\\'' ; commit; --'`]],
+    [`select E'a' /* c */\n'\\'' ; commit; --'`, [`select E'a' /* c */\n'\\'' ; commit; --'`]],
+    // Every other string form continues in its own state, none with escapes:
+    // plain, N'', B'', X'' and U&''.
+    [`select 'a'\n'\\'' ; commit; --'`, [`select 'a'\n'\\'' ; commit; --'`]],
+    [`select N'a'\n'\\'' ; commit; --'`, [`select N'a'\n'\\'' ; commit; --'`]],
+    [`select B'1'\n'\\'' ; commit; --'`, [`select B'1'\n'\\'' ; commit; --'`]],
+    [`select X'1'\n'\\'' ; commit; --'`, [`select X'1'\n'\\'' ; commit; --'`]],
+    [
+      `select U&'a'\n'\\'' UESCAPE '!' ; commit; --'`,
+      [`select U&'a'\n'\\'' UESCAPE '!' ; commit; --'`],
+    ],
+    // A quoted identifier never continues (only xb, xh, xq, xe and xus do).
+    [`select "a"\n"b"; commit`, [`select "a"\n"b"`, 'commit']],
+    [`select U&"a"\n"b"; commit`, [`select U&"a"\n"b"`, 'commit']],
+    // A piece is dropped only when PostgreSQL's grammar drops it: nothing in it
+    // but comments and whitespace (red: a piece with no verb was dropped).
+    ['select 1;  ', ['select 1', ' ']],
+    ['create table a (id int); 1', ['create table a (id int)', '1']],
+    ['select 1; "x"', ['select 1', '"x"']],
+    ['-- c\n; /* d */ ;\t\f\v\r\n;', []],
+    // Numbers: a real ends before `$$` only with a signed exponent; 1e3$$ and
+    // 0x1F$$ are trailing junk that PostgreSQL refuses, one token here too.
+    ['select 1e-3$$;$$; commit', ['select 1e-3$$;$$', 'commit']],
+    ['select 1.5$$;$$; commit', ['select 1.5$$;$$', 'commit']],
+    ['select 1e3$$; commit', ['select 1e3$$', 'commit']],
+    // An operator stops before `--` or `/*` inside it.
+    ['select 1 +-- c\n; commit', ['select 1 +-- c', 'commit']],
+    ['select 1 @/* ; */; commit', ['select 1 @/* ; */', 'commit']],
+  ])('reads %j as scan.l does', (sql, pieces) => {
+    expect(splitStatements(sql)).toStrictEqual(pieces);
+  });
+
+  // R8-RUNTIME-1 (red): the server reads `commit work` after the CR, one command.
+  it('reads the verb after a comment a lone CR ends', () => {
+    expect(classify('-- x\rcommit\nwork')).toStrictEqual([
+      { text: '-- x\rcommit\nwork', kind: 'transaction' },
+    ]);
+    expect(classify('select 1 -- n\r; drop table t').map((s) => s.kind)).toStrictEqual([
+      'data',
+      'ddl',
+    ]);
+  });
+
+  // A character past ASCII starts an identifier (ident_start), so a no-break
+  // space before a verb makes one word PostgreSQL refuses, not a space.
+  it('reads whitespace as scan.l does, [ \\t\\n\\r\\f\\v] and no more', () => {
+    expect(leadingVerb(' commit')).toBe('');
+    expect(leadingVerb('\r\f\v(select 1)')).toBe('SELECT');
+  });
+});
+
 describe('classifyStatement', () => {
   it.each([
     ['create index concurrently i on t (c)', 'ddl'],

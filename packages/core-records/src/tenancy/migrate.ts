@@ -184,9 +184,12 @@ async function refuseIfConnected(
  * change to how the runner applies files, not a file to slip past it. The
  * statements that would end the runner's own transaction are the scanner's
  * `transaction` kind, plus PREPARE TRANSACTION. `ALTER TYPE ... ADD VALUE` is
- * not refused: PostgreSQL 12 and later run it inside a block, and a later use
- * of the new value in the same run fails and rolls the whole run back (the
- * ALTER TYPE reference page, Notes).
+ * not refused: PostgreSQL 12 and later run it inside a block. A use of the new
+ * value later in the same run fails, and rolls the run back whole, when the
+ * enum type was committed before the run, as on every upgrade. When the type
+ * was created earlier in the same run, as on a fresh install, the use
+ * succeeds, so a fresh-install gate cannot catch it. Ship an ADD VALUE and its
+ * first use in different releases (the ALTER TYPE reference page, Notes).
  */
 const OUTSIDE_A_TRANSACTION: readonly RegExp[] = [
   /^(create (unique )?index|drop index)\b.*\bconcurrently\b/u,
@@ -233,6 +236,16 @@ function refuseOutsideATransaction(migrations: readonly Migration[]): void {
       }
     }
   }
+}
+
+/**
+ * The id of the transaction a statement runs in. Asking assigns one, so a
+ * statement that ended the run's transaction shows as a different id: the
+ * next statement runs in a transaction of its own.
+ */
+async function transactionId(execute: AdminConnection['execute']): Promise<string> {
+  const [row] = await execute<{ readonly xid: string }>(`select pg_current_xact_id()::text as xid`);
+  return row?.xid ?? '';
 }
 
 interface LedgerRow {
@@ -297,13 +310,15 @@ export async function applyMigrations(
   migrations: readonly Migration[],
 ): Promise<MigrationOutcome> {
   refuseOutsideATransaction(migrations);
-  const { pending, alreadyApplied } = splitByLedger(await readLedger(admin), migrations);
+  const ledger = await readLedger(admin);
+  const { pending, alreadyApplied } = splitByLedger(ledger, migrations);
   // Nothing pending is nothing to protect, so an up-to-date database with the
   // application running passes.
   if (pending.length === 0) return { applied: [], alreadyApplied };
   const names = pending.map((migration) => migration.version);
-  // The one transaction rolls a failure back to where the run started.
-  const last = alreadyApplied.at(-1);
+  // The one transaction rolls a failure back to where the run started, which
+  // is the ledger's last version, whatever list the caller passed.
+  const last = [...(ledger?.keys() ?? [])].toSorted().at(-1);
   const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
 
   // The check runs before the transaction, inside it before each file, and
@@ -313,6 +328,7 @@ export async function applyMigrations(
   await refuseIfConnected(admin.execute, names);
   await admin.transaction(
     async (execute) => {
+      const opened = await transactionId(execute);
       // Migrations are ordered and each one may depend on the last, so they are
       // applied one at a time on purpose. The same goes for the statements
       // inside one migration. `Promise.all` here would apply a schema in an
@@ -329,6 +345,16 @@ export async function applyMigrations(
               `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
                 `applied; the database is still ${startedAt}.`,
               { cause },
+            );
+          }
+          // The tripwire. The guard and the backstop are readings; this is
+          // the server's word that the run's one transaction is still open.
+          // oxlint-disable-next-line no-await-in-loop
+          if ((await transactionId(execute)) !== opened) {
+            throw new Error(
+              `migrate: ${migration.version} ended the run's transaction on: ` +
+                `${statement.slice(0, 200)}. The run stopped there. Work before it in this run ` +
+                `may be committed, so read ops.schema_migrations and the schema before running again.`,
             );
           }
         }

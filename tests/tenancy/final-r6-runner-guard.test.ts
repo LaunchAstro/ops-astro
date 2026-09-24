@@ -330,6 +330,10 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     ['fr9nested', '/* outer /* inner */ outer */ COMMIT'],
     ['fr10dollar', 'CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
     ['fr10estring', "select name'\\'; commit; --'"],
+    // R8-RUNTIME-1: behind a line comment a lone CR ends, one command to the
+    // server, so the extended-protocol backstop cannot see it.
+    ['fr11cr', 'create table ops.fr9_second (id int);\n-- note\rcommit\nwork'],
+    ['fr11estring', "select E'a'\n'\\'' ; commit; --'"],
   ])(
     'refuses a hidden COMMIT (%s) before the first of three files runs',
     async (part, sql) => {
@@ -408,6 +412,142 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
       table: false,
     });
     expect(await state(built)).toBe(before);
+  }, 120_000);
+
+  // R8-AUTHORITY-5, R8-SURFACE-6: the statement after a comment a lone CR ends
+  // is sent and runs; a piece that is not only comments and whitespace is
+  // sent, so PostgreSQL refuses what it cannot read rather than the runner
+  // dropping it.
+  it('runs the statement after a lone-CR comment, and sends a piece with no verb', async () => {
+    const built = await createEmptyDatabase({ part: 'fr11cr' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+
+    await applyMigrations(built.admin, [
+      ...onDisk,
+      syntheticMigration(
+        '9001_fr11_both',
+        'create table ops.fr11_a (id int);\n-- b follows\rcreate table ops.fr11_b (id int);',
+      ),
+    ]);
+    const [made] = await built.admin.execute<{ readonly b: boolean }>(
+      `select to_regclass('ops.fr11_b') is not null as b`,
+    );
+    expect(made?.b).toBe(true);
+
+    const before = await state(built);
+    await expect(
+      applyMigrations(built.admin, [
+        ...onDisk,
+        syntheticMigration(
+          '9001_fr11_both',
+          'create table ops.fr11_a (id int);\n-- b follows\rcreate table ops.fr11_b (id int);',
+        ),
+        syntheticMigration('9002_fr11_junk', 'create table ops.fr11_c (id int);  '),
+      ]),
+    ).rejects.toThrow(/^migrate: 9002_fr11_junk failed on:  \. Nothing was applied;/u);
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
+  // R8-AUTHORITY-4: the version a failed run is still at comes from the
+  // ledger, not from the list the caller passed.
+  it('names the version the ledger is at when the caller passes a partial list', async () => {
+    const built = await at0023('fr11partial');
+    await expect(
+      applyMigrations(built.admin, [syntheticMigration('9002_fr11_fails', 'select 1 / 0')]),
+    ).rejects.toThrow(
+      new RegExp(
+        `^migrate: 9002_fr11_fails failed on: select 1 / 0\\. Nothing was applied; the ` +
+          `database is still at ${String(THROUGH_0023.at(-1)?.version)}\\.$`,
+        'u',
+      ),
+    );
+  }, 120_000);
+
+  // R8-RUNTIME-8: a value ADD VALUE adds can be used later in the same run
+  // only when the enum type was created in that run too, as on a fresh
+  // install. On an upgrade the type was committed earlier, and the use fails.
+  it('lets a same-run use of an added enum value pass on a fresh install and fail on upgrade', async () => {
+    const create = syntheticMigration('9001_fr11_enum', "create type ops.fr11_k as enum ('a')");
+    const add = syntheticMigration('9002_fr11_add', "alter type ops.fr11_k add value 'b'");
+    const use = syntheticMigration('9003_fr11_use', "select 'b'::ops.fr11_k");
+
+    const fresh = await createEmptyDatabase({ part: 'fr11enumfresh' });
+    db = fresh;
+    await expect(
+      applyMigrations(fresh.admin, [...onDisk, create, add, use]),
+    ).resolves.toMatchObject({
+      applied: expect.arrayContaining(['9003_fr11_use']),
+    });
+    await fresh.drop();
+    db = undefined;
+
+    const upgraded = await createEmptyDatabase({ part: 'fr11enumup' });
+    db = upgraded;
+    await applyMigrations(upgraded.admin, [...onDisk, create]);
+    const outcome = await applyMigrations(upgraded.admin, [...onDisk, create, add, use]).catch(
+      (error: unknown) => error,
+    );
+    expect({
+      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      cause: outcome instanceof Error ? String(outcome.cause) : '',
+    }).toStrictEqual({
+      message: `migrate: 9003_fr11_use failed on: select 'b'::ops.fr11_k. Nothing was applied; the database is still at 9001_fr11_enum.`,
+      cause: expect.stringContaining('unsafe use of new value "b" of enum type'),
+    });
+    expect(await lastApplied(upgraded)).toBe('9001_fr11_enum');
+  }, 180_000);
+
+  // The tripwire: a statement that ends the run's transaction, whatever the
+  // guard made of it, stops the run at once, and the error does not claim
+  // that nothing was applied. The connection turns one marked statement into
+  // COMMIT, standing for any misreading still to be found.
+  it('stops at once when a statement ends the run, and says earlier work may be committed', async () => {
+    const built = await createEmptyDatabase({ part: 'fr11trip' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const marker = 'select 1 /* fr11: the server ends the transaction here */';
+    const ending: AdminConnection = {
+      ...built.admin,
+      transaction: async (body, options) =>
+        await built.admin.transaction(
+          async (execute) =>
+            await body(
+              async (text, parameters) =>
+                await execute(text === marker ? 'commit' : text, parameters),
+            ),
+          options,
+        ),
+    };
+
+    const outcome = await applyMigrations(ending, [
+      ...onDisk,
+      syntheticMigration('9001_fr11_first', 'create table ops.fr11_first (id int)'),
+      syntheticMigration('9002_fr11_ends', `create table ops.fr11_second (id int); ${marker}`),
+      syntheticMigration('9003_fr11_after', 'create table ops.fr11_third (id int)'),
+    ]).catch((error: unknown) => error);
+
+    const [left] = await built.admin.execute<{
+      readonly first: boolean;
+      readonly second: boolean;
+      readonly third: boolean;
+    }>(
+      `select to_regclass('ops.fr11_first') is not null as first,
+              to_regclass('ops.fr11_second') is not null as second,
+              to_regclass('ops.fr11_third') is not null as third`,
+    );
+    expect({
+      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      ...left,
+    }).toStrictEqual({
+      message:
+        `migrate: 9002_fr11_ends ended the run's transaction on: ${marker}. The run stopped ` +
+        `there. Work before it in this run may be committed, so read ops.schema_migrations ` +
+        `and the schema before running again.`,
+      first: true,
+      second: true,
+      third: false,
+    });
   }, 120_000);
 
   // R6-AUTHORITY-2: a role that is neither superuser nor in pg_read_all_stats
@@ -564,6 +704,16 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['create table ops.x$a$ (id int); commit; create table ops.y$a$ (id int)'],
     // The same boundary for E'': the e of `name` does not open an escape string.
     ["select name'\\'; commit; --'"],
+    // R8-RUNTIME-1, R8-SURFACE-6: a lone CR ends a line comment, so the server
+    // reads `commit work` as the whole piece.
+    ['-- x\rcommit\nwork'],
+    ['create table ops.t (id int);\n-- x\rcommit\nwork'],
+    ['-- note\r; commit\nwork'],
+    ['select 1 -- c\r; commit'],
+    ['-- x\rrollback\nwork'],
+    // R8-THERMO-7: a continued E string keeps its escapes.
+    ["select E'a'\n'\\'' ; commit; --'"],
+    ["select E'a' -- c\n'\\'' ; commit; --'"],
   ])('refuses %j and touches nothing', async (statement) => {
     await expect(
       applyMigrations(untouched, [
