@@ -15,6 +15,7 @@ import { declarationOf } from './surface.ts';
 import type { AgentOperation } from './agent-operations.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { taskOfLease } from './prepare.ts';
 
 export const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
@@ -137,11 +138,7 @@ async function subjectTaskId(
   // reach the bound parameter (Sol 6 AUTHORITY-2).
   const leaseId = request['leaseId'];
   if (operation.subjectTask === 'lease' && isUuid(leaseId)) {
-    const rows = await tx.query<{ readonly task_id: string }>(
-      `select task_id from public.leases where business_id = $1 and id = $2`,
-      [tx.businessId, leaseId],
-    );
-    return rows[0]?.task_id ?? delegation.purposeScope.id;
+    return (await taskOfLease(tx, leaseId)) ?? delegation.purposeScope.id;
   }
   const named = request['recordId'];
   return typeof named === 'string' ? named : delegation.purposeScope.id;

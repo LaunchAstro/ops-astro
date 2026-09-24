@@ -15,6 +15,7 @@ import type { CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { AgentCall, AgentOperands } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { taskOfLease } from './prepare.ts';
 
 /**
  * T4's evidence-only intake for an agent whose delegation has ended.
@@ -92,11 +93,7 @@ async function narrowedOnLease(
   credential: string,
   leaseId: string,
 ): Promise<{ readonly id: string } | undefined> {
-  const rows = await tx.query<{ readonly task_id: string }>(
-    `select task_id from public.leases where business_id = $1 and id = $2`,
-    [tx.businessId, leaseId],
-  );
-  const taskId = rows[0]?.task_id;
+  const taskId = await taskOfLease(tx, leaseId);
   if (taskId === undefined) return undefined;
   const declaration = declarationOf('task.handback');
   return await resolveNarrowedDelegation(tx, session.actorId, credential, {
