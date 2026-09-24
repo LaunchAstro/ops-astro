@@ -795,6 +795,12 @@ function unreadable(connection: Connection): readonly string[] {
     .map((entry) => entry.kind);
 }
 
+function withQuery(url: string, key: string, value: string): string {
+  const built = new URL(url);
+  built.searchParams.append(key, value);
+  return built.toString();
+}
+
 describe.skipIf(serverUrl === undefined)('the log and standard_conforming_strings', () => {
   let db: EmptyDatabase | undefined;
   const opened: Connection[] = [];
@@ -849,31 +855,43 @@ describe.skipIf(serverUrl === undefined)('the log and standard_conforming_string
 
   // SOL-FR11B-1: postgres.js puts a URL's query parameters into the startup
   // packet after the wrapper's own, so a URL naming the setting, in any case,
-  // would start the connection off. The wrapper refuses such a URL before it
-  // connects. An `options` switch does not win: PostgreSQL applies the named
-  // startup parameter after it, so those forms start on and need nothing.
+  // would start the connection off. The wrapper reads the startup parameters
+  // postgres.js resolved and refuses, before connecting, any that name the
+  // setting other than its own `on`. An `options` switch does not win:
+  // PostgreSQL applies the named startup parameter after it. SOL-FR11C-2:
+  // every URL here is built with URL.searchParams over a base that already
+  // has a query, so each parameter is really a parameter.
   it.each([
-    ['connectObserved', 'standard_conforming_strings=off'],
-    ['connectObserved', 'Standard_Conforming_Strings=off'],
-    ['connect', 'STANDARD_CONFORMING_STRINGS=off'],
-    ['connectAsAdmin', 'standard_conforming_strings=on'],
-  ])('%s refuses a URL whose query sets %s', (how, query) => {
-    const url = `${serverUrl ?? ''}?${query}`;
+    ['connectObserved', 'standard_conforming_strings', 'off'],
+    ['connectObserved', 'Standard_Conforming_Strings', 'off'],
+    ['connect', 'STANDARD_CONFORMING_STRINGS', 'off'],
+    ['connectAsAdmin', 'Standard_Conforming_Strings', 'on'],
+  ])('%s refuses a URL whose query sets %s=%s', (how, key, value) => {
+    const url = withQuery(withQuery(serverUrl ?? '', 'application_name', 'fr11'), key, value);
     const open = { connectObserved, connect, connectAsAdmin }[how];
     expect(() => open?.(url)).toThrow(
       /^database: the URL sets standard_conforming_strings, which every connection sets on itself/u,
     );
   });
 
+  // SOL-FR11C-1: what postgres.js does not send, the wrapper does not read. A
+  // fragment is not a query, and the wrapper's own name and value is no
+  // conflict.
   it.each([
-    ['-c standard_conforming_strings=off'],
-    ['-c standard-conforming-strings=off'],
-    ['--standard_conforming_strings=off'],
+    [
+      'a fragment that looks like a query',
+      (url: string) => `${url}#note?standard_conforming_strings=off`,
+    ],
+    [
+      'its own name and value',
+      (url: string) =>
+        withQuery(withQuery(url, 'application_name', 'fr11'), 'standard_conforming_strings', 'on'),
+    ],
   ])(
-    'starts on when the URL options say %s',
-    async (switches) => {
-      const { url } = await database('fr11scsoptions');
-      const pool = connectObserved(`${url}?options=${encodeURIComponent(switches)}`, {
+    'connects, on, with %s',
+    async (_what, build) => {
+      const { url } = await database('fr11scsfragment');
+      const pool = connectObserved(build(url), {
         source: 'runtime',
       });
       opened.push(pool);
@@ -882,6 +900,35 @@ describe.skipIf(serverUrl === undefined)('the log and standard_conforming_string
         ['standard_conforming_strings'],
       );
       expect(row?.on).toBe('on');
+      expect(unreadable(pool)).toStrictEqual([]);
+    },
+    60_000,
+  );
+
+  // Each switch travels with a second one the test can read back, so the case
+  // proves the options reached the server.
+  it.each([
+    ['-c standard_conforming_strings=off'],
+    ['-c standard-conforming-strings=off'],
+    ['--standard_conforming_strings=off'],
+  ])(
+    'starts on when the URL options say %s',
+    async (switches) => {
+      const { url } = await database('fr11scsoptions');
+      const pool = connectObserved(
+        withQuery(
+          withQuery(url, 'application_name', 'fr11'),
+          'options',
+          `-c work_mem=4242kB ${switches}`,
+        ),
+        { source: 'runtime' },
+      );
+      opened.push(pool);
+      const [row] = await pool.betweenTransactions<{ readonly on: string; readonly mem: string }>(
+        'select current_setting($1) as on, current_setting($2) as mem',
+        ['standard_conforming_strings', 'work_mem'],
+      );
+      expect(row).toStrictEqual({ on: 'on', mem: '4242kB' });
       expect(unreadable(pool)).toStrictEqual([]);
     },
     60_000,
