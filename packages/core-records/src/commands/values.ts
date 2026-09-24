@@ -24,25 +24,102 @@ const NUL = String.fromCodePoint(0);
 const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
 
 /**
- * A string `records.data` can hold. Every field value lands in that jsonb
- * column, and a jsonb string refuses U+0000 and an unpaired surrogate alike.
+ * A string the stores can hold. Every field value lands in `records.data`, and
+ * every other free-text or json operand in a text or jsonb column; a jsonb
+ * string refuses U+0000 and an unpaired surrogate alike, and a text column
+ * refuses U+0000. An unpaired surrogate reaching a text column is worse than a
+ * raise: the driver writes U+FFFD in its place, so what is stored is not what
+ * was sent or what the payload digest covers.
+ *
+ * The one definition of the rule (final review round 2, R2-THERMO-11). The
+ * field engine applies it to field values below, `prepare.ts` to every other
+ * operand at the door, and `tasks-comment.ts` to the comment body the agent
+ * entry writes without passing that door.
  */
-function storableText(value: string): boolean {
+export function storableText(value: string): boolean {
   return !value.includes(NUL) && !UNPAIRED_SURROGATE.test(value);
 }
 
-/** A json value whose every string and key `records.data` can hold. */
-function storableJson(value: unknown): boolean {
+/** A json value whose every string and key the stores can hold. */
+export function storableJson(value: unknown): boolean {
   if (typeof value === 'string') return storableText(value);
   if (Array.isArray(value)) return value.every((member) => storableJson(member));
   if (typeof value !== 'object' || value === null) return true;
   return Object.entries(value).every(([key, member]) => storableText(key) && storableJson(member));
 }
 
+const UNSTORABLE_FIXES: readonly string[] = [
+  'Each name above holds a NUL character or half of a split character, which cannot be stored.',
+  'Remove the NUL, or send the whole character, and send the request again.',
+];
+
+/**
+ * The names among `operands` whose value in `named` the stores cannot hold,
+ * sorted. A successor is named by its inner key (`successor.payload`), as
+ * `successor.ts` names its other refusals; anything else by its own name.
+ */
+export function unstorableOperands(
+  named: Readonly<Record<string, unknown>>,
+  operands: readonly string[],
+): readonly string[] {
+  return operands
+    .flatMap((field) => {
+      const value = named[field];
+      if (storableJson(value)) return [];
+      if (field !== 'successor' || typeof value !== 'object' || value === null) return [field];
+      if (Array.isArray(value)) return [field];
+      return Object.entries(value)
+        .filter(([key, member]) => !storableText(key) || !storableJson(member))
+        .map(([key]) => `successor.${key}`);
+    })
+    .toSorted();
+}
+
+/** `FIELD_VALUE_INVALID` naming the operands that could not be stored as sent. */
+export function refuseUnstorable(names: readonly string[]): CommandRefusal {
+  return refuseCommand('FIELD_VALUE_INVALID', names, UNSTORABLE_FIXES);
+}
+
 // A date, optionally a time, optionally a zone. Anything looser is a value
 // the column will refuse after this function has said it was fine.
 const ISO_8601 =
-  /^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/u;
+  /^(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?(?:[Zz]|[+-](\d{2}):?(\d{2}))?)?$/u;
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
+function daysIn(year: number, month: number): number {
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return month === 2 && leap ? 29 : (DAYS_IN_MONTH[month - 1] ?? 0);
+}
+
+/**
+ * A timestamp a `timestamptz` column takes, by the column's own limits.
+ *
+ * `Date.parse` was the second check, and it is more forgiving than the column:
+ * it reads '1' as the year 2001, rolls 30 February over into March and takes
+ * an offset of +20:00, all of which Postgres refuses. Final review round 2
+ * (R2-THERMO-22) found `due: '2026-02-30'` answered as a fault. So the fields
+ * are read from the shape and held to the column's ranges, measured against
+ * Postgres 18: a year from 1, a real day of that month (proleptic Gregorian),
+ * an hour to 23 or exactly 24:00:00, a minute to 59, and a zone within 15:59
+ * either way. A leap second stays refused, as `Date.parse` refused it: the
+ * column would take it, but only by rolling it into the next minute.
+ */
+function isTimestamp(value: string): boolean {
+  const match = ISO_8601.exec(value);
+  if (match === null) return false;
+  const [, y, mo, d, h, mi, sec, fraction, zoneHours, zoneMinutes] = match.map((part) =>
+    part === undefined ? undefined : Number(part),
+  );
+  const year = y ?? 0;
+  const month = mo ?? 0;
+  const day = d ?? 0;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysIn(year, month)) return false;
+  const [hour, minute, second] = [h ?? 0, mi ?? 0, sec ?? 0];
+  const midnightAfter = hour === 24 && minute === 0 && second === 0 && (fraction ?? 0) === 0;
+  if ((hour > 23 && !midnightAfter) || minute > 59 || second > 59) return false;
+  return (zoneHours ?? 0) <= 15 && (zoneMinutes ?? 0) <= 59;
+}
 
 function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean {
   switch (valueType) {
@@ -61,11 +138,7 @@ function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean 
     case 'boolean':
       return typeof value === 'boolean';
     case 'timestamptz':
-      // `Date.parse` is far more forgiving than a timestamp column: it reads
-      // '1' as the year 2001 and hands back a number, and then Postgres
-      // raises. A review found exactly that. So the shape is checked first
-      // and the parse second, and the shape is the one a JSON client sends.
-      return typeof value === 'string' && ISO_8601.test(value) && !Number.isNaN(Date.parse(value));
+      return typeof value === 'string' && isTimestamp(value);
     case 'json':
       return storableJson(value);
   }
