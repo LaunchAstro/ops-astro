@@ -22,7 +22,7 @@ import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts'
 import { heartbeatLease } from './tasks-controls.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
-import { claimedSystemFields, SYSTEM_OWNED_FIXES } from './prepare.ts';
+import { claimedSystemFields, lockTask, SYSTEM_OWNED_FIXES } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
 
 /**
@@ -235,28 +235,19 @@ const NOT_FOUND = (): Refused => refused(refuseNotFound());
 async function serveComment(tx: TenantQuery, { session, request }: AgentCall) {
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
-  // the delegating person's live grant. The task is locked here as the
-  // person path's envelope locks it, and the comment commits with its own
-  // identity. `internal` only: a note to the team, never text a client
-  // reads without a person having written it.
-  const recordId = request['recordId'];
-  const rows =
-    typeof recordId === 'string' && UUID.test(recordId)
-      ? await tx.query<{ readonly id: string; readonly revision: string }>(
-          `select id, revision::text as revision from public.records
-            where business_id = $1 and id = $2 and deleted_at is null for update`,
-          [tx.businessId, recordId],
-        )
-      : [];
-  const task = rows[0];
-  if (task === undefined) return NOT_FOUND();
+  // the delegating person's live grant. The task is locked by the person
+  // path's own `lockTask`, the same statement and filter (thermo O8), and the
+  // comment commits with its own identity. `internal` only: a note to the
+  // team, never text a client reads without a person having written it.
   const spine = await readTaskSpine(tx);
+  const task = await lockTask(tx, spine.taskTypeId, String(request['recordId'] ?? ''));
+  if (task === undefined) return NOT_FOUND();
   return await writeTaskComment(
     tx,
     {
       commentTypeId: spine.taskCommentTypeId,
       declaration: declarationOf('task.comment') as NonNullable<ReturnType<typeof declarationOf>>,
-      target: { id: task.id, revision: Number(task.revision) },
+      target: { id: task.id, revision: task.revision },
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,
