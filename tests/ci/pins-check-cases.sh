@@ -128,6 +128,49 @@ run_case "a container expression fails" 1 "jobs:
   a:
     container: \${{ matrix.image }}
 $STEPS"
+# Sol's recheck of 356dbe5: YAML allows space before the colon, and the check
+# needed the colon straight after the key, so these read as no key at all.
+run_case "Sol's container : node:20 fails" 1 "jobs:
+  a:
+    container : node:20
+$STEPS"
+run_case "Sol's image : \${{ vars.DB_IMAGE }} fails" 1 "jobs:
+  db:
+    services:
+      postgres:
+        image : \${{ vars.DB_IMAGE }}
+$STEPS"
+run_case "a quoted image key on a tag fails" 1 "jobs:
+  db:
+    services:
+      postgres:
+        'image': postgres:18-alpine
+$STEPS"
+run_case "uses : on a tag fails" 1 "jobs:
+  a:
+    steps:
+      - uses : actions/checkout@v4"
+run_case "a spaced container mapping with a digested image passes" 0 "jobs:
+  a:
+    container :
+      image : postgres@sha256:$DIGEST
+$STEPS"
+
+# Security rerun at 356dbe5, N2: a `docker://` step was skipped outright, so a
+# step image on a movable tag passed.
+run_case "a docker:// step on a tag fails" 1 "jobs:
+  a:
+    steps:
+      - uses: docker://node:20"
+run_case "a docker:// step digested but not recorded fails" 1 "jobs:
+  a:
+    steps:
+      - uses: docker://node@sha256:3333333333333333333333333333333333333333333333333333333333333333"
+run_case "a docker:// step digested and recorded passes" 0 "jobs:
+  a:
+    steps:
+      - uses: docker://postgres@sha256:$DIGEST
+      - uses: $ACTION"
 run_case "an image: with no value on its line fails" 1 "jobs:
   db:
     services:

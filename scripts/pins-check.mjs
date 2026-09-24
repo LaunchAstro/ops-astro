@@ -26,6 +26,7 @@
 //      directly is held to the same digest, and an expression is refused: it
 //      chooses the image at run time, so nothing in the workflow pins it. A
 //      bare `container:` opens a mapping whose own `image:` line is read.
+//      The rerun at 356dbe5 added `uses: docker://`, held to the same digest.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
 
@@ -36,10 +37,12 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const workflowDir = join(repoRoot, '.github', 'workflows');
 const recordPath = join(repoRoot, 'docs', 'supply-chain-pins.md');
 
-const USES = /^\s*-?\s*uses:\s*([^\s#]+)/gmu;
+// YAML allows space before the colon and a quoted key. Sol's recheck of
+// 356dbe5: `container : node:20` read as no key at all.
+const USES = /^\s*-?\s*(['"]?)uses\1[ \t]*:[ \t]*([^\s#]+)/gmu;
 const PINNED = /^(?<action>[^@]+)@(?<sha>[0-9a-f]{40})$/u;
-const IMAGE = /^\s*-?\s*(?<key>image|container):[ \t]*(?<value>.*)$/u;
-const MAPPING_KEY = /^\s*[\w-]+:(?:\s|$)/u;
+const IMAGE = /^\s*-?\s*(['"]?)(?<key>image|container)\1[ \t]*:[ \t]*(?<value>.*)$/u;
+const MAPPING_KEY = /^\s*(['"]?)[\w-]+\1[ \t]*:(?:\s|$)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
 const failures = [];
@@ -60,9 +63,23 @@ if (workflows.length === 0) {
 for (const file of workflows) {
   const text = readFileSync(join(workflowDir, file), 'utf8');
   for (const match of text.matchAll(USES)) {
-    const ref = match[1];
-    if (ref === undefined) continue;
-    if (ref.startsWith('./') || ref.startsWith('docker://')) continue;
+    const ref = (match[2] ?? '').replace(/^(['"])(.*)\1$/u, '$2');
+    if (ref === '' || ref.startsWith('./')) continue;
+    // The security rerun at 356dbe5, N2: a `docker://` step was skipped, so a
+    // step image on a movable tag passed. It runs a container like `image:`
+    // does, so it is held to the same digest and the same record.
+    if (ref.startsWith('docker://')) {
+      const image = ref.slice('docker://'.length);
+      if (DIGESTED.exec(image)?.groups === undefined) {
+        failures.push(
+          `${file}: the step image ${ref} is not pinned to a sha256 digest.\n` +
+            '        Pin it as `docker://image@sha256:<64 hex>` and record it.',
+        );
+        continue;
+      }
+      images.set(image, file);
+      continue;
+    }
     const pinned = PINNED.exec(ref);
     if (pinned?.groups === undefined) {
       failures.push(
