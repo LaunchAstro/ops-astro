@@ -114,7 +114,11 @@ does not own, so the run passes the flag instead of editing that config.
 
 `pnpm test` runs `tests/support/global-setup.ts` once first. On a cluster
 without `ops_astro_app` and `ops_astro_worker` it migrates and drops one
-throwaway database, so parallel files never race on creating those roles.
+throwaway database, so parallel files never race on creating those roles. It
+does this through the `postgres` database (or `template1` when the configured
+database is `postgres`), never the configured one. `pnpm db:conformance` reads
+the configured database's transaction counter around each suite, so the warm-up
+is not counted as the suite's own.
 
 Hooks have a 60 s timeout (`hookTimeout` in `vitest.config.ts`), because every
 database-bound file migrates and drops its own database in `beforeAll` and
