@@ -81,6 +81,11 @@ const RUN_DIR =
   process.env.SHOT_DIR ?? `${root}.local/restart-legs-browser/${stamp.replaceAll(':', '')}`;
 mkdirSync(RUN_DIR, { recursive: true });
 const PIDS = `${RUN_DIR}/pids`;
+// One JSON line per row as it is recorded, as `d06-mounted-cells.jsonl` does,
+// so a run cut short still leaves the rows it reached. MANIFEST.json repeats
+// them at the end with the exit status.
+const CASES = `${RUN_DIR}/restart-legs-cases.jsonl`;
+writeFileSync(CASES, '');
 console.log(`restart-legs: head ${head}, web ${WEB}, api ${API}, container ${CONTAINER}`);
 
 const settle = async (ms) => {
@@ -139,6 +144,11 @@ async function startApi(label) {
       await gone;
     },
   };
+}
+
+function recordCase(entry) {
+  record(entry);
+  appendFileSync(CASES, `${JSON.stringify({ head, ...entry })}\n`);
 }
 
 const detailOf = (result) => result.value?.detail ?? result.value ?? {};
@@ -302,7 +312,7 @@ async function restart(first, made) {
     .log()
     .split('\n')
     .filter((line) => line.startsWith('restart recovery'));
-  record({
+  recordCase({
     case: 'RL0 API and Postgres restart',
     action: `API ${String(first.pid)} -> ${String(second.pid)}; ${CONTAINER} started ${startedBefore} -> ${startedAfter}`,
     observed: `ready=${String(ready)} lapsed-while-down=${String(lapsed)}; ${recovery.join('; ')}`,
@@ -330,7 +340,7 @@ async function after(browser, admin, made) {
     const stored = await gateRow(admin, lapsing.proposed.gateId);
     const readGate = (await serverTask(page, lapsing.task.recordId))?.proposals?.[0]?.versions?.[0]
       ?.gate;
-    record({
+    recordCase({
       case: 'RL-a expired gate drawn after restart',
       action: `opened ${lapsing.task.href} in a new context`,
       observed: `screen ${JSON.stringify(drawnLapsed?.versions?.[0])}, controls closed=${String(closed)}; task.read ${String(readGate?.state)} expired=${String(readGate?.expired)}; stored ${stored?.state} decisions ${stored?.decisions}`,
@@ -354,7 +364,7 @@ async function after(browser, admin, made) {
     const gates = Object.fromEntries(
       (drawnRound?.versions ?? []).map((one) => [one.version, one.gateState]),
     );
-    record({
+    recordCase({
       case: 'RL-b Request Changes round decided',
       action: `v1 sent back before the restart; v2 proposed and approved through the client after it`,
       observed: `lineage ${String(drawnRound?.state)}, gates by version ${JSON.stringify(gates)}`,
@@ -374,7 +384,7 @@ async function after(browser, admin, made) {
     const old = lineages.find((one) => one.id === cancelled.proposed.lineageId);
     const fresh = lineages.find((one) => one.id === restarted.lineageId);
     const freshGate = (await drawn(page, restarted.lineageId))?.versions?.[0]?.gateState;
-    record({
+    recordCase({
       case: 'RL-c cancelled lineage and its restart',
       action: `task.restart through the client on ${cancelled.task.href}`,
       observed: `old ${String(old?.state)}, new ${String(fresh?.id).slice(0, 8)}… ${String(fresh?.state)} gate ${String(freshGate)}, restarts ${String(restarted.restartsLineageId).slice(0, 8)}…`,
@@ -398,7 +408,7 @@ async function after(browser, admin, made) {
     const drawnDecided = await drawn(page, pending.proposed.lineageId);
     const reservation = await page.locator('[data-reservation-id]').count();
     const decidedRow = await gateRow(admin, pending.proposed.gateId);
-    record({
+    recordCase({
       case: 'RL-d browser-driven decision',
       action: `clicked Approve on ${pending.task.href} after the restart`,
       observed: `screen gate ${String(drawnDecided?.versions?.[0]?.gateState)}, reservations drawn ${String(reservation)}; stored ${decidedRow?.state} decisions ${decidedRow?.decisions}`,
@@ -427,7 +437,12 @@ try {
   admin = restarted.admin;
   await after(browser, admin, made);
 } catch (error) {
-  record({ case: 'RL run', action: 'the run', observed: String(error).slice(0, 400), ok: false });
+  recordCase({
+    case: 'RL run',
+    action: 'the run',
+    observed: String(error).slice(0, 400),
+    ok: false,
+  });
 } finally {
   await api?.stop().catch(() => undefined);
   await admin?.close().catch(() => undefined);
