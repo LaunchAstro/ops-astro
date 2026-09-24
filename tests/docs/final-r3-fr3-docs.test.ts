@@ -94,3 +94,44 @@ describe('migration 0031 in the docs (FR2-P3, SOL-R3-1, SOL-R3-2)', () => {
     );
   });
 });
+
+describe('RUNTIME.md on the 0030 trigger (R4-SURFACE-2)', () => {
+  const migration = read('migrations/0030_gate_pack_bound_to_version.sql');
+  const paragraph = (): string => {
+    const found = read('docs/local/RUNTIME.md')
+      .split('\n\n')
+      .find((each) => each.startsWith('Since migration 0030 its evidence pack is bound'));
+    if (found === undefined) throw new Error('RUNTIME.md has no 0030 paragraph');
+    return folded(found);
+  };
+
+  it('fires on a changed version of a gate not pending or named by a decision', () => {
+    expect(folded(migration)).toContain(
+      'before update of version_id on public.gates for each row when (new.version_id is distinct from old.version_id)',
+    );
+    expect(folded(migration)).toMatch(
+      /if old\.state <> 'pending' or exists \(select 1 from public\.gate_decisions d/u,
+    );
+    const text = paragraph();
+    expect(text).toContain('refuses the change when the stored state is anything but `pending`');
+    expect(text).toContain('or when a row in `gate_decisions` names the gate, whatever the gate');
+  });
+
+  it('does not claim an expired gate is covered: it is stored pending', () => {
+    const proposalsRead = read('packages/core-records/src/reads/proposals.ts');
+    expect(proposalsRead).toContain("case when g.state = 'pending' and g.expires_at <= now()");
+    const text = paragraph();
+    expect(text).not.toMatch(/covers[^.]*expired/u);
+    expect(text).toContain('An expired gate is stored as `pending`');
+    expect(text).toContain('an undecided gate past its expiry is not covered');
+  });
+
+  it('names the lock 0030 takes before its check', () => {
+    const lock = migration.indexOf('lock table public.gates in share row exclusive mode;');
+    expect(lock).toBeGreaterThan(0);
+    expect(lock).toBeLessThan(migration.indexOf('do $$'));
+    const text = paragraph();
+    expect(text).toContain('takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows');
+    expect(text).toContain('`tests/runtime/final-r3r-0030-upgrade-race.test.ts`');
+  });
+});
