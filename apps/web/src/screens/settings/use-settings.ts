@@ -232,9 +232,11 @@ export function useSettings(
     // a refusal that arrived while the write was in flight still holds, even
     // when there is no storage to have recorded it. The value is kept now,
     // whether or not the screen is still mounted; a refusal whose effect has
-    // not run yet writes its mark after this and wins.
+    // not run yet writes its mark after this and wins. The stored mark is read
+    // too: another screen in this session may have been refused since this
+    // one's ref was last set, and this screen may be gone.
     const now = current();
-    if (!now.denied) {
+    if (!now.denied && !memory.denied()) {
       const next: Held = { grantKey, confirmed: { ...now.confirmed, ...kept }, denied: false };
       latest.current = next;
       memory.keep(next.confirmed);
