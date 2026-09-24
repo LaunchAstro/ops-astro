@@ -4,7 +4,6 @@
 // `tasks-runtime.ts` unchanged (thermo review b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { subjectsOf } from '../authority/grants.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import type { HandbackHolder } from '../../../core-runtime/src/handback.ts';
 import type { CommandContext } from './context.ts';
@@ -13,6 +12,7 @@ import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, refusedRetaining, type HandlerOutcome } from './outcome.ts';
 import { readSuccessor } from './successor.ts';
 import { NO_SUCH_LEASE } from './tasks-lease.ts';
+import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
 
 export interface HandbackFields {
   readonly leaseId: string;
@@ -57,14 +57,9 @@ const RETAINING_REFUSALS: ReadonlySet<string> = new Set(['LEASE_NOT_OWNED', 'LEA
 export async function handbackLease(
   tx: TenantQuery,
   fields: HandbackFields,
-  agentActorId?: string,
+  agentActorId: string,
 ): Promise<HandlerOutcome> {
-  return await settle(
-    tx,
-    fields,
-    agentActorId,
-    agentActorId === undefined ? undefined : { claimant: 'agent', actorId: agentActorId },
-  );
+  return await settle(tx, fields, agentClaimant(agentActorId));
 }
 
 /**
@@ -78,19 +73,25 @@ export async function handbackOwnLease(
   context: CommandContext,
   fields: HandbackFields,
 ): Promise<HandlerOutcome> {
-  return await settle(tx, fields, context.session.actorId, {
-    claimant: 'person',
-    actorId: context.session.actorId,
-    subjects: subjectsOf(context.session),
-    collection: context.declaration.collection,
-  });
+  return await settle(tx, fields, personClaimant(context));
+}
+
+/** The runtime's holder for a claimant: who must own the lease, and under what. */
+function holderOf(claimant: Claimant): HandbackHolder {
+  return claimant.claimant === 'agent'
+    ? { claimant: 'agent', actorId: claimant.actorId }
+    : {
+        claimant: 'person',
+        actorId: claimant.actorId,
+        subjects: claimant.subjects,
+        collection: claimant.collection,
+      };
 }
 
 async function settle(
   tx: TenantQuery,
   fields: HandbackFields,
-  agentActorId: string | undefined,
-  holder: HandbackHolder | undefined,
+  claimant: Claimant,
 ): Promise<HandlerOutcome> {
   if (!OUTCOMES.has(fields.outcome)) {
     return refused(
@@ -145,7 +146,7 @@ async function settle(
   // it holds: the lease is still live and the work can be handed back again.
   let successor: SuccessorRequest | undefined;
   if (fields.successor !== undefined && fields.successor !== null) {
-    const read = readSuccessor(fields.successor, agentActorId);
+    const read = readSuccessor(fields.successor, claimant.actorId);
     if ('refusal' in read) return read;
     successor = read.successor;
   }
@@ -163,7 +164,7 @@ async function settle(
     report: { ...fields.report },
     actualMinor: null,
     ...(successor === undefined ? {} : { successor }),
-    ...(holder === undefined ? {} : { holder }),
+    holder: holderOf(claimant),
   });
   if (!result.ok) {
     // R4, behavioural note 8. On these two paths the runtime has already

@@ -13,13 +13,17 @@ import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { declarationOf, type CommandName } from './surface.ts';
 import { handbackLease, pickupReservation } from './tasks-runtime.ts';
+import { MAXIMUM_LEASE_SECONDS } from './tasks-pickup.ts';
+import { leaseSecondsFixes } from './tasks-lease.ts';
+import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import { heartbeatLease } from './tasks-controls.ts';
+import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
-import { claimedSystemFields, SYSTEM_OWNED_FIXES } from './prepare.ts';
+import { claimedSystemFields, lockTask, SYSTEM_OWNED_FIXES } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
 
 /**
@@ -88,9 +92,6 @@ export const UUID: RegExp = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 /** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
 const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
-const LEASE_SECONDS_FIXES: readonly string[] = [
-  'Name a whole, positive number of seconds, or leave leaseSeconds out for the default.',
-];
 const REPORT_FIXES: readonly string[] = [
   'Send report as an object of named values, or leave it out.',
 ];
@@ -109,15 +110,22 @@ const ACTUAL_MINOR_FIXES: readonly string[] = [
  * (`pickupReservation`, `heartbeatLease`), which already refuses an
  * out-of-range lease in the same code.
  */
-function leaseSecondsOperand(request: AgentRequest): AgentOperands | Refused {
-  if (!('leaseSeconds' in request)) return {};
-  const seconds = request['leaseSeconds'];
-  if (typeof seconds !== 'number' || !Number.isSafeInteger(seconds) || seconds <= 0) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], LEASE_SECONDS_FIXES), {
-      leaseSeconds: seconds,
-    });
-  }
-  return { leaseSeconds: seconds };
+function leaseSecondsOperand(maximum: number): (request: AgentRequest) => AgentOperands | Refused {
+  return (request) => {
+    if (!('leaseSeconds' in request)) return {};
+    const seconds = request['leaseSeconds'];
+    if (typeof seconds !== 'number' || !Number.isSafeInteger(seconds) || seconds <= 0) {
+      // The person entry's words for the same route (`readLeaseSeconds`), so
+      // the two entries tell a caller one thing (thermo O4).
+      return refused(
+        refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], leaseSecondsFixes(maximum)),
+        {
+          leaseSeconds: seconds,
+        },
+      );
+    }
+    return { leaseSeconds: seconds };
+  };
 }
 
 function handbackOperands(request: AgentRequest): AgentOperands | Refused {
@@ -222,35 +230,25 @@ function heldBy(delegation: Delegation | undefined, command: CommandName): Deleg
   return delegation;
 }
 
-const NOT_FOUND = (): Refused => ({
-  refusal: refuseCommand('NOT_FOUND', [], ['Check the identifier you were given.']),
-});
+/** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
+const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
 async function serveComment(tx: TenantQuery, { session, request }: AgentCall) {
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
-  // the delegating person's live grant. The task is locked here as the
-  // person path's envelope locks it, and the comment commits with its own
-  // identity. `internal` only: a note to the team, never text a client
-  // reads without a person having written it.
-  const recordId = request['recordId'];
-  const rows =
-    typeof recordId === 'string' && UUID.test(recordId)
-      ? await tx.query<{ readonly id: string; readonly revision: string }>(
-          `select id, revision::text as revision from public.records
-            where business_id = $1 and id = $2 and deleted_at is null for update`,
-          [tx.businessId, recordId],
-        )
-      : [];
-  const task = rows[0];
-  if (task === undefined) return NOT_FOUND();
+  // the delegating person's live grant. The task is locked by the person
+  // path's own `lockTask`, the same statement and filter (thermo O8), and the
+  // comment commits with its own identity. `internal` only: a note to the
+  // team, never text a client reads without a person having written it.
   const spine = await readTaskSpine(tx);
+  const task = await lockTask(tx, spine.taskTypeId, String(request['recordId'] ?? ''));
+  if (task === undefined) return NOT_FOUND();
   return await writeTaskComment(
     tx,
     {
       commentTypeId: spine.taskCommentTypeId,
       declaration: declarationOf('task.comment') as NonNullable<ReturnType<typeof declarationOf>>,
-      target: { id: task.id, revision: Number(task.revision) },
+      target: { id: task.id, revision: task.revision },
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,
@@ -276,7 +274,7 @@ async function serveHeartbeat(
       fence: request['fence'],
       ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
     },
-    session.actorId,
+    agentClaimant(session.actorId),
     heldBy(delegation, 'task.heartbeat').id,
   );
 }
@@ -308,7 +306,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'beforePickup',
       subjectTask: 'record',
       replay: 'pickup',
-      operands: leaseSecondsOperand,
+      operands: leaseSecondsOperand(MAXIMUM_LEASE_SECONDS),
       serve: async (tx, { session, request }, operands) =>
         await pickupReservation(
           tx,
@@ -359,7 +357,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'record',
       subjectTask: 'lease',
       replay: 'reauthorise',
-      operands: leaseSecondsOperand,
+      operands: leaseSecondsOperand(MAXIMUM_RENEWAL_SECONDS),
       serve: serveHeartbeat,
     },
   ],

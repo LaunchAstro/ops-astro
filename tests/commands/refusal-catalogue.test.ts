@@ -255,12 +255,16 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('a command refusal minted in a handler', async () => {
-    const outcome = await handbackLease(untouched, {
-      leaseId: '3f1d2f3a-0000-4000-8000-000000000001',
-      fence: 1,
-      outcome: 'completed',
-      actualMinor: 0,
-    });
+    const outcome = await handbackLease(
+      untouched,
+      {
+        leaseId: '3f1d2f3a-0000-4000-8000-000000000001',
+        fence: 1,
+        outcome: 'completed',
+        actualMinor: 0,
+      },
+      '3f1d2f3a-0000-4000-8000-0000000000a9',
+    );
     if (!isRefused(outcome)) throw new Error('unreachable');
     expect(wire(outcome.refusal)[0]).toBe(422);
     expect(keys(outcome.refusal)).toMatch(

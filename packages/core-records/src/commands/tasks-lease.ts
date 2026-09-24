@@ -4,14 +4,19 @@
 // `tasks-runtime.ts` unchanged (thermo review b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { subjectsOf } from '../authority/grants.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { personClaimant } from './tasks-claimant.ts';
 
 const DEFAULT_RENEWAL_SECONDS = 15 * 60;
+
+/** What a caller sent as `leaseSeconds` is told, on either entry, for a route with this maximum. */
+export function leaseSecondsFixes(maximum: number): readonly string[] {
+  return [`Name a whole number of seconds from 1 to ${maximum}, or leave it out.`];
+}
 
 /**
  * A lease duration, read once for every route that takes one. Absent is the
@@ -34,11 +39,7 @@ export function readLeaseSeconds(
     seconds > maximum
   ) {
     return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['leaseSeconds'],
-        [`Name a whole number of seconds from 1 to ${maximum}, or leave it out.`],
-      ),
+      refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], leaseSecondsFixes(maximum)),
       { leaseSeconds: seconds },
     );
   }
@@ -98,15 +99,16 @@ export async function heartbeatOwnLease(
   context: CommandContext,
   fields: RenewalFields,
 ): Promise<HandlerOutcome> {
+  const person = personClaimant(context);
   return await renewLease(
     fields,
     async (lease) =>
       await heartbeat(tx, {
         claimant: 'person',
         ...lease,
-        holderActorId: context.session.actorId,
-        subjects: subjectsOf(context.session),
-        collection: context.declaration.collection,
+        holderActorId: person.actorId,
+        subjects: person.subjects,
+        collection: person.collection,
       }),
   );
 }
