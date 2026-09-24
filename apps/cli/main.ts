@@ -18,7 +18,16 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
-import { accepts, createCli, isRefusal, isWrite, usage, type CliAnswer } from './client.ts';
+import {
+  DELEGATION_HEADER,
+  accepts,
+  createCli,
+  isRefusal,
+  isWrite,
+  unknownVerb,
+  usage,
+  type CliAnswer,
+} from './client.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -199,12 +208,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     }
     if (!accepts(verb)) {
       // Answered here, before any configuration is read or any request sent.
-      const answer = await createCli({
-        businessKey: '',
-        credential: '',
-        transport: () => Promise.reject(new Error('unreachable')),
-      }).run(verb, {});
-      io.out(JSON.stringify(answer.body));
+      io.out(JSON.stringify(unknownVerb(verb).body));
       return EXIT.usage;
     }
 
@@ -244,7 +248,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${bearer}`,
-            ...(held === undefined ? {} : { 'x-agent-delegation': held }),
+            ...(held === undefined ? {} : { [DELEGATION_HEADER]: held }),
           },
           body: sent,
         }),

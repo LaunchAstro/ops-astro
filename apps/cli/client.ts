@@ -72,8 +72,14 @@ export interface CliOptions {
   readonly delegation?: string;
 }
 
-/** The two prefixes, as the API mounts them. */
+/**
+ * The two prefixes, as the API mounts them (`apps/api/app.ts`), and the header
+ * the delegation travels in (`DELEGATION_HEADER` there). One copy on this side,
+ * which `main.ts` imports; `tests/cli/cli-wire.test.ts` pins both against what
+ * the API is sent, the header by the API's own constant.
+ */
 const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
+export const DELEGATION_HEADER = 'x-agent-delegation';
 
 export interface CliAnswer {
   readonly status: number;
@@ -117,18 +123,22 @@ export function isRefusal(answer: CliAnswer): boolean {
   return body?.refused === true && typeof body.code === 'string';
 }
 
+/**
+ * The one answer this file gives on its own, and it is not an authority check:
+ * it is "no such command", which the API would answer with a 404 and no
+ * operation would ever see. A caller can tell the two apart.
+ */
+export function unknownVerb(verb: string): CliAnswer {
+  const body = { code: 'COMMAND_UNKNOWN', names: [verb], fixes: [USAGE] };
+  return { status: 404, body, text: JSON.stringify(body) };
+}
+
 export function createCli(options: CliOptions): {
   readonly run: (verb: string, payload: Readonly<Record<string, unknown>>) => Promise<CliAnswer>;
 } {
   return {
     run: async (verb, payload) => {
-      if (!accepts(verb)) {
-        // The one answer this file gives on its own, and it is not an authority
-        // check: it is "no such command", which the API would answer with a 404
-        // and no operation would ever see. A caller can tell the two apart.
-        const body = { code: 'COMMAND_UNKNOWN', names: [verb], fixes: [USAGE] };
-        return { status: 404, body, text: JSON.stringify(body) };
-      }
+      if (!accepts(verb)) return unknownVerb(verb);
       const entry = options.entry ?? 'person';
       const path = `${PREFIX[entry]}${options.businessKey}${pathOf(verb as CommandName)}`;
       const body = JSON.stringify(payload);
