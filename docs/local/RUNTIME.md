@@ -319,11 +319,18 @@ through rounding (`budgetRoom` in `core-runtime/src/decide.ts`, `exceeds` in
 `core-runtime/src/budget.ts`). The response converts fields such as
 `heldMinor` to numbers separately.
 
-Storage holds the cap ceiling as well, since migration 0025. Deferred
-constraint triggers on `task_envelopes` and `budget_caps` lock the cap row at
-commit. They refuse any transaction that leaves `sum(held_minor +
-actual_minor)` under the cap above `limit_minor` (`check_violation`,
-`budget_caps_ceiling`), whichever path wrote the rows. Only a write that can
+Storage holds the cap ceiling as well, since migration 0025 (constraint
+`budget_caps_ceiling`). Whichever path wrote the rows, the committed total under
+a cap, `sum(held_minor + actual_minor)` over every envelope drawing on it, never
+exceeds `limit_minor` at commit. Deferred constraint triggers on
+`task_envelopes` and `budget_caps` claim the cap row by rewriting its limit
+unchanged, then sum. Under read committed, a competing transaction waits,
+re-sums and is refused `23514` (`check_violation`, `budget_caps_ceiling`). Under
+repeatable read or serializable, a transaction whose snapshot predates a
+competing commit is refused `40001` (`serialization_failure`) and must retry in
+a fresh snapshot, so at those levels two concurrent raises under one cap
+serialise even when they would fit together. The app runs at read committed and
+nothing in it retries `40001`. Only a write that can
 raise the total is checked: a nonzero insert, a growing total, a move to
 another cap, or a falling limit. The command refuses first with a reason, and
 storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
