@@ -657,7 +657,7 @@ The command line builds its verbs from the same table (`VERBS`,
 `apps/cli/client.ts`) and posts them to the person prefix, or to the agent
 prefix when a call asks for it. Both mounts are `PREFIX` in
 `commands/surface.ts` (`/api/b/` and `/api/a/b/`), and the delegation header's
-name is `DELEGATION_HEADER` there, which `apps/api/app.ts` re-exports.
+name is `DELEGATION_HEADER` there, which `apps/api/app.ts` imports.
 `GET /api/health` (its route in `composeApi`, `apps/api/server.ts`) is the one
 route outside the table. Every
 name is routed on both prefixes. The tables say where each is served and where
