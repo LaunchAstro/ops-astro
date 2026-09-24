@@ -482,7 +482,7 @@ describe.skipIf(serverUrl === undefined)('restart recovery at API startup', () =
     const none = await startServer(db, NO_DEPLOYMENT_BUSINESSES);
     await none.stop();
     expect(none.ready, none.output).toBe(true);
-    expect(none.output).toContain('restart recovery: explicitly no installation businesses');
+    expect(none.output).toContain('restart recovery: explicitly no deployment businesses');
     expect(await reservation(db.app, fixture.businessId, work)).toStrictEqual(before);
   }, 90_000);
 

@@ -270,7 +270,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (scope.keys.length === 0) {
-    console.log('restart recovery: explicitly no installation businesses');
+    console.log('restart recovery: explicitly no deployment businesses');
   }
   const recovered = await recoverDeployment(database, resolveBusiness, scope.keys);
   if (!recovered.ok) {
