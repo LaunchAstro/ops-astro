@@ -25,6 +25,7 @@ import {
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
 import { createApi } from '../../apps/api/app.ts';
 
@@ -95,6 +96,7 @@ describe.skipIf(serverUrl === undefined)('the settings revision over HTTP', () =
       },
       // eslint-disable-next-line @typescript-eslint/require-await -- the port is async
       resolveBusiness: async (key) => (key === BUSINESS_KEY ? alpha : undefined),
+      executeCommand,
       executeRead: async (database, businessId, presented, request) =>
         await executeRead(
           database,

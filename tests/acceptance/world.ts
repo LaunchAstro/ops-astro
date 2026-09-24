@@ -67,6 +67,7 @@ import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { InstalledTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
@@ -167,6 +168,7 @@ export async function createWorld(part: string): Promise<World> {
     // tenancy root is behind forced row security. Two keys are the whole map
     // here, and an unknown key answers nothing, exactly as the server's does.
     resolveBusiness: async (key: string) => byKey[key],
+    executeCommand,
     executeRead: executeRead as unknown as ReadExecutor,
     executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
   });
@@ -213,6 +215,7 @@ export function rebuildApi(world: World): {
       database,
       verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
       resolveBusiness: async (key: string) => byKey[key],
+      executeCommand,
       executeRead: executeRead as unknown as ReadExecutor,
       executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
     }),

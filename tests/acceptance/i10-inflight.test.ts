@@ -28,6 +28,7 @@ import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import {
@@ -224,6 +225,7 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
       database: reader,
       verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
       resolveBusiness: async (key: string) => (key === 'alpha' ? world.alpha : undefined),
+      executeCommand,
       executeRead: executeRead as unknown as ReadExecutor,
       executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
     });

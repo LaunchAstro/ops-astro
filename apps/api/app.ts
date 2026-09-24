@@ -39,7 +39,7 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { NO_AGENT_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
   agentAnswer,
   type AgentRequest,
@@ -111,13 +111,12 @@ export interface ApiOptions {
    */
   readonly executeRead?: ReadExecutor;
   /**
-   * The person path's command envelope. Injected like the other two executors
-   * so the composition root names every executor the boundary calls. Absent
-   * means the envelope in `commands/envelope.ts`, which is what every
-   * deployment runs; a test that asks only the transport's questions can hand
-   * in its own.
+   * The person path's command envelope, `commands/envelope.ts` in every
+   * deployment. Required, and never imported here, so the composition root
+   * names every executor the boundary calls and there is no default a caller
+   * can get without saying so.
    */
-  readonly executeCommand?: CommandExecutor;
+  readonly executeCommand: CommandExecutor;
   /**
    * The agent's own entry point.
    *
@@ -229,7 +228,6 @@ async function admit(
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
-  const executePerson = options.executeCommand ?? executeCommand;
 
   /** One route per surface declaration under `prefix`, each through the door. */
   function mountSurface(
@@ -274,7 +272,13 @@ export function createApi(options: ApiOptions): Hono {
     }
 
     const request = { ...body, command: declaration.name } as CommandRequest;
-    const result = await executePerson(options.database, businessId, presented, 'api', request);
+    const result = await options.executeCommand(
+      options.database,
+      businessId,
+      presented,
+      'api',
+      request,
+    );
 
     if (isCommandRefusal(result)) return refuse(context, result);
     return context.json({ ...result }, 200);

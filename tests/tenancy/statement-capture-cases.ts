@@ -29,6 +29,7 @@ import {
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createStatementLog,
@@ -86,6 +87,7 @@ export function observe(world: World): Observed {
     database,
     verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
     resolveBusiness: async (key: string) => byKey[key],
+    executeCommand,
     executeRead: executeRead as unknown as ReadExecutor,
     executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
   });
