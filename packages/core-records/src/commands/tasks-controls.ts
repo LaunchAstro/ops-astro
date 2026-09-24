@@ -21,12 +21,22 @@ import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
 const REASON_LIMIT = 500;
 
-/** The task and the lineage on it, or the refusal that says which is wrong. */
+/**
+ * The task and the lineage on it, or the refusal that says which is wrong.
+ *
+ * `trashed` says whether a task in the trash still answers. Cancel reaches
+ * one: it only makes the lineage terminal and releases what it holds
+ * (RUNTIME.md, "Cancellation"), and trash does not end an approved lineage,
+ * so a trashed task's hold would otherwise stay counted against the cap with
+ * no control left to release it. Restart does not: it opens new work, and a
+ * trashed task is gone to the work surface until its batch is restored.
+ */
 async function lineageOnTask(
   tx: TenantQuery,
   context: CommandContext,
   recordId: unknown,
   lineageId: unknown,
+  trashed: 'reachable' | 'gone',
 ): Promise<{ readonly taskId: string; readonly lineageId: string } | HandlerOutcome> {
   // Absent is the body's shape, and is said so; present and malformed is an
   // identifier that names nothing, and answers as one.
@@ -44,8 +54,9 @@ async function lineageOnTask(
   }
   const tasks = await tx.query<{ readonly id: string }>(
     `select id from public.records
-      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
-    [tx.businessId, context.spine.taskTypeId, recordId],
+      where business_id = $1 and record_type_id = $2 and id = $3
+        and ($4 or deleted_at is null)`,
+    [tx.businessId, context.spine.taskTypeId, recordId, trashed === 'reachable'],
   );
   if (tasks[0] === undefined) return refused(refuseNotFound());
   if (!isUuid(lineageId)) {
@@ -90,7 +101,7 @@ export async function cancelOnTask(
       ),
     );
   }
-  const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId);
+  const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'reachable');
   if (isOutcome(found)) return found;
 
   const result = await cancelAndClassify(tx, { lineageId: found.lineageId, reason });
@@ -119,7 +130,7 @@ export async function restartOnTask(
   if (expiresAt === undefined) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['expiresInSeconds'], [EXPIRY_FIX]));
   }
-  const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId);
+  const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'gone');
   if (isOutcome(found)) return found;
 
   const result = await restart(tx, {

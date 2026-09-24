@@ -98,11 +98,35 @@ interface RootRow {
  * later one — in the walk **or** in the update. A descendant trashed last week
  * keeps its own batch and stays out of this one, which is what makes a restore
  * of this batch mean something.
+ *
+ * The walk is read before anything is written, and `authorise` sees every
+ * record it found. A grant on the root is not a grant on its descendants: a
+ * record-scoped grant matches its own record only (`authority/grants.ts`), so
+ * the caller decides whether this caller reaches the whole walk, and a denial
+ * comes back as `{ denied }` with nothing trashed. The ids stay with the
+ * caller; a refusal that counted or named them would tell someone outside
+ * their grant what lies below the root.
  */
 export async function trashSubtree(
   tx: TenantQuery,
   options: { readonly rootId: string; readonly actorId: string },
-): Promise<TrashResult | RecordsRefusal> {
+): Promise<TrashResult | RecordsRefusal>;
+export async function trashSubtree<Denied>(
+  tx: TenantQuery,
+  options: {
+    readonly rootId: string;
+    readonly actorId: string;
+    readonly authorise: (recordIds: readonly string[]) => Promise<Denied | undefined>;
+  },
+): Promise<TrashResult | RecordsRefusal | { readonly denied: Denied }>;
+export async function trashSubtree<Denied>(
+  tx: TenantQuery,
+  options: {
+    readonly rootId: string;
+    readonly actorId: string;
+    readonly authorise?: (recordIds: readonly string[]) => Promise<Denied | undefined>;
+  },
+): Promise<TrashResult | RecordsRefusal | { readonly denied: Denied }> {
   const root = await tx.query<RootRow>(
     `select deleted_at, trash_batch_id from records where business_id = $1 and id = $2`,
     [tx.businessId, options.rootId],
@@ -122,8 +146,7 @@ export async function trashSubtree(
     );
   }
 
-  const batchId = randomUUID();
-  const trashed = await tx.query<{ readonly id: string }>(
+  const walked = await tx.query<{ readonly id: string }>(
     // `cycle` is not decoration. `parent` is an ordinary uuid slot with no
     // foreign key to itself, so nothing in the schema stops `task.reparent`
     // from producing a loop, and a recursive query over a loop does not
@@ -141,10 +164,19 @@ export async function trashSubtree(
            and child.record_type_id = subtree.record_type_id
            and child.deleted_at is null
       ) cycle id set looped using path
-      update records set deleted_at = now(), deleted_by_actor_id = $3, trash_batch_id = $4
-       where business_id = $1 and id in (select id from subtree where not looped)
+      select distinct id from subtree where not looped`,
+    [tx.businessId, options.rootId],
+  );
+  const ids = walked.map((each) => each.id);
+  const denied = await options.authorise?.(ids);
+  if (denied !== undefined) return { denied };
+
+  const batchId = randomUUID();
+  const trashed = await tx.query<{ readonly id: string }>(
+    `update records set deleted_at = now(), deleted_by_actor_id = $3, trash_batch_id = $4
+      where business_id = $1 and id = any ($2::uuid[]) and deleted_at is null
       returning id`,
-    [tx.businessId, options.rootId, options.actorId, batchId],
+    [tx.businessId, ids, options.actorId, batchId],
   );
   return { batchId, recordIds: trashed.map((each) => each.id) };
 }
@@ -284,6 +316,12 @@ async function claimsAlreadyTaken(
 
 export interface PurgeResult {
   readonly recordIds: readonly string[];
+  /**
+   * Trash old enough to purge that the runtime still holds: a proposal named
+   * it, so a lineage, planned run, envelope or lease points at it. Kept, and
+   * named, rather than faulted on.
+   */
+  readonly retainedIds: readonly string[];
 }
 
 /**
@@ -319,14 +357,34 @@ export async function purgeTrashedRecords(
     );
   }
 
-  const doomed = await tx.query<{ readonly id: string }>(
-    `select id from records
-      where business_id = $1 and record_type_id = $2
-        and deleted_at is not null and deleted_at < $3`,
+  // A task a proposal ever named is pointed at by the runtime tables, each
+  // through a composite key to `records` that does not cascade (0010's
+  // lineages and planned runs, 0013's envelopes and leases). Those rows are the
+  // runtime class, refused rather than touched, and deleting the task under
+  // them would fault on the key and roll the whole purge back — every time,
+  // for every trashed task in the business (0007 names this failure). So the
+  // purge keeps such a task, says so, and purges the rest. Restoring the
+  // task, or a runtime retention rule this slice does not build, is what
+  // would ever release it.
+  const aged = await tx.query<{ readonly id: string; readonly held: boolean }>(
+    `select r.id,
+            (exists (select 1 from public.proposal_lineages l
+                      where l.business_id = r.business_id and l.task_id = r.id)
+             or exists (select 1 from public.planned_runs p
+                         where p.business_id = r.business_id and p.task_id = r.id)
+             or exists (select 1 from public.task_envelopes e
+                         where e.business_id = r.business_id and e.task_id = r.id)
+             or exists (select 1 from public.leases s
+                         where s.business_id = r.business_id and s.task_id = r.id)) as held
+       from records r
+      where r.business_id = $1 and r.record_type_id = $2
+        and r.deleted_at is not null and r.deleted_at < $3
+      order by r.id`,
     [tx.businessId, options.recordTypeId, options.trashedBefore],
   );
-  const ids = doomed.map((each) => each.id);
-  if (ids.length === 0) return { recordIds: [] };
+  const retainedIds = aged.filter((each) => each.held).map((each) => each.id);
+  const ids = aged.filter((each) => !each.held).map((each) => each.id);
+  if (ids.length === 0) return { recordIds: [], retainedIds };
 
   // Links first: both ends carry a composite foreign key to `records`, so a
   // link outliving its record is refused by the server rather than dangling.
@@ -339,5 +397,5 @@ export async function purgeTrashedRecords(
     tx.businessId,
     ids,
   ]);
-  return { recordIds: ids };
+  return { recordIds: ids, retainedIds };
 }
