@@ -171,6 +171,54 @@ run_case "a docker:// step digested and recorded passes" 0 "jobs:
     steps:
       - uses: docker://postgres@sha256:$DIGEST
       - uses: $ACTION"
+# Security rerun at 974d039, R1: a value may continue on the next line, and
+# 974d039 stopped reading `uses:` written that way.
+run_case "a tagged uses: value on the next line fails" 1 "jobs:
+  a:
+    steps:
+      - name: x
+        uses:
+          actions/checkout@v4"
+run_case "a pinned uses: value on the next line passes" 0 "jobs:
+  a:
+    steps:
+      - uses:
+          $ACTION"
+# R2: a key inside a flow collection, or an explicit `? ` key, is refused
+# outright; the check reads block style only.
+run_case "R2 - { uses: actions/checkout@v4 } fails" 1 "jobs:
+  a:
+    steps:
+      - { uses: actions/checkout@v4 }"
+run_case "R2 - {name: x, uses: \"docker://node:20\"} fails" 1 "jobs:
+  a:
+    steps:
+      - {name: x, uses: \"docker://node:20\"}"
+run_case "R2 db: { image: \"postgres:18\" } fails" 1 "jobs:
+  a:
+    services:
+      db: { image: \"postgres:18\" }
+$STEPS"
+run_case "R2 - ? uses / : actions/checkout@v4 fails" 1 "jobs:
+  a:
+    steps:
+      - ? uses
+        : actions/checkout@v4"
+run_case "a pinned uses in a flow sequence still fails" 1 "jobs:
+  a:
+    steps: [ uses: $ACTION ]"
+run_case "a pinned workflow in block style still passes" 0 "jobs:
+  a:
+    container:
+      image: postgres@sha256:$DIGEST
+    services:
+      db:
+        image: postgres@sha256:$DIGEST # postgres:18-alpine
+    steps:
+      - name: check out
+        uses: $ACTION # v7
+      - uses: docker://postgres@sha256:$DIGEST
+      - run: echo '{ not a key }'"
 run_case "an image: with no value on its line fails" 1 "jobs:
   db:
     services:

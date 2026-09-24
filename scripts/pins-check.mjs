@@ -27,6 +27,10 @@
 //      chooses the image at run time, so nothing in the workflow pins it. A
 //      bare `container:` opens a mapping whose own `image:` line is read.
 //      The rerun at 356dbe5 added `uses: docker://`, held to the same digest.
+//
+// The workflows are read line by line, in block style: a value may continue
+// on the next line, and a key in a flow collection or an explicit `? ` key is
+// refused rather than read, since reading it would mean parsing YAML.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
 
@@ -39,11 +43,24 @@ const recordPath = join(repoRoot, 'docs', 'supply-chain-pins.md');
 
 // YAML allows space before the colon and a quoted key. Sol's recheck of
 // 356dbe5: `container : node:20` read as no key at all.
-const USES = /^\s*-?\s*(['"]?)uses\1[ \t]*:[ \t]*([^\s#]+)/gmu;
+const KEY = /^\s*-?\s*(['"]?)(?<key>uses|image|container)\1[ \t]*:[ \t]*(?<value>.*)$/u;
 const PINNED = /^(?<action>[^@]+)@(?<sha>[0-9a-f]{40})$/u;
-const IMAGE = /^\s*-?\s*(['"]?)(?<key>image|container)\1[ \t]*:[ \t]*(?<value>.*)$/u;
 const MAPPING_KEY = /^\s*(['"]?)[\w-]+\1[ \t]*:(?:\s|$)/u;
+// The security rerun at 974d039, R2: the check reads block style by line, so
+// a key inside a flow collection (`- { uses: … }`, `steps: [ uses: … ]`) or an
+// explicit `? ` key was never seen. Parsing YAML would need a dependency this
+// gate does not take on, so both are refused and the author writes the key in
+// block style.
+const FLOW_KEY = /[{[][^#]*?(?:^|[\s{[,'"])(?:uses|image|container)['"]?[ \t]*:/u;
+const EXPLICIT_KEY = /^\s*(?:-\s+)?\?(?:\s|$)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
+
+/** A value without its comment and its quotes. */
+const clean = (v) =>
+  v
+    .replace(/(?:^|\s)#.*$/u, '')
+    .trim()
+    .replace(/^(['"])(.*)\1$/u, '$2');
 
 const failures = [];
 const pins = new Map();
@@ -62,17 +79,45 @@ if (workflows.length === 0) {
 
 for (const file of workflows) {
   const text = readFileSync(join(workflowDir, file), 'utf8');
-  for (const match of text.matchAll(USES)) {
-    const ref = (match[2] ?? '').replace(/^(['"])(.*)\1$/u, '$2');
-    if (ref === '' || ref.startsWith('./')) continue;
+  const lines = text.split('\n');
+  const significant = (from) =>
+    lines.slice(from).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
+  for (const [i, line] of lines.entries()) {
+    const where = `${file}:${i + 1}`;
+    if (FLOW_KEY.test(line) || EXPLICIT_KEY.test(line)) {
+      failures.push(
+        `${where}: a \`uses\`, \`image\` or \`container\` key in flow style, or an\n` +
+          '        explicit `? ` key. This check reads block style only. Write the key\n' +
+          '        on its own line: `uses: owner/action@<40 hex>`.',
+      );
+      continue;
+    }
+    const match = KEY.exec(line);
+    if (match?.groups === undefined) continue;
+    const { key = '' } = match.groups;
+    let ref = clean(match.groups['value'] ?? '');
+    if (ref === '') {
+      // The security rerun at 974d039, R1: a value may continue on the next
+      // line. 974d039 stopped reading `uses:` written that way. A bare
+      // `container:` opening a mapping is the one empty value that is not a
+      // continuation; its own `image:` line is read.
+      const next = significant(i + 1);
+      if (key === 'container' && next !== undefined && MAPPING_KEY.test(next)) continue;
+      ref = clean(next ?? '');
+      if (ref === '') {
+        failures.push(`${where}: \`${key}:\` names nothing.`);
+        continue;
+      }
+    }
+    if (key === 'uses' && ref.startsWith('./')) continue;
     // The security rerun at 356dbe5, N2: a `docker://` step was skipped, so a
     // step image on a movable tag passed. It runs a container like `image:`
     // does, so it is held to the same digest and the same record.
-    if (ref.startsWith('docker://')) {
+    if (key === 'uses' && ref.startsWith('docker://')) {
       const image = ref.slice('docker://'.length);
       if (DIGESTED.exec(image)?.groups === undefined) {
         failures.push(
-          `${file}: the step image ${ref} is not pinned to a sha256 digest.\n` +
+          `${where}: the step image ${ref} is not pinned to a sha256 digest.\n` +
             '        Pin it as `docker://image@sha256:<64 hex>` and record it.',
         );
         continue;
@@ -80,37 +125,20 @@ for (const file of workflows) {
       images.set(image, file);
       continue;
     }
-    const pinned = PINNED.exec(ref);
-    if (pinned?.groups === undefined) {
-      failures.push(
-        `${file}: ${ref} is not pinned to a 40 character commit hash.\n` +
-          '        A tag can be moved by whoever owns it. A hash cannot.',
-      );
-      continue;
-    }
-    pins.set(ref, `${file}`);
-  }
-  const lines = text.split('\n');
-  for (const [i, line] of lines.entries()) {
-    const match = IMAGE.exec(line);
-    if (match?.groups === undefined) continue;
-    const { key = '' } = match.groups;
-    const ref = (match.groups['value'] ?? '')
-      .replace(/(?:^|\s)#.*$/u, '')
-      .trim()
-      .replace(/^(['"])(.*)\1$/u, '$2');
-    if (ref === '') {
-      const next = lines.slice(i + 1).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
-      if (key === 'container' && next !== undefined && MAPPING_KEY.test(next)) continue;
-      failures.push(
-        `${file}:${i + 1}: \`${key}:\` names no image on its line.\n` +
-          '        Write the image, pinned to a sha256 digest, on the same line.',
-      );
+    if (key === 'uses') {
+      if (PINNED.exec(ref)?.groups === undefined) {
+        failures.push(
+          `${where}: ${ref} is not pinned to a 40 character commit hash.\n` +
+            '        A tag can be moved by whoever owns it. A hash cannot.',
+        );
+        continue;
+      }
+      pins.set(ref, file);
       continue;
     }
     if (ref.includes('${{')) {
       failures.push(
-        `${file}:${i + 1}: the container image ${ref} is an expression.\n` +
+        `${where}: the container image ${ref} is an expression.\n` +
           '        It chooses the image at run time, so no digest here pins it.\n' +
           '        Write the image itself: `image@sha256:<64 hex>`.',
       );
@@ -119,7 +147,7 @@ for (const file of workflows) {
     const digested = DIGESTED.exec(ref);
     if (digested?.groups === undefined) {
       failures.push(
-        `${file}:${i + 1}: the container image ${ref} is not pinned to a sha256 digest.\n` +
+        `${where}: the container image ${ref} is not pinned to a sha256 digest.\n` +
           '        A service container runs code in the job. Pin it the way an\n' +
           '        action is pinned: `image@sha256:<64 hex>`, with the tag it\n' +
           '        came from in a comment beside it.',
