@@ -32,7 +32,7 @@ export interface RunningApi {
 }
 
 /**
- * The world's businesses, as the installation scope restart recovery reads.
+ * The world's businesses, as the deployment scope restart recovery reads.
  *
  * `createWorld` inserts exactly these two keys, so the restarted process
  * classifies eligible durable state in the proof's own database before it
