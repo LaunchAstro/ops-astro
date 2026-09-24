@@ -104,7 +104,11 @@ export interface TaskDetail extends TaskSummary {
  */
 export interface SharedTaskView {
   readonly id: string;
-  /** Keyed by field key. Empty when the catalogue classifies no task field `shared`. */
+  /**
+   * Keyed by field key: every task field the catalogue classifies `shared`,
+   * which on the shipped task spine includes `title` and `state` (the state's
+   * label, I09). Empty when the catalogue classifies none.
+   */
   readonly fields: Readonly<Record<string, unknown>>;
   readonly comments: readonly CommentView[];
 }

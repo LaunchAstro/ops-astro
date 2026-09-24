@@ -68,6 +68,22 @@ export interface TaskComment {
 }
 
 /**
+ * One comment as an internal reader's `task.read` carries it: every field,
+ * always (`commentsFor` in `packages/core-records/src/reads/tasks.ts`). Only
+ * the shared projection leaves fields out, so only `TaskComment` keeps them
+ * optional.
+ */
+export interface InternalTaskComment extends TaskComment {
+  readonly audience: string;
+  readonly author: string;
+  readonly body: string;
+  readonly comment_type: string;
+  readonly posted_at: string;
+  readonly edited_at: string | null;
+  readonly source: string;
+}
+
+/**
  * The evidence pack a proposal version was rendered with, as it was stored.
  *
  * `body` is the renderer's output and this build never re-renders it. Evidence
@@ -203,7 +219,7 @@ export interface TaskDetail extends TaskSummary {
    * every comment in full; every other role is given the client comments in
    * the fields the catalogue marks `shared`.
    */
-  readonly comments: readonly TaskComment[];
+  readonly comments: readonly InternalTaskComment[];
   /**
    * Every proposal on the task, newest lineage first, as `task.read` carried
    * them.
@@ -228,11 +244,12 @@ export interface TaskDetail extends TaskSummary {
  * What a reader outside the business is shown of one task: the server's
  * shared projection (`SharedTaskView` in `packages/core-records`).
  *
- * **It is not a task with parts missing.** There is no title, state, revision,
- * history or proposal on it because the server never read them on this path,
- * and the screen does not ask for them anywhere else. `fields` is keyed by the
- * field's own key and holds only what the catalogue marks `shared`; it is empty
- * when nothing is. `comments` are the client comments in their shared fields.
+ * **It is not a task with parts missing.** There is no revision, history or
+ * proposal on it because the server never read them on this path, and the
+ * screen does not ask for them anywhere else. `fields` is keyed by the field's
+ * own key and holds only what the catalogue marks `shared` (on the shipped
+ * task spine, `title` and the state's label as `state`); it is empty when
+ * nothing is. `comments` are the client comments in their shared fields.
  */
 export interface SharedTask {
   readonly id: string;

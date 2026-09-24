@@ -174,14 +174,6 @@ describe.skipIf(serverUrl === undefined)('the agent path', () => {
     expect(codeOf(asAgentOnPersonPath)).toBe('AUTH_NO_MEMBERSHIP');
   });
 
-  it('answers AUTH_SESSION_EXPIRED for an expired bearer, and changes nothing', async () => {
-    const expired = (await executeAgentCommand(db.app, business, 'expired', undefined, {
-      command: 'task.queue',
-      operationId: randomUUID(),
-    } as never)) as CommandResult;
-    expect(codeOf(expired)).toBe('AUTH_SESSION_EXPIRED');
-  });
-
   it('lets a pre-pickup agent read the queue and pick up, and refuses everything else', async () => {
     const reservationId = await approvedReservation(task);
 

@@ -8,7 +8,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { gateSigningKey, readBusinessCapId } from './runtime-config.ts';
 
@@ -95,7 +95,7 @@ export async function decideOnGate(
     // root ruling 2 of 906613f). The refused audit row is still this
     // business's, written by the envelope.
     if (result.refusal.code === 'GATE_NOT_FOUND') return refused(GATE_NOT_VISIBLE);
-    return refused(fromRuntime(result.refusal));
+    return refused(fromReasoned(result.refusal));
   }
 
   const decided = result.value;

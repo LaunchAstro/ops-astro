@@ -41,7 +41,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 import { checkAuthority, subjectsOf, type Scope } from '../authority/grants.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
-import { fromAuthority, refuseCommand, refuseNotFound } from './refusal.ts';
+import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
@@ -456,7 +456,7 @@ export async function prepareCommand(
     action: declaration.action,
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request),
   });
-  if (!authorised.ok) return refused(fromAuthority(authorised.refusal));
+  if (!authorised.ok) return refused(fromReasoned(authorised.refusal));
 
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {

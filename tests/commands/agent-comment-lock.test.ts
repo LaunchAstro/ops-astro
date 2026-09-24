@@ -12,11 +12,10 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { AgentSession } from '../../packages/core-records/src/identity/agent-login.ts';
-import {
-  AGENT_OPERATIONS,
-  type AgentRequest,
-} from '../../packages/core-records/src/commands/agent-operations.ts';
+import { AGENT_OPERATIONS } from '../../packages/core-records/src/commands/agent-operations.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import { lockTask } from '../../packages/core-records/src/commands/prepare.ts';
+import { declarationOf } from '../../packages/core-records/src/commands/surface.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK_TYPE = '22222222-2222-4222-8222-222222222222';
@@ -60,7 +59,10 @@ describe('the task an agent comments on', () => {
       kind: 'agent',
     };
     const comment = AGENT_OPERATIONS.get('task.comment');
-    if (comment === undefined) throw new Error('no agent row for task.comment');
+    const declaration = declarationOf('task.comment');
+    if (comment?.authority !== 'record' || declaration === undefined) {
+      throw new Error('no agent record row for task.comment');
+    }
     await comment.serve(
       agent.tx,
       {
@@ -73,9 +75,11 @@ describe('the task an agent comments on', () => {
           body: 'a note',
           audience: 'internal',
         } as AgentRequest,
+        declaration,
       },
       {},
-      undefined,
+      // The comment row does not read its delegation.
+      undefined as never,
     );
 
     expect(locks(person.sent)).toHaveLength(1);

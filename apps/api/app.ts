@@ -45,9 +45,9 @@ import {
 import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
   agentAnswer,
-  type AgentRequest,
   type executeAgentCommand,
 } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import {
   isCommandRefusal,
   refuseCommand,

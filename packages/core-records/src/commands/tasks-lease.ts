@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Lease renewal on the person path, and the lease-seconds reader pickup shares. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// Lease renewal on both entries, and the lease-seconds reader pickup shares.
+// The person's renewal and the agent's (`heartbeatLease`, which the agent path
+// reaches with the actor and delegation its credential resolved to) share
+// `renewLease`. Split out when the one task-runtime module was divided
+// (thermo review b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
-import { fromRuntime, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
-import { personClaimant } from './tasks-claimant.ts';
+import { personClaimant, type AgentClaimant } from './tasks-claimant.ts';
 
 const DEFAULT_RENEWAL_SECONDS = 15 * 60;
 
@@ -82,7 +84,7 @@ export async function renewLease(
     fence: fields.fence,
     renewSeconds: seconds,
   });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) return refused(fromReasoned(result.refusal));
   return applied(result.value.taskId, null, {
     leaseId: result.value.leaseId,
     fence: result.value.fence,
@@ -125,3 +127,16 @@ const NOT_THIS_CALLERS_LEASE: readonly string[] = [
   "the named lease is not this caller's at the presented fence",
   'Renew the lease this pickup issued, at the fence it handed back.',
 ];
+
+/** The agent renews its own lease, under the delegation its credential resolved to. */
+export async function heartbeatLease(
+  tx: TenantQuery,
+  fields: RenewalFields,
+  agent: AgentClaimant,
+  delegationId: string,
+): Promise<HandlerOutcome> {
+  return await renewLease(
+    fields,
+    async (lease) => await heartbeat(tx, { ...lease, holderActorId: agent.actorId, delegationId }),
+  );
+}

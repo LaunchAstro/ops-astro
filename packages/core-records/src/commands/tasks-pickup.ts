@@ -14,7 +14,7 @@ import {
 } from '../../../core-runtime/src/pickup.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
-import { fromRuntime, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
@@ -144,7 +144,7 @@ async function claim(
           agentActorId: claimant.actorId,
           mintedByActorId: approver.actorId,
         });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) return refused(fromReasoned(result.refusal));
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }
 

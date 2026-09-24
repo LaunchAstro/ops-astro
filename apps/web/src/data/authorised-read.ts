@@ -83,9 +83,6 @@ export type ReadState<T> =
       readonly grantKey: string;
     };
 
-/** The five things a read can be, before anything draws it. */
-export type ReadOutcome = ReadState<unknown>['outcome'];
-
 export function initialState<T>(grantKey: string): ReadState<T> {
   return { outcome: 'loading', previous: null, refusal: null, because: null, grantKey };
 }

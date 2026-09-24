@@ -5,10 +5,11 @@
 //
 // **Only what the server sent.** The projection carries the task's
 // identifier, the fields the catalogue marks `shared` and the client comments.
-// This view draws those three and nothing else. It has no title, state or
-// revision to show because the server never read them for this reader, and it
-// does not fetch them, borrow them from another read or fill them with a word
-// of its own. A field is shown under the key the server used, because the
+// This view draws those three and nothing else. The shipped task spine marks
+// `title` and `state` shared, so they arrive among the fields, `state` as the
+// state's label (`readSharedTask`, I09 ruling); the revision never does, and
+// the view does not fetch it, borrow it from another read or fill a gap with a
+// word of its own. A field is shown under the key the server used, because the
 // projection carries no label and a label invented here would be a claim about
 // the field nobody made.
 //

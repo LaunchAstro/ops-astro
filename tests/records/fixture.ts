@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Records written the way an installation writes them: through the application
+// Records written the way a deployment writes them: through the application
 // role, inside the tenancy wrapper. Nothing here uses the owner connection, so
 // a fixture that only works as a superuser fails here rather than passing
 // quietly and taking a test with it.

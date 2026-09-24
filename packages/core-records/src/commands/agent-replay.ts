@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A stored success released on replay, by the operation's `replay` row
+// A request the register already holds (`answerReplay`), and a stored
+// success released on replay by the operation's `replay` row
 // (`agent-operations.ts`). A stored refusal carries nothing protected and is
-// never passed here. Nothing here repeats anything: the refusal comes back,
-// not the stored detail, when the rights are gone.
+// never passed to `releaseReplay`. Nothing here repeats anything: the refusal
+// comes back, not the stored detail, when the rights are gone.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { AgentSession } from '../identity/agent-login.ts';
 import {
   checkDelegatedAuthority,
   digestOf,
@@ -15,11 +15,20 @@ import {
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
-import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
-import { declarationOf } from './surface.ts';
-import type { CommandHandle, CommandResult } from './register-store.ts';
+import {
+  asCallerVisible,
+  fromReasoned,
+  isCommandRefusal,
+  refuseCommand,
+  type CommandRefusal,
+} from './refusal.ts';
+import type { CommandHandle, CommandResult, RegisteredAttempt } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import { capabilitiesOf, UUID, type AgentCall, type AgentOperation } from './agent-operations.ts';
+import type { AgentOperation } from './agent-operations.ts';
+import { isRefused } from './outcome.ts';
+import type { AgentCall } from './agent-call.ts';
+import { settle, writeCallEvent } from './agent-settle.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -33,7 +42,7 @@ export async function releaseReplay(
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
     case 'pickup':
-      return await replayPickup(tx, call.session, stored);
+      return await replayPickup(tx, call, stored);
     case 'capabilities':
       return await replayCapabilities(tx, call, operation);
     case 'settledHandback':
@@ -47,7 +56,7 @@ export async function releaseReplay(
 
 /**
  * A capabilities replay: the current rights checked the way a fresh call is,
- * then the answer projected for them. The stored answer is never released.
+ * then the row served again for them. The stored answer is never released.
  */
 async function replayCapabilities(
   tx: TenantQuery,
@@ -56,12 +65,9 @@ async function replayCapabilities(
 ): Promise<CommandResult> {
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) return authorised.refusal;
-  return {
-    command: call.request.command,
-    recordId: null,
-    revision: null,
-    detail: { ...(await capabilitiesOf(tx, call.session, authorised.delegation)) },
-  };
+  const served = await authorised.run({});
+  if (isRefused(served)) return served.refusal;
+  return { command: call.request.command, ...served };
 }
 
 /**
@@ -108,26 +114,25 @@ interface PickupBindingRow {
  */
 async function replayPickup(
   tx: TenantQuery,
-  session: AgentSession,
+  { session, declaration }: AgentCall,
   stored: CommandHandle,
 ): Promise<CommandResult> {
   const detail = stored.detail;
   const named = (key: string): string => {
     const value = detail[key];
-    return typeof value === 'string' && UUID.test(value) ? value : '';
+    return isUuid(value) ? value : '';
   };
   const delegationId = named('delegationId');
   const held =
     delegationId === '' ? undefined : await resolveLiveById(tx, session.actorId, delegationId);
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
 
-  const declaration = declarationOf('task.pickup');
   const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: held.purposeScope,
   });
-  if (!decision.ok) return fromRuntime(decision.refusal);
+  if (!decision.ok) return fromReasoned(decision.refusal);
 
   const rows = await tx.query<PickupBindingRow>(
     `select d.credential_scheme, d.credential_key_id, d.credential_hash,
@@ -223,22 +228,85 @@ async function replayPickup(
  */
 async function replaySettledHandback(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  { session, credential, request, declaration }: AgentCall,
   stored: CommandHandle,
 ): Promise<CommandRefusal | undefined> {
   if (credential === undefined || credential === '') {
     return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
   }
-  const leaseId = String(stored.detail['leaseId'] ?? '');
-  const held = UUID.test(leaseId)
+  const leaseId = stored.detail['leaseId'];
+  const held = isUuid(leaseId)
     ? await resolveSettledByLease(tx, session.actorId, leaseId, credential)
     : undefined;
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
-  const declaration = declarationOf(request.command);
   const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: held.purposeScope,
   });
-  return decision.ok ? undefined : fromRuntime(decision.refusal);
+  return decision.ok ? undefined : fromReasoned(decision.refusal);
+}
+
+/**
+ * A request the register already holds: refused when the body differs, else
+ * the stored answer as the rights held now release it. The register row
+ * stays as it was.
+ */
+export async function answerReplay(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: AgentOperation,
+  seen: RegisteredAttempt,
+  digest: string,
+): Promise<CommandResult> {
+  const { session, request } = call;
+  if (seen.payload_digest !== digest) {
+    return await settle(
+      tx,
+      session,
+      request,
+      digest,
+      refuseCommand(
+        'OPERATION_ID_REUSED',
+        [seen.command],
+        ['This identity already carries a different request. Use a new operation_id.'],
+      ),
+      true,
+    );
+  }
+  const replayed = seen.result as unknown as CommandResult;
+  // A stored refusal carries nothing protected. A stored success is released
+  // only to the rights held now (TRANSACTION-CONTRACT: "Authorise the
+  // replay's read under current rights before returning protected
+  // content"), so a read repeated after its grant or delegation went answers
+  // today's refusal rather than yesterday's task. The register row stays as
+  // it was: the operation happened, and nothing here repeats it.
+  //
+  // A pickup is the one replay that hands something back beyond the receipt:
+  // the credential the lost response carried, derived again once the
+  // current rights and the receipt's own lease have been checked.
+  //
+  // A capabilities replay is a read with nothing to repeat and no handle of
+  // its own, and the scope it stored is the delegation's that asked. The
+  // register compares the body, not the credential, so a replay under
+  // another delegation would otherwise be handed the first one's scope. It
+  // is projected again for the credential presented now, which is the same
+  // answer when nothing changed (CA2).
+  const released: CommandResult | undefined = isCommandRefusal(replayed)
+    ? undefined
+    : await releaseReplay(tx, call, operation, replayed);
+  if (released !== undefined && isCommandRefusal(released)) {
+    const visible = asCallerVisible(released);
+    await writeCallEvent(tx, session, request, digest, {
+      outcome: 'refused',
+      refusalCode: visible.code,
+    });
+    return visible;
+  }
+  await writeCallEvent(tx, session, request, digest, {
+    outcome: 'replayed',
+    refusalCode: isCommandRefusal(replayed) ? replayed.code : null,
+    subjectRecordId: isCommandRefusal(replayed) ? null : replayed.recordId,
+  });
+  return released ?? replayed;
 }

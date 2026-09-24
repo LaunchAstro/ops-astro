@@ -12,8 +12,10 @@ import {
 } from '../authority/delegations.ts';
 import { retainHistoricalReport } from '../../../core-runtime/src/handback.ts';
 import type { CommandRefusal } from './refusal.ts';
-import { declarationOf } from './surface.ts';
-import { UUID, type AgentCall, type AgentOperands } from './agent-operations.ts';
+import type { CommandDeclaration } from './surface.ts';
+import type { AgentCall, AgentOperands } from './agent-call.ts';
+import { isUuid } from '../tenancy/ids.ts';
+import { taskOfLease } from './prepare.ts';
 
 /**
  * T4's evidence-only intake for an agent whose delegation has ended.
@@ -49,18 +51,18 @@ import { UUID, type AgentCall, type AgentOperands } from './agent-operations.ts'
  */
 export async function retainLateHandback(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  { session, credential, request, declaration }: AgentCall,
   operands: AgentOperands,
   refusal: CommandRefusal,
 ): Promise<void> {
   if (refusal.code !== 'DELEGATION_NOT_LIVE' && refusal.code !== 'DELEGATION_NARROWED') return;
   if (credential === undefined || credential === '') return;
   const leaseId = request['leaseId'];
-  if (typeof leaseId !== 'string' || !UUID.test(leaseId)) return;
+  if (!isUuid(leaseId)) return;
   const historical =
     (await resolveHistoricalDelegation(tx, session.actorId, credential, refusal.code)) ??
     (refusal.code === 'DELEGATION_NARROWED'
-      ? await narrowedOnLease(tx, session, credential, leaseId)
+      ? await narrowedOnLease(tx, session, credential, leaseId, declaration)
       : undefined);
   if (historical === undefined) return;
   await retainHistoricalReport(tx, {
@@ -90,17 +92,13 @@ async function narrowedOnLease(
   session: AgentSession,
   credential: string,
   leaseId: string,
+  declaration: CommandDeclaration,
 ): Promise<{ readonly id: string } | undefined> {
-  const rows = await tx.query<{ readonly task_id: string }>(
-    `select task_id from public.leases where business_id = $1 and id = $2`,
-    [tx.businessId, leaseId],
-  );
-  const taskId = rows[0]?.task_id;
+  const taskId = await taskOfLease(tx, leaseId);
   if (taskId === undefined) return undefined;
-  const declaration = declarationOf('task.handback');
   return await resolveNarrowedDelegation(tx, session.actorId, credential, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: { kind: 'record', id: taskId },
   });
 }
