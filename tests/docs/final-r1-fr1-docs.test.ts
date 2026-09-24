@@ -152,13 +152,20 @@ const shallow = (() => {
 const BOUNDARY = /[\s`'"()[\]<>,;]/u;
 
 /**
+ * Where a word ends after a hash: a boundary, or a `.` that no word character
+ * follows. A full stop ends a sentence; only a dot inside a word, as in
+ * `REVIEW-<hash>.md`, marks a file name (R4-SURFACE-3).
+ */
+const WORD_END = /[\s`'"()[\]<>,;]|\.(?!\w)/u;
+
+/**
  * Every hash-shaped token in `text`, except one inside a path or a name.
  *
  * A hash after `-` is exempt only where its word is a path or a file name
  * (it holds a `/` or a `.`, as `ops-astro-<hash>/` or `REVIEW-<hash>.md`) or a
  * record's upper-case name (`ROOT-<hash>`). Prose such as `pre-<hash>` or
- * `post-<hash>` is scanned: that is where R1-SURFACE-41's two stale test
- * comments hid.
+ * `post-<hash>` is scanned, at the end of a sentence too: that is where
+ * R1-SURFACE-41's two stale test comments hid.
  */
 const hashTokens = (text: string): string[] =>
   [...text.matchAll(/(?<![\w/.])[0-9a-f]{7,40}(?![\w/-])/gu)]
@@ -168,7 +175,7 @@ const hashTokens = (text: string): string[] =>
       let start = before.length;
       while (start > 0 && !BOUNDARY.test(before[start - 1] ?? '')) start -= 1;
       const after = text.slice(match.index);
-      const stop = after.search(BOUNDARY);
+      const stop = after.search(WORD_END);
       const word = text.slice(start, match.index + (stop < 0 ? after.length : stop));
       const path = /[/.]/u.test(word);
       const name = /^[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-$/u.test(before.slice(start));
@@ -192,6 +199,8 @@ describe('the #41 guard reads a hash after a dash (R1-SURFACE-41)', () => {
     ['ops-astro-final-review-abc1234/', []],
     ['`REVIEW-RUNTIME-abc1234.md`', []],
     ['(ROOT-abc1234)', []],
+    ['// the shape before pre-abc1234.', ['abc1234']],
+    ['measured at post-abc1234. Then', ['abc1234']],
   ])('%s', (text, hashes) => {
     expect(hashTokens(text)).toEqual(hashes);
   });
