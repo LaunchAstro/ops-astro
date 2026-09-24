@@ -77,7 +77,8 @@ esac
 
 say 'waiting for the server to accept connections'
 for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -q -U "$ADMIN_USER" -d "$DATABASE" 2>/dev/null; then
+  # Over TCP: a fresh volume's init server answers the socket before TCP is up.
+  if docker exec "$CONTAINER" pg_isready -q -h 127.0.0.1 -U "$ADMIN_USER" -d "$DATABASE" 2>/dev/null; then
     ready=yes
     break
   fi

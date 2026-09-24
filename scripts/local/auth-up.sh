@@ -70,14 +70,15 @@ docker network connect "${NETWORK}" "${PG_CONTAINER}" >/dev/null 2>&1 || true
 
 echo -n "auth-up: waiting for Postgres"
 for _ in $(seq 1 60); do
-  if docker exec "${PG_CONTAINER}" pg_isready -U postgres -d "${PG_DATABASE}" >/dev/null 2>&1; then
+  # Over TCP: a fresh volume's init server answers the socket before TCP is up.
+  if docker exec "${PG_CONTAINER}" pg_isready -h 127.0.0.1 -U postgres -d "${PG_DATABASE}" >/dev/null 2>&1; then
     echo " ready"
     break
   fi
   echo -n .
   sleep 1
 done
-docker exec "${PG_CONTAINER}" pg_isready -U postgres -d "${PG_DATABASE}" >/dev/null 2>&1 || {
+docker exec "${PG_CONTAINER}" pg_isready -h 127.0.0.1 -U postgres -d "${PG_DATABASE}" >/dev/null 2>&1 || {
   echo
   echo "BLOCKER: ${PG_CONTAINER} did not become ready" >&2
   exit 1
