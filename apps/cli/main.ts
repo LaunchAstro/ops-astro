@@ -16,9 +16,19 @@
 // saved, so a terminal log or a shell history never holds it.
 
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
+import { canonicalPayload } from '../../packages/core-records/src/commands/digest.ts';
 import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import {
   accepts,
@@ -58,6 +68,8 @@ const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue
 const SWITCHES = new Set(['help', 'agent']);
 
 class UsageError extends Error {}
+
+const REPLAY = 'send it again with this operationId to replay';
 
 function parse(argv: readonly string[]): Parsed {
   const positional: string[] = [];
@@ -104,6 +116,23 @@ function writeSecret(file: string, value: string): void {
   chmodSync(file, 0o600);
 }
 
+/**
+ * A pickup's credential can be saved to `file`, checked before the pickup is
+ * sent: a claim that commits with nowhere to keep its credential leaves a lease
+ * the agent cannot reach until its delegation expires.
+ */
+function assertWritable(file: string): void {
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    accessSync(dirname(file), constants.W_OK);
+    if (existsSync(file)) accessSync(file, constants.W_OK);
+  } catch (cause) {
+    throw new UsageError(
+      `cannot save a pickup's credential to ${file}: ${(cause as Error).message}`,
+    );
+  }
+}
+
 function body(flags: Parsed['flags']): Record<string, unknown> {
   const inline = text(flags, 'json');
   const file = text(flags, 'body-file');
@@ -127,6 +156,13 @@ function body(flags: Parsed['flags']): Record<string, unknown> {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new UsageError('the body must be a JSON object');
+  }
+  // The door's own check. JSON.stringify would send a number too large for a
+  // double, such as 1e400, as null, and the API would take null as meant.
+  try {
+    canonicalPayload(parsed);
+  } catch (cause) {
+    throw new UsageError(`the body has no canonical form: ${(cause as Error).message}`);
   }
   return parsed as Record<string, unknown>;
 }
@@ -227,6 +263,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const delegation = agent
       ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
       : undefined;
+    if (agent && verb === 'task.pickup') assertWritable(delegationFile);
     const api = (text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
       /\/$/u,
       '',
@@ -244,7 +281,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const request = generated === undefined ? payload : { operationId: generated, ...payload };
     const replayHint = (): void => {
       if (generated === undefined) return;
-      io.err(`cli: operationId ${generated}; send it again with this operationId to replay`);
+      io.err(`cli: operationId ${generated}; ${REPLAY}`);
     };
 
     const cli = createCli({
@@ -275,7 +312,18 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const ok = answer.status >= 200 && answer.status < 300 && answer.body !== undefined;
     const picked = agent && verb === 'task.pickup' && ok ? pickedUpCredential(answer) : undefined;
     if (picked !== undefined) {
-      writeSecret(delegationFile, picked);
+      try {
+        writeSecret(delegationFile, picked);
+      } catch (cause) {
+        // The claim committed and only this machine failed, so this is not a
+        // refusal. The credential is never printed; a replay returns it.
+        io.err(
+          `cli: pickup applied but its credential could not be saved to ${delegationFile}: ` +
+            (cause as Error).message,
+        );
+        io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+        return EXIT.fault;
+      }
       io.out(JSON.stringify(redact(answer, delegationFile)));
       return EXIT.ok;
     }
