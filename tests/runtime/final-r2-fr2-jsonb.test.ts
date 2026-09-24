@@ -246,39 +246,66 @@ describe.skipIf(serverUrl === undefined)('FR2-JSONB: operands the stores cannot 
       ['a NUL', { n: NUL }],
       ['a lone surrogate', { n: LONE }],
     ] as const) {
-      // HANDED BACK, not fixed here: the agent entry reads `report` and `successor` in
-      // `agent-operations.ts` `handbackOperands`, outside this lane's files. Still red, so
-      // `it.fails`; the line that closes it turns these into failures to flip.
-      it.fails(
-        `agent, live fence: a report holding ${label} is refused, the lease still live`,
-        async () => {
-          const { picked, as } = await freshPickup(`agent handback ${label}`);
-          await refusedCleanly(
-            as('task.handback'),
-            { leaseId: picked.leaseId, fence: picked.fence, outcome: 'completed', report },
-            { status: 422, code: 'FIELD_VALUE_INVALID', names: ['report'] },
-          );
-        },
-      );
-    }
-
-    it.fails(
-      'agent: a successor payload holding NUL is refused, the lease still live',
-      async () => {
-        const { picked, as } = await freshPickup('agent successor');
+      // FR2-JSONB-CONT: the agent entry reads `report` and `successor` in
+      // `agent-operations.ts` `handbackOperands`; `it.fails` until that line landed.
+      it(`agent, live fence: a report holding ${label} is refused, the lease still live`, async () => {
+        const { picked, as } = await freshPickup(`agent handback ${label}`);
         await refusedCleanly(
           as('task.handback'),
-          {
-            leaseId: picked.leaseId,
-            fence: picked.fence,
-            outcome: 'completed',
-            report: {},
-            successor: { ...PROPOSAL, payload: { x: `a${NUL}b` } },
-          },
-          { status: 422, code: 'FIELD_VALUE_INVALID' },
+          { leaseId: picked.leaseId, fence: picked.fence, outcome: 'completed', report },
+          { status: 422, code: 'FIELD_VALUE_INVALID', names: ['report'] },
         );
-      },
-    );
+      });
+    }
+
+    it('agent: a successor payload holding NUL is refused, the lease still live', async () => {
+      const { picked, as } = await freshPickup('agent successor');
+      await refusedCleanly(
+        as('task.handback'),
+        {
+          leaseId: picked.leaseId,
+          fence: picked.fence,
+          outcome: 'completed',
+          report: {},
+          successor: { ...PROPOSAL, payload: { x: `a${NUL}b` } },
+        },
+        { status: 422, code: 'FIELD_VALUE_INVALID', names: ['successor.payload'] },
+      );
+    });
+
+    // R1-THERMO-12 (b): a stale holder's report is retained with its refusal
+    // (API.md), so an unstorable one faulted at the retaining insert and lost
+    // both. It is now refused by name before anything is retained.
+    it('agent, stale fence: a report holding NUL is refused, nothing retained', async () => {
+      const { picked, as } = await freshPickup('agent stale handback');
+      await refusedCleanly(
+        as('task.handback'),
+        {
+          leaseId: picked.leaseId,
+          fence: picked.fence + 1,
+          outcome: 'completed',
+          report: { n: NUL },
+        },
+        { status: 422, code: 'FIELD_VALUE_INVALID', names: ['report'] },
+      );
+    });
+
+    it('control: the same stale fence with a storable report is refused, the report retained', async () => {
+      const { picked, as } = await freshPickup('agent stale control');
+      const answer = await as('task.handback')({
+        operationId: randomUUID(),
+        leaseId: picked.leaseId,
+        fence: picked.fence + 1,
+        outcome: 'completed',
+        report: { n: 'kept' },
+      });
+      expect(answer.body['refused'], answer.text).toBe(true);
+      expect(
+        await count(`select count(*)::text as n from public.handback_reports where lease_id = $1`, [
+          picked.leaseId,
+        ]),
+      ).toBe(1);
+    });
   });
 
   describe('identifier operands that are not strings (R2-SURFACE-8)', () => {

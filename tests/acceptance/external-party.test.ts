@@ -140,11 +140,14 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     // word the admin's own read shows, not the identifier of a state record
     // the client cannot read.
     const admin = (await as(world.ada, 'task.read', { recordId: shared })).body['task'] as {
+      readonly revision: number;
       readonly state: { readonly id: string; readonly label: string };
     };
     expect(admin.state.label).not.toBe('');
     expect(task).toStrictEqual({
       id: shared,
+      // The record's version, which a permitted client comment needs (R2-AUTHORITY-36).
+      revision: admin.revision,
       fields: { title: TITLE, state: admin.state.label },
       comments: [expect.objectContaining({ audience: 'client', body: CLIENT_NOTE })],
     });
