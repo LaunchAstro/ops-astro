@@ -141,8 +141,11 @@ const RAN_FORMS = [
   new RegExp(String.raw`^run\s+against\s+${SHA},\s+no\s+findings$`, 'u'),
   new RegExp(String.raw`^run\s+against\s+${SHA},\s+${COUNTED}$`, 'u'),
 ];
-// Only where the change touches no sensitive path; the reason is required.
-const NOT_REQUIRED = /^not\s+required:\s*\S/u;
+// Only where the change touches no sensitive path. Round thirteen, 24
+// September: a free reason read `not required: pending` and a rejected
+// review as answers, so the form is one fixed text.
+const NOT_REQUIRED = /^not\s+required:\s+no\s+sensitive\s+paths\s+changed$/u;
+const NOT_REQUIRED_HELP = 'not required: no sensitive paths changed';
 
 const CODE_HELP = [
   'no findings',
@@ -303,18 +306,18 @@ if (sensitive.length > 0) {
   // placeholder passing on a change that touched no sensitive path, because
   // placeholders were read only where a security review was required. An
   // author who has not replaced the line has not read it, whatever the change
-  // touches. The surface still decides whether a review was needed: here
-  // `not required: <reason>` is an accepted form, and since round twelve a
-  // security line on this surface is held to the same grammar as any other.
+  // touches. The surface still decides whether a review was needed: here the
+  // fixed `not required: no sensitive paths changed` is accepted, and since
+  // round twelve a security line on this surface is held to the grammar too.
   for (const field of securityFields) {
     const verdict = outcome(field.value, [...RAN_FORMS, NOT_REQUIRED]);
     if (verdict === 'accepted') continue;
     failures.push(
       `a security review line ${explain[verdict]}:\n` +
         `          ${field.line}\n` +
-        (verdict === 'unaccepted' ? help([...RAN_HELP, 'not required: <reason>']) : '') +
+        (verdict === 'unaccepted' ? help([...RAN_HELP, NOT_REQUIRED_HELP]) : '') +
         '        The template asks for both outcome lines to be replaced. This\n' +
-        '        change touches no sensitive path, so `not required: <reason>` is\n' +
+        `        change touches no sensitive path, so \`${NOT_REQUIRED_HELP}\` is\n` +
         '        an answer.',
     );
   }

@@ -35,14 +35,13 @@ Security review, one of:
   run against <sha>, no findings
   run against <sha>, <N> findings, all closed
   run against <sha>, <N> findings, <N> closed
-  not required: <reason>
+  not required: no sensitive paths changed
 
 N is the same number on both sides, at least 1, with `finding` for 1.
 <sha> is the revision the security review ran against; on a sensitive
 change the check requires it to be this pull request's head.
-`not required: <reason>` passes only when the change
-touches no sensitive path, for example
-`Security review: not required: this change touches docs only`. Cite the
+`not required: no sensitive paths changed` is fixed text, and passes only
+when the change touches no sensitive path; say why on the next line. Cite the
 procedure file by path on a following line if you want to.
 
 What a green check proves: the evidence is bound to this exact head. It reads

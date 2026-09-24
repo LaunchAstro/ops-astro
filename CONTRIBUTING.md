@@ -85,7 +85,8 @@ else fails, and the failure lists them:
 - security review: `run against <sha>, no findings`,
   `run against <sha>, <N> findings, all closed` or
   `run against <sha>, <N> findings, <N> closed`; on a change that touches
-  no sensitive path, `not required: <reason>` as well.
+  no sensitive path, the fixed text `not required: no sensitive paths changed`
+  as well.
 
 N is the same number on both sides, at least 1, with `finding` for 1. On a
 sensitive change `<sha>` must be the pull request's head. An explanation

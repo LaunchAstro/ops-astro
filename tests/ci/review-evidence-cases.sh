@@ -224,7 +224,7 @@ run_case "an unreplaced security placeholder fails a non-sensitive change too" 1
 Security review: REPLACE-WITH-OUTCOME" "README.md"
 run_case "a non-sensitive change saying no review was called for passes" 0 "$GOOD_BLOCK
 
-Security review: not required: this change touches docs only" "README.md"
+Security review: not required: no sensitive paths changed" "README.md"
 
 # 4. The template advertises `the review found nothing` as passing wording and
 # the parser refused it, so the two disagreed about a valid outcome.
@@ -369,9 +369,22 @@ for line in "no findings" "1 finding, all closed" "1 finding, 1 closed" "2 findi
 
 Security review: run against $HEAD, $line." "packages/core-custody/broker.ts"
 done
-run_case "security review 'not required: <reason>' passes a non-sensitive change" 0 "$GOOD_BLOCK
+# Round thirteen, 24 September. A free reason after `not required:` read
+# anything as an answer, `pending` and a rejected review included, so the
+# non-sensitive form is now one fixed text.
+for line in "not required: pending" "not required: review was rejected; 2 findings, 1 closed" \
+  "not required: this change touches docs only"; do
+  run_case "security review '$line' fails a non-sensitive change" 1 "$GOOD_BLOCK
 
-Security review: not required: this change touches docs only" "README.md"
+Security review: $line" "README.md"
+done
+run_case "the fixed form, any case, trailing stop, passes a non-sensitive change" 0 "$GOOD_BLOCK
+
+Security review: Not required: No sensitive paths changed.
+The diff is documentation and test fixtures only." "README.md"
+run_case "the fixed form fails a sensitive change" 1 "$GOOD_BLOCK
+
+Security review: not required: no sensitive paths changed" "packages/core-custody/broker.ts"
 run_case "security review 'not required' with no reason fails" 1 "$GOOD_BLOCK
 
 Security review: not required:" "README.md"
@@ -389,7 +402,7 @@ $SEC_ONLY" "packages/core-custody/broker.ts"
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then
   case "$(cat "$TEMPLATE")" in
-    *"every finding it raised is closed"*"<N> findings, <N> closed"*"not required: <reason>"*)
+    *"every finding it raised is closed"*"<N> findings, <N> closed"*"not required: no sensitive paths changed"*)
       pass "the template still advertises the wording these cases assert" ;;
     *) fail "the template still advertises the wording these cases assert" \
       "the template's passing wording moved; the cases above now prove nothing about it" ;;
