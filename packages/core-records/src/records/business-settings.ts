@@ -258,7 +258,14 @@ export async function readBusinessSetting(
  */
 export interface SettingRevisionStale {
   readonly refused: true;
-  readonly code: 'VERSION_STALE';
+  /**
+   * `VERSION_STALE` for a whole-number revision the row has moved past, and
+   * `FIELD_VALUE_INVALID` naming `expectedRevision` for one that is not a whole
+   * number at all. The settings commands target no existing record, so the
+   * envelope's number check does not reach them and the operand arrives here
+   * as the caller sent it (R2-SURFACE-67).
+   */
+  readonly code: 'VERSION_STALE' | 'FIELD_VALUE_INVALID';
   readonly names: readonly string[];
   readonly fixes: readonly string[];
 }
@@ -267,6 +274,11 @@ export interface SettingRevisionStale {
 export const SETTING_REVISION_FIXES: readonly string[] = [
   'Read the setting and send the revision you are writing against as expected_revision.',
   'A write against a stale revision is refused, never merged.',
+];
+
+/** For a revision that is not a whole number: what to send instead. */
+export const SETTING_REVISION_OPERAND_FIXES: readonly string[] = [
+  'Send expectedRevision as the whole-number revision settings.read returned, or leave it out.',
 ];
 
 /** The discriminant, so a caller can tell a written setting from a refusal. */
@@ -371,6 +383,18 @@ export async function writeBusinessSetting(
         !(row.owning_operation ?? []).includes(write.owningOperation);
   if (ownedElsewhere) return undefined;
 
+  // A string "1", a null or a 1.5 is never equal to the row's revision, and
+  // answering it stale would name the revision the caller already sent, which
+  // a client retrying with the named revision loops on. It is a malformed
+  // operand, refused as one.
+  if (write.expectedRevision !== undefined && !Number.isSafeInteger(write.expectedRevision)) {
+    return {
+      refused: true,
+      code: 'FIELD_VALUE_INVALID',
+      names: ['expectedRevision'],
+      fixes: SETTING_REVISION_OPERAND_FIXES,
+    };
+  }
   if (write.expectedRevision !== undefined && write.expectedRevision !== row.revision) {
     return {
       refused: true,
