@@ -217,6 +217,15 @@ the general rule above. Every write also answers the envelope's own refusals:
 `commands/envelope.ts`; `prepareCommand`, `commands/prepare.ts`). The table
 lists what each adds.
 
+A replay of a stored success answers the authority held now. It takes the same
+preparation a fresh call takes, without the target's revision, so a revoked
+grant's replay is `SCOPE_NOT_GRANTED` 403 and not the stored result. A person
+pickup replay is also released only while its lease is live and the caller's
+(`LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `RESERVATION_NOT_CLAIMABLE` 409).
+The register row is unchanged and the audit row is `refused` (`replayOrRefuse`
+and `withheldNow`, `commands/envelope.ts`).
+`tests/runtime/person-replay-current-rights.test.ts` holds it.
+
 An identifier field an untargeted write does not take is refused
 `COMMAND_BODY_INVALID` 400 naming it, before authority. That holds on every
 untargeted person-path write, including `task.heartbeat`, `task.cancel`,
@@ -546,11 +555,17 @@ called where both claimants meet: `claim` in `commands/tasks-pickup.ts`,
 `renewLease` in `commands/tasks-lease.ts` and `settle` in
 `commands/tasks-handback.ts`. The agent envelope's lease lookup checks the same
 shape with its own pattern (`UUID` from `commands/agent-operations.ts`, in
-`subjectTaskId`, `commands/agent-authority.ts`). A malformed id never reaches a uuid parameter, so
-it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps for real faults. The
-agent envelope reads `reservationId` as a string, so a number there is the same
-answer. On the person route a non-string `reservationId` is still
-`COMMAND_BODY_INVALID` 400. Proof: `tests/api/id-operand-shape.test.ts`.
+`subjectTaskId`, `commands/agent-authority.ts`). A malformed id never reaches
+a uuid parameter, so it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps
+for real faults. Both prefixes refuse a `reservationId` that is not a string,
+`COMMAND_BODY_INVALID` 400 (below). Proof: `tests/api/id-operand-shape.test.ts`.
+
+**On the agent prefix each operand is read by its JSON type before any
+authority.** A `reservationId` that is not a string is `COMMAND_BODY_INVALID`
+400, an `outcome` that is not a string or a `fence` that is not a number is
+`FIELD_VALUE_INVALID` 422, and nothing is claimed, settled or retained
+(`pickupOperands` and `handbackOperands`, `commands/agent-operations.ts`).
+`tests/runtime/agent-operand-types.test.ts` holds it.
 
 **A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
 422, naming the keys, with nothing written (D06). `business_id`, `actor_id`,
@@ -1096,7 +1111,12 @@ the audit row's `attempted` column and never to the response.
 field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
-`serveRead` after the system fields, `reads/dispatch.ts`). `tests/api/boundary-read-targets.test.ts` holds it.
+`serveRead` after the system fields, `reads/dispatch.ts`).
+`tests/api/boundary-read-targets.test.ts` holds it. The agent prefix answers the
+same for `task.queue`, `task.read` and `session.capabilities`, from the same
+list (`READ_CATALOGUE`), before the delegation is read (`parseOperands`,
+`commands/agent-operations.ts`). `tests/api/agent-read-targets.test.ts` holds
+it.
 
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has

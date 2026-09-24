@@ -550,8 +550,9 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   instant they wrote, or null when they wrote nothing. A second revocation is
   `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
   delegation. A settled delegation is not revoked a second way.
-- Nothing is cached. The next call re-evaluates through `effectiveGrants` or
-  `resolveDelegation` and is refused. A call already admitted finishes in its
+- Nothing is cached. The next call, including a replay of the same operation,
+  re-evaluates through `effectiveGrants` or `resolveDelegation` on both entries
+  and is refused. A call already admitted finishes in its
   own transaction (I10). `tests/api/controls-revoke.test.ts` and matrix case
   (f) show this before and after. `tests/acceptance/i10-inflight.test.ts` holds
   a read open in its transaction, after `effectiveGrants` admitted it, while
@@ -609,7 +610,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   agent entry refuses a non-null `actualMinor` among its operands
   (`parseOperands` in `commands/agent-operations.ts`) before authority is read,
   as `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, so no path retains it. `null` and
-  absent are the same request.
+  absent are the same request. An outcome or fence of the wrong JSON type is
+  refused as an operand before authority, so it never reaches the intake.
   `tests/runtime/historical-handback-intake.test.ts` holds both paths,
   including the grant-expired cases, and sends `actualMinor: 1` on the
   narrowed, retired and grant-expired paths.
