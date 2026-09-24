@@ -35,12 +35,12 @@ import {
   mintDelegation,
   type MintedDelegation,
 } from '../../core-records/src/authority/delegations.ts';
-import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { lockedInstant } from './clock.ts';
 import type { LockRequest } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
-import { classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
+import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -446,11 +446,18 @@ export async function pickup(
     // The person's own live grants on this task, and nobody else's: not the
     // approver's, and not a body's choice. The approval is the recorded
     // authorisation and was checked above; this is the claimant's authority.
-    const granted = await checkAuthority(tx, authoritySubjects(request), {
-      collection: request.collection,
-      action: 'write',
-      scope: { kind: 'record', id: found.task_id },
-    });
+    // At the locked instant (final review R2-RUNTIME-4): a grant that lapsed
+    // while this waited on the cap does not count.
+    const granted = await checkAuthorityAt(
+      tx,
+      authoritySubjects(request),
+      {
+        collection: request.collection,
+        action: 'write',
+        scope: { kind: 'record', id: found.task_id },
+      },
+      lockedAt,
+    );
     if (!granted.ok) {
       return refuse(
         'SCOPE_NOT_GRANTED',
@@ -463,13 +470,38 @@ export async function pickup(
     // person's live grants, which L2 reads for itself; nothing is copied here.
     // `purposeScope` is R5's one-task ceiling (coordinator addendum 1): L2
     // owns the field (0016) and refuses a call outside that one record.
+    // L2 reads the delegating person's grants through `now()`, the
+    // transaction's start. Judged here first at the locked instant (final
+    // review R2-RUNTIME-4), with L2's own refusal, so a grant that lapsed
+    // while this waited on the cap mints nothing.
+    const actions = ['read', 'comment', 'write'] as const;
+    for (const action of actions) {
+      // Sequential, as L2's own check is: one transaction, one connection.
+      // oxlint-disable-next-line no-await-in-loop
+      const delegable = await checkAuthorityAt(
+        tx,
+        [{ kind: 'person', id: request.authorisedByPersonId }],
+        { collection: request.collection, action, scope: { kind: 'business', id: null } },
+        lockedAt,
+      );
+      if (!delegable.ok) {
+        return {
+          ok: false,
+          refusal: {
+            code: 'DELEGATION_WIDENS',
+            reason: `the delegating person holds no live ${action} grant on ${request.collection}`,
+            fix: 'narrow the purpose, or grant the person that authority first',
+          },
+        };
+      }
+    }
     const minted = await mintDelegation(tx, {
       agentActorId: request.agentActorId,
       delegatePersonId: request.authorisedByPersonId,
       mintedByActorId: request.mintedByActorId,
       purpose: found.purpose,
       collections: [request.collection],
-      actions: ['read', 'comment', 'write'],
+      actions: [...actions],
       expiresAt,
       purposeScope: { kind: 'record', id: found.task_id },
     });

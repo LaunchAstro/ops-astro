@@ -28,7 +28,8 @@
 //   expires, and the next pickup fences it as it always did (W04).
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { checkAuthorityAt } from './recovery.ts';
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
@@ -140,12 +141,18 @@ export async function heartbeat(
   // own current authority instead, and losing it is the same answer.
   const authorityLive =
     request.claimant === 'person'
-      ? (
-          await checkAuthority(tx, request.subjects, {
-            collection: request.collection,
-            action: 'write',
-            scope: { kind: 'record', id: lease.task_id },
-          })
+      ? // At the locked instant (final review R2-RUNTIME-4).
+        (
+          await checkAuthorityAt(
+            tx,
+            request.subjects,
+            {
+              collection: request.collection,
+              action: 'write',
+              scope: { kind: 'record', id: lease.task_id },
+            },
+            lockedAt,
+          )
         ).ok
       : lease.delegation_live;
   if (!authorityLive && request.claimant === 'person' && lease.state === 'live' && !lease.expired) {

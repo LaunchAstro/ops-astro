@@ -16,6 +16,12 @@ export type LifecycleCommand = 'task.start' | 'task.complete' | 'task.reopen';
 
 export interface LifecycleProps {
   readonly disabled: boolean;
+  /**
+   * The task is completed. Start is then not offered: the server refuses it
+   * with TRANSITION_NOT_PERMITTED, because only task.reopen, with its reason,
+   * clears the completion stamp (final review R2-RUNTIME-14).
+   */
+  readonly completed?: boolean;
   readonly onLifecycle: (command: LifecycleCommand) => void;
 }
 
@@ -30,7 +36,8 @@ export function Lifecycle(props: LifecycleProps): ReactElement {
           className="btn"
           type="button"
           data-lifecycle="start"
-          disabled={props.disabled}
+          disabled={props.disabled || props.completed === true}
+          title={props.completed === true ? 'A completed task is reopened first.' : undefined}
           onClick={() => {
             props.onLifecycle('task.start');
           }}
