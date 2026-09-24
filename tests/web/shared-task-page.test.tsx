@@ -101,6 +101,25 @@ describe('the task page for a reader outside the business', () => {
     await page.unmount();
   });
 
+  it('draws a comment the projection narrowed to id and body, in its own view', async () => {
+    // Only the shared view is handed comments with fields left out; the
+    // internal box (`task/Comments.tsx`) types every field as present and is
+    // never mounted here, so a gap is drawn as a gap and not as a word.
+    const api = server({
+      ok: true,
+      sharedTask: { id: TASK_ID, fields: {}, comments: [{ id: 'c2', body: 'Only the words.' }] },
+    });
+    const page = await mount(screen(api.fetch));
+    await tick();
+
+    const row = page.find('[data-comment-id="c2"]');
+    expect(row?.getAttribute('data-audience')).toBe('unknown');
+    expect(row?.textContent).toBe('Only the words.');
+    expect(page.find('[data-comment-audience]')).toBeNull();
+    expect(page.find('#task-comment')).toBeNull();
+    await page.unmount();
+  });
+
   it('says so when no field is shared, rather than drawing an empty task', async () => {
     const api = server(shared({}));
     const page = await mount(screen(api.fetch));
