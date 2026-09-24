@@ -55,6 +55,15 @@ composite foreign keys hold it: the gate's run plans the gate's version
 (`gates_version_in_same_lineage`). A gate pointed at another version's run or
 step cannot be written, so it cannot be decided (ledger G01).
 
+Since migration 0030 its evidence pack is bound as well
+(`migrations/0030_gate_pack_bound_to_version.sql`;
+`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`).
+`gates_pack_in_same_version` requires the gate's pack to be a pack of its
+version, a foreign key on `(business_id, evidence_pack_id, version_id)`. The
+trigger `gates_version_fixed_once_decided` refuses a change to a gate's version
+once a decision names the gate or the gate has left `pending`, so it covers a
+superseded or expired gate as well as a decided one.
+
 ## The one rule the whole thing rests on
 
 **Discover, lock, re-read, then write.** The lock order is the contract's: cap,
@@ -537,7 +546,10 @@ Its limits:
   (`unboundEvidence`, `verified-decisions.ts`;
   `tests/reads/final-r2-fr2-runtime-integrity.test.ts`). The version and pack
   rows themselves stay mutable: the read detects a change, it does not prevent
-  one.
+  one. Since migration 0030 storage also stops the application role moving a
+  decided gate to another version or pointing a gate at another version's pack.
+  The read check remains for a writer with owner access: the integrity suite's
+  case (c) now proves it with the owner's move, the gate's triggers off.
 
 ## Why the lease is fenced
 
@@ -1191,7 +1203,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:783-794`). With neither setting present, the
+  rewrites it (`local-seed.mjs:789-800`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the

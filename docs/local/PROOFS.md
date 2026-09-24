@@ -1133,6 +1133,9 @@ Nathan approved 0029 (the cap ceiling fails closed when the cap cannot be read
 at commit) as well, proved by
 `tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`
 ([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
+Nathan approved 0030 (a gate's evidence pack is its version's, and a decided
+gate keeps its version; FR2-P2) as well, proved by
+`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`.
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing

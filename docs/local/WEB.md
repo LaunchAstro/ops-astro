@@ -165,9 +165,16 @@ press had nothing unsaved in it. It is quoted in `[data-conflict="moved"]`, held
 above the read, and the task is read again (`Loaded` in `TaskDetail.tsx`).
 
 The propose form and the comment box keep their attempt after an answer that
-never arrived: an unchanged retry carries the same `operationId`, so the
-server's register replays the original result; any edit, or any answer from the
-server, starts a new attempt. While that attempt is held they say so
+never arrived: an unchanged retry carries the same `operationId` and the
+revision it was first sent at, so the server's register replays the original
+result. The register compares every field but the identity, so a retry sent at
+the revision a reread shows would be refused `OPERATION_ID_REUSED`; resending
+the first revision is why a reread cannot break the replay. If the attempt never
+arrived and the task has moved on since, the retry is answered `VERSION_STALE`
+for that old revision and takes the stale path (`PendingComment` in
+`Comments.tsx`, `PendingProposal` in `views/proposals.tsx`). Any edit, or any
+answer from the server, starts a new attempt. While that attempt is held they
+say so
 (`[data-propose="unresolved"]`, `[data-comment="unresolved"]`). A save of the
 title and due date whose answer never arrived is retried under the same
 `operationId` while the draft is unchanged, so a save that did commit is
