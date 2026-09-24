@@ -135,7 +135,9 @@ Every write on the task page, in the proposals view (`views/proposals.tsx`) and
 on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
 It sorts the answer once into one of five kinds:
 
-- `ok`: stored.
+- `ok`: stored. The settlement carries the server's answer (`Settlement<T>`),
+  so a caller reads a command's echo from it rather than capturing the result
+  by hand.
 - `stale`: `VERSION_STALE`. Somebody else moved the record on first.
 - `closed`: `SCOPE_NOT_GRANTED`. The refusal is about the reader, so asking
   again would only be refused again.
