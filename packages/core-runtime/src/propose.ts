@@ -21,9 +21,9 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
-import { openEnvelopeOf } from './budget.ts';
+import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
 import type { LockSet } from './locks.ts';
-import { only } from './only.ts';
+import { only, RuntimeInvariantError } from './only.ts';
 import {
   affectedByVersions,
   classifyVersions,
@@ -64,6 +64,15 @@ export interface ProposeRequest {
    * reopened, and nothing it held is reused.
    */
   readonly restartsLineageId?: string;
+  /**
+   * The cap a task with no open envelope would draw on, as `decide` reads it
+   * (`readBusinessCapId`). T1 validates existing budget authority at the
+   * proposal, so the proposal needs the cap before its first write; a task
+   * with an open envelope is checked against that envelope's own cap instead.
+   * Absent, and no envelope open, there is no ceiling to check against here,
+   * and the decision answers `BUDGET_UNAVAILABLE`.
+   */
+  readonly capId?: string;
 }
 
 export interface Proposal {
@@ -96,6 +105,10 @@ export interface HeldProposal {
   readonly lineageId: string | null;
   readonly restarts: string | null;
   readonly accounting: { readonly id: string; readonly cap_id: string } | null;
+  /** The cap the budget check reads: the envelope's, else the request's `capId`. */
+  readonly capId: string | null;
+  /** The lineage's live versions, read under the locks: the ones this proposal supersedes. */
+  readonly liveVersions: readonly string[];
   readonly openingId: string;
   readonly liveWork: Awaited<ReturnType<typeof discoverLiveWork>>;
 }
@@ -111,34 +124,8 @@ export async function lockProposal(
   tx: TenantQuery,
   request: ProposeRequest,
 ): Promise<HeldProposal> {
-  // The lineage, the task, and -- R8 -- every parent of the holds this proposal
-  // is about to make nonclaimable. Supersession that leaves version 1's hold
-  // consuming the envelope makes approving version 2 fail for room it is
-  // entitled to, and discovering those accounting parents after the lineage
-  // lock would be the backwards acquisition T5 forbids. Discovery first,
-  // acquisition second, writes third.
   const lineageId = request.lineageId ?? null;
   const restarts = lineageId === null ? (request.restartsLineageId ?? null) : null;
-  const liveVersions =
-    lineageId === null
-      ? []
-      : (
-          await tx.query<{ readonly id: string }>(
-            `select id from public.proposal_versions
-              where business_id = $1 and lineage_id = $2 and superseded_at is null`,
-            [tx.businessId, lineageId],
-          )
-        ).map((row) => row.id);
-
-  // The task's own accounting parents, when they exist. `writeProposal`
-  // requires them because the version it writes is the version a later
-  // decision draws on, and `affectedByVersions` above only finds them by way
-  // of a hold that is still live -- an envelope whose holds are all terminal is
-  // just as real and just as much the parent of this version. Discovered here,
-  // before the locks, and taken in the same ordered call as everything else.
-  const envelope = await openEnvelopeOf(tx, request.taskId);
-  const accounting = envelope === undefined ? null : { id: envelope.id, cap_id: envelope.capId };
-
   // T4's "preallocate any new successor identities before lock acquisition;
   // this is identity preparation, not a write or approval". A lineage opened by
   // this call has no row to lock yet, and taking its lock after the reservation
@@ -146,40 +133,77 @@ export async function lockProposal(
   // identity is decided here instead, so the whole set is one ordered call and
   // `writeProposal` can require a lineage lock unconditionally.
   const openingId = randomUUID();
-  // F3. The live version's own work -- a picked-up lease and its delegation --
-  // is made obsolete by the version this call writes, so it is retired here
-  // under the same ordered set rather than left able to settle.
-  // Rechecked under the locks, before the first write. A lease picked up or
-  // released in between is a set this transaction did not lock for, and so
-  // (thermo O3) is a hold an approval of the superseded version opened: the
-  // classifier below would meet it outside these locks.
+  // Everything the set is built from is read inside `discover`, so all of it is
+  // read again under the locks and compared. Final review round 2,
+  // R2-RUNTIME-25: the live version itself was read once, outside, so a
+  // version proposed and approved in the window was superseded under locks
+  // never taken for its hold, and the classifier met that hold as a plain
+  // lock-order `Error`. RUNTIME.md "an approval ... between a proposal's
+  // discovery and its locks costs one retry": the recheck has to see which
+  // version is live, not only what the first-found version holds.
+  //
+  // - The live versions: the lineage's `superseded_at is null` rows.
+  // - The task's own accounting parents, when they exist. `writeProposal`
+  //   requires them because the version it writes is the version a later
+  //   decision draws on, and `affectedByVersions` only finds them by way of a
+  //   hold that is still live -- an envelope whose holds are all terminal is
+  //   just as real and just as much the parent of this version.
+  // - F3. The live version's own work -- a picked-up lease and its delegation
+  //   -- is made obsolete by the version this call writes, so it is retired
+  //   here under the same ordered set rather than left able to settle.
+  // - R8. Every parent of the holds this proposal is about to make
+  //   nonclaimable. Supersession that leaves version 1's hold consuming the
+  //   envelope makes approving version 2 fail for room it is entitled to, and
+  //   discovering those parents after the lineage lock would be the backwards
+  //   acquisition T5 forbids.
+  //
+  // Thermo O3: a lease picked up or released in between, or a hold an approval
+  // of the superseded version opened, is a set this transaction did not lock
+  // for, and it rolls back as `AffectedSetChanged` rather than extend it.
+  // Discovery first, acquisition second, writes third.
   const {
     locks,
-    found: [liveWork],
+    found: [liveVersions, envelope, liveWork],
   } = await lockRediscovered(tx, {
-    discover: async () =>
-      [
-        await discoverLiveWork(tx, { versionIds: liveVersions }),
-        await affectedByVersions(tx, liveVersions),
-      ] as const,
-    locks: ([work, held]) => [
-      ...(accounting === null
-        ? []
-        : [
-            { lockClass: 'cap' as const, id: accounting.cap_id },
-            { lockClass: 'envelope' as const, id: accounting.id },
-          ]),
-      { lockClass: 'task', id: request.taskId },
-      { lockClass: 'lineage', id: lineageId ?? openingId },
-      ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
-      ...held,
-      ...liveWorkLocks(work),
-    ],
+    discover: async () => {
+      const versions =
+        lineageId === null
+          ? []
+          : (
+              await tx.query<{ readonly id: string }>(
+                `select id from public.proposal_versions
+                  where business_id = $1 and lineage_id = $2 and superseded_at is null
+                  order by id`,
+                [tx.businessId, lineageId],
+              )
+            ).map((row) => row.id);
+      const open = await openEnvelopeOf(tx, request.taskId);
+      return [
+        versions,
+        open === undefined ? null : { id: open.id, cap_id: open.capId },
+        await discoverLiveWork(tx, { versionIds: versions }),
+        await affectedByVersions(tx, versions),
+      ] as const;
+    },
+    locks: ([, open, work, held]) => {
+      const capId = open?.cap_id ?? request.capId;
+      return [
+        ...(capId === undefined ? [] : [{ lockClass: 'cap' as const, id: capId }]),
+        ...(open === null ? [] : [{ lockClass: 'envelope' as const, id: open.id }]),
+        { lockClass: 'task', id: request.taskId },
+        { lockClass: 'lineage', id: lineageId ?? openingId },
+        ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
+        ...held,
+        ...liveWorkLocks(work),
+      ];
+    },
     rule: 'exact',
     changed:
-      'propose: the live work on the superseded version, or its holds, changed under discovery; roll back and rediscover',
+      'propose: the live work on the superseded version, its holds, the live version itself or the task envelope changed under discovery; roll back and rediscover',
   });
-  return { locks, lineageId, restarts, accounting, openingId, liveWork };
+  const accounting = envelope;
+  const capId = accounting?.cap_id ?? request.capId ?? null;
+  return { locks, lineageId, restarts, accounting, capId, liveVersions, openingId, liveWork };
 }
 
 /** The proposal's checks and writes, under the set `lockProposal` took. */
@@ -188,7 +212,7 @@ export async function proposeUnderLocks(
   request: ProposeRequest,
   held: HeldProposal,
 ): Promise<RuntimeResult<Proposal>> {
-  const { locks, lineageId, restarts, accounting, openingId, liveWork } = held;
+  const { locks, lineageId, restarts, accounting, capId, liveVersions, openingId, liveWork } = held;
   // Authority, on both actions, read after the locks are held (T4: current
   // authority is re-read under the complete set). `write` is "you may change
   // this task"; `comment` would not be enough to commit a business to work,
@@ -205,6 +229,9 @@ export async function proposeUnderLocks(
       'Name a maximum in minor units greater than zero.',
     );
   }
+
+  const outOfBudget = await refuseBeyondBudget(tx, request, capId, liveVersions);
+  if (outOfBudget !== null) return outOfBudget;
 
   if (restarts !== null) {
     const refused = await refuseRestart(tx, restarts, request.taskId);
@@ -245,9 +272,12 @@ export async function proposeUnderLocks(
     // describe two different pieces of work. Tenancy does not prevent it:
     // both tasks are in one business.
     if (row.task_id !== request.taskId) {
+      // Final review round 2, R2-AUTHORITY-34: the reason is the rule's, not
+      // the caller's data. The other task may be outside the caller's grant,
+      // so neither its id nor the presented lineage id is echoed.
       return refuse(
         'LINEAGE_NOT_ON_TASK',
-        `lineage ${lineageId} belongs to task ${row.task_id}, not to the ${request.taskId} this proposal names`,
+        'that lineage was opened on another task, not on the task this proposal names',
         'Propose against the task the lineage was opened on, or open a new lineage on this one.',
       );
     }
@@ -310,6 +340,59 @@ export async function proposeUnderLocks(
       payloadDigest: written.value.payloadDigest,
     },
   };
+}
+
+/**
+ * T1's "validate ... existing budget authority" (TRANSACTION-CONTRACT lines 44
+ * and 46), under the locks and before the first write. Final review round 2,
+ * R2-RUNTIME-26: a version in another currency than the cap, or asking more
+ * than the cap has room for, was written with a gate every approval of which
+ * is refused, until it expired. The handback successor already refused the
+ * same operands (`withinBounds` in `handback.ts`); this is the same two checks.
+ *
+ * The room excludes what the superseded version still holds: that hold is
+ * released by this transaction, so a new version of an approved lineage may
+ * ask for the room its predecessor gives back. With no cap to read (no envelope
+ * and no `capId`), there is no ceiling here, and the decision answers
+ * `BUDGET_UNAVAILABLE`.
+ */
+async function refuseBeyondBudget(
+  tx: TenantQuery,
+  request: ProposeRequest,
+  capId: string | null,
+  liveVersions: readonly string[],
+): Promise<RuntimeResult<never> | null> {
+  if (capId === null) return null;
+  const cap = await capCommitted(tx, capId);
+  if (cap === undefined) {
+    throw new RuntimeInvariantError(`refuseBeyondBudget: no cap ${capId} behind a locked set`);
+  }
+  if (request.currency !== cap.currency) {
+    return refuse(
+      'PROPOSAL_OUT_OF_SCOPE',
+      `this task's budget cap is in ${cap.currency}, and a proposal in another currency is outside it`,
+      'Propose the work in the currency the cap holds.',
+    );
+  }
+  const released =
+    liveVersions.length === 0
+      ? '0'
+      : await tx
+          .query<{ readonly released: string }>(
+            `select coalesce(sum(held_minor), 0)::text as released from public.reservations
+              where business_id = $1 and state = 'held' and version_id = any($2::uuid[])`,
+            [tx.businessId, liveVersions],
+          )
+          .then((rows) => rows[0]?.released ?? '0');
+  const committed = String(BigInt(cap.committed) - BigInt(released));
+  if (exceeds(committed, BigInt(request.maximumMinor), cap.limitMinor)) {
+    return refuse(
+      'PROPOSAL_OUT_OF_SCOPE',
+      `the budget cap behind this task has ${committed} of ${cap.limitMinor} committed, and this ceiling does not fit its remaining room`,
+      'Propose a ceiling within the cap, or raise the cap through its own authorised decision.',
+    );
+  }
+  return null;
 }
 
 /**
