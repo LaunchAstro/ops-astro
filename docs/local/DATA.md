@@ -58,13 +58,10 @@ pnpm exec vitest run             # the whole suite, against this server
 onward, `db-migrate.mjs` applies whatever is in it in order, and the prefix
 harness below reads the same directory. No number here says which migration is
 the last one, because the next migration would make it wrong.
-`tests/tenancy/tenancy-conformance.test.ts` and
-`tests/tenancy/restricted-calls-prefixes.test.ts` read the list from
-`migrations/`. One suite still counts: `restricted-calls.test.ts` expects
-exactly twenty-five applied migrations
-(`reads twenty-five migrations, and a table set the contract names exactly`),
-so until it reads the count from the directory, a new migration edits that one
-line.
+`tests/tenancy/tenancy-conformance.test.ts`,
+`tests/tenancy/restricted-calls-prefixes.test.ts` and
+`tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
+so a new migration edits none of them.
 
 The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
 identity, grant, record and command-envelope spine ported from
