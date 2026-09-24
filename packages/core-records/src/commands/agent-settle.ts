@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // How an agent call ends when it does not apply: the register row and the
-// audit row for a refusal, and the call's one audit row. Shared by the
-// envelope (`agent-envelope.ts`) and the replay (`agent-replay.ts`), so the
-// replay's audit write is `settle`'s own and not a second spelling of it
-// (thermo recheck 158d6de, NA4).
+// audit row for a refusal (`settle`), and the call's one audit row
+// (`writeCallEvent`). The envelope (`agent-envelope.ts`) uses both. The replay
+// (`agent-replay.ts`) writes every audit row through `writeCallEvent`, its
+// `OPERATION_ID_REUSED` refusal included, and registers none, because the
+// identity already holds its first request's row. So the agent path has one
+// audit writer, not a second spelling of it (thermo recheck 158d6de, NA4).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';

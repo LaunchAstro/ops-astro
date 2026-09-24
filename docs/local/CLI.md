@@ -16,7 +16,7 @@ repository root, with the pinned Node on the path and the API running
 ```sh
 export PATH="$TOOLCHAIN/node-v24.21.0-darwin-arm64/bin:$PATH"
 pnpm cli --help                       # the operations, from the command registry
-pnpm cli login --email ada@alpha.local   # password on stdin, or OPS_ASTRO_PASSWORD
+pnpm cli login --email ada@alpha.local   # prompts for the password (echo off), or reads OPS_ASTRO_PASSWORD or piped stdin
 pnpm cli task.board --business alpha --json '{"board":null}'
 pnpm cli task.create --business alpha --json '{"fields":{"title":"Call the supplier"}}'
 pnpm cli task.read --business alpha --body-file ./read.json
@@ -37,20 +37,20 @@ sends any request. It prints
 
 ## Flags and environment
 
-| Flag                 | Environment                 | Meaning                                                                                   |
-| -------------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
-| `--json <object>`    |                             | The operation's body as a JSON object. Default `{}`.                                      |
-| `--body-file <path>` |                             | The body read from a file. Use one of `--json` and `--body-file`, not both.               |
-| `--business <key>`   | `OPS_ASTRO_BUSINESS`        | The business key in the path. The server decides whether the login belongs to it.         |
-| `--api <url>`        | `OPS_ASTRO_API_URL`         | The API origin. Default `http://127.0.0.1:8790`.                                          |
-|                      | `OPS_ASTRO_TOKEN`           | The bearer. When unset, the file `login` wrote is used.                                   |
-|                      | `OPS_ASTRO_TOKEN_FILE`      | Where `login` saves the bearer. Default `.local/cli-token` (owner-only, ignored by Git).  |
-| `--email <address>`  | `OPS_ASTRO_EMAIL`           | `login` only.                                                                             |
-|                      | `OPS_ASTRO_PASSWORD`        | `login` only. When unset, the first line of stdin.                                        |
-| `--gotrue <url>`     | `OPS_ASTRO_GOTRUE_URL`      | `login` only. Default `http://127.0.0.1:54391`.                                           |
-| `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                       |
-|                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.       |
-|                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only). |
+| Flag                 | Environment                 | Meaning                                                                                         |
+| -------------------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `--json <object>`    |                             | The operation's body as a JSON object. Default `{}`.                                            |
+| `--body-file <path>` |                             | The body read from a file. Use one of `--json` and `--body-file`, not both.                     |
+| `--business <key>`   | `OPS_ASTRO_BUSINESS`        | The business key in the path. The server decides whether the login belongs to it.               |
+| `--api <url>`        | `OPS_ASTRO_API_URL`         | The API origin. Default `http://127.0.0.1:8790`.                                                |
+|                      | `OPS_ASTRO_TOKEN`           | The bearer. When unset, the file `login` wrote is used.                                         |
+|                      | `OPS_ASTRO_TOKEN_FILE`      | Where `login` saves the bearer. Default `.local/cli-token` (owner-only, ignored by Git).        |
+| `--email <address>`  | `OPS_ASTRO_EMAIL`           | `login` only.                                                                                   |
+|                      | `OPS_ASTRO_PASSWORD`        | `login` only. When unset, the first line of piped stdin; at a terminal, a prompt with echo off. |
+| `--gotrue <url>`     | `OPS_ASTRO_GOTRUE_URL`      | `login` only. Default `http://127.0.0.1:54391`.                                                 |
+| `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                             |
+|                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.             |
+|                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).       |
 
 The bearer and the delegation credential are never taken as flags, so they do
 not appear in a process listing or shell history, and the command line never
@@ -63,7 +63,11 @@ included, because the agent envelope refuses any call without it
 (`OPERATION_ID_REQUIRED` in `runAgentCommand`,
 `packages/core-records/src/commands/agent-envelope.ts`). To retry a write
 safely, put your own `operationId` in the body and send the same body again.
-The API replays the first answer instead of writing twice.
+The API replays the first answer instead of writing twice. When the command
+line chose the `operationId` and the call gets no answer (exit 3) or a fault
+(exit 4), stderr names it:
+`cli: operationId <id>; send it again with this operationId to replay`. Put
+that id in the body and send it again (`replayHint`, `apps/cli/main.ts`).
 
 ## Person and agent use
 
@@ -90,13 +94,14 @@ lease, leaves the saved one alone (`tests/cli/cli-delegation-replay.test.ts`).
 ```sh
 export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
 pnpm cli task.queue
-pnpm cli task.pickup --json '{"reservationId":"<reservationId>"}'
+pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<your-id>"}'
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
 ```
 
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
-`detail`.
+`detail`. `operationId` is optional on each of them; naming your own lets you
+send the same body again after a lost answer and get the replay.
 
 ## Output and exit codes
 

@@ -82,6 +82,18 @@ environment through and does not set that port
 container-restart case skips unless `L5_RESTART_CONTAINER_NAME` names the
 container (`restart-and-expiry.test.ts:135-139`), which `pnpm verify:restart`
 does. Each runs as its own step with its variable set.
+`tests/acceptance/restart-http.test.ts` is unnamed for the same reason: it skips
+unless `L5_RESTART_CONTAINER_NAME` and `L5_RESTART_API_PORT` are both set
+(`restart-http.test.ts:53-55`). `tests/runtime/pickup-replay-restart.test.ts`
+skips unless `PICKUP_REPLAY_API_PORT` names a port and
+`PICKUP_REPLAY_PG_CONTAINER` names its own container
+(`pickup-replay-restart.test.ts:27-35`).
+
+`tests/db/final-r1-dbtest-manifest.test.ts` fails when a suite that reaches
+`packages/core-records/src/tenancy/testing/fresh-database.ts` through its
+imports is neither named in the manifest nor listed there as unnamed with its
+reason (`NOT_NAMED`), or is listed but missing from the manifest's comment. It
+opens no database itself, so it is not named.
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each

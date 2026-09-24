@@ -214,16 +214,19 @@ code on this head, and where that is shown.
 | ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |
 | `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call |
 | `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
-| `DELEGATION_WIDENS`                                                          | 403    | no: `task.pickup` mints from the person's own live grants                                                              |
+| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup   |
 | `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
 | `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
 | `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
 | `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                    |
 
-The "no" rows are the reasons `UNPRODUCED_CODES` gives for them
-(`commands/register.ts`), where the refusal-register tests assert them by
-name.
+`DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`commands/register.ts`). The
+mint reads the approving person's live grants when the agent picks the work
+up, not when the person approved it (`mintDelegation`,
+`authority/delegations.ts`), so a grant revoked or expired in between leaves
+the pickup asking for authority the person no longer holds
+(`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`).
 
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
 (`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`. It

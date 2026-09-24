@@ -81,7 +81,7 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 Grants stay outside that order. `task.pickup` share-locks the grant chain behind
 the claim's authority before it acquires the runtime set: the claimant's own
 grants in the collection and every grant they descend from
-(`holdCoveringGrants`, `pickup.ts`, called from `pickup`). That mirrors
+(`holdCoveringGrants`, `recovery.ts`, called from `pickup`). That mirrors
 `grant.revoke`, which takes `for update` on the revoked grant before any runtime
 lock (`revokeGrantAsManager`, `commands/authority-controls.ts`). The two
 serialise on the grant row. A revocation that locks first is seen by the
@@ -91,6 +91,14 @@ revocation's affected set between discovery and locks. Neither side waits on a
 grant while it holds runtime locks. `tests/runtime/retry-bounds.test.ts` traces
 the order on a real run: the revocation's first locking statement is its grant
 row, and it waits on the parked pickup's transaction for that row.
+
+`task.decide` holds the decider's covering grants for share before its runtime
+locks, as pickup does, and checks the current decide grant again under the
+locks, after `lockedInstant` and before the first write (`decide`,
+`decide.ts`). A revocation that locks the grant first is seen by that check,
+and the decision is refused `SCOPE_NOT_GRANTED` with nothing written. One that
+arrives second waits for the decision to commit
+(`tests/runtime/final-r1-fr1-runtime.test.ts`).
 
 `decide.ts` once opened the task's envelope before acquiring its locks, a
 write before the lock set. Two approvals racing one task both found no
@@ -423,6 +431,14 @@ Verifying writes nothing, and the stored rows stay as they were found.
 `tests/reads/decision-integrity-read.test.ts` tamper as the database owner and
 assert each failure, and that a clean read changes nothing.
 
+A signature verifies only in the spelling `sign` writes, 64 lowercase hex
+characters. An uppercased signature, or one with anything appended, fails
+before it is decoded (`verify`, `signing.ts`). `canonicalise` writes an own
+`__proto__` member like any other key, at every depth, so the digest covers
+it. A stored payload that is not a JSON object declares no link version
+(`linkVersionOf`) and answers `DECISION_INTEGRITY`
+(`tests/reads/final-r1-api-sign-read.test.ts`).
+
 The chain and the gate and lineage facts it is checked against are read in one
 statement, so they are one snapshot (`readSnapshot`). The read runs
 read-committed, where each statement sees what was committed when it began. A
@@ -480,6 +496,15 @@ transaction began. A command that waited on a lock past a lease's expiry treats
 the lease as expired. Handback retains the report and refuses `LEASE_EXPIRED`,
 and pickup fences the lease and classifies its hold. A new lease's expiry is
 that instant plus the requested seconds, truncated to milliseconds.
+
+The expired lease pickup fences may be another reservation's on the same task.
+Pickup then classifies that lease's hold `lease_expired_and_fenced` in the same
+transaction, with the lease as the cause, rather than leaving it counted until
+a restart replay. The task's live leases, their held reservations and those
+holds' envelopes, caps, runs and lineages are part of pickup's rediscovered
+lock set (`covered`), so a lease that appears between discovery and the locks
+rolls the pickup back for one retry (`pickup`, `pickup.ts`;
+`tests/runtime/final-r1-fr1-runtime.test.ts`).
 
 Leases end through `endLease` in `recovery.ts`, as `released` or `expired`, and
 only a live lease is ended. One already ended keeps the end and the
@@ -579,16 +604,20 @@ Discover, lock and recheck is one module, `core-runtime/src/rediscovery.ts`.
 (`RecheckRule`): `exact`, or `covered`, where a set that only shrank goes on
 (N1). It returns the locks or throws `AffectedSetChanged`, the one type the
 person entry retries once. Replay, cancellation (`covered`), authority loss,
-`task.propose` and a rejecting `task.decide` (`covered`) use it, and
+`task.propose`, a rejecting `task.decide` (`covered`) and `task.pickup`
+(`covered`) use it, and
 `grant.revoke` uses its `requireUnchanged` for the dependents it reads inside
 the authority-loss classifier. The thermo H6 recheck-rule parameter, deferred
 with ARCH candidate 4, is `RecheckRule`; `classifyAll` was already shared.
-`tests/runtime/rediscovery-pin.test.ts` pins the statement order at each site.
+`tests/runtime/rediscovery-pin.test.ts` pins the statement order at the
+propose, cancel, delegation-revoke, replay and grant-revoke sites. The decide
+and pickup sites are not pinned there.
 
 So `cancelAndClassify`, `classifyAuthorityLoss` and `replayRecordedTransitions`
 raise `AffectedSetChanged`, and so do `task.propose`'s live-work recheck
 (`lockProposal`, `propose.ts`), a rejecting `task.decide`'s held-set recheck
-(`decide.ts`) and `grant.revoke`'s dependent-attempt recheck
+(`decide.ts`), `task.pickup`'s recheck of the task's live leases (`pickup.ts`)
+and `grant.revoke`'s dependent-attempt recheck
 (`revokeGrantAsManager`, `commands/authority-controls.ts`). `task.handback`'s
 lease-binding recheck (`handback`, `handback.ts`) throws the same type but is
 not this pattern. It compares a different read, after the fence verdict. A
@@ -608,7 +637,7 @@ pending. A rejection racing an approval of the same gate therefore costs one
 bounded retry before the same `GATE_ALREADY_DECIDED` answer (F-A4-1, accepted
 as is); the recheck right after the locks stays the rule.
 `tests/runtime/o3-held-recheck.test.ts` holds both. Of the agent's
-`AGENT_SURFACE`, only `task.handback` reaches a thrower. Admitting the type
+`AGENT_SURFACE`, `task.handback` and `task.pickup` reach a thrower. Admitting the type
 gives the agent no cancellation authority and adds no command retry at startup.
 
 A second loss reaches the caller as a fault. The person entry then writes one
@@ -628,7 +657,12 @@ lost. If its version is still approved and current on a live lineage, the pickup
 replaces it with a fresh hold and a fresh attempt on that version, under the
 locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A settled hold, a quarantined one, or a version already holding
-elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`).
+elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
+counts a quarantined hold as active too. The header of
+`migrations/0019_runtime_active_hold_uniqueness.sql` lists `quarantined` among
+the history rows that do not block a replacement, but its index,
+`reservations_one_active_per_version_idx`, is partial on
+`state in ('held', 'quarantined')`, and the index is the rule.
 
 A stale approval (gate not approved, lineage not live, or version superseded) is
 refused before any replacement write, in both the expired-lease and the
@@ -731,7 +765,11 @@ row.
 A `dispatch_marker` or an `observed` attempt always keeps its full hold, as
 `quarantined`, even when the work is otherwise terminal, and 0014's trigger
 refuses to let either flag be lowered. Work refusal must never erase a real
-liability.
+liability. The same trigger keeps an attempt's provenance fixed and settles
+`actual_minor` and `outcome` once, and 0010's keeps a version's content fixed
+and sets `superseded_at` once. `tests/db/final-r1-dbtest-triggers.test.ts`
+breaks each branch of both on purpose, as the application role and as the
+owner.
 
 ### Restart recovery at API startup
 
@@ -940,8 +978,16 @@ direct SQL.
   `task.cancel`. In one transaction under the complete ordered lock set, it
   makes the lineage terminal, releases each live lease on the lineage, revokes
   the delegation each lease was issued under, ends `planned` and `claimed` runs
-  as `cancelled`, and classifies the lineage's own holds. The delegation's
-  recorded cause is `work_retired` (`retireWork`). A run already handed back
+  as `cancelled`, and classifies the lineage's own holds. It discovers every
+  `planned` or `claimed` run on the lineage and locks each with the rest of the
+  set, run before lineage, so it serialises with `task.decide`, which takes the
+  same order, rather than deadlocking. A run added between discovery and the
+  locks rolls the cancellation back for one retry (`cancelAndClassify`;
+  `tests/runtime/final-r1-fr1-runtime.test.ts`). Cancellation reaches a trashed
+  task's lineage, so a trashed task's approved hold can still be released, and
+  `task.restart` on a trashed task stays `NOT_FOUND` (`lineageOnTask`,
+  `commands/tasks-controls.ts`; `tests/commands/final-r1-fr1-trash.test.ts`).
+  The delegation's recorded cause is `work_retired` (`retireWork`). A run already handed back
   keeps that state. The cancelled agent's next call answers
   `DELEGATION_NOT_LIVE`, and the same agent can pick up a restarted lineage
   (`tests/runtime/lifecycle-cancel.test.ts`). A handback that commits between

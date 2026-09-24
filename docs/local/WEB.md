@@ -33,6 +33,10 @@ The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
 
+A failed sign-in marks the password field `aria-invalid`, points at the
+message with `aria-describedby` (`signin-password-error`, from `FieldError`),
+and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
+
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
@@ -149,6 +153,11 @@ Beside `busy` and `failure` the hook returns `closed` (sticky once
 closed`), `conflict` (the last `stale` refusal) and `because` (the last
 failure's text).
 
+On the task page only a stale save of the title and due-date draft is drawn as
+the draft conflict (`[data-conflict="version"]`). A stale lifecycle or assignee
+press had nothing unsaved in it. It is quoted in `[data-conflict="moved"]`, held
+above the read, and the task is read again (`Loaded` in `TaskDetail.tsx`).
+
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
 confirmed write is in `confirmed.ts`.
@@ -182,7 +191,10 @@ it asks. It asks once. On `SCOPE_NOT_GRANTED` it draws the server's own code in
 second press reaches nothing; C2 counts the requests rather than trusting the
 `disabled` attribute. Anything else the server refuses (an empty body, an
 audience it does not have) is reported and the box stays open, because that is
-something the person can fix.
+something the person can fix. The refusal and the closure are held above the
+read (`useHeld` in `TaskDetail.tsx`), so the reread after an unrelated write, or
+Refresh, does not reopen the box. The propose form's authority refusal is held
+the same way.
 
 Keyboard: the textarea, the two selects and the button are ordinary controls in
 document order after the details form, each with a `label` bound by `htmlFor`.
@@ -229,7 +241,10 @@ the whole task. There is no path from any of the three to sample data.
 
 **The propose form** (`form#task-propose`) sends `task.propose` with the task's
 own `recordId` and the revision the page is holding, the purpose, the ceiling and
-the currency. The amount is typed in dollars and converted to the server's minor
+the currency. The currency is AUD only, the currency the seeded cap is kept in
+(`scripts/local-seed.mjs`), because `task.decide` refuses a version in any
+other with `CAP_BINDING_MISMATCH` (`CURRENCIES` in `views/proposals.tsx`).
+Sending the cap's currency from a read is later work. The amount is typed in dollars and converted to the server's minor
 units once, in the client, because three places that each convert are three
 places that can disagree. A refusal is quoted with the server's own code in
 `[data-propose="refusal"]`. On success the form clears and the task is read again,
@@ -239,10 +254,15 @@ drew what it sent.
 **The decision controls** (`[data-decide="approve"]` and
 `[data-decide="reject"]`) are drawn only on the head version, and each carries
 the `data-version-id` and `data-gate-id` it will send. They are absent, with the
-reason in `[data-decide="closed"]`, when the gate is not pending, when the server
-says it has expired, and after a refusal about the reader's own authority. The
-screen quotes a refused decision verbatim in `[data-decide="refusal"]` and
-follows it with a fresh `task.read`. A refusal like `VERSION_SUPERSEDED` or
+reason in `[data-decide="closed"]`, in four cases: when the gate is not pending,
+when the server says it has expired, after a refusal about the reader's own
+authority, and when the lineage is not `live` (cancelled, for example, which
+`task.decide` refuses with `LINEAGE_TERMINAL`). That last reason names the
+lineage state and says an authorised restart opens a new lineage. The screen
+quotes a refused decision verbatim in `[data-decide="refusal"]` under the gate
+it was about, and only there, and follows it with a fresh `task.read`. A
+refusal about the reader's authority closes every gate on the task, and the
+other gates say so for the task rather than for this gate. A refusal like `VERSION_SUPERSEDED` or
 `GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the
 record, and the answer is to read it again, not to retry. `TaskDetail.tsx` holds
 the refusal text above the read state, because the reread unmounts everything
@@ -287,7 +307,9 @@ What this screen does not read back, and cannot:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
 `settings.set_client_sign_off`, with an `operationId`, and with an
-`expectedRevision` when the read carried a revision for that row.
+`expectedRevision` when the read carried a revision for that row. The screen
+says that both settings are stored and shown, and that no operation applies
+either yet (`apps/web/src/screens/Settings.tsx`).
 
 **The values are the server's.** The screen asks `settings.read` on open and
 after every write, so the number beside a setting is the business's and not this
@@ -346,6 +368,9 @@ since a grant can be revoked between the read and the press. The state is on
 **`VERSION_STALE` is a conflict, not an error.** The screen rereads, draws the
 server's value beside the person's draft in `div[data-settings="conflict"]`
 with `conflict-server` and `conflict-draft`, quotes the refusal, and waits.
+Until the reread answers, the server's value is shown as not known yet
+(`ConflictBlock`, `screens/settings/panels.tsx`), because the row in hand is
+the one that lost.
 The overwrite takes a second explicit press on
 `button[data-settings="confirm-four-eyes"]` and goes out against the reread
 revision. Until the reread has answered, the controls are closed. The second
@@ -498,7 +523,8 @@ quoted in its row.
 S5 reads the conflict block only once `conflict-server` shows `999` and
 `conflict-draft` shows `1200`. The block draws as soon as the refusal arrives
 and fills in the server's value only after its reread lands. A read taken
-before that finds `VERSION_STALE` and neither number.
+before that finds `VERSION_STALE` with the person's draft drawn, "The server
+holds: not known yet, reading", and the controls disabled.
 
 `n6-revocation.mjs` and `keyboard-and-widths.mjs` also run on their own
 (`node tests/browser/<file>`).

@@ -656,7 +656,10 @@ lane does not own.
   is `read`, `write`, `assign` and `comment` on `task` only. The matrix does
   not depend on it, because it reads grants back out of the `grants` table
   rather than trusting the list, but `mia` is not the same person in the two
-  places.
+  places. `tests/acceptance/final-r1-dbtest-cast.test.ts` now pins that
+  difference: `task:comment` added and the `person` and `settings` reads left
+  out. It also checks that the seeded admin holds every grant a
+  `COMMAND_SURFACE` declaration asks for.
 - **Closed: `lockTask` was not exported.** It is exported from
   `packages/core-records/src/commands/prepare.ts` now, and
   `tests/tenancy/production-lookup.test.ts` runs it under each mutation.
