@@ -131,14 +131,6 @@ export interface PresetPlanRead {
   };
 }
 
-/** Reads and writes alike: the surface declares both, so its name is enough. */
-export type OperationName = CommandName;
-
-/** The one route rule, for both halves of the surface. */
-export function operationPath(name: OperationName): string {
-  return pathOf(name);
-}
-
 /** What a mutation returns when it worked: a durable handle and a new revision. */
 export interface CommandOutcome {
   readonly recordId: string;
@@ -263,10 +255,10 @@ export class OperationsClient {
   }
 
   async #post<T>(
-    name: OperationName,
+    name: CommandName,
     body: Readonly<Record<string, unknown>>,
   ): Promise<CallResult<T>> {
-    const url = `${this.#options.base}/b/${encodeURIComponent(this.#options.businessKey)}${operationPath(name)}`;
+    const url = `${this.#options.base}/b/${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     // The only credential this client sends. No actor header, no business
     // header, no forwarded host: there is nothing here for a tampered request
