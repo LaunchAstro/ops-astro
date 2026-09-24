@@ -35,7 +35,7 @@ interface AgentRow {
   readonly actor_id: string | null;
 }
 
-const NO_AGENT_FIXES = [
+export const NO_AGENT_FIXES = [
   'ask an administrator of this business to link this login to an agent identity',
   'a person signs in through the person login path, not this one',
 ] as const;

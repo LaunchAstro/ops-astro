@@ -34,7 +34,11 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import {
+  NO_MEMBERSHIP_FIXES,
+  type VerifiedSubject,
+} from '../../packages/core-records/src/identity/login-resolution.ts';
+import { NO_AGENT_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
   agentAnswer,
@@ -164,13 +168,17 @@ interface Entry {
   readonly unresolved: () => CommandRefusal;
 }
 
+// A key that names no business answers with the fixes the prefix's own login
+// resolution gives a caller the business does not know, imported rather than
+// copied, so the two cannot be told apart or drift apart.
+// `tests/api/admission-enumeration.test.ts` compares the bytes.
 const PERSON: Entry = {
   owner: 'person_login',
-  unresolved: () => refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP),
+  unresolved: () => refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP_FIXES),
 };
 const AGENT: Entry = {
   owner: 'agent_login',
-  unresolved: () => refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_IDENTITY),
+  unresolved: () => refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_FIXES),
 };
 
 interface Admitted {
@@ -328,18 +336,6 @@ const EXPIRED: readonly string[] = [
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 const READS: readonly string[] = [
   'The read half of the command surface has not been mounted in this deployment.',
-];
-// A key that names no business answers in the bytes the prefix's own login
-// resolution gives a caller the business does not know
-// (`identity/login-resolution.ts` and `identity/agent-login.ts`), so the two
-// cannot be told apart. `tests/api/admission-enumeration.test.ts` compares them.
-const NO_MEMBERSHIP: readonly string[] = [
-  'ask an administrator of this business to link this login to a person',
-  'check that the business named in the request is the intended one',
-];
-const NO_AGENT_IDENTITY: readonly string[] = [
-  'ask an administrator of this business to link this login to an agent identity',
-  'a person signs in through the person login path, not this one',
 ];
 
 /** `isCommandRefusal` takes an object; a read executor's result is unknown until then. */

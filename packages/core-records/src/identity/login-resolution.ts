@@ -55,7 +55,7 @@ interface ResolutionRow {
   readonly actor_id: string | null;
 }
 
-const NO_MEMBERSHIP_FIXES = [
+export const NO_MEMBERSHIP_FIXES = [
   'ask an administrator of this business to link this login to a person',
   'check that the business named in the request is the intended one',
 ] as const;
