@@ -18,8 +18,13 @@
 // **A comment whose answer was lost is sent again as the same attempt.** The
 // server may have stored it, and `task.comment` leaves the revision alone, so
 // only the `operationId` tells the register that the retry of an unchanged box
-// is the comment it already has. Changing the text, the audience or the kind is
-// a different comment and gets a new one.
+// is the comment it already has. The retry resends the revision the attempt was
+// first sent at, not the one the page now shows: the register compares every
+// field but the identity, so a retry carrying a newer revision after a reread
+// would be refused `OPERATION_ID_REUSED` rather than replayed. If the first
+// attempt was never stored, that old revision is the server's `VERSION_STALE`,
+// which the stale path below handles. Changing the text, the audience or the
+// kind is a different comment and gets a new one.
 //
 // **What the person typed is held above the read** (`TaskDetail.tsx`), with
 // the attempt, because every reread of the task remounts this box. A comment
@@ -92,6 +97,8 @@ const KINDS: readonly { readonly value: string; readonly label: string }[] = [
 /** A comment whose outcome is not known, held so the retry is the same attempt. */
 export interface PendingComment {
   readonly operationId: string;
+  /** The revision the attempt was sent at, resent with it so the register replays. */
+  readonly revision: number;
   readonly body: string;
   readonly audience: string;
   readonly kind: string;
@@ -126,14 +133,20 @@ export function Comments(props: CommentsProps): ReactElement {
     if (form.current?.reportValidity() === false) return;
     const attempt = same(pending)
       ? pending
-      : { operationId: props.client.newOperationId(), body, audience, kind };
+      : {
+          operationId: props.client.newOperationId(),
+          revision: props.revision,
+          body,
+          audience,
+          kind,
+        };
     put({ pending: attempt, stale: null });
     run(
       () =>
         props.client.mutate(
           'task.comment',
           { recordId: props.recordId, body, audience, commentType: kind },
-          { expectedRevision: props.revision, operationId: attempt.operationId },
+          { expectedRevision: attempt.revision, operationId: attempt.operationId },
         ),
       (settlement) => {
         // An unknown outcome keeps the attempt; any answer from the server ends it.

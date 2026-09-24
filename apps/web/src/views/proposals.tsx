@@ -51,8 +51,13 @@
 // **A proposal whose answer was lost is sent again as the same attempt.** The
 // server may have stored it, so a retry of the unchanged form carries the same
 // `operationId` and the register replays the original answer rather than
-// opening a second lineage with its own gate. Changing the form is a different
-// proposal and gets a new one.
+// opening a second lineage with its own gate. The retry resends the revision
+// the attempt was first sent at, not the one the page now shows: the register
+// compares every field but the identity, so a newer revision after a reread
+// would be refused `OPERATION_ID_REUSED` rather than replayed. If the first
+// attempt was never stored, that old revision is the server's `VERSION_STALE`,
+// which the stale path handles. Changing the form is a different proposal and
+// gets a new one.
 //
 // **What the person typed is held above the read** (`TaskDetail.tsx`), with
 // the attempt, because every reread remounts this form. A proposal refused
@@ -576,6 +581,8 @@ const EMPTY_PROPOSAL: ProposeDraft = {
 /** A proposal whose outcome is not known, held so the retry is the same attempt. */
 export interface PendingProposal {
   readonly operationId: string;
+  /** The revision the attempt was sent at, resent with it so the register replays. */
+  readonly revision: number;
   readonly purpose: string;
   readonly maximum: string;
   readonly currency: string;
@@ -611,7 +618,13 @@ function Propose(props: ProposeProps): ReactElement {
     if (locked) return;
     const attempt = same(pending)
       ? pending
-      : { operationId: props.client.newOperationId(), purpose, maximum, currency };
+      : {
+          operationId: props.client.newOperationId(),
+          revision: props.revision,
+          purpose,
+          maximum,
+          currency,
+        };
     put({ pending: attempt, stale: null });
     run(
       () =>
@@ -636,9 +649,10 @@ function Propose(props: ProposeProps): ReactElement {
             // case is what found it; the mounted stand-in had accepted anything.
             step: { kind: purpose, payload: { step: purpose } },
           },
-          // The revision the page is holding. A proposal made against a task that
-          // has moved on is the server's `VERSION_STALE`, not a silent write.
-          { expectedRevision: props.revision, operationId: attempt.operationId },
+          // The revision the attempt was made at: the page's for a new attempt,
+          // the first send's for a retry. A proposal made against a task that has
+          // moved on is the server's `VERSION_STALE`, not a silent write.
+          { expectedRevision: attempt.revision, operationId: attempt.operationId },
         ),
       settledProposal,
     );
