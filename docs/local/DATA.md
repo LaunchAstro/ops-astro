@@ -238,7 +238,14 @@ connection sends one statement outside a transaction: the `postgres` driver's
 per-connection lookup of array types in `pg_type` (`fetch_types`), which the
 suite asserts exactly (`DRIVER_TYPE_LOOKUP` in `statement-capture-cases.ts`).
 Turning `fetch_types` off in `tenancy/database.ts` would remove it, but nobody
-has made that product decision.
+has made that product decision. Every logged connection starts with
+`standard_conforming_strings` on, and the wrapper owns the setting: whatever a
+connection URL says about it, in any case and with any value or none, every
+connection's startup packet carries exactly `standard_conforming_strings=on`
+(SOL-FR11B-1, SOL-FR11D-1). A change of it away from `on` that the server
+reports, by SET, SET LOCAL, `set_config` or a function body, is recorded as an
+opaque entry, so the log cannot be cleared past a point where it would misread
+a string (FR11-SCANNER-2, SOL-FR11-2).
 
 The restricted-calls suites call as the application login (inside and outside
 the wrapper, own and other tenant), the application group, an outsider,
