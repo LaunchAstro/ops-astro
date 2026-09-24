@@ -30,6 +30,7 @@ import {
 import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict } from './budget.ts';
 import { acquire } from './locks.ts';
+import { only } from './only.ts';
 import { affectedByVersions, classifyVersions } from './recovery.ts';
 import {
   CHAIN_GENESIS,
@@ -64,18 +65,34 @@ export interface DecideRequest {
   readonly capId: string;
 }
 
-export interface Decided {
+interface DecidedCommon {
   readonly decisionId: string;
   readonly gateId: string;
   readonly versionId: string;
-  readonly decision: DecisionKind;
   readonly hash: string;
-  /** Present on an approval only. A rejection reserves nothing. */
-  readonly envelopeId?: string;
-  readonly reservationId?: string;
-  readonly attemptId?: string;
-  readonly heldMinor?: number;
 }
+
+/**
+ * An approval reserves, and only an approval: the envelope, reservation,
+ * attempt and held total exist on that branch and nowhere else. The other
+ * branch spells them `never`, so a reader that has not narrowed still reads
+ * `undefined` and a writer cannot put one there.
+ */
+export type Decided =
+  | (DecidedCommon & {
+      readonly decision: 'approve';
+      readonly envelopeId: string;
+      readonly reservationId: string;
+      readonly attemptId: string;
+      readonly heldMinor: number;
+    })
+  | (DecidedCommon & {
+      readonly decision: 'reject' | 'request_changes';
+      readonly envelopeId?: never;
+      readonly reservationId?: never;
+      readonly attemptId?: never;
+      readonly heldMinor?: never;
+    });
 
 interface GateRow {
   readonly id: string;
@@ -222,7 +239,7 @@ export async function decide(
        from public.gates g where g.business_id = $1 and g.id = $2`,
     [tx.businessId, request.gateId, lockedAt],
   );
-  const gate = gates[0] as GateRow;
+  const gate = only(gates, 'decide: the gate locked above');
 
   if (gate.state !== 'pending') {
     // G03: the loser of the race lands here and its refusal is recorded by the

@@ -35,6 +35,7 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
+import { only } from './only.ts';
 import { AffectedSetChanged, classifyUnderLocks, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -264,13 +265,7 @@ export async function handback(
        from public.leases l where l.business_id = $1 and l.id = $2`,
     [tx.businessId, request.leaseId],
   );
-  const lease = leases[0] as {
-    state: string;
-    fence: string;
-    expired: boolean;
-    current_fence: string;
-    holder_actor_id: string;
-  };
+  const lease = only(leases, 'handback: the lease locked above');
 
   // EX-01. Ownership before anything is written, retained reports included: a
   // caller that never held this lease has no work of its own on it to keep.
@@ -398,7 +393,7 @@ export async function handback(
       where business_id = $1 and reservation_id = $2`,
     [tx.businessId, found.reservation_id],
   );
-  const attempt = attempts[0] as { id: string; marked: boolean };
+  const attempt = only(attempts, "handback: the reservation's attempt");
 
   // R4. The work, retained. It commits with the settlement below or with
   // neither of them, which is what makes it the handback's evidence rather

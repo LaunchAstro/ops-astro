@@ -33,9 +33,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import {
   mintDelegation,
-  type DelegationDecision,
   type MintedDelegation,
-  type MintRequest,
 } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
@@ -162,27 +160,6 @@ export const DECLARED_INCOMPLETENESS: readonly string[] = [
   'The attempt is synthetic and names no provider or model.',
   'Handback records a local outcome. It settles no provider usage.',
 ];
-
-/**
- * The one-task purpose ceiling (coordinator addendum 1).
- *
- * R5 is "R1's delegated agent, purpose-scoped to one task", and the accepted
- * shape is a mandatory `purposeScope` on `MintRequest` naming the picked-up
- * task's record id. Lane L2-FIX owns the producer — the field on `MintRequest`
- * and `Delegation`, the two columns on `public.delegations` in its migration
- * `0015_*`, and the extra `DELEGATION_OUT_OF_PURPOSE` refusal when a call's
- * scope is not exactly that record. None of that is this lane's to write.
- *
- * L2-FIX landed the field (migration 0016), so the request below is a plain
- * `MintRequest` and this adapter only names the pin it satisfies; the call
- * site passes the field as it always did.
- */
-async function mintForOneTask(
-  tx: TenantQuery,
-  request: MintRequest,
-): Promise<DelegationDecision<MintedDelegation>> {
-  return await mintDelegation(tx, request);
-}
 
 /**
  * The one answer for a reservation this caller may not claim, whichever reason
@@ -449,7 +426,9 @@ export async function pickup(
   } else {
     // The delegation expires with the lease. Minted against the delegating
     // person's live grants, which L2 reads for itself; nothing is copied here.
-    const minted = await mintForOneTask(tx, {
+    // `purposeScope` is R5's one-task ceiling (coordinator addendum 1): L2
+    // owns the field (0016) and refuses a call outside that one record.
+    const minted = await mintDelegation(tx, {
       agentActorId: request.agentActorId,
       delegatePersonId: request.authorisedByPersonId,
       mintedByActorId: request.mintedByActorId,

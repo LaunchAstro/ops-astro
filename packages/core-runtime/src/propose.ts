@@ -22,6 +22,7 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire, type LockSet } from './locks.ts';
+import { only } from './only.ts';
 import {
   AffectedSetChanged,
   affectedByVersions,
@@ -214,7 +215,7 @@ export async function proposeUnderLocks(
        returning id, state, task_id`,
       [tx.businessId, openingId, request.taskId, request.proposedByActorId, restarts],
     );
-    lineage = opened[0] as LineageRow;
+    lineage = only(opened, 'propose: the lineage inserted above');
   } else {
     const found = await tx.query<LineageRow>(
       `select id, state, task_id from public.proposal_lineages
