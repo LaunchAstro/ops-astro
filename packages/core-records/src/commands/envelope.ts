@@ -29,7 +29,7 @@ import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import type { Session, VerifiedSubject } from '../identity/login-resolution.ts';
 import { withSession } from '../identity/login-resolution.ts';
 import { payloadDigest } from './digest.ts';
-import { writeAuditEvent } from './audit.ts';
+import { storable, writeAuditEvent } from './audit.ts';
 import {
   asCallerVisible,
   fromIdentity,
@@ -429,7 +429,13 @@ async function work(
   return await handleCommand(tx, prepared, request);
 }
 
-/** One register row for this request, whatever it came to. */
+/**
+ * One register row for this request, whatever it came to.
+ *
+ * `result` is jsonb, and a refusal's names can echo a key the caller sent, so
+ * a refusal is stored in the form `storable` gives, which `settle` answers
+ * with too.
+ */
 async function record(
   tx: TenantQuery,
   session: Session,
@@ -443,7 +449,7 @@ async function record(
     command: request.command,
     actorId: session.actorId,
     digest,
-    result,
+    result: isCommandRefusal(result) ? storable(result) : result,
     recordId,
   });
 }
@@ -463,8 +469,12 @@ async function settle(
   settlement: Settlement,
 ): Promise<CommandRefusal> {
   const { refusal, attempted } = settlement;
+  // A name can echo a key the caller sent, and the register row is jsonb. The
+  // caller is answered with the stored form, so a replay's bytes are the first
+  // answer's.
+  const visible = storable(asCallerVisible(refusal));
   if (settlement.registered !== true && settlement.withoutIdentity !== true) {
-    await record(tx, session, request, digest, asCallerVisible(refusal), null);
+    await record(tx, session, request, digest, visible, null);
   }
   await writeAuditEvent(tx, {
     actorId: session.actorId,
@@ -476,5 +486,5 @@ async function settle(
     payloadDigest: digest,
     attempted: attempted ?? null,
   });
-  return asCallerVisible(refusal);
+  return visible;
 }
