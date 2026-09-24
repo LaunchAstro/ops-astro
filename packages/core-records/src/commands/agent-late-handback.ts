@@ -12,7 +12,7 @@ import {
 } from '../authority/delegations.ts';
 import { retainHistoricalReport } from '../../../core-runtime/src/handback.ts';
 import type { CommandRefusal } from './refusal.ts';
-import { declarationOf } from './surface.ts';
+import type { CommandDeclaration } from './surface.ts';
 import type { AgentCall, AgentOperands } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { taskOfLease } from './prepare.ts';
@@ -51,7 +51,7 @@ import { taskOfLease } from './prepare.ts';
  */
 export async function retainLateHandback(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  { session, credential, request, declaration }: AgentCall,
   operands: AgentOperands,
   refusal: CommandRefusal,
 ): Promise<void> {
@@ -62,7 +62,7 @@ export async function retainLateHandback(
   const historical =
     (await resolveHistoricalDelegation(tx, session.actorId, credential, refusal.code)) ??
     (refusal.code === 'DELEGATION_NARROWED'
-      ? await narrowedOnLease(tx, session, credential, leaseId)
+      ? await narrowedOnLease(tx, session, credential, leaseId, declaration)
       : undefined);
   if (historical === undefined) return;
   await retainHistoricalReport(tx, {
@@ -92,13 +92,13 @@ async function narrowedOnLease(
   session: AgentSession,
   credential: string,
   leaseId: string,
+  declaration: CommandDeclaration,
 ): Promise<{ readonly id: string } | undefined> {
   const taskId = await taskOfLease(tx, leaseId);
   if (taskId === undefined) return undefined;
-  const declaration = declarationOf('task.handback');
   return await resolveNarrowedDelegation(tx, session.actorId, credential, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: { kind: 'record', id: taskId },
   });
 }

@@ -11,9 +11,9 @@ import {
 } from '../authority/delegations.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
-import { declarationOf } from './surface.ts';
 import type { AgentOperation } from './agent-operations.ts';
-import type { AgentCall, AgentRequest } from './agent-call.ts';
+import type { AgentCall, AgentOperands, AgentRequest } from './agent-call.ts';
+import type { HandlerOutcome } from './outcome.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { taskOfLease } from './prepare.ts';
 
@@ -33,7 +33,8 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
  * pre-pickup pair goes ahead under none.
  */
 export type Authorisation =
-  { readonly refusal: CommandRefusal } | { readonly delegation: Delegation | undefined };
+  | { readonly refusal: CommandRefusal }
+  | { readonly run: (operands: AgentOperands) => Promise<HandlerOutcome> };
 
 const refusing = (refusal: CommandRefusal): Authorisation => ({ refusal });
 
@@ -47,10 +48,14 @@ const refusing = (refusal: CommandRefusal): Authorisation => ({ refusal });
  */
 export async function authorise(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  call: AgentCall,
   operation: AgentOperation,
 ): Promise<Authorisation> {
-  if (operation.authority === 'beforePickup') return { delegation: undefined };
+  const { session, credential, request, declaration } = call;
+  if (operation.authority === 'beforePickup') {
+    const { serve } = operation;
+    return { run: async (operands) => await serve(tx, call, operands) };
+  }
 
   // No credential is an agent login before any pickup, and it reaches the two
   // operations above and nothing else (minimum contract 8.2 case 9): an
@@ -84,12 +89,14 @@ export async function authorise(
       action: 'read',
       scope: delegation.purposeScope,
     });
-    return reach.ok ? { delegation } : refusing(fromReasoned(reach.refusal));
+    const { serve } = operation;
+    return reach.ok
+      ? { run: async (operands) => await serve(tx, call, operands, delegation) }
+      : refusing(fromReasoned(reach.refusal));
   }
 
-  const taskId = await subjectTaskId(tx, delegation, request, operation);
-
   if (operation.authority === 'decision') {
+    const taskId = await subjectTaskId(tx, delegation, request, 'record');
     // L4 asks L2 and returns L2's answer. It cannot succeed: `DelegableAction`
     // excludes `decide`, the check refuses it first, and a delegation carrying
     // it cannot be written at all. An ordinary write of one is refused by
@@ -102,16 +109,19 @@ export async function authorise(
     return refusing(fromReasoned(excluded.ok ? unreachable() : excluded.refusal));
   }
 
-  const declaration = declarationOf(request.command);
+  const taskId = await subjectTaskId(tx, delegation, request, operation.subjectTask);
   const decision = await checkDelegatedAuthority(tx, delegation, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'read',
+    collection: declaration.collection,
+    action: declaration.action,
     // Always the record, never the business: a business-scoped request under a
     // delegation is outside its purpose by construction, and the one-task
     // ceiling is the whole of what `purposeScope` buys.
     scope: { kind: 'record', id: taskId },
   });
-  return decision.ok ? { delegation } : refusing(fromReasoned(decision.refusal));
+  const { serve } = operation;
+  return decision.ok
+    ? { run: async (operands) => await serve(tx, call, operands, delegation) }
+    : refusing(fromReasoned(decision.refusal));
 }
 
 function unreachable(): never {
@@ -132,12 +142,12 @@ async function subjectTaskId(
   tx: TenantQuery,
   delegation: Delegation,
   request: AgentRequest,
-  operation: AgentOperation,
+  subjectTask: 'lease' | 'record',
 ): Promise<string> {
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter (Sol 6 AUTHORITY-2).
   const leaseId = request['leaseId'];
-  if (operation.subjectTask === 'lease' && isUuid(leaseId)) {
+  if (subjectTask === 'lease' && isUuid(leaseId)) {
     return (await taskOfLease(tx, leaseId)) ?? delegation.purposeScope.id;
   }
   const named = request['recordId'];

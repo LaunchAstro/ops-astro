@@ -160,11 +160,15 @@ export function agentAnswer(command: string, result: unknown): unknown {
   return typeof detail === 'object' && detail !== null ? { ok: true, ...detail } : result;
 }
 
-async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<CommandResult> {
-  const { session, request } = call;
+async function runAgentCommand(
+  tx: TenantQuery,
+  presented: Omit<AgentCall, 'declaration'>,
+): Promise<CommandResult> {
+  const { session, request } = presented;
   const digest = payloadDigest(comparable(request));
   const operation = AGENT_OPERATIONS.get(request.command);
-  if (declarationOf(request.command) === undefined || operation === undefined) {
+  const declaration = declarationOf(request.command);
+  if (declaration === undefined || operation === undefined) {
     return await settle(
       tx,
       session,
@@ -181,6 +185,7 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
       true,
     );
   }
+  const call: AgentCall = { ...presented, declaration };
 
   // `typeof` first, as the person envelope asks it (`envelope.ts`). The pattern
   // coerces what it is given, so a number or a one-element array would pass as
@@ -286,7 +291,7 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
   }
 
   await tx.query('savepoint agent_work');
-  const outcome = await operation.serve(tx, call, operands, authorised.delegation);
+  const outcome = await authorised.run(operands);
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(

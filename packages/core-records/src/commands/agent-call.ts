@@ -5,7 +5,7 @@
 // (THERMO-RECHECK NA5).
 
 import type { AgentSession } from '../identity/agent-login.ts';
-import type { CommandName } from './surface.ts';
+import type { CommandDeclaration, CommandName } from './surface.ts';
 
 /**
  * What an agent sends.
@@ -27,6 +27,11 @@ export interface AgentCall {
   readonly session: AgentSession;
   readonly credential: string | undefined;
   readonly request: AgentRequest;
+  /**
+   * The request's own surface row, resolved once by the entry, so no later
+   * step looks it up again or invents a collection or action for a miss.
+   */
+  readonly declaration: CommandDeclaration;
 }
 
 /** The operands an agent command takes beyond its identifiers, parsed rather than coerced. */
