@@ -106,7 +106,11 @@ files, and that scanner follows PostgreSQL's own lexer where a token starts. So
 a nested block comment cannot hide a `COMMIT` (SOL-FR7-1), nor can `$$` at the
 end of an identifier or the last `e` of a word read as an `E''` prefix
 (SOL-FR9-1), and a word inside a comment or a quoted string is not read as
-part of the statement. None of the files on disk holds one of these.
+part of the statement. None of the files on disk holds one of these. Behind
+the guard, the runner sends each statement over the extended query protocol,
+so if a statement the scanner read as one still holds two commands, PostgreSQL
+refuses it ("cannot insert multiple commands into a prepared statement") and
+the run rolls back whole (`oneCommandEach` in `tenancy/database.ts`).
 
 A session can connect after that first look. So the runner looks again inside
 the transaction, before each file's first statement and once more after the

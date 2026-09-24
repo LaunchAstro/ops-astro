@@ -311,33 +311,36 @@ export async function applyMigrations(
   // look still refuses the run, and the whole run rolls back.
   await refuseIfBlind(admin.execute, names);
   await refuseIfConnected(admin.execute, names);
-  await admin.transaction(async (execute) => {
-    // Migrations are ordered and each one may depend on the last, so they are
-    // applied one at a time on purpose. The same goes for the statements
-    // inside one migration. `Promise.all` here would apply a schema in an
-    // order nobody wrote.
-    for (const migration of pending) {
-      // oxlint-disable-next-line no-await-in-loop
-      await refuseIfConnected(execute, names);
-      for (const statement of migration.statements) {
-        try {
-          // oxlint-disable-next-line no-await-in-loop
-          await execute(statement);
-        } catch (cause) {
-          throw new Error(
-            `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
-              `applied; the database is still ${startedAt}.`,
-            { cause },
-          );
+  await admin.transaction(
+    async (execute) => {
+      // Migrations are ordered and each one may depend on the last, so they are
+      // applied one at a time on purpose. The same goes for the statements
+      // inside one migration. `Promise.all` here would apply a schema in an
+      // order nobody wrote.
+      for (const migration of pending) {
+        // oxlint-disable-next-line no-await-in-loop
+        await refuseIfConnected(execute, names);
+        for (const statement of migration.statements) {
+          try {
+            // oxlint-disable-next-line no-await-in-loop
+            await execute(statement);
+          } catch (cause) {
+            throw new Error(
+              `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
+                `applied; the database is still ${startedAt}.`,
+              { cause },
+            );
+          }
         }
+        // oxlint-disable-next-line no-await-in-loop
+        await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
+          migration.version,
+          migration.checksum,
+        ]);
       }
-      // oxlint-disable-next-line no-await-in-loop
-      await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
-        migration.version,
-        migration.checksum,
-      ]);
-    }
-    await refuseIfConnected(execute, names);
-  });
+      await refuseIfConnected(execute, names);
+    },
+    { oneCommandEach: true },
+  );
   return { applied: names, alreadyApplied };
 }

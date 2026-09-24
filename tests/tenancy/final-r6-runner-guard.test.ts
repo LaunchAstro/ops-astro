@@ -370,6 +370,46 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     120_000,
   );
 
+  // FR10-GUARD part 2, the backstop: whatever the scanner misreads, the runner
+  // sends each piece so that PostgreSQL refuses one holding two commands. The
+  // piece is built by hand, past the splitter, so the guard reads it as one
+  // CREATE TABLE and lets it through.
+  it('has PostgreSQL refuse a piece holding two commands, and rolls the run back whole', async () => {
+    const built = await createEmptyDatabase({ part: 'fr10backstop' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const before = await state(built);
+
+    const outcome = await applyMigrations(built.admin, [
+      ...onDisk,
+      syntheticMigration('9001_fr10_first', 'create table ops.fr10_first (id int)'),
+      {
+        version: '9002_fr10_two',
+        checksum: 'fr10',
+        statements: ['create table ops.fr10_second (id int); commit'],
+      },
+      syntheticMigration('9003_fr10_broken', 'select 1 / 0'),
+    ]).catch((error: unknown) => error);
+
+    const [left] = await built.admin.execute<{ readonly first: boolean; readonly table: boolean }>(
+      `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
+              to_regclass('ops.fr10_first') is not null
+                or to_regclass('ops.fr10_second') is not null as table`,
+    );
+    expect({
+      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      cause: outcome instanceof Error ? String(outcome.cause) : '',
+      first: left?.first,
+      table: left?.table,
+    }).toStrictEqual({
+      message: expect.stringMatching(/^migrate: 9002_fr10_two failed on: .* Nothing was applied;/u),
+      cause: expect.stringContaining('cannot insert multiple commands into a prepared statement'),
+      first: false,
+      table: false,
+    });
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
   // R6-AUTHORITY-2: a role that is neither superuser nor in pg_read_all_stats
   // sees other roles' sessions with a null backend_type, so a predicate on it
   // would see nobody. The runner must refuse rather than find the room empty.

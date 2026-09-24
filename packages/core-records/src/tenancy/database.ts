@@ -49,7 +49,22 @@ export interface Database extends Connection {
  */
 export interface AdminConnection extends Connection {
   execute<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]>;
-  transaction<T>(run: (execute: AdminConnection['execute']) => Promise<T>): Promise<T>;
+  transaction<T>(
+    run: (execute: AdminConnection['execute']) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T>;
+}
+
+export interface TransactionOptions {
+  /**
+   * Send each text over the extended query protocol, so the server refuses
+   * one that holds more than one command ("cannot insert multiple commands
+   * into a prepared statement") rather than running them all. The migration
+   * runner sets it, so a statement its reading of SQL got wrong cannot end
+   * its one transaction (FR10-GUARD). Harness fixtures that send several
+   * commands in one string leave it off.
+   */
+  readonly oneCommandEach?: boolean;
 }
 
 export interface DatabaseOptions {
@@ -74,12 +89,24 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
   return { sql, log };
 }
 
+/**
+ * Postgres.js sends a text with no parameters over the simple query protocol,
+ * which runs every command in it (`unsafe` sets `simple: args.length === 0`,
+ * src/index.js in 3.4.9). `simple: false` forces the extended protocol, one
+ * command per send. The package's types omit `simple`, which its `unsafe`
+ * reads, hence the cast.
+ */
+const EXTENDED_PROTOCOL = { prepare: false, simple: false } as postgres.UnsafeQueryOptions;
+
 async function sendUnsafe<Row>(
   handle: { unsafe: postgres.Sql['unsafe'] },
   text: string,
   parameters: readonly unknown[],
+  oneCommand = false,
 ): Promise<readonly Row[]> {
-  const rows = await handle.unsafe(text, parameters as never[]);
+  const rows = oneCommand
+    ? await handle.unsafe(text, parameters as never[], EXTENDED_PROTOCOL)
+    : await handle.unsafe(text, parameters as never[]);
   return rows as unknown as readonly Row[];
 }
 
@@ -178,12 +205,16 @@ export function connectAsAdmin(url: string, options: DatabaseOptions = {}): Admi
     async execute<Row>(text: string, parameters: readonly unknown[] = []): Promise<readonly Row[]> {
       return await sendUnsafe<Row>(sql, text, parameters);
     },
-    async transaction<T>(body: (execute: AdminConnection['execute']) => Promise<T>): Promise<T> {
+    async transaction<T>(
+      body: (execute: AdminConnection['execute']) => Promise<T>,
+      transactionOptions: TransactionOptions = {},
+    ): Promise<T> {
+      const oneCommand = transactionOptions.oneCommandEach === true;
       return (await sql.begin(
         async (tx) =>
           await body(
             async <Row>(text: string, parameters: readonly unknown[] = []) =>
-              await sendUnsafe<Row>(tx, text, parameters),
+              await sendUnsafe<Row>(tx, text, parameters, oneCommand),
           ),
       )) as T;
     },
