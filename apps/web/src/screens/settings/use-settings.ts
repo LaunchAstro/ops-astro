@@ -39,7 +39,13 @@ import {
   type OperationsClient,
 } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
-import { settingsCacheKey } from '../../session/token.ts';
+import {
+  isRecord,
+  jsonSlot,
+  settingsCacheKey,
+  type JsonSlot,
+  type StorageLike,
+} from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
 import type {
@@ -56,11 +62,7 @@ import {
   settingOf,
 } from './reads.ts';
 
-/** The narrow part of `Storage` this screen uses, so a test can hand it one. */
-export interface StorageLike {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-}
+export type { StorageLike } from '../../session/token.ts';
 
 /** Which of the two settings a press is about. */
 export type Which = 'four-eyes' | 'sign-off';
@@ -108,25 +110,30 @@ function sessionTag(grantKey: string): string {
   return hash.toString(16).padStart(8, '0');
 }
 
+/** Any object passes; `readConfirmed` then checks whose session it was. */
+function isStored(value: unknown): value is Partial<Stored> {
+  return isRecord(value);
+}
+
+/** This business's slot. A storage that throws leaves "not known" drawn. */
+function confirmedSlot(
+  storage: StorageLike | null,
+  businessKey: string,
+): JsonSlot<Partial<Stored>> {
+  return jsonSlot(storage, settingsCacheKey(businessKey), isStored);
+}
+
 function readConfirmed(
   storage: StorageLike | null,
   businessKey: string,
   grantKey: string,
 ): Confirmed {
-  // A storage that throws — private mode, blocked site data — must leave the
-  // screen drawing "not known", which is the truth in that tab anyway.
-  try {
-    const raw = storage?.getItem(settingsCacheKey(businessKey)) ?? null;
-    if (raw === null) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    // Another session's value, or one stored before values carried a session,
-    // is not this reader's to see.
-    const { session, ...values } = parsed as Partial<Stored>;
-    return session === sessionTag(grantKey) ? values : {};
-  } catch {
-    return {};
-  }
+  const stored = confirmedSlot(storage, businessKey).read();
+  if (stored === null) return {};
+  // Another session's value, or one stored before values carried a session,
+  // is not this reader's to see.
+  const { session, ...values } = stored;
+  return session === sessionTag(grantKey) ? values : {};
 }
 
 function writeConfirmed(
@@ -135,12 +142,9 @@ function writeConfirmed(
   grantKey: string,
   next: Confirmed,
 ): void {
-  try {
-    const stored: Stored = { ...next, session: sessionTag(grantKey) };
-    storage?.setItem(settingsCacheKey(businessKey), JSON.stringify(stored));
-  } catch {
-    /* Nothing to do. The screen still draws what it has in hand this render. */
-  }
+  // A refused write leaves the screen drawing what it has in hand this render.
+  const stored: Stored = { ...next, session: sessionTag(grantKey) };
+  confirmedSlot(storage, businessKey).write(stored);
 }
 
 /** The server's own echo of the row it wrote, or nothing when it said nothing. */

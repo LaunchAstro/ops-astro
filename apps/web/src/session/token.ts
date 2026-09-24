@@ -20,10 +20,66 @@
 // because it has the same lifetime and the same rule: `sessionStorage`, never
 // `localStorage`, gone when the tab is.
 
+/** The narrow part of `Storage` the session and `/settings` use. */
 export interface StorageLike {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+}
+
+/** One JSON value kept under one key. */
+export interface JsonSlot<T> {
+  /** The value, or null when there is none, it is not JSON or the guard rejects it. */
+  readonly read: () => T | null;
+  readonly write: (value: T) => void;
+  readonly remove: () => void;
+}
+
+/**
+ * The one place browser storage is read and written as JSON.
+ *
+ * A storage that throws — private mode, blocked site data — must not take the
+ * tab with it: every call is caught, a failed read is "nothing kept", and a
+ * failed write or removal leaves memory as the only copy, which it already is.
+ * A stored value is read through `guard`, because the storage belongs to the
+ * tab and not to this code.
+ */
+export function jsonSlot<T>(
+  storage: StorageLike | null,
+  key: string,
+  guard: (value: unknown) => value is T,
+): JsonSlot<T> {
+  return {
+    read: () => {
+      try {
+        const raw = storage?.getItem(key) ?? null;
+        if (raw === null) return null;
+        const parsed: unknown = JSON.parse(raw);
+        return guard(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    },
+    write: (value) => {
+      try {
+        storage?.setItem(key, JSON.stringify(value));
+      } catch {
+        /* The tab keeps working on what it holds in memory. */
+      }
+    },
+    remove: () => {
+      try {
+        storage?.removeItem(key);
+      } catch {
+        /* Nothing to do: memory is already clear. */
+      }
+    },
+  };
+}
+
+/** Any JSON object. What a slot guard starts from. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export interface Session {
@@ -81,13 +137,17 @@ export interface Interruption {
 
 export class SessionStore {
   readonly #storage: StorageLike | null;
+  readonly #kept: JsonSlot<Session>;
+  readonly #returnTo: JsonSlot<Interruption>;
   #session: Session | null = null;
   #interruption: Interruption | null = null;
 
   constructor(storage: StorageLike | null) {
     this.#storage = storage;
-    this.#session = this.#restore();
-    this.#interruption = this.#restoreInterruption();
+    this.#kept = jsonSlot(storage, KEY, isSession);
+    this.#returnTo = jsonSlot(storage, RETURN_KEY, isInterruption);
+    this.#session = this.#kept.read();
+    this.#interruption = this.#returnTo.read();
   }
 
   get session(): Session | null {
@@ -110,11 +170,8 @@ export class SessionStore {
     if (this.#session === null) return;
     this.clear();
     this.#interruption = interruption;
-    try {
-      this.#storage?.setItem(RETURN_KEY, JSON.stringify(interruption));
-    } catch {
-      /* The tab keeps working; it lands on the board instead. */
-    }
+    // A storage that refuses leaves the tab working; it lands on the board.
+    this.#returnTo.write(interruption);
   }
 
   /** Read the interruption and spend it. Signing in answers it exactly once. */
@@ -125,75 +182,31 @@ export class SessionStore {
   }
 
   set(session: Session): void {
+    // Held in memory first, so a storage that refuses cannot take the sign-in
+    // with it; the reload will ask again.
     this.#session = session;
-    // A storage that throws — private mode, blocked site data — must not take
-    // the sign-in with it. The session is already held in memory.
-    try {
-      this.#storage?.setItem(KEY, JSON.stringify(session));
-    } catch {
-      /* The tab keeps working; the reload will ask again. */
-    }
+    this.#kept.write(session);
   }
 
   clear(): void {
     const ending = this.#session;
     this.#session = null;
     this.#forgetInterruption();
-    try {
-      this.#storage?.removeItem(KEY);
-      if (ending !== null) this.#storage?.removeItem(settingsCacheKey(ending.businessKey));
-    } catch {
-      /* Nothing to do: memory is already clear. */
+    this.#kept.remove();
+    if (ending !== null) {
+      jsonSlot(this.#storage, settingsCacheKey(ending.businessKey), isRecord).remove();
     }
   }
 
   #forgetInterruption(): void {
     this.#interruption = null;
-    try {
-      this.#storage?.removeItem(RETURN_KEY);
-    } catch {
-      /* Nothing to do: memory is already clear. */
-    }
-  }
-
-  #restore(): Session | null {
-    let raw: string | null = null;
-    try {
-      raw = this.#storage?.getItem(KEY) ?? null;
-    } catch {
-      return null;
-    }
-    if (raw === null) return null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return null;
-    }
-    return isSession(parsed) ? parsed : null;
-  }
-
-  #restoreInterruption(): Interruption | null {
-    let raw: string | null = null;
-    try {
-      raw = this.#storage?.getItem(RETURN_KEY) ?? null;
-    } catch {
-      return null;
-    }
-    if (raw === null) return null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return null;
-    }
-    return isInterruption(parsed) ? parsed : null;
+    this.#returnTo.remove();
   }
 }
 
 function isInterruption(value: unknown): value is Interruption {
-  if (typeof value !== 'object' || value === null) return false;
-  const body = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const body = value;
   // An address is a path this application owns, never something a page could
   // be sent to from outside: a stored value naming another origin is not one
   // of ours and is dropped rather than navigated to.
@@ -207,8 +220,8 @@ function isInterruption(value: unknown): value is Interruption {
 }
 
 function isSession(value: unknown): value is Session {
-  if (typeof value !== 'object' || value === null) return false;
-  const body = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const body = value;
   return (
     typeof body['token'] === 'string' &&
     typeof body['businessKey'] === 'string' &&
