@@ -74,7 +74,12 @@ import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { answerReplay } from './agent-replay.ts';
 import { settle, writeCallEvent } from './agent-settle.ts';
-import { AGENT_OPERATIONS, parseOperands } from './agent-operations.ts';
+import {
+  AGENT_OPERATIONS,
+  isOperandRefusal,
+  parseOperands,
+  type TypedOperation,
+} from './agent-operations.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
 
 /**
@@ -210,11 +215,22 @@ async function runAgentCommand(
   const seen = await lookupAttempt(tx, session.actorId, request.operationId);
   if (seen !== undefined) return await answerReplay(tx, call, operation, seen, digest);
 
+  return await operation.open(async (row) => await runRow(tx, call, row, digest));
+}
+
+/** The rest of a call, generic over the row's operands (`AgentOperation`, NNA3). */
+async function runRow<O extends object>(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: TypedOperation<O>,
+  digest: string,
+): Promise<CommandResult> {
+  const { session, request } = call;
   // The request's own shape, before any authority is read: a system-owned
   // field (D06, the person path's own classifier) and then each operand the
   // command takes. Neither tells the caller anything about the business.
   const operands = await parseOperands(tx, request, operation);
-  if ('refusal' in operands) {
+  if (isOperandRefusal(operands)) {
     return await settle(tx, session, request, digest, operands.refusal, false, operands.attempted);
   }
 

@@ -7,8 +7,8 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { checkDelegatedAuthority, resolveDelegation } from '../authority/delegations.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
-import type { AgentOperation } from './agent-operations.ts';
-import type { AgentCall, AgentOperands, AgentRequest } from './agent-call.ts';
+import type { TypedOperation } from './agent-operations.ts';
+import type { AgentCall, AgentRequest } from './agent-call.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { taskOfLease } from './prepare.ts';
@@ -28,11 +28,10 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
  * ahead under, handed on so no later step resolves the credential again. The
  * pre-pickup pair goes ahead under none.
  */
-export type Authorisation =
-  | { readonly refusal: CommandRefusal }
-  | { readonly run: (operands: AgentOperands) => Promise<HandlerOutcome> };
+export type Authorisation<O extends object> =
+  { readonly refusal: CommandRefusal } | { readonly run: (operands: O) => Promise<HandlerOutcome> };
 
-const refusing = (refusal: CommandRefusal): Authorisation => ({ refusal });
+const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> => ({ refusal });
 
 /**
  * The delegation check, in the order AUTHORITY.md puts it.
@@ -42,11 +41,11 @@ const refusing = (refusal: CommandRefusal): Authorisation => ({ refusal });
  * two operations they are bounded to are the ones that cannot touch a task's
  * own data — the queue names reservations and a pickup claims one.
  */
-export async function authorise(
+export async function authorise<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
-  operation: AgentOperation,
-): Promise<Authorisation> {
+  operation: TypedOperation<O>,
+): Promise<Authorisation<O>> {
   const { session, credential, request, declaration } = call;
   if (operation.authority === 'beforePickup') {
     const { serve } = operation;

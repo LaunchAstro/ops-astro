@@ -24,7 +24,7 @@ import {
 } from './refusal.ts';
 import type { CommandHandle, CommandResult, RegisteredAttempt } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import type { AgentOperation } from './agent-operations.ts';
+import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { settle, writeCallEvent } from './agent-settle.ts';
@@ -44,13 +44,14 @@ export async function releaseReplay(
     case 'pickup':
       return await replayPickup(tx, call, stored);
     case 'capabilities':
-      return await replayCapabilities(tx, call, operation);
+      return await operation.open(async (row) => await replayCapabilities(tx, call, row));
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
-    case 'reauthorise': {
-      const authorised = await authorise(tx, call, operation);
-      return 'refusal' in authorised ? authorised.refusal : undefined;
-    }
+    case 'reauthorise':
+      return await operation.open(async (row) => {
+        const authorised = await authorise(tx, call, row);
+        return 'refusal' in authorised ? authorised.refusal : undefined;
+      });
   }
 }
 
@@ -58,14 +59,18 @@ export async function releaseReplay(
  * A capabilities replay: the current rights checked the way a fresh call is,
  * then the row served again for them. The stored answer is never released.
  */
-async function replayCapabilities(
+async function replayCapabilities<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
-  operation: AgentOperation,
+  operation: TypedOperation<O>,
 ): Promise<CommandResult> {
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) return authorised.refusal;
-  const served = await authorised.run({});
+  // The row's own operands, read as a fresh call reads them: the capabilities
+  // row reads none, so this is its `{}`, typed as the row's own.
+  const operands = operation.operands(call.request);
+  if (isOperandRefusal(operands)) return operands.refusal;
+  const served = await authorised.run(operands);
   if (isRefused(served)) return served.refusal;
   return { command: call.request.command, ...served };
 }

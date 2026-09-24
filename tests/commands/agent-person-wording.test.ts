@@ -18,12 +18,10 @@ import type { AgentSession } from '../../packages/core-records/src/identity/agen
 import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
 import {
   AGENT_OPERATIONS,
+  isOperandRefusal,
   type AgentOperation,
 } from '../../packages/core-records/src/commands/agent-operations.ts';
-import type {
-  AgentOperands,
-  AgentRequest,
-} from '../../packages/core-records/src/commands/agent-call.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import { pickupAsPerson } from '../../packages/core-records/src/commands/tasks-pickup.ts';
 import { heartbeatOwnLease } from '../../packages/core-records/src/commands/tasks-lease.ts';
 import { handbackOwnLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
@@ -65,33 +63,31 @@ function row(command: string): AgentOperation {
   return operation;
 }
 
-function agentOperands(command: string, fields: Record<string, unknown>): AgentOperands | object {
-  const read = row(command).operands;
-  if (read === undefined) throw new Error(`${command} reads no operands`);
-  return read({ command, operationId: randomUUID(), ...fields } as AgentRequest);
+function agentOperands(command: string, fields: Record<string, unknown>): object {
+  return row(command).open((typed) =>
+    typed.operands({ command, operationId: randomUUID(), ...fields } as AgentRequest),
+  );
 }
 
 async function agentServes(command: string, fields: Record<string, unknown>): Promise<unknown> {
-  const operation = row(command);
   const declaration = declarationOf(command as AgentRequest['command']);
-  if (operation.authority !== 'record' || declaration === undefined) {
-    throw new Error(`${command} is not a record row`);
-  }
-  // Neither row reads the delegation; the one `authorise` would resolve is
-  // not what this compares.
-  return await operation.serve(
-    tx,
-    {
-      session,
-      credential: undefined,
-      request: { command, operationId: randomUUID(), ...fields } as AgentRequest,
-      declaration,
-    },
-    {},
-    undefined as never,
-    // The task `authorise` checked, which is the one served.
-    typeof fields['recordId'] === 'string' ? fields['recordId'] : undefined,
-  );
+  if (declaration === undefined) throw new Error(`${command} has no declaration`);
+  const request = { command, operationId: randomUUID(), ...fields } as AgentRequest;
+  return await row(command).open(async (operation) => {
+    if (operation.authority !== 'record') throw new Error(`${command} is not a record row`);
+    const operands = operation.operands(request);
+    if (isOperandRefusal(operands)) throw new Error(`${command} refused its operands`);
+    // Neither row reads the delegation; the one `authorise` would resolve is
+    // not what this compares.
+    return await operation.serve(
+      tx,
+      { session, credential: undefined, request, declaration },
+      operands,
+      undefined as never,
+      // The task `authorise` checked, which is the one served.
+      typeof fields['recordId'] === 'string' ? fields['recordId'] : undefined,
+    );
+  });
 }
 
 const WRONG_SECONDS: readonly unknown[] = [0, -5, 1.5, 'ninety', null, [60]];
