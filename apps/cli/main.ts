@@ -18,12 +18,16 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
-import { accepts, createCli, usage, type CliAnswer } from './client.ts';
+import { accepts, createCli, isRefusal, isWrite, usage, type CliAnswer } from './client.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
-/** Exit codes, as `docs/local/CLI.md` lists them. */
-export const EXIT = { ok: 0, refused: 1, usage: 2, transport: 3 } as const;
+/**
+ * Exit codes, as `docs/local/CLI.md` lists them. `fault` is an answer that is
+ * neither a success nor a refusal: a 5xx, or any non-2xx or non-JSON answer
+ * without the `refused` flag.
+ */
+export const EXIT = { ok: 0, refused: 1, usage: 2, transport: 3, fault: 4 } as const;
 
 const DEFAULTS = {
   api: 'http://127.0.0.1:8790',
@@ -127,7 +131,8 @@ const HELP = [
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
   '             OPS_ASTRO_GOTRUE_URL, OPS_ASTRO_AGENT=1, OPS_ASTRO_DELEGATION,',
   '             OPS_ASTRO_DELEGATION_FILE',
-  'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure',
+  'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure,',
+  '             4 fault (an answer that is neither a success nor a refusal)',
   '',
   'operations:',
 ];
@@ -222,7 +227,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     );
     // A write replays by its operation id. One is supplied when the caller did
     // not bring one; a caller retrying a write passes its own to get the replay.
-    const request = { operationId: randomUUID(), ...payload };
+    // A person's read carries none: it has nothing to replay, and the registry's
+    // `kind` is what says which is which. The agent prefix is the exception: its
+    // envelope refuses any call without one, reads included
+    // (`packages/core-records/src/commands/agent-envelope.ts`).
+    const request = isWrite(verb) || agent ? { operationId: randomUUID(), ...payload } : payload;
 
     const cli = createCli({
       businessKey: encodeURIComponent(businessKey),
@@ -248,7 +257,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       io.err(`cli: no answer from ${api}: ${(cause as Error).message}`);
       return EXIT.transport;
     }
-    const ok = answer.status >= 200 && answer.status < 300;
+    const ok = answer.status >= 200 && answer.status < 300 && answer.body !== undefined;
     const picked = agent && verb === 'task.pickup' && ok ? pickedUpCredential(answer) : undefined;
     if (picked !== undefined) {
       writeSecret(delegationFile, picked);
@@ -256,8 +265,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       return EXIT.ok;
     }
     if (agent && verb === 'task.handback' && ok) rmSync(delegationFile, { force: true });
-    io.out(JSON.stringify(answer.body));
-    return ok ? EXIT.ok : EXIT.refused;
+    io.out(answer.body === undefined ? (answer.text ?? '') : JSON.stringify(answer.body));
+    if (ok) return EXIT.ok;
+    return isRefusal(answer) ? EXIT.refused : EXIT.fault;
   } catch (cause) {
     if (!(cause instanceof UsageError)) throw cause;
     io.err(`cli: ${cause.message}`);
