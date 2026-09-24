@@ -77,6 +77,18 @@ export function jsonSlot<T>(
   };
 }
 
+/**
+ * This tab's `sessionStorage`, or null where there is none or it is blocked.
+ * Blocked site data makes the global throw on access, not only on use.
+ */
+export function tabStorage(): Storage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 /** Any JSON object. What a slot guard starts from. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
