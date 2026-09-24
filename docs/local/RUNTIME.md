@@ -15,10 +15,11 @@ review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
 joint gates were green at 9ddfa09, at ca0b79c, at 67fa922, at e84add2, at
-9abf30d and again at the integrated head, 1486b4c, which these docs describe
-(`pnpm test` 5,506 passed and 24 skipped, `tests/acceptance` 3,852 and 16,
-`db:conformance` 129 named suites, 4,800 of 4,800, `db:cases` 15 of 15 and
-`pnpm check` green).
+9abf30d, at 1486b4c, and, as the binding gates, at f10e96f, the code head
+these docs describe (`pnpm test` 6343 passed and 24 skipped, `tests/acceptance`
+3862 and 16, `db:conformance` 195 named suites, 5546 of 5546, `db:cases` 15 of
+15 and `pnpm check` green). The docs commit on top of it changes only `docs/**`
+and `tests/docs/**`.
 [PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
@@ -448,7 +449,10 @@ row, and
 does not record 0031, because a file and its ledger row commit together
 (`scripts/db-migrate.mjs`). The owner resolves the total and migrates again
 (`migrations/0031_upgrade_guards.sql`;
-`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`).
+`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`). 0031's loop revokes
+TEMPORARY from every login in the application group that still exists when it
+reaches it; a login dropped while the loop runs is skipped rather than failing
+the upgrade (FR8-0031).
 
 **Upgrading a running install.** The migration runner refuses to apply a
 pending migration while any other client session is connected to the database
@@ -459,7 +463,21 @@ start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
 run. An upgrade run is all or nothing: `db:migrate` applies every pending
 migration in one transaction, so a refusal (another session connected) or a
 failed migration leaves the database at the version it started at, with no
-ledger row added (SOL-FR6-2, `applyMigrations`). When anything is pending, the
+ledger row added (SOL-FR6-2, `applyMigrations`). A migration file holding a
+statement PostgreSQL will not run inside a transaction block (`CONCURRENTLY`
+forms, `VACUUM`, `DISCARD ALL`, any `REINDEX` or `CLUSTER`, and the others
+DATA.md lists), or one that would end the transaction, is refused before
+anything runs (FR9-GUARD). A failed migration's error ends
+`Nothing was applied; the database is still at <version>.` Where a migration
+header says a failing install stays at the version before it, that is the
+version the run started at. A failed run's error names the ledger's last
+version, whatever list was passed. If a statement ends the run's transaction,
+the runner stops at once with
+`migrate: <version> ended the run's transaction on: <statement>`: work before it
+may be committed, so read `ops.schema_migrations` and the schema before running
+again. Ship an `ALTER TYPE ... ADD VALUE` and the first use of its value in
+different releases: an upgrade that holds both fails and rolls back. When
+anything is pending, the
 runner's role must be a superuser or in `pg_read_all_stats`, or it refuses
 (`MigrationRoleCannotSee`): a role that cannot read every session could not
 tell that nobody else is connected. An idle API or GoTrue may hold no connection between requests, so the check

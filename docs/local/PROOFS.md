@@ -48,22 +48,26 @@ and 24, `tests/acceptance` 3,852 and 16, and `db:conformance` 125 named suites,
 CAP-RR (migration 0025 edited in place), SPINE-UPGRADE, THERMO-FIX-READS,
 THERMO-FIX-RUNTIME and THERMO-FIX-AGENT, and passed with `pnpm test` 5,491 and
 24, `tests/acceptance` 3,852 and 16, and `db:conformance` 129 named suites, 4,800
-of 4,800. The integrated head, and the head these docs describe, is `1486b4c`.
-It adds PR A's gate tooling (`135dd75`), DOCS-8, THERMO-FIX-AGENT-2,
-THERMO-FIX-WEB-2, DB-CASES-FIX, THERMO-FIX-WEB-3 and DB-READY-FIX, and its joint
-gates passed with the counts in the table. The run at `9da823a` before
-DB-READY-FIX was red on `pnpm check` alone, a readiness race in the `db:cases`
-harness that DB-READY-FIX closed.
+of 4,800. `1486b4c` added PR A's gate tooling (`135dd75`), DOCS-8,
+THERMO-FIX-AGENT-2, THERMO-FIX-WEB-2, DB-CASES-FIX, THERMO-FIX-WEB-3 and
+DB-READY-FIX, and its joint gates passed with `pnpm test` 5,506 and 24,
+`tests/acceptance` 3,852 and 16, and `db:conformance` 129 named suites, 4,800 of
+4,800. The run at `9da823a` before DB-READY-FIX was red on `pnpm check` alone, a
+readiness race in the `db:cases` harness that DB-READY-FIX closed. The code head
+these docs describe is `f10e96f`, after the final-review fix lanes and
+migrations 0026 to 0031, and its binding joint gates passed with the counts in
+the table. The docs commit on top of it changes only `docs/**` and
+`tests/docs/**`.
 The final live verification at the final head is owed and has not been run.
 
 | What                                                                                                                                                                           | Count                                                                                                | Label                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `typecheck`, `lint`, `format:check`, `spdx`                                                                                                                                    | green                                                                                                | tested (joint gates, the integrated head)                                     |
-| `pnpm test`                                                                                                                                                                    | 5,506 passed, 24 skipped                                                                             | tested (joint gates, the integrated head)                                     |
-| `tests/acceptance`                                                                                                                                                             | 3,852 passed, 16 skipped                                                                             | tested (joint gates, the integrated head)                                     |
-| `db:conformance`                                                                                                                                                               | 129 named suites (122 invariant, 7 conformance), 4,800 of 4,800                                      | tested (joint gates, the integrated head)                                     |
-| `db:cases`                                                                                                                                                                     | 15 of 15                                                                                             | tested (joint gates, the integrated head)                                     |
-| `pnpm check`                                                                                                                                                                   | green                                                                                                | tested (joint gates, the integrated head)                                     |
+| `typecheck`, `lint`, `format:check`, `spdx`                                                                                                                                    | green                                                                                                | tested (binding joint gates, `f10e96f`)                                       |
+| `pnpm test`                                                                                                                                                                    | 6343 passed, 24 skipped                                                                              | tested (binding joint gates, `f10e96f`)                                       |
+| `tests/acceptance`                                                                                                                                                             | 3862 passed, 16 skipped                                                                              | tested (binding joint gates, `f10e96f`)                                       |
+| `db:conformance`                                                                                                                                                               | 195 named suites (129 invariant, 66 conformance), 5546 of 5546; 4387 transactions recorded           | tested (binding joint gates, `f10e96f`)                                       |
+| `db:cases`                                                                                                                                                                     | 15 of 15                                                                                             | tested (binding joint gates, `f10e96f`)                                       |
+| `pnpm check`                                                                                                                                                                   | green                                                                                                | tested (binding joint gates, `f10e96f`)                                       |
 | `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                                       | tested (lane run on `e1b78b3`)                                                |
 | `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                                       | tested (lane run on `8819fac`)                                                |
 | `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 16, 4 and 1 tests; `historical-handback-intake` had 13 at `91cda99` and SOL-AUTHORITY-FIX added 3 | tested (lane runs on `867f391`, `91cda99`, `163969b`; merge trial, `06ab232`) |
@@ -1110,9 +1114,34 @@ It also proves the run is all or nothing (FR7-RUNNER, SOL-FR6-2). A session
 arriving during the second of two pending migrations, and a failure in the
 second, each leave neither migration nor ledger row; at 600c300 the first was
 kept. A role that cannot read every session is refused rather than seeing
-nobody. A file holding a statement PostgreSQL will not run in a transaction
-block, or transaction control, is refused before the runner touches the
-database, and no file on disk, 0001 to the last, is refused. What the suite
+nobody. A file holding a statement PostgreSQL 18 will not run in a transaction
+block (each `PreventInTransactionBlock` caller, with every `REINDEX` and
+`CLUSTER` because the text cannot tell a partitioned relation), or transaction
+control, is refused before the runner touches the database. That includes a
+`COMMIT` behind a nested block comment, which at fbb7b97 ended the batch and
+left an earlier file and its ledger row committed when a later file failed
+(FR9-GUARD, SOL-FR7-1). A pattern word inside a comment or a quoted string does
+not refuse a file, and no file on disk, 0001 to the last, is refused. Nor can
+`$$` at the end of an identifier or the last `e` of a word read as an `E''`
+prefix hide one: the splitter and the guard read tokens as PostgreSQL's
+`scan.l` does (FR10-GUARD, SOL-FR9-1, R7-RUNTIME-1); at 5b7a355 each left an
+earlier file and its ledger row committed. Nor can a line comment that a lone
+carriage return ends, or an `E''` string continued on the next line: the
+scanner follows `scan.l` rule by rule, and at b17d8cf the first left an earlier
+file and its ledger row committed while the error said nothing was applied
+(FR11-SCANNER, R8-RUNTIME-1, R8-THERMO-7). A piece that is more than comments
+and whitespace is sent, not dropped (R8-SURFACE-6), and so is one that ends
+inside a block comment, which at 3b226e8 was dropped and the file applied
+(SOL-FR11-1). After each statement the runner checks that its transaction is
+still the one it opened; if not, it stops and says earlier work may be
+committed. Behind the guard, the runner sends each statement over the extended
+protocol, so a piece still holding two commands is refused by PostgreSQL and
+the run rolls back whole. A failed statement's error names the version the
+database is still at. `ALTER TYPE ... ADD VALUE` passes the guard. A use of the
+new value later in the same run fails and rolls back whole on an upgrade, and
+succeeds on a fresh install, where the type is new in the same run; both paths
+are pinned live (FR11-SCANNER, R8-RUNTIME-8). The CLI refuses a role that
+cannot read every session with exit 2. What the suite
 cannot prove is under "Deferred limits": the guard sees only open sessions.
 
 ## Deferred limits
@@ -1162,7 +1191,11 @@ gate keeps its version; FR2-P2) as well, proved by
 `tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`. Nathan approved 0031
 (`TEMPORARY` revoked on upgrade, and an over-ceiling cap refuses the upgrade;
 FR2-P3, SOL-R3-2 and SOL-R3-1) as well, proved by
-`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`.
+`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`. That suite also proves
+0031 survives a member login dropped mid-loop, on a fixed schedule (the loop
+blocks on a `pg_shdepend` row lock held by the dropping session until the drop
+commits); it was red 3 of 3 at 0feeaca, before the loop skipped a dropped
+login, and is green 3 of 3 (FR8-0031).
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing
