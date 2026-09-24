@@ -38,18 +38,22 @@ next head, `c53aa25`, is `d6787c5` plus DOCS-6, SWEEP-2, SOL6-RUNTIME-FIX-2,
 SOL6-WEB-FIX, SOL6-AUTHORITY-FIX-2, THERMO-2, PROTECTED-MIGRATIONS (the last
 migration is 0025), OWNER-RULINGS-FIX and ARCH-4. Its joint gates passed with
 `pnpm test` 5,465 and 24, `tests/acceptance` 3,852 and 16, and
-`db:conformance` 125 named suites, 4,789 of 4,789. The integration head, and
-the head these docs describe, is `9d2dbde`, which adds FINAL-SWEEP (with the
-SOL6-AUTHORITY-FIX-2 continuation). Its joint gates passed with the counts in
-the table (2026-09-24T04:12Z).
+`db:conformance` 125 named suites, 4,789 of 4,789. `9d2dbde` added FINAL-SWEEP
+(with the SOL6-AUTHORITY-FIX-2 continuation) and passed with `pnpm test` 5,466
+and 24, `tests/acceptance` 3,852 and 16, and `db:conformance` 125 named suites,
+4,788 of 4,788 (2026-09-24T04:12Z). `efd5009` adds DOCS-7, THERMO-FIX-WEB,
+CAP-RR (migration 0025 edited in place), SPINE-UPGRADE, THERMO-FIX-READS,
+THERMO-FIX-RUNTIME and THERMO-FIX-AGENT, and its joint gates passed with the
+counts in the table. The integration head, and the head these docs describe, is
+`1ddb286`: `efd5009` plus PR A's gate tooling (`135dd75`).
 The final live verification at the final head is owed and has not been run.
 
 | What                                                                                                                                                                           | Count                                                                                                | Label                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `typecheck`, `lint`, `format:check`, `spdx`                                                                                                                                    | green                                                                                                | tested (merge trial, `d6787c5`)                                               |
-| `pnpm test`                                                                                                                                                                    | 5,466 passed, 24 skipped                                                                             | tested (merge trial, `d6787c5`)                                               |
+| `pnpm test`                                                                                                                                                                    | 5,491 passed, 24 skipped                                                                             | tested (merge trial, `d6787c5`)                                               |
 | `tests/acceptance`                                                                                                                                                             | 3,852 passed, 16 skipped                                                                             | tested (merge trial, `d6787c5`)                                               |
-| `db:conformance`                                                                                                                                                               | 125 named suites (118 invariant, 7 conformance), 4,788 of 4,788                                      | tested (merge trial, `d6787c5`)                                               |
+| `db:conformance`                                                                                                                                                               | 129 named suites (122 invariant, 7 conformance), 4,800 of 4,800                                      | tested (merge trial, `d6787c5`)                                               |
 | `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                                       | tested (lane run on `a3d0afe`)                                                |
 | `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                                       | tested (lane run on `209eb29`)                                                |
 | `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 16, 4 and 1 tests; `historical-handback-intake` had 13 at `20c57b0` and SOL-AUTHORITY-FIX added 3 | tested (lane runs on `85bf346`, `20c57b0`, `aed9384`; merge trial, `faf3285`) |
@@ -997,7 +1001,7 @@ SOL-RUNTIME-FIX and SOL-AUTHORITY-FIX merged with DOCS-4 at `faf3285`, and the
 joint gates there passed. REFACTOR-API-ROOT reached the branch inside
 SWEEP-API, which merged at `0395827`. The joint gates there were red on
 `refusal-catalogue.test.ts`, fixed forward at `3881a9d`. They passed at
-`158d6de`, at `d6787c5`, at `c53aa25` and at `9d2dbde`
+`158d6de`, at `d6787c5`, at `c53aa25`, at `9d2dbde` and at `efd5009`
 ([Current counts](#current-counts-and-what-they-are)). Each test count below
 is the `it(` calls in the file, with parametrised tables expanded, read from
 the file, not from a run.
