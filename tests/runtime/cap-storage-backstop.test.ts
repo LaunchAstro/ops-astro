@@ -507,7 +507,7 @@ describe.skipIf(serverUrl === undefined).each([
 describe.skipIf(serverUrl === undefined)('a 0023 database holding a row a new rule forbids', () => {
   it.each([
     ['a USD envelope under an AUD cap', 'AUD', 1000, 'USD', 10, /currency/u, '0023'],
-    ['an AUD cap committed past its limit', 'AUD', 100, 'AUD', 101, /ceiling/u, '0024'],
+    ['an AUD cap committed past its limit', 'AUD', 100, 'AUD', 101, /ceiling/u, '0023'],
   ] as const)(
     'refuses the upgrade for %s, stopping before the rule with the row untouched',
     async (_label, capCurrency, limit, envelopeCurrency, held, message, stopsAt) => {

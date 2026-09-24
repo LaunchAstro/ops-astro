@@ -232,7 +232,7 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-1: an over-ceiling total admitt
           String((error as { cause?: unknown }).cause ?? error),
         ),
       );
-      expect(await lastApplied(db)).toBe('0030');
+      expect(await lastApplied(db)).toBe('0028');
       expect(await capSnapshot(db)).toBe(seeded);
     },
     120_000,

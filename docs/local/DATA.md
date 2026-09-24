@@ -76,16 +76,27 @@ them can be told apart from an application safely, and there is no flag or
 environment variable that skips the check. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
 
+One run is one transaction. Every pending file's statements run in order,
+each file's ledger row is written after its statements, and there is one
+commit at the end, so a refused or failed run leaves the database at the
+version it started at (SOL-FR6-2). A file holding a statement PostgreSQL will
+not run inside a transaction block (`CREATE INDEX CONCURRENTLY`,
+`ALTER TYPE ... ADD VALUE`, `VACUUM` and the like), or one that would end the
+transaction, is refused before anything runs (`OUTSIDE_A_TRANSACTION` in
+`migrate.ts`). None of the files on disk holds one.
+
 A session can connect after that first look. So the runner looks again inside
-each migration's transaction, before its first statement and again after its
-ledger row, just before commit. It clears the backend's statistics snapshot
-first, because otherwise the second look inside one transaction would repeat
-the first. A session caught there rolls that migration back, and the error
-names the ones that committed before it in the same run. That leaves one
-window: a session that connects after the look before commit and before the
-commit completes. It starts on the old schema or waits on the migration's
-locks, and it is no worse off than a session that connects the moment after
-the upgrade. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
+the transaction, before each file's first statement and once more after the
+last ledger row, just before commit. It clears the backend's statistics
+snapshot first, because otherwise a later look inside one transaction would
+repeat the first. A session caught there refuses the run, and the whole run
+rolls back. That leaves one window: a session that connects after the look
+before commit and before the commit completes. It can begin a transaction
+against the old schema and carry on after the commit, which a session that
+connects afterwards cannot; a migration that needs to rule that out takes its
+locks before its checks, as 0030 does. A run of many files also holds its
+locks until the one commit, so an application that is somehow still up waits
+longer. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
 LIMIT` to close that window, because a crash between setting it and restoring
 it would leave the install refusing its own application.
 
@@ -103,7 +114,10 @@ upgrade steps give it, and a script that upgrades must stop them itself before
 databases at 0023 and at the head. It covers the refusal with the application
 login held, with other client sessions held, the ledger and schema unchanged
 after it, the apply once they close, an up-to-date install with the
-application connected, a session that arrives inside a migration, and the CLI.
+application connected, a session that arrives inside a migration, a session
+that arrives during the second of two pending files and a failure in the
+second of two (neither leaves the first), the refusal of each statement the
+transaction cannot hold, and the CLI.
 The test harness's `closeSessions()` ends its own application pool before a
 test migrates. Nothing in the runner has a bypass.
 
@@ -244,8 +258,9 @@ does not rest on it.
 ### The migration prefixes
 
 Running the conformance set only against the end state misses real states.
-Every installation passes through the state after `0001`, and a deploy that
-stops between two migrations leaves it in one of them. So
+Every installation passes through the state after `0001`, and an install
+last upgraded at an older head stands in one of them. A run of the runner
+cannot stop between two files, because it commits them together. So
 `packages/core-records/src/tenancy/testing/prefix-harness.ts` applies the
 migrations one at a time and, after each, runs the tenancy catalogue, the
 composite-key linter and the default-deny set in
