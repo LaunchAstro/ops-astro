@@ -316,9 +316,19 @@ with the session that wrote it, so another session in the same tab sees "not
 known". `SessionStore.clear` in `apps/web/src/session/token.ts` removes it at
 sign-out and when a 401 refusal ends the session. A save answered after sign-out
 caches nothing. It notes the session generation (`sessionGeneration`) when
-pressed and writes only if no session has ended since.
+pressed and writes only if no session has ended since. A confirmed save is
+written to the tab's storage when the server answers, whether or not the screen
+is still mounted, and never from a React state updater. If a refused read's mark
+is written in the same moment, the mark wins, so a later unavailable read in
+that session draws nothing. A save answered after its screen has closed is
+judged against the stored deny mark as well as the screen's own last hold,
+because another screen in the same session may have been refused since
+(THERMO-RECHECK-4 R4W1).
 `tests/surfaces/settings-denied-fallback.test.tsx` and
-`tests/surfaces/settings-late-save.test.tsx` hold both. The server's value and
+`tests/surfaces/settings-late-save.test.tsx` hold both.
+`tests/surfaces/settings-storage-writes.test.tsx` holds that no storage write
+runs inside a state updater, with a positive control, so a React rename of
+`basicStateReducer` fails the control rather than passing vacuously (R4W2). The server's value and
 the cached one are never on the page together, and the screen never draws the
 shipped default.
 

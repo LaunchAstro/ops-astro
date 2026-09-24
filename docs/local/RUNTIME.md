@@ -112,7 +112,7 @@ pickup(tx, PickupRequest): Promise<RuntimeResult<PickedUp>>
 handback(tx, HandbackRequest): Promise<RuntimeResult<HandedBack>>
 cancelAndClassify(tx, { lineageId, reason }): Promise<RuntimeResult<readonly Classification[]>>
 restart(tx, RestartRequest): Promise<RuntimeResult<Restarted>>
-heartbeat(tx, HeartbeatRequest): Promise<RuntimeResult<Renewed>>
+heartbeat(tx, HeartbeatRequest): Promise<RuntimeResult<Renewed>> // claimant: 'agent', required
 replayRecordedTransitions(tx): Promise<readonly Classification[]>
 classifyUnderLocks(tx, ClassifyRequest): Promise<Classification>
 ```
@@ -154,19 +154,26 @@ interface DecideRequest {
   signingKey: SigningKey;
   capId: string;
 }
-interface Decided {
+// Narrow on `decision` first. The four handles exist on the approve branch only.
+type Decided =
+  | (DecidedCommon & {
+      decision: 'approve';
+      envelopeId;
+      reservationId;
+      attemptId;
+      heldMinor: number;
+    })
+  | (DecidedCommon & { decision: 'reject' | 'request_changes' });
+interface DecidedCommon {
   decisionId;
   gateId;
   versionId;
-  decision;
   hash: string;
-  envelopeId?;
-  reservationId?;
-  attemptId?;
-  heldMinor?; // an approval only
 }
 
-interface PickupRequest {
+type PickupRequest = AgentPickupRequest | PersonPickupRequest;
+interface AgentPickupRequest {
+  claimant: 'agent'; // required; a person's pickup names 'person'
   reservationId;
   agentActorId;
   authorisedByPersonId; // the delegating person, named by the authorisation
@@ -971,7 +978,9 @@ direct SQL.
     their person or actor subject, and no other live `write` covers the task,
     the same transaction releases the lease and classifies its hold
     `authority_revoked`, with the grant id as the recorded cause (`personLeases`
-    in `revokeGrantAsManager`).
+    in `revokeGrantAsManager`). A revocation's applied write always names
+    `lostLeases`, empty when no person's lease lost its authority
+    (`RevocationWrite`, `recovery.ts`).
   - The recheck after the revocation asks `write` at record scope on the task
     (`stillAuthorised`). A holder whose business-wide `write` is revoked while a
     record-scoped `write` on the task remains keeps the lease, and can renew and

@@ -188,6 +188,12 @@ suite whose own run moved nothing is named on its own line. The rule costs
 one vitest process per suite instead of one for the manifest, and that cost is
 what makes the number belong to a path rather than to a total.
 
+Nothing vitest runs before a suite may use that database. The vitest global
+setup, `tests/support/global-setup.ts`, creates the cluster-wide roles through
+`postgres` for this reason. Run through the configured database, it moved the
+counter by 15 on a new cluster and by 3 on a warm one, so a suite that never
+touched the database looked as if it had.
+
 Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because those
 three read aggregates and an aggregate has no idea which file it came from or
 how the run ended. Both were observed, not theorised: the runner returned exit

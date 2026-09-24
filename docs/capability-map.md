@@ -1,6 +1,6 @@
 # Verifiable capability map
 
-Every product capability must be discoverable through one machine-readable map. This foundation defines the contract. The first product transfer introduces the registry implementation and its build checks.
+Every product capability must be discoverable through one machine-readable map. This foundation defines the contract. The first slice's UI transfer into `packages/ui` did not build the registry or its checks, so nothing enforces the contract yet ([ARCHITECTURE.md](../ARCHITECTURE.md)).
 
 ## Declare each capability once
 
@@ -8,7 +8,7 @@ The map covers surfaces, tables, jobs, gates, connectors, providers, skills and 
 
 Each capability has one typed registration that identifies its stable ID, kind, implementation, owning module, contract and verification references. UI registrations also identify supported variants. Build one complete map from those declarations and generate human-readable navigation from it. Do not maintain a separate manual inventory of the same facts.
 
-Define the exact schema with the first transfer. Keep the fields to facts that a developer, agent or check needs. Runtime task values, credentials, approval decisions and execution state do not belong in this map.
+Define the exact schema when the registry is built. Keep the fields to facts that a developer, agent or check needs. Runtime task values, credentials, approval decisions and execution state do not belong in this map.
 
 ## Enforce completeness independently
 
@@ -16,7 +16,7 @@ TypeScript validates the declarations and references it can see. A separate buil
 
 Reject missing registrations, duplicate IDs, broken implementation references and missing verification references. Test both directions: an implementation absent from the registry and a registry entry absent from the implementation must fail. Run the checks again in CI; a local hook alone does not enforce them.
 
-The first transfer must demonstrate a valid registration passing, then deliberate orphan, duplicate and stale entries failing. A generated index is not evidence that the capability works; its referenced behaviour tests and runtime evidence supply that proof.
+The registry's first version must demonstrate a valid registration passing, then deliberate orphan, duplicate and stale entries failing. A generated index is not evidence that the capability works; its referenced behaviour tests and runtime evidence supply that proof.
 
 ## Keep authority clear
 

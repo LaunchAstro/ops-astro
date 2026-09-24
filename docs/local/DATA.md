@@ -232,6 +232,10 @@ declaration's `authorisedOn` names it (`CommandDeclaration` in
 is checked against the task that the body's reservation or lease belongs to
 (`task.pickup`, `task.handback`, `task.heartbeat`; `SCOPE_OF.claim`). Every other
 command is checked against the business, whatever identifiers its body carries.
+Reads declare it too. `task.read` is `record`. It asks about the task once
+`reads/dispatch.ts` resolves it, and about the business when it does not. Every
+other read is `business`. The read path decides from its catalogue row, and
+`tests/commands/read-authorised-on.test.ts` holds the declaration to it.
 Deriving the scope from `request.recordId` instead let a record-scoped grant
 turn a refused `task.create` into an accepted one by naming the record it did
 hold. An untargeted command that carries an identifier it has no use for is
@@ -308,6 +312,9 @@ already exists, the installer sets `title` and `state` to their declared
 visibility class (`shared`, I09) where they differ, so a reseed shows a client
 those two fields on a business installed before 77bcc54 (`reconcileVisibility`,
 `tasks/reconcile-visibility.ts`). It changes no other field row and no record.
+`tests/tasks/install-visibility-upgrade.test.ts` pins that a second run writes
+nothing by `xmin` and `ctid`, because `field_defs` has no revision column and a
+same-transaction update leaves `xmin` unchanged.
 
 It never seeds a task. Nobody would have created a seeded task, and it would
 make every acceptance case pass without the product working.

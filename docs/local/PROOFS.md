@@ -114,7 +114,11 @@ does not own, so the run passes the flag instead of editing that config.
 
 `pnpm test` runs `tests/support/global-setup.ts` once first. On a cluster
 without `ops_astro_app` and `ops_astro_worker` it migrates and drops one
-throwaway database, so parallel files never race on creating those roles.
+throwaway database, so parallel files never race on creating those roles. It
+does this through the `postgres` database (or `template1` when the configured
+database is `postgres`), never the configured one. `pnpm db:conformance` reads
+the configured database's transaction counter around each suite, so the warm-up
+is not counted as the suite's own.
 
 Hooks have a 60 s timeout (`hookTimeout` in `vitest.config.ts`), because every
 database-bound file migrates and drops its own database in `beforeAll` and
@@ -160,15 +164,15 @@ the running slice's database.
 
 ## The proof files
 
-| File                        | Covers                                                                                                              | State                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `world.ts`                  | the shared fixture; not a proof                                                                                     | not a proof          |
-| `surface-inventory.test.ts` | item 1, the exported-surface inventory (I02 to I06)                                                                 | green, 10 cases      |
-| `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1 to N7)                                                        | see the matrix below |
-| `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02 to D04)                                                            | green, 38 cases      |
-| `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14)                                                           | see below            |
-| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)                                                           | green, 5 cases       |
-| `comment-rulings.test.ts`   | the comment rulings: agent comments internal only on both prefixes; a trashed task `NOT_FOUND` to a comment on both | tested, 2 cases      |
+| File                        | Covers                                                                                                                                                                                 | State                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `world.ts`                  | the shared fixture; not a proof                                                                                                                                                        | not a proof          |
+| `surface-inventory.test.ts` | item 1, the exported-surface inventory (I02 to I06)                                                                                                                                    | green, 10 cases      |
+| `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1 to N7)                                                                                                                           | see the matrix below |
+| `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02 to D04)                                                                                                                               | green, 72 cases      |
+| `predicate-rls.test.ts`     | item 4, supplementary to the I14 proof in `tests/tenancy/production-lookup.test.ts`, the four-state predicate/RLS mutation of a copy of `lockTask`'s statement (`commands/prepare.ts`) | 13 cases             |
+| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)                                                                                                                              | green, 5 cases       |
+| `comment-rulings.test.ts`   | the comment rulings: agent comments internal only on both prefixes; a trashed task `NOT_FOUND` to a comment on both                                                                    | tested, 2 cases      |
 
 ## The per-file cap, and why two files are harnesses
 
