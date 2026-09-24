@@ -74,6 +74,27 @@ request body. It proves that the answer is bound to this exact head, and
 nothing further: it reads no reviewer identity, so a green `review evidence
 for this revision` does not establish that any reviewer read anything.
 
+It does not read the outcome as English. The outcome is the whole text
+after `Code review:` or `Security review:` on that line, ignoring case and
+one trailing full stop, and it must be exactly one of these forms; anything
+else fails, and the failure lists them:
+
+- code review: `no findings`, `the review found nothing`,
+  `every finding it raised is closed`, `<N> findings, all closed` or
+  `<N> findings, <N> closed`;
+- security review: `run against <sha>, no findings`,
+  `run against <sha>, <N> findings, all closed` or
+  `run against <sha>, <N> findings, <N> closed`; on a change that touches
+  no sensitive path, the fixed text `not required: no sensitive paths changed`
+  as well.
+
+N is the same number on both sides, at least 1, with `finding` for 1. On a
+sensitive change `<sha>` must be the pull request's head. An explanation
+goes on the following lines, which the check does not read. So
+`approved with 2 findings; 2 resolved` and `no findings after recheck` fail
+by design: write `2 findings, 2 closed` or `no findings`, and put the rest on
+the next line.
+
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. Because
 `strict_required_status_checks_policy` is on, a branch must be up to date

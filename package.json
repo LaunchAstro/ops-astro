@@ -31,6 +31,7 @@
     "session:cases": "bash tests/agents/session-check-cases.sh",
     "receipt": "bash scripts/publication-receipt.sh",
     "pins": "node scripts/pins-check.mjs",
+    "pins:cases": "bash tests/ci/pins-check-cases.sh",
     "skills:refs": "node scripts/skill-refs-check.mjs",
     "merge:policy": "node scripts/merge-policy-check.mjs",
     "gate:range": "python3 scripts/gate/sweep.py --range",

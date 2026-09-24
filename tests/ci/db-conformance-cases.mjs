@@ -53,8 +53,13 @@ const docker = (...args) =>
 
 const dockerUp = () => docker('info', '--format', '{{.ServerVersion}}').status === 0;
 
+// A database the caller already runs, named here, is used instead of a new
+// container for each probe, so a lane holding a fixed port stays on it.
+const givenUrl = process.env['DB_CONFORMANCE_CASES_URL'] ?? '';
+
 /** A throwaway Postgres, removed however this ends. */
 function withDatabase(run) {
+  if (givenUrl !== '') return run(givenUrl);
   const password = randomBytes(18).toString('hex');
   const name = `hub-db-conformance-${randomBytes(6).toString('hex')}`;
   const started = docker(
@@ -211,7 +216,7 @@ const inCI = () => {
 const isChild = (process.env['DB_CONFORMANCE_CASES_CHILD'] ?? '') !== '';
 
 const skipUnlessDocker = (t) => {
-  if (dockerUp()) return false;
+  if (givenUrl !== '' || dockerUp()) return false;
   if (inCI()) {
     // Not t.skip. In CI a skip here is the green this file refuses.
     assert.fail(
@@ -237,6 +242,7 @@ const skipUnlessDocker = (t) => {
 const withoutDocker = (ci) => {
   const empty = mkdtempSync(join(tmpdir(), 'hub-db-cases-nopath-'));
   const env = { ...process.env, PATH: empty, DB_CONFORMANCE_CASES_CHILD: '1' };
+  delete env['DB_CONFORMANCE_CASES_URL'];
   if (ci) env['CI'] = 'true';
   else delete env['CI'];
   try {
@@ -401,6 +407,43 @@ test('two suites that each reach the database pass together', async (t) => {
         assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
         assert.match(run.stdout, /2 named suite\(s\), 2 test\(s\): 2 passed/u);
         assert.match(run.stdout, /none of them skipped/u);
+      },
+    ),
+  );
+});
+
+// Round ten, 24 September. vitest reads a path as a substring filter, so
+// naming `invariant.test.ts` also ran `invariant.test.ts.db.test.ts`, and a
+// named suite that never reached the database passed on its sibling's
+// transactions and test count.
+test('a named suite runs alone, not with a sibling its name prefixes', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      {
+        'invariant.test.ts': NEVER_TOUCHES_THE_DATABASE,
+        'invariant.test.ts.db.test.ts': REACHES_DATABASE,
+      },
+      { invariant: ['invariant.test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        assert.match(run.stderr, /without the database recording a single transaction/u);
+      },
+    ),
+  );
+});
+
+test('a named suite that reaches the database passes alone, sibling uncounted', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      { 'reaches.test.ts': REACHES_DATABASE, 'reaches.test.ts.more.test.ts': REACHES_DATABASE },
+      { invariant: ['reaches.test.ts'] },
+      (m) => {
+        const run = cruise(m, url);
+        assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+        assert.match(run.stdout, /1 named suite\(s\), 1 test\(s\): 1 passed/u);
       },
     ),
   );

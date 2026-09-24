@@ -55,9 +55,22 @@ const SENSITIVE = [
   /^packages\/core-connectors\//u, // tool execution and egress
   /^packages\/core-runtime\//u, // the agent loop, gates, the audit chain
   /^apps\/worker\//u, // tool execution
-  /^scripts\/gate\//u, // the contamination gate itself
-  /^\.husky\//u, // the hooks that enforce it
+  /^\.husky\//u, // the hooks that enforce the gate
   /^\.github\/workflows\//u, // what runs with repository credentials
+  // The governance gates themselves. The security review of d77b375, finding
+  // 1, 24 September: only the contamination gate counted, so a pull request
+  // that changed only this checker, or the database runner and its manifest,
+  // or pins-check, passed with `not required`. A gate decides what merges; a
+  // change to one is a change to that decision.
+  /^scripts\//u, // every checker CI and `pnpm check` run, and the runner itself
+  /^tests\/(?:agents|branding|ci|db|gate|licences)\//u, // their own cases, and the database suite manifest
+  /^package\.json$/u, // the scripts CI calls by name
+  /^pnpm-(?:lock|workspace)\.yaml$/u, // what installs, and which install scripts run
+  /^\.dependency-cruiser\.cjs$/u, // the dependency cruise's rules
+  /^commitlint\.config\.js$/u, // the commit-message gate's rules
+  /^\.gitleaks\.toml$/u, // the secrets scan's rules
+  /^vitest\.config\.ts$/u, // how the database gate's suites run
+  /^docs\/supply-chain-pins\.md$/u, // the record pins-check holds every pin to
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
 ];
 
@@ -87,7 +100,10 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // An HTML comment is instruction to the author, never evidence. Removing it
 // first is what stops the template's own prose from answering for the author.
-const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?-->/gu, ' ');
+// An unclosed comment runs to the end of the body, as GitHub renders it: the
+// security review of d77b375, finding 2, found a line the merger never sees
+// read as the only outcome. Everything after an unclosed `<!--` is hidden.
+const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, ' ');
 
 // The literal strings the template ships with. An unreplaced one is named in
 // the failure rather than reported as "no outcome stated", because the author
@@ -103,139 +119,114 @@ const PLACEHOLDERS = [
 // A field is a line that begins with the field name. `Code review:` at the
 // start of a line is an answer; "the code review found nothing" inside a
 // sentence, or a path ending in security-review.md, is not.
+//
+// Any Markdown line prefix still leaves a line that begins with the field
+// name. The security review of d77b375, finding 2: a contradicting line
+// written as a heading, a blockquote or a numbered item was not read, though
+// GitHub shows it as an ordinary field line. So any run of heading marks,
+// quote marks, list bullets, list numbers and checklist boxes may come first,
+// and bold or underscore emphasis may wrap the name, the colon or the line.
+// Sol's recheck of 356dbe5 added the checklist box and emphasis closing after
+// the colon: `- [ ] Security review: rejected` was not read, and
+// `**Security review:** run against <head>, no findings` read as `** run …`.
+//
+// Each prefix token matches a run one way only. The security rerun at 356dbe5,
+// N1: `#{1,6}` with optional space between tokens split a line of `#` every
+// possible way, and 40 of them took 41.8 s. `#+(?!#)` takes the whole run as
+// one token, so a line of any length is read in linear time, and seven or
+// more `#` still lead a field rather than hiding it.
 const FIELD =
-  /^[ \t]*(?:[-*+][ \t]+)?\*{0,2}(code|security)[ -]review\*{0,2}[ \t]*:[ \t]*(.*)$/gimu;
+  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)]|\[[ x]\])[ \t]*)*[*_]{0,3}(code|security)[ -]review[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
 
 /** Every occurrence of a field, in order, as {name, value, line}. */
 const fields = (text) => {
   FIELD.lastIndex = 0;
   return [...text.matchAll(FIELD)].map((m) => ({
     name: (m[1] ?? '').toLowerCase(),
-    value: (m[2] ?? '').trim(),
+    // Emphasis closing at the end of the line wraps the outcome, not part of it.
+    value: (m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim(),
     line: m[0].trim(),
   }));
 };
 
 // Did the review happen, and what did it conclude?
 //
-// Round five found this check matching the words "security review" and a
-// hash, so a body saying the review was NOT RUN, with the current hash beside
-// it, passed. Matching text is not establishing that a review happened. A
-// reviewer states an outcome, and there are only three kinds.
-//
-// Round eight, 23 September, found two halves of one defect. `Code review:
-// not approved` passed, because `approved` was matched as a bare substring
-// with nothing reading the word in front of it, so a rejected review received
-// green evidence. And `Code review: the review found nothing`, the wording
-// the pull request template advertises as passing, failed, because that
-// phrasing was on no list: the template and the parser disagreed about a
-// valid outcome. So the outcome words are an alternation anchored on word
-// boundaries, longest phrase first, a negator in front of one turns it into a
-// rejection, and the template's own advertised wordings are on the list.
-//
-// Refusals and absences come first: a line that says both "not run" and "no
-// findings" is a contradiction, and the safe reading of a contradiction is
-// the one that does not authorise a merge.
+// Rounds five to eleven read the outcome as free text: substrings, then
+// negators, then counts, conditions and closure verbs. Each round's rule
+// moved the hole rather than closing it. Sol's recheck of 526a4c8 still
+// passed `changes requested; all tests passed` and `2 findings; all
+// addressed except one`. Round twelve, 24 September (lead ruling, Sol's
+// "require an explicit review disposition"), stops reading English. The
+// outcome is the whole text after the field name on that line, trimmed,
+// case-insensitive, with one optional trailing full stop, and it must be one
+// form of a closed grammar. Anything else fails. An explanation goes on the
+// following lines, which this check does not read.
+const SHA = String.raw`[0-9a-f]{7,40}`;
+const COUNTED = String.raw`(?<raised>\d{1,4})\s+(?<noun>findings?),\s+(?:all|(?<closed>\d{1,4}))\s+closed`;
+
+const CODE_FORMS = [
+  /^no\s+findings$/u,
+  /^the\s+review\s+found\s+nothing$/u,
+  /^every\s+finding\s+it\s+raised\s+is\s+closed$/u,
+  new RegExp(String.raw`^${COUNTED}$`, 'u'),
+];
+const RAN_FORMS = [
+  new RegExp(String.raw`^run\s+against\s+${SHA},\s+no\s+findings$`, 'u'),
+  new RegExp(String.raw`^run\s+against\s+${SHA},\s+${COUNTED}$`, 'u'),
+];
+// Only where the change touches no sensitive path. Round thirteen, 24
+// September: a free reason read `not required: pending` and a rejected
+// review as answers, so the form is one fixed text.
+const NOT_REQUIRED = /^not\s+required:\s+no\s+sensitive\s+paths\s+changed$/u;
+const NOT_REQUIRED_HELP = 'not required: no sensitive paths changed';
+
+const CODE_HELP = [
+  'no findings',
+  'the review found nothing',
+  'every finding it raised is closed',
+  '<N> findings, all closed',
+  '<N> findings, <N> closed',
+];
+const RAN_HELP = [
+  'run against <sha>, no findings',
+  'run against <sha>, <N> findings, all closed',
+  'run against <sha>, <N> findings, <N> closed',
+];
+const help = (forms) =>
+  '        The accepted forms, with N the same number, at least 1, and\n' +
+  '        `finding` for 1:\n' +
+  forms.map((f) => `          ${f}`).join('\n') +
+  '\n        Put any explanation on the next line.\n';
+
+/** A counted form states one number of findings raised and closes them all. */
+const countsAgree = (m) => {
+  const { raised, noun, closed } = m.groups ?? {};
+  if (raised === undefined) return true;
+  const n = Number(raised);
+  if (n < 1 || (noun === 'finding') !== (n === 1)) return false;
+  return closed === undefined || Number(closed) === n;
+};
+
+const accepts = (forms, text) =>
+  forms.some((form) => {
+    const m = form.exec(text);
+    return m !== null && countsAgree(m);
+  });
+
+// Refusals the grammar rejects anyway, kept for the more specific message.
 const ABSENT =
   /\b(?:not\s+run|not\s+performed|not\s+done|no[tn]e?\s+yet|skipped?|pending|outstanding|waived|to\s?do|n\/a|deferred|will\s+run)\b/iu;
 const NEGATIVE = /\b(?:failed?|blocked|rejected|findings?\s+open|open\s+findings?|unresolved)\b/iu;
 
-// The words a reviewer uses for a clean result. The multi-word phrases come
-// first so the longest one wins: `no findings` is read whole, rather than as
-// a negator sitting in front of something else.
-const POSITIVE_WORDS = [
-  String.raw`no\s+(?:open\s+)?(?:findings?|issues?|problems?|blockers?|concerns?)`,
-  String.raw`(?:found|raised|turned\s+up|reported)\s+nothing`,
-  String.raw`nothing\s+(?:was\s+)?(?:found|raised)`,
-  String.raw`findings?\s+(?:are\s+)?(?:all\s+)?closed`,
-  String.raw`all\s+(?:findings?\s+)?closed`,
-  String.raw`(?:is|are)\s+closed`,
-  String.raw`closed`,
-  String.raw`passe[sd]`,
-  String.raw`pass(?:ing)?`,
-  String.raw`clean`,
-  String.raw`approved?`,
-  String.raw`green`,
-].join('|');
-
-// A word that reverses the one after it. `no` is on this list as well, and
-// `no findings` survives it, because that phrase is matched as one positive
-// word before `no` is ever read on its own.
-const NEGATOR = String.raw`(?:not|never|no|isn['\u2019]?t|wasn['\u2019]?t|aren['\u2019]?t|cannot)`;
-
-// Round nine, 23 September, found the negation narrower than the grammar it
-// was meant to reverse. `not all findings are closed` and `not fully
-// approved` both passed, because the negator had to sit directly against the
-// positive word and here it does not: one word of English between them was
-// enough to turn a rejection green. So the negator reaches across up to three
-// words. Punctuation is the boundary, and deliberately: `approved, no
-// findings` is two clauses, and the negator in the second has no business
-// reversing the first.
-const GAP = String.raw`[ \t-]{1,3}(?:\w+[ \t-]{1,3}){0,3}`;
-
-const NEGATED = new RegExp(String.raw`\b${NEGATOR}${GAP}(?:${POSITIVE_WORDS})\b`, 'iu');
-const POSITIVE = new RegExp(
-  String.raw`(?<!\b${NEGATOR}[ \t-]{1,3})\b(?:${POSITIVE_WORDS})\b`,
-  'iu',
-);
-
-// The same round found the other half: a disposition that closes some of the
-// findings and not the rest. `2 findings, 1 closed` carries no negator at
-// all, and `closed` read on its own is an approval. A count of closed
-// findings is a clean outcome only when it accounts for every finding raised,
-// so the two numbers are compared rather than the word being taken alone.
-// `3 findings, all closed` says so in words and still passes.
-const COUNT = String.raw`\d{1,4}|zero|one|two|three|four|five|six|seven|eight|nine|ten`;
-const WORD_NUMBERS = new Map(
-  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'].map(
-    (w, i) => [w, i],
-  ),
-);
-const count = (token) => {
-  const text = String(token ?? '').toLowerCase();
-  return /^\d+$/u.test(text) ? Number(text) : (WORD_NUMBERS.get(text) ?? Number.NaN);
-};
-
-// `1 of 3 closed`, and `2 findings ... 1 closed`. The gap between them stops
-// at a sentence boundary so two unrelated sentences are not read as one sum.
-const CLOSED_OF = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT})\b[^.;\n]{0,40}?\bclosed\b`,
-  'iu',
-);
-const RAISED_AND_CLOSED = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:open\s+)?findings?\b[^.;\n]{0,60}?` +
-    String.raw`\b(${COUNT})\s+(?:of\s+\S+\s+)?(?:findings?\s+)?(?:(?:is|are|were)\s+)?closed\b`,
-  'iu',
-);
-// A disposition that says in words that it is incomplete.
-const SOME_CLOSED =
-  /\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[^.;\n]{0,40}?\bclosed\b/iu;
-
-const partial = (value) => {
-  if (SOME_CLOSED.test(value)) return true;
-  for (const pattern of [CLOSED_OF, RAISED_AND_CLOSED]) {
-    const m = pattern.exec(value);
-    if (m === null) continue;
-    const raised = count(pattern === CLOSED_OF ? m[2] : m[1]);
-    const closed = count(pattern === CLOSED_OF ? m[1] : m[2]);
-    if (!Number.isNaN(raised) && !Number.isNaN(closed) && closed < raised) return true;
-  }
-  return false;
-};
-
-/**
- * 'placeholder' | 'empty' | 'absent' | 'negative' | 'partial' | 'positive' |
- * 'unstated'
- */
-const outcome = (value) => {
-  if (PLACEHOLDERS.some((p) => value.toLowerCase().includes(p.toLowerCase()))) return 'placeholder';
-  if (value === '') return 'empty';
-  if (ABSENT.test(value)) return 'absent';
-  if (NEGATIVE.test(value)) return 'negative';
-  if (NEGATED.test(value)) return 'negative';
-  if (partial(value)) return 'partial';
-  if (POSITIVE.test(value)) return 'positive';
-  return 'unstated';
+/** 'accepted' | 'placeholder' | 'empty' | 'absent' | 'negative' | 'unaccepted' */
+const outcome = (value, forms) => {
+  const text = value.trim().replace(/\.$/u, '').trim().toLowerCase();
+  if (PLACEHOLDERS.some((p) => text.includes(p.toLowerCase()))) return 'placeholder';
+  if (text === '') return 'empty';
+  if (accepts(forms, text)) return 'accepted';
+  if (ABSENT.test(text)) return 'absent';
+  if (NEGATIVE.test(text)) return 'negative';
+  return 'unaccepted';
 };
 
 const explain = {
@@ -243,8 +234,7 @@ const explain = {
   empty: 'is empty, so it records that someone typed a heading',
   absent: 'says the review was not run',
   negative: 'says the review failed or left findings open',
-  partial: 'closes some of the findings it raised and not the rest',
-  unstated: 'states no outcome, so it records that someone typed a heading',
+  unaccepted: 'is not one of the accepted outcome forms',
 };
 
 const failures = [];
@@ -268,11 +258,12 @@ if (codeReviewLines.length === 0) {
   );
 } else {
   for (const field of codeReviewLines) {
-    const verdict = outcome(field.value);
-    if (verdict === 'positive') continue;
+    const verdict = outcome(field.value, CODE_FORMS);
+    if (verdict === 'accepted') continue;
     failures.push(
       `a code-review line ${explain[verdict]}:\n` +
         `          ${field.line}\n` +
+        (verdict === 'unaccepted' ? help(CODE_HELP) : '') +
         '        ADR 0046 requires an actual report, not a mention of one.',
     );
   }
@@ -285,8 +276,13 @@ if (checkpoint === null) {
       '        See docs/agents/review-checkpoint.md.',
   );
 } else {
-  const recorded = checkpoint[1] ?? '';
-  if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
+  // The security review of d77b375, finding 3: the checkpoint head was read
+  // ignoring case and compared with it, so an uppercase head was a false red.
+  // Both sides in lowercase, as the security line has been since round
+  // fourteen.
+  const recorded = (checkpoint[1] ?? '').toLowerCase();
+  const current = head.toLowerCase();
+  if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
     failures.push(
       `the review checkpoint records head ${recorded}, and this pull request is\n` +
         `        at ${head}. A review of one revision is not a review of another.\n` +
@@ -305,7 +301,8 @@ if (sensitive.length > 0) {
       'this change touches the sensitive surface and carries no security review:\n' +
         sensitive.map((f) => `          ${f}`).join('\n') +
         '\n        AGENTS.md requires one before any pull request touching auth,\n' +
-        '        tenancy, tool execution, egress, custody or the audit chain.',
+        '        tenancy, tool execution, egress, custody or the audit chain, and\n' +
+        '        a change to a governance gate is a change to what may merge.',
     );
   } else {
     // Every security-review line, not the first one carrying a revision.
@@ -314,8 +311,12 @@ if (sensitive.length > 0) {
     // match. A later line naming an older revision is evidence for that older
     // revision, and this check exists to say exactly that.
     for (const field of securityFields) {
-      const match = /\b([0-9a-f]{7,40})\b/u.exec(field.value);
-      const recorded = match === null ? '' : (match[1] ?? '');
+      // Round fourteen, 24 September: the outcome is matched ignoring case,
+      // and the revision was read case-sensitively, so a head written in
+      // uppercase hex read as none. Both sides are compared in lowercase.
+      const match = /\b([0-9a-f]{7,40})\b/iu.exec(field.value);
+      const recorded = match === null ? '' : (match[1] ?? '').toLowerCase();
+      const current = head.toLowerCase();
       if (recorded === '') {
         failures.push(
           `a security review line states no revision, so nothing binds it to\n` +
@@ -323,7 +324,7 @@ if (sensitive.length > 0) {
             `          ${field.line}\n` +
             '        Record the head it ran against.',
         );
-      } else if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
+      } else if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
         failures.push(
           `a security review line records ${recorded}, and this pull request is\n` +
             `        at ${head}:\n` +
@@ -331,11 +332,12 @@ if (sensitive.length > 0) {
             '        Run it again against the current head.',
         );
       }
-      const verdict = outcome(field.value);
-      if (verdict === 'positive') continue;
+      const verdict = outcome(field.value, RAN_FORMS);
+      if (verdict === 'accepted') continue;
       failures.push(
         `a security review line ${explain[verdict]}:\n` +
           `          ${field.line}\n` +
+          (verdict === 'unaccepted' ? help(RAN_HELP) : '') +
           '        A change to this surface merges on a completed review, not on a\n' +
           '        line that mentions one.',
       );
@@ -347,15 +349,19 @@ if (sensitive.length > 0) {
   // placeholder passing on a change that touched no sensitive path, because
   // placeholders were read only where a security review was required. An
   // author who has not replaced the line has not read it, whatever the change
-  // touches. The surface still decides whether a review was needed: saying
-  // plainly that it was not is an answer, and passes here.
+  // touches. The surface still decides whether a review was needed: here the
+  // fixed `not required: no sensitive paths changed` is accepted, and since
+  // round twelve a security line on this surface is held to the grammar too.
   for (const field of securityFields) {
-    if (outcome(field.value) !== 'placeholder') continue;
+    const verdict = outcome(field.value, [...RAN_FORMS, NOT_REQUIRED]);
+    if (verdict === 'accepted') continue;
     failures.push(
-      `a security review line ${explain.placeholder}:\n` +
+      `a security review line ${explain[verdict]}:\n` +
         `          ${field.line}\n` +
+        (verdict === 'unaccepted' ? help([...RAN_HELP, NOT_REQUIRED_HELP]) : '') +
         '        The template asks for both outcome lines to be replaced. This\n' +
-        '        change touches no sensitive path, so say that on the line.',
+        `        change touches no sensitive path, so \`${NOT_REQUIRED_HELP}\` is\n` +
+        '        an answer.',
     );
   }
 }

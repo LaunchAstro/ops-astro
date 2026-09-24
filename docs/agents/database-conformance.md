@@ -10,8 +10,9 @@ ticket names.
 ## Proving the gate
 
 `database conformance gate` runs `pnpm run db:cases`. Those probes start a
-throwaway Postgres of their own, run controlled fixture suites through
-`scripts/db-conformance.mjs`, and assert what the runner refuses:
+throwaway Postgres of their own, or use the database named by
+`DB_CONFORMANCE_CASES_URL` when it is set, run controlled fixture suites
+through `scripts/db-conformance.mjs`, and assert what the runner refuses:
 
 - a fixture suite that reaches the database passes;
 - a fixture suite with one `test.skip` fails, and the skipped test is named;
@@ -21,15 +22,20 @@ throwaway Postgres of their own, run controlled fixture suites through
 - a named suite vitest never discovered fails, and the path is named;
 - a run vitest itself reported as failed fails, with every counted test passing;
 - a suite that reaches the database does not cover a sibling that does not;
+- a named suite runs alone: vitest reads a path as a substring, so
+  `invariant.test.ts` would also run `invariant.test.ts.db.test.ts`; every
+  other file the path selects is excluded, and a report holding any other
+  file fails;
 - an empty manifest fails;
 - a missing `DATABASE_URL` is refused rather than skipped.
 
-These probes need Docker. When it is not there they used to skip, and
-`pnpm run db:cases` exited 0 with eight probes unrun. That happened in CI
-too, where it made `database conformance gate` green over a job that had
-proved nothing. This file exists to refuse a skip, and skipping the whole file
-is the largest skip available. So the probes now read `CI`: with it set and no
-database reachable they fail, naming the reason, and the job goes red.
+These probes need Docker, or a database named by `DB_CONFORMANCE_CASES_URL`.
+When neither was there they used to skip, and `pnpm run db:cases` exited 0
+with eight probes unrun. That happened in CI too, where it made
+`database conformance gate` green over a job that had proved nothing. This
+file exists to refuse a skip, and skipping the whole file is the largest skip
+available. So the probes now read `CI`: with it set and no database reachable
+they fail, naming the reason, and the job goes red.
 Locally, with `CI` unset, the skip and its message stay, because a developer
 without Docker is not a broken hosted job.
 
