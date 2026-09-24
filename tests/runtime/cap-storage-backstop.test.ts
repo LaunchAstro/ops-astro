@@ -220,6 +220,8 @@ async function upgraded(): Promise<Built> {
   await envelope(w, { heldMinor: 600 });
   await envelope(w, { capId: usd, currency: 'USD', heldMinor: 50 });
   const seeded = await seedSnapshot(db);
+  // The runner refuses while this database has other sessions; seeding opened one.
+  await db.closeSessions();
   const migration = await migrate(db.admin, 'migrations');
   return { db, migration, seeded, seededAfter: await seedSnapshot(db) };
 }
@@ -523,6 +525,8 @@ describe.skipIf(serverUrl === undefined)('a 0023 database holding a row a new ru
         // At 0023 nothing in storage stops either row; only the command did.
         await envelope({ ...w, capId }, { currency: envelopeCurrency, heldMinor: held });
         const seeded = await seedSnapshot(db);
+        // The runner refuses while this database has other sessions; seeding opened one.
+        await db.closeSessions();
         await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
           message.test(String((error as { cause?: unknown }).cause ?? error)),
         );

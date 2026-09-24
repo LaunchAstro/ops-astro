@@ -41,6 +41,15 @@ export interface EmptyDatabase {
    */
   readonly restrictedRole: string;
   readonly restrictedUrl: string;
+  /**
+   * End the application pool's sessions before a migration.
+   *
+   * The runner refuses while anything else is connected to the database, and
+   * a test that seeds through `app` and then upgrades would otherwise be
+   * refused by its own pool. `app` stays usable: its next query opens a new
+   * session. Pools a test opened itself are the test's to close.
+   */
+  closeSessions(): Promise<void>;
   drop(): Promise<void>;
 }
 
@@ -142,7 +151,18 @@ export async function createEmptyDatabase(
 
   const admin = connectAsAdmin(urlFor(serverUrl, name), { source: 'migration', log });
   const appUrl = urlFor(serverUrl, name, loginRole, password);
-  const app = connect(appUrl, { source: 'runtime', log });
+  // A pool cannot be reopened once ended, so `app` is a fixed face over one
+  // that `closeSessions` replaces. A new pool connects on its first query.
+  let appPool = connect(appUrl, { source: 'runtime', log });
+  const app: Database = {
+    log,
+    async withBusiness(businessId, run) {
+      return await appPool.withBusiness(businessId, run);
+    },
+    async close(): Promise<void> {
+      await appPool.close();
+    },
+  };
 
   return {
     name,
@@ -153,6 +173,10 @@ export async function createEmptyDatabase(
     loginRole,
     restrictedRole,
     restrictedUrl: urlFor(serverUrl, name, restrictedRole, restrictedPassword),
+    async closeSessions(): Promise<void> {
+      await appPool.close();
+      appPool = connect(appUrl, { source: 'runtime', log });
+    },
     async drop(): Promise<void> {
       await app.close();
       await admin.close();

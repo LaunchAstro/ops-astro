@@ -99,7 +99,9 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
   `pg_isready -h 127.0.0.1` over TCP, because a fresh volume's init server
   answers the Unix socket before TCP is up. `auth-up.sh` and
   `pnpm verify:restart` wait the same way.
-- `db:migrate` applies the migrations and records them in the ledger.
+- `db:migrate` applies the migrations and records them in the ledger. It runs
+  before `auth:up` here because it refuses to apply anything while another
+  session is connected to the database, and GoTrue holds sessions there.
 - `auth:up` starts GoTrue on `127.0.0.1:54391` and writes `.local/auth.env`.
 - `auth:seed` mints the synthetic logins and writes `.local/synthetic-users.json`.
 - `db:seed` maps those subjects to people, memberships and grants. It seeds no
@@ -139,6 +141,31 @@ the browser makes only same-origin requests.
 
 `corepack pnpm db:down` stops the database container. It keeps the named
 volume, so the data survives.
+
+To upgrade an existing install to a newer head, stop the application first.
+The runner enforces it: with a migration pending and anything else connected
+to the database, it applies nothing and names what is connected.
+
+1. Stop the API: `kill <pid>` on the process you started with `api:up`, as
+   [Stopping what you started](#stopping-what-you-started) says.
+2. Stop GoTrue: `docker stop ops-astro-local-auth`. It connects to the same
+   database as `postgres` (`scripts/local/auth-up.sh`), so the runner counts it.
+   The web server does not connect to the database and can stay up.
+3. `corepack pnpm db:migrate`.
+4. Start them again: `corepack pnpm auth:up`, then `corepack pnpm api:up`.
+
+A refusal exits 2 and prints each session it found, one per line:
+
+```
+db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) while 1 other session(s) are connected to this database: ... Nothing was applied. Stop the application (the API and GoTrue) and anything else connected to this database, then run it again.
+db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00
+```
+
+Nothing changed. Stop whatever the lines name, whether an API, GoTrue, a `psql`
+you left open or a test run, and run `db:migrate` again. There is no flag or
+variable that skips the check. With nothing pending it passes even while the
+application runs, so running `db:migrate` against an up-to-date install is
+harmless. [DATA.md, "Upgrade"](DATA.md#upgrade) has the detail.
 
 ## Signing in
 

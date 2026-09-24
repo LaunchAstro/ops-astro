@@ -252,6 +252,8 @@ async function upgraded(): Promise<Built> {
   const roomy = await newCap(w);
   await envelope(w, roomy, 250);
   const seeded = await seedSnapshot(db);
+  // The runner refuses while this database has other sessions; seeding opened one.
+  await db.closeSessions();
   const migration = await migrate(db.admin, 'migrations');
   return { db, migration, seeded, seededAfter: await seedSnapshot(db) };
 }

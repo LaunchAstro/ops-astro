@@ -298,6 +298,8 @@ async function seededAt0029(
 async function upgraded(): Promise<Built> {
   const { db } = await seededAt0029('packbindupgraded');
   const seeded = await seedSnapshot(db);
+  // The runner refuses while this database has other sessions; seeding opened one.
+  await db.closeSessions();
   const migration = await migrate(db.admin, 'migrations');
   return { db, migration, seeded, seededAfter: await seedSnapshot(db) };
 }
@@ -467,6 +469,8 @@ describe.skipIf(serverUrl === undefined)('a 0029 database holding a row 0030 for
         const on = await approved(db.app, seed);
         await tamper(db.app, seed, on, await proposed(db.app, seed));
         const seeded = await seedSnapshot(db);
+        // The runner refuses while this database has other sessions; seeding opened one.
+        await db.closeSessions();
         await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
           /gates:/u.test(String((error as { cause?: unknown }).cause ?? error)),
         );

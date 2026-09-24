@@ -195,6 +195,8 @@ async function upgraded(): Promise<Built> {
   await heldReservation(db.app, seed);
   await identityHistory(db.app, seed);
   const seeded = await seedSnapshot(db);
+  // The runner refuses while this database has other sessions; seeding opened one.
+  await db.closeSessions();
   const migration = await migrate(db.admin, 'migrations');
   return { db, migration, seeded, seededAfter: await seedSnapshot(db) };
 }
@@ -433,6 +435,8 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
         );
         await write(db);
         const seeded = await seedSnapshot(db);
+        // The runner refuses while this database has other sessions; seeding opened one.
+        await db.closeSessions();
         await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
           message.test(String((error as { cause?: unknown }).cause ?? error)),
         );
