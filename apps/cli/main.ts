@@ -18,8 +18,8 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import {
-  DELEGATION_HEADER,
   accepts,
   createCli,
   isRefusal,

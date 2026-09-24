@@ -26,6 +26,7 @@
 
 import {
   COMMAND_SURFACE,
+  PREFIX,
   pathOf,
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
@@ -71,15 +72,6 @@ export interface CliOptions {
   /** The delegation credential a pickup returned, sent on the agent prefix only. */
   readonly delegation?: string;
 }
-
-/**
- * The two prefixes, as the API mounts them (`apps/api/app.ts`), and the header
- * the delegation travels in (`DELEGATION_HEADER` there). One copy on this side,
- * which `main.ts` imports; `tests/cli/cli-wire.test.ts` pins both against what
- * the API is sent, the header by the API's own constant.
- */
-const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
-export const DELEGATION_HEADER = 'x-agent-delegation';
 
 export interface CliAnswer {
   readonly status: number;
