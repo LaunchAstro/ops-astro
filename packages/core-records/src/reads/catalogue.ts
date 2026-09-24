@@ -20,7 +20,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 import type { Refusal } from '../authority/grants.ts';
 import {
-  fromAuthority,
+  fromReasoned,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
@@ -336,7 +336,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     async serve(tx, session) {
       const capabilities = await readCapabilities(tx, session);
-      if (capabilities.grants.length === 0) return fromAuthority(NO_GRANT_AT_ALL);
+      if (capabilities.grants.length === 0) return fromReasoned(NO_GRANT_AT_ALL);
       return { ok: true, ...capabilities };
     },
   },

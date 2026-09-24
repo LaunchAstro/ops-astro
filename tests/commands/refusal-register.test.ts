@@ -21,7 +21,7 @@ import {
 } from '../../packages/core-records/src/commands/register.ts';
 import {
   asCallerVisible,
-  fromAuthority,
+  fromReasoned,
   fromIdentity,
   fromRecords,
   refuseCommand,
@@ -172,7 +172,7 @@ describe('the three shapes that came before it', () => {
   });
 
   it('normalises an authority refusal, whose reason and fix are single strings', () => {
-    const refusal = fromAuthority({
+    const refusal = fromReasoned({
       code: 'SCOPE_NOT_GRANTED',
       reason: 'no live grant covers it',
       fix: 'ask a holder who may delegate',

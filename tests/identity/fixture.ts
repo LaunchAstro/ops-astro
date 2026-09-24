@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Identity rows, written the way an installation would write them: through the
+// Identity rows, written the way a deployment would write them: through the
 // application role, inside the tenancy wrapper, with every row carrying the
 // business the transaction is set to. Nothing here uses the owner connection,
 // so a fixture that only works as a superuser fails here rather than passing

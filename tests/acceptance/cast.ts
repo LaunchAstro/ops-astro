@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The cast, enrolled the way an installation enrols people.
+// The cast, enrolled the way a deployment enrols people.
 //
 // Split out of `world.ts` because that file reached 408 changed lines against
 // this repository's 400-line per-file cap, which no waiver lifts. SPEC section
