@@ -19,9 +19,8 @@ import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts
 import { declarationOf, type CommandName } from './surface.ts';
 import { handbackLease } from './tasks-handback.ts';
 import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
-import { leaseSecondsFixes } from './tasks-lease.ts';
+import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
-import { heartbeatLease } from './tasks-controls.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';

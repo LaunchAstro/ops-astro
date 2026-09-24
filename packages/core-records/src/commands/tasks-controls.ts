@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.cancel`, `task.restart` and `task.heartbeat`: the work controls, as
-// commands over the runtime functions that own them.
+// `task.cancel` and `task.restart`: the work controls, as commands over the
+// runtime functions that own them.
 //
 // Cancel and restart name the task and the lineage on it. The envelope has
 // already asked the declaration's `write` on tasks, the work-control authority
@@ -9,21 +9,15 @@
 // is checked against it, so authority on one task never reaches a lineage on
 // another (R3's rule, the one `propose` enforces). Neither writes the task
 // record, which is why neither takes an `expectedRevision`.
-//
-// The heartbeat is the agent's. The person path refuses it in `handlers.ts`
-// as it refuses pickup and handback; the agent path reaches `heartbeatLease`
-// with the actor and delegation its credential resolved to.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
-import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src/index.ts';
+import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import type { AgentClaimant } from './tasks-claimant.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
-import { renewLease, type RenewalFields } from './tasks-lease.ts';
 
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
 const REASON_LIMIT = 500;
@@ -146,17 +140,4 @@ export async function restartOnTask(
     gateId: result.value.gateId,
     payloadDigest: result.value.payloadDigest,
   });
-}
-
-/** The agent renews its own lease, under the delegation its credential resolved to. */
-export async function heartbeatLease(
-  tx: TenantQuery,
-  fields: RenewalFields,
-  agent: AgentClaimant,
-  delegationId: string,
-): Promise<HandlerOutcome> {
-  return await renewLease(
-    fields,
-    async (lease) => await heartbeat(tx, { ...lease, holderActorId: agent.actorId, delegationId }),
-  );
 }
