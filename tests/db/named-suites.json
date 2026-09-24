@@ -56,7 +56,9 @@
     "CAP-RR extends cap-storage-backstop (Sol 6 SURFACE-R-2: two application-role transactions whose snapshots both saw room under one cap, each raise fitting alone, together over it; at read committed the second is refused budget_caps_ceiling, at repeatable read and serializable it is refused serialization_failure, and the committed total stays within the cap on fresh and upgraded databases).",
     "OWNER-RULINGS-FIX adds comment-rulings (Nathan's first-slice rulings over HTTP: a delegated agent's client-audience comment refused AUDIENCE_NOT_PERMITTED 422 on the agent prefix and AUTH_NO_MEMBERSHIP 403 on the person prefix, its internal note written, nothing else written; a comment on a trashed task refused NOT_FOUND 404 on both entries in the bytes of an identifier nothing carries, no comment written) and moves external-party to the I09 ruling (a shared task shows its client the title and the state's label).",
     "ARCH-4 adds rediscovery-pin (the statement sequence from the first unlocked discovery to the end of the recheck at propose, cancel, delegation.revoke, grant.revoke and the startup replay, taken before those sites moved onto one rediscovery module; propose's window gains its held-set recheck with O3), and o3-held-recheck (thermo O3: task.propose meeting an approval of the version it supersedes, forced between discovery and locks, and a rejection meeting a hold revived by a test write in the same window, each answer the first request after one AffectedSetChanged retry with the hold classified under the right cause and nothing written by the lost attempt).",
-    "THERMO-FIX-RUNTIME adds successor-bounds-edge (thermo NB1 at 9d2dbde through the command entry: with 2 units of cap room, a successor ceiling of 3 and a successor in USD under an AUD cap are each refused SUCCESSOR_OUT_OF_BOUNDS in their exact bytes with no report retained and nothing moved, and a ceiling of exactly 2 is accepted)."
+    "THERMO-FIX-RUNTIME adds successor-bounds-edge (thermo NB1 at 9d2dbde through the command entry: with 2 units of cap room, a successor ceiling of 3 and a successor in USD under an AUD cap are each refused SUCCESSOR_OUT_OF_BOUNDS in their exact bytes with no report retained and nothing moved, and a ceiling of exactly 2 is accepted).",
+    "FR1-DBTEST (final review R1 #49) names the 23 database-bound suites that no required context ran: tests/api/{admission-enumeration,agent-operation-id,surface-operations}, tests/commands/{agent-operands,agent-operation-order,agent-replay-auth,audit-chain,command-shape,command-surface,concurrency,create-authority,local-slice,lost-update,task-fields,task-lifecycle,task-trash-commands}, tests/identity/{identifier-resolution,login-resolution}, tests/records/{records-integrity,slot-law} and tests/tasks/{task-model,task-spine,task-trash}. The tests/api and tests/commands files named agent-operation-id and surface-operations are different suites, and both copies are named. It adds final-r1-dbtest-triggers (#64: the 0010 proposal_versions and 0014 attempts triggers, each branch broken on purpose as the application role and as the owner, with the permitted writes as the control) and final-r1-dbtest-manifest, the guard that fails when a suite reaching fresh-database.ts is neither named nor listed here as unnamed; that guard is a pure unit suite and must not be named.",
+    "Not named, because each skips without a variable the runner does not set and the runner refuses a skip: restart-http.test.ts (W06 over HTTP, needs L5_RESTART_CONTAINER_NAME and L5_RESTART_API_PORT, run beside restart-and-expiry by pnpm verify:restart) and pickup-replay-restart.test.ts (a lost pickup across an API and Postgres restart, needs PICKUP_REPLAY_API_PORT and PICKUP_REPLAY_PG_CONTAINER). Not named because they are pure unit suites that import a harness module reaching fresh-database.ts but open no database: restart-declared.test.ts (restart-harness refusals), cli-answers.test.ts and cli-wire.test.ts (the real CLI against an HTTP stand-in, through cli-process-harness), and global-setup.test.ts (besideUrl only)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -189,6 +191,30 @@
     "tests/tenancy/statement-capture-full.test.ts",
     "tests/runtime/recovery-replay-pin.test.ts",
     "tests/runtime/pickup-refusal-order.test.ts",
-    "tests/runtime/rediscovery-pin.test.ts"
+    "tests/runtime/rediscovery-pin.test.ts",
+    "tests/api/admission-enumeration.test.ts",
+    "tests/api/agent-operation-id.test.ts",
+    "tests/api/surface-operations.test.ts",
+    "tests/commands/agent-operands.test.ts",
+    "tests/commands/agent-operation-order.test.ts",
+    "tests/commands/agent-replay-auth.test.ts",
+    "tests/commands/audit-chain.test.ts",
+    "tests/commands/command-shape.test.ts",
+    "tests/commands/command-surface.test.ts",
+    "tests/commands/concurrency.test.ts",
+    "tests/commands/create-authority.test.ts",
+    "tests/commands/local-slice.test.ts",
+    "tests/commands/lost-update.test.ts",
+    "tests/commands/task-fields.test.ts",
+    "tests/commands/task-lifecycle.test.ts",
+    "tests/commands/task-trash-commands.test.ts",
+    "tests/identity/identifier-resolution.test.ts",
+    "tests/identity/login-resolution.test.ts",
+    "tests/records/records-integrity.test.ts",
+    "tests/records/slot-law.test.ts",
+    "tests/tasks/task-model.test.ts",
+    "tests/tasks/task-spine.test.ts",
+    "tests/tasks/task-trash.test.ts",
+    "tests/db/final-r1-dbtest-triggers.test.ts"
   ]
 }
