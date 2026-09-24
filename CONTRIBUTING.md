@@ -77,10 +77,15 @@ for this revision` does not establish that any reviewer read anything.
 It reads each code-review and security-review line as one outcome. A line
 holding `not`, `never`, `no`, `cannot`, `isn't`, `wasn't` or `aren't`
 anywhere is a rejection, unless the `no` belongs to `no findings` (or no
-issues, problems, blockers or concerns). A line that counts findings fails
-when any count closed is lower than a count raised, across sentences too:
-`2 findings. 1 closed` fails and `2 findings. 2 closed` passes. Reword
-a clean outcome rather than negate part of it.
+issues, problems, blockers or concerns). A condition anywhere on the line
+(`subject to`, `pending`, `once`, `after`, `if`, `provided`, `unless`,
+`until`) is a rejection too: an approval that waits on something is not an
+outcome. Findings, issues, problems, blockers and concerns are all findings,
+and closed, resolved, fixed and addressed all close one. A line that
+mentions a finding must close every one, in words (`all`, `every`, `both`)
+or in counts, across sentences too: `2 issues; 1 resolved` and
+`approved with some issues` fail, and `2 findings. 2 closed` passes. Reword
+a clean outcome rather than qualify part of it.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. Because

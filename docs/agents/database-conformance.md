@@ -29,7 +29,8 @@ through `scripts/db-conformance.mjs`, and assert what the runner refuses:
 - an empty manifest fails;
 - a missing `DATABASE_URL` is refused rather than skipped.
 
-These probes need Docker. When it is not there they used to skip, and
+These probes need Docker, or a database named by `DB_CONFORMANCE_CASES_URL`.
+When neither was there they used to skip, and
 `pnpm run db:cases` exited 0 with eight probes unrun — including in CI, where
 that made `database conformance gate` green over a job that had proved
 nothing. A skip is what this file exists to refuse, and skipping the whole
