@@ -108,7 +108,7 @@ describe.skipIf(serverUrl === undefined)(
 
     it('reconciles exactly title and state on an existing spine, and is stable on a second call', async () => {
       await db.app.withBusiness(upgraded, async (tx) => {
-        // 1. The pre-77bcc54 shape: the current install with title and state
+        // 1. The pre-035967b shape: the current install with title and state
         //    put back to internal, which is all the old installer did differently.
         const first = await installTaskSpine(tx);
         await tx.query(

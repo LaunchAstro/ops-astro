@@ -148,9 +148,33 @@ const shallow = (() => {
   }
 })();
 
-/** Every hash-shaped token in `text`, except one inside a path or file name. */
+/** The characters that end a word around a hash: space, quotes, brackets. */
+const BOUNDARY = /[\s`'"()[\]<>,;]/u;
+
+/**
+ * Every hash-shaped token in `text`, except one inside a path or a name.
+ *
+ * A hash after `-` is exempt only where its word is a path or a file name
+ * (it holds a `/` or a `.`, as `ops-astro-<hash>/` or `REVIEW-<hash>.md`) or a
+ * record's upper-case name (`ROOT-<hash>`). Prose such as `pre-<hash>` or
+ * `post-<hash>` is scanned: that is where R1-SURFACE-41's two stale test
+ * comments hid.
+ */
 const hashTokens = (text: string): string[] =>
-  [...text.matchAll(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-])/gu)].map((match) => match[0]);
+  [...text.matchAll(/(?<![\w/.])[0-9a-f]{7,40}(?![\w/-])/gu)]
+    .filter((match) => {
+      if (text[match.index - 1] !== '-') return true;
+      const before = text.slice(0, match.index);
+      let start = before.length;
+      while (start > 0 && !BOUNDARY.test(before[start - 1] ?? '')) start -= 1;
+      const after = text.slice(match.index);
+      const stop = after.search(BOUNDARY);
+      const word = text.slice(start, match.index + (stop < 0 ? after.length : stop));
+      const path = /[/.]/u.test(word);
+      const name = /^[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-$/u.test(before.slice(start));
+      return !path && !name;
+    })
+    .map((match) => match[0]);
 
 /**
  * A line that cites a head in prose: a whole comment line in a script or test
@@ -158,6 +182,20 @@ const hashTokens = (text: string): string[] =>
  */
 const isCommentLine = (line: string): boolean =>
   /^\s*(?:\/\/|\/\*|\*|(?:describe|it)(?:\.\w+)*\(\s*['`])/u.test(line);
+
+describe('the #41 guard reads a hash after a dash (R1-SURFACE-41)', () => {
+  it.each([
+    ['The pre-abc1234 shape', ['abc1234']],
+    ['the post-abc1234 grid', ['abc1234']],
+    ['at abc1234 and def5678', ['abc1234', 'def5678']],
+    ['`.local/ops-astro-abc1234/gate.log`', []],
+    ['ops-astro-final-review-abc1234/', []],
+    ['`REVIEW-RUNTIME-abc1234.md`', []],
+    ['(ROOT-abc1234)', []],
+  ])('%s', (text, hashes) => {
+    expect(hashTokens(text)).toEqual(hashes);
+  });
+});
 
 describe.skipIf(shallow)('commit hashes cited in docs, code comments and test titles (#41)', () => {
   it('resolve in the history of this head', () => {
