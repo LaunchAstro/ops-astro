@@ -44,4 +44,10 @@ describe('settle', () => {
     const settlement = settle(stale);
     expect(settlement.kind === 'stale' ? settlement.refusal : null).toBe(stale);
   });
+
+  it('carries the answer on ok, so a screen reads the echo from the settlement', () => {
+    const outcome: CommandOutcome = { recordId: 'r-1', revision: 4, detail: { value: 7777 } };
+    const settlement = settle<CommandOutcome>({ ok: true, value: outcome });
+    expect(settlement.kind === 'ok' ? settlement.value : null).toBe(outcome);
+  });
 });

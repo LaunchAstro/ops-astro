@@ -15,12 +15,16 @@
 import { useRef, useState, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
-import type { TaskComment } from '../../operations/shapes.ts';
+import type { InternalTaskComment } from '../../operations/shapes.ts';
 import { useCommand } from '../../records/use-command.ts';
 
 export interface CommentsProps {
   readonly client: OperationsClient;
-  readonly comments: readonly TaskComment[];
+  /**
+   * An internal reader's comments, every field present. The shared projection
+   * is drawn by `SharedTaskDetail.tsx`, which never mounts this box.
+   */
+  readonly comments: readonly InternalTaskComment[];
   readonly recordId: string;
   /** The revision the comment is written against. `task.comment` does not move it. */
   readonly revision: number;
@@ -91,23 +95,23 @@ export function Comments(props: CommentsProps): ReactElement {
         <div className="thread" data-comments="list">
           {props.comments.map((comment) => (
             <article
-              className={`msg msg--${comment.audience ?? 'unknown'}`}
+              className={`msg msg--${comment.audience}`}
               data-comment-id={comment.id}
-              data-audience={comment.audience ?? 'unknown'}
+              data-audience={comment.audience}
               key={comment.id}
             >
               <div className="sbact__meta">
                 {/* The audience is drawn on every comment, because "who may
                     read this" is the one thing a person writing the next one
                     needs to know and the one thing a colour cannot say. */}
-                <span className="sb__state" data-comment-audience={comment.audience ?? 'unknown'}>
+                <span className="sb__state" data-comment-audience={comment.audience}>
                   {audienceWord(comment.audience)}
                 </span>
-                {comment.comment_type === undefined ? null : <span> · {comment.comment_type}</span>}
-                {comment.author === undefined ? null : <span> · {comment.author}</span>}
-                {comment.posted_at === undefined ? null : <span> · {comment.posted_at}</span>}
+                <span> · {comment.comment_type}</span>
+                <span> · {comment.author}</span>
+                <span> · {comment.posted_at}</span>
               </div>
-              <p className="card__body">{comment.body ?? ''}</p>
+              <p className="card__body">{comment.body}</p>
             </article>
           ))}
         </div>
@@ -198,10 +202,10 @@ export function Comments(props: CommentsProps): ReactElement {
 }
 
 /** The audience in the words a person reads, and the server's own word kept. */
-function audienceWord(audience: string | undefined): string {
+function audienceWord(audience: string): string {
   if (audience === 'internal') return 'Internal';
   if (audience === 'client') return 'Client';
   // A word this build does not know is printed as it arrived. Inventing a
   // label for it would hide the fact that something new is being stored.
-  return audience ?? 'no audience';
+  return audience;
 }

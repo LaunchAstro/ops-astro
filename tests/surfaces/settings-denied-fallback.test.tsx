@@ -87,7 +87,48 @@ function api(): Server {
   return Object.assign(held, { fetch });
 }
 
-const open = async (server: Server): Promise<Mounted> => {
+/**
+ * A server with no storage behind the tab, whose first `settings.read` and
+ * whose write each answer only when the test releases them.
+ */
+function heldApi(): Server & {
+  readonly releaseRead: () => void;
+  readonly releaseWrite: () => void;
+} {
+  const gates = { read: (): void => {}, write: (): void => {} };
+  const readHeld = new Promise<void>((resolve) => {
+    gates.read = resolve;
+  });
+  const writeHeld = new Promise<void>((resolve) => {
+    gates.write = resolve;
+  });
+  const server = api();
+  const answer = server.fetch;
+  const first = { read: true };
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    const at = String(url);
+    if (at.endsWith('/settings/read') && first.read) {
+      first.read = false;
+      await readHeld;
+    }
+    if (at.endsWith('/settings/set_four_eyes_threshold')) await writeHeld;
+    return answer(url, init);
+  }) as unknown as typeof globalThis.fetch;
+  return Object.assign(server, {
+    fetch,
+    releaseRead: () => {
+      gates.read();
+    },
+    releaseWrite: () => {
+      gates.write();
+    },
+  });
+}
+
+const open = async (
+  server: Server,
+  storage: Storage | null = window.sessionStorage,
+): Promise<Mounted> => {
   const page = await mount(
     <SettingsScreen
       client={
@@ -99,7 +140,7 @@ const open = async (server: Server): Promise<Mounted> => {
         })
       }
       grantKey={grantKeyOf(ADA)}
-      storage={window.sessionStorage}
+      storage={storage}
     />,
   );
   await tick();
@@ -211,6 +252,31 @@ describe('a denied settings.read ends the fallback for the session', () => {
     await tick();
     expect(known(page)).toContain('7777');
     expect(cached()).toContain('7777');
+    await page.unmount();
+  });
+
+  it('with no storage, a save answered after a denied read does not lift the hold', async () => {
+    // Blocked storage leaves the hold in memory only. Save is pressed before
+    // the read answers, the read is refused while the write is in flight, and
+    // the write is then confirmed: the hold stays, so the reread that follows,
+    // unavailable, draws nothing.
+    const server = heldApi();
+    server.answer = 'denied';
+    const page = await open(server, null);
+    await page.type('#settings-four-eyes', '7777');
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+
+    server.releaseRead();
+    await tick();
+    expect(page.find('[data-settings="read"]')?.getAttribute('data-outcome')).toBe('denied');
+
+    server.answer = 'unavailable';
+    server.releaseWrite();
+    await tick();
+    expect(page.find('[data-settings="read"]')?.getAttribute('data-outcome')).toBe('unavailable');
+    expect(page.text()).not.toContain('7777');
+    expect(known(page)).toContain('not known');
     await page.unmount();
   });
 });

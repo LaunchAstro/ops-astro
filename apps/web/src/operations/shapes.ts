@@ -53,8 +53,10 @@ export interface TaskSummary {
  * used, and the screen would have to guess which of the two it was looking at.
  *
  * **Every field is optional except the identifier**, because an external reader
- * is given fewer of them. The screen draws what arrived and says nothing about
- * what did not; it does not fill a gap in a projection with a word of its own.
+ * is given fewer of them. This is the shape of `SharedTask`'s comments; an
+ * internal reader's are `InternalTaskComment`. The shared view draws what
+ * arrived and says nothing about what did not; it does not fill a gap in a
+ * projection with a word of its own.
  */
 export interface TaskComment {
   readonly id: string;
@@ -215,9 +217,10 @@ export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
   readonly history: readonly TaskHistoryEntry[];
   /**
-   * In posted order, as the read returned them. An internal reader is given
-   * every comment in full; every other role is given the client comments in
-   * the fields the catalogue marks `shared`.
+   * In posted order, as the read returned them, every comment in full: this
+   * detail is only ever an internal reader's. Every other role is answered
+   * `sharedTask` instead, whose comments are the client ones in the fields the
+   * catalogue marks `shared` (`SharedTask`).
    */
   readonly comments: readonly InternalTaskComment[];
   /**
