@@ -319,22 +319,7 @@ export async function pickup(
   ]);
 
   // Re-read under the locks. Everything above was discovery.
-  const claimable = await tx.query<{
-    readonly state: string;
-    readonly lease_id: string | null;
-    readonly gate_state: string;
-    readonly lineage_state: string;
-    readonly superseded: boolean;
-    readonly attempt_id: string;
-    readonly attempt_state: string;
-    readonly marked: boolean;
-    readonly bound_lease_state: string | null;
-    readonly bound_lease_expired: boolean | null;
-    readonly held_minor: string;
-    readonly run_state: string;
-    readonly settled: boolean;
-    readonly active_elsewhere: boolean;
-  }>(
+  const claimable = await tx.query<ClaimState>(
     `select res.state, res.lease_id, res.held_minor::text as held_minor, run.state as run_state,
             exists (select 1 from public.handback_reports hr
                      where hr.business_id = res.business_id and hr.reservation_id = res.id
@@ -366,105 +351,57 @@ export async function pickup(
       'Re-read the queue.',
     );
   }
-  if (state.marked) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
-      'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
-    );
-  }
-  /**
-   * R5. The expired-lease lifecycle, and it starts here because this was the
-   * branch that made it unreachable: a reservation with a non-null `lease_id`
-   * refused before anything looked at whether that lease had expired, so the
-   * old identity was never fenced, its hold was never classified, and the only
-   * expiry branch in the file applied to a *different* unleased reservation on
-   * the same task.
-   *
-   * The owning transaction does the whole thing. It fences the old lease,
-   * classifies the old hold under the locks it already holds, and then opens a
-   * fresh hold on the still-approved version — which 0019 permits, because one
-   * active hold per version is the accepted rule and one hold ever was not.
-   * The abandoned reservation is never revived; the replacement is a new row.
-   */
-  let reservationId = request.reservationId;
-  let attemptId = state.attempt_id;
-  if (state.state === 'held' && state.lease_id !== null) {
-    if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
-      return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
-    }
+  const plan = planClaim(state, request.reservationId);
+  if (plan.kind === 'refuse') return plan.refusal;
+  const expiredLeaseId = plan.kind === 'replace' ? plan.fence : null;
+
+  // R5. The owning transaction does the whole expired-lease lifecycle. It
+  // fences the old lease and classifies the old hold under the locks it
+  // already holds; the replacement hold is opened below.
+  if (expiredLeaseId !== null) {
     await tx.query(
       `update public.leases set state = 'expired', released_at = now()
         where business_id = $1 and id = $2 and state = 'live'`,
-      [tx.businessId, state.lease_id],
+      [tx.businessId, expiredLeaseId],
     );
     const classified = await classifyUnderLocks(
       tx,
       {
         reservationId: request.reservationId,
         cause: 'lease_expired_and_fenced',
-        causeId: state.lease_id,
+        causeId: expiredLeaseId,
       },
       locks,
     );
     if (!classified.released) {
       return refuse(
         'RESERVATION_NOT_CLAIMABLE',
-        `the hold behind lease ${state.lease_id} could not be released: ${classified.reason}`,
+        `the hold behind lease ${expiredLeaseId} could not be released: ${classified.reason}`,
         'A retained or quarantined hold goes to its recorded owner, not to a worker.',
       );
     }
-    const replacement = await reserve(tx, {
-      envelopeId: found.envelope_id,
-      versionId: found.version_id,
-      runId: found.run_id,
-      stepId: found.step_id,
-      heldMinor: Number(state.held_minor),
-    });
-    if (!replacement.ok) return replacement;
-    reservationId = replacement.value.reservationId;
-    attemptId = replacement.value.attemptId;
-  } else if (state.state === 'abandoned' && replaceable(state)) {
-    /**
-     * R5, the remainder. A hold that ended without settling -- the authority
-     * behind its lease was lost, and replay classified it -- leaves approved
-     * work on a live lineage that nothing now holds. It is never revived; the
-     * claim gets a fresh hold and a fresh attempt on the still-approved
-     * version, under the locks already held, exactly as the expired-lease
-     * branch above does. Settled work is not replaceable: a handback that
-     * abandoned its hold because nothing was spent still finished the work.
-     */
-    if (state.gate_state !== 'approved' || state.lineage_state !== 'live' || state.superseded) {
-      return refuse(
-        'RESERVATION_NOT_CLAIMABLE',
-        'the approval behind this reservation is no longer current',
-        'Re-read the queue. A superseded or terminal approval authorises nothing.',
-      );
-    }
-    const replacement = await reserve(tx, {
-      envelopeId: found.envelope_id,
-      versionId: found.version_id,
-      runId: found.run_id,
-      stepId: found.step_id,
-      heldMinor: Number(state.held_minor),
-    });
-    if (!replacement.ok) return replacement;
-    reservationId = replacement.value.reservationId;
-    attemptId = replacement.value.attemptId;
-  } else if (state.state !== 'held') {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      `reservation ${request.reservationId} is ${state.state}`,
-      'A terminal reservation is never revived. Replacement work gets a fresh attempt.',
-    );
   }
-  if (state.gate_state !== 'approved' || state.lineage_state !== 'live' || state.superseded) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      'the approval behind this reservation is no longer current',
-      'Re-read the queue. A superseded or terminal approval authorises nothing.',
-    );
+  // The abandoned reservation is never revived; a replacement is a new row
+  // with a new attempt, on the still-approved version.
+  const claimed: RuntimeResult<{ readonly reservationId: string; readonly attemptId: string }> =
+    plan.kind === 'fresh'
+      ? { ok: true, value: { reservationId: request.reservationId, attemptId: state.attempt_id } }
+      : await reserve(tx, {
+          envelopeId: found.envelope_id,
+          versionId: found.version_id,
+          runId: found.run_id,
+          stepId: found.step_id,
+          heldMinor: Number(state.held_minor),
+        });
+  if (!claimed.ok) return claimed;
+  // Checked after the fence, the classification and the replacement hold have
+  // written, as it always has been on this path: the command's savepoint is
+  // what discards them when this refuses. Moving the check above the writes
+  // would change which refusal a caller sees, so it stays here.
+  if (expiredLeaseId !== null && !approvalCurrent(state)) {
+    return approvalNotCurrent();
   }
+  const { reservationId, attemptId } = claimed.value;
 
   // Never steal a live lease. An expired one is fenced out by the new fence
   // below rather than deleted, so a late report from it can still be retained.
@@ -609,6 +546,102 @@ export async function pickup(
   return delegation === undefined
     ? { ok: true, value: { ...common, claimant: 'person' } }
     : { ok: true, value: { ...common, claimant: 'agent', delegation } };
+}
+
+/** The claimable reservation as re-read under the locks. */
+interface ClaimState {
+  readonly state: string;
+  readonly lease_id: string | null;
+  readonly gate_state: string;
+  readonly lineage_state: string;
+  readonly superseded: boolean;
+  readonly attempt_id: string;
+  readonly attempt_state: string;
+  readonly marked: boolean;
+  readonly bound_lease_state: string | null;
+  readonly bound_lease_expired: boolean | null;
+  readonly held_minor: string;
+  readonly run_state: string;
+  readonly settled: boolean;
+  readonly active_elsewhere: boolean;
+}
+
+/**
+ * What the claim does with the reservation it read, decided before anything
+ * is written: claim the hold as it stands, replace it, or refuse. A
+ * replacement's `fence` names the expired lease to fence and classify first,
+ * and is null when the old hold was already classified and only needs a new
+ * one beside it.
+ */
+type ClaimPlan =
+  | { readonly kind: 'fresh' }
+  | { readonly kind: 'replace'; readonly fence: string | null }
+  | { readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> };
+
+/**
+ * R5. The expired-lease lifecycle starts at the first replacement below,
+ * because this was the branch that made it unreachable: a reservation with a
+ * non-null `lease_id` refused before anything looked at whether that lease had
+ * expired, so the old identity was never fenced, its hold was never
+ * classified, and the only expiry branch in the file applied to a *different*
+ * unleased reservation on the same task. The replacement is a fresh hold on
+ * the still-approved version, which 0019 permits, because one active hold per
+ * version is the accepted rule and one hold ever was not. Its approval is
+ * checked by the caller after the writes.
+ *
+ * R5, the remainder. A hold that ended without settling -- the authority
+ * behind its lease was lost, and replay classified it -- leaves approved work
+ * on a live lineage that nothing now holds. It is never revived; the claim
+ * gets a fresh hold and a fresh attempt on the still-approved version, under
+ * the locks already held, exactly as the expired-lease replacement does.
+ * Settled work is not replaceable: a handback that abandoned its hold because
+ * nothing was spent still finished the work.
+ */
+function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
+  if (state.marked) {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
+        'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
+      ),
+    };
+  }
+  if (state.state === 'held' && state.lease_id !== null) {
+    return state.bound_lease_state === 'live' && state.bound_lease_expired !== true
+      ? {
+          kind: 'refuse',
+          refusal: refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX),
+        }
+      : { kind: 'replace', fence: state.lease_id };
+  }
+  const replacing = state.state === 'abandoned' && replaceable(state);
+  if (state.state !== 'held' && !replacing) {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `reservation ${reservationId} is ${state.state}`,
+        'A terminal reservation is never revived. Replacement work gets a fresh attempt.',
+      ),
+    };
+  }
+  if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
+  return replacing ? { kind: 'replace', fence: null } : { kind: 'fresh' };
+}
+
+/** The version is the live one, its gate approved and its lineage live. */
+function approvalCurrent(state: ClaimState): boolean {
+  return state.gate_state === 'approved' && state.lineage_state === 'live' && !state.superseded;
+}
+
+function approvalNotCurrent(): RuntimeResult<never> {
+  return refuse(
+    'RESERVATION_NOT_CLAIMABLE',
+    'the approval behind this reservation is no longer current',
+    'Re-read the queue. A superseded or terminal approval authorises nothing.',
+  );
 }
 
 /** An abandoned hold whose work was never settled and whose run is still open. */
