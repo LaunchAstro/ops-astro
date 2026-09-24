@@ -254,8 +254,9 @@ both are `SOURCE_SPOOFED` (`SPOOFABLE_ON_CREATE`, `SPOOFABLE_ON_UPDATE` and
 value goes to the audit row only. By root ruling, the transaction contract's
 T1-N3 and contract-ledger row D03 take precedence here over the older
 minimum-contract 6.1 wording, which answered `SOURCE_SPOOFED` to
-`intake_state: accepted` on any write. `tests/acceptance/protected-fields.test.ts:317` holds
-both.
+`intake_state: accepted` on any write. `tests/acceptance/protected-fields.test.ts` holds
+both, in "D03: intake_state on task.update names task.triage; task.create keeps
+SOURCE_SPOOFED".
 
 **A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by name.
 The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every installed
@@ -591,7 +592,7 @@ What each one does:
   [RUNTIME.md](RUNTIME.md)). Both answer with `detail.classifiedHolds`, the ids
   of the reservations the revocation classified, and nothing about whose they
   were (`classifiedHolds`, `authority-controls.ts`). The envelope asks `manage`
-  at the revoked row's own scope (`targetScopeOf`, `commands/prepare.ts`), so
+  at the revoked row's own scope (`SCOPE_OF.target` and `TARGET_LOOKUPS`, `commands/prepare.ts`), so
   `SCOPE_NOT_GRANTED` is also the answer for a manager whose `manage` does not
   cover that scope, as well as for one outside the ceiling (`withinCeiling` and
   `OUTSIDE_CEILING`, `authority-controls.ts`). Nothing is cached, so the next
@@ -898,7 +899,7 @@ register branch of `runAgentCommand`). A stored refusal replays as stored. A
 stored success is checked again first. A read, comment or heartbeat replay
 answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
-expiry has changed: those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
+expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
 and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
 capabilities replay is projected again for the credential presented now
 (`replayCapabilities`). A pickup replay is checked against the delegation it
@@ -976,7 +977,7 @@ role nobody classified sees the client view rather than everything.
 
 A reader who is not internal on the person prefix gets a different key:
 `{ ok: true, sharedTask: { id, fields, comments } }`, never `task` (the
-`task.read` case of `serveRead`, `reads/dispatch.ts`). `fields` holds the task fields the
+`serve` of the `task.read` row in `READ_CATALOGUE`, `reads/catalogue.ts`). `fields` holds the task fields the
 catalogue marks `shared`, and as shipped none are, so R4 sees the id and the
 client comments. For an external party, a `task.read` of a record its shares do
 not cover and any `task.board` answer `NOT_FOUND` 404 (the row's
@@ -1019,7 +1020,7 @@ a grant on. It reports what the caller already holds, so it asks no single
 grant; instead it is answered only to a caller who holds at least one. A member
 holding no live grant is refused `SCOPE_NOT_GRANTED` 403, like every other
 operation, and never answered with an empty list (the `session.capabilities`
-case of `serveRead` and `NO_GRANT_AT_ALL`, `reads/dispatch.ts`; minimum contract
+row of `READ_CATALOGUE` and `NO_GRANT_AT_ALL`, `reads/catalogue.ts`; minimum contract
 8.2 case 3). A login that resolves to neither a membership nor an external
 party's live share is `AUTH_NO_MEMBERSHIP` before any read runs. An external
 party is shown its shares' pairs. The grants are read live in the caller's own
@@ -1049,7 +1050,7 @@ and `businessKey` and `grants` sit at the same level on both:
 
 | Prefix                     | Body on success                                                 | Code                                                                                                         |
 | -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | the `session.capabilities` case of `serveRead`, `reads/dispatch.ts`                                          |
+| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | the `session.capabilities` row of `READ_CATALOGUE`, `reads/catalogue.ts`                                     |
 | agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `capabilitiesOf` (`commands/agent-operations.ts`), flattened by `agentAnswer` (`commands/agent-envelope.ts`) |
 
 The agent handler still stores the answer as the handle every agent command is

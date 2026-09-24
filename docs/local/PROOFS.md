@@ -582,8 +582,9 @@ as observed. Four are fixed on this head, and the cases now assert the fix.
    string `"undefined"`, and the caller got a plain-text 500. The guard now
    checks the type first (the `operationId` guard in
    `packages/core-records/src/commands/envelope.ts`), and
-   `surface-inventory.test.ts:306` asserts `OPERATION_ID_REQUIRED` 422 for
-   the absent field, `null` and `''`.
+   `surface-inventory.test.ts` ("answers an absent operationId with
+   OPERATION_ID_REQUIRED, like null and the empty string") asserts
+   `OPERATION_ID_REQUIRED` 422 for the absent field, `null` and `''`.
 2. **Fixed: five declarations answered an untyped fault.** `task.create`,
    `task.restore`, `task.purge`, `task.read` and `preset.plan` gave an
    authorised admin a 500 for a bare envelope. They now answer typed operand
@@ -591,7 +592,7 @@ as observed. Four are fixed on this head, and the cases now assert the fix.
    **zero** person-prefix untyped faults over all 35 declarations.
 3. **Fixed: the mounted app did not draw the re-login path.** The web client's
    `SESSION_ENDED` now holds `AUTH_UNKNOWN_LOGIN` and `AUTH_SESSION_EXPIRED`
-   (`apps/web/src/operations/client.ts:317`), and
+   (`SESSION_ENDED`, `apps/web/src/operations/client.ts`), and
    `restart-and-expiry.test.ts:362` asserts the hook fires once, carrying the
    expired code.
 4. **Fixed: an agent could reach `task.comment` by the surface and not by the
@@ -599,11 +600,13 @@ as observed. Four are fixed on this head, and the cases now assert the fix.
    (`commands/agent-operations.ts`). The matrix's case (i) asserts the saved
    comment on the agent's own task, and `AUDIENCE_NOT_PERMITTED` for a
    `client` comment.
-5. **Open: the command line cannot report a fault.** `apps/cli/client.ts:117`
-   still reads every answer with `await response.json()`, which throws on a
-   body that is not JSON. No declared operation answers the bare envelope with
-   a fault any more, so the five above no longer reach it, but any non-JSON
-   answer still surfaces as `SyntaxError` rather than a status.
+5. **Fixed: the command line could not report a fault.** It read every answer
+   with `response.json()`, which throws on a body that is not JSON. Since
+   `26219e3`, `run` in `createCli` (`apps/cli/client.ts`) reads the text and
+   parses it inside a `try`, so a non-JSON answer keeps its status and its text
+   and exits 4 ([CLI.md](CLI.md#output-and-exit-codes)).
+   `tests/cli/cli-answers.test.ts` holds it ("a non-JSON 503 is a fault too:
+   exit 4, the text printed as it came").
 
 ## Interface gaps
 

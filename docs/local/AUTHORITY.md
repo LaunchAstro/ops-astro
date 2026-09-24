@@ -365,7 +365,7 @@ becomes an operation, so it has no audit event to hang off.
 
 The domain audit differs between the two entries in two places (root N2). An
 agent attempt whose fault survives the one retry writes no `failed` audit
-event: the fault rolls back and is returned. The person entry writes one.
+event. The fault rolls back and is returned. The person entry writes one.
 Agent reads are registered under their `operationId`, and person reads are not.
 
 ## The model corrections
@@ -416,8 +416,8 @@ Comments are **stored and projected through the API**: `task.read` carries them,
 in full for an internal reader and through `externalCommentProjection` for every
 other role. See [API.md, "Reads"](API.md#reads).
 
-`task.comment` locks the task the same way on both entries: through `lockTask`
-(`commands/prepare.ts`: tenant, task type, id, `for update`). Neither entry
+Both entries lock the task for `task.comment` through `lockTask`
+(`commands/prepare.ts`), which selects by tenant, task type and id `for update`. Neither entry
 filters out a trashed task.
 
 ## preset.plan
@@ -527,7 +527,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
   grant's scope, or the delegation's purpose scope
   (the `grant.revoke` and `delegation.revoke` declarations in `commands/surface.ts`,
-  `authorisedOn: 'target'`; `targetScopeOf`,
+  `authorisedOn: 'target'`; `SCOPE_OF.target`,
   `commands/prepare.ts`). A manager whose `manage` covers exactly that
   scope reaches the handler. A body naming no such row is asked at business
   scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
@@ -569,7 +569,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   never revived; a claimant with current authority gets a fresh hold and
   attempt.
 - `grant.revoke` and `delegation.revoke` answer with `detail.classifiedHolds`:
-  the ids of the reservations the revocation classified (`:193-198`).
+  the ids of the reservations the revocation classified (`classifiedHolds`).
 - A delegation revoked because `grant.revoke` removed the authority it draws
   on is revoked in the same transaction, with `authority_lost` as its recorded
   cause. The bound agent's next call on its still unexpired credential answers
@@ -624,7 +624,7 @@ runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 lease belongs to (`authorisedOn: 'claim'` in the same declarations), the scope the
 runtime and `grant.revoke` ask. A record-scoped writer works their own lease
 on that task. An id that resolves to nothing is asked at business scope, so a
-foreign and a fabricated id get the same answer (`claimScopeOf`,
+foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.

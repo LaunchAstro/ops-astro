@@ -50,7 +50,7 @@ separate column (`migrations/0014_runtime_attempts.sql`,
 and changes no behaviour.
 
 A gate is bound to its version, not only to its business, since migration
-0021 (`migrations/0021_runtime_gate_version_binding.sql:38-56`). Three
+0021 (`migrations/0021_runtime_gate_version_binding.sql:36-53`). Three
 composite foreign keys hold it: the gate's run plans the gate's version
 (`gates_run_in_same_version`), its step is a step of that run
 (`gates_step_in_same_run`), and its version is a version of its lineage
@@ -74,7 +74,7 @@ on the chain lock, not on the cap row.
 
 `task.propose` takes cap, envelope, task, lineage, then the superseded version's
 holds, live lease and delegation, in one ordered call (`lockProposal`,
-`propose.ts:107-176`). It is declared `targetLock: 'runtime'`
+`propose.ts`). It is declared `targetLock: 'runtime'`
 (`COMMAND_SURFACE`, `commands/surface.ts`), so the command envelope only reads
 the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
@@ -284,13 +284,14 @@ live lease (`NOT_CLAIMABLE_REASON` and `NOT_CLAIMABLE_FIX`, `pickup.ts`;
 an earlier handback left open, give two held reservations, and the second pickup
 meets the first one's live lease (the note beside `UNPRODUCED_CODES` in
 `commands/register.ts`; `tests/commands/lease-held-reach.test.ts`). Its reason
-still names the task (`pickup.ts:479-483`).
+still names the task (the `LEASE_HELD` refusal in `pickup`, `pickup.ts`).
 
 `LEASE_NOT_OWNED` for a lease the caller does not hold, on heartbeat and
 handback, is a constant that echoes neither the presented lease nor the fence
-(`notOwned` in `heartbeat`, `heartbeat.ts`; `handback.ts:144-150`, `:213-218`).
+(`notOwned` in `heartbeat`, `heartbeat.ts`; in `handback`, `handback.ts`, "no
+such lease in this business" and "the named lease is not this caller's").
 A stale or superseded fence on a lease the caller does hold still names the
-lease and the fences (`handback.ts:266-282`). `DELEGATION_OUT_OF_PURPOSE` for a
+lease and the fences (`staleVerdict`, `handback.ts`). `DELEGATION_OUT_OF_PURPOSE` for a
 call on another resource names the delegation's own scope and not the presented
 one (`checkDelegatedAuthority`, `authority/delegations.ts`).
 
@@ -311,8 +312,8 @@ second is the cap behind it.
 share: the cap-committed read (`capCommitted`), the envelope and cap verdicts
 (`envelopeVerdict`, `capVerdict`) and the task's open envelope
 (`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
-`reserve` alike: a ceiling that cannot be read is not room (thermo O2, lead
-ruling, fail closed).
+`reserve` alike, because a ceiling that cannot be read is not room (thermo O2,
+lead ruling, fail closed).
 
 Both checks compare exact minor units. The totals and limits come from SQL as
 text and are compared as `bigint`, so a valid cap above 2^53 is never exceeded
@@ -440,12 +441,12 @@ fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately; it cannot settle the replacement's work.
 
 Leases end through `endLease` in `recovery.ts`, as `released` or `expired`, and
-only a live lease is ended: one already ended keeps the end and the
+only a live lease is ended. One already ended keeps the end and the
 `released_at` it had.
 
 A runtime invariant that does not hold, such as a statement that must return a
 row and returned none, throws `RuntimeInvariantError` (`only.ts`). That is never
-a refusal: it aborts the transaction.
+a refusal. It aborts the transaction.
 
 A handback names a lease, not a task. The agent envelope reads the task from the
 lease before the delegation check (`subjectTaskId`,
@@ -894,7 +895,7 @@ direct SQL.
   runtime and `grant.revoke` ask under their locks. A record-scoped writer works
   their own lease on that task. An id that resolves to nothing is asked at
   business scope, so a foreign and a fabricated id get the same answer
-  (`claimScopeOf`, `commands/prepare.ts`).
+  (`SCOPE_OF.claim`, `commands/prepare.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
   (`recovery.ts`, called from `revokeGrantAsManager` and
