@@ -24,12 +24,15 @@
 //    the press and the write is the newer fact.
 //  - **The browser's memory of its last confirmed write is the session's, and
 //    only for an unavailable read.** A refused `settings.read` is the server
-//    declining to tell this reader the value, so nothing is drawn in its place.
-//    The memory is tagged with the session that wrote it and removed at
+//    declining to tell this reader the value, so nothing is drawn in its place,
+//    and the memory is dropped rather than hidden: reads use current authority,
+//    and an outage after the refusal must not draw the copy back. Until an
+//    authorised read answers, the session's confirmed writes are not kept
+//    either, so the refusal holds across a remount. The memory is tagged with the session that wrote it and removed at
 //    sign-out (`session/token.ts`), because the tab outlives the session and
 //    the next person to sign in to it is a different reader.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   isRefusal,
   isUnavailable,
@@ -84,9 +87,13 @@ export interface Confirmed {
   readonly signOff?: boolean;
 }
 
-/** As stored: the values and the session they belong to. */
+/**
+ * As stored: the values and the session they belong to, or for a session
+ * refused `settings.read`, no values and the mark that it was.
+ */
 interface Stored extends Confirmed {
   readonly session: string;
+  readonly denied?: true;
 }
 
 /** A write the server would not take because somebody else wrote first. */
@@ -133,8 +140,14 @@ function readConfirmed(
   if (stored === null) return {};
   // Another session's value, or one stored before values carried a session,
   // is not this reader's to see.
-  const { session, ...values } = stored;
-  return session === sessionTag(grantKey) ? values : {};
+  const { session, denied, ...values } = stored;
+  return session === sessionTag(grantKey) && denied !== true ? values : {};
+}
+
+/** Whether this session was refused `settings.read` and no read has answered since. */
+function wasDenied(storage: StorageLike | null, businessKey: string, grantKey: string): boolean {
+  const stored = confirmedSlot(storage, businessKey).read();
+  return stored?.session === sessionTag(grantKey) && stored.denied === true;
 }
 
 function writeConfirmed(
@@ -145,6 +158,19 @@ function writeConfirmed(
 ): void {
   // A refused write leaves the screen drawing what it has in hand this render.
   const stored: Stored = { ...next, session: sessionTag(grantKey) };
+  confirmedSlot(storage, businessKey).write(stored);
+}
+
+/**
+ * The server refused this session the read: drop its values and mark it.
+ *
+ * The mark is what outlasts a remount. Without it, a write confirmed before
+ * the next authorised read would put a copy back for an outage to draw. A
+ * storage that refuses the mark leaves memory as the only copy, and memory is
+ * already clear.
+ */
+function holdDenied(storage: StorageLike | null, businessKey: string, grantKey: string): void {
+  const stored: Stored = { session: sessionTag(grantKey), denied: true };
   confirmedSlot(storage, businessKey).write(stored);
 }
 
@@ -210,12 +236,16 @@ export function useSettings(
 
   // Keyed by the grant: a new session in a still-mounted screen reads afresh
   // rather than keeping what the previous session had confirmed.
+  // The refusal's hold is kept in memory as well as in storage, so a storage
+  // that refuses writes does not lift it.
   const [held, setHeld] = useState(() => ({
     grantKey,
     confirmed: readConfirmed(storage, businessKey, grantKey),
+    denied: wasDenied(storage, businessKey, grantKey),
   }));
-  const confirmed =
-    held.grantKey === grantKey ? held.confirmed : readConfirmed(storage, businessKey, grantKey);
+  const current = held.grantKey === grantKey;
+  const confirmed = current ? held.confirmed : readConfirmed(storage, businessKey, grantKey);
+  const denied = current ? held.denied : wasDenied(storage, businessKey, grantKey);
   const [because, setBecause] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [closed, setClosed] = useState(false);
@@ -240,6 +270,20 @@ export function useSettings(
 
   const rowFor = (which: Which): SettingRow | null => settingOf(rowsInHand(read), KEY[which]);
 
+  // What the read decided about the memory, once per answer. A refusal drops
+  // it and holds; an authorised answer lifts the hold, and the server's rows
+  // are then what is drawn.
+  const readOutcome = read.grantKey === grantKey ? read.outcome : 'loading';
+  useEffect(() => {
+    if (readOutcome === 'denied') {
+      holdDenied(storage, businessKey, grantKey);
+      setHeld({ grantKey, confirmed: {}, denied: true });
+    } else if (readOutcome === 'ready' || readOutcome === 'empty') {
+      if (wasDenied(storage, businessKey, grantKey)) confirmedSlot(storage, businessKey).remove();
+      setHeld((was) => (was.grantKey === grantKey && was.denied ? { ...was, denied: false } : was));
+    }
+  }, [readOutcome, storage, businessKey, grantKey]);
+
   const settle = (which: Which, value: Draft, result: CallResult<CommandOutcome>): void => {
     setBusy(null);
     if (isRefusal(result)) {
@@ -260,9 +304,12 @@ export function useSettings(
     }
     setBecause(null);
     setConflict(null);
-    const merged = { ...confirmed, ...remember(which, echoed(result), value) };
-    setHeld({ grantKey, confirmed: merged });
-    writeConfirmed(storage, businessKey, grantKey, merged);
+    // A session refused the read keeps nothing until a read answers it.
+    if (!denied && !wasDenied(storage, businessKey, grantKey)) {
+      const merged = { ...confirmed, ...remember(which, echoed(result), value) };
+      setHeld({ grantKey, confirmed: merged, denied: false });
+      writeConfirmed(storage, businessKey, grantKey, merged);
+    }
     // The row as the server holds it, not the echo and not what was typed.
     settings.reload();
   };
