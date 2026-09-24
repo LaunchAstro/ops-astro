@@ -1060,7 +1060,22 @@ legacy row as derivable, and 0022's trigger forbids it.
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for
-  every other command.
+  every other command. The register is their repeat-request identity, so a
+  proposal sent twice under one `operationId` replays the first answer rather
+  than opening a second lineage.
+- **No audit writer.** `core-runtime` writes no `audit_events` row.
+  `envelope.ts` audits every success and every refusal around the runtime
+  handlers, including the loser of a decision race (G03): a
+  `GATE_ALREADY_DECIDED` refusal leaves the same row as any refused attempt.
+- **A refusal rolls back, and never raises.** A returned runtime refusal must
+  not commit what its handler touched on the way. `attemptWork`'s savepoint
+  rolls it back, and the refusal travels out as a value. An exception would
+  take the transaction and the audit row with it.
+- **The caller names none of the server's facts.** The actor, the person, the
+  subjects, the signing key, the cap and the authorising person are the
+  server's. The payloads carry what a proposal is, never who makes it. The
+  handlers are `tasks-propose.ts`, `tasks-decide.ts`, `tasks-pickup.ts`,
+  `tasks-handback.ts` and `tasks-lease.ts` in `commands/`, imported directly.
 - **Restart (W06) is tested outside this package, and not yet closed.** Every case here is a
   transaction boundary and a fresh connection to a server that never stopped.
   `pnpm verify:restart` restarts a declared, disposable Postgres and the API

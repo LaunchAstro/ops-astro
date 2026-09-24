@@ -100,13 +100,16 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `refuseCreateOperands`, from `createTask` (`tasks-write.ts`)    |
 | `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `refuseRestoreOperands`, from `restoreTasks` (`tasks-trash.ts`) |
 | `task.purge`   | none                                     | no window operand: see below                                             | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)     |
-| `task.read`    | `recordId`                               | a string                                                                 | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `task.read`    | `recordId`                               | a string                                                                 | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)       |
+| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)       |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)       |
 
-The three `refuse…Operands` functions are in `commands/operands.ts`. A read's
-operand check is the `operands` column of its `READ_CATALOGUE` row
-(`reads/catalogue.ts`).
+The three `refuse…Operands` functions are in `commands/operands.ts`, beside
+`isFieldMap` and `invalid`, which the read catalogue shares. A read's operand
+check is the `parse` column of its `READ_CATALOGUE` row (`reads/catalogue.ts`):
+it answers the read's typed operands (`ReadOperands`) or the refusal, and the
+row's `subject`, `authority` and `serve` see only those operands. `ReadRequest`
+is the unchecked body.
 
 **`task.purge` takes no window.** It reads the business's own
 `retention_window_days` setting inside the transaction the command is served in
@@ -122,7 +125,7 @@ floor or ceiling is applied. `tests/commands/purge-retention.test.ts` holds it.
 
 The three command checks run in their handlers, so the refusal is registered and
 audited like any other command refusal. The read checks run inside the audited
-read (the row's `operands`, called from `serveRead` in `reads/dispatch.ts`),
+read (the row's `parse`, called from `serveRead` in `reads/dispatch.ts`),
 after the system-field and identifier checks and before the grant check, so a
 refused read writes its audit row like any other.
 `tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
@@ -550,7 +553,8 @@ prefixes.** A `reservationId` or `leaseId` that is not a uuid, `""` and
 `RESERVATION_NOT_CLAIMABLE` 409, and `task.heartbeat` and `task.handback` answer
 `LEASE_NOT_OWNED` 403, in the same bytes as a well-formed id that names nothing
 (root ruling 2). The refusal is audited in the caller's business and nothing is
-written. The check is one shape test, `isIdentifier` (`commands/operands.ts`),
+written. The check is one shape test, `isIdentifier` (`commands/operands.ts`,
+which delegates to `isUuid` in `tenancy/ids.ts`, as `isBusinessId` does),
 called where both claimants meet: `claim` in `commands/tasks-pickup.ts`,
 `renewLease` in `commands/tasks-lease.ts` and `settle` in
 `commands/tasks-handback.ts`. The agent envelope's lease lookup checks the same
@@ -646,7 +650,9 @@ Every route is generated from `COMMAND_SURFACE`
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
 `apps/cli/client.ts`) and posts them to the person prefix, or to the agent
-prefix when a call asks for it (`PREFIX`). `GET /api/health` (its route in
+prefix when a call asks for it. Both mounts are `PREFIX` in
+`commands/surface.ts` (`/api/b/` and `/api/a/b/`), and the delegation header's
+name is `DELEGATION_HEADER` there, which `apps/api/app.ts` re-exports. `GET /api/health` (its route in
 `composeApi`, `apps/api/server.ts`) is the one route outside the table. Every
 name is routed on both prefixes. The tables say where each is served and where
 it is refused.
@@ -1034,7 +1040,8 @@ migration 0020 gave `business_settings`, and it is the number the two settings
 commands take back as `expectedRevision`, so a screen that read a value can
 write it back against the version it saw. Alongside it the row still carries
 `updatedAt` and `updatedByActorId`, which say when the value last changed and
-which actor changed it. Both are null on a value nobody has written since it
+which actor changed it. One statement reads the value and its author
+(`BusinessSetting` carries `updatedByActorId`), so both come from one commit. Both are null on a value nobody has written since it
 shipped. A `revision` in a read a caller then writes against is the whole of the
 optimistic check: there is no other watermark.
 

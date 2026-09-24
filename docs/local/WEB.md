@@ -362,8 +362,8 @@ Not built: the read carries `conversation_window_days` and
 
 Before anything draws it, a read is a `ReadState` (`data/authorised-read.ts`), a
 union on `outcome` with one member per state, so a reader that narrows on
-`outcome` gets the non-null field without a check. `loading.value` is the
-previous answer, kept while a reload is in flight. It is null on the first read
+`outcome` gets the non-null field without a check. `loading.previous` is the
+last answer, kept while a reload is in flight. It is null on the first read
 and after a denial or an outage, because those already dropped it.
 `RecordState` still draws the loading state rather than that value.
 

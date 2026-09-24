@@ -60,9 +60,11 @@ expected-revision rule, `untargetedIdentifiers`, `runtimeShaped` and `agent`
 reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
 same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the
 web client imports the surface. A read's facts are one `READ_CATALOGUE` row
-(`reads/catalogue.ts`): identifiers, operand check, spine, subject, authority
-mode, outsider-not-found and serve. `reads/dispatch.ts` runs one pipeline over
-the row.
+(`reads/catalogue.ts`): identifiers, operand check (`parse`), spine, subject,
+authority mode, outsider-not-found and serve. A row is a `SpineRow`, handed the
+task spine and its subject, both read before the grant check, or a
+`BusinessRow`, handed neither. `reads/dispatch.ts` runs one pipeline over the
+row.
 See the [stack](docs/adr/0019-app-layer-vite-react-hono.md),
 [records](docs/adr/0030-fixed-typed-slots-no-runtime-ddl.md), and
 [identity and permissions](docs/adr/0014-business-id-on-every-table-and-key.md)
