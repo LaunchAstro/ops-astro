@@ -735,11 +735,20 @@ replaces it with a fresh hold and a fresh attempt on that version, under the
 locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
-counts a quarantined hold as active too. The header of
-`migrations/0019_runtime_active_hold_uniqueness.sql` lists `quarantined` among
-the history rows that do not block a replacement, but its index,
-`reservations_one_active_per_version_idx`, is partial on
-`state in ('held', 'quarantined')`, and the index is the rule.
+counts a quarantined hold as active too.
+
+**Correction to the header of migration 0019** (R1-RUNTIME-67). The header of
+`migrations/0019_runtime_active_hold_uniqueness.sql` says, at `:17-18`:
+"`abandoned`, `actual` and `quarantined` rows are history and do not block a
+replacement". That is wrong for `quarantined`. The index the same file creates,
+`reservations_one_active_per_version_idx` (`:25-27`), is unique on
+`(business_id, version_id)` and partial on `state in ('held', 'quarantined')`.
+So a version holds at most one row that is `held` or `quarantined`, and a
+quarantined hold blocks a replacement exactly as a live one does. Only
+`abandoned` and `actual` rows are history. The index is the rule, and the
+paragraph above, where a quarantined hold is refused
+`RESERVATION_NOT_CLAIMABLE`, agrees with it. The header is not edited, because
+an applied migration's checksum must not change; this note is the correction.
 
 A stale approval (gate not approved, lineage not live, or version superseded) is
 refused before any replacement write, in both the expired-lease and the
