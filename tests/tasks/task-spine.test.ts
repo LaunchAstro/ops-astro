@@ -97,7 +97,8 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
     it('derives a subtask’s placement instead of reading it from the request', async () => {
       const { parentSlots, childSlots } = await db.app.withBusiness(businessId, async (tx) => {
         const spine = await installTaskSpine(tx);
-        const board = randomUUID();
+        // A board is a live task here (R2-RUNTIME-19): a fabricated id is refused.
+        const board = await createTask(tx, spine, { title: 'a board', parentId: null });
         const parent = await createTask(tx, spine, {
           title: 'the parent',
           parentId: null,
@@ -144,7 +145,7 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
     it('puts each new sibling last, under a parent and on a board', async () => {
       const ranks = await db.app.withBusiness(businessId, async (tx) => {
         const spine = await installTaskSpine(tx);
-        const board = randomUUID();
+        const board = await createTask(tx, spine, { title: 'a board', parentId: null });
         const first = await createTask(tx, spine, { title: 'first', parentId: null, board });
         const second = await createTask(tx, spine, { title: 'second', parentId: null, board });
         const childA = await createTask(tx, spine, { title: 'child a', parentId: first });
@@ -152,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
         const other = await createTask(tx, spine, {
           title: 'another board',
           parentId: null,
-          board: randomUUID(),
+          board: await createTask(tx, spine, { title: 'the other board', parentId: null }),
         });
         const rank = async (id: string): Promise<number> =>
           Number((await readSlots(tx, id))['num_2']);

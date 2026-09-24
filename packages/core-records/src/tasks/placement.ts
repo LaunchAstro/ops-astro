@@ -25,9 +25,10 @@ const KEY = slotOf(TASK_SPINE, 'key');
 /**
  * The distance between two neighbours. Ranks are spaced so `task.rank` can put
  * a task between two others by taking their midpoint, without renumbering a
- * board. Ten thousand insertions between one pair exhausts the gap and needs a
- * re-spacing pass; the first slice does not have one, and that is stated here
- * rather than discovered.
+ * board. A rank is a double, so about fifty halvings of one gap reach two
+ * neighbours with no number between them. `task.rank` refuses at that point
+ * rather than writing a rank equal to a neighbour's; the first slice has no
+ * re-spacing pass, and that is stated here rather than discovered.
  */
 export const RANK_GAP = 1000;
 
@@ -42,6 +43,11 @@ export interface TaskPlacementRequest {
   readonly boardSection?: string | null;
   /** The keys the caller actually supplied, so a supplied `board_rank` is seen. */
   readonly suppliedKeys?: readonly string[];
+  /**
+   * The board is the one the task is already on (a reparent to the top level
+   * keeps it), so it is not looked up again. A board the caller names is.
+   */
+  readonly boardIsTheTasksOwn?: boolean;
 }
 
 export interface TaskPlacement {
@@ -80,10 +86,24 @@ export async function planTaskPlacement(
   }
 
   if (request.parentId === null || request.parentId === undefined) {
+    const board = request.board ?? null;
+    // A board the caller names must be a live task here, as `task.move` and
+    // `task.board` require: one that is not would write a task no board read
+    // lists, reachable only by someone who already holds its id.
+    if (board !== null && request.boardIsTheTasksOwn !== true) {
+      const found = await tx.query<{ readonly id: string }>(
+        `select id from records
+          where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
+        [tx.businessId, taskTypeId, board],
+      );
+      if (found.length === 0) {
+        return refuse('NOT_FOUND', ['board'], ['No board carries that identifier here.']);
+      }
+    }
     return {
-      board: request.board ?? null,
+      board,
       boardSection: request.boardSection ?? null,
-      boardRank: await rankAfterSiblings(tx, taskTypeId, null, request.board ?? null),
+      boardRank: await rankAfterSiblings(tx, taskTypeId, null, board),
     };
   }
 
@@ -173,12 +193,86 @@ export async function wouldCloseParentLoop(
 }
 
 /**
+ * Serialise every rank decision in one sibling set: the tasks under one
+ * parent, or the top-level tasks on one board. Two creates, or two
+ * `task.rank`s, reading the same siblings at once would otherwise compute the
+ * same number. Held to the end of the transaction, like the reparent lock.
+ */
+export async function lockSiblings(
+  tx: TenantQuery,
+  parentId: string | null,
+  board: string | null,
+): Promise<void> {
+  const set = parentId === null ? `board:${board ?? 'none'}` : `parent:${parentId}`;
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `task.siblings:${tx.businessId}:${set}`,
+  ]);
+}
+
+/** One sibling's rank, and whether it is in the working set or the trash. */
+export interface SiblingRank {
+  readonly rank: number;
+  readonly live: boolean;
+}
+
+/**
+ * The rows of one sibling set, live and trashed, as two branches: each can use
+ * its own partial index (the slot index for the live rows, the trash-batch
+ * index for the trashed ones), which one predicate over both could not.
+ * Placeholders from `$3` on are the set's; the caller's extra ones follow.
+ */
+function siblingRows(set: { readonly parentId: string | null; readonly board: string | null }): {
+  readonly live: string;
+  readonly trashed: string;
+  readonly params: readonly (string | null)[];
+} {
+  const where =
+    set.parentId !== null
+      ? `${PARENT} = $3::uuid`
+      : set.board !== null
+        ? `${PARENT} is null and ${BOARD} = $3::uuid`
+        : `${PARENT} is null and ${BOARD} is null and $3::uuid is null`;
+  const common = `business_id = $1 and record_type_id = $2 and ${where}`;
+  return {
+    live: `${common} and deleted_at is null`,
+    trashed: `${common} and trash_batch_id is not null`,
+    params: [set.parentId ?? set.board],
+  };
+}
+
+/**
+ * The ranks in one sibling set strictly between `above` and `below` (null is
+ * open), trashed rows included, leaving out `exceptId` (the task being
+ * ranked). A trashed sibling keeps its rank and comes back with it, so a rank
+ * chosen now must not land on it either.
+ */
+export async function siblingRanks(
+  tx: TenantQuery,
+  taskTypeId: string,
+  set: { readonly parentId: string | null; readonly board: string | null },
+  between: { readonly above: number | null; readonly below: number | null },
+  exceptId: string,
+): Promise<readonly SiblingRank[]> {
+  const rows = siblingRows(set);
+  const range = `${BOARD_RANK} > coalesce($4::numeric, '-Infinity')
+                 and ${BOARD_RANK} < coalesce($5::numeric, 'Infinity') and id <> $6`;
+  const ranks = await tx.query<{ readonly rank: string; readonly live: boolean }>(
+    `select ${BOARD_RANK}::text as rank, true as live from records where ${rows.live} and ${range}
+     union all
+     select ${BOARD_RANK}::text, false from records where ${rows.trashed} and ${range}`,
+    [tx.businessId, taskTypeId, ...rows.params, between.above, between.below, exceptId],
+  );
+  return ranks.map((row) => ({ rank: Number(row.rank), live: row.live }));
+}
+
+/**
  * After the last sibling.
  *
  * Siblings are the tasks under the same parent, or — for a top-level task —
- * the tasks on the same board with no parent. Trashed rows are excluded, so a
- * task that comes back from the trash keeps a rank that no longer collides,
- * and the working set is the only thing that decides order.
+ * the tasks on the same board with no parent. Trashed rows count: a trashed
+ * task keeps its rank and a restore brings it back with it, so a new task
+ * ranked only against the working set would tie with it. The set is locked
+ * first, so two creates in it cannot read the same last rank.
  */
 async function rankAfterSiblings(
   tx: TenantQuery,
@@ -186,21 +280,17 @@ async function rankAfterSiblings(
   parentId: string | null,
   board: string | null,
 ): Promise<number> {
-  const rows =
-    parentId === null
-      ? await tx.query<{ readonly last: string | null }>(
-          `select max(${BOARD_RANK})::text as last from records
-            where business_id = $1 and record_type_id = $2 and deleted_at is null
-              and ${PARENT} is null and ${BOARD} is not distinct from $3`,
-          [tx.businessId, taskTypeId, board],
-        )
-      : await tx.query<{ readonly last: string | null }>(
-          `select max(${BOARD_RANK})::text as last from records
-            where business_id = $1 and record_type_id = $2 and deleted_at is null
-              and ${PARENT} = $3`,
-          [tx.businessId, taskTypeId, parentId],
-        );
-  const last = rows[0]?.last;
+  await lockSiblings(tx, parentId, board);
+  const rows = siblingRows({ parentId, board });
+  const found = await tx.query<{ readonly last: string | null }>(
+    `select max(last)::text as last from (
+       select max(${BOARD_RANK}) as last from records where ${rows.live}
+       union all
+       select max(${BOARD_RANK}) from records where ${rows.trashed}
+     ) both_sets`,
+    [tx.businessId, taskTypeId, ...rows.params],
+  );
+  const last = found[0]?.last;
   return last === null || last === undefined ? RANK_GAP : Number(last) + RANK_GAP;
 }
 
