@@ -23,11 +23,19 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const serverUrl = databaseUrlFromEnvironment();
+
+// The migrations on disk, read here rather than listed, so the next migration
+// needs no edit to this suite (docs/local/DATA.md: "No number here or in any
+// suite says which migration is the last one").
+const onDisk = readdirSync('migrations')
+  .filter((name) => name.endsWith('.sql'))
+  .toSorted()
+  .map((name) => name.slice(0, -'.sql'.length));
 
 // A skipped suite that looks like a passing one is the failure this whole part
 // exists to prevent, so say it out loud rather than showing a green tick.
@@ -72,67 +80,22 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
   });
 
   describe('the migrations', () => {
+    it('finds the migrations on disk numbered from 0001 with no gap', () => {
+      expect(onDisk.length).toBeGreaterThan(0);
+      expect(onDisk.map((version) => version.slice(0, 4))).toStrictEqual(
+        Array.from({ length: onDisk.length }, (_, i) => String(i + 1).padStart(4, '0')),
+      );
+    });
+
     it('applies every migration to a database created empty', () => {
-      expect(db.migration.applied).toStrictEqual([
-        '0001_tenancy',
-        '0002_identity',
-        '0003_grants',
-        '0004_records',
-        '0005_record_store',
-        '0006_task_spine',
-        '0007_command_envelope',
-        '0008_agent_authority',
-        '0009_settings_and_owning_operations',
-        '0010_runtime_proposals',
-        '0011_runtime_gates',
-        '0012_runtime_decisions',
-        '0013_runtime_budget_and_leases',
-        '0014_runtime_attempts',
-        '0015_login_kind_serialised',
-        '0016_delegation_purpose_scope',
-        '0017_runtime_lineage_task_binding',
-        '0018_runtime_handback_reports',
-        '0019_runtime_active_hold_uniqueness',
-        '0020_business_settings_revision',
-        '0021_runtime_gate_version_binding',
-        '0022_delegation_credential_scheme',
-        '0023_delegation_revocation_cause',
-        '0024_cap_envelope_currency_binding',
-        '0025_cap_ceiling_at_commit',
-      ]);
+      expect(db.migration.applied).toStrictEqual(onDisk);
       expect(db.migration.alreadyApplied).toStrictEqual([]);
     });
 
     it('applies nothing on a second run', async () => {
       const again = await migrate(db.admin, 'migrations');
       expect(again.applied).toStrictEqual([]);
-      expect(again.alreadyApplied).toStrictEqual([
-        '0001_tenancy',
-        '0002_identity',
-        '0003_grants',
-        '0004_records',
-        '0005_record_store',
-        '0006_task_spine',
-        '0007_command_envelope',
-        '0008_agent_authority',
-        '0009_settings_and_owning_operations',
-        '0010_runtime_proposals',
-        '0011_runtime_gates',
-        '0012_runtime_decisions',
-        '0013_runtime_budget_and_leases',
-        '0014_runtime_attempts',
-        '0015_login_kind_serialised',
-        '0016_delegation_purpose_scope',
-        '0017_runtime_lineage_task_binding',
-        '0018_runtime_handback_reports',
-        '0019_runtime_active_hold_uniqueness',
-        '0020_business_settings_revision',
-        '0021_runtime_gate_version_binding',
-        '0022_delegation_credential_scheme',
-        '0023_delegation_revocation_cause',
-        '0024_cap_envelope_currency_binding',
-        '0025_cap_ceiling_at_commit',
-      ]);
+      expect(again.alreadyApplied).toStrictEqual(onDisk);
     });
 
     it('refuses a migration whose file changed after it was applied', async () => {
@@ -218,6 +181,27 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
           expect(rules(findings)).toContain(
             'the tenancy policy reads the session setting and nothing else',
           );
+        },
+      );
+    });
+
+    // The predicate is exactly right in both halves and there is exactly one
+    // restrictive policy, so the command rule is the only one left to fire.
+    // Without it, SELECT and DELETE fall to the permissive baseline alone and
+    // every business's rows read across the boundary.
+    it('catches a tenancy policy scoped to one command', async () => {
+      await whenSchemaIs(
+        db.admin,
+        `drop policy tenancy_businesses on public.businesses;
+         create policy tenancy_businesses on public.businesses as restrictive for update
+           using (business_id = (select public.app_business_id()))
+           with check (business_id = (select public.app_business_id()))`,
+        (findings) => {
+          expect(rules(findings)).toContain('the tenancy policy covers every command');
+          expect(rules(findings)).not.toContain(
+            'the tenancy policy reads the session setting and nothing else',
+          );
+          expect(rules(findings)).not.toContain('exactly one restrictive tenancy policy per table');
         },
       );
     });
