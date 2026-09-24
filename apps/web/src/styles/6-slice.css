@@ -15,13 +15,13 @@
    ========================================================================= */
 
 .readstate {
-  padding: var(--sp-4, 1rem) 0;
+  padding: var(--s-4) 0;
 }
 
 .signin {
   display: flex;
   justify-content: center;
-  padding: var(--sp-6, 2rem) var(--sp-4, 1rem);
+  padding: var(--s-6) var(--s-4);
 }
 
 .signin__form {
@@ -32,75 +32,53 @@
    interactive signal and this is not it, and a notice that shouts is a notice
    people learn to look past. */
 .signin__ended {
-  margin-block-end: var(--sp-3, 0.75rem);
-  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
-  border: 1px solid var(--border-strong, #9a9a9a);
-  border-radius: var(--r-2, 0.25rem);
-  background: var(--surface-2, #f4f4f4);
-  color: var(--text, #111);
+  margin-block-end: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
   font-size: 0.9rem;
   line-height: 1.45;
 }
 
 .signin__ended code {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1, 0.25rem);
-  margin-block-end: var(--sp-3, 0.75rem);
+  gap: var(--s-1);
+  margin-block-end: var(--s-3);
 }
 
 .input {
   width: 100%;
-  padding: var(--sp-2, 0.5rem);
-  border: 1px solid var(--line, #d0d0d0);
-  border-radius: var(--r-1, 4px);
-  background: var(--bg-1, #fff);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: inherit;
   font: inherit;
 }
 
-/* The focus ring is the one on every control. A form the keyboard cannot see
-   itself moving through is a form the keyboard cannot use. */
-.input:focus-visible,
-.btn:focus-visible {
-  outline: 2px solid var(--focus, #2b6cb0);
-  outline-offset: 2px;
-}
-
-.btn {
-  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
-  border: 1px solid var(--line, #d0d0d0);
-  border-radius: var(--r-1, 4px);
-  background: var(--bg-1, #fff);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.btn[disabled] {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn--primary {
-  border-color: var(--accent, #2b6cb0);
-}
+/* No focus rule and no button rule here. Layer 1 draws `--focus-ring` on every
+   `:focus-visible` control and layer 2 owns `.btn`, `.btn--primary` and their
+   disabled states: redrawing either would be the override of a ported rule
+   this sheet exists not to make. */
 
 .btnrow {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2, 0.5rem);
+  gap: var(--s-2);
 }
 
 .projects__create {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--sp-3, 0.75rem);
+  gap: var(--s-3);
 }
 
 .projects__create .field {
@@ -111,7 +89,7 @@
 .topbar__who {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2, 0.5rem);
+  gap: var(--s-2);
 }
 
 /* 390: the narrowest pinned comparison width. The create form stacks rather
