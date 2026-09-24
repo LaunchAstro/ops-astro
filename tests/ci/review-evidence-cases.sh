@@ -421,6 +421,97 @@ Security review: RUN AGAINST FEDCBA9876543210FEDCBA9876543210FEDCBA98, NO FINDIN
   "packages/core-custody/broker.ts"
 HEAD="$SAVED_HEAD"
 
+
+# Security review of d77b375, finding 1, 24 September. Only the contamination
+# gate counted as sensitive, so a pull request changing only this checker, the
+# database runner and its manifest, pins-check or the package.json scripts
+# that run them passed with `not required`. A gate is the surface that decides
+# what merges; a change to one needs a security review bound to the head.
+NOT_REQ_BLOCK="$GOOD_BLOCK
+
+Security review: not required: no sensitive paths changed"
+SEC_HEAD_BLOCK="$GOOD_BLOCK
+
+Security review: run against $HEAD, no findings"
+for gate in \
+  scripts/review-evidence-check.mjs \
+  scripts/db-conformance.mjs \
+  scripts/pins-check.mjs \
+  scripts/check.mjs \
+  tests/db/named-suites.json \
+  tests/ci/review-evidence-cases.sh \
+  tests/gate/gate-cases.sh \
+  tests/licences/licence-cases.sh \
+  tests/agents/session-check-cases.sh \
+  package.json \
+  pnpm-lock.yaml \
+  pnpm-workspace.yaml \
+  .dependency-cruiser.cjs \
+  commitlint.config.js \
+  .gitleaks.toml \
+  vitest.config.ts \
+  docs/supply-chain-pins.md; do
+  run_case "a change only to $gate needs a security review" 1 "$NOT_REQ_BLOCK" "$gate"
+  run_case "a change only to $gate passes with one bound to the head" 0 "$SEC_HEAD_BLOCK" "$gate"
+done
+run_case "the reviewer's five gate files together need a security review" 1 "$NOT_REQ_BLOCK" \
+  "scripts/review-evidence-check.mjs
+scripts/db-conformance.mjs
+tests/db/named-suites.json
+package.json
+scripts/pins-check.mjs"
+
+# Finding 2. A contradicting outcome line written as a heading, a blockquote or
+# a numbered item was not a field, so it was never read. GitHub renders each of
+# them as an ordinary line; so does this check now.
+run_case "a stale security line written as a heading fails" 1 "$SEC_HEAD_BLOCK
+
+### Security review: run against $OTHER, 2 findings, 1 closed" "packages/core-custody/broker.ts"
+run_case "a rejected security line in a blockquote fails" 1 "$SEC_HEAD_BLOCK
+
+> Security review: rejected" "packages/core-custody/broker.ts"
+run_case "a numbered code-review line asking for changes fails" 1 "$GOOD_BLOCK
+
+1. Code review: changes requested" "README.md"
+run_case "a bold code-review line in a list inside a quote fails" 1 "$GOOD_BLOCK
+
+> - **Code review:** 3 findings open" "README.md"
+run_case "an underscored bad code-review line fails" 1 "$GOOD_BLOCK
+
+__Code review__: not run" "README.md"
+run_case "a good security line written as a heading still passes" 0 "$GOOD_BLOCK
+
+## Security review: run against $HEAD, no findings" "packages/core-custody/broker.ts"
+# An unclosed comment hides everything after it from the merger, and the check
+# read it anyway. Fail closed: an unclosed comment runs to the end of the body.
+run_case "the only security line inside an unclosed comment fails" 1 "$GOOD_BLOCK
+
+<!--
+Security review: run against $HEAD, no findings" "packages/core-custody/broker.ts"
+run_case "the only code-review line inside an unclosed comment fails" 1 "Review checkpoint
+  head:        $HEAD
+
+<!-- a note the author never closed
+Code review: no findings" "README.md"
+
+# Finding 3. The checkpoint head was compared case-sensitively while the
+# security line's was not, so an uppercase checkpoint head was a false red.
+SAVED_HEAD="$HEAD"
+HEAD=abcdef0123456789abcdef0123456789abcdef01
+UPPER_HEAD="$(printf '%s' "$HEAD" | tr a-f A-F)"
+run_case "an uppercase checkpoint head passes" 0 "Review checkpoint
+  head:        $UPPER_HEAD
+
+Code review: no findings" "README.md"
+run_case "an uppercase seven-character checkpoint prefix passes" 0 "Review checkpoint
+  head:        ${UPPER_HEAD:0:7}
+
+Code review: no findings" "README.md"
+run_case "an uppercase stale checkpoint head still fails" 1 "Review checkpoint
+  head:        FEDCBA9876543210FEDCBA9876543210FEDCBA98
+
+Code review: no findings" "README.md"
+HEAD="$SAVED_HEAD"
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then

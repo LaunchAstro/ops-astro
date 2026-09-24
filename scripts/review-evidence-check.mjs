@@ -55,9 +55,22 @@ const SENSITIVE = [
   /^packages\/core-connectors\//u, // tool execution and egress
   /^packages\/core-runtime\//u, // the agent loop, gates, the audit chain
   /^apps\/worker\//u, // tool execution
-  /^scripts\/gate\//u, // the contamination gate itself
-  /^\.husky\//u, // the hooks that enforce it
+  /^\.husky\//u, // the hooks that enforce the gate
   /^\.github\/workflows\//u, // what runs with repository credentials
+  // The governance gates themselves. The security review of d77b375, finding
+  // 1, 24 September: only the contamination gate counted, so a pull request
+  // that changed only this checker, or the database runner and its manifest,
+  // or pins-check, passed with `not required`. A gate decides what merges; a
+  // change to one is a change to that decision.
+  /^scripts\//u, // every checker CI and `pnpm check` run, and the runner itself
+  /^tests\/(?:agents|branding|ci|db|gate|licences)\//u, // their own cases, and the database suite manifest
+  /^package\.json$/u, // the scripts CI calls by name
+  /^pnpm-(?:lock|workspace)\.yaml$/u, // what installs, and which install scripts run
+  /^\.dependency-cruiser\.cjs$/u, // the dependency cruise's rules
+  /^commitlint\.config\.js$/u, // the commit-message gate's rules
+  /^\.gitleaks\.toml$/u, // the secrets scan's rules
+  /^vitest\.config\.ts$/u, // how the database gate's suites run
+  /^docs\/supply-chain-pins\.md$/u, // the record pins-check holds every pin to
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
 ];
 
@@ -87,7 +100,10 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // An HTML comment is instruction to the author, never evidence. Removing it
 // first is what stops the template's own prose from answering for the author.
-const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?-->/gu, ' ');
+// An unclosed comment runs to the end of the body, as GitHub renders it: the
+// security review of d77b375, finding 2, found a line the merger never sees
+// read as the only outcome. Everything after an unclosed `<!--` is hidden.
+const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, ' ');
 
 // The literal strings the template ships with. An unreplaced one is named in
 // the failure rather than reported as "no outcome stated", because the author
@@ -103,8 +119,15 @@ const PLACEHOLDERS = [
 // A field is a line that begins with the field name. `Code review:` at the
 // start of a line is an answer; "the code review found nothing" inside a
 // sentence, or a path ending in security-review.md, is not.
+//
+// Any Markdown line prefix still leaves a line that begins with the field
+// name. The security review of d77b375, finding 2: a contradicting line
+// written as a heading, a blockquote or a numbered item was not read, though
+// GitHub shows it as an ordinary field line. So any run of heading marks,
+// quote marks, list bullets and list numbers may come first, and bold or
+// underscore emphasis may wrap the name.
 const FIELD =
-  /^[ \t]*(?:[-*+][ \t]+)?\*{0,2}(code|security)[ -]review\*{0,2}[ \t]*:[ \t]*(.*)$/gimu;
+  /^[ \t]*(?:(?:#{1,6}|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,2}(code|security)[ -]review[*_]{0,2}[ \t]*:[ \t]*(.*)$/gimu;
 
 /** Every occurrence of a field, in order, as {name, value, line}. */
 const fields = (text) => {
@@ -243,8 +266,13 @@ if (checkpoint === null) {
       '        See docs/agents/review-checkpoint.md.',
   );
 } else {
-  const recorded = checkpoint[1] ?? '';
-  if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
+  // The security review of d77b375, finding 3: the checkpoint head was read
+  // ignoring case and compared with it, so an uppercase head was a false red.
+  // Both sides in lowercase, as the security line has been since round
+  // fourteen.
+  const recorded = (checkpoint[1] ?? '').toLowerCase();
+  const current = head.toLowerCase();
+  if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
     failures.push(
       `the review checkpoint records head ${recorded}, and this pull request is\n` +
         `        at ${head}. A review of one revision is not a review of another.\n` +
@@ -263,7 +291,8 @@ if (sensitive.length > 0) {
       'this change touches the sensitive surface and carries no security review:\n' +
         sensitive.map((f) => `          ${f}`).join('\n') +
         '\n        AGENTS.md requires one before any pull request touching auth,\n' +
-        '        tenancy, tool execution, egress, custody or the audit chain.',
+        '        tenancy, tool execution, egress, custody or the audit chain, and\n' +
+        '        a change to a governance gate is a change to what may merge.',
     );
   } else {
     // Every security-review line, not the first one carrying a revision.
