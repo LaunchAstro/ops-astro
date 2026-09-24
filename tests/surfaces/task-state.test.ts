@@ -2,7 +2,7 @@
 //
 // One task state, drawn one way on the board and the task page (thermo review
 // M14). The two screens each held a copy of this mapping; the values below
-// are what those copies drew at b282216, so the move changes nothing a person
+// are what those copies drew at b483399, so the move changes nothing a person
 // sees.
 
 import { describe, expect, it } from 'vitest';

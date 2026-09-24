@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Record-scoped work control and target-scoped revocation (authority review
-// finding 3, standards S1, at 74d583c).
+// finding 3, standards S1, at 4757d72).
 //
 // Ledger line 37: "Current existing work-control authority; no new actor
-// capability inferred". At 74d583c `task.cancel` and `task.restart` were
+// capability inferred". At 4757d72 `task.cancel` and `task.restart` were
 // declared without an existing-record target, and the envelope used that same
 // flag to choose the authority scope, so a person holding `write` on exactly
 // the task could propose on it but not cancel or restart its lineage: only a

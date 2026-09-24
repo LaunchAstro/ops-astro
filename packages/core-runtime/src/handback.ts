@@ -259,7 +259,7 @@ export async function handback(
     { lockClass: 'reservation', id: found.reservation_id },
   ]);
 
-  // Sol 6 RUNTIME-1 (158d6de): `now()` is when this transaction began, and a
+  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
   // handback that waited on these locks past the lease's expiry would still
   // see the lease live and settle work an expired lease cannot settle. The
   // expiry is judged on the clock read here, after the locks.
@@ -665,7 +665,7 @@ async function withinBounds(
     );
   }
 
-  // Sol 6 RUNTIME-2 (158d6de): exact, as approval is. A cap above 2^53 is
+  // Sol 6 RUNTIME-2 (9ddfa09): exact, as approval is. A cap above 2^53 is
   // valid, and as numbers its limit and committed total round, so a successor
   // could be admitted beyond the room that is really left.
   const wanted = BigInt(successor.maximumMinor);

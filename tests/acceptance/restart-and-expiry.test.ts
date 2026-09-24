@@ -329,7 +329,7 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     // path" — the one refusal that is a door the person can open. The mounted
     // app's client has a hook for exactly that, `onSessionEnded`.
     //
-    // At `b15ed7e` this case recorded a defect: `SESSION_ENDED` was
+    // At `9970ddc` this case recorded a defect: `SESSION_ENDED` was
     // `AUTH_UNKNOWN_LOGIN` alone, so the hook fired zero times for the one
     // refusal it exists for, and the case asserted that zero *as observed* so
     // that it would fail on the day it was fixed. It has been fixed —

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One proposal read answers one state of the task (P2 at 3eddfbe).
+// One proposal read answers one state of the task (P2 at 610983f).
 //
 // The read runs in an ordinary read-committed transaction, where each statement
 // sees what was committed when it began. A gate read in one statement and the

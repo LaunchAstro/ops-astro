@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A foreign gate and a fabricated one answer the same public `NOT_FOUND`
-// (minimum contract 8.2 cases 1 and 2; root ruling 2 of 906613f).
+// (minimum contract 8.2 cases 1 and 2; root ruling 2 of dd30aa8).
 //
 // Both are sent through the real HTTP `task.decide` route by a person who may
 // decide in their own business. The foreign gate is a real, pending gate in

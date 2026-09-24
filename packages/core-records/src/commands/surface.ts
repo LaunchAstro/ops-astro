@@ -26,7 +26,7 @@
 // revision, which identifiers an untargeted write may carry, which identifier
 // the runtime shapes itself, and whether an agent may reach it. `prepare.ts`,
 // the envelope and the agent path read the row rather than a list of names of
-// their own, so adding a command is one row (architecture review bbdf2b2,
+// their own, so adding a command is one row (architecture review d8746a2,
 // candidate 1). The handlers stay in `handlers.ts`, keyed by the same name,
 // because the web client imports this table and must not import the database.
 //
@@ -467,7 +467,7 @@ export function pathOf(name: CommandName): string {
 /**
  * The two mounts the API serves the surface under and the command line sends
  * to, each followed by the business key and then `pathOf(name)`. One copy for
- * both sides (thermo review b282216, M11). The agent's is its own so that an
+ * both sides (thermo review b483399, M11). The agent's is its own so that an
  * agent asking and a person asking cannot be mistaken for each other.
  */
 export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;

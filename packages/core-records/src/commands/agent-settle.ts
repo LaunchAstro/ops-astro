@@ -6,7 +6,7 @@
 // (`agent-replay.ts`) writes every audit row through `writeCallEvent`, its
 // `OPERATION_ID_REUSED` refusal included, and registers none, because the
 // identity already holds its first request's row. So the agent path has one
-// audit writer, not a second spelling of it (thermo recheck 158d6de, NA4).
+// audit writer, not a second spelling of it (thermo recheck 9ddfa09, NA4).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';

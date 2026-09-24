@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The per-command tables, pinned as they stood at faf3285.
+// The per-command tables, pinned as they stood at 06ab232.
 //
 // Written before the command facts were folded into the `COMMAND_SURFACE`
-// rows (architecture review bbdf2b2, candidate 1), and green before and after.
+// rows (architecture review d8746a2, candidate 1), and green before and after.
 // The tables no longer exist as lists: each is read here off the rows, and the
 // agent's two lists are also checked against `agent-envelope.ts`, which still
 // keeps its own copy until the agent path reads the rows.
@@ -15,7 +15,7 @@
 // operand on the way, fails here.
 //
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
-// were pinned as `unchecked` at faf3285. Architecture observation 2 flipped
+// were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
 // identifiers its request type declares, and that change is the one
 // deliberate edit to this pin.

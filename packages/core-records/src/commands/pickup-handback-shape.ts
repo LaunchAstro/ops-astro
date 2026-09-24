@@ -2,7 +2,7 @@
 //
 // The `task.handback` operand shape a pickup hands its claimant. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import { type PickedUp, type PickedUpByPerson } from '../../../core-runtime/src/pickup.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';

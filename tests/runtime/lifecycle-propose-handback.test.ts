@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// F1 (runtime review at 74d583c): `task.propose` and `task.handback` on the
+// F1 (runtime review at 4757d72): `task.propose` and `task.handback` on the
 // same task cannot deadlock.
 //
 // TRANSACTION-CONTRACT line 9: discover first, then take cap, envelope, task
-// and the rest in that order. At 74d583c the command adapter locked the task
+// and the rest in that order. At 4757d72 the command adapter locked the task
 // for `task.propose` before the runtime took the cap and envelope, while
 // handback takes cap, envelope, then task. The schedule below forces the
 // reviewer's interleaving through the real HTTP command entry: a third

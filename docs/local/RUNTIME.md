@@ -293,6 +293,14 @@ does not exist, has no approval behind it, or is already picked up by another
 live lease (`NOT_CLAIMABLE_REASON` and `NOT_CLAIMABLE_FIX`, `pickup.ts`;
 `claim`, `commands/tasks-pickup.ts`). The holding lease is never named.
 
+A trashed task's work is not queued, and a pickup of its reservation answers
+exactly as an unknown reservation does (`RESERVATION_NOT_CLAIMABLE`, the two
+fixed sentences). `queue`, pickup's discovery and its re-read under the locks
+each read only a live task (`deleted_at is null`, `pickup.ts`), so a trash that
+commits while a pickup waits on the task lock is caught too. Cancellation still
+reaches the lineage, so its hold can be released, and restoring the task brings
+the work back (`tests/runtime/final-r1-fr1-runtime-cont.test.ts`).
+
 `LEASE_HELD` is reachable. Two lineages approved on one task, under an envelope
 an earlier handback left open, give two held reservations, and the second pickup
 meets the first one's live lease (the note beside `UNPRODUCED_CODES` in
@@ -592,9 +600,12 @@ narrowed and grant-expired paths over HTTP, each with a handback carrying
 `commands/envelope.ts`) share one retry, `retryOnce` in `commands/envelope.ts`,
 on the `isRetryableViolation` predicate (`register-store.ts`). The predicate
 admits a lost identity claim (`operations_identity_key`), a lost unique-value
-claim (`record_unique_values_claim_idx`) and `AffectedSetChanged`. The identity case
-is the one an agent reaches. A same-operationId retry in flight behind its
-original loses `operations_identity_key` to the original's commit, and its whole
+claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
+`AffectedSetChanged`. A deadlock victim was rolled back whole by the server, so
+it is retried once, like a lost unique race, and a second one faults
+(`tests/commands/final-r1-fr1-jsonb-cont.test.ts` holds the retry). The
+identity case is the one an agent reaches. A same-operationId retry in flight
+behind its original loses `operations_identity_key` to the original's commit, and its whole
 transaction rolls back. The second attempt reads the committed register row and
 replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
@@ -642,7 +653,9 @@ gives the agent no cancellation authority and adds no command retry at startup.
 
 A second loss reaches the caller as a fault. The person entry then writes one
 `failed` audit event in a transaction of its own, which is not a command
-attempt. The agent entry writes none. A second `operations_identity_key` loss is
+attempt. A payload with no canonical form still leaves its `failed` event,
+carrying the all-zero payload digest (`failedDigest`, `commands/envelope.ts`).
+The agent entry writes none. A second `operations_identity_key` loss is
 not reachable by a schedule. The retry reads the register by the constraint's
 exact key, and the register is append-only, so the retry replays the first
 winner. `tests/runtime/retry-bounds.test.ts` forces a person `task.cancel` to

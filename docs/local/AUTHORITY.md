@@ -582,6 +582,12 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   `revokeGrantAsManager`, `commands/authority-controls.ts`). A holder whose
   business-wide `write` is revoked while a record-scoped `write` on the task
   remains keeps the lease, and can renew and hand it back (`stillAuthorised`).
+- The local seed never classifies. It takes back a grant the seed file no
+  longer names by stamping `revoked_at` only (`revokeGrant`), so a rerun that
+  would take back a grant a live lease rests on stops before it revokes
+  anything and names the grant (`leasesResting`, `scripts/local-seed.mjs`).
+  Hand the work back or use `grant.revoke` first.
+  `tests/runtime/final-r1-dbtest-seed-revoke.test.ts` holds it.
 - After authority loss the run returns to `planned`. The abandoned hold is
   never revived; a claimant with current authority gets a fresh hold and
   attempt.

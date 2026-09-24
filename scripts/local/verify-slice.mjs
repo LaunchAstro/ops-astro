@@ -513,7 +513,7 @@ async function main() {
 
   // ------------------------------------------------------------ N7 tampering
   // Three halves, and the row passes only if all three hold. Before D06
-  // (`fa3041a`) the injected body keys were silently dropped and the write
+  // (`81f9697`) the injected body keys were silently dropped and the write
   // applied, and this row accepted that as the proof. It no longer does: a
   // successful ordinary change after quietly discarding an identity field
   // tells an attacker nothing was wrong with what they sent.
@@ -819,7 +819,7 @@ async function theJourney() {
 
     // An agent login confers nothing at all. A bare call, with no credential,
     // outside the queue and a pickup is excluded by name (root ruling 6 at
-    // 906613f; `agent-envelope.ts`, the no-credential branch). A credential
+    // dd30aa8; `agent-envelope.ts`, the no-credential branch). A credential
     // that is presented and not live is another matter: it stays one answer,
     // DELEGATION_NOT_LIVE, because telling an unknown credential apart from a
     // revoked one tells a thief which it is holding.

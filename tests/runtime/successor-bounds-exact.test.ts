@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Sol 6 RUNTIME-2 at 158d6de, through the command entry.
+// Sol 6 RUNTIME-2 at 9ddfa09, through the command entry.
 //
 // A successor's ceiling is bounded by the cap's remaining room, and a cap
 // above 2^53 is compared exactly. With 2 units left, a ceiling of 4 is refused

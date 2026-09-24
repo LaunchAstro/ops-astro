@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The readiness race behind one `pnpm check` failure at a8accb6, reproduced.
+// The readiness race behind one `pnpm check` failure at 9da823a, reproduced.
 //
 // withDatabase in db-conformance-cases.mjs starts the pinned Postgres image on
 // a fresh anonymous volume and polls a readiness check before handing the
@@ -37,7 +37,7 @@ const { values } = parseArgs({
 });
 
 const CHECKS = {
-  // The check withDatabase used at a8accb6: over the Unix socket.
+  // The check withDatabase used at 9da823a: over the Unix socket.
   socket: ['pg_isready', '-U', 'postgres', '-d', 'conformance'],
   // The fixed check: over TCP inside the container, which the temporary
   // init server never answers.

@@ -258,7 +258,7 @@ export async function mintDelegation(
   // `now()` is when the transaction began, and a pickup that waited on its
   // locks past the expiry of the lease this delegation was minted with would
   // still see the delegation live and refuse the agent's own replacement
-  // (Sol 6 RUNTIME-1 at 158d6de, the delegation half).
+  // (Sol 6 RUNTIME-1 at 9ddfa09, the delegation half).
   const blocking = await tx.query<{ readonly id: string }>(
     `select id from public.delegations
       where business_id = $1 and agent_actor_id = $2 and purpose = $3
@@ -435,7 +435,7 @@ export async function resolveHistoricalDelegation(
 
 /**
  * The live delegation a presented credential names, when what it draws on no
- * longer covers `request` (REVIEW-AGENT-BOUNDARY 62307d5 N1).
+ * longer covers `request` (REVIEW-AGENT-BOUNDARY d58b869 N1).
  *
  * The other half of T4 line 76's "narrowed agent". A person's grant can reach
  * its `expires_at` while the delegation minted against it at pickup runs to

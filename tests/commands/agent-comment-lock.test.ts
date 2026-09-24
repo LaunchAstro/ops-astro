@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The agent's comment locks its task with the person entry's own statement
-// (thermo review b282216, O8; lead ruling: exactly what `lockTask` selects).
+// (thermo review b483399, O8; lead ruling: exactly what `lockTask` selects).
 //
 // Both transactions are stubs that record what they are sent, so the
 // comparison is the statement text and its parameters and nothing else. This

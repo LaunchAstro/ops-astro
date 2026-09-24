@@ -11,7 +11,7 @@
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's
 // own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf` (architecture review bbdf2b2, candidate 2).
+// status column through `statusOf` (architecture review d8746a2, candidate 2).
 //
 // **Why a table rather than a union alone.** A union stops a typo. It cannot
 // say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
@@ -661,12 +661,15 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
  * pickup and handback, a comment record type, and the gate triple for a
  * proposal and a decision.
  *
- * Three came off the list when T1k landed the budget tables, which is the
- * visible diff this list exists to produce. `BUDGET_EXHAUSTED` is what the
- * enforcing path returns when an attempt would cross a ceiling a person
- * approved. `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` came with it, not
- * from the gate engine: a top-up and a write-off are gated money decisions,
- * so the first part to need an approval to be an approval was the budget one.
+ * Three came off the list when T1k landed the budget tables. Only one of them
+ * is produced: `BUDGET_EXHAUSTED` is what the enforcing path returns when an
+ * attempt would cross a ceiling a person approved
+ * (`core-runtime/src/budget.ts`).
+ * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` came off with it for the gated
+ * money decisions, a top-up and a write-off, and those were deferred, so
+ * nothing in `apps/` or `packages/` returns either code. They are registered,
+ * unproduced and not on this list, so this list is not every code nothing
+ * produces.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the

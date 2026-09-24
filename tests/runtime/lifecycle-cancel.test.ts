@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// F2 (runtime review at 74d583c): cancellation closes the work authority it
+// F2 (runtime review at 4757d72): cancellation closes the work authority it
 // ends, not only the lease.
 //
 // T5, TRANSACTION-CONTRACT line 82: the owning run-cancel control "releases

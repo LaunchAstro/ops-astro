@@ -85,7 +85,7 @@ function withDatabase(run) {
     // Ask over TCP, not the Unix socket: on a fresh volume the entrypoint
     // first runs a socket-only server for initdb, then restarts, and a socket
     // check passed during that phase handed the runner an ECONNRESET at
-    // a8accb6. tests/ci/db-ready-race.mjs reproduces it.
+    // 9da823a. tests/ci/db-ready-race.mjs reproduces it.
     let ready = false;
     for (let attempt = 0; attempt < 60 && !ready; attempt += 1) {
       ready =

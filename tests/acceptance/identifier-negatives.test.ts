@@ -275,7 +275,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.gate,
     async () => {
-      // Green at 403267f, RED at 74d583c (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`
+      // Green at 2507a31, RED at 4757d72 (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`
       // with the foreign and fabricated bodies identical byte for byte.
       const decision = { decision: 'approve', note: NOBODY };
       const { gateId, versionId } = w.foreign.proposal;
@@ -290,7 +290,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.board,
     async () => {
-      // Green at 403267f. RED at 74d583c: `task.board` takes a board identifier
+      // Green at 2507a31. RED at 4757d72: `task.board` takes a board identifier
       // (`reads/dispatch.ts:241-243`) and answers 200 `{ tasks: [] }` for one
       // that is not alpha's. Case 1 asks `NOT_FOUND`, and case 3 says a denied
       // list is never empty. `task.move` refuses the same identifier
@@ -306,7 +306,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.agent,
     async () => {
-      // RED at 403267f on bytes alone (root ruling 2): the refusal text echoes
+      // RED at 2507a31 on bytes alone (root ruling 2): the refusal text echoes
       // the presented id, so the forms differ. DELEGATION_OUT_OF_PURPOSE at
       // `authority/delegations.ts:360`; LEASE_NOT_OWNED at
       // `core-runtime/src/heartbeat.ts:82` and `core-runtime/src/handback.ts:147`.
@@ -352,7 +352,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.pickup,
     async () => {
-      // Green at 403267f. RED at 74d583c for the third form: the answer for a reservation another
+      // Green at 2507a31. RED at 4757d72 for the third form: the answer for a reservation another
       // agent already claimed names the lease that claimed it ("already claimed
       // by lease <id>"), an alpha identifier this agent was never given. No
       // delegation is live here, so nothing else would have shown it one.
@@ -408,7 +408,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         });
         audited.push(op);
       }
-      // Green at 403267f. RED at 74d583c for the five reads: a read takes a `recordId` it has no
+      // Green at 2507a31. RED at 4757d72 for the five reads: a read takes a `recordId` it has no
       // use for and answers as if it had not been sent (the target check,
       // `commands/prepare.ts` `refuseIrrelevantTarget`, runs on the command path only).
       expect(answered).toStrictEqual(

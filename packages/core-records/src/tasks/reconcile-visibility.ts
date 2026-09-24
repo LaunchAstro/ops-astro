@@ -24,7 +24,7 @@ const RECONCILED_VISIBILITY: ReadonlySet<string> = new Set(['title', 'state']);
 /**
  * Bring title and state on an installed task type to their declared class.
  *
- * A business installed before 77bcc54 holds both `internal`, because the
+ * A business installed before 035967b holds both `internal`, because the
  * installer then declared no class and wrote the deny-by-default one, and the
  * installer's early return on an existing type never read its fields again.
  * `visibility_class` is not an immutable column (0004's `field_defs_immutable`

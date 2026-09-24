@@ -2,7 +2,7 @@
 //
 // `task.pickup`: an agent or a person claims an approved reservation. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { pickup } from '../../../core-runtime/src/index.ts';

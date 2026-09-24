@@ -3,7 +3,7 @@
 // The runtime source review's findings, as regressions.
 //
 // One case per finding in `REVIEW-RUNTIME-dcbc8e8.md`, each written to fail on
-// `dcbc8e8` and named by its finding number so a red run names what is broken
+// `e7426eb` and named by its finding number so a red run names what is broken
 // rather than which assertion noticed. The existing gate and lease suites keep
 // their own subjects; this file holds only the cases those suites were found
 // not to cover.

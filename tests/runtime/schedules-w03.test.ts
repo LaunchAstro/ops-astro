@@ -194,7 +194,7 @@ describe.skipIf(serverUrl === undefined)(
         expect(await envelopeHeld(s, work.taskId)).toBe(0);
 
         // The cancellation reached its lock set after the handback committed. It
-        // must not release anything a second time. At 74d583c its rediscovery
+        // must not release anything a second time. At 4757d72 its rediscovery
         // under the locks finds the reservation gone and throws "roll back and
         // rediscover" (`recovery.ts`, `cancelAndClassify`), which the caller sees
         // as a fault; whether that should rediscover inside the operation is for

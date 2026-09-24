@@ -42,7 +42,7 @@ const json = (body: unknown, status = 200): Response =>
  * The API the screen meets.
  *
  * `reads` off is the build that has neither read mounted — the live API at
- * `b15ed7e` — so both come back `unavailable` and the screen falls back the way
+ * `9970ddc` — so both come back `unavailable` and the screen falls back the way
  * it did before this lane. That is the shape the fallback cases want, and it is
  * a real answer from a real server rather than a case invented for the test.
  */

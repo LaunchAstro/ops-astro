@@ -229,7 +229,7 @@ export async function proposeUnderLocks(
     );
     const row = found[0];
     if (row === undefined) {
-      // Ruling 2 of 906613f: `lineageId` is the caller's, so a lineage in
+      // Ruling 2 of dd30aa8: `lineageId` is the caller's, so a lineage in
       // another business and one that names nothing get the same bytes. The
       // reason names neither, because the id was the only thing that differed.
       return refuse(

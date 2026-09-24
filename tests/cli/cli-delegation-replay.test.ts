@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Replaying an old handback leaves the current lease's saved credential alone
-// (Sol 6 SURFACE-1 at 158d6de).
+// (Sol 6 SURFACE-1 at 9ddfa09).
 //
 // The delegation file holds the credential the last `task.pickup` saved. A
 // successful `task.handback` removes it, because that lease is over. But a

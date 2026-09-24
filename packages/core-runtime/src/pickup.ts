@@ -314,7 +314,7 @@ export async function pickup(
       'pickup: the live leases on the task changed under discovery; roll back and rediscover rather than extending the lock set',
   });
 
-  // Sol 6 RUNTIME-1 (158d6de): `now()` is when this transaction began, and a
+  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
   // pickup that waited on these locks past a lease's expiry would still read
   // that lease as live and refuse the replacement. The clock read here, after
   // the locks, is the one instant every lease-expiry decision below and the new

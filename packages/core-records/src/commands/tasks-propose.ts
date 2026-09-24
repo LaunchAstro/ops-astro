@@ -2,7 +2,7 @@
 //
 // `task.propose`: a proposal on a task, through the runtime's locks. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';

@@ -2,7 +2,7 @@
 //
 // The successor a handback may ask for, read from the caller's body. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import { type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import { refuseCommand } from './refusal.ts';

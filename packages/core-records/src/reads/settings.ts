@@ -54,7 +54,7 @@ export interface SettingView {
  * One statement: the values, types, times and authors all come from
  * `readBusinessSettings`, so a value and the actor shown as its author are
  * from the same commit. A second read for the author, joined by key, could
- * pair them across two (thermo review b282216, L3).
+ * pair them across two (thermo review b483399, L3).
  */
 export async function readSettings(tx: TenantQuery): Promise<readonly SettingView[]> {
   const settings = await readBusinessSettings(tx);

@@ -2,7 +2,7 @@
 //
 // Finding 1: a business installed before the comment type existed can acquire it.
 //
-// The Base installer (`e47596c`) wrote `task` and `task_state` and no
+// The Base installer (`5da708f`) wrote `task` and `task_state` and no
 // `task_comment`, and neither migration 0008 nor 0009 installs comment
 // metadata into a business that already exists. So the live shape for every
 // existing business is exactly that, and the only producer that could bring it
@@ -104,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('installTaskSpine upgrades a Base-shape
         'task_state',
       ]);
 
-      // 2. The upgrade. Against `b96b487` this throws
+      // 2. The upgrade. Against `43f7f19` this throws
       //    'the task type is installed and the comment type is not'.
       const upgraded = await installTaskSpine(tx);
 
