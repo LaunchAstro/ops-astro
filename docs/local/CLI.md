@@ -29,7 +29,10 @@ nothing of its own on stdout, so the output can be piped to `jq`.
 The operation list comes from `COMMAND_SURFACE`
 (`packages/core-records/src/commands/surface.ts`), the same registry the API
 mounts its routes from. An operation the API has not landed is listed with what
-it is waiting on.
+it is waiting on. An operation the command line does not know is answered
+locally, before any configuration is read or any request is sent: it prints
+`{"code":"COMMAND_UNKNOWN","names":[<verb>],"fixes":[...]}` and exits 2
+(`unknownVerb`, `apps/cli/client.ts`).
 
 ## Flags and environment
 
@@ -56,7 +59,7 @@ A write needs an `operationId`; when the body has none, the command line adds a
 fresh one. A read on the person prefix is sent with exactly the body given and
 no `operationId`. Every call on the agent prefix (`--agent`) gets one, reads
 included, because the agent envelope refuses any call without it
-(`OPERATION_ID_REQUIRED` in `executeAgentCommand`,
+(`OPERATION_ID_REQUIRED` in `runAgentCommand`,
 `packages/core-records/src/commands/agent-envelope.ts`). To retry a write
 safely, put your own `operationId` in the body and send the same body again:
 the API replays the first answer instead of writing twice.

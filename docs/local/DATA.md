@@ -226,9 +226,9 @@ declaration's `authorisedOn` names it (`CommandDeclaration` in
 `recordId`; that is every command with `targetsExistingRecord`, and
 `task.cancel` and `task.restart`, which name their task without writing it.
 `target` is checked at the scope of the grant or delegation being revoked
-(`grant.revoke`, `delegation.revoke`; `targetScopeOf` in `prepare.ts`). `claim`
+(`grant.revoke`, `delegation.revoke`; `SCOPE_OF.target` in `prepare.ts`). `claim`
 is checked against the task that the body's reservation or lease belongs to
-(`task.pickup`, `task.handback`, `task.heartbeat`; `claimScopeOf`). Every other
+(`task.pickup`, `task.handback`, `task.heartbeat`; `SCOPE_OF.claim`). Every other
 command is checked against the business, whatever identifiers its body carries.
 Deriving the scope from `request.recordId` instead let a record-scoped grant
 turn a refused `task.create` into an accepted one by naming the record it did
@@ -281,7 +281,7 @@ On the person prefix a read carries no `operation_id` and no
 `expected_revision`: there is nothing to replay and nothing to be stale
 against. On the agent prefix every call, reads included, carries an
 `operation_id`, because the agent envelope refuses a call without one
-(`executeAgentCommand` in `packages/core-records/src/commands/agent-envelope.ts`).
+(`runAgentCommand` in `packages/core-records/src/commands/agent-envelope.ts`).
 A person's read runs through `withSession` and the
 same `checkAuthority` the commands use, in the same transaction, so a revoked
 grant bites on the next read. A denied read is `SCOPE_NOT_GRANTED` and never an

@@ -100,11 +100,13 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `refuseCreateOperands`, from `createTask` (`tasks-write.ts`)    |
 | `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `refuseRestoreOperands`, from `restoreTasks` (`tasks-trash.ts`) |
 | `task.purge`   | none                                     | no window operand: see below                                             | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)     |
-| `task.read`    | `recordId`                               | a string                                                                 | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `task.read`    | `recordId`                               | a string                                                                 | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
 
-The `refuse…Operands` functions are in `commands/operands.ts`.
+The three `refuse…Operands` functions are in `commands/operands.ts`. A read's
+operand check is the `operands` column of its `READ_CATALOGUE` row
+(`reads/catalogue.ts`).
 
 **`task.purge` takes no window.** It reads the business's own
 `retention_window_days` setting inside the transaction the command is served in
@@ -120,7 +122,7 @@ floor or ceiling is applied. `tests/commands/purge-retention.test.ts` holds it.
 
 The three command checks run in their handlers, so the refusal is registered and
 audited like any other command refusal. The read checks run inside the audited
-read (`refuseReadOperands`, called from `serveRead` in `reads/dispatch.ts`),
+read (the row's `operands`, called from `serveRead` in `reads/dispatch.ts`),
 after the system-field and identifier checks and before the grant check, so a
 refused read writes its audit row like any other.
 `tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
@@ -130,8 +132,9 @@ list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. The
 agent envelope reads `recordId` itself, and under a live delegation an absent
-one is `NOT_FOUND` 404 (`subjectTaskId` and the `task.read` case of `serve`,
-`commands/agent-envelope.ts`).
+one is `NOT_FOUND` 404 (`subjectTaskId` in `commands/agent-authority.ts`, and
+the `serve` of the `task.read` row of `AGENT_OPERATIONS` in
+`commands/agent-operations.ts`).
 
 ## Who is calling
 
@@ -214,6 +217,13 @@ the general rule above. Every write also answers the envelope's own refusals:
 `commands/envelope.ts`; `prepareCommand`, `commands/prepare.ts`). The table
 lists what each adds.
 
+An identifier field an untargeted write does not take is refused
+`COMMAND_BODY_INVALID` 400 naming it, before authority. That holds on every
+untargeted person-path write, including `task.heartbeat`, `task.cancel`,
+`task.restart`, `grant.revoke` and `delegation.revoke`, since `610c1cc`. The
+fields each write takes are its row's `untargetedIdentifiers` in
+`COMMAND_SURFACE`, checked by `refuseIrrelevantTarget` (`commands/prepare.ts`).
+
 | Operation                                                                             | Route                                  | Body                                                                    | Refusals it adds                                                                                                                                                                      |
 | ------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.update`                                                                         | `/task/update`                         | `operationId`, `recordId`, `expectedRevision`, `fields`                 | `FIELD_UNKNOWN` 422, `TRANSITION_PROTECTED` 422 (a field another operation owns, or a board change), `FIELD_VALUE_INVALID` 422, `SOURCE_SPOOFED` 403                                  |
@@ -244,8 +254,9 @@ both are `SOURCE_SPOOFED` (`SPOOFABLE_ON_CREATE`, `SPOOFABLE_ON_UPDATE` and
 value goes to the audit row only. By root ruling, the transaction contract's
 T1-N3 and contract-ledger row D03 take precedence here over the older
 minimum-contract 6.1 wording, which answered `SOURCE_SPOOFED` to
-`intake_state: accepted` on any write. `tests/acceptance/protected-fields.test.ts:317` holds
-both.
+`intake_state: accepted` on any write. `tests/acceptance/protected-fields.test.ts` holds
+both, in "D03: intake_state on task.update names task.triage; task.create keeps
+SOURCE_SPOOFED".
 
 **A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by name.
 The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every installed
@@ -261,8 +272,8 @@ refusal, and `fields.source` stays `SOURCE_SPOOFED`.
 business's unboarded tasks. A board id must name a live task in the caller's
 business: a foreign, fabricated, malformed or trashed board is `NOT_FOUND` 404,
 the same body as any unknown record, audited in the caller's business with no
-subject, and never answered as an empty list (the `task.board` case of
-`serveRead` and `boardExists`, `reads/dispatch.ts`; minimum contract 8.2 cases
+subject, and never answered as an empty list (the `serve` of the
+`task.board` row and `boardExists`, `reads/catalogue.ts`; minimum contract 8.2 cases
 1 and 3).
 `tests/commands/board-not-found.test.ts` holds it. `WRONG_BUSINESS` stays
 registered and unproducible (minimum contract 4.4, as corrected 14 September
@@ -414,7 +425,9 @@ days. Over the maximum is `FIELD_VALUE_INVALID` 422 naming
 `successor.expiresInSeconds`, and it settles nothing. An absolute
 `successor.expiresAt` is refused by name. `proposedByActorId` is **not** a body
 field: it is the agent actor of the session. A caller who sends it, under either
-spelling, is refused `FIELD_NOT_WRITABLE` naming `successor.proposedByActorId`.
+spelling, is refused `FIELD_NOT_WRITABLE` naming `successor.proposedByActorId`,
+on both entries, with the fix "The successor is recorded as proposed by the
+actor of your session, …" (`successor.ts`).
 The attempted value goes to the audit row and never to the response, as with
 every other system-owned field. The result carries four handles,
 `successorVersionId`, `successorGateId`, `successorRunId` and `successorStepId`,
@@ -449,7 +462,7 @@ delegation is still live and the delegating person's write grant covering the
 handback's task has since expired or otherwise lapsed. In the second case the
 credential must still resolve live for this business and agent, and the
 authority check on the presented lease's own task must answer `DELEGATION_NARROWED` (`retainLateHandback` and
-`narrowedOnLease`, `commands/agent-envelope.ts`; `resolveNarrowedDelegation`,
+`narrowedOnLease`, `commands/agent-late-handback.ts`; `resolveNarrowedDelegation`,
 `authority/delegations.ts`). Nothing is revoked and the delegation stays live.
 In every case the answer is unchanged and nothing else is written
 ([RUNTIME.md, "Why the lease is fenced"](RUNTIME.md#why-the-lease-is-fenced)).
@@ -457,7 +470,7 @@ In every case the answer is unchanged and nothing else is written
 
 This intake never keeps a handback that claims spend. The agent entry refuses
 a non-null `actualMinor` among its operands (`parseOperands`,
-`commands/agent-envelope.ts`), before authority is read, so the call answers
+`commands/agent-operations.ts`), before authority is read, so the call answers
 `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 and never reaches `retainLateHandback`.
 The three `actualMinor 1` cases in the same test file, one for each path
 above, prove it: 422, no retained row, one refused audit row. Each then sends
@@ -532,8 +545,8 @@ written. The check is one shape test, `isIdentifier` (`commands/operands.ts`),
 called where both claimants meet: `claim` in `commands/tasks-pickup.ts`,
 `renewLease` in `commands/tasks-lease.ts` and `settle` in
 `commands/tasks-handback.ts`. The agent envelope's lease lookup checks the same
-shape with its own pattern (`UUID`, in `subjectTaskId`,
-`commands/agent-envelope.ts`). A malformed id never reaches a uuid parameter, so
+shape with its own pattern (`UUID` from `commands/agent-operations.ts`, in
+`subjectTaskId`, `commands/agent-authority.ts`). A malformed id never reaches a uuid parameter, so
 it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps for real faults. The
 agent envelope reads `reservationId` as a string, so a number there is the same
 answer. On the person route a non-string `reservationId` is still
@@ -579,7 +592,7 @@ What each one does:
   [RUNTIME.md](RUNTIME.md)). Both answer with `detail.classifiedHolds`, the ids
   of the reservations the revocation classified, and nothing about whose they
   were (`classifiedHolds`, `authority-controls.ts`). The envelope asks `manage`
-  at the revoked row's own scope (`targetScopeOf`, `commands/prepare.ts`), so
+  at the revoked row's own scope (`SCOPE_OF.target` and `TARGET_LOOKUPS`, `commands/prepare.ts`), so
   `SCOPE_NOT_GRANTED` is also the answer for a manager whose `manage` does not
   cover that scope, as well as for one outside the ceiling (`withinCeiling` and
   `OUTSIDE_CEILING`, `authority-controls.ts`). Nothing is cached, so the next
@@ -631,57 +644,59 @@ prefix, the command line (`apps/cli/client.ts`) and the web client
 there, and a row one surface cannot reach fails it.
 
 Every row below is a `COMMAND_SURFACE` declaration. Cites are symbols, not line
-numbers. A person-prefix write is the case of that name in `handleCommand`
-(`commands/handlers.ts`), and a person-prefix read is the case of that name in
-`serveRead` (`reads/dispatch.ts`). The tables name the function each case calls.
+numbers. A person-prefix write is the entry of that name in `HANDLERS`, which
+`handleCommand` calls (`commands/handlers.ts`), and a person-prefix read is the
+`serve` of the row of that name in `READ_CATALOGUE` (`reads/catalogue.ts`),
+which `serveRead` runs (`reads/dispatch.ts`). The tables name the function each case calls.
 
 The five support controls, with their owning functions:
 
-| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                  | Owning function                                                                                             |
-| ------------------- | --------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                | `revokeGrant` (`authority/grants.ts`)                                                                       |
-| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                           | `revokeDelegation` (`authority/delegations.ts`)                                                             |
-| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                            | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
-| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                           | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
-| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: `serve` (`commands/agent-envelope.ts`) → `heartbeatLease` (`commands/tasks-controls.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                                                  | Owning function                                                                                             |
+| ------------------- | --------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                                | `revokeGrant` (`authority/grants.ts`)                                                                       |
+| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                           | `revokeDelegation` (`authority/delegations.ts`)                                                             |
+| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                            | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
+| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                           | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
+| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-controls.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
 
-The other thirty. Agent-prefix cites are symbols in
-`commands/agent-envelope.ts`. `runAgentCommand` refuses a name outside
-`AGENT_SURFACE` before it reads anything else, and `serve` holds the case for
-each name the agent is served.
+The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
+name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
+is served is a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), and
+its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are derived
+from those rows, so adding an agent operation means adding one row.
 
-| Operation                          | Person prefix: owning function                                                            | Agent prefix                                                                          |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `task.create`                      | `createTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.update`                      | `updateTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.complete`                    | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.reopen`                      | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.comment`                     | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (`serve`, `AGENT_AUDIENCES`) |
-| `task.propose`                     | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.decide`                      | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                 |
-| `task.pickup`                      | `pickupAsPerson` (`commands/tasks-pickup.ts`)                                             | served before a pickup (`BEFORE_PICKUP`, `serve`)                                     |
-| `task.handback`                    | `handbackOwnLease` (`commands/tasks-handback.ts`)                                         | served under a live delegation (`serve`)                                              |
-| `task.start`                       | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.assign`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.triage`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.set_stage`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.set_party`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.set_audience`                | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.reparent`                    | `reparentTask` (`commands/tasks-place.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.move`                        | `moveTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.rank`                        | `rankTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.trash`                       | `trashTask` (`commands/tasks-trash.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.restore`                     | `restoreTasks` (`commands/tasks-trash.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.purge`                       | `purgeTasks`, window read by `retentionWindowDays` (`commands/tasks-trash.ts`)            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.read`                        | `readTaskDetail`, or `readSharedTask` for a reader who is not internal (`reads/tasks.ts`) | served under a live delegation (`serve`)                                              |
-| `task.board`                       | `readBoard` (`reads/tasks.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `task.queue`                       | `readQueue` (`reads/queue.ts`)                                                            | served before a pickup (`BEFORE_PICKUP`, `serve`)                                     |
-| `person.list`                      | `listPeople` (`reads/people.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `preset.plan`                      | `planPresetSync` (`records/preset-plan.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `settings.read`                    | `readSettings` (`reads/settings.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                        |
-| `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
-| `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                               |
+| Operation                          | Person prefix: owning function                                                            | Agent prefix                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `task.create`                      | `createTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.update`                      | `updateTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.complete`                    | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.reopen`                      | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.comment`                     | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (the row's `serve`, `AGENT_AUDIENCES`) |
+| `task.propose`                     | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.decide`                      | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                           |
+| `task.pickup`                      | `pickupAsPerson` (`commands/tasks-pickup.ts`)                                             | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
+| `task.handback`                    | `handbackOwnLease` (`commands/tasks-handback.ts`)                                         | served under a live delegation (`serve`)                                                        |
+| `task.start`                       | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.assign`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.triage`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.set_stage`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.set_party`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.set_audience`                | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.reparent`                    | `reparentTask` (`commands/tasks-place.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.move`                        | `moveTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.rank`                        | `rankTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.trash`                       | `trashTask` (`commands/tasks-trash.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.restore`                     | `restoreTasks` (`commands/tasks-trash.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.purge`                       | `purgeTasks`, window read by `retentionWindowDays` (`commands/tasks-trash.ts`)            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.read`                        | `readTaskDetail`, or `readSharedTask` for a reader who is not internal (`reads/tasks.ts`) | served under a live delegation (`serve`)                                                        |
+| `task.board`                       | `readBoard` (`reads/tasks.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.queue`                       | `readQueue` (`reads/queue.ts`)                                                            | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
+| `person.list`                      | `listPeople` (`reads/people.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `preset.plan`                      | `planPresetSync` (`records/preset-plan.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.read`                    | `readSettings` (`reads/settings.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
+| `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -830,7 +845,8 @@ payload, stored in the register row and compared by a digest.
 
 An agent login **confers nothing at all**. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
-`commands/agent-envelope.ts`) and nothing else. `task.decide` answers
+`commands/agent-envelope.ts`, derived from the `beforePickup` rows of
+`AGENT_OPERATIONS`) and nothing else. `task.decide` answers
 `DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
 `session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
 (`authorise`; minimum contract 8.2 case 9). A credential that is presented and
@@ -872,16 +888,26 @@ be an object. Any other present value, `null` included, is
 `actualMinor` on a handback is `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 here too,
 before authority, which is what keeps it out of the restricted report intake.
 
+An agent and a person refused for the same operand or the same missing task are
+told the same words: the person entry's. For `leaseSeconds` that is "Name a
+whole number of seconds from 1 to <route maximum>, or leave it out."
+(`tasks-lease.ts`), and for `NOT_FOUND` the two identifier lines
+(`refuseNotFound`). The agent entry still refuses a malformed operand before it
+reads the delegation.
+
 **A repeated agent `operationId` is released only under current rights** (the
 register branch of `runAgentCommand`). A stored refusal replays as stored. A
 stored success is checked again first. A read, comment or heartbeat replay
 answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
-expiry has changed (`authoriseReplay`). A capabilities replay is projected
-again for the credential presented now (`replayCapabilities`). A pickup replay
-is checked against the delegation it minted (`replayPickup`). A handback
-settles its own delegation, so its receipt is returned only to the credential
-that settled it. The register row is left as it was.
+expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
+and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
+capabilities replay is projected again for the credential presented now
+(`replayCapabilities`). A pickup replay is checked against the delegation it
+minted (`replayPickup`). A handback settles its own delegation, so its receipt
+is returned only to the credential that settled it (`replaySettledHandback`).
+All three are in `commands/agent-replay.ts`. The register row is left as it
+was.
 
 **A replayed pickup derives its credential again.** The register keeps the
 pickup's answer with a null credential (`storable`). A replay of a lost pickup
@@ -959,11 +985,12 @@ role nobody classified sees the client view rather than everything.
 
 A reader who is not internal on the person prefix gets a different key:
 `{ ok: true, sharedTask: { id, fields, comments } }`, never `task` (the
-`task.read` case of `serveRead`, `reads/dispatch.ts`). `fields` holds the task fields the
+`serve` of the `task.read` row in `READ_CATALOGUE`, `reads/catalogue.ts`). `fields` holds the task fields the
 catalogue marks `shared`, and as shipped none are, so R4 sees the id and the
 client comments. For an external party, a `task.read` of a record its shares do
-not cover and any `task.board` answer `NOT_FOUND` 404 (`OUTSIDER_NOT_FOUND`,
-checked in `serveRead` when the grant check refuses, `reads/dispatch.ts`;
+not cover and any `task.board` answer `NOT_FOUND` 404 (the row's
+`outsiderNotFound` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
+`serveRead` when the grant check refuses, `reads/dispatch.ts`;
 minimum contract 8.2 case 7). Once `grant.revoke` removes an external party's
 last live share, their next read is refused earlier, at login resolution:
 `AUTH_NO_MEMBERSHIP` 403, since they now hold neither a membership nor a share
@@ -1001,7 +1028,7 @@ a grant on. It reports what the caller already holds, so it asks no single
 grant; instead it is answered only to a caller who holds at least one. A member
 holding no live grant is refused `SCOPE_NOT_GRANTED` 403, like every other
 operation, and never answered with an empty list (the `session.capabilities`
-case of `serveRead` and `NO_GRANT_AT_ALL`, `reads/dispatch.ts`; minimum contract
+row of `READ_CATALOGUE` and `NO_GRANT_AT_ALL`, `reads/catalogue.ts`; minimum contract
 8.2 case 3). A login that resolves to neither a membership nor an external
 party's live share is `AUTH_NO_MEMBERSHIP` before any read runs. An external
 party is shown its shares' pairs. The grants are read live in the caller's own
@@ -1013,7 +1040,7 @@ the session's own and there is no parameter to point at somebody else.
 On the **agent prefix** the same name answers only under a live delegation.
 Before a pickup it is refused `DELEGATION_EXCLUDES_OPERATION` 403, and a
 presented credential that is not live is `DELEGATION_NOT_LIVE` 401 (`authorise`,
-`commands/agent-envelope.ts`). Under a live delegation it answers only while the
+`commands/agent-authority.ts`). Under a live delegation it answers only while the
 delegation and the delegating person's current grants intersect on the purpose
 record (`read`); otherwise it is `DELEGATION_NARROWED`. It answers the agent's
 own capabilities and not the delegating person's: `agentActorId`, `businessKey`,
@@ -1029,10 +1056,10 @@ itself for `authority_lost`, and the answer is then `DELEGATION_NARROWED`.
 neither carries a `detail`. The subject fields differ because the subjects do,
 and `businessKey` and `grants` sit at the same level on both:
 
-| Prefix                     | Body on success                                                 | Code                                                                               |
-| -------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | the `session.capabilities` case of `serveRead`, `reads/dispatch.ts`                |
-| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `capabilitiesOf`, flattened by `agentAnswer`, both in `commands/agent-envelope.ts` |
+| Prefix                     | Body on success                                                 | Code                                                                                                         |
+| -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| person, `/api/b/:key/...`  | `{ ok: true, personId, businessKey, grants }`                   | the `session.capabilities` row of `READ_CATALOGUE`, `reads/catalogue.ts`                                     |
+| agent, `/api/a/b/:key/...` | `{ ok: true, agentActorId, businessKey, purposeScope, grants }` | `capabilitiesOf` (`commands/agent-operations.ts`), flattened by `agentAnswer` (`commands/agent-envelope.ts`) |
 
 The agent handler still stores the answer as the handle every agent command is
 stored as, `{ recordId: null, revision: null, detail }`, so a replay reads the
@@ -1068,8 +1095,8 @@ the audit row's `attempted` column and never to the response.
 `settings.read` and `session.capabilities` take none. Any other identifier
 field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
-(`READ_IDENTIFIERS`, checked in `serveRead` after the system fields,
-`reads/dispatch.ts`). `tests/api/boundary-read-targets.test.ts` holds it.
+(the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
+`serveRead` after the system fields, `reads/dispatch.ts`). `tests/api/boundary-read-targets.test.ts` holds it.
 
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has
@@ -1097,8 +1124,8 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **Two lane choices await root or owner confirmation.** An agent comments in
-  the `internal` audience only: `serve` passes `AGENT_AUDIENCES`
-  (`commands/agent-envelope.ts`) to `writeTaskComment`
+  the `internal` audience only: the `task.comment` row passes `AGENT_AUDIENCES`
+  (`commands/agent-operations.ts`) to `writeTaskComment`
   (`commands/tasks-comment.ts`), which refuses `client` as
   `AUDIENCE_NOT_PERMITTED`.
   The heartbeat bounds are 1 hour a beat and 8 hours in total

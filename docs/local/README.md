@@ -252,7 +252,7 @@ command with no declaration has no route, and a read is a declaration with
 `kind: 'read'`. On the person prefix a read carries no `operationId` and no
 `expectedRevision` ([API.md](API.md)). On the agent prefix every call, reads
 included, carries an `operationId`, because the agent envelope refuses one
-without it (`executeAgentCommand` in
+without it (`runAgentCommand` in
 `packages/core-records/src/commands/agent-envelope.ts`). The handler prepares
 and applies the write against the
 fixed-slot records in `packages/core-records/src/records/`, or, for the
@@ -334,6 +334,16 @@ would fight over the same containers and the same port. **On a shared run, the
 browser suite gets one slot at a time**, and whoever is coordinating the run
 hands that slot out. The standalone N6 harness needs a reseed afterwards
 ([Verify it](#verify-it)).
+
+`corepack pnpm verify:restart-legs` runs the W06 (b) browser rows after a real
+API and Postgres restart on a lane's own stack. It needs
+`RESTART_LEGS_PG_CONTAINER`, `WEB_URL`, `API_URL`, and `DATABASE_URL` and
+`DATABASE_ADMIN_URL` exported for that container. It refuses to start unless
+both database URLs are set, avoid 54390 to 54392, and use the port the named
+container publishes. Evidence goes to `.local/restart-legs-browser/<stamp>/`,
+or `SHOT_DIR`: `restart-legs-cases.jsonl` (one row per line as recorded),
+`MANIFEST.json` (rows and exit status) and screenshots. It exits 0 only when
+RL0 and RL-a to RL-d all pass.
 
 `corepack pnpm check` is the blocking gate rather than a fifth kind. It runs
 the tooling checks and the test suite together, wants `DATABASE_URL` and

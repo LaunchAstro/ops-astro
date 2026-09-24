@@ -14,14 +14,10 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at b282216 and again at faf3285 (`pnpm test` 5,225
-passed and 24 skipped, `tests/acceptance` 3,850 and 16, `db:conformance` 110
-named suites, 4,728 of 4,728). The joint gates at 0395827, the batch merge of
-retry-gaps, refactor-dead, refactor-refusals, sol-surface-fix, thermo-web and
-sweep-api, were red on `typecheck` and `pnpm test` for one test file,
-`tests/commands/refusal-catalogue.test.ts`, fixed forward in the test at
-3881a9d. The full joint gates rerun on the next batch head, so the rest are
-unrun here. [PROOFS.md](PROOFS.md) holds the full count table.
+joint gates were green at 158d6de and again at d6787c5, the head these docs
+describe (`pnpm test` 5,398 passed and 24 skipped, `tests/acceptance` 3,850 and
+16, `db:conformance` 114 named suites, 4,741 of 4,741).
+[PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
 
@@ -50,7 +46,7 @@ separate column (`migrations/0014_runtime_attempts.sql`,
 and changes no behaviour.
 
 A gate is bound to its version, not only to its business, since migration
-0021 (`migrations/0021_runtime_gate_version_binding.sql:38-56`). Three
+0021 (`migrations/0021_runtime_gate_version_binding.sql:36-53`). Three
 composite foreign keys hold it: the gate's run plans the gate's version
 (`gates_run_in_same_version`), its step is a step of that run
 (`gates_step_in_same_run`), and its version is a version of its lineage
@@ -74,7 +70,7 @@ on the chain lock, not on the cap row.
 
 `task.propose` takes cap, envelope, task, lineage, then the superseded version's
 holds, live lease and delegation, in one ordered call (`lockProposal`,
-`propose.ts:107-176`). It is declared `targetLock: 'runtime'`
+`propose.ts`). It is declared `targetLock: 'runtime'`
 (`COMMAND_SURFACE`, `commands/surface.ts`), so the command envelope only reads
 the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
@@ -284,13 +280,14 @@ live lease (`NOT_CLAIMABLE_REASON` and `NOT_CLAIMABLE_FIX`, `pickup.ts`;
 an earlier handback left open, give two held reservations, and the second pickup
 meets the first one's live lease (the note beside `UNPRODUCED_CODES` in
 `commands/register.ts`; `tests/commands/lease-held-reach.test.ts`). Its reason
-still names the task (`pickup.ts:479-483`).
+still names the task (the `LEASE_HELD` refusal in `pickup`, `pickup.ts`).
 
 `LEASE_NOT_OWNED` for a lease the caller does not hold, on heartbeat and
 handback, is a constant that echoes neither the presented lease nor the fence
-(`notOwned` in `heartbeat`, `heartbeat.ts`; `handback.ts:144-150`, `:213-218`).
+(`notOwned` in `heartbeat`, `heartbeat.ts`; in `handback`, `handback.ts`, "no
+such lease in this business" and "the named lease is not this caller's").
 A stale or superseded fence on a lease the caller does hold still names the
-lease and the fences (`handback.ts:266-282`). `DELEGATION_OUT_OF_PURPOSE` for a
+lease and the fences (`staleVerdict`, `handback.ts`). `DELEGATION_OUT_OF_PURPOSE` for a
 call on another resource names the delegation's own scope and not the presented
 one (`checkDelegatedAuthority`, `authority/delegations.ts`).
 
@@ -307,9 +304,17 @@ number and being `actual` the same fact.
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
 second is the cap behind it.
 
+`core-runtime/src/budget.ts` owns the arithmetic that preflight and `reserve`
+share: the cap-committed read (`capCommitted`), the envelope and cap verdicts
+(`envelopeVerdict`, `capVerdict`) and the task's open envelope
+(`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
+`reserve` alike, because a ceiling that cannot be read is not room (thermo O2,
+lead ruling, fail closed).
+
 Both checks compare exact minor units. The totals and limits come from SQL as
 text and are compared as `bigint`, so a valid cap above 2^53 is never exceeded
-through rounding (`budgetRoom` and `exceeds`, `core-runtime/src/decide.ts`).
+through rounding (`budgetRoom` in `core-runtime/src/decide.ts`, `exceeds` in
+`core-runtime/src/budget.ts`).
 The response converts fields such as `heldMinor` to numbers separately.
 
 The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
@@ -431,9 +436,17 @@ fence and nothing changes: `LEASE_NOT_OWNED` on a superseded or mismatched
 fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately; it cannot settle the replacement's work.
 
+Leases end through `endLease` in `recovery.ts`, as `released` or `expired`, and
+only a live lease is ended. One already ended keeps the end and the
+`released_at` it had.
+
+A runtime invariant that does not hold, such as a statement that must return a
+row and returned none, throws `RuntimeInvariantError` (`only.ts`). That is never
+a refusal. It aborts the transaction.
+
 A handback names a lease, not a task. The agent envelope reads the task from the
 lease before the delegation check (`subjectTaskId`,
-`commands/agent-envelope.ts`), so a handback naming a lease on another task is
+`commands/agent-authority.ts`), so a handback naming a lease on another task is
 outside the one-task purpose and is refused `DELEGATION_OUT_OF_PURPOSE` before
 any handback write (matrix case (i),
 `tests/acceptance/role-case-matrix.test.ts`). `LEASE_NOT_OWNED` stays the answer
@@ -457,7 +470,7 @@ plain expiry leave the original agent's credential answering to no live
 delegation, so the agent entry refuses its new handback `DELEGATION_NOT_LIVE`
 before `handback` is reached. A narrowed agent's handback answers
 `DELEGATION_NARROWED`. The refusal and its status stand, and an evidence-only
-intake keeps the report (`retainLateHandback`, `commands/agent-envelope.ts`).
+intake keeps the report (`retainLateHandback`, `commands/agent-late-handback.ts`).
 The credential must name a delegation of this business and this authenticated
 agent, and it must be narrowed or no longer live for the reason the refusal
 gave:
@@ -494,7 +507,7 @@ credential, another business, a heartbeat, any other call and any other refusal
 retain nothing. The intake keeps only an otherwise valid report, and one that
 reports actual expenditure is not valid. The agent entry refuses a non-null
 `actualMinor` `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 among its operands, before
-it reads authority (`parseOperands`, `commands/agent-envelope.ts`), so that
+it reads authority (`parseOperands`, `commands/agent-operations.ts`), so that
 handback never reaches the intake. A null `actualMinor` is the same request as
 none and is kept. A refused or settled handback's replay is answered from its
 register row and retains no second row. The same identity with other operands is
@@ -506,8 +519,8 @@ narrowed and grant-expired paths over HTTP, each with a handback carrying
 
 **Both command entries retry once.** The agent entry (`executeAgentCommand`,
 `commands/agent-envelope.ts`) and the person entry (`executeCommand`,
-`commands/envelope.ts`) share the `isRetryableViolation` predicate
-(`register-store.ts`) and the same single-retry bound. The predicate admits a
+`commands/envelope.ts`) share one retry, `retryOnce` in `commands/envelope.ts`,
+on the `isRetryableViolation` predicate (`register-store.ts`). The predicate admits a
 lost identity claim (`operations_identity_key`), a lost unique-value claim
 (`record_unique_values_claim_idx`) and `AffectedSetChanged`. The identity case
 is the one an agent reaches. A same-operationId retry in flight behind its
@@ -547,6 +560,14 @@ a fresh hold and a fresh attempt on that version, under the locks the pickup
 already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`).
+
+A stale approval (gate not approved, lineage not live, or version superseded) is
+refused before any replacement write, in both the expired-lease and the
+abandoned-hold branch (`approvalCurrent` in `planClaim`, `pickup.ts`). It now
+outranks the classifier's could-not-release answer and a replacement budget
+refusal (thermo O6, lead ruling). Its answer is `RESERVATION_NOT_CLAIMABLE` with
+its own reason, "the approval behind this reservation is no longer current"
+(`approvalNotCurrent`).
 
 The delegation expires with the lease: `pickup` passes the lease expiry as
 `expiresAt`. A delegation outliving its lease would be an agent still holding
@@ -870,7 +891,7 @@ direct SQL.
   runtime and `grant.revoke` ask under their locks. A record-scoped writer works
   their own lease on that task. An id that resolves to nothing is asked at
   business scope, so a foreign and a fabricated id get the same answer
-  (`claimScopeOf`, `commands/prepare.ts`).
+  (`SCOPE_OF.claim`, `commands/prepare.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
   (`recovery.ts`, called from `revokeGrantAsManager` and
@@ -991,7 +1012,7 @@ under a dedicated delegation credential key
   digest does not match answers `DEPENDENCY_NOT_LANDED`
   `['task.pickup', 'delegation credential integrity']`. Neither rewrites the
   receipt or mints a replacement (`replayPickup`,
-  `commands/agent-envelope.ts`).
+  `commands/agent-replay.ts`).
 
 **The pickup replay.** A lost pickup response is retried with the identical
 operation id and body and no delegation credential. It returns the original
@@ -1001,7 +1022,7 @@ reservation, attempt and approved version are still bound, live and current.
 Otherwise it gives the current refusal (`DELEGATION_NOT_LIVE`,
 `DELEGATION_NARROWED`, `LEASE_NOT_OWNED`, `LEASE_EXPIRED`,
 `RESERVATION_NOT_CLAIMABLE`) and no receipt content (`replayPickup`,
-`commands/agent-envelope.ts`). The register keeps the handles with a null
+`commands/agent-replay.ts`). The register keeps the handles with a null
 credential (`storable`).
 
 **The legacy limit.** Delegations minted before migration 0022 are

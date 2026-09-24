@@ -224,8 +224,10 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
 (`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`, for an
 operation an agent may not call whatever it holds: anything outside
-`AGENT_SURFACE`, which `runAgentCommand` refuses first, and anything in that set
-with no agent branch, which falls to the default case of `serve`. It is 403
+`AGENT_SURFACE`, which `runAgentCommand` refuses first. `AGENT_SURFACE` is the
+keys of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), so every name in it
+has a row with its own `serve`, and adding an agent operation means adding one
+row. It is 403
 and not `DELEGATION_NOT_LIVE` 401 because a live credential would not change
 the answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
 over every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts`).
@@ -251,15 +253,16 @@ when it was revoked for `authority_lost` (`resolveDelegation`).
 
 The same holds on replay. A bare agent replay of a handback, with no credential,
 answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
-credential that is not live stays `DELEGATION_NOT_LIVE` (`authoriseReplay`). A
-capabilities replay is authorised as a fresh call and projected again for the
-credential presented now (`replayCapabilities`), so a replay under another
+credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
+reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
+replay is authorised as a fresh call and projected again for the credential
+presented now (`replayCapabilities`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)).
-`task.comment` has an agent branch (the `task.comment` case of `serve`), and
+`task.comment` has an agent row (the `task.comment` row of `AGENT_OPERATIONS`), and
 the matrix's case (i) asserts the saved comment identity. The agent may write
 in the `internal` audience only (`AGENT_AUDIENCES`). A `client` comment is
 `AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
@@ -360,6 +363,11 @@ becomes an operation, so it has no audit event to hang off.
 - The application role has `select, insert` and no `update` or `delete`. A trail
   that can be amended is not a trail.
 
+The domain audit differs between the two entries in two places (root N2). An
+agent attempt whose fault survives the one retry writes no `failed` audit
+event. The fault rolls back and is returned. The person entry writes one.
+Agent reads are registered under their `operationId`, and person reads are not.
+
 ## The model corrections
 
 **`owning_operation` is `text[]`** (0009). It shipped as one text column holding
@@ -407,6 +415,10 @@ module, so classifying a field is the only way to expose it. The test takes
 Comments are **stored and projected through the API**: `task.read` carries them,
 in full for an internal reader and through `externalCommentProjection` for every
 other role. See [API.md, "Reads"](API.md#reads).
+
+Both entries lock the task for `task.comment` through `lockTask`
+(`commands/prepare.ts`), which selects by tenant, task type and id `for update`. Neither entry
+filters out a trashed task.
 
 ## preset.plan
 
@@ -515,7 +527,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
   grant's scope, or the delegation's purpose scope
   (the `grant.revoke` and `delegation.revoke` declarations in `commands/surface.ts`,
-  `authorisedOn: 'target'`; `targetScopeOf`,
+  `authorisedOn: 'target'`; `SCOPE_OF.target`,
   `commands/prepare.ts`). A manager whose `manage` covers exactly that
   scope reaches the handler. A body naming no such row is asked at business
   scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
@@ -557,7 +569,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   never revived; a claimant with current authority gets a fresh hold and
   attempt.
 - `grant.revoke` and `delegation.revoke` answer with `detail.classifiedHolds`:
-  the ids of the reservations the revocation classified (`:193-198`).
+  the ids of the reservations the revocation classified (`classifiedHolds`).
 - A delegation revoked because `grant.revoke` removed the authority it draws
   on is revoked in the same transaction, with `authority_lost` as its recorded
   cause. The bound agent's next call on its still unexpired credential answers
@@ -574,7 +586,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   the recorded cause (`resolveHistoricalDelegation`). The second has no
   recorded cause, because passing time writes none, so it is checked again
   (`resolveNarrowedDelegation`, reached through `narrowedOnLease` in
-  `commands/agent-envelope.ts`). The credential must still resolve live for
+  `commands/agent-late-handback.ts`). The credential must still resolve live for
   this business and agent, and the authority check on the presented lease's
   own task must answer `DELEGATION_NARROWED`. That answer comes only after the
   decision exclusion, the purpose's collection and action, and the one-task
@@ -588,7 +600,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   an unknown lease and a wrong fence retain nothing. Only an otherwise valid
   report is kept, and a report claiming actual expenditure is not one. The
   agent entry refuses a non-null `actualMinor` among its operands
-  (`parseOperands` in `commands/agent-envelope.ts`) before authority is read,
+  (`parseOperands` in `commands/agent-operations.ts`) before authority is read,
   as `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, so no path retains it. `null` and
   absent are the same request.
   `tests/runtime/historical-handback-intake.test.ts` holds both paths,
@@ -612,7 +624,7 @@ runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 lease belongs to (`authorisedOn: 'claim'` in the same declarations), the scope the
 runtime and `grant.revoke` ask. A record-scoped writer works their own lease
 on that task. An id that resolves to nothing is asked at business scope, so a
-foreign and a fabricated id get the same answer (`claimScopeOf`,
+foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
