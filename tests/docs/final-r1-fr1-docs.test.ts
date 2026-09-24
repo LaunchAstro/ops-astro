@@ -122,12 +122,17 @@ describe('RUNTIME.md "Why the money is two columns" (#63)', () => {
   });
 });
 
-const git = (...args: string[]): string =>
-  execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const git = (args: readonly string[], input?: string): string =>
+  execFileSync('git', args, {
+    encoding: 'utf8',
+    input,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'ignore'],
+  }).trim();
 
 const shallow = (() => {
   try {
-    return git('rev-parse', '--is-shallow-repository') !== 'false';
+    return git(['rev-parse', '--is-shallow-repository']) !== 'false';
   } catch {
     return true;
   }
@@ -135,27 +140,28 @@ const shallow = (() => {
 
 describe.skipIf(shallow)('commit hashes cited in docs (#41)', () => {
   it('resolve in the history of this head', () => {
-    const files = git('ls-files', 'docs/*.md').split('\n').filter(Boolean);
-    const unreachable: string[] = [];
-    for (const file of files) {
+    const cited: { readonly file: string; readonly hash: string }[] = [];
+    for (const file of git(['ls-files', 'docs/*.md']).split('\n').filter(Boolean)) {
       // A hash inside a path names an evidence directory outside the
       // repository, filed under the head's name when it was recorded.
       for (const match of read(file).matchAll(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-])/gu)) {
-        const hash = match[0];
-        let commit: string;
-        try {
-          commit = git('rev-parse', '--verify', '--quiet', `${hash}^{commit}`);
-        } catch {
-          // Not a commit here: a tree, a key id or plain hex.
-          continue;
-        }
-        try {
-          git('merge-base', '--is-ancestor', commit, 'HEAD');
-        } catch {
-          unreachable.push(`${file}: ${hash}`);
-        }
+        cited.push({ file, hash: match[0] });
       }
     }
+    const hashes = [...new Set(cited.map((entry) => entry.hash))];
+    // One line per hash: the full name and type, or "missing" for plain hex.
+    const objects = git(['cat-file', '--batch-check'], `${hashes.join('\n')}\n`).split('\n');
+    const commits = new Map<string, string>();
+    for (const [index, line] of objects.entries()) {
+      const [name, type] = line.split(' ');
+      const hash = hashes[index];
+      if (type === 'commit' && name !== undefined && hash !== undefined) commits.set(hash, name);
+    }
+    const history = new Set(git(['rev-list', 'HEAD']).split('\n'));
+    const unreachable = cited
+      .filter(({ hash }) => commits.has(hash) && !history.has(commits.get(hash) ?? ''))
+      .map(({ file, hash }) => `${file}: ${hash}`);
+    expect(commits.size).toBeGreaterThan(0);
     expect(unreachable).toEqual([]);
   });
 });
