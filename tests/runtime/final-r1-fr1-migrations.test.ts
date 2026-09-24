@@ -422,7 +422,7 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
         await insertBusiness(db.app, 'refused-shared');
       },
       /businesses_key_global_idx/u,
-      '0026',
+      '0025',
     ],
   ] as const)(
     'refuses the upgrade for %s, stopping before the rule with the rows untouched',

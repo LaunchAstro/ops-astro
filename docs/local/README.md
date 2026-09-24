@@ -163,7 +163,9 @@ db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) wh
 db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00
 ```
 
-Nothing changed. Stop whatever the lines name, whether an API, GoTrue, a `psql`
+Nothing changed. A run is one transaction, so a refusal, at whatever point
+it came, leaves the database at the version it started at, and so does a
+migration that fails. Stop whatever the lines name, whether an API, GoTrue, a `psql`
 you left open or a test run, and run `db:migrate` again. There is no flag or
 variable that skips the check. With nothing pending it passes even while the
 application runs, so running `db:migrate` against an up-to-date install is

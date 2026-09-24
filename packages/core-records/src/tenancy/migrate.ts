@@ -3,21 +3,30 @@
 // The migration runner. Numbered SQL files are the only schema truth, so this
 // is the only thing in the tree that changes a schema.
 //
-// Three properties it holds, each because its absence has a known failure.
+// The properties it holds, each because its absence has a known failure.
 //
-// - A file and its ledger row commit together, so a half-applied migration
-//   cannot be recorded as applied. PostgreSQL runs DDL inside transactions,
-//   which is what makes this possible at all.
-// - An applied migration's checksum is checked on every run. Editing a file
-//   that has already been applied is refused rather than ignored, because the
-//   database and the file would otherwise disagree in silence.
+// - One run is all or nothing. Every pending file is applied in one
+//   transaction, each file's ledger row written after its statements, with one
+//   commit at the end. A file and its ledger row therefore commit together, and
+//   a refusal or a failed statement anywhere leaves the database at the version
+//   it started at: a run cannot stop between two files (SOL-FR6-2).
+//   PostgreSQL runs DDL inside transactions, which is what makes this possible
+//   at all, and a file holding a statement it will not run inside one is
+//   refused before anything runs.
+// - An applied migration's checksum is checked on every run, before anything
+//   runs. Editing a file that has already been applied is refused rather than
+//   ignored, because the database and the file would otherwise disagree in
+//   silence.
 // - Statements are split and sent one at a time, so the statement log and any
 //   error name the statement rather than the file.
-// - It refuses to apply anything while another session is connected to the
-//   database. The supported upgrade is the application stopped, and a
-//   migration run beside a live application has two known ways to go wrong in
-//   0030 alone (SOL-R3R-1, SOL-R3R2-1), so the rule is enforced here rather
-//   than left to a document.
+// - It checks, when anything is pending, that no other client session is
+//   connected to the database, and refuses to apply anything if one is. The
+//   supported upgrade is the application stopped, and a migration run beside a
+//   live application has two known ways to go wrong in 0030 alone (SOL-R3R-1,
+//   SOL-R3R2-1). The check is a backstop to stopping the application, not the
+//   stop: an idle application that holds no connection passes it
+//   (docs/local/DATA.md, "Upgrade"). A role that cannot read every session is
+//   refused rather than trusted to have seen nobody.
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -62,20 +71,14 @@ export interface ConnectedSession {
 /**
  * Thrown when pending migrations meet other sessions on the database.
  *
- * Before the first migration it means nothing was applied. From inside a
- * migration's transaction it means that migration was rolled back and the
- * ones before it in the same run stayed committed; `applied` names them.
+ * Wherever the run was when it looked, nothing was applied: before the
+ * transaction nothing had started, and inside it the whole run rolls back.
  */
 export class MigrationRefused extends Error {
   readonly sessions: readonly ConnectedSession[];
   readonly pending: readonly string[];
-  readonly applied: readonly string[];
 
-  constructor(
-    sessions: readonly ConnectedSession[],
-    pending: readonly string[],
-    applied: readonly string[],
-  ) {
+  constructor(sessions: readonly ConnectedSession[], pending: readonly string[]) {
     const named = sessions
       .map(
         (s) =>
@@ -83,20 +86,15 @@ export class MigrationRefused extends Error {
           `from ${s.client_addr ?? 'local socket'} since ${s.backend_start ?? '?'}`,
       )
       .join('; ');
-    const done =
-      applied.length === 0
-        ? 'Nothing was applied.'
-        : `Applied and committed before the refusal: ${applied.join(', ')}. Nothing else was applied.`;
     super(
       `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
         `(${pending.join(', ')}) while ${String(sessions.length)} other session(s) are connected ` +
-        `to this database: ${named}. ${done} Stop the application (the API and GoTrue) and ` +
+        `to this database: ${named}. Nothing was applied. Stop the application (the API and GoTrue) and ` +
         `anything else connected to this database, then run it again.`,
     );
     this.name = 'MigrationRefused';
     this.sessions = sessions;
     this.pending = pending;
-    this.applied = applied;
   }
 }
 
@@ -127,14 +125,92 @@ async function otherSessions(
 }
 
 /** Refuse, naming what is connected, when anything but this backend is. */
+/**
+ * Thrown when the runner's role cannot read every session's row in
+ * `pg_stat_activity`. PostgreSQL hides `backend_type` for another role's
+ * session from a role that is neither superuser nor in `pg_read_all_stats`,
+ * so the connection check would find nobody and pass. It refuses instead.
+ */
+export class MigrationRoleCannotSee extends Error {
+  readonly role: string;
+  readonly pending: readonly string[];
+
+  constructor(role: string, pending: readonly string[]) {
+    super(
+      `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
+        `(${pending.join(', ')}): the role ${role} cannot read every session in ` +
+        `pg_stat_activity, so it cannot tell whether anything else is connected. Nothing was ` +
+        `applied. Run it as a superuser, or grant ${role} pg_read_all_stats.`,
+    );
+    this.name = 'MigrationRoleCannotSee';
+    this.role = role;
+    this.pending = pending;
+  }
+}
+
+/**
+ * Refuse unless this role sees every session. Asked of the role rather than
+ * of the rows: a role that cannot see them also sees autovacuum and other
+ * background workers with a null `backend_type`, so counting hidden rows as
+ * connected would refuse at random.
+ */
+async function refuseIfBlind(
+  execute: AdminConnection['execute'],
+  pending: readonly string[],
+): Promise<void> {
+  const [row] = await execute<{ readonly role: string; readonly sees: boolean }>(
+    `select current_user::text as role,
+            coalesce((select rolsuper from pg_roles where rolname = current_user), false)
+              or pg_has_role(current_user, 'pg_read_all_stats', 'usage') as sees`,
+  );
+  if (row?.sees !== true) throw new MigrationRoleCannotSee(row?.role ?? '?', pending);
+}
+
 async function refuseIfConnected(
   execute: AdminConnection['execute'],
   pending: readonly string[],
-  applied: readonly string[],
 ): Promise<void> {
   const sessions = await otherSessions(execute);
-  if (sessions.length > 0) {
-    throw new MigrationRefused(sessions, pending.slice(applied.length), [...applied]);
+  if (sessions.length > 0) throw new MigrationRefused(sessions, pending);
+}
+
+/**
+ * Statements PostgreSQL refuses inside a transaction block, or that would end
+ * the runner's own transaction, read from the start of the statement with
+ * case and spacing ignored. A pattern that also matches something harmless
+ * refuses it, which fails closed; a file that really needs one of these is a
+ * change to how the runner applies files, not a file to slip past it.
+ */
+const OUTSIDE_A_TRANSACTION: readonly RegExp[] = [
+  /^(create (unique )?index|drop index|reindex)\b.*\bconcurrently\b/u,
+  /^alter type\b.*\badd value\b/u,
+  /^(vacuum|create database|drop database|alter system|create tablespace|drop tablespace)\b/u,
+  /^(create subscription|drop subscription|reindex (database|system))\b/u,
+  /^(begin|start transaction|commit|end|rollback|abort|savepoint|release|prepare transaction)\b/u,
+];
+
+function leading(statement: string): string {
+  let text = statement;
+  for (;;) {
+    const stripped = text.replace(/^\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)/u, '');
+    if (stripped === text) break;
+    text = stripped;
+  }
+  return text.trim().replaceAll(/\s+/gu, ' ').toLowerCase();
+}
+
+/** Refuse, before anything runs, a file holding a statement the one transaction cannot. */
+function refuseOutsideATransaction(migrations: readonly Migration[]): void {
+  for (const migration of migrations) {
+    for (const statement of migration.statements) {
+      if (OUTSIDE_A_TRANSACTION.some((pattern) => pattern.test(leading(statement)))) {
+        throw new Error(
+          `migrate: ${migration.version} holds a statement PostgreSQL will not run inside a ` +
+            `transaction block, or one that would end it, and every pending file is applied in ` +
+            `one transaction: ${statement.slice(0, 200)}. Nothing was applied.`,
+        );
+      }
+    }
   }
 }
 
@@ -199,25 +275,26 @@ export async function applyMigrations(
   admin: AdminConnection,
   migrations: readonly Migration[],
 ): Promise<MigrationOutcome> {
+  refuseOutsideATransaction(migrations);
   const { pending, alreadyApplied } = splitByLedger(await readLedger(admin), migrations);
-  const applied: string[] = [];
-
   // Nothing pending is nothing to protect, so an up-to-date database with the
-  // application running passes. Otherwise the check runs before the first
-  // migration and again inside each one's transaction, before its statements
-  // and before its commit, so a session that connects after this first look
-  // still refuses the migration it arrives during.
+  // application running passes.
+  if (pending.length === 0) return { applied: [], alreadyApplied };
   const names = pending.map((migration) => migration.version);
-  if (pending.length > 0) await refuseIfConnected(admin.execute, names, applied);
 
-  for (const migration of pending) {
+  // The check runs before the transaction, inside it before each file, and
+  // once more before the commit, so a session that connects after the first
+  // look still refuses the run, and the whole run rolls back.
+  await refuseIfBlind(admin.execute, names);
+  await refuseIfConnected(admin.execute, names);
+  await admin.transaction(async (execute) => {
     // Migrations are ordered and each one may depend on the last, so they are
     // applied one at a time on purpose. The same goes for the statements
     // inside one migration. `Promise.all` here would apply a schema in an
     // order nobody wrote.
-    // oxlint-disable-next-line no-await-in-loop
-    await admin.transaction(async (execute) => {
-      await refuseIfConnected(execute, names, applied);
+    for (const migration of pending) {
+      // oxlint-disable-next-line no-await-in-loop
+      await refuseIfConnected(execute, names);
       for (const statement of migration.statements) {
         try {
           // oxlint-disable-next-line no-await-in-loop
@@ -228,14 +305,13 @@ export async function applyMigrations(
           });
         }
       }
+      // oxlint-disable-next-line no-await-in-loop
       await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
         migration.version,
         migration.checksum,
       ]);
-      await refuseIfConnected(execute, names, applied);
-    });
-    applied.push(migration.version);
-  }
-
-  return { applied, alreadyApplied };
+    }
+    await refuseIfConnected(execute, names);
+  });
+  return { applied: names, alreadyApplied };
 }
