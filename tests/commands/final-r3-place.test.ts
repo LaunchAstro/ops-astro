@@ -16,6 +16,8 @@
 // and rewrote its subtree.
 // R4-THERMO-5: task.move sent a task's own board, stored in upper case by a row
 // written before b98b9c5, re-ranked it and rewrote its subtree.
+// R5-THERMO-2 = R5-AUTHORITY-4: task.reparent within the board such a row is
+// on asked about the board and carried the subtree.
 // R4-RUNTIME-7: two nested trashes can deadlock, and the loser is answered by
 // the envelope's one retry.
 //
@@ -337,16 +339,17 @@ describe.skipIf(serverUrl === undefined)('final review round 3: placement', () =
 
     it('applies trash(R) on its retry when trash(D) under it holds D and waits on a child', async () => {
       const r = await create();
-      const d = await create({ parentId: r });
-      const sibling = await create({ parentId: r });
       // A child of D whose id sorts below D's, so trash(R)'s id-ordered lock
-      // takes it before it reaches D.
-      const children: string[] = [];
-      while (!children.some((id) => id < d)) {
-        // Sequential: each create is one more draw at an id below D's.
-        // eslint-disable-next-line no-await-in-loop
-        children.push(await create({ parentId: d }));
-      }
+      // takes it before it reaches D. Of two tasks under R, the higher id is D
+      // and the lower is reparented under it: three commands, not a draw
+      // repeated until an id lands below D's (R5-THERMO-3).
+      const [x, y] = [await create({ parentId: r }), await create({ parentId: r })];
+      const [low, d] = x < y ? [x, y] : [y, x];
+      expect(seen(await as(worker, 'task.reparent', low, { parentId: d }))).toStrictEqual({
+        applied: true,
+      });
+      const sibling = await create({ parentId: r });
+      const children: readonly string[] = [low];
       const before = await deadlocks();
       const operationId = randomUUID();
       let trashingR: Promise<Answer | { readonly threw: string }> | undefined;
@@ -507,6 +510,55 @@ describe.skipIf(serverUrl === undefined)('final review round 3: placement', () =
       expect([childAfter.data['board'], childAfter.revision]).toStrictEqual([
         legacy,
         childBefore.revision,
+      ]);
+    });
+  });
+
+  describe('R5-THERMO-2 = R5-AUTHORITY-4: task.reparent compares a stored upper-case board however it is cased', () => {
+    /** Board b with t, a subtask c and its child g stored in upper case, and a lower-case sibling s. */
+    const legacyOnOneBoard = async () => {
+      const b = await create();
+      const t = await create({ board: b });
+      const c = await create({ parentId: t });
+      const g = await create({ parentId: c });
+      const s = await create({ board: b });
+      const legacy = b.toUpperCase();
+      await db.admin.execute(
+        `update records set data = jsonb_set(data, '{board}', to_jsonb($3::text))
+          where business_id = $1 and id = any ($2::uuid[])`,
+        [business, [t, c, g], legacy],
+      );
+      return { b, t, c, g, s, legacy };
+    };
+
+    it('applies a subtask reparented under a same-board sibling for a caller with record grants only', async () => {
+      const { c, g, s, legacy } = await legacyOnOneBoard();
+      // Rhea may write the subtask and the new parent, not the board.
+      await db.app.withBusiness(business, async (tx) => {
+        await grantTo(tx, rhea, 'write', { kind: 'record', id: c });
+        await grantTo(tx, rhea, 'write', { kind: 'record', id: s });
+      });
+      const grandchildBefore = await read(g);
+      const answer = seen(await as(rhea, 'task.reparent', c, { parentId: s }));
+      expect(answer).toStrictEqual({ applied: true });
+      const [after, grandchildAfter] = [await read(c), await read(g)];
+      expect([after.data['parent'], after.data['board']]).toStrictEqual([s, legacy]);
+      expect([grandchildAfter.data['board'], grandchildAfter.revision]).toStrictEqual([
+        legacy,
+        grandchildBefore.revision,
+      ]);
+    });
+
+    it('carries nothing when a top-level task goes under a same-board task', async () => {
+      const { t, c, g, s, legacy } = await legacyOnOneBoard();
+      const [childBefore, grandchildBefore] = [await read(c), await read(g)];
+      const answer = seen(await as(worker, 'task.reparent', t, { parentId: s }));
+      expect(answer).toStrictEqual({ applied: true });
+      const [after, childAfter, grandchildAfter] = [await read(t), await read(c), await read(g)];
+      expect([after.data['parent'], after.data['board']]).toStrictEqual([s, legacy]);
+      expect([childAfter.revision, grandchildAfter.revision]).toStrictEqual([
+        childBefore.revision,
+        grandchildBefore.revision,
       ]);
     });
   });

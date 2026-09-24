@@ -115,6 +115,17 @@ async function carryBoardToDescendants(
   return undefined;
 }
 
+/**
+ * Whether two spellings of a board name the task's own board. A uuid names one
+ * record in either case, and a row written before the board was lower-cased on
+ * the way in can hold it in upper case (R4-THERMO-5), so both sides are folded.
+ * `task.move` and `task.reparent` ask it alike, and on a yes each keeps the
+ * stored spelling, so the task and its subtree still spell the board alike.
+ */
+function isSameBoard(stored: string | null, next: string | null): boolean {
+  return (stored?.toLowerCase() ?? null) === (next?.toLowerCase() ?? null);
+}
+
 async function writeData(
   tx: TenantQuery,
   context: CommandContext,
@@ -196,7 +207,10 @@ export async function reparentTask(
   });
   if (isRecordsRefusal(placement)) return refused(fromRecords(placement));
 
-  if (placement.board !== currentBoard) {
+  // The board is asked about, and the subtree carried, only when it changes
+  // (R5-THERMO-2 = R5-AUTHORITY-4).
+  const sameBoard = isSameBoard(currentBoard, placement.board);
+  if (!sameBoard) {
     if (placement.board !== null) {
       const unreached = await refuseUnreachedRecord(tx, context, placement.board);
       if (unreached !== undefined) return refused(unreached);
@@ -205,15 +219,16 @@ export async function reparentTask(
     if (carried !== undefined) return refused(carried);
   }
 
+  const board = sameBoard ? currentBoard : placement.board;
   const data = mergeFieldValues(target.data, {
     parent: parentId,
-    board: placement.board,
+    board,
     board_section: null,
     board_rank: placement.boardRank,
   });
   return await writeData(tx, context, data, {
     parent: parentId,
-    board: placement.board,
+    board,
     board_rank: placement.boardRank,
   });
 }
@@ -246,11 +261,9 @@ export async function moveTask(
   const board = typeof sentBoard === 'string' ? sentBoard.toLowerCase() : sentBoard;
   const target = context.target;
   if (target === undefined) throw new Error('moveTask: the envelope read no target');
-  // The stored side too: a row written before the sent board was lower-cased
-  // can hold it in upper case (R4-THERMO-5). Its spelling is kept on a section
-  // change, so the task and its subtree still spell the board alike.
+  // The stored side too, and its spelling kept on a section change (R4-THERMO-5).
   const storedBoard = (target.data['board'] as string | undefined) ?? null;
-  const sameBoard = board === (storedBoard?.toLowerCase() ?? null);
+  const sameBoard = isSameBoard(storedBoard, board);
   const isSubtask = (target.data['parent'] ?? null) !== null;
   if (isSubtask && boardSection !== null) {
     return refused(
