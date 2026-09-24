@@ -10,7 +10,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
-import { writeAuditEvent, type AuditEvent } from './audit.ts';
+import { storable, writeAuditEvent, type AuditEvent } from './audit.ts';
 import { asCallerVisible, type CommandRefusal } from './refusal.ts';
 import { registerAttempt } from './register-store.ts';
 import type { AgentRequest } from './agent-call.ts';
@@ -25,7 +25,11 @@ export async function settle(
   withoutIdentity = false,
   attempted?: Readonly<Record<string, unknown>>,
 ): Promise<CommandRefusal> {
-  const visible = asCallerVisible(refusal);
+  // `registerAttempt` stores the refusal in the form `storable` gives, and a
+  // replay answers from that row, so the first answer is that form too: a
+  // name holding NUL or an unpaired surrogate reads the same both times, as on
+  // the person prefix (`envelope.ts`, `settle`).
+  const visible = storable(asCallerVisible(refusal));
   if (!withoutIdentity) {
     await registerAttempt(tx, {
       operationId: request.operationId,
