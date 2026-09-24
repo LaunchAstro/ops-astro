@@ -24,6 +24,7 @@ import { isRecordsRefusal } from '../records/refusals.ts';
 import { TASK_SPINE, TASK_TYPE_KEY, type SpineField } from './spine.ts';
 import { COMMENT_SPINE, COMMENT_TYPE_KEY } from './comments.ts';
 import { TASK_STATE_FIELDS, TASK_STATE_SEED, TASK_STATE_TYPE_KEY } from './states.ts';
+import { reconcileVisibility } from './reconcile-visibility.ts';
 
 export interface InstalledTaskSpine {
   readonly taskTypeId: string;
@@ -242,9 +243,12 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
     // not corruption, and the installer's job is to bring it forward: add the
     // missing type and its fields, touch nothing that is already there. The
     // task and state type ids, their field rows and every task record survive,
-    // because nothing below reads or rewrites them.
+    // because nothing below rewrites them, bar the two visibility classes.
     const commentTypeId =
       (await findRecordType(tx, COMMENT_TYPE_KEY)) ?? (await addCommentType(tx));
+    // The one exception to "touch nothing": title and state's visibility, the
+    // I09 ruling an install from before it never received.
+    await reconcileVisibility(tx, existing);
     return {
       taskTypeId: existing,
       taskStateTypeId: stateTypeId,
