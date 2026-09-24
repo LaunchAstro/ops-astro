@@ -60,7 +60,8 @@
     "FR1-DBTEST (final review R1 #49) names the 23 database-bound suites that no required context ran: tests/api/{admission-enumeration,agent-operation-id,surface-operations}, tests/commands/{agent-operands,agent-operation-order,agent-replay-auth,audit-chain,command-shape,command-surface,concurrency,create-authority,local-slice,lost-update,task-fields,task-lifecycle,task-trash-commands}, tests/identity/{identifier-resolution,login-resolution}, tests/records/{records-integrity,slot-law} and tests/tasks/{task-model,task-spine,task-trash}. The tests/api and tests/commands files named agent-operation-id and surface-operations are different suites, and both copies are named. It adds final-r1-dbtest-triggers (#64: the 0010 proposal_versions and 0014 attempts triggers, each branch broken on purpose as the application role and as the owner, with the permitted writes as the control) and final-r1-dbtest-manifest, the guard that fails when a suite reaching fresh-database.ts is neither named nor listed here as unnamed; that guard is a pure unit suite and must not be named.",
     "Not named, because each skips without a variable the runner does not set and the runner refuses a skip: restart-http.test.ts (W06 over HTTP, needs L5_RESTART_CONTAINER_NAME and L5_RESTART_API_PORT, run beside restart-and-expiry by pnpm verify:restart) and pickup-replay-restart.test.ts (a lost pickup across an API and Postgres restart, needs PICKUP_REPLAY_API_PORT and PICKUP_REPLAY_PG_CONTAINER). Not named because they are pure unit suites that import a harness module reaching fresh-database.ts but open no database: restart-declared.test.ts (restart-harness refusals), cli-answers.test.ts and cli-wire.test.ts (the real CLI against an HTTP stand-in, through cli-process-harness), and global-setup.test.ts (besideUrl only).",
     "FR1-DBTEST-CONT names the merged FR1 lanes' database-bound suites: final-r1-fr1-jsonb-comment and final-r1-fr1-jsonb (FR1-JSONB), final-r1-api-sign-ambiguous-key (FR1-API-SIGN), final-r1-fr1-trash (FR1-TRASH), final-r1-place and final-r1-place-reach (FR1-PLACE) and final-r1-fr1-runtime (FR1-RUNTIME). Not named: final-r1-cli.test.ts is a pure unit suite (it moves the counter by 0 and its terminal case skips without a terminal). final-r1-api-sign-read.test.ts is left out for now, because it fails at the integration head 83accc6: its fixture decides with an object note, which FR1-RUNTIME's #53 fix refuses FIELD_VALUE_INVALID (packages/core-runtime/src/decide.ts:74-75). It is named once its owner lane reconciles the two.",
-    "FR1-DBTEST-CONT adds final-r1-dbtest-seed-revoke (#60: scripts/local-seed.mjs run as its own process on a fresh database refuses to revoke a grant that is the work authority for a live lease, naming the grant and what to do instead, and leaves the grant and the lease as they were)."
+    "FR1-DBTEST-CONT adds final-r1-dbtest-seed-revoke (#60: scripts/local-seed.mjs run as its own process on a fresh database refuses to revoke a grant that is the work authority for a live lease, naming the grant and what to do instead, and leaves the grant and the lease as they were).",
+    "FR1-DBTEST-CONT-2 names final-r1-fr1-agent, final-r1-fr1-agent-delegation-widens and final-r1-fr1-agent-merge-cycle (FR1-AGENT), final-r1-place-owned (FR1-PLACE-CONT), final-r1-fr1-jsonb-cont (FR1-JSONB-CONT) and final-r1-fr1-runtime-cont (FR1-RUNTIME-CONT), and now final-r1-api-sign-read: FR1-RUNTIME-CONT-2 rebuilt its fixture as a signed stored row, so the unnamed reason recorded above no longer holds."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -225,6 +226,13 @@
     "tests/commands/final-r1-place-reach.test.ts",
     "tests/commands/final-r1-place.test.ts",
     "tests/runtime/final-r1-fr1-runtime.test.ts",
-    "tests/runtime/final-r1-dbtest-seed-revoke.test.ts"
+    "tests/runtime/final-r1-dbtest-seed-revoke.test.ts",
+    "tests/api/final-r1-fr1-agent.test.ts",
+    "tests/commands/final-r1-fr1-agent-delegation-widens.test.ts",
+    "tests/commands/final-r1-fr1-jsonb-cont.test.ts",
+    "tests/commands/final-r1-place-owned.test.ts",
+    "tests/identity/final-r1-fr1-agent-merge-cycle.test.ts",
+    "tests/runtime/final-r1-fr1-runtime-cont.test.ts",
+    "tests/reads/final-r1-api-sign-read.test.ts"
   ]
 }
