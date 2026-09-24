@@ -1028,10 +1028,10 @@ shows its client `title` and `state` (Nathan's I09 ruling, OWNER-CARD section
 6), both classified `shared` on the task spine (`tasks/spine.ts`). `state` is
 shown as the state's label, never its identifier (`readSharedTask`,
 `reads/tasks.ts`). Every other field stays `internal` unless the catalogue
-classifies it. One limitation: installing a business's spine writes the
-classification to `field_defs`, so a business installed before this landed
-keeps `title` and `state` internal until it is reseeded. No data migration changes it, and no
-such install has shipped. The final live proofs reseed the demo.
+classifies it. One limitation: the classification lives in `field_defs`, which
+the seed writes through `installTaskSpine` (`tasks/install.ts`), not a
+migration. A business whose spine was seeded before this landed shows `title` and `state` as `shared` only once its spine is seeded
+again. No such install has shipped, and the final live proofs reseed the demo.
 
 For an external party, a `task.read` of a record its shares do not cover and
 any `task.board` answer `NOT_FOUND` 404 (the row's
