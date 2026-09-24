@@ -292,7 +292,7 @@ const BODY_FIXES: readonly string[] = [
  * do, what their authority is checked against is a decision for the part that
  * lands them, not a field this table can infer.
  */
-const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
+export const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
@@ -529,7 +529,7 @@ export async function lockTask(
  * envelope, which never comes through here, reached SQL and faulted. Any
  * other command naming these fields is still answered here.
  */
-const RUNTIME_SHAPED: Readonly<Record<string, string>> = {
+export const RUNTIME_SHAPED: Readonly<Record<string, string>> = {
   'task.pickup': 'reservationId',
   'task.heartbeat': 'leaseId',
   'task.handback': 'leaseId',
