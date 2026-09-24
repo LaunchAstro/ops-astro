@@ -77,7 +77,10 @@ const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
 
 export interface CliAnswer {
   readonly status: number;
+  /** The parsed JSON body, or `undefined` when the body was not JSON. */
   readonly body: unknown;
+  /** The body as it came, for an answer that was not JSON. */
+  readonly text?: string;
 }
 
 /**
@@ -96,6 +99,24 @@ export function accepts(verb: string): boolean {
   return VERBS.has(verb);
 }
 
+/**
+ * Is this verb a write? The registry's `kind` says, and only a write carries an
+ * operation identity: a read has nothing to replay.
+ */
+export function isWrite(verb: string): boolean {
+  return COMMAND_SURFACE.some((command) => command.name === verb && command.kind === 'write');
+}
+
+/**
+ * Did the API refuse? A refusal is a body flagged `refused: true` with a code,
+ * as `apps/api/app.ts` writes it and the web client reads it. A non-2xx without
+ * the flag is the server failing, not an authority decision.
+ */
+export function isRefusal(answer: CliAnswer): boolean {
+  const body = answer.body as { refused?: unknown; code?: unknown } | null | undefined;
+  return body?.refused === true && typeof body.code === 'string';
+}
+
 export function createCli(options: CliOptions): {
   readonly run: (verb: string, payload: Readonly<Record<string, unknown>>) => Promise<CliAnswer>;
 } {
@@ -105,7 +126,8 @@ export function createCli(options: CliOptions): {
         // The one answer this file gives on its own, and it is not an authority
         // check: it is "no such command", which the API would answer with a 404
         // and no operation would ever see. A caller can tell the two apart.
-        return { status: 404, body: { code: 'COMMAND_UNKNOWN', names: [verb], fixes: [USAGE] } };
+        const body = { code: 'COMMAND_UNKNOWN', names: [verb], fixes: [USAGE] };
+        return { status: 404, body, text: JSON.stringify(body) };
       }
       const entry = options.entry ?? 'person';
       const path = `${PREFIX[entry]}${options.businessKey}${pathOf(verb as CommandName)}`;
@@ -114,7 +136,14 @@ export function createCli(options: CliOptions): {
         entry === 'agent' && options.delegation !== undefined && options.delegation !== ''
           ? await options.transport(path, body, options.credential, options.delegation)
           : await options.transport(path, body, options.credential);
-      return { status: response.status, body: await response.json() };
+      const text = await response.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = undefined;
+      }
+      return { status: response.status, body: parsed, text };
     },
   };
 }

@@ -17,8 +17,9 @@
 //    draws a number, because a number drawn in any of them would be one nobody
 //    asked the server for (B7).
 //  - **The old "last confirmed by this browser" line is the fallback and only
-//    the fallback.** When the read is refused or absent, the browser's own
-//    confirmed write is all there is, and the screen says exactly that. When
+//    the fallback.** When the read is absent, the browser's own confirmed write
+//    is all there is, and the screen says exactly that. A refused read draws
+//    no fallback: the server declined to tell this reader the value. When
 //    the read answers, that line is not on the page at all: two numbers with
 //    two provenances, one of them stale, is the ambiguity the read removes.
 //  - **A write is followed by a reread.** What lands in the box afterwards is
@@ -203,7 +204,7 @@ describe('the settings screen reads the server', () => {
     await page.unmount();
   });
 
-  it('draws a refused read verbatim and falls back to what this browser confirmed', async () => {
+  it('draws a refused read verbatim and draws no fallback in its place', async () => {
     const api = server({ settings: () => refusal('SCOPE_NOT_GRANTED', 403) });
     const page = await mount(screen(api.fetch));
     await tick();
@@ -212,9 +213,10 @@ describe('the settings screen reads the server', () => {
     expect(page.find('[data-settings="read"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
     // No number is invented in a state where nobody answered.
     expect(page.find('[data-settings="four-eyes-value"]')).toBeNull();
-    // The fallback, and it says where its number would come from.
-    expect(page.find('[data-settings="not-readable"]')).not.toBeNull();
-    expect(page.find('[data-settings="four-eyes-known"]')?.textContent).toContain('not known');
+    // A refusal is the server declining to tell this reader the value, so the
+    // browser's memory does not answer for it (Sol 6 SURFACE-2).
+    expect(page.find('[data-settings="not-readable"]')).toBeNull();
+    expect(page.find('[data-settings="four-eyes-known"]')).toBeNull();
     await page.unmount();
   });
 

@@ -22,6 +22,12 @@
 //  - **`SCOPE_NOT_GRANTED` on a write closes the controls** whatever the
 //    capability read said, because a grant can be revoked between the read and
 //    the press and the write is the newer fact.
+//  - **The browser's memory of its last confirmed write is the session's, and
+//    only for an unavailable read.** A refused `settings.read` is the server
+//    declining to tell this reader the value, so nothing is drawn in its place.
+//    The memory is tagged with the session that wrote it and removed at
+//    sign-out (`session/token.ts`), because the tab outlives the session and
+//    the next person to sign in to it is a different reader.
 
 import { useState } from 'react';
 import {
@@ -33,6 +39,7 @@ import {
   type OperationsClient,
 } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import { settingsCacheKey } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
 import type {
@@ -74,6 +81,11 @@ export interface Confirmed {
   readonly signOff?: boolean;
 }
 
+/** As stored: the values and the session they belong to. */
+interface Stored extends Confirmed {
+  readonly session: string;
+}
+
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
   readonly which: Which;
@@ -82,24 +94,50 @@ export interface Conflict {
   readonly because: string;
 }
 
-const keyFor = (businessKey: string): string => `ops-astro.settings.${businessKey}`;
+/**
+ * Which session a stored value belongs to, without storing the bearer again.
+ *
+ * The grant key is business and token together; FNV-1a over it tells one
+ * session from another in the same tab, which is all the tag is for.
+ */
+function sessionTag(grantKey: string): string {
+  let hash = 0x811c9dc5;
+  for (let at = 0; at < grantKey.length; at += 1) {
+    hash = Math.imul(hash ^ (grantKey.codePointAt(at) ?? 0), 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
 
-function readConfirmed(storage: StorageLike | null, businessKey: string): Confirmed {
+function readConfirmed(
+  storage: StorageLike | null,
+  businessKey: string,
+  grantKey: string,
+): Confirmed {
   // A storage that throws — private mode, blocked site data — must leave the
   // screen drawing "not known", which is the truth in that tab anyway.
   try {
-    const raw = storage?.getItem(keyFor(businessKey)) ?? null;
+    const raw = storage?.getItem(settingsCacheKey(businessKey)) ?? null;
     if (raw === null) return {};
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Confirmed) : {};
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    // Another session's value, or one stored before values carried a session,
+    // is not this reader's to see.
+    const { session, ...values } = parsed as Partial<Stored>;
+    return session === sessionTag(grantKey) ? values : {};
   } catch {
     return {};
   }
 }
 
-function writeConfirmed(storage: StorageLike | null, businessKey: string, next: Confirmed): void {
+function writeConfirmed(
+  storage: StorageLike | null,
+  businessKey: string,
+  grantKey: string,
+  next: Confirmed,
+): void {
   try {
-    storage?.setItem(keyFor(businessKey), JSON.stringify(next));
+    const stored: Stored = { ...next, session: sessionTag(grantKey) };
+    storage?.setItem(settingsCacheKey(businessKey), JSON.stringify(stored));
   } catch {
     /* Nothing to do. The screen still draws what it has in hand this render. */
   }
@@ -125,7 +163,10 @@ export interface SettingsModel {
   readonly capabilities: ReadState<CapabilitiesResult>;
   /** The read answered with rows, so the server's values may be drawn. */
   readonly answered: boolean;
-  /** Nobody answered, so this browser's own confirmed write is all there is. */
+  /**
+   * Nobody answered, so this session's own confirmed write is all there is.
+   * Never true for a refused read: the server declined, and nothing stands in.
+   */
   readonly fallback: boolean;
   readonly confirmed: Confirmed;
   readonly closed: boolean;
@@ -162,7 +203,14 @@ export function useSettings(
     deps: [],
   });
 
-  const [confirmed, setConfirmed] = useState<Confirmed>(() => readConfirmed(storage, businessKey));
+  // Keyed by the grant: a new session in a still-mounted screen reads afresh
+  // rather than keeping what the previous session had confirmed.
+  const [held, setHeld] = useState(() => ({
+    grantKey,
+    confirmed: readConfirmed(storage, businessKey, grantKey),
+  }));
+  const confirmed =
+    held.grantKey === grantKey ? held.confirmed : readConfirmed(storage, businessKey, grantKey);
   const [because, setBecause] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [closed, setClosed] = useState(false);
@@ -206,8 +254,8 @@ export function useSettings(
     setBecause(null);
     setConflict(null);
     const merged = { ...confirmed, ...remember(which, echoed(result), value) };
-    setConfirmed(merged);
-    writeConfirmed(storage, businessKey, merged);
+    setHeld({ grantKey, confirmed: merged });
+    writeConfirmed(storage, businessKey, grantKey, merged);
     // The row as the server holds it, not the echo and not what was typed.
     settings.reload();
   };
@@ -227,7 +275,7 @@ export function useSettings(
     read,
     capabilities: caps,
     answered: read.outcome === 'ready',
-    fallback: read.outcome === 'denied' || read.outcome === 'unavailable',
+    fallback: read.outcome === 'unavailable',
     confirmed,
     closed,
     busy,
