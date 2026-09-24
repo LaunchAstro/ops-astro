@@ -65,7 +65,7 @@ import {
 const ADMIN_EMAIL = 'ada@alpha.local';
 /** The two commands that write a record's generic fields (`d06-generated.test.ts`). */
 const GENERIC_WRITES = new Set(['task.create', 'task.update']);
-/** The pre-6f15252 grid the L6 packet counted against: 35 x (3 + 22) x mounted, less 3. */
+/** The pre-d62f1bc grid the L6 packet counted against: 35 x (3 + 22) x mounted, less 3. */
 const L6_MISSING = 872;
 
 /**
