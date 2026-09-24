@@ -142,8 +142,7 @@ interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope
 ```ts
 // identity/agent-login.ts
 resolveAgentLogin(tx, presented: VerifiedSubject): Promise<AgentSession | AgentRefusal>
-refuseExpiredSession(): AgentRefusal            // AUTH_SESSION_EXPIRED
-EXPIRED_FIXES                                   // its fixes, also read by the HTTP door
+EXPIRED_FIXES                                   // the fixes the door sends with AUTH_SESSION_EXPIRED (apps/api/app.ts)
 // The agent entry is executeAgentCommand (commands/agent-envelope.ts). It opens
 // withBusiness and calls resolveAgentLogin itself; no session wrapper is exported.
 
@@ -289,11 +288,11 @@ it through from the authority layer, as `DELEGATION_NOT_LIVE` and
 
 ## The expired session
 
-`refuseExpiredSession()` pins what the server answers when a verified GoTrue
-token has expired: a typed `AUTH_SESSION_EXPIRED` refusal a client can turn into
-a re-login path. Its fixes are `EXPIRED_FIXES`, exported beside it, and the HTTP
-door answers an expired bearer with the same fixes before any envelope runs
-(`apps/api/app.ts`). It is never an empty result, a 500 or a silent failure. A
+The HTTP door (`apps/api/app.ts`) answers a verified GoTrue token that has
+expired before any envelope runs, on both prefixes: a typed
+`AUTH_SESSION_EXPIRED` 401 whose fixes are `EXPIRED_FIXES`
+(`identity/agent-login.ts`), which a client can turn into a re-login path. It is
+never an empty result, a 500 or a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
 "the server is broken", and only the first is something they can fix. The
 browser half (holding the draft, re-authenticating, resuming) is L5's.
