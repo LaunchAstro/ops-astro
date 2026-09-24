@@ -132,13 +132,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
-  <Projects
-    client={client(fetch)}
-    grantKey="alpha:mia"
-    onOpenTask={() => {
-      /* the board's links are not this test's subject */
-    }}
-  />
+  <Projects client={client(fetch)} grantKey="alpha:mia" />
 );
 
 describe('a create whose response was lost', () => {

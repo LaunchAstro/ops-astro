@@ -13,12 +13,14 @@
 // stores is recorded rather than papered over by dropping the columns.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, drawPinnedStepWord, type BoardRow, type DrawnState } from '@launchastro/ui';
-import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
+import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import type { OperationsClient } from '../operations/client.ts';
 import type { TaskBoardResult, TaskSummary } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { describeRefusal } from '../records/submit.ts';
+import { drawTaskState } from '../views/task-state.ts';
+import { useCommand } from '../records/use-command.ts';
+import { pathTo } from '../routes.ts';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -29,7 +31,6 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
-  readonly onOpenTask: (key: string) => void;
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
@@ -38,9 +39,9 @@ export function Projects(props: ProjectsProps): ReactElement {
   // the input, the submit and `Start a different task` are all disabled. A
   // person who can type a second title during the first create is a person
   // whose second title a delayed success will wipe.
-  const [creating, setCreating] = useState(false);
+  const { busy: creating, failure, run, reset } = useCommand();
+  const because = failure?.because ?? null;
   const [title, setTitle] = useState('');
-  const [because, setBecause] = useState<string | null>(null);
   // The attempt whose outcome nobody knows. A create that ended `unavailable`
   // may well have committed on the server, so its identity and its exact
   // payload are kept here and presented again on the next submission. Minting
@@ -70,44 +71,38 @@ export function Projects(props: ProjectsProps): ReactElement {
     if (asked === '') return;
     const attempt = attemptFor(asked);
     setPending(attempt);
-    setCreating(true);
-    setBecause(null);
-    // `board: null` is explicit. The acceptance case is a task with no board,
-    // and leaving the field out would let a server default decide.
-    void (async () => {
-      const result = await client.mutate(
-        'task.create',
-        { fields: { title: attempt.title }, board: null },
-        { operationId: attempt.operationId },
-      );
-      setCreating(false);
-      if (isRefusal(result)) {
-        // A refusal is a decision: the outcome is known and the attempt is
-        // over. Holding it would resend an identity the server has settled.
-        setPending(null);
-        setBecause(describeRefusal(result));
-        return;
-      }
-      if (isUnavailable(result)) {
+    run(
+      // `board: null` is explicit. The acceptance case is a task with no board,
+      // and leaving the field out would let a server default decide.
+      () =>
+        client.mutate(
+          'task.create',
+          { fields: { title: attempt.title }, board: null },
+          { operationId: attempt.operationId },
+        ),
+      (settlement) => {
         // The one case the attempt is kept for. The task may or may not exist.
-        setBecause(result.because);
-        return;
-      }
-      setPending(null);
-      // Clear only the text this create was for. The input is disabled while
-      // the request is in flight so there should be nothing newer, but a
-      // settlement that clears whatever happens to be in the box is the same
-      // defect as the task form's: a late success erasing the next task's
-      // title. Bind it to what was submitted and it cannot.
-      setTitle((current) => (current.trim() === attempt.title ? '' : current));
-      reload();
-    })();
+        if (settlement.kind === 'unknown') return;
+        // Anything else is a known outcome and the attempt is over: a refusal
+        // is a decision, and holding it would resend an identity the server
+        // has settled.
+        setPending(null);
+        if (settlement.kind !== 'ok') return;
+        // Clear only the text this create was for. The input is disabled while
+        // the request is in flight so there should be nothing newer, but a
+        // settlement that clears whatever happens to be in the box is the same
+        // defect as the task form's: a late success erasing the next task's
+        // title. Bind it to what was submitted and it cannot.
+        setTitle((current) => (current.trim() === attempt.title ? '' : current));
+        reload();
+      },
+    );
   };
 
   /** Abandon an unresolved attempt and ask for a genuinely different task. */
   const startNew = (): void => {
     setPending(null);
-    setBecause(null);
+    reset();
     setTitle('');
   };
 
@@ -200,39 +195,13 @@ function rowOf(task: TaskSummary): BoardRow {
     dueLabel: task.due === null ? null : dayOf(task.due),
     due: dueTone(task.due),
     stage: null,
-    state: stateOf(task),
+    state: drawTaskState(task.state),
     estimate: null,
     actual: null,
     group: groupOf(task),
-    href: `/task/${encodeURIComponent(task.key)}`,
+    href: pathTo('agency:task-detail', { key: task.key }),
   };
 }
-
-/**
- * The stored state as a drawn one.
- *
- * The label is the server's, because task states are preset records and the
- * label on the record is the word the installation chose. The tone comes from
- * the machine category through the ported projection, so a state the
- * installation adds still draws with a tone rather than falling through to
- * nothing.
- */
-function stateOf(task: TaskSummary): DrawnState {
-  // A task with no state is an incomplete record, not a crash and not a
-  // blank cell. It says so, in the vocabulary the projection already has for
-  // a word it cannot place, and the row stays on the screen.
-  if (task.state === null) return { word: 'No state', tone: 'wait', reference: 'unknown' };
-  const drawn = drawPinnedStepWord(TONE_BY_CATEGORY[task.state.machineCategory] ?? 'pending');
-  return { word: task.state.label, tone: drawn.tone, reference: 'new_behaviour' };
-}
-
-const TONE_BY_CATEGORY: Readonly<Record<string, string>> = {
-  unstarted: 'pending',
-  started: 'running',
-  backlog: 'waiting',
-  completed: 'done',
-  cancelled: 'refused',
-};
 
 const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
   ...new Set(tasks.map((task) => groupOf(task))),

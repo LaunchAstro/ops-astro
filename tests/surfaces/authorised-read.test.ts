@@ -122,3 +122,31 @@ describe('unavailable is not denial', () => {
     expect(read.accept(fresh, ok(['a']), 'alpha:tok')).toBe(true);
   });
 });
+
+describe('the state is a union on its outcome', () => {
+  it('keeps the previous answer while loading, and none after a denial', () => {
+    const { read } = projection();
+    read.accept(read.begin(), ok(['a']), 'alpha:tok');
+    read.begin();
+    expect(read.state.outcome).toBe('loading');
+    expect(read.state.value?.rows).toEqual(['a']);
+    read.accept(read.begin(), denied, 'alpha:tok');
+    read.begin();
+    expect(read.state.outcome).toBe('loading');
+    expect(read.state.value).toBeNull();
+    expect(read.state.refusal).toBeNull();
+  });
+
+  it('gives a narrowed reader the field its outcome carries, without a null check', () => {
+    const { read } = projection();
+    read.accept(read.begin(), denied, 'alpha:tok');
+    const state = read.state;
+    if (state.outcome !== 'denied') throw new Error('expected denied');
+    // Checked by the typechecker: a denied state's refusal is not nullable.
+    const code: string = state.refusal.code;
+    expect(code).toBe('SCOPE_NOT_GRANTED');
+    // @ts-expect-error a denied state holds no value to draw.
+    const leaked: Rows = state.value;
+    expect(leaked).toBeNull();
+  });
+});

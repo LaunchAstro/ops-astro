@@ -26,9 +26,16 @@
 
 export type Namespace = 'agency' | 'portal';
 
-export interface RouteDescriptor {
-  /** `<namespace>:<name>`. Immutable once published. */
-  readonly id: string;
+/** A route a signed-out person may be drawn. */
+export type PublicRouteId = 'agency:sign-in';
+
+/** A route that needs a session. Each one has a screen in `SCREENS`. */
+export type AuthenticatedRouteId =
+  'agency:projects-board' | 'agency:task-detail' | 'agency:settings';
+
+export type RouteId = PublicRouteId | AuthenticatedRouteId;
+
+interface RouteBase {
   readonly namespace: Namespace;
   /** The canonical address. `:name` marks a parameter. */
   readonly path: string;
@@ -37,9 +44,18 @@ export interface RouteDescriptor {
   readonly surface: 'S1' | 'S2' | 'none';
   /** Whether the rail carries an entry for it. */
   readonly rail: boolean;
-  /** Whether a signed-in session is required to draw it. */
-  readonly authenticated: boolean;
 }
+
+/**
+ * One registered address. `id` is `<namespace>:<name>` and immutable once
+ * published. `authenticated` says whether a signed-in session is required to
+ * draw it, and it decides which kind of identifier the route carries, so a
+ * screen lookup keyed by `AuthenticatedRouteId` can only be reached by a route
+ * that needs a session.
+ */
+export type RouteDescriptor =
+  | (RouteBase & { readonly id: PublicRouteId; readonly authenticated: false })
+  | (RouteBase & { readonly id: AuthenticatedRouteId; readonly authenticated: true });
 
 export const ROUTES: readonly RouteDescriptor[] = [
   {
@@ -127,6 +143,22 @@ export function matchRoute(path: string): RouteMatch | null {
     if (matched) return { route, params };
   }
   return null;
+}
+
+/**
+ * The address of a registered route, with its parameters filled in.
+ *
+ * Every link and navigation goes through this rather than typing the path out,
+ * so the registry stays the one place an address is spelt.
+ */
+export function pathTo(id: RouteId, params: Readonly<Record<string, string>> = {}): string {
+  const route = ROUTES.find((entry) => entry.id === id);
+  if (route === undefined) throw new Error(`no route is registered as ${id}`);
+  return route.path.replace(/:([a-z]+)/g, (_, name: string) => {
+    const value = params[name];
+    if (value === undefined) throw new Error(`${id} needs the parameter ${name}`);
+    return encodeURIComponent(value);
+  });
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');

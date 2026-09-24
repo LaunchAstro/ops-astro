@@ -20,8 +20,9 @@ interface Rows {
 
 const GRANT = 'alpha:tok';
 
-const base: ReadState<Rows> = {
-  outcome: 'loading',
+// The fields every non-ready state shares. Each test names its own outcome,
+// because the union will not let a loading state be relabelled as another.
+const base = {
   value: null,
   refusal: null,
   because: null,
@@ -42,7 +43,7 @@ const draw = (state: ReadState<Rows>) => (
 
 describe('the five renderings', () => {
   it('loading says so, politely, and draws no rows', async () => {
-    const view = await mount(draw(base));
+    const view = await mount(draw({ ...base, outcome: 'loading' }));
     expect(view.find('[data-outcome="loading"]')).not.toBeNull();
     expect(view.find('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
     expect(view.all('li')).toHaveLength(0);
@@ -129,13 +130,5 @@ describe('denied and empty are distinguishable', () => {
     expect(deniedText).not.toBe(emptyText);
     expect(deniedText).toContain('not permitted');
     expect(emptyText).not.toContain('not permitted');
-  });
-});
-
-describe('ready with no value', () => {
-  it('says the product is wrong about itself rather than drawing an empty screen', async () => {
-    const view = await mount(draw({ ...base, outcome: 'ready', value: null }));
-    expect(view.find('[data-voice="not-built"]')).not.toBeNull();
-    await view.unmount();
   });
 });
