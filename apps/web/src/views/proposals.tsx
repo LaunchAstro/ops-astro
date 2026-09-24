@@ -39,10 +39,21 @@
 // was explaining would leave a person watching the screen change for no stated
 // reason.
 //
+// **A refusal is quoted under the gate it was about.** The note carries the
+// gate the refused control sent, so a task with two lineages does not draw one
+// gate's refusal beside the other gate's live controls.
+//
 // **A reader without the grant is refused once.** There is no capability read in
 // this build, so this screen cannot know whether a person may decide before it
 // asks. It asks once, quotes the server's own code, and then stops offering a
-// control that has already been refused for this reader.
+// control that has already been refused for this reader. That closure is about
+// the reader, so it closes every gate on the task, and the propose form's own
+// closure is held above the read for the same reason the note is.
+//
+// **An ended lineage is not offered for a decision.** Cancelling a lineage
+// leaves its head gate stored `pending`, and `task.decide` refuses any decision
+// on it with `LINEAGE_TERMINAL`. The lineage state is in the same answer as the
+// gate, so the controls close on it rather than inviting that refusal.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
@@ -61,6 +72,8 @@ export interface DecisionNote {
   readonly because: string;
   /** Set when the refusal was about this reader's authority, not this version. */
   readonly closed: boolean;
+  /** The gate the refused decision was about. The text is drawn under it alone. */
+  readonly gateId: string;
 }
 
 export interface ProposalsProps {
@@ -72,11 +85,19 @@ export interface ProposalsProps {
   readonly revision: number;
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
+  /** The server's refusal of a proposal on this reader's authority, held above the read. */
+  readonly proposeRefusal: string | null;
+  readonly onProposeRefused: (because: string) => void;
   readonly onChanged: () => void;
 }
 
-/** The currencies the seeded budget cap is kept in. The server checks the rest. */
-const CURRENCIES: readonly string[] = ['AUD', 'NZD', 'USD'];
+/**
+ * The currency the seeded budget cap is kept in. `scripts/local-seed.mjs`
+ * inserts every business's cap in AUD, and `task.decide` refuses a version in
+ * any other currency with `CAP_BINDING_MISMATCH`, so offering another would
+ * make a proposal nobody can approve.
+ */
+const CURRENCIES: readonly string[] = ['AUD'];
 
 export function Proposals(props: ProposalsProps): ReactElement {
   return (
@@ -115,7 +136,9 @@ export function Proposals(props: ProposalsProps): ReactElement {
       <Propose
         client={props.client}
         onChanged={props.onChanged}
+        onRefused={props.onProposeRefused}
         recordId={props.recordId}
+        refusal={props.proposeRefusal}
         revision={props.revision}
       />
     </section>
@@ -151,6 +174,7 @@ function Lineage(props: LineageProps): ReactElement {
           // The older versions are here to be read, not to be acted on.
           head={index === 0}
           key={version.versionId}
+          lineageState={lineage.state}
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
@@ -168,6 +192,8 @@ interface VersionProps {
   readonly client: OperationsClient;
   readonly version: ProposalVersion;
   readonly head: boolean;
+  /** The lineage's state from the same answer. Only a `live` lineage is decided. */
+  readonly lineageState: string;
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
@@ -246,6 +272,7 @@ function Version(props: VersionProps): ReactElement {
         <Decide
           client={props.client}
           gate={gate}
+          lineageState={props.lineageState}
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
@@ -268,6 +295,7 @@ interface DecideProps {
   readonly client: OperationsClient;
   readonly gate: NonNullable<ProposalVersion['gate']>;
   readonly versionId: string;
+  readonly lineageState: string;
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
@@ -277,14 +305,20 @@ function Decide(props: DecideProps): ReactElement {
   const { gate } = props;
   const { busy, run } = useCommand();
   const closed = props.note?.closed === true;
-  // Three reasons a decision is not on offer, and the person is told which.
+  // Whether the note is about this gate. Only then is its text drawn here.
+  const refused = props.note !== null && props.note.gateId === gate.id;
+  // Four reasons a decision is not on offer, and the person is told which.
   const why = closed
-    ? 'The server refused your decision on this gate, so the controls are closed rather than asking again on your behalf.'
+    ? refused
+      ? 'The server refused your decision on this gate, so the controls are closed rather than asking again on your behalf.'
+      : 'The server refused a decision of yours on this task, so these controls are closed too rather than asking again on your behalf.'
     : lapsed(gate)
       ? `This gate expired: its deadline${gate.expiresAt === null ? '' : `, ${gate.expiresAt},`} passed without a decision, on the server’s own clock, so nobody may decide it now. A new version of the proposal raises a new gate.`
-      : gate.state === 'pending'
-        ? null
-        : `This gate is ${gate.state} and a decided gate is not decided twice.`;
+      : gate.state !== 'pending'
+        ? `This gate is ${gate.state} and a decided gate is not decided twice.`
+        : props.lineageState === 'live'
+          ? null
+          : `This lineage is ${props.lineageState}, and a lineage that has ended is not decided again. An authorised restart opens a new one.`;
 
   const decide = (decision: 'approve' | 'reject'): void => {
     if (busy || closed) return;
@@ -343,9 +377,9 @@ function Decide(props: DecideProps): ReactElement {
           {why}
         </p>
       )}
-      {props.note === null ? null : (
+      {!refused ? null : (
         <p className="field__error" role="alert" data-decide="refusal">
-          {props.note.because}
+          {props.note?.because}
         </p>
       )}
     </div>
@@ -370,7 +404,11 @@ function settled(settlement: Settlement, props: DecideProps): void {
   // `SCOPE_NOT_GRANTED` is about this reader rather than about this version, so
   // it closes the control. Everything else is about the record, and the record
   // is what gets read again.
-  props.onDecided({ because: settlement.because, closed: settlement.kind === 'closed' });
+  props.onDecided({
+    because: settlement.because,
+    closed: settlement.kind === 'closed',
+    gateId: props.gate.id,
+  });
   props.onChanged();
 }
 
@@ -456,6 +494,9 @@ interface ProposeProps {
   readonly client: OperationsClient;
   readonly recordId: string;
   readonly revision: number;
+  /** An earlier refusal on this reader's authority, which outlives the reread. */
+  readonly refusal: string | null;
+  readonly onRefused: (because: string) => void;
   readonly onChanged: () => void;
 }
 
@@ -463,7 +504,14 @@ function Propose(props: ProposeProps): ReactElement {
   const [purpose, setPurpose] = useState('');
   const [maximum, setMaximum] = useState('');
   const [currency, setCurrency] = useState('AUD');
-  const { busy, because, closed, locked, run } = useCommand();
+  const command = useCommand();
+  const busy = command.busy;
+  // The refusal is also held above the read, because a reread remounts this
+  // form with a fresh command and the closure would otherwise be forgotten.
+  const closed = command.closed || props.refusal !== null;
+  const locked = busy || closed;
+  const because = command.because ?? props.refusal;
+  const run = command.run;
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -509,6 +557,7 @@ function Propose(props: ProposeProps): ReactElement {
    * version that appears is the server's rather than this form's own echo.
    */
   function settledProposal(settlement: Settlement): void {
+    if (settlement.kind === 'closed') props.onRefused(settlement.because);
     if (settlement.kind !== 'ok') return;
     setPurpose('');
     setMaximum('');

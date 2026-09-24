@@ -48,7 +48,14 @@
 // view because the reread unmounts everything under the read state.
 //
 // **A refused comment is asked once** (`task/Comments.tsx`), so a member
-// without the grant is not invited to be refused over and over.
+// without the grant is not invited to be refused over and over. The refusal is
+// held here, as the decision note is, so an unrelated write's reread does not
+// open the box again. The propose form's refusal is held the same way.
+//
+// **Only a stale save of the draft is drawn as a draft conflict.** A stale
+// lifecycle or assignee press had nothing unsaved in it, so it is quoted as the
+// server's `VERSION_STALE` and the task is read again, and the quote is held
+// here because that reread unmounts the page below the read.
 //
 // **A reader outside the business gets the shared view, not this page with
 // holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
@@ -128,15 +135,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // together with the version it was about — the screen would change and say
   // nothing about why. It is dropped when the task or the reader changes, for
   // the same reason a draft is: it is an answer about one record read under one
-  // authority.
-  const [decision, setDecision] = useState<{
-    readonly identity: string;
-    readonly note: DecisionNote;
-  } | null>(null);
-  if (decision !== null && (decision.identity !== identity || state.outcome === 'denied')) {
-    setDecision(null);
-  }
-  const note = decision !== null && decision.identity === identity ? decision.note : null;
+  // authority. The comment and proposal refusals, and a stale press's quote,
+  // are held the same way for the same reason.
+  const denied = state.outcome === 'denied';
+  const [note, setNote] = useHeld<DecisionNote>(identity, denied);
+  const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
+  const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
+  const [moved, setMoved] = useHeld<string>(identity, denied);
 
   return (
     <div className="stack">
@@ -181,9 +186,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               task={value.task}
               draft={held}
               note={note}
-              onDecided={(next) => {
-                setDecision(next === null ? null : { identity, note: next });
-              }}
+              onDecided={setNote}
+              commentRefusal={commentRefusal}
+              onCommentRefused={setCommentRefusal}
+              proposeRefusal={proposeRefusal}
+              onProposeRefused={setProposeRefusal}
+              moved={moved}
+              onMoved={setMoved}
               onDraft={(next, base) => {
                 if (next === null) {
                   setDraft(null);
@@ -226,6 +235,28 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   );
 }
 
+/**
+ * One answer held above the read, for one task under one grant.
+ *
+ * Dropped when the task or the grant changes or the read is denied, the same
+ * rules the draft follows: it is an answer about one record read under one
+ * authority, and it must not outlive either.
+ */
+function useHeld<T>(
+  identity: string,
+  denied: boolean,
+): readonly [T | null, (next: T | null) => void] {
+  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T } | null>(null);
+  if (held !== null && (held.identity !== identity || denied)) {
+    setHeld(null);
+  }
+  const value = held !== null && held.identity === identity ? held.value : null;
+  const set = (next: T | null): void => {
+    setHeld(next === null ? null : { identity, value: next });
+  };
+  return [value, set];
+}
+
 interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
@@ -235,6 +266,15 @@ interface LoadedProps {
   /** What the server said about the last decision, or nothing. */
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
+  /** This reader's refused comment, held above the read so a reread keeps it. */
+  readonly commentRefusal: string | null;
+  readonly onCommentRefused: (because: string) => void;
+  /** This reader's refused proposal, held the same way. */
+  readonly proposeRefusal: string | null;
+  readonly onProposeRefused: (because: string) => void;
+  /** The last stale lifecycle or assignee press, quoted across its reread. */
+  readonly moved: string | null;
+  readonly onMoved: (because: string | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
   readonly onSaved: (generation: number) => void;
   readonly onDiscard: () => void;
@@ -251,8 +291,14 @@ function Loaded(props: LoadedProps): ReactElement {
   // The controls stay on `busy`, not `locked`: this one command state serves
   // several commands (lifecycle, assignment, the details form), and one
   // command's authority refusal must not close the others.
-  const { busy, because: failed, conflict, run: send } = useCommand();
-  const because = conflict === null ? failed : null;
+  //
+  // `fromFields` records which of them sent the last write, because only a
+  // stale save of the draft is a draft conflict. A stale lifecycle or assignee
+  // press is quoted above the read (`moved`) and the task is read again.
+  const { busy, because: failed, failure, conflict: stale, run: send } = useCommand();
+  const [fromFields, setFromFields] = useState(false);
+  const conflict = fromFields ? stale : null;
+  const because = failure?.kind === 'stale' ? null : failed;
   // The details form itself, so the resolve bar's Save can ask it whether the
   // edit it is about to send is a legal one.
   const fields = useRef<HTMLFormElement>(null);
@@ -291,8 +337,22 @@ function Loaded(props: LoadedProps): ReactElement {
   });
 
   /** One place every write lands, so every refusal is shown the same way. */
-  const run = (work: () => Promise<CallResult<unknown>>, settles: number | null = null): void => {
+  const run = (
+    work: () => Promise<CallResult<unknown>>,
+    settles: number | null = null,
+    draftSave = false,
+  ): void => {
+    if (busy) return;
+    setFromFields(draftSave);
+    props.onMoved(null);
     send(work, (settlement) => {
+      if (settlement.kind === 'stale' && !draftSave) {
+        // Nothing unsaved was in this press, so there is nothing to resolve:
+        // the server's words are kept across the reread that follows.
+        props.onMoved(settlement.because);
+        props.onChanged();
+        return;
+      }
       if (settlement.kind !== 'ok') return;
       if (settles !== null) props.onSaved(settles);
       props.onChanged();
@@ -324,6 +384,7 @@ function Loaded(props: LoadedProps): ReactElement {
           fields: { title, due: due === '' ? null : due },
         }),
       props.draft?.generation ?? null,
+      true,
     );
   };
 
@@ -385,6 +446,16 @@ function Loaded(props: LoadedProps): ReactElement {
         <p className="field__error" role="alert" data-voice="input-wrong">
           {because}
         </p>
+      )}
+
+      {props.moved === null ? null : (
+        <section className="sb__sect" role="alert" data-conflict="moved">
+          <p className="field__error">{props.moved}</p>
+          <p className="card__sub">
+            Somebody else moved this task on first, so nothing you pressed was stored. It has been
+            read again: press it again if it still applies.
+          </p>
+        </section>
       )}
 
       {conflict === null ? null : (
@@ -463,6 +534,8 @@ function Loaded(props: LoadedProps): ReactElement {
         comments={task.comments}
         recordId={task.id}
         revision={task.revision}
+        refusal={props.commentRefusal}
+        onRefused={props.onCommentRefused}
         onPosted={props.onChanged}
       />
 
@@ -471,6 +544,8 @@ function Loaded(props: LoadedProps): ReactElement {
         note={props.note}
         onChanged={props.onChanged}
         onDecided={props.onDecided}
+        onProposeRefused={props.onProposeRefused}
+        proposeRefusal={props.proposeRefusal}
         proposals={task.proposals}
         recordId={task.id}
         revision={task.revision}

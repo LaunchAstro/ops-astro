@@ -10,7 +10,10 @@
 // **A refused comment is asked once.** There is no grant read anywhere in this
 // build, so the box cannot know whether a person holds `comment` before it
 // asks. It asks once, quotes the server's own code, and then stops offering a
-// control that has already been refused for this reader.
+// control that has already been refused for this reader. The refusal is held
+// above the read (`TaskDetail.tsx`), because any reread of the task remounts
+// this box, and a closure that lasted only until the next reread would invite
+// the same refusal again after an unrelated write.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
@@ -28,6 +31,9 @@ export interface CommentsProps {
   readonly recordId: string;
   /** The revision the comment is written against. `task.comment` does not move it. */
   readonly revision: number;
+  /** An earlier refusal on this reader's authority, which outlives the reread. */
+  readonly refusal: string | null;
+  readonly onRefused: (because: string) => void;
   readonly onPosted: () => void;
 }
 
@@ -58,8 +64,13 @@ export function Comments(props: CommentsProps): ReactElement {
   // disables the control rather than merely reporting, so the same refusal is
   // not fetched again on the next press. Only an authority refusal closes the
   // form: a body the server did not like is something the person can fix and
-  // try again.
-  const { busy, because, closed, locked, run } = useCommand();
+  // try again. A refusal held above the read closes it the same way.
+  const command = useCommand();
+  const busy = command.busy;
+  const closed = command.closed || props.refusal !== null;
+  const locked = busy || closed;
+  const because = command.because ?? props.refusal;
+  const run = command.run;
   const form = useRef<HTMLFormElement>(null);
 
   const post = (): void => {
@@ -73,6 +84,7 @@ export function Comments(props: CommentsProps): ReactElement {
           { expectedRevision: props.revision },
         ),
       (settlement) => {
+        if (settlement.kind === 'closed') props.onRefused(settlement.because);
         if (settlement.kind !== 'ok') return;
         // Emptied because it has been stored, and the list is reread rather
         // than appended to: what is on the screen is what the server has.
