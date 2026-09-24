@@ -33,20 +33,55 @@ import {
   type WireRefusal,
 } from '../operations/client.ts';
 
-/** The five things a read can be, before anything draws it. */
-export type ReadOutcome = 'loading' | 'ready' | 'denied' | 'unavailable' | 'empty';
+/**
+ * What a read is, before anything draws it: one member per outcome.
+ *
+ * Every member carries `value`, `refusal` and `because`, narrowed to what that
+ * outcome can hold, so a reader that has not narrowed on `outcome` still
+ * compiles and a reader that has gets the non-null field for free.
+ */
+export type ReadState<T> =
+  | {
+      readonly outcome: 'loading';
+      /**
+       * The previous answer, kept on screen while the next read is in flight.
+       * Null on the first read, and null after a denial or an outage, because
+       * those already dropped it.
+       */
+      readonly value: T | null;
+      readonly refusal: null;
+      readonly because: null;
+      /** The grant this projection belongs to. A change discards it. */
+      readonly grantKey: string;
+    }
+  | {
+      /** `empty` is an authorised collection with no rows, not a failure. */
+      readonly outcome: 'ready' | 'empty';
+      /** The answer. Never a leftover, never a sample. */
+      readonly value: T;
+      readonly refusal: null;
+      readonly because: null;
+      readonly grantKey: string;
+    }
+  | {
+      readonly outcome: 'denied';
+      readonly value: null;
+      /** The server's own refusal. Displayed verbatim by code. */
+      readonly refusal: WireRefusal;
+      readonly because: null;
+      readonly grantKey: string;
+    }
+  | {
+      readonly outcome: 'unavailable';
+      readonly value: null;
+      readonly refusal: null;
+      /** Why the read did not arrive. */
+      readonly because: string;
+      readonly grantKey: string;
+    };
 
-export interface ReadState<T> {
-  readonly outcome: ReadOutcome;
-  /** Present only when `outcome` is `ready`. Never a leftover, never a sample. */
-  readonly value: T | null;
-  /** The server's own refusal, when it refused. Displayed verbatim by code. */
-  readonly refusal: WireRefusal | null;
-  /** Why the read did not arrive, when it did not. */
-  readonly because: string | null;
-  /** The grant this projection belongs to. A change discards it. */
-  readonly grantKey: string;
-}
+/** The five things a read can be, before anything draws it. */
+export type ReadOutcome = ReadState<unknown>['outcome'];
 
 export function initialState<T>(grantKey: string): ReadState<T> {
   return { outcome: 'loading', value: null, refusal: null, because: null, grantKey };
@@ -106,7 +141,15 @@ export class AuthorisedRead<T> {
   begin(): number {
     this.#generation += 1;
     if (this.#state.outcome !== 'loading') {
-      this.#publish({ ...this.#state, outcome: 'loading' });
+      // The previous answer stays while the next one is in flight. A denial or
+      // an outage has already dropped it, so from those this is null.
+      this.#publish({
+        outcome: 'loading',
+        value: this.#state.value,
+        refusal: null,
+        because: null,
+        grantKey: this.#state.grantKey,
+      });
     }
     return this.#generation;
   }

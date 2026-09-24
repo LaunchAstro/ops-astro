@@ -15,15 +15,17 @@
 // seam appear.
 //
 // The working slice registers one panel, `settings`, and it is a navigation
-// entry rather than a drawer: `route` is the address that draws the surface,
+// entry rather than a drawer: `route` names the route that draws the surface,
 // and the dock tab goes there. The draft registers a second, `ai`, whose
 // surface reads conversation records this build does not store; that one stays
 // unregistered, because a dock tab that opens onto nothing is worse than no
 // tab at all.
 //
 // **A registration with a route the router does not serve is the failure this
-// registry has to avoid.** `/settings` is in `routes.ts` and resolves, so the
-// tab has somewhere to arrive.
+// registry has to avoid.** `route` is a `RouteId`, so a registration can only
+// name a route `routes.ts` serves, and the tab has somewhere to arrive.
+
+import type { RouteId } from './routes.ts';
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -32,7 +34,7 @@ export interface PanelRegistration {
   /** Announced on the panel element itself. */
   readonly ariaLabel: string;
   /** The route that draws the same surface at an address of its own, if any. */
-  readonly route: string | null;
+  readonly route: RouteId | null;
 }
 
 export const PANELS: readonly PanelRegistration[] = [
@@ -40,6 +42,6 @@ export const PANELS: readonly PanelRegistration[] = [
     id: 'settings',
     label: 'Settings',
     ariaLabel: 'Business settings',
-    route: '/settings',
+    route: 'agency:settings',
   },
 ];

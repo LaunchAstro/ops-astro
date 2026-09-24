@@ -26,7 +26,7 @@
 // case exists to catch.
 
 import type { ReactElement, ReactNode } from 'react';
-import { Empty, InDevelopment } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { ReadState } from '../data/authorised-read.ts';
 import { describeRefusal } from '../records/submit.ts';
 
@@ -61,9 +61,7 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
       <div className="readstate" data-outcome="denied" role="alert">
         <Empty
           title={`You are not permitted to see this ${props.subject}.`}
-          description={
-            state.refusal === null ? 'The server refused.' : describeRefusal(state.refusal)
-          }
+          description={describeRefusal(state.refusal)}
           hint="This is a decision the server made. It is not an error and the list is not empty."
         />
       </div>
@@ -75,7 +73,7 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
       <div className="readstate" data-outcome="unavailable" role="alert">
         <Empty
           title={`The ${props.subject} could not be read.`}
-          description={state.because ?? 'The API did not answer.'}
+          description={state.because}
           hint="Nothing has been decided about your access. Try again."
           action={
             props.onRetry === undefined ? undefined : (
@@ -95,17 +93,6 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
         {props.empty ?? (
           <Empty title={`No ${props.subject} yet.`} description="Nothing has been added to it." />
         )}
-      </div>
-    );
-  }
-
-  if (state.value === null) {
-    // Ready with nothing in it is this module being wrong about itself, and it
-    // says so in the third voice rather than drawing an empty screen that a
-    // reader would take for data.
-    return (
-      <div className="readstate" data-outcome="ready">
-        <InDevelopment title={`The ${props.subject} read returned no value.`} owner="SLICE-WEB" />
       </div>
     );
   }
