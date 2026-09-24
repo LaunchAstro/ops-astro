@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import {
   authorised,
   createApiFixture,

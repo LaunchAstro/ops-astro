@@ -31,7 +31,7 @@ import {
   type PresetField,
   type PresetPlanRefusal,
 } from '../records/preset-plan.ts';
-import type { PresetFieldRequest, ReadOperands, ReadRequest, ReadResult } from './requests.ts';
+import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
   isInternalReader,
   readBoard,
@@ -135,9 +135,10 @@ export type ReadRow<K extends ReadName> = SpineRow<K> | BusinessRow<K>;
 /**
  * An array of field maps. That is all a read checks of a preset's fields: the
  * keys each one carries are the planner's to refuse, in its own words, so the
- * narrowing to `PresetFieldRequest` is the wire's promise and not this check's.
+ * narrowing to `PresetField` is the wire's promise and not this check's. It is
+ * made once, here, so `serve` hands the planner its own type without a cast.
  */
-function isFieldList(value: unknown): value is readonly PresetFieldRequest[] {
+function isFieldList(value: unknown): value is readonly PresetField[] {
   return Array.isArray(value) && value.every(isFieldMap);
 }
 
@@ -299,7 +300,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         {
           recordTypeKey: operands.recordTypeKey,
           presetKey: operands.presetKey,
-          fields: operands.fields as readonly PresetField[],
+          fields: operands.fields,
         },
       );
       if (!planned.ok) return fromPresetPlan(planned.refusal);

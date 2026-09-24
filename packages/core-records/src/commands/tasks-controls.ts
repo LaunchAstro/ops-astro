@@ -15,11 +15,10 @@ import { subjectsOf } from '../authority/grants.ts';
 import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import { fromReasoned, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
-const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
 const REASON_LIMIT = 500;
 
 /** The task and the lineage on it, or the refusal that says which is wrong. */
@@ -41,16 +40,16 @@ async function lineageOnTask(
     );
   }
   if (!isUuid(recordId)) {
-    return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
+    return refused(refuseNotFound());
   }
   const tasks = await tx.query<{ readonly id: string }>(
     `select id from public.records
       where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
     [tx.businessId, context.spine.taskTypeId, recordId],
   );
-  if (tasks[0] === undefined) return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
+  if (tasks[0] === undefined) return refused(refuseNotFound());
   if (!isUuid(lineageId)) {
-    return refused(refuseCommand('NOT_FOUND', ['lineageId'], NOT_FOUND_FIXES));
+    return refused({ ...refuseNotFound(), names: ['lineageId'] });
   }
   const lineages = await tx.query<{ readonly task_id: string }>(
     `select task_id from public.proposal_lineages where business_id = $1 and id = $2`,
@@ -58,7 +57,7 @@ async function lineageOnTask(
   );
   const lineage = lineages[0];
   if (lineage === undefined) {
-    return refused(refuseCommand('NOT_FOUND', ['lineageId'], NOT_FOUND_FIXES));
+    return refused({ ...refuseNotFound(), names: ['lineageId'] });
   }
   if (lineage.task_id !== recordId) {
     return refused(

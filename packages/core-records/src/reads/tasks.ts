@@ -44,6 +44,13 @@ interface TaskRowRead {
   readonly assignee_name: string | null;
 }
 
+// The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
+// for the member's summary and the shared view, so the two cannot disagree
+// about which state a task is in.
+const STATE_JOIN = `
+    left join public.records s
+      on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null`;
+
 // `revision` is bigint and this driver hands a bigint back as a string, so it
 // is read as text and converted once, here. `priority` is numeric, which is
 // the same story for the same reason.
@@ -62,9 +69,7 @@ const SELECT = `
          s.data ->> 'machine_category' as state_machine_category,
          p.id as assignee_id,
          p.display_name as assignee_name
-    from public.records r
-    left join public.records s
-      on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
+    from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
 
@@ -255,9 +260,7 @@ export async function readSharedTask(
 ): Promise<SharedTaskView | undefined> {
   if (!isUuid(recordId)) return undefined;
   const rows = await tx.query<Readonly<Record<string, unknown>>>(
-    `select r.*, s.data ->> 'label' as shared_state_label from public.records r
-       left join public.records s
-         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
+    `select r.*, s.data ->> 'label' as shared_state_label from public.records r${STATE_JOIN}
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
         and r.deleted_at is null`,
     [tx.businessId, taskTypeId, recordId],
@@ -270,12 +273,11 @@ export async function readSharedTask(
     if (!isLive(field) || field.visibilityClass !== 'shared') continue;
     // A shared state is its label, the word the member's read shows: the state
     // record's identifier tells a reader who cannot read state records nothing (I09).
-    fields[field.key] =
-      field.key === 'state'
-        ? (row['shared_state_label'] ?? null)
-        : field.slot === null
-          ? (data[field.key] ?? null)
-          : (row[field.slot] ?? null);
+    if (field.key === 'state') {
+      fields[field.key] = row['shared_state_label'] ?? null;
+      continue;
+    }
+    fields[field.key] = field.slot === null ? (data[field.key] ?? null) : (row[field.slot] ?? null);
   }
   return {
     id: recordId,

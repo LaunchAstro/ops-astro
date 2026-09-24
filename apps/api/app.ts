@@ -130,9 +130,6 @@ export type CommandExecutor = typeof executeCommand;
  */
 export type AgentExecutor = typeof executeAgentCommand;
 
-/** Where it always was for the tests that import it; the one copy is in `commands/surface.ts`. */
-export { DELEGATION_HEADER };
-
 /**
  * What one prefix does differently at the door: whose login table it records
  * a body refusal against, and what a key that resolves to no business answers.

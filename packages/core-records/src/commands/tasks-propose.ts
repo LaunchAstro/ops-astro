@@ -9,7 +9,7 @@ import { subjectsOf } from '../authority/grants.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { fromReasoned, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
@@ -114,7 +114,7 @@ export async function proposeOnTask(
   const held = await lockProposal(tx, proposal);
   const current = await lockTask(tx, context.spine.taskTypeId, target.id);
   if (current === undefined) {
-    return refused(refuseCommand('NOT_FOUND', [], ['Check the identifier you were given.']));
+    return refused(refuseNotFound());
   }
   if (fields.expectedRevision !== current.revision) {
     return refused(

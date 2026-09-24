@@ -24,7 +24,7 @@ import {
 } from '../../packages/core-records/src/commands/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import {
   agentPath,
   bearer,

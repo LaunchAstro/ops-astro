@@ -18,7 +18,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { DECLARED_INCOMPLETENESS } from '../../packages/core-runtime/src/pickup.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { createControls, detailOf, PROPOSAL, type Controls } from '../api/controls-fixture.ts';

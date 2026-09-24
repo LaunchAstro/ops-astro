@@ -22,7 +22,7 @@ import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';

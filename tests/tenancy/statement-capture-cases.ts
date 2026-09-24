@@ -36,7 +36,8 @@ import {
   type RecordedStatement,
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
-import { DELEGATION_HEADER, createApi } from '../../apps/api/app.ts';
+import { createApi } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   ACCEPTANCE_SECRET,

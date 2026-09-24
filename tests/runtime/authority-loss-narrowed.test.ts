@@ -16,7 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from '../acceptance/cast.ts';
 import { PROPOSAL } from '../acceptance/role-case-bodies.ts';
