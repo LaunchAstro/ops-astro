@@ -1,0 +1,25 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+--
+-- 0027 a business key names one business.
+--
+-- 0001 makes a business's key unique within the business alone
+-- (`businesses_key_idx` on `(business_id, key)`), and a business is its own
+-- tenant, so nothing stopped a second business taking a key another holds.
+-- The API resolves the business from the key in the path, before any tenant
+-- is set (`apps/api/server.ts` `createBusinessResolver`), so there the key is
+-- global. The resolver refuses a key two businesses hold, answering as it does
+-- for a key nobody holds (final review round 1, R1-AUTHORITY-24); that stays
+-- as the runtime backstop, and this refuses the second business in storage.
+-- Nathan approved it on 24 September 2026.
+--
+-- This is the one global uniqueness in the schema, and it is deliberate: the
+-- key is how a request names its tenant. `businesses_key_idx` stays, as
+-- history.
+--
+-- Additive, and checked as it is built. A fresh database and an upgraded one
+-- hold the same rule over the same rows: an installation where two businesses
+-- already share a key fails this migration, naming the index, and stays at
+-- 0026 with its rows untouched. Nothing is rewritten to make it pass. Grants
+-- are unchanged.
+
+create unique index businesses_key_global_idx on public.businesses (key);
