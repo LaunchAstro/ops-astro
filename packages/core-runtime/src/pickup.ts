@@ -504,7 +504,7 @@ export async function pickup(
       where res.business_id = $1 and res.id = $2`,
     [tx.businessId, reservationId, found.task_id],
   );
-  const facts = context[0];
+  const facts = only(context, "pickup: the new hold's task, envelope and reservation");
   const common: PickedUpCommon = {
     leaseId,
     fence,
@@ -518,11 +518,11 @@ export async function pickup(
     holderActorId,
     declaredIncompleteness: DECLARED_INCOMPLETENESS,
     brief: { taskId: found.task_id, purpose: found.purpose },
-    expectedVersions: { versionId: found.version_id, taskRevision: Number(facts?.revision ?? 0) },
+    expectedVersions: { versionId: found.version_id, taskRevision: Number(facts.revision) },
     budgetEnvelope: {
       envelopeId: found.envelope_id,
-      currency: facts?.currency ?? '',
-      heldMinor: Number(facts?.held_minor ?? 0),
+      currency: facts.currency,
+      heldMinor: Number(facts.held_minor),
     },
   };
   return delegation === undefined

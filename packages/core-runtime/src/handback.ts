@@ -514,6 +514,8 @@ export async function handback(
     [tx.businessId, found.envelope_id],
   );
 
+  const envelope = only(envelopes, 'handback: the envelope locked above');
+
   return {
     ok: true,
     value: {
@@ -523,8 +525,8 @@ export async function handback(
       attemptId: attempt.id,
       reservationState,
       classification,
-      envelopeHeldMinor: Number(envelopes[0]?.held_minor ?? 0),
-      envelopeActualMinor: Number(envelopes[0]?.actual_minor ?? 0),
+      envelopeHeldMinor: Number(envelope.held_minor),
+      envelopeActualMinor: Number(envelope.actual_minor),
       successorVersionId: written?.versionId ?? null,
       successorGateId: written?.gateId ?? null,
       successorRunId: written?.runId ?? null,
