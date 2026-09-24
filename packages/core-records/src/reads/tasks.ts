@@ -94,6 +94,9 @@ function summaryOf(row: TaskRowRead): TaskSummary {
   };
 }
 
+/** The declared reads, from the surface, so a read added later is excluded by declaring it. */
+const READ_COMMANDS: readonly string[] = [...READS];
+
 /**
  * The applied attempts against this record, in the order they happened.
  *
@@ -102,9 +105,6 @@ function summaryOf(row: TaskRowRead): TaskSummary {
  * is where an operator looks and where the refusal evidence for N1 to N7 comes
  * from.
  */
-/** The declared reads, from the surface, so a read added later is excluded by declaring it. */
-const READ_COMMANDS: readonly string[] = [...READS];
-
 async function historyOf(tx: TenantQuery, recordId: string): Promise<readonly HistoryEntry[]> {
   const rows = await tx.query<{
     readonly occurred_at: Date;
@@ -160,7 +160,6 @@ export async function resolveTaskId(
   return rows[0]?.id;
 }
 
-/** One task with its history, or nothing at all. */
 /**
  * Which comments a caller is shown, and in what.
  *
@@ -206,6 +205,7 @@ async function commentsFor(
   }));
 }
 
+/** One task with its history, or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
   taskTypeId: string,

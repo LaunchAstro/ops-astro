@@ -15,7 +15,7 @@
 //
 // **Why they are here rather than absent.** Every domain operation is
 // reachable through an endpoint and the enumeration proving it is generated
-// from the exported surface (T1-R7, and T1g's `surface_parity`). A command
+// from the exported surface (T1-R7, `tests/acceptance/surface-inventory.test.ts`). A command
 // that exists in the contract and not in the surface breaks that enumeration;
 // a command in the surface with no route breaks it too. So they are declared,
 // they run the whole envelope — the identity is required, the register holds

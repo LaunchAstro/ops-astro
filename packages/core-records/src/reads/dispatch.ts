@@ -6,11 +6,6 @@
 // so a caller with no grant learns nothing about whether the record exists; the
 // read after it, so "denied" and "not there" are answered by different code
 // paths and cannot be confused for each other.
-//
-// The switch is here rather than inline in `execute.ts` because
-// `surfaces/exported.ts` reads the operation surface out of the dispatch files
-// rather than out of the declaration table -- a read declared with nothing to
-// serve it would otherwise pass parity.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -283,7 +278,7 @@ async function serveRead(
   // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs. An
   // external party is shown its shares' pairs. It is skipped here rather than
   // declared grantless because the declaration is what the route generator and
-  // the parity test read, and a row missing its collection and action would be
+  // the surface inventory read, and a row missing its collection and action would be
   // a special case in three more places.
   if (request.read !== 'session.capabilities') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
