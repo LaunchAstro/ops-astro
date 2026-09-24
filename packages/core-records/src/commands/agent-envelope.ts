@@ -64,7 +64,12 @@ import {
   refuseCommand,
   type CommandRefusal,
 } from './refusal.ts';
-import { declarationOf, type CommandName } from './surface.ts';
+import {
+  COMMAND_SURFACE,
+  declarationOf,
+  type CommandDeclaration,
+  type CommandName,
+} from './surface.ts';
 import {
   OPERATION_ID,
   lookupAttempt,
@@ -87,12 +92,19 @@ import type { AgentCall, AgentRequest } from './agent-call.ts';
  * (minimum contract 8.2 case 9). Under a live delegation it answers the
  * delegation's purpose.
  */
-export const BEFORE_PICKUP: ReadonlySet<CommandName> = new Set(
-  [...AGENT_OPERATIONS].filter(([, row]) => row.authority === 'beforePickup').map(([name]) => name),
-);
+export const BEFORE_PICKUP: ReadonlySet<CommandName> = agentReach(['before-pickup']);
 
-/** What an agent may reach at all, delegation or not: the rows of `AGENT_OPERATIONS`. */
-export const AGENT_SURFACE: ReadonlySet<CommandName> = new Set(AGENT_OPERATIONS.keys());
+/**
+ * What an agent may reach at all, delegation or not. Both sets are read off the
+ * surface rows' own `agent` field, so the surface table is the one place that
+ * says what an agent reaches; `AGENT_OPERATIONS` says how each is served, and
+ * `tests/commands/agent-surface-derivation.test.ts` holds the two to one list.
+ */
+export const AGENT_SURFACE: ReadonlySet<CommandName> = agentReach(['before-pickup', 'delegated']);
+
+function agentReach(reach: readonly CommandDeclaration['agent'][]): ReadonlySet<CommandName> {
+  return new Set(COMMAND_SURFACE.filter((row) => reach.includes(row.agent)).map((row) => row.name));
+}
 
 export async function executeAgentCommand(
   database: Database,
