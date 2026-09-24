@@ -13,6 +13,7 @@
 //
 // The per-prefix half is `restricted-calls-prefixes.test.ts`.
 
+import { readdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
@@ -150,12 +151,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     await world?.close();
   });
 
-  it('reads twenty-five migrations, and a table set the contract names exactly', async () => {
+  // Every migration on disk, read from the directory rather than counted here,
+  // so the next migration needs no edit to this suite (docs/local/DATA.md:58-61).
+  it('reads every migration on disk, and a table set the contract names exactly', async () => {
     const applied = await world.db.admin.execute<{ version: string }>(
       'select version from ops.schema_migrations order by version',
     );
-    expect(applied.map((row) => row.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: 25 }, (_, i) => String(i + 1).padStart(4, '0')),
+    expect(applied.map((row) => `${row.version}.sql`)).toStrictEqual(
+      readdirSync('migrations')
+        .filter((name) => name.endsWith('.sql'))
+        .toSorted(),
     );
     expect(tables.map((table) => table.qualified)).toStrictEqual(
       Object.keys(APPLICATION_GRANTS).toSorted(),

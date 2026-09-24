@@ -32,6 +32,7 @@ import {
 import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
+import { declarationOf } from '../packages/core-records/src/commands/surface.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -291,6 +292,41 @@ async function seedLogin(tx, member, person) {
   return { loginId, mapped: true };
 }
 
+/**
+ * How many live leases rest on a grant as their work authority: the grant or a
+ * grant beneath it is a `write` the lease's person or delegating person holds.
+ * The same discovery `grant.revoke` makes (`authority-controls.ts`,
+ * `dependents`), counted rather than classified.
+ */
+async function leasesResting(tx, grantId) {
+  const rows = await tx.query(
+    `with recursive revoked as (
+       select g.id, g.subject_kind, g.subject_id, g.collection, g.action
+         from public.grants g where g.business_id = $1 and g.id = $2
+       union
+       select c.id, c.subject_kind, c.subject_id, c.collection, c.action
+         from public.grants c join revoked p on c.parent_grant_id = p.id
+        where c.business_id = $1
+     )
+     select count(*)::int as leases from public.leases l
+       left join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+       left join public.actors a
+         on a.business_id = l.business_id and a.id = l.holder_actor_id and a.kind = 'person'
+      where l.business_id = $1 and l.state = 'live'
+        and ((l.delegation_id is not null and d.revoked_at is null and d.settled_at is null
+              and exists (select 1 from revoked r
+                           where r.subject_kind = 'person' and r.subject_id = l.authorised_by_person_id
+                             and r.action = 'write' and r.collection = any(d.collections)))
+          or (l.delegation_id is null
+              and exists (select 1 from revoked r
+                           where r.action = 'write' and r.collection = $3
+                             and ((r.subject_kind = 'person' and r.subject_id = a.person_id)
+                                  or (r.subject_kind = 'actor' and r.subject_id = l.holder_actor_id)))))`,
+    [tx.businessId, grantId, declarationOf('task.pickup').collection],
+  );
+  return rows[0]?.leases ?? 0;
+}
+
 async function seedGrants(tx, member, person) {
   const wanted = member.grants ?? GRANTS_BY_ROLE[member.role] ?? [];
   for (const [collection, action] of wanted) {
@@ -324,8 +360,15 @@ async function seedGrants(tx, member, person) {
   // member of A with no task scope. A run that defaulted him from his role
   // before the ruling landed left those grants live, and a seed that could
   // only add could never say so. Revocation writes a timestamp through the
-  // authority boundary -- the same path a person revoking a grant uses -- and
-  // touches no task, person or membership.
+  // authority boundary's `revokeGrant` and touches no task, person or
+  // membership.
+  //
+  // It is not the path `grant.revoke` takes. That command also releases a
+  // lease the grant was the work authority for and classifies its hold
+  // `authority_revoked` in the same transaction (`revokeGrantAsManager`);
+  // `revokeGrant` only stamps `revoked_at`. So the seed refuses a revocation
+  // that would strand a live lease, before it revokes anything, and says what
+  // to do instead (final review R1 #60).
   const keep = new Set(wanted.map(([collection, action]) => `${collection}:${action}`));
   //
   // Business grants only. A record share is not the role's to take back: it is
@@ -337,9 +380,21 @@ async function seedGrants(tx, member, person) {
         and scope_kind = 'business'`,
     [person.personId],
   );
+  const dropped = live.filter((grant) => !keep.has(`${grant.collection}:${grant.action}`));
+  for (const grant of dropped) {
+    // oxlint-disable-next-line no-await-in-loop
+    const leases = await leasesResting(tx, grant.id);
+    if (leases > 0) {
+      throw new Error(
+        `local-seed: ${member.email}'s ${grant.collection}:${grant.action} grant ${grant.id} ` +
+          `is the work authority for ${leases} live lease(s). The seed revokes without ` +
+          'releasing them, so it stops here: hand the work back, or revoke the grant with ' +
+          'grant.revoke, which releases and classifies it, and then rerun the seed.',
+      );
+    }
+  }
   let revoked = 0;
-  for (const grant of live) {
-    if (keep.has(`${grant.collection}:${grant.action}`)) continue;
+  for (const grant of dropped) {
     // Sequential for the reason the issue loop above is: one connection, one
     // transaction, and nobody waiting.
     // oxlint-disable-next-line no-await-in-loop
