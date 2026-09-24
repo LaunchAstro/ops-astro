@@ -21,7 +21,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
-import { MigrationRefused, migrate } from '../packages/core-records/src/tenancy/migrate.ts';
+import {
+  MigrationRefused,
+  MigrationRoleCannotSee,
+  migrate,
+} from '../packages/core-records/src/tenancy/migrate.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -54,9 +58,11 @@ try {
       `${applied.length + alreadyApplied.length} in the ledger`,
   );
 } catch (error) {
-  if (!(error instanceof MigrationRefused)) throw error;
+  if (!(error instanceof MigrationRefused) && !(error instanceof MigrationRoleCannotSee)) {
+    throw error;
+  }
   console.error(`db-migrate: ${error.message}`);
-  for (const s of error.sessions) {
+  for (const s of error instanceof MigrationRefused ? error.sessions : []) {
     console.error(
       `db-migrate:   connected: pid ${s.pid}, login ${s.usename}, ` +
         `application "${s.application_name ?? ''}", from ${s.client_addr ?? 'local socket'}, ` +

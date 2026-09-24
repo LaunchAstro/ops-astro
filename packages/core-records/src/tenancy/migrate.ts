@@ -19,11 +19,14 @@
 //   silence.
 // - Statements are split and sent one at a time, so the statement log and any
 //   error name the statement rather than the file.
-// - It refuses to apply anything while another session is connected to the
-//   database. The supported upgrade is the application stopped, and a
-//   migration run beside a live application has two known ways to go wrong in
-//   0030 alone (SOL-R3R-1, SOL-R3R2-1), so the rule is enforced here rather
-//   than left to a document.
+// - It checks, when anything is pending, that no other client session is
+//   connected to the database, and refuses to apply anything if one is. The
+//   supported upgrade is the application stopped, and a migration run beside a
+//   live application has two known ways to go wrong in 0030 alone (SOL-R3R-1,
+//   SOL-R3R2-1). The check is a backstop to stopping the application, not the
+//   stop: an idle application that holds no connection passes it
+//   (docs/local/DATA.md, "Upgrade"). A role that cannot read every session is
+//   refused rather than trusted to have seen nobody.
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -122,6 +125,47 @@ async function otherSessions(
 }
 
 /** Refuse, naming what is connected, when anything but this backend is. */
+/**
+ * Thrown when the runner's role cannot read every session's row in
+ * `pg_stat_activity`. PostgreSQL hides `backend_type` for another role's
+ * session from a role that is neither superuser nor in `pg_read_all_stats`,
+ * so the connection check would find nobody and pass. It refuses instead.
+ */
+export class MigrationRoleCannotSee extends Error {
+  readonly role: string;
+  readonly pending: readonly string[];
+
+  constructor(role: string, pending: readonly string[]) {
+    super(
+      `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
+        `(${pending.join(', ')}): the role ${role} cannot read every session in ` +
+        `pg_stat_activity, so it cannot tell whether anything else is connected. Nothing was ` +
+        `applied. Run it as a superuser, or grant ${role} pg_read_all_stats.`,
+    );
+    this.name = 'MigrationRoleCannotSee';
+    this.role = role;
+    this.pending = pending;
+  }
+}
+
+/**
+ * Refuse unless this role sees every session. Asked of the role rather than
+ * of the rows: a role that cannot see them also sees autovacuum and other
+ * background workers with a null `backend_type`, so counting hidden rows as
+ * connected would refuse at random.
+ */
+async function refuseIfBlind(
+  execute: AdminConnection['execute'],
+  pending: readonly string[],
+): Promise<void> {
+  const [row] = await execute<{ readonly role: string; readonly sees: boolean }>(
+    `select current_user::text as role,
+            coalesce((select rolsuper from pg_roles where rolname = current_user), false)
+              or pg_has_role(current_user, 'pg_read_all_stats', 'usage') as sees`,
+  );
+  if (row?.sees !== true) throw new MigrationRoleCannotSee(row?.role ?? '?', pending);
+}
+
 async function refuseIfConnected(
   execute: AdminConnection['execute'],
   pending: readonly string[],
@@ -241,6 +285,7 @@ export async function applyMigrations(
   // The check runs before the transaction, inside it before each file, and
   // once more before the commit, so a session that connects after the first
   // look still refuses the run, and the whole run rolls back.
+  await refuseIfBlind(admin.execute, names);
   await refuseIfConnected(admin.execute, names);
   await admin.transaction(async (execute) => {
     // Migrations are ordered and each one may depend on the last, so they are

@@ -75,6 +75,12 @@ the same and exits 2. It counts any client session: the application login, GoTru
 them can be told apart from an application safely, and there is no flag or
 environment variable that skips the check. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
+The runner's role must be able to read every session in `pg_stat_activity`:
+a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of
+`pg_read_all_stats`. PostgreSQL hides another role's `backend_type` from any
+other role, so a role without that would find nobody connected. With a
+migration pending, the runner refuses such a role (`MigrationRoleCannotSee`)
+and names the grant it needs, and the CLI exits 2.
 
 One run is one transaction. Every pending file's statements run in order,
 each file's ledger row is written after its statements, and there is one
@@ -120,6 +126,8 @@ second of two (neither leaves the first), the refusal of each statement the
 transaction cannot hold, and the CLI.
 The test harness's `closeSessions()` ends its own application pool before a
 test migrates. Nothing in the runner has a bypass.
+
+## What the schema is
 
 `migrations/` is the authority. It holds every migration from `0001_tenancy`
 onward, `db-migrate.mjs` applies whatever is in it in order, and the prefix

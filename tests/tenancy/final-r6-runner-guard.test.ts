@@ -5,13 +5,16 @@
 //
 // The supported upgrade is the application stopped. Two ways an upgrade that
 // overlaps a live application goes wrong were found in 0030 alone (SOL-R3R-1,
-// SOL-R3R2-1), so the rule is enforced by the runner rather than written down
-// and hoped for. Each case builds its own database at 0023 (where the durable
+// SOL-R3R2-1), so the runner checks for other sessions as a backstop. It is
+// not the stop: an idle application that holds no connection passes the
+// check (docs/local/DATA.md, "Upgrade"). One run is all or nothing (FR7), and
+// a role that cannot read every session is refused. Each case builds its own database at 0023 (where the durable
 // local database stands) or at the head, holds a real second session open,
 // and runs the real runner. The CLI case runs `scripts/db-migrate.mjs` as its
 // own process, with nothing in its environment but the admin URL.
 
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -127,6 +130,7 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
   let db: EmptyDatabase | undefined;
   const held: ObservedPool[] = [];
   const watchers: AdminConnection[] = [];
+  const extraRoles: string[] = [];
 
   afterEach(async () => {
     await Promise.all([...held, ...watchers].map(async (pool) => await pool.close()));
@@ -134,6 +138,17 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     watchers.length = 0;
     await db?.drop();
     db = undefined;
+    if (extraRoles.length > 0) {
+      const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
+      try {
+        for (const role of extraRoles.splice(0)) {
+          // oxlint-disable-next-line no-await-in-loop
+          await server.execute(`drop role if exists "${role}"`);
+        }
+      } finally {
+        await server.close();
+      }
+    }
   });
 
   async function at0023(part: string): Promise<EmptyDatabase> {
@@ -298,6 +313,54 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // R6-AUTHORITY-2: a role that is neither superuser nor in pg_read_all_stats
+  // sees other roles' sessions with a null backend_type, so a predicate on it
+  // would see nobody. The runner must refuse rather than find the room empty.
+  it('refuses when its role cannot read every session, rather than seeing nobody', async () => {
+    const built = await createEmptyDatabase({ part: 'fr7blind' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const blind = `${built.name}_mig`;
+    const password = randomBytes(24).toString('base64url');
+    await built.admin.execute(
+      `create role "${blind}" login password '${password}' nosuperuser createrole`,
+    );
+    extraRoles.push(blind);
+    await built.admin.execute(`grant usage on schema ops to "${blind}"`);
+    await built.admin.execute(`grant select, insert on ops.schema_migrations to "${blind}"`);
+    const url = new URL(ownerUrl(built));
+    url.username = blind;
+    url.password = password;
+    const runner = connectAsAdmin(url.toString(), { source: 'migration' });
+    watchers.push(runner);
+    const app = await hold(built.appUrl);
+    held.push(app.pool);
+    const before = await state(built);
+
+    const outcome = await applyMigrations(runner, [
+      ...onDisk,
+      syntheticMigration('9001_fr7_blind', 'select 1'),
+    ]).catch((error: unknown) => error);
+
+    expect(outcome instanceof Error ? outcome.message : JSON.stringify(outcome)).toMatch(
+      /cannot read every session/u,
+    );
+    expect(await state(built)).toBe(before);
+
+    // The control: with pg_read_all_stats the same role sees the session and
+    // the connection check names it, so the grant the refusal asks for is enough.
+    await built.admin.execute(`grant pg_read_all_stats to "${blind}"`);
+    const seen = refusal(
+      await applyMigrations(runner, [
+        ...onDisk,
+        syntheticMigration('9001_fr7_blind', 'select 1'),
+      ]).catch((error: unknown) => error),
+    );
+    // The harness's own owner session is on this database too, and is named with it.
+    expect(seen.sessions.map((s) => s.pid)).toContain(app.pid);
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
   it('refuses through the command line, with nothing in the environment to get round it', async () => {
     const on = await at0023('fr6cli');
     const app = await hold(on.appUrl);
@@ -315,7 +378,9 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     );
 
     expect(run.code).toBe(2);
-    expect(run.stderr).toContain('refusing to apply 8 pending migration(s)');
+    expect(run.stderr).toContain(
+      `refusing to apply ${String(PENDING_AFTER_0023.length)} pending migration(s)`,
+    );
     expect(run.stderr).toContain(`connected: pid ${String(app.pid)}, login ${on.loginRole}`);
     expect(await state(on)).toBe(before);
   }, 120_000);
