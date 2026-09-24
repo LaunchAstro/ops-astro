@@ -112,13 +112,23 @@ describe('CLI.md before a pickup (#37)', () => {
 });
 
 describe('RUNTIME.md "Why the money is two columns" (#63)', () => {
-  it('does not claim storage refuses a zero actual, and names the barrier that does', () => {
+  // Round 2 (R2-THERMO-49): since 0026 storage does refuse it, so the case
+  // pins the handback as the first refusal and 0026's two constraints as the
+  // storage one, each against the code that defines it.
+  it('names the handback as the first refusal and 0026 as the storage one', () => {
     const money = folded(section(read('docs/local/RUNTIME.md'), 'Why the money is two columns'));
-    expect(money).not.toContain('the schema refuses it');
-    expect(money).toContain('ACTUAL_EXPENDITURE_UNSUPPORTED');
+    expect(money).toMatch(/refuses it first[^.]*`ACTUAL_EXPENDITURE_UNSUPPORTED`/u);
     expect(read('packages/core-runtime/src/handback.ts')).toContain(
       "'ACTUAL_EXPENDITURE_UNSUPPORTED'",
     );
+    const migration = read('migrations/0026_reservation_first_head_no_actual.sql');
+    for (const constraint of [
+      'reservations_first_head_no_actual',
+      'reservations_actual_positive',
+    ]) {
+      expect(money).toContain(`\`${constraint}\``);
+      expect(migration).toContain(`add constraint ${constraint} check`);
+    }
   });
 });
 

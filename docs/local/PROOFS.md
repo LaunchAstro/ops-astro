@@ -649,7 +649,7 @@ lane does not own.
 - **Closed: no seeded role could `task.decide`.** When this lane ran, the
   seed gave the admin no `decide` action, so against the live stack every
   decision and so every pickup was unreachable. The seed now gives the admin
-  `task:decide` (`scripts/local-seed.mjs:98`); a member still does not hold it.
+  `task:decide` (`scripts/local-seed.mjs:99`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
   holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
   the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)
@@ -1161,8 +1161,9 @@ Each is named so the unfinished work stays countable.
   awaiting root or owner confirmation
   ([RUNTIME.md](RUNTIME.md#the-work-controls)). Root ruling 6 at `dd30aa8`
   does not cover them. It settles bare agent calls and replay codes only, and
-  the same rulings file leaves the agent's comment audience preference
-  "pending separately".
+  the same rulings file left the agent's comment audience "pending
+  separately". Nathan later ruled it: agent comments stay internal only
+  (OWNER-CARD section 6).
 - **Reports are stored.** They are in `public.handback_reports`
   (`migrations/0018_runtime_handback_reports.sql:24`). The restart section
   above says which report identities the restart proof compares.
