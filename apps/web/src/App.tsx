@@ -198,6 +198,8 @@ export function App(props: AppProps): ReactElement {
       // that draws its surface, and the tab navigates there rather than
       // opening a drawer over the page: the surface has a real address, and an
       // address a person can quote is worth more than a panel they cannot.
+      // An open tab is announced as "Close", so pressing it leaves the address
+      // for the board rather than pushing the same address again.
       dock={
         session === null
           ? []
@@ -209,7 +211,9 @@ export function App(props: AppProps): ReactElement {
       }
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route != null) props.navigate(pathTo(panel.route));
+        if (panel?.route == null) return;
+        const target = pathTo(panel.route);
+        props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
       seated={false}
     >

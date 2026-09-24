@@ -14,6 +14,12 @@
 // above the read (`TaskDetail.tsx`), because any reread of the task remounts
 // this box, and a closure that lasted only until the next reread would invite
 // the same refusal again after an unrelated write.
+//
+// **A comment whose answer was lost is sent again as the same attempt.** The
+// server may have stored it, and `task.comment` leaves the revision alone, so
+// only the `operationId` tells the register that the retry of an unchanged box
+// is the comment it already has. Changing the text, the audience or the kind is
+// a different comment and gets a new one.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
@@ -56,10 +62,24 @@ const KINDS: readonly { readonly value: string; readonly label: string }[] = [
   { value: 'client', label: 'Client message' },
 ];
 
+/** A comment whose outcome is not known, held so the retry is the same attempt. */
+interface PendingComment {
+  readonly operationId: string;
+  readonly body: string;
+  readonly audience: string;
+  readonly kind: string;
+}
+
 export function Comments(props: CommentsProps): ReactElement {
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState('internal');
   const [kind, setKind] = useState('note');
+  const [pending, setPending] = useState<PendingComment | null>(null);
+  const same = (attempt: PendingComment | null): attempt is PendingComment =>
+    attempt !== null &&
+    attempt.body === body &&
+    attempt.audience === audience &&
+    attempt.kind === kind;
   // `closed` is set when the server has said this reader may not comment. It
   // disables the control rather than merely reporting, so the same refusal is
   // not fetched again on the next press. Only an authority refusal closes the
@@ -76,14 +96,21 @@ export function Comments(props: CommentsProps): ReactElement {
   const post = (): void => {
     if (locked) return;
     if (form.current?.reportValidity() === false) return;
+    const attempt = same(pending)
+      ? pending
+      : { operationId: props.client.newOperationId(), body, audience, kind };
+    setPending(attempt);
     run(
       () =>
         props.client.mutate(
           'task.comment',
           { recordId: props.recordId, body, audience, commentType: kind },
-          { expectedRevision: props.revision },
+          { expectedRevision: props.revision, operationId: attempt.operationId },
         ),
       (settlement) => {
+        // An unknown outcome keeps the attempt; any answer from the server ends it.
+        if (settlement.kind === 'unknown') return;
+        setPending(null);
         if (settlement.kind === 'closed') props.onRefused(settlement.because);
         if (settlement.kind !== 'ok') return;
         // Emptied because it has been stored, and the list is reread rather
@@ -132,6 +159,12 @@ export function Comments(props: CommentsProps): ReactElement {
       {because === null ? null : (
         <p className="field__error" role="alert" data-comment="refusal">
           {because}
+        </p>
+      )}
+      {because === null || !same(pending) ? null : (
+        <p className="card__sub" data-comment="unresolved">
+          This comment may already have been stored. Posting again sends the same attempt, so the
+          server answers with the original result rather than storing it twice.
         </p>
       )}
 
