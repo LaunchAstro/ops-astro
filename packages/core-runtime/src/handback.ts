@@ -33,13 +33,13 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
-import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, exceeds } from './budget.ts';
 import { acquire } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
-import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
+import { checkAuthorityAt, classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -299,11 +299,17 @@ export async function handback(
       );
     }
     if (holder.claimant === 'person') {
-      const held = await checkAuthority(tx, holder.subjects, {
-        collection: holder.collection,
-        action: 'write',
-        scope: { kind: 'record', id: found.task_id },
-      });
+      // At the locked instant (final review R2-RUNTIME-4).
+      const held = await checkAuthorityAt(
+        tx,
+        holder.subjects,
+        {
+          collection: holder.collection,
+          action: 'write',
+          scope: { kind: 'record', id: found.task_id },
+        },
+        lockedAt,
+      );
       if (!held.ok) {
         return refuse(
           'SCOPE_NOT_GRANTED',
