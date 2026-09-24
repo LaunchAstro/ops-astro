@@ -34,6 +34,7 @@ import { setTaskState } from '../tasks/state.ts';
 import type { MachineCategory } from '../tasks/states.ts';
 import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from './surface.ts';
@@ -188,6 +189,9 @@ export async function writeOwnedFields(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('writeOwnedFields: the envelope read no target');
+  // First, because every check below reads `fields` as a map.
+  const operands = refuseUpdateOperands(fields);
+  if (operands !== undefined) return refused(operands);
 
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const live = new Map(definitions.filter((field) => isLive(field)).map((f) => [f.key, f]));
