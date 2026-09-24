@@ -20,6 +20,7 @@ import { MAXIMUM_LEASE_SECONDS } from './tasks-pickup.ts';
 import { leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import { heartbeatLease } from './tasks-controls.ts';
+import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { claimedSystemFields, lockTask, SYSTEM_OWNED_FIXES } from './prepare.ts';
@@ -273,7 +274,7 @@ async function serveHeartbeat(
       fence: request['fence'],
       ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
     },
-    session.actorId,
+    agentClaimant(session.actorId),
     heldBy(delegation, 'task.heartbeat').id,
   );
 }

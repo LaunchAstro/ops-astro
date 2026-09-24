@@ -4,12 +4,12 @@
 // `tasks-runtime.ts` unchanged (thermo review b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { subjectsOf } from '../authority/grants.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { personClaimant } from './tasks-claimant.ts';
 
 const DEFAULT_RENEWAL_SECONDS = 15 * 60;
 
@@ -99,15 +99,16 @@ export async function heartbeatOwnLease(
   context: CommandContext,
   fields: RenewalFields,
 ): Promise<HandlerOutcome> {
+  const person = personClaimant(context);
   return await renewLease(
     fields,
     async (lease) =>
       await heartbeat(tx, {
         claimant: 'person',
         ...lease,
-        holderActorId: context.session.actorId,
-        subjects: subjectsOf(context.session),
-        collection: context.declaration.collection,
+        holderActorId: person.actorId,
+        subjects: person.subjects,
+        collection: person.collection,
       }),
   );
 }

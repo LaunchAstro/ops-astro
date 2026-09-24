@@ -48,7 +48,7 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
  * own locks and answers with `SUCCESSOR_OUT_OF_BOUNDS`. A second copy of those
  * three here would be a second answer to one question.
  */
-export function readSuccessor(raw: unknown, agentActorId: string | undefined): ReadSuccessor {
+export function readSuccessor(raw: unknown, proposer: string): ReadSuccessor {
   if (!isObject(raw)) {
     return invalidSuccessor(
       'successor',
@@ -62,23 +62,6 @@ export function readSuccessor(raw: unknown, agentActorId: string | undefined): R
     return refused(
       refuseCommand('FIELD_NOT_WRITABLE', [`successor.${claimed}`], SUCCESSOR_ACTOR_FIXES),
       { [`successor.${claimed}`]: raw[claimed] },
-    );
-  }
-
-  // No actor to record it against, so there is no honest proposal to write.
-  // `pickup` and `handback` are the agent's own operations and the entry point
-  // hands the actor in; a call that reached here without one is a call from a
-  // door that does not have one.
-  if (agentActorId === undefined || agentActorId === '') {
-    return refused(
-      refuseCommand(
-        'AUTH_NO_AGENT_IDENTITY',
-        ['successor'],
-        [
-          'A successor is proposed by the agent that did the work, so it is asked for on the agent entry point.',
-          'Present the agent credential and hand the lease back there.',
-        ],
-      ),
     );
   }
 
@@ -138,7 +121,7 @@ export function readSuccessor(raw: unknown, agentActorId: string | undefined): R
 
   return {
     successor: {
-      proposedByActorId: agentActorId,
+      proposedByActorId: proposer,
       purpose,
       maximumMinor,
       currency,
