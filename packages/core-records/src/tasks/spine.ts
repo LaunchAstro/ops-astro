@@ -73,6 +73,8 @@ export const TASK_SPINE: readonly SpineField[] = [
     // two-thirds of the time.
     owningOperations: ['task.complete', 'task.reopen', 'task.start'],
     escalatingOperation: null,
+    // A shared task shows the client its status (I09 ruling), as the label.
+    visibilityClass: 'shared',
   },
   {
     key: 'assignee',
@@ -169,6 +171,8 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
     searchable: true,
+    // A shared task shows the client its title (I09 ruling).
+    visibilityClass: 'shared',
   },
   {
     // A stage is a lifecycle position, not a label: stage moves carried soft

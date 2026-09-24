@@ -196,7 +196,9 @@ describe.skipIf(serverUrl === undefined)('R4 against provisioned comment and wri
     expect(shared['comments']).toStrictEqual([
       expect.objectContaining({ audience: 'client', body: CLIENT_NOTE }),
     ]);
-    expect(JSON.stringify(read.body)).not.toContain(TITLE);
+    // The title is shared (Nathan's I09 ruling), and it is the one the
+    // refused update left in place.
+    expect(shared['fields']).toMatchObject({ title: TITLE });
   });
 
   it('the client audience is all R4 writes in, and only on the comment grant it holds', async () => {
