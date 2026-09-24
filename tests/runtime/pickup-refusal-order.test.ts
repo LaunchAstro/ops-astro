@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The refusal order inside `pickup`'s expired-lease branch, pinned as found.
+// The refusal order inside `pickup`'s expired-lease branch.
 //
-// That branch writes before it checks: it fences the old lease, classifies the
-// old hold and opens the replacement hold, and only then asks whether the
-// approval behind the reservation is still current. Hoisting that check above
-// the writes would change which refusal a caller sees, so until someone
-// decides to do that on purpose, these cases hold today's answers in place.
+// That branch used to write before it checked: it fenced the old lease,
+// classified the old hold and opened the replacement hold, and only then asked
+// whether the approval behind the reservation was still current. Thermo O6,
+// lead ruling: the check is hoisted above every write, in both replacement
+// branches. So a stale approval is now the answer even when the old hold could
+// not have been released, and the branch writes nothing before it refuses.
 //
-// The first case needs a hold the classifier cannot release. Under pickup's
+// The first case is the one whose answer the ruling changed. It needs a hold
+// the classifier cannot release. Under pickup's
 // locks nothing reachable produces one: the reservation row is locked and read
 // as held and unmarked, and the fence leaves the lease no longer live. The one
 // row pickup does not lock is the attempt, so the case raises its marker (and
@@ -19,7 +21,7 @@
 //
 // "Nothing committed" is asserted the way the command envelope provides it: a
 // savepoint around the call, rolled back on the refusal. Inside that savepoint
-// the writes are read back first, so the pin records that they happened.
+// every row is read back first, so the pin records that nothing was written.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -189,7 +191,7 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
     await database?.drop();
   });
 
-  it('answers with the classifier when the approval is stale and the old hold cannot be released', async () => {
+  it('refuses the stale approval before the fence, even when the old hold could not be released', async () => {
     const fixture = await buildFixture(database.app, 'orderhold');
     const held = await staleExpiredClaim(database.app, fixture);
     const before = await database.app.withBusiness(fixture.businessId, rowsOf);
@@ -200,10 +202,10 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
         markAfterFence(tx, held.attemptId),
         request(fixture, held.reservationId),
       );
-      // Written before the refusal: the old lease fenced, the marked hold
-      // quarantined rather than released.
-      expect(await stateOf(tx, 'leases', held.leaseId)).toBe('expired');
-      expect(await stateOf(tx, 'reservations', held.reservationId)).toBe('quarantined');
+      // Nothing written before the refusal: no fence, so the marker hook never
+      // fired, and no classification or replacement hold.
+      expect(await rowsOf(tx)).toStrictEqual(before);
+      expect(await stateOf(tx, 'leases', held.leaseId)).toBe('live');
       await tx.query('rollback to savepoint pin');
       return result;
     });
@@ -212,17 +214,15 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
     if (refused.ok) throw new Error('a stale, unreleasable hold was claimed');
     expect(refused.refusal).toStrictEqual({
       code: 'RESERVATION_NOT_CLAIMABLE',
-      reason:
-        `the hold behind lease ${held.leaseId} could not be released: ` +
-        'the attempt carries a dispatch marker or an observation; the full hold is retained as unknown for the recorded reconciliation owner',
-      fix: 'A retained or quarantined hold goes to its recorded owner, not to a worker.',
+      reason: 'the approval behind this reservation is no longer current',
+      fix: 'Re-read the queue. A superseded or terminal approval authorises nothing.',
     });
 
     const after = await database.app.withBusiness(fixture.businessId, rowsOf);
     expect(after).toStrictEqual(before);
   }, 60_000);
 
-  it('releases, reserves and only then refuses the stale approval when the old hold can be released', async () => {
+  it('refuses the stale approval before any write when the old hold could be released', async () => {
     const fixture = await buildFixture(database.app, 'orderstale');
     const held = await staleExpiredClaim(database.app, fixture);
     const before = await database.app.withBusiness(fixture.businessId, rowsOf);
@@ -230,14 +230,8 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
     const refused = await database.app.withBusiness(fixture.businessId, async (tx) => {
       await tx.query('savepoint pin');
       const result = await pickup(tx, request(fixture, held.reservationId));
-      // Written before the refusal: the fence, the release and a fresh hold.
-      expect(await stateOf(tx, 'leases', held.leaseId)).toBe('expired');
-      expect(await stateOf(tx, 'reservations', held.reservationId)).toBe('abandoned');
-      const holds = await tx.query<{ readonly state: string }>(
-        `select state from public.reservations where business_id = $1 and id <> $2`,
-        [tx.businessId, held.reservationId],
-      );
-      expect(holds.map((row) => row.state)).toStrictEqual(['held']);
+      // Nothing written before the refusal: no fence, no release, no fresh hold.
+      expect(await rowsOf(tx)).toStrictEqual(before);
       await tx.query('rollback to savepoint pin');
       return result;
     });

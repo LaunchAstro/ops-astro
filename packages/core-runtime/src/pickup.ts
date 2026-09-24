@@ -367,13 +367,6 @@ export async function pickup(
           heldMinor: Number(state.held_minor),
         });
   if (!claimed.ok) return claimed;
-  // Checked after the fence, the classification and the replacement hold have
-  // written, as it always has been on this path: the command's savepoint is
-  // what discards them when this refuses. Moving the check above the writes
-  // would change which refusal a caller sees, so it stays here.
-  if (expiredLeaseId !== null && !approvalCurrent(state)) {
-    return approvalNotCurrent();
-  }
   const { reservationId, attemptId } = claimed.value;
 
   // Never steal a live lease. An expired one is fenced out by the new fence
@@ -560,7 +553,7 @@ type ClaimPlan =
  * unleased reservation on the same task. The replacement is a fresh hold on
  * the still-approved version, which 0019 permits, because one active hold per
  * version is the accepted rule and one hold ever was not. Its approval is
- * checked by the caller after the writes.
+ * checked here, before the caller writes anything (thermo O6).
  *
  * R5, the remainder. A hold that ended without settling -- the authority
  * behind its lease was lost, and replay classified it -- leaves approved work
@@ -582,12 +575,16 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
     };
   }
   if (state.state === 'held' && state.lease_id !== null) {
-    return state.bound_lease_state === 'live' && state.bound_lease_expired !== true
-      ? {
-          kind: 'refuse',
-          refusal: refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX),
-        }
-      : { kind: 'replace', fence: state.lease_id };
+    if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
+      return {
+        kind: 'refuse',
+        refusal: refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX),
+      };
+    }
+    // Thermo O6, lead ruling: asked before the fence, the classification and
+    // the replacement hold write, as it is for every other branch.
+    if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
+    return { kind: 'replace', fence: state.lease_id };
   }
   const replacing = state.state === 'abandoned' && replaceable(state);
   if (state.state !== 'held' && !replacing) {
