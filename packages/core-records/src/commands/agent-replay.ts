@@ -28,7 +28,7 @@ import { isOperandRefusal, type AgentOperation, type TypedOperation } from './ag
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { settle, writeCallEvent } from './agent-settle.ts';
-import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './tasks-pickup.ts';
+import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /**

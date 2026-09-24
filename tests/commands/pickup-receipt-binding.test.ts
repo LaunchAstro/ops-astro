@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The one pickup-replay binding step both entries take (THERMO-RECHECK-2
-// NNA2, `pickupReceiptBinding` in `tasks-pickup.ts`), against a real stored
+// NNA2, `pickupReceiptBinding` in `pickup-receipt.ts`), against a real stored
 // agent pickup receipt. The lease is bound to the delegation the caller
 // replays under: its own delegation releases the receipt with that
 // delegation's credential columns; no delegation (the person envelope's
@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
 import { createIdentWorld, type IdentWorld, type Picked } from '../acceptance/ident-audit-cases.ts';
-import { pickupReceiptBinding } from '../../packages/core-records/src/commands/tasks-pickup.ts';
+import { pickupReceiptBinding } from '../../packages/core-records/src/commands/pickup-receipt.ts';
 
 describe.skipIf(serverUrl === undefined)('pickup receipt binding (NNA2)', () => {
   let w: IdentWorld;
