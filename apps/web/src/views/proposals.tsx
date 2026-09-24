@@ -41,7 +41,18 @@
 //
 // **A refusal is quoted under the gate it was about.** The note carries the
 // gate the refused control sent, so a task with two lineages does not draw one
-// gate's refusal beside the other gate's live controls.
+// gate's refusal beside the other gate's live controls. It is drawn under that
+// gate's version whether or not the version is still the head: a refusal
+// because the gate was superseded arrives with a reread that has moved the
+// head on, and a quote kept only beside the head's controls would be drawn
+// nowhere. A reread that no longer lists the gate at all gets the quote under
+// the lineage it was about, and failing that above the list.
+//
+// **A proposal whose answer was lost is sent again as the same attempt.** The
+// server may have stored it, so a retry of the unchanged form carries the same
+// `operationId` and the register replays the original answer rather than
+// opening a second lineage with its own gate. Changing the form is a different
+// proposal and gets a new one.
 //
 // **A reader without the grant is refused once.** There is no capability read in
 // this build, so this screen cannot know whether a person may decide before it
@@ -74,6 +85,19 @@ export interface DecisionNote {
   readonly closed: boolean;
   /** The gate the refused decision was about. The text is drawn under it alone. */
   readonly gateId: string;
+  /** Its lineage, where the text is drawn when a reread no longer lists the gate. */
+  readonly lineageId: string;
+}
+
+/** Where a note is drawn: under its gate, its lineage, or above the list. */
+type NoteAt = 'gate' | 'lineage' | 'section';
+
+function noteAt(note: DecisionNote | null, proposals: readonly ProposalLineage[]): NoteAt | null {
+  if (note === null) return null;
+  const drawn = proposals.flatMap((lineage) => lineage.versions);
+  if (drawn.some((version) => version.gate?.id === note.gateId)) return 'gate';
+  if (proposals.some((lineage) => lineage.lineageId === note.lineageId)) return 'lineage';
+  return 'section';
 }
 
 export interface ProposalsProps {
@@ -100,6 +124,7 @@ export interface ProposalsProps {
 const CURRENCIES: readonly string[] = ['AUD'];
 
 export function Proposals(props: ProposalsProps): ReactElement {
+  const at = noteAt(props.note, props.proposals ?? []);
   return (
     <section className="sb__sect" data-proposals="section">
       <div className="sb__sh">
@@ -120,12 +145,14 @@ export function Proposals(props: ProposalsProps): ReactElement {
         </div>
       ) : (
         <div className="stack" data-proposals="list">
+          {at === 'section' ? <Refusal note={props.note} /> : null}
           {props.proposals.map((lineage) => (
             <Lineage
               client={props.client}
               key={lineage.lineageId}
               lineage={lineage}
               note={props.note}
+              noteAt={at}
               onChanged={props.onChanged}
               onDecided={props.onDecided}
             />
@@ -149,6 +176,7 @@ interface LineageProps {
   readonly client: OperationsClient;
   readonly lineage: ProposalLineage;
   readonly note: DecisionNote | null;
+  readonly noteAt: NoteAt | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
 }
@@ -166,6 +194,9 @@ function Lineage(props: LineageProps): ReactElement {
         <span className="sb__state">{lineage.state}</span>
         <span className="sbact__meta">{lineage.lineageId}</span>
       </div>
+      {props.noteAt === 'lineage' && props.note?.lineageId === lineage.lineageId ? (
+        <Refusal note={props.note} />
+      ) : null}
 
       {lineage.versions.map((version, index) => (
         <Version
@@ -174,6 +205,7 @@ function Lineage(props: LineageProps): ReactElement {
           // The older versions are here to be read, not to be acted on.
           head={index === 0}
           key={version.versionId}
+          lineageId={lineage.lineageId}
           lineageState={lineage.state}
           note={props.note}
           onChanged={props.onChanged}
@@ -192,6 +224,7 @@ interface VersionProps {
   readonly client: OperationsClient;
   readonly version: ProposalVersion;
   readonly head: boolean;
+  readonly lineageId: string;
   /** The lineage's state from the same answer. Only a `live` lineage is decided. */
   readonly lineageState: string;
   readonly note: DecisionNote | null;
@@ -272,6 +305,7 @@ function Version(props: VersionProps): ReactElement {
         <Decide
           client={props.client}
           gate={gate}
+          lineageId={props.lineageId}
           lineageState={props.lineageState}
           note={props.note}
           onChanged={props.onChanged}
@@ -279,6 +313,7 @@ function Version(props: VersionProps): ReactElement {
           versionId={version.versionId}
         />
       )}
+      {gate === null || props.note?.gateId !== gate.id ? null : <Refusal note={props.note} />}
     </div>
   );
 }
@@ -295,6 +330,7 @@ interface DecideProps {
   readonly client: OperationsClient;
   readonly gate: NonNullable<ProposalVersion['gate']>;
   readonly versionId: string;
+  readonly lineageId: string;
   readonly lineageState: string;
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
@@ -305,7 +341,8 @@ function Decide(props: DecideProps): ReactElement {
   const { gate } = props;
   const { busy, run } = useCommand();
   const closed = props.note?.closed === true;
-  // Whether the note is about this gate. Only then is its text drawn here.
+  // Whether the note is about this gate, which picks the wording below. The
+  // note's own text is drawn by `Version`, under the gate it names.
   const refused = props.note !== null && props.note.gateId === gate.id;
   // Four reasons a decision is not on offer, and the person is told which.
   const why = closed
@@ -377,12 +414,17 @@ function Decide(props: DecideProps): ReactElement {
           {why}
         </p>
       )}
-      {!refused ? null : (
-        <p className="field__error" role="alert" data-decide="refusal">
-          {props.note?.because}
-        </p>
-      )}
     </div>
+  );
+}
+
+/** A refused decision, quoted as the server said it. */
+function Refusal(props: { readonly note: DecisionNote | null }): ReactElement | null {
+  if (props.note === null) return null;
+  return (
+    <p className="field__error" role="alert" data-decide="refusal" data-gate-id={props.note.gateId}>
+      {props.note.because}
+    </p>
   );
 }
 
@@ -408,6 +450,7 @@ function settled(settlement: Settlement, props: DecideProps): void {
     because: settlement.because,
     closed: settlement.kind === 'closed',
     gateId: props.gate.id,
+    lineageId: props.lineageId,
   });
   props.onChanged();
 }
@@ -500,10 +543,22 @@ interface ProposeProps {
   readonly onChanged: () => void;
 }
 
+/** A proposal whose outcome is not known, held so the retry is the same attempt. */
+interface PendingProposal {
+  readonly operationId: string;
+  readonly purpose: string;
+  readonly maximum: string;
+  readonly currency: string;
+}
+
 function Propose(props: ProposeProps): ReactElement {
   const [purpose, setPurpose] = useState('');
   const [maximum, setMaximum] = useState('');
   const [currency, setCurrency] = useState('AUD');
+  // The attempt nobody knows the outcome of, as the board's create keeps one
+  // (`Projects.tsx`). `task.propose` leaves the task's revision alone, so the
+  // revision check cannot catch a retry; only the `operationId` can.
+  const [pending, setPending] = useState<PendingProposal | null>(null);
   const command = useCommand();
   const busy = command.busy;
   // The refusal is also held above the read, because a reread remounts this
@@ -513,9 +568,19 @@ function Propose(props: ProposeProps): ReactElement {
   const because = command.because ?? props.refusal;
   const run = command.run;
 
+  const same = (attempt: PendingProposal | null): attempt is PendingProposal =>
+    attempt !== null &&
+    attempt.purpose === purpose &&
+    attempt.maximum === maximum &&
+    attempt.currency === currency;
+
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (locked) return;
+    const attempt = same(pending)
+      ? pending
+      : { operationId: props.client.newOperationId(), purpose, maximum, currency };
+    setPending(attempt);
     run(
       () =>
         props.client.mutate(
@@ -541,7 +606,7 @@ function Propose(props: ProposeProps): ReactElement {
           },
           // The revision the page is holding. A proposal made against a task that
           // has moved on is the server's `VERSION_STALE`, not a silent write.
-          { expectedRevision: props.revision },
+          { expectedRevision: props.revision, operationId: attempt.operationId },
         ),
       settledProposal,
     );
@@ -557,6 +622,9 @@ function Propose(props: ProposeProps): ReactElement {
    * version that appears is the server's rather than this form's own echo.
    */
   function settledProposal(settlement: Settlement): void {
+    // An unknown outcome keeps the attempt; any answer from the server ends it.
+    if (settlement.kind === 'unknown') return;
+    setPending(null);
     if (settlement.kind === 'closed') props.onRefused(settlement.because);
     if (settlement.kind !== 'ok') return;
     setPurpose('');
@@ -645,6 +713,12 @@ function Propose(props: ProposeProps): ReactElement {
       <button className="btn btn--primary" data-propose="submit" disabled={locked} type="submit">
         {busy ? 'Proposing…' : 'Propose'}
       </button>
+      {because === null || !same(pending) ? null : (
+        <p className="card__sub" data-propose="unresolved">
+          This may already have been proposed. Proposing again sends the same attempt, so the server
+          answers with the original result rather than opening a second proposal.
+        </p>
+      )}
       {!closed ? null : (
         <p className="card__sub" data-propose="closed">
           The server refused this. The form is closed rather than asking again on your behalf.
