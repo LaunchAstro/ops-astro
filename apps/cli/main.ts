@@ -268,7 +268,12 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       io.out(JSON.stringify(redact(answer, delegationFile)));
       return EXIT.ok;
     }
-    if (agent && verb === 'task.handback' && ok) rmSync(delegationFile, { force: true });
+    // Only the credential this handback was sent with is over: an older one
+    // replayed from the environment leaves a newer saved credential alone.
+    const spent = agent && verb === 'task.handback' && ok ? delegation : undefined;
+    if (spent !== undefined && readOptional(delegationFile) === spent) {
+      rmSync(delegationFile, { force: true });
+    }
     io.out(answer.body === undefined ? (answer.text ?? '') : JSON.stringify(answer.body));
     if (ok) return EXIT.ok;
     return isRefusal(answer) ? EXIT.refused : EXIT.fault;
