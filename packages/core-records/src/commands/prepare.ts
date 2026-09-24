@@ -41,7 +41,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 import { checkAuthority, subjectsOf, type Scope } from '../authority/grants.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
-import { fromAuthority, refuseCommand } from './refusal.ts';
+import { fromAuthority, refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
@@ -60,27 +60,11 @@ const EXTERNAL_FIXES: readonly string[] = [
   'Ask an administrator of this business for a membership to do this.',
 ];
 
-const NOT_FOUND_FIXES: readonly string[] = [
-  'Check the identifier against the one you were given.',
-  'If you believe it exists, ask someone who can already see it to share it with you.',
-];
-
 /** The revision a targeted request named, or nothing. Absent on the untargeted ones. */
 export function expectedRevisionOf(request: CommandRequest): number | undefined {
   return 'expectedRevision' in request ? request.expectedRevision : undefined;
 }
 
-/**
- * The fields of a request that name a record. Each one is cast to `uuid`
- * somewhere downstream — the authority check casts the scope, the rank query
- * casts an array of neighbours — and a cast raises rather than refusing. A
- * review found `recordId: 'not-a-uuid'` arriving as a fault with the chain
- * recording `failed`, where the contract promises a typed refusal.
- *
- * The list is explicit rather than derived from the field names, so a request
- * type that grows an identifier has to be added here rather than being
- * silently covered or silently missed.
- */
 /**
  * The facts a caller may never state about their own request (D06).
  *
@@ -145,29 +129,6 @@ export const SYSTEM_OWNED_FIXES: readonly string[] = [
 ];
 
 /**
- * The system-owned keys one payload claims, sorted, or nothing.
- *
- * Exported because the read half needs the same answer and a second copy of
- * the list is a second thing to forget: `reads/dispatch.ts` applies this rule
- * to read payloads, which reach the server through a different envelope and
- * carry the same keys. It returns the keys and the values separately because
- * the two have different destinations — the keys are named in the refusal, the
- * values go only to the audit row (T1-N4) — and a helper that returned them
- * together would invite a caller to put both in the response.
- */
-export function claimedSystemOwnedFields(
-  payload: unknown,
-):
-  | { readonly keys: readonly string[]; readonly values: Readonly<Record<string, unknown>> }
-  | undefined {
-  const named = payload as Record<string, unknown>;
-  if (typeof named !== 'object' || named === null) return undefined;
-  const keys = SYSTEM_OWNED_FIELDS.filter((field) => field in named).toSorted();
-  if (keys.length === 0) return undefined;
-  return { keys, values: Object.fromEntries(keys.map((field) => [field, named[field]])) };
-}
-
-/**
  * The installed field keys whose write mode is `system`, across every live
  * field of every record type in the business.
  *
@@ -195,8 +156,13 @@ const INSTALLED_SYSTEM_FIELDS = `
  * property only, so a field installed under a name `Object.prototype` also
  * has is not claimed by every body.
  *
- * Returned as `claimedSystemOwnedFields` returns, keys and values apart, for
- * the reason it gives.
+ * Exported because the read half and the agent path need the same answer and a
+ * second copy of the list is a second thing to forget: `reads/dispatch.ts`
+ * and `agent-envelope.ts` apply this rule to their own payloads. The keys and
+ * the values come back apart because they have different destinations: the
+ * keys are named in the refusal, the values go only to the audit row (T1-N4),
+ * and a helper that returned them together would invite a caller to put both
+ * in the response.
  */
 export async function claimedSystemFields(
   tx: TenantQuery,
@@ -239,6 +205,17 @@ async function refuseSystemOwnedFields(
   );
 }
 
+/**
+ * The fields of a request that name a record. Each one is cast to `uuid`
+ * somewhere downstream — the authority check casts the scope, the rank query
+ * casts an array of neighbours — and a cast raises rather than refusing. A
+ * review found `recordId: 'not-a-uuid'` arriving as a fault with the chain
+ * recording `failed`, where the contract promises a typed refusal.
+ *
+ * The list is explicit rather than derived from the field names, so a request
+ * type that grows an identifier has to be added here rather than being
+ * silently covered or silently missed.
+ */
 const IDENTIFIER_FIELDS: readonly string[] = [
   'recordId',
   'parentId',
@@ -273,7 +250,7 @@ function refuseMalformedIdentifier(
     return typeof value === 'string' && !UUID.test(value);
   });
   if (malformed.length === 0) return undefined;
-  return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
+  return refused(refuseNotFound());
 }
 
 const BODY_FIXES: readonly string[] = [
@@ -319,64 +296,129 @@ function refuseIrrelevantTarget(
 }
 
 /**
- * The scope a `target` command is authorised on: the revoked row's own. A
- * grant is asked about at the scope it was issued on and a delegation at its
- * purpose scope, so a manager whose `manage` covers exactly that scope reaches
- * the handler, which then asks the full ceiling (`authority-controls.ts`).
- * Read-only and unlocked, like every discovery read. A body naming no such row
- * is asked at business scope, so a caller holding nothing is still refused
- * `SCOPE_NOT_GRANTED` rather than told about the shape of its body.
+ * The task a lease belongs to, or nothing. Read-only and unlocked, like every
+ * discovery read: the runtime takes the lease under its own locks later.
  */
-async function targetScopeOf(tx: TenantQuery, request: CommandRequest): Promise<Scope> {
+export async function taskOfLease(tx: TenantQuery, leaseId: string): Promise<string | undefined> {
+  const rows = await tx.query<{ readonly task_id: string }>(
+    `select task_id from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, leaseId],
+  );
+  return rows[0]?.task_id;
+}
+
+/** One way to find a scope: the body field that names the row, and how to read it. */
+type ScopeLookup = readonly [
+  field: string,
+  find: (tx: TenantQuery, id: string) => Promise<Scope | undefined>,
+];
+
+/**
+ * The scope the first well-formed identifier the body names resolves to, or
+ * the business when none does. Asking at business scope means a body naming
+ * no such row, foreign or fabricated, gets one answer, and a caller holding
+ * nothing is refused `SCOPE_NOT_GRANTED` rather than told about the shape of
+ * its body.
+ */
+async function firstScope(
+  tx: TenantQuery,
+  request: CommandRequest,
+  lookups: readonly ScopeLookup[],
+): Promise<Scope> {
   const named = request as unknown as Record<string, unknown>;
-  const lookups: readonly (readonly [string, string])[] = [
-    [
-      'grantId',
-      'select scope_kind as kind, scope_id as id from public.grants where business_id = $1 and id = $2',
-    ],
-    [
-      'delegationId',
-      'select purpose_scope_kind as kind, purpose_scope_id as id from public.delegations where business_id = $1 and id = $2',
-    ],
-  ];
-  for (const [field, sql] of lookups) {
+  for (const [field, find] of lookups) {
     const id = named[field];
     if (typeof id !== 'string' || !UUID.test(id)) continue;
     // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
-    const rows = await tx.query<Scope>(sql, [tx.businessId, id]);
-    if (rows[0] !== undefined) return rows[0];
+    const scope = await find(tx, id);
+    if (scope !== undefined) return scope;
   }
   return { kind: 'business', id: null };
 }
 
-/**
- * The scope a `claim` command is authorised on: the task its reservation or
- * lease belongs to, asked at record scope as the runtime asks it under its
- * locks. Read-only and unlocked, like `targetScopeOf`. A body naming no such
- * row is asked at business scope, so a foreign and a fabricated id get one
- * answer and a caller holding nothing is refused `SCOPE_NOT_GRANTED`.
- */
-async function claimScopeOf(tx: TenantQuery, request: CommandRequest): Promise<Scope> {
-  const named = request as unknown as Record<string, unknown>;
-  const lookups: readonly (readonly [string, string])[] = [
-    [
-      'reservationId',
-      `select run.task_id as id
-         from public.reservations res
-         join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
-        where res.business_id = $1 and res.id = $2`,
-    ],
-    ['leaseId', 'select task_id as id from public.leases where business_id = $1 and id = $2'],
-  ];
-  for (const [field, sql] of lookups) {
-    const id = named[field];
-    if (typeof id !== 'string' || !UUID.test(id)) continue;
-    // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
-    const rows = await tx.query<{ readonly id: string }>(sql, [tx.businessId, id]);
-    if (rows[0] !== undefined) return { kind: 'record', id: rows[0].id };
-  }
-  return { kind: 'business', id: null };
+async function firstRow(tx: TenantQuery, sql: string, id: string): Promise<Scope | undefined> {
+  const rows = await tx.query<Scope>(sql, [tx.businessId, id]);
+  return rows[0];
 }
+
+const BUSINESS: Scope = { kind: 'business', id: null };
+
+/** A grant at the scope it was issued on, a delegation at its purpose scope. */
+const TARGET_LOOKUPS: readonly ScopeLookup[] = [
+  [
+    'grantId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        'select scope_kind as kind, scope_id as id from public.grants where business_id = $1 and id = $2',
+        id,
+      ),
+  ],
+  [
+    'delegationId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        'select purpose_scope_kind as kind, purpose_scope_id as id from public.delegations where business_id = $1 and id = $2',
+        id,
+      ),
+  ],
+];
+
+/** The task a reservation's run or a lease belongs to, at record scope. */
+const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
+  [
+    'reservationId',
+    async (tx, id) => {
+      const rows = await tx.query<{ readonly id: string }>(
+        `select run.task_id as id
+           from public.reservations res
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+          where res.business_id = $1 and res.id = $2`,
+        [tx.businessId, id],
+      );
+      return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
+    },
+  ],
+  [
+    'leaseId',
+    async (tx, id) => {
+      const task = await taskOfLease(tx, id);
+      return task === undefined ? undefined : { kind: 'record', id: task };
+    },
+  ],
+];
+
+/**
+ * What the authority check is asked about, by the declaration's
+ * `authorisedOn` (see `CommandDeclaration`).
+ *
+ * - `record`: the task the body names in `recordId`, or the business when it
+ *   names none.
+ * - `business`: the business, whatever identifiers the body carries.
+ * - `target`: the revoked row's own scope. A grant is asked about at the
+ *   scope it was issued on and a delegation at its purpose scope, so a manager
+ *   whose `manage` covers exactly that scope reaches the handler, which then
+ *   asks the full ceiling (`authority-controls.ts`).
+ * - `claim`: the task the body's reservation or lease belongs to, asked at
+ *   record scope as the runtime asks it under its locks.
+ */
+const SCOPE_OF: Readonly<
+  Record<
+    CommandDeclaration['authorisedOn'],
+    (tx: TenantQuery, request: CommandRequest) => Promise<Scope>
+  >
+> = {
+  record: (_tx, request) =>
+    Promise.resolve(
+      'recordId' in request && typeof request.recordId === 'string'
+        ? { kind: 'record', id: request.recordId }
+        : BUSINESS,
+    ),
+  business: () => Promise.resolve(BUSINESS),
+  target: (tx, request) => firstScope(tx, request, TARGET_LOOKUPS),
+  claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
+};
 
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
@@ -414,14 +456,7 @@ export async function prepareCommand(
     // From the declaration, never written in here: see `CommandDeclaration`.
     collection: declaration.collection,
     action: declaration.action,
-    scope:
-      declaration.authorisedOn === 'record' && recordId !== undefined
-        ? { kind: 'record', id: recordId }
-        : declaration.authorisedOn === 'target'
-          ? await targetScopeOf(tx, request)
-          : declaration.authorisedOn === 'claim'
-            ? await claimScopeOf(tx, request)
-            : { kind: 'business', id: null },
+    scope: await SCOPE_OF[declaration.authorisedOn](tx, request),
   });
   if (!authorised.ok) return refused(fromAuthority(authorised.refusal));
 
@@ -436,7 +471,7 @@ export async function prepareCommand(
     });
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
-      return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
+      return refused(refuseNotFound());
     }
     if (declaration.targetLock === 'command' && expectedRevisionOf(request) !== target.revision) {
       return refused(
