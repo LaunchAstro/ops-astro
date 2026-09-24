@@ -3,10 +3,16 @@
 // Final review round 1, R1-AUTHORITY-24, over the real schema.
 //
 // `businesses_key_idx` is unique on (business_id, key) and business_id is the
-// row's own id, so nothing stops a second business taking a key another holds.
-// When one does, the path key names no single business: both prefixes answer
-// the same bytes as a key nobody holds, for the member of the first business
-// too, rather than serving whichever row the heap returned first.
+// row's own id, so until 0027 nothing stopped a second business taking a key
+// another holds. 0027 (`businesses_key_global_idx`, Nathan's approval of 24 Sep
+// 2026) now refuses that insert, and the first case pins the refusal.
+//
+// The resolver's refusal stays as the runtime backstop, and it is still proved
+// here: this suite's throwaway database drops the index, which is the state of
+// an installation below 0027, and lets the second business in. The path key
+// then names no single business: both prefixes answer the same bytes as a key
+// nobody holds, for the member of the first business too, rather than serving
+// whichever row the heap returned first.
 //
 // Through `composeApi`, the server's own wiring, over a throwaway database.
 
@@ -47,10 +53,16 @@ describe.skipIf(serverUrl === undefined)('a business key two businesses hold', (
   let memberToken: string;
   let agentToken: string;
   let before: string | undefined;
+  let refused: unknown;
 
   beforeAll(async () => {
     fixture = await createApiFixture('fas');
     before = await createBusinessResolver(fixture.db.admin)(BUSINESS_KEY);
+    refused = await insertBusiness(fixture.db.app, BUSINESS_KEY).then(
+      () => 'committed',
+      (error: unknown) => error,
+    );
+    await fixture.db.admin.execute('drop index if exists public.businesses_key_global_idx');
     await insertBusiness(fixture.db.app, BUSINESS_KEY);
     memberToken = await tokenFor(fixture.member.presented.subject);
     agentToken = await tokenFor(fixture.agent.subject);
@@ -58,6 +70,10 @@ describe.skipIf(serverUrl === undefined)('a business key two businesses hold', (
 
   afterAll(async () => {
     await fixture?.drop();
+  });
+
+  it('refuses the second business in storage while the index stands', () => {
+    expect(refused).toMatchObject({ code: '23505', constraint_name: 'businesses_key_global_idx' });
   });
 
   it('resolves while one business holds it, and not once a second takes it', async () => {

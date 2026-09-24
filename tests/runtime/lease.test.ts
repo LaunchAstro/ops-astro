@@ -774,7 +774,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
     // Its own handle, like the case above: earlier cases in this file close
     // and replace the shared one to prove restart durability.
     const fresh = connect(database.appUrl, { max: 1, source: 'recovery' });
-    const fixture = await buildFixture(fresh, 'recoverbiz');
+    const fixture = await buildFixture(fresh, 'recoverexpiredbiz');
     const work = await approvedWork(fresh, fixture);
 
     const claim = async (leaseSeconds: number) =>
