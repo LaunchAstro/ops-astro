@@ -8,6 +8,13 @@
 // verifier, one business resolver and one database, and they are visible in
 // one file rather than spread across the modules that use them.
 //
+// The file is two halves. `composeApi` is the wiring and nothing else: given
+// the connections and the secret it builds the served app, fault mapping
+// included, and touches no environment, socket or process. `main` reads the
+// environment, runs restart recovery, calls `composeApi` and listens, and runs
+// only when this file is the process's entry, so a test imports the same
+// wiring the server listens with rather than keeping a copy of it.
+//
 // Two decisions worth seeing.
 //
 // **`/api/health` reports what it measured.** It runs a statement and answers
@@ -34,9 +41,12 @@ import {
   connectAsAdmin,
   isBusinessId,
   type AdminConnection,
+  type Database,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { createApi, type AgentExecutor, type ReadExecutor } from './app.ts';
+import { createApi, type ReadExecutor } from './app.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
 import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
@@ -117,29 +127,87 @@ export function createBusinessResolver(
   };
 }
 
+/** What `composeApi` wires. Every value is one `main` read or opened. */
+export interface ApiConfig {
+  /** The application role's connection, the one every request runs on. */
+  readonly database: Database;
+  /** The owner's connection, used for the business key and `/api/health` only. */
+  readonly admin: AdminConnection;
+  /** The HS256 secret the Supabase adapter verifies bearers with. */
+  readonly secret: string;
+  /**
+   * The read half of the surface. Absent means `reads/execute.ts`, imported
+   * statically, so a module that fails to load stops the server rather than
+   * turning every read into `DEPENDENCY_NOT_LANDED`. A test hands in its own
+   * to reach the fault branch.
+   */
+  readonly executeRead?: ReadExecutor;
+}
+
+export interface ComposedApi {
+  /** The served app: `/api/health`, the boundary, and the fault mapping. */
+  readonly app: Hono;
+  /**
+   * The app's own business resolver. Restart recovery resolves its keys
+   * through it before the port is bound, so the recovery and the requests that
+   * follow share one lookup and one cache.
+   */
+  readonly resolveBusiness: (businessKey: string) => Promise<string | undefined>;
+}
+
 /**
- * SLICE-DATA's read executor, if it has landed.
- *
- * Imported dynamically because the module is another lane's and does not exist
- * in every checkout of this branch. A missing module is not an error here: the
- * boundary already answers `DEPENDENCY_NOT_LANDED` for a declared read with no
- * executor, which is the truthful answer and the one the surface already uses
- * for a command whose part has not been built.
+ * The served app, wired. No environment, no socket, no process: the caller
+ * owns those, which is what lets a test build this twice over one database.
  */
-export async function loadReadExecutor(): Promise<ReadExecutor | undefined> {
-  // The specifier is assembled rather than written as a literal so that a
-  // checkout without the module typechecks: the compiler cannot resolve a path
-  // it cannot see, and a missing optional dependency is not a type error.
-  const specifier = ['..', '..', 'packages', 'core-records', 'src', 'reads', 'execute.ts'].join(
+export function composeApi(config: ApiConfig): ComposedApi {
+  const { database, admin } = config;
+  const executeRead = config.executeRead ?? (readExecutor as unknown as ReadExecutor);
+  const resolveBusiness = createBusinessResolver(admin);
+  const server = new Hono();
+
+  // Measured, not assumed. `reachable` is the result of a statement that ran.
+  server.get('/api/health', async (context) => {
+    let reachable = false;
+    let detail = '';
+    try {
+      await admin.execute('select 1 as ok');
+      reachable = true;
+    } catch (cause) {
+      detail = cause instanceof Error ? cause.message : 'unknown';
+    }
+    return context.json(
+      {
+        ok: reachable,
+        database: reachable ? 'reachable' : 'unreachable',
+        reads: 'mounted',
+        detail,
+      },
+      reachable ? 200 : 503,
+    );
+  });
+
+  server.route(
     '/',
+    createApi({
+      database,
+      verify: createSupabaseVerifier({ secret: config.secret }),
+      resolveBusiness,
+      executeRead,
+      executeCommand,
+      executeAgentCommand,
+    }),
   );
-  try {
-    const module: unknown = await import(specifier);
-    const execute = (module as { executeRead?: unknown }).executeRead;
-    return typeof execute === 'function' ? (execute as ReadExecutor) : undefined;
-  } catch {
-    return undefined;
-  }
+
+  // A fault reaching here is a fault, not a refusal, and it is reported as one
+  // rather than as a 404 that reads like a missing route or a 403 that reads
+  // like a decision. The message is not echoed: a message may carry a value.
+  server.onError((cause, context) => {
+    console.error('api: unhandled', cause instanceof Error ? cause.message : cause);
+    if ('getResponse' in cause) return cause.getResponse();
+    return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
+  });
+
+  return { app: server, resolveBusiness };
 }
 
 async function main(): Promise<void> {
@@ -162,7 +230,6 @@ async function main(): Promise<void> {
 
   const database = connect(databaseUrl as string, { source: 'runtime' });
   const admin = connectAsAdmin(adminUrl as string, { source: 'admin' });
-  const executeRead = await loadReadExecutor();
   // The signing key is a process fact, read by `commands/runtime-config.ts`
   // from the environment rather than passed down through every caller. The
   // composition root is where a deployment's environment is assembled, so this
@@ -185,10 +252,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Wiring only: nothing here runs a statement or binds a port, so building it
+  // before recovery changes nothing recovery sees, and recovery resolves its
+  // keys through the same resolver the requests will.
+  const { app, resolveBusiness } = composeApi({
+    database,
+    admin,
+    secret: secret as string,
+  });
+
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
   // start rather than a server that serves beside an unfinished classification.
-  const resolveBusiness = createBusinessResolver(admin);
   const scope = parseRecoveryScope(environment[RECOVERY_SCOPE_SETTING]);
   if (!scope.ok) {
     console.error(`api: ${scope.problem}`);
@@ -205,52 +280,9 @@ async function main(): Promise<void> {
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
 
-  const server = new Hono();
-
-  // Measured, not assumed. `reachable` is the result of a statement that ran.
-  server.get('/api/health', async (context) => {
-    let reachable = false;
-    let detail = '';
-    try {
-      await admin.execute('select 1 as ok');
-      reachable = true;
-    } catch (cause) {
-      detail = cause instanceof Error ? cause.message : 'unknown';
-    }
-    return context.json(
-      {
-        ok: reachable,
-        database: reachable ? 'reachable' : 'unreachable',
-        reads: executeRead === undefined ? 'not-landed' : 'mounted',
-        detail,
-      },
-      reachable ? 200 : 503,
-    );
-  });
-
-  server.route(
-    '/',
-    createApi({
-      database,
-      verify: createSupabaseVerifier({ secret: secret as string }),
-      resolveBusiness,
-      ...(executeRead === undefined ? {} : { executeRead }),
-      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
-    }),
-  );
-
-  // A fault reaching here is a fault, not a refusal, and it is reported as one
-  // rather than as a 404 that reads like a missing route or a 403 that reads
-  // like a decision. The message is not echoed: a message may carry a value.
-  server.onError((cause, context) => {
-    console.error('api: unhandled', cause instanceof Error ? cause.message : cause);
-    if ('getResponse' in cause) return cause.getResponse();
-    return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
-  });
-
-  serve({ fetch: server.fetch, hostname: '127.0.0.1', port }, (info) => {
+  serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
-    console.log(`api: reads ${executeRead === undefined ? 'not landed' : 'mounted'}`);
+    console.log('api: reads mounted');
   });
 
   const stop = (): void => {
@@ -263,4 +295,6 @@ async function main(): Promise<void> {
 const RETRY =
   'The service could not complete the request. Retry; if it persists, check /api/health.';
 
-await main();
+// Only as the process's entry (`node apps/api/server.ts`). An import, a test's
+// included, gets `composeApi` and the helpers above and starts nothing.
+if (import.meta.main) await main();
