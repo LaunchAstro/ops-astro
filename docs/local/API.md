@@ -195,7 +195,9 @@ its caller: `executeCommand` is required, and `executeRead` and
 real executors pass without a cast. With no `executeAgentCommand` the agent
 prefix is not mounted. The one value the boundary takes from an envelope
 module is `agentAnswer` (`commands/agent-envelope.ts`), which flattens the
-agent's `session.capabilities` answer at the wire.
+agent's `session.capabilities` answer at the wire. It takes the handle
+(`CommandHandle`), because the boundary answers a refusal first, so `app.ts`
+passes it with no cast.
 
 ## The composition root
 
@@ -229,7 +231,7 @@ pickup replay is also released only while its lease is live and the caller's
 (`LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `RESERVATION_NOT_CLAIMABLE` 409).
 The register row is unchanged and the audit row is `refused` (`replayOrRefuse`
 and `withheldNow`, `commands/envelope.ts`). The lease check is
-`pickupReceiptBinding` (`commands/tasks-pickup.ts`), the one statement the agent
+`pickupReceiptBinding` (`commands/pickup-receipt.ts`), the one statement the agent
 pickup replay also uses (`replayPickup`, `commands/agent-replay.ts`).
 `tests/runtime/person-replay-current-rights.test.ts` holds it.
 
