@@ -133,11 +133,14 @@ mistyped, and that a well-formed request still succeeds on each. `task.board`
 joined them later: a body with no `board` used to be answered the unboarded
 list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
-On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. The
-agent envelope reads `recordId` itself, and under a live delegation an absent
-one is `NOT_FOUND` 404 (`subjectTaskId` in `commands/agent-authority.ts`, and
-the `serve` of the `task.read` row of `AGENT_OPERATIONS` in
-`commands/agent-operations.ts`).
+On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. A
+`recordId` that is present and not a string is refused before any authority,
+in the person prefix's bytes: `FIELD_VALUE_INVALID` 422 naming `recordId` on
+`task.read` (the read catalogue's own `parse`) and `NOT_FOUND` 404 on
+`task.comment` (`recordIdOperand` in `commands/agent-operations.ts`,
+THERMO-RECHECK-2 NNA1). Under a live delegation an absent one is `NOT_FOUND`
+404: the check falls back to the delegation's own task, and the row serves only
+the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
@@ -225,7 +228,9 @@ grant's replay is `SCOPE_NOT_GRANTED` 403 and not the stored result. A person
 pickup replay is also released only while its lease is live and the caller's
 (`LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `RESERVATION_NOT_CLAIMABLE` 409).
 The register row is unchanged and the audit row is `refused` (`replayOrRefuse`
-and `withheldNow`, `commands/envelope.ts`).
+and `withheldNow`, `commands/envelope.ts`). The lease check is
+`pickupReceiptBinding` (`commands/tasks-pickup.ts`), the one statement the agent
+pickup replay also uses (`replayPickup`).
 `tests/runtime/person-replay-current-rights.test.ts` holds it.
 
 An identifier field an untargeted write does not take is refused
@@ -558,8 +563,7 @@ which delegates to `isUuid` in `tenancy/ids.ts`, as `isBusinessId` does),
 called where both claimants meet: `claim` in `commands/tasks-pickup.ts`,
 `renewLease` in `commands/tasks-lease.ts` and `settle` in
 `commands/tasks-handback.ts`. The agent envelope's lease lookup checks the same
-shape with its own pattern (`UUID` from `commands/agent-operations.ts`, in
-`subjectTaskId`, `commands/agent-authority.ts`). A malformed id never reaches
+shape with the same `isUuid` (in `namedTaskId`, `commands/agent-authority.ts`). A malformed id never reaches
 a uuid parameter, so it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps
 for real faults. Both prefixes refuse a `reservationId` that is not a string,
 `COMMAND_BODY_INVALID` 400 (below). `tests/api/id-operand-shape.test.ts` holds
@@ -899,7 +903,7 @@ exactly the one task it was minted for.
 | `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
-against is read from the lease (`subjectTaskId`). A handback naming a lease on
+against is read from the lease (`namedTaskId`). A handback naming a lease on
 another task is `DELEGATION_OUT_OF_PURPOSE`. `LEASE_NOT_OWNED` is the answer
 for a stale fence on the agent's own task.
 

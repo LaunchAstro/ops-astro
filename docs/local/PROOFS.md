@@ -379,7 +379,7 @@ Case (k) drives the three operations the old rows only described:
 - **Wrong-purpose lease.** The same agent picks up a second reservation, on
   the sibling and for another purpose. Under the first credential it hands
   back the sibling's lease at that lease's own fence. The answer is
-  `DELEGATION_OUT_OF_PURPOSE` 403, because `subjectTaskId` in
+  `DELEGATION_OUT_OF_PURPOSE` 403, because `namedTaskId` in
   `agent-authority.ts` reads the task from the lease. The sibling lease has no
   `handback_reports` row afterwards. This is the (i) `task.handback` row. The
   old text expected `LEASE_NOT_OWNED`, which is the answer for a stale fence

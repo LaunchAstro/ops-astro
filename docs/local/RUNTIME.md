@@ -476,7 +476,7 @@ row and returned none, throws `RuntimeInvariantError` (`only.ts`). That is never
 a refusal. It aborts the transaction.
 
 A handback names a lease, not a task. The agent envelope reads the task from the
-lease before the delegation check (`subjectTaskId`,
+lease before the delegation check (`namedTaskId`,
 `commands/agent-authority.ts`), so a handback naming a lease on another task is
 outside the one-task purpose and is refused `DELEGATION_OUT_OF_PURPOSE` before
 any handback write (matrix case (i),
