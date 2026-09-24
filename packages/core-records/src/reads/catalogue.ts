@@ -13,8 +13,8 @@
 // added to the union is a type error here until someone says what it takes.
 //
 // The grant the read asks, collection and action, stays on its
-// `COMMAND_SURFACE` row: that is what the route generator and the parity test
-// read. This row says only how the check is asked.
+// `COMMAND_SURFACE` row: that is what the route generator and the surface
+// inventory read. This row says only how the check is asked.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -289,8 +289,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // nothing in it. A login with no standing never arrives here at all: that is
   // `AUTH_NO_MEMBERSHIP` from the resolution, before any read runs. An
   // external party is shown its shares' pairs. The declaration keeps its
-  // collection and action because the route generator and the parity test
-  // read them, and a row missing half its shape would be a special case in
+  // collection and action because the route generator and the surface
+  // inventory read them, and a row missing half its shape would be a special case in
   // three more places.
   'session.capabilities': {
     identifiers: [],

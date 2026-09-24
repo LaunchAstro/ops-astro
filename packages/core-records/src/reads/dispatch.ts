@@ -6,11 +6,6 @@
 // so a caller with no grant learns nothing about whether the record exists; the
 // read after it, so "denied" and "not there" are answered by different code
 // paths and cannot be confused for each other.
-//
-// The switch is here rather than inline in `execute.ts` because
-// `surfaces/exported.ts` reads the operation surface out of the dispatch files
-// rather than out of the declaration table -- a read declared with nothing to
-// serve it would otherwise pass parity.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
