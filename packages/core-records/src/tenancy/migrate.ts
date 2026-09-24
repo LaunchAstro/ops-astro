@@ -32,7 +32,14 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
-import { splitStatements } from './statements.ts';
+import {
+  classifyStatement,
+  skipBlockComment,
+  skipDollarQuoted,
+  skipLineComment,
+  skipQuoted,
+  splitStatements,
+} from './statements.ts';
 
 export interface Migration {
   readonly version: string;
@@ -175,26 +182,55 @@ async function refuseIfConnected(
 }
 
 /**
- * Statements PostgreSQL refuses inside a transaction block, or that would end
- * the runner's own transaction, read from the start of the statement with
- * case and spacing ignored. A pattern that also matches something harmless
+ * Statements PostgreSQL 18 refuses inside a transaction block (its
+ * `PreventInTransactionBlock` callers), read over `words` of the statement.
+ * REINDEX of a partitioned table or index and CLUSTER of a partitioned table
+ * are refused too, and the text cannot say what is partitioned, so every
+ * REINDEX and CLUSTER is. A pattern that also matches something harmless
  * refuses it, which fails closed; a file that really needs one of these is a
- * change to how the runner applies files, not a file to slip past it.
+ * change to how the runner applies files, not a file to slip past it. The
+ * statements that would end the runner's own transaction are the scanner's
+ * `transaction` kind, plus PREPARE TRANSACTION.
  */
 const OUTSIDE_A_TRANSACTION: readonly RegExp[] = [
-  /^(create (unique )?index|drop index|reindex)\b.*\bconcurrently\b/u,
+  /^(create (unique )?index|drop index)\b.*\bconcurrently\b/u,
+  /^alter table\b.*\bdetach partition\b.*\bconcurrently\b/u,
   /^alter type\b.*\badd value\b/u,
-  /^(vacuum|create database|drop database|alter system|create tablespace|drop tablespace)\b/u,
-  /^(create subscription|drop subscription|reindex (database|system))\b/u,
-  /^(begin|start transaction|commit|end|rollback|abort|savepoint|release|prepare transaction)\b/u,
+  /^(vacuum|reindex|cluster|alter system|discard all|prepare transaction)\b/u,
+  /^(create|drop) (database|tablespace)\b/u,
+  /^alter database\b.*\bset tablespace\b/u,
+  /^(create|alter|drop) subscription\b/u,
 ];
 
-function leading(statement: string): string {
-  let text = statement;
-  for (;;) {
-    const stripped = text.replace(/^\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)/u, '');
-    if (stripped === text) break;
-    text = stripped;
+/**
+ * The statement's own words, lower case and single spaced, read with the
+ * statement splitter's scanner: a comment, nested or not, is a space, and a
+ * quoted string, quoted identifier or dollar-quoted body is one `?`, so no
+ * word inside one can hide a statement or match a pattern.
+ */
+function words(statement: string): string {
+  let text = '';
+  let at = 0;
+  while (at < statement.length) {
+    const ch = statement[at] ?? '';
+    let after = at;
+    if (statement.startsWith('--', at)) {
+      after = skipLineComment(statement, at);
+    } else if (statement.startsWith('/*', at)) {
+      after = skipBlockComment(statement, at);
+    } else if (ch === "'" || ch === '"') {
+      const previous = at > 0 ? statement[at - 1] : undefined;
+      after = skipQuoted(statement, at, ch, ch === "'" && (previous === 'e' || previous === 'E'));
+    } else if (ch === '$') {
+      after = skipDollarQuoted(statement, at);
+    }
+    if (after === at) {
+      text += ch;
+      at += 1;
+    } else {
+      text += ch === '-' || ch === '/' ? ' ' : ' ? ';
+      at = after;
+    }
   }
   return text.trim().replaceAll(/\s+/gu, ' ').toLowerCase();
 }
@@ -203,7 +239,11 @@ function leading(statement: string): string {
 function refuseOutsideATransaction(migrations: readonly Migration[]): void {
   for (const migration of migrations) {
     for (const statement of migration.statements) {
-      if (OUTSIDE_A_TRANSACTION.some((pattern) => pattern.test(leading(statement)))) {
+      const read = words(statement);
+      if (
+        classifyStatement(statement) === 'transaction' ||
+        OUTSIDE_A_TRANSACTION.some((pattern) => pattern.test(read))
+      ) {
         throw new Error(
           `migrate: ${migration.version} holds a statement PostgreSQL will not run inside a ` +
             `transaction block, or one that would end it, and every pending file is applied in ` +

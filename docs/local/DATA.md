@@ -86,10 +86,18 @@ One run is one transaction. Every pending file's statements run in order,
 each file's ledger row is written after its statements, and there is one
 commit at the end, so a refused or failed run leaves the database at the
 version it started at (SOL-FR6-2). A file holding a statement PostgreSQL will
-not run inside a transaction block (`CREATE INDEX CONCURRENTLY`,
-`ALTER TYPE ... ADD VALUE`, `VACUUM` and the like), or one that would end the
-transaction, is refused before anything runs (`OUTSIDE_A_TRANSACTION` in
-`migrate.ts`). None of the files on disk holds one.
+not run inside a transaction block, or one that would end the transaction, is
+refused before anything runs (`OUTSIDE_A_TRANSACTION` in `migrate.ts`). That
+covers every `CONCURRENTLY` index form and `DETACH PARTITION ... CONCURRENTLY`,
+`VACUUM`, `DISCARD ALL`, `ALTER SYSTEM`, database, tablespace and subscription
+commands, `ALTER DATABASE ... SET TABLESPACE` and `ALTER TYPE ... ADD VALUE`.
+It also covers every `REINDEX` and `CLUSTER`, because PostgreSQL refuses them
+on a partitioned relation and the text cannot say which relations are.
+Transaction control (`BEGIN`, `COMMIT`, `SAVEPOINT`, `PREPARE TRANSACTION` and
+the rest) is refused too. The guard reads a statement with the same scanner
+that splits the files, so a nested block comment cannot hide a `COMMIT`
+(SOL-FR7-1), and a word inside a comment or a quoted string is not read as
+part of the statement. None of the files on disk holds one of these.
 
 A session can connect after that first look. So the runner looks again inside
 the transaction, before each file's first statement and once more after the

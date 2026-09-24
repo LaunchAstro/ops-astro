@@ -313,6 +313,41 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // SOL-FR7-1: a COMMIT behind a nested comment would end the one transaction
+  // after the first file, so the first file and its ledger row would stay
+  // when the third fails. It must be refused before anything runs.
+  it('refuses a COMMIT behind a nested comment before the first of three files runs', async () => {
+    const built = await createEmptyDatabase({ part: 'fr9nested' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const before = await state(built);
+
+    const outcome = await applyMigrations(built.admin, [
+      ...onDisk,
+      syntheticMigration('9001_fr9_first', 'create table ops.fr9_first (id int)'),
+      syntheticMigration('9002_fr9_commit', '/* outer /* inner */ outer */ COMMIT'),
+      syntheticMigration('9003_fr9_broken', 'select 1 / 0'),
+    ]).catch((error: unknown) => error);
+
+    const [left] = await built.admin.execute<{ readonly first: boolean; readonly table: boolean }>(
+      `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
+              to_regclass('ops.fr9_first') is not null as table`,
+    );
+    expect({
+      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      first: left?.first,
+      table: left?.table,
+    }).toStrictEqual({
+      message: expect.stringMatching(
+        /^migrate: 9002_fr9_commit holds a statement PostgreSQL will not run inside/u,
+      ),
+      first: false,
+      table: false,
+    });
+    expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
   // R6-AUTHORITY-2: a role that is neither superuser nor in pg_read_all_stats
   // sees other roles' sessions with a null backend_type, so a predicate on it
   // would see nobody. The runner must refuse rather than find the room empty.
@@ -409,6 +444,20 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['-- a comment first\ncommit'],
     ['/* and another */ begin'],
     ['rollback'],
+    // SOL-FR7-1: block comments nest, so this is one comment and then COMMIT.
+    ['/* outer /* inner */ outer */ COMMIT'],
+    // SOL-FR7-2, and the rest of PostgreSQL 18's PreventInTransactionBlock
+    // callers. REINDEX of a partitioned table or index, and CLUSTER of a
+    // partitioned table, are refused inside one too, and the text cannot say
+    // whether a relation is partitioned, so every REINDEX and CLUSTER is.
+    ['discard all'],
+    ['cluster'],
+    ['cluster ops.partitioned using partitioned_a'],
+    ['reindex schema ops'],
+    ['reindex index ops.partitioned_a'],
+    ['alter database other set tablespace pg_default'],
+    ['alter table ops.partitioned detach partition ops.part1 concurrently'],
+    ['alter subscription s refresh publication'],
   ])('refuses %j and touches nothing', async (statement) => {
     await expect(
       applyMigrations(untouched, [
@@ -419,7 +468,20 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
   });
 
   // Past the guard, the runner's first act is reading the ledger, which this
-  // connection refuses: that error, and not the guard's, is the pass.
+  // connection refuses: that error, and not the guard's, is the pass. A word
+  // inside a comment or a quoted run is not a word of the statement.
+  it.each([
+    ['create index i on ops.t (a) -- not concurrently'],
+    ["comment on table ops.t is 'built once, not concurrently'"],
+    ["alter type ops.kind rename value 'a' to 'b' /* add value later */"],
+    ["create function ops.f() returns void language sql as $$ select 'commit' $$"],
+    ['analyze ops.t'],
+  ])('passes %j', async (statement) => {
+    await expect(
+      applyMigrations(untouched, [syntheticMigration('0001_fine', statement)]),
+    ).rejects.toThrow('the runner touched the database');
+  });
+
   it('refuses none of the files on disk, 0001 to the last', async () => {
     await expect(applyMigrations(untouched, onDisk)).rejects.toThrow(
       'the runner touched the database',
