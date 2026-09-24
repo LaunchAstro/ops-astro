@@ -21,6 +21,7 @@ import {
   type AgentRequest,
 } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
@@ -95,6 +96,7 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
       verify: createSupabaseVerifier({ secret: SECRET }),
       resolveBusiness: createBusinessResolver(fixture.db.admin),
       executeCommand,
+      executeRead,
       executeAgentCommand: async (database, businessId, presented, credential, request) => {
         seen.push(request);
         return await executeAgentCommand(database, businessId, presented, credential, request);
