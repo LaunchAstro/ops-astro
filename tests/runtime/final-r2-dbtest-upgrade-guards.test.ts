@@ -100,6 +100,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
       await db.admin.execute(`grant temporary on database "${db.name}" to ${grantee(db)}`);
       expect(await appHoldsTemporary(db, business)).toBe(true);
 
+      // The runner refuses while this database has other sessions; seeding opened one.
+      await db.closeSessions();
       await migrate(db.admin, 'migrations');
 
       expect(await appHoldsTemporary(db, business)).toBe(false);
@@ -223,6 +225,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-1: an over-ceiling total admitt
       expect(await capState(w)).toBe('1000 1900');
       const seeded = await capSnapshot(db);
 
+      // The runner refuses while this database has other sessions; seeding opened one.
+      await db.closeSessions();
       await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
         /budget_caps: cap .* in business .* is committed to 1900 past its ceiling 1000/u.test(
           String((error as { cause?: unknown }).cause ?? error),
@@ -240,6 +244,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-1: an over-ceiling total admitt
     await envelope(w, 400);
     await envelope(w, 600);
     const seeded = await capSnapshot(db);
+    // The runner refuses while this database has other sessions; seeding opened one.
+    await db.closeSessions();
     const migration = await migrate(db.admin, 'migrations');
     expect(migration.applied.map((v) => v.slice(0, 4))).toContain('0031');
     expect(await lastApplied(db)).toBe(

@@ -13,11 +13,15 @@
 // runtime DDL a refusal from the server rather than a convention -- so the role
 // that runs migrations has to be a different one, and naming it here is part of
 // how that stays true.
+//
+// The runner refuses while anything else is connected to the database, and
+// this script offers no way round that: no flag, no environment variable. The
+// supported upgrade is the API and GoTrue stopped, this, then both started.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
-import { migrate } from '../packages/core-records/src/tenancy/migrate.ts';
+import { MigrationRefused, migrate } from '../packages/core-records/src/tenancy/migrate.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -49,6 +53,17 @@ try {
     `db-migrate: ${applied.length} applied, ${alreadyApplied.length} already there, ` +
       `${applied.length + alreadyApplied.length} in the ledger`,
   );
+} catch (error) {
+  if (!(error instanceof MigrationRefused)) throw error;
+  console.error(`db-migrate: ${error.message}`);
+  for (const s of error.sessions) {
+    console.error(
+      `db-migrate:   connected: pid ${s.pid}, login ${s.usename}, ` +
+        `application "${s.application_name ?? ''}", from ${s.client_addr ?? 'local socket'}, ` +
+        `since ${s.backend_start}`,
+    );
+  }
+  process.exitCode = 2;
 } finally {
   await admin.close();
 }

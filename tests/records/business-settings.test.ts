@@ -399,6 +399,8 @@ describe.skipIf(serverUrl === undefined)(
       await applyMigrations(db.admin, onDisk.slice(0, revision));
       business = await insertBusiness(db.app, 'before');
       await db.app.withBusiness(business, installBusinessSettings);
+      // The runner refuses while this database has other sessions; seeding opened one.
+      await db.closeSessions();
       await applyMigrations(db.admin, onDisk);
     }, 180_000);
 

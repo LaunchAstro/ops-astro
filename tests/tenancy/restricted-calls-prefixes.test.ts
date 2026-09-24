@@ -238,8 +238,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
 
   for (const migration of onDisk) {
     it(`answers every caller as the contract says after ${migration.version}`, async () => {
+      // The runner refuses while this database has other sessions, and the
+      // callers hold some from the prefix before. Closed for the migration and
+      // opened again on the new prefix.
+      await callers.close();
+      await db.closeSessions();
       // oxlint-disable-next-line no-await-in-loop
       const [proof] = await proveEachPrefix(db, [migration]);
+      callers = openCallers(db, { own: alpha, other: bravo });
       expect(proof?.version).toBe(migration.version);
       if (proof !== undefined && proof.findings.length > 0) expect(describePrefix(proof)).toBe('');
       if (migration.version.startsWith('0001')) {

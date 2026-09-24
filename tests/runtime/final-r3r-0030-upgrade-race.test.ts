@@ -43,6 +43,7 @@ import {
 import {
   applyMigrations,
   migrate,
+  type Migration,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
@@ -336,6 +337,20 @@ async function versions(
   return { gate: row?.gate, decision: row?.decision };
 }
 
+/** One migration as the runner applies it: its statements, then its ledger row, in one transaction. */
+async function asTheRunnerApplies(admin: AdminConnection, migration: Migration): Promise<void> {
+  await admin.transaction(async (execute) => {
+    for (const statement of migration.statements) {
+      // oxlint-disable-next-line no-await-in-loop
+      await execute(statement);
+    }
+    await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
+      migration.version,
+      migration.checksum,
+    ]);
+  });
+}
+
 async function lastApplied(db: EmptyDatabase): Promise<string | undefined> {
   const [row] = await db.admin.execute<{ readonly last: string }>(
     `select max(version) as last from ops.schema_migrations`,
@@ -386,6 +401,10 @@ describe.skipIf(serverUrl === undefined)(
       });
       const moved = await moving;
       // The rest of the chain applies on top, so the upgrade as a whole succeeded.
+      // The runner refuses while other sessions are connected, so the
+      // application's and the watcher's are closed first.
+      await on.watch.close();
+      await on.db.closeSessions();
       await migrate(on.db.admin, 'migrations');
       expect({
         during,
@@ -484,7 +503,13 @@ describe.skipIf(serverUrl === undefined)(
         }),
       );
       await madeTheMove.promise;
-      const upgrading = settle(migrate(on.db.admin, 'migrations'));
+      // The runner now refuses outright while the application is connected
+      // (FR6-RUNNER), so it cannot be the one to meet this move. 0030's own
+      // statements are run here as the runner applies them, to keep proving
+      // what 0030 does if an application is there anyway.
+      const upgrade = UPGRADE;
+      if (upgrade === undefined) throw new Error('no 0030 on disk');
+      const upgrading = settle(asTheRunnerApplies(on.db.admin, upgrade));
       const during = await committedOrWaiting(on.watch, upgrading).finally(() => {
         held.resolve();
       });

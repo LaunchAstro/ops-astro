@@ -53,7 +53,49 @@ pnpm exec vitest run             # the whole suite, against this server
 `db-down.sh` never removes the volume. To delete the data, run
 `docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
 
-## What the schema is
+## Upgrade
+
+The supported upgrade is the application stopped while it runs: stop the API
+and GoTrue, run `node scripts/db-migrate.mjs` (`pnpm db:migrate`), then start
+GoTrue and the API again. [README.md, "Start it"](README.md#start-it) has the
+commands. A migration run beside a live application can go wrong in ways
+no single migration can rule out. 0030 alone had two (SOL-R3R-1 and
+SOL-R3R2-1), so the runner enforces the rule rather than leaving it to
+this page.
+
+When at least one migration is pending, the runner
+(`packages/core-records/src/tenancy/migrate.ts`) reads `pg_stat_activity` for
+every client backend on its own database except its own
+(`datname = current_database()`, `backend_type = 'client backend'`,
+`pid <> pg_backend_pid()`). If it finds any, it throws `MigrationRefused`,
+which names each one by pid, login, application name, client address and
+start time. It has applied nothing and written no ledger row. The CLI prints
+the same and exits 2. It counts any client session: the application login, GoTrue
+(which connects as `postgres`), a `psql` you left open, another tool. None of
+them can be told apart from an application safely, and there is no flag or
+environment variable that skips the check. With nothing pending it does not
+look at all, so an up-to-date install with the application running passes.
+
+A session can connect after that first look. So the runner looks again inside
+each migration's transaction, before its first statement and again after its
+ledger row, just before commit. It clears the backend's statistics snapshot
+first, because otherwise the second look inside one transaction would repeat
+the first. A session caught there rolls that migration back, and the error
+names the ones that committed before it in the same run. That leaves one
+window: a session that connects after the look before commit and before the
+commit completes. It starts on the old schema or waits on the migration's
+locks, and it is no worse off than a session that connects the moment after
+the upgrade. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
+LIMIT` to close that window, because a crash between setting it and restoring
+it would leave the install refusing its own application.
+
+`tests/tenancy/final-r6-runner-guard.test.ts` holds real sessions open against
+databases at 0023 and at the head. It covers the refusal with the application
+login held, with other client sessions held, the ledger and schema unchanged
+after it, the apply once they close, an up-to-date install with the
+application connected, a session that arrives inside a migration, and the CLI.
+The test harness's `closeSessions()` ends its own application pool before a
+test migrates. Nothing in the runner has a bypass.
 
 `migrations/` is the authority. It holds every migration from `0001_tenancy`
 onward, `db-migrate.mjs` applies whatever is in it in order, and the prefix
