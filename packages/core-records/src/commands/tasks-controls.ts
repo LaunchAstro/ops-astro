@@ -18,15 +18,10 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
 import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { refuseCommand } from './refusal.ts';
+import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import {
-  EXPIRY_FIX,
-  expiryFrom,
-  fromRuntime,
-  renewLease,
-  type RenewalFields,
-} from './tasks-runtime.ts';
+import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
+import { renewLease, type RenewalFields } from './tasks-lease.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];

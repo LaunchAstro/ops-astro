@@ -18,10 +18,8 @@
 // `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import {
-  handbackLease,
-  readSuccessor,
-} from '../../packages/core-records/src/commands/tasks-runtime.ts';
+import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
+import { readSuccessor } from '../../packages/core-records/src/commands/successor.ts';
 import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 

@@ -31,14 +31,12 @@ import {
   fromAuthority,
   fromIdentity,
   fromRecords,
+  fromRuntime,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
 } from '../../packages/core-records/src/commands/refusal.ts';
-import {
-  fromRuntime,
-  handbackLease,
-} from '../../packages/core-records/src/commands/tasks-runtime.ts';
+import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
 import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
 import { refuse as refuseRecords } from '../../packages/core-records/src/records/refusals.ts';
 import {

@@ -15,7 +15,8 @@ import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf, type CommandName } from './surface.ts';
-import { handbackLease, pickupReservation } from './tasks-runtime.ts';
+import { handbackLease } from './tasks-handback.ts';
+import { pickupReservation } from './tasks-pickup.ts';
 import { heartbeatLease } from './tasks-controls.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
