@@ -674,11 +674,14 @@ async function withinBounds(
     );
   }
 
-  const room = Number(bounds.limit_minor) - Number(bounds.committed);
-  if (successor.maximumMinor > room) {
+  // Sol 6 RUNTIME-2 (158d6de): exact, as approval is. A cap above 2^53 is
+  // valid, and as numbers its limit and committed total round, so a successor
+  // could be admitted beyond the room that is really left.
+  const room = BigInt(bounds.limit_minor) - BigInt(bounds.committed);
+  if (BigInt(successor.maximumMinor) > room) {
     return refuse(
       'SUCCESSOR_OUT_OF_BOUNDS',
-      `the cap behind this envelope has ${bounds.committed} of ${bounds.limit_minor} committed, so a successor asking ${successor.maximumMinor} does not fit its remaining ${room}`,
+      `the cap behind this envelope has ${bounds.committed} of ${bounds.limit_minor} committed, so a successor asking ${successor.maximumMinor} does not fit its remaining ${String(room)}`,
       'Propose a successor within the cap, or raise the cap through its own authorised decision.',
     );
   }
