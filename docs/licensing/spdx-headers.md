@@ -15,10 +15,10 @@ The full licence and project notice remain in [LICENSE](../../LICENSE) and
 `pnpm spdx` checks tracked and non-ignored new JavaScript, TypeScript, Python,
 shell and SQL files, including source-based configuration and extensionless
 Husky hooks. It requires one correct header within the first six lines.
-`pnpm spdx:cases` verifies rejection of missing, wrong and duplicate headers.
-Both run in `pnpm check` and therefore in the CI quality job.
+`pnpm spdx:cases` checks that missing, wrong and duplicate headers are rejected.
+Both run in `pnpm check` and therefore in the CI `local checks` job.
 
-Do not add project headers to third-party skills: they keep their upstream
+Do not add project headers to third-party skills. They keep their upstream
 licences and attribution in `NOTICE`. The check excludes `.claude/skills/`
 and its `.codex/skills` link. Licence texts, Markdown, data fixtures, JSON,
 YAML and lock files are outside this source-header convention.

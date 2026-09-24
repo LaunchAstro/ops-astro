@@ -1,11 +1,10 @@
 # Architecture decisions
 
-This is a curated public technical record, consolidated 8 September 2026 and
-amended since for later decisions, which carry their own dates where they
-appear.
+This is a curated public technical record, consolidated 8 September 2026.
+Later amendments carry their own dates.
 [Current decisions](../current-decisions.md) carries the present baseline and
-C01 to C17. The retained numbers preserve references to earlier decisions;
-missing numbers are intentionally not republished. Private planning and
+C01 to C17. The retained numbers keep references to earlier decisions working.
+Missing numbers are deliberately not republished. Private planning and
 commercial history stay in the original archive.
 
 The records below are rewritten technical explanations, not verbatim copies

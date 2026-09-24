@@ -8,7 +8,7 @@ The map covers surfaces, tables, jobs, gates, connectors, providers, skills and 
 
 Each capability has one typed registration that identifies its stable ID, kind, implementation, owning module, contract and verification references. UI registrations also identify supported variants. Build one complete map from those declarations and generate human-readable navigation from it. Do not maintain a separate manual inventory of the same facts.
 
-Define the exact schema with the first transfer. Keep the fields to facts that a developer, agent or check actually needs. Runtime task values, credentials, approval decisions and execution state do not belong in this map.
+Define the exact schema with the first transfer. Keep the fields to facts that a developer, agent or check needs. Runtime task values, credentials, approval decisions and execution state do not belong in this map.
 
 ## Enforce completeness independently
 
@@ -28,4 +28,4 @@ Do not mark a capability operational by hand just because an entry or file exist
 
 A fresh development agent must be able to find the work through repository instructions, the current ticket/specification, the capability map and evidence. Private conversation memory cannot supply an unstated requirement.
 
-Keep comments for non-obvious reasons or constraints and concise documents for intent and decisions that code cannot express. Derive reference lists from code wherever possible. Fresh-context development does not erase application knowledge or task state; a restarted worker resumes from persisted operational records.
+Keep comments for non-obvious reasons or constraints and concise documents for intent and decisions that code cannot express. Derive reference lists from code where possible. Fresh-context development does not erase application knowledge or task state; a restarted worker resumes from persisted operational records.

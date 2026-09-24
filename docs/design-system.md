@@ -1,6 +1,6 @@
 # Shared design system
 
-This is the contract for the first UI transfer. It was written for the empty foundation. `packages/ui` now holds the transferred tokens, primitives, styles and surfaces. It ships no font files or icon assets: `packages/ui/src/styles/1-tokens.css` names the font families with system fallbacks, and controls that carry an icon in the mockup carry a word or an `aria-label` instead.
+This is the contract for the first UI transfer. It was written for the empty foundation. `packages/ui` now holds the transferred tokens, primitives, styles and surfaces. It ships no font files or icon assets. `packages/ui/src/styles/1-tokens.css` names the font families with system fallbacks. Controls that carry an icon in the mockup carry a word or an `aria-label` instead.
 
 ## One maintained design home
 

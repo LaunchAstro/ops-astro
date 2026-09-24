@@ -22,7 +22,7 @@ intended order; neither records an acceptance.
 
 Steps 1 to 4 were proposed to run in that order. The local task slice of step 4
 was built before steps 2 and 3 completed, under a later instruction recorded
-outside this repository: publication, hosted-control proof and the full
+outside this repository. Publication, hosted-control proof and the full
 build-loop rehearsal all remain outstanding, and the slice is local only.
 
 Mobile remains a later roadmap item. Optional agent frameworks are unselected.
