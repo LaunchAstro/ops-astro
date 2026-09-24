@@ -62,14 +62,15 @@ manifest's comment names the suites this applies to.
 **A suite that needs more than a database is not named either.**
 `tests/api/server-onerror.test.ts` and `tests/cli/mounted-cli.test.ts` each
 spawn the real `apps/api/server.ts` on the loopback port `SURFACE_API_PORT`
-names, and without it every case that spawns it is skipped (`server-onerror.test.ts`'s 'U1:
-the real server answers a tampered decision with the named fault',
-`mounted-cli.test.ts:31`, `:77`). The runner passes its environment through
-and does not set that port (`scripts/db-conformance.mjs:178`), so naming them would fail the job on a
-skip. `tests/acceptance/restart-and-expiry.test.ts` stays out for the same
-reason: its container-restart case skips unless `L5_RESTART_CONTAINER_NAME`
-names the container (`restart-and-expiry.test.ts:135-139`), which
-`pnpm verify:restart` does. Each runs as its own step with its variable set.
+names, and without it every case that spawns it is skipped
+(`server-onerror.test.ts`'s 'U1: the real server answers a tampered decision
+with the named fault', `mounted-cli.test.ts:31`, `:77`). The runner passes its
+environment through and does not set that port
+(`scripts/db-conformance.mjs:178`), so naming them would fail the job on a skip.
+`tests/acceptance/restart-and-expiry.test.ts` stays out for the same reason: its
+container-restart case skips unless `L5_RESTART_CONTAINER_NAME` names the
+container (`restart-and-expiry.test.ts:135-139`), which `pnpm verify:restart`
+does. Each runs as its own step with its variable set.
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
@@ -189,9 +190,10 @@ how the run ended. Both were observed, not theorised: the runner returned exit
 Rule 8 is the named-but-undiscovered suite. A manifest can name a file that
 exists on disk and sits outside vitest's discovery. The runner's disk check
 passes, vitest never loads the file, the other named suites supply the counts,
-and the summary reads "2 named suite(s), 1 test(s): 1 passed". So every manifest path must now be bound to an entry in
-`testResults`, and a suite absent from the report is a failure naming the path.
-Aggregate counts never satisfy this on their own.
+and the summary reads "2 named suite(s), 1 test(s): 1 passed". So every manifest
+path must now be bound to an entry in `testResults`, and a suite absent from the
+report is a failure naming the path. Aggregate counts never satisfy this on
+their own.
 
 Rule 9 is vitest's own verdict. An unhandled rejection fails the run and exits
 the process non-zero while every test vitest counted still passes, so
