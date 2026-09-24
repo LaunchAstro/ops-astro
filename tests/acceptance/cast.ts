@@ -56,7 +56,11 @@ export interface AgentIdentity {
 export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
 
 /**
- * The grants each seeded role holds, copied from `GRANTS_BY_ROLE` in the seed.
+ * The grants the fixture gives each role. They are not a copy of
+ * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
+ * `person:read` or `settings:read`, and the fixture admin holds every action on
+ * four collections where the seed names ten pairs. `final-r1-dbtest-cast.test.ts`
+ * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
  * member with no grant must be told `SCOPE_NOT_GRANTED` and never handed an
