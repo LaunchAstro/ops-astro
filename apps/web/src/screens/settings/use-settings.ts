@@ -234,6 +234,9 @@ export function useSettings(
         ? holdsManage(caps.value.grants)
         : false;
   const shut = closed || !mayManage;
+  // A conflict's reread still in flight: the row on screen is the one that
+  // lost, so a press now would write against a revision nobody has seen.
+  const rereading = conflict !== null && read.outcome === 'loading';
 
   const rowFor = (which: Which): SettingRow | null => settingOf(rowsInHand(read), KEY[which]);
 
@@ -283,13 +286,15 @@ export function useSettings(
     confirmed,
     closed,
     busy,
-    disabled: busy !== null || shut,
+    disabled: busy !== null || shut || rereading,
     because,
     conflict,
     rowFor,
     save,
     writeOver: () => {
-      if (conflict === null) return;
+      // Only over what the reread showed: never while it is in flight, and
+      // never when it did not answer, which would write with no revision at all.
+      if (conflict === null || read.outcome !== 'ready') return;
       setConflict(null);
       save(conflict.which, conflict.draft);
     },
