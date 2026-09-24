@@ -28,6 +28,7 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 import { effectiveGrants, subjectsOf, type Action, type ScopeKind } from '../authority/grants.ts';
+import { declarationOf, type CommandName } from '../commands/surface.ts';
 
 /** One thing the caller may do, as the grant model spells it. */
 export interface Capability {
@@ -84,6 +85,31 @@ export interface AgentCapabilities {
 // `reads/queue.ts` and `reads/tasks.ts`, so a read module reaching back into it
 // would close an import cycle.
 
+/**
+ * The writes an external party (R4) may reach, as the pairs they ask for.
+ *
+ * The R4 gate in `commands/prepare.ts` (`EXTERNAL_WRITES`) refuses every other
+ * write before any grant row is read, so a scoped `write` or `assign` row a
+ * share would never carry is authority the party cannot use. Showing it would
+ * tell a client it could do the thing and let the 403 say otherwise, which is
+ * what this read exists to prevent. The gate's set is not exported, so the one
+ * name is repeated here, and `final-r2-fr2-api-capabilities.test.ts` holds the
+ * two together over HTTP.
+ */
+const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment'];
+
+const EXTERNAL_PAIRS: ReadonlySet<string> = new Set(
+  EXTERNAL_WRITES.map((name) => {
+    const declared = declarationOf(name);
+    return `${declared.collection}:${declared.action}`;
+  }),
+);
+
+/** Whether an external party can use a pair: a read, or an external write's pair. */
+function usableOutside(collection: string, action: Action): boolean {
+  return action === 'read' || EXTERNAL_PAIRS.has(`${collection}:${action}`);
+}
+
 interface CandidateRow {
   readonly collection: string;
   readonly action: Action;
@@ -121,6 +147,11 @@ export async function readCapabilities(
 
   const held = new Map<string, Capability>();
   for (const candidate of candidates) {
+    // R4 is shown its shares' pairs and the one write it can reach, never a
+    // provisioned row the external gate refuses on every operation.
+    if (session.roleKey === null && !usableOutside(candidate.collection, candidate.action)) {
+      continue;
+    }
     // Sequential: one transaction, one connection, and the candidate list is
     // the pairs one person holds rather than the business's whole grant table.
     // oxlint-disable-next-line no-await-in-loop

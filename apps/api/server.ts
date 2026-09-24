@@ -48,6 +48,7 @@ import { executeAgentCommand } from '../../packages/core-records/src/commands/ag
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
 import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
+import { KEY_FILE_VARIABLE } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
   describeRecovered,
@@ -77,8 +78,17 @@ export function readEnvFile(file: string): Readonly<Record<string, string>> {
   return values;
 }
 
-/** The real environment wins, so a shell can override a local file. */
+/**
+ * The real environment wins, so a shell can override a local file.
+ *
+ * A key file named in the real environment is not shadowed by the checkout's
+ * keyring: with `DELEGATION_CREDENTIAL_KEY_FILE` set, `.local/delegation.env`
+ * is not read. Copied into the process environment its two settings would be
+ * explicit configuration, and `configuredCredentialKeys` never consults the
+ * named file once either is present (`credential-keys.ts`).
+ */
 export function localEnvironment(): Readonly<Record<string, string | undefined>> {
+  const keyFileNamed = (process.env[KEY_FILE_VARIABLE] ?? '') !== '';
   return {
     ...readEnvFile(join(ROOT, '.local', 'db.env')),
     ...readEnvFile(join(ROOT, '.local', 'auth.env')),
@@ -89,7 +99,7 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     ...readEnvFile(join(ROOT, '.local', 'gate.env')),
     // The delegation credential keyring, in a gitignored file of its own for
     // the same reason, and never the gate key or the JWT secret.
-    ...readEnvFile(join(ROOT, '.local', 'delegation.env')),
+    ...(keyFileNamed ? {} : readEnvFile(join(ROOT, '.local', 'delegation.env'))),
     // The deployment's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
     // Deployment configuration rather than a secret, in a file of its own so the
     // database script that rewrites `db.env` cannot drop it.

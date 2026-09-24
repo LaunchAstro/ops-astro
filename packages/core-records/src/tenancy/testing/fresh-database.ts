@@ -116,6 +116,12 @@ export async function createEmptyDatabase(
        end $$`,
     );
     await server.execute(`create database ${identifier(name)}`);
+    // PostgreSQL grants TEMPORARY on a new database to PUBLIC. A temporary
+    // table is created in `pg_temp`, outside every schema the application is
+    // refused CREATE in, and on a pooled backend it outlives the transaction
+    // and shadows `records` for the next tenant. Revoked where the database is
+    // made, so the application may create nothing at all (R2-AUTHORITY-61).
+    await server.execute(`revoke temporary on database ${identifier(name)} from public`);
     // Neither password can be a bound parameter in CREATE ROLE. Both are 24
     // random bytes in base64url, whose alphabet holds no quote, so there is
     // nothing here to escape and nothing a caller could have supplied.

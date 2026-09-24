@@ -118,6 +118,11 @@ end \$\$;
 alter role $APP_USER password '$APP_PASSWORD';
 grant $GROUP_ROLE to $APP_USER;
 grant connect on database $DATABASE to $APP_USER;
+-- PostgreSQL grants TEMPORARY on a new database to PUBLIC. A temporary table
+-- lives outside every schema the runtime role is refused CREATE in, and on a
+-- pooled backend it outlives the transaction and shadows records for the
+-- next tenant, so it is revoked here with the rest of what the role may not do.
+revoke temporary on database $DATABASE from public;
 SQL
 
 admin_url="postgres://$ADMIN_USER:$ADMIN_PASSWORD@$HOST:$PORT/$DATABASE"
