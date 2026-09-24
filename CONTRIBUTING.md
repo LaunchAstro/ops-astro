@@ -74,18 +74,25 @@ request body. It proves that the answer is bound to this exact head, and
 nothing further: it reads no reviewer identity, so a green `review evidence
 for this revision` does not establish that any reviewer read anything.
 
-It reads each code-review and security-review line as one outcome. A line
-holding `not`, `never`, `no`, `cannot`, `isn't`, `wasn't` or `aren't`
-anywhere is a rejection, unless the `no` belongs to `no findings` (or no
-issues, problems, blockers or concerns). A condition anywhere on the line
-(`subject to`, `pending`, `once`, `after`, `if`, `provided`, `unless`,
-`until`) is a rejection too: an approval that waits on something is not an
-outcome. Findings, issues, problems, blockers and concerns are all findings,
-and closed, resolved, fixed and addressed all close one. A line that
-mentions a finding must close every one, in words (`all`, `every`, `both`)
-or in counts, across sentences too: `2 issues; 1 resolved` and
-`approved with some issues` fail, and `2 findings. 2 closed` passes. Reword
-a clean outcome rather than qualify part of it.
+It does not read the outcome as English. The outcome is the whole text
+after `Code review:` or `Security review:` on that line, ignoring case and
+one trailing full stop, and it must be exactly one of these forms; anything
+else fails, and the failure lists them:
+
+- code review: `no findings`, `the review found nothing`,
+  `every finding it raised is closed`, `<N> findings, all closed` or
+  `<N> findings, <N> closed`;
+- security review: `run against <sha>, no findings`,
+  `run against <sha>, <N> findings, all closed` or
+  `run against <sha>, <N> findings, <N> closed`; on a change that touches
+  no sensitive path, `not required: <reason>` as well.
+
+N is the same number on both sides, at least 1, with `finding` for 1. On a
+sensitive change `<sha>` must be the pull request's head. An explanation
+goes on the following lines, which the check does not read. So
+`approved with 2 findings; 2 resolved` and `no findings after recheck` fail
+by design: write `2 findings, 2 closed` or `no findings`, and put the rest on
+the next line.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. Because
