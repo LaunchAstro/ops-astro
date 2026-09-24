@@ -108,6 +108,7 @@ function observeOn(wrapper: Wrapper, world: World) {
     database,
     verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
     resolveBusiness: async (key: string) => byKey[key],
+    executeCommand,
     executeRead: executeRead as unknown as ReadExecutor,
     executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
   });

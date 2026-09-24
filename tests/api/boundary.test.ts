@@ -28,6 +28,7 @@ import {
   type SurfaceDeclaration,
 } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 
 const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
@@ -90,6 +91,7 @@ function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: S
     database: stubDatabase(seen),
     verify: createSupabaseVerifier({ secret: SECRET }),
     resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    executeCommand,
     ...overrides,
   });
 }
@@ -300,7 +302,8 @@ describe('the read half of the surface', () => {
     const calls: Array<{ businessId: string; presented: VerifiedSubject; read: string }> = [];
     const executeRead: ReadExecutor = async (_database, businessId, presented, request) => {
       calls.push({ businessId, presented, read: request.read });
-      return { ok: true, read: request.read };
+      // A result of the executor's own type; the case asks only which read ran.
+      return { ok: true, persons: [] };
     };
 
     const token = await tokenFor(MIA);
