@@ -7,7 +7,9 @@
 // whether an outsider is told NOT_FOUND are pinned by literal, and its operand
 // check by the exact refusal it gives each of a set of bodies, so a
 // refactor that moved a check, loosened one or changed its words fails here
-// before a caller sees it. The refusal order itself is pinned by
+// before a caller sees it. Since the catalogue landed, each fact is read off
+// the read's row, and the row's spine, subject and authority mode are pinned
+// beside them. The refusal order itself is pinned by
 // `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
@@ -15,11 +17,22 @@
 
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-records/src/commands/surface.ts';
-import {
-  OUTSIDER_NOT_FOUND,
-  READ_IDENTIFIERS,
-} from '../../packages/core-records/src/reads/dispatch.ts';
-import { refuseReadOperands } from '../../packages/core-records/src/commands/operands.ts';
+import { READ_CATALOGUE, type ReadName } from '../../packages/core-records/src/reads/catalogue.ts';
+
+const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
+const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
+const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
+
+/** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
+const PINNED_SHAPE = {
+  'person.list': { spine: false, subject: false, authority: 'declared' },
+  'preset.plan': { spine: false, subject: false, authority: 'from the request' },
+  'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'settings.read': { spine: false, subject: false, authority: 'declared' },
+  'task.board': { spine: true, subject: false, authority: 'declared' },
+  'task.queue': { spine: false, subject: false, authority: 'declared' },
+  'task.read': { spine: true, subject: true, authority: 'declared' },
+};
 
 const PINNED_IDENTIFIERS = {
   'person.list': [],
@@ -104,8 +117,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
 };
 
 /** The refusal without its `refused` flag, or null. */
-function answerOf(read: string, body: Readonly<Record<string, unknown>>): unknown {
-  const refusal = refuseReadOperands(read, body);
+function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unknown {
+  const refusal = READ_CATALOGUE[read].operands(body);
   if (refusal === undefined) return null;
   return { code: refusal.code, names: refusal.names, fixes: refusal.fixes };
 }
@@ -123,7 +136,23 @@ describe('the per-read facts at faf3285', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 
-  it.each(Object.keys(PINNED_OPERANDS))('checks the operands of %s the same way', (read) => {
+  it('reaches each answer the same way', () => {
+    const shape = Object.fromEntries(
+      rows
+        .map(([name, row]) => [
+          name,
+          {
+            spine: row.spine,
+            subject: row.subject !== undefined,
+            authority: typeof row.authority === 'function' ? 'from the request' : row.authority,
+          },
+        ])
+        .toSorted(([a], [b]) => String(a).localeCompare(String(b))),
+    );
+    expect(shape).toStrictEqual(PINNED_SHAPE);
+  });
+
+  it.each(rows.map(([name]) => name))('checks the operands of %s the same way', (read) => {
     expect(BODIES.map(([, body]) => answerOf(read, body))).toStrictEqual(PINNED_OPERANDS[read]);
   });
 });
