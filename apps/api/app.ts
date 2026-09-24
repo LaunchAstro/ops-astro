@@ -280,24 +280,18 @@ export function createApi(options: ApiOptions): Hono {
   if (agentExecutor !== undefined) {
     mountSurface('/api/a/b/:businessKey', AGENT, async (context, declaration, admitted) => {
       const { presented, businessId, body } = admitted;
-      const operationId = body['operationId'];
+      // From the route, never from the body, exactly as on the person path: a
+      // caller must not be able to post to one endpoint and have another
+      // operation run. `operationId` is passed as the JSON carried it, absent
+      // included: the envelope asks `typeof` itself and refuses anything that
+      // is not a string, so the rule lives in one place (Sol 6 AUTHORITY-4).
+      const request = { ...body, command: declaration.name } as AgentRequest;
       const result = await agentExecutor(
         options.database,
         businessId,
         presented,
         context.req.header(DELEGATION_HEADER),
-        {
-          ...body,
-          // From the route, never from the body, exactly as on the person
-          // path: a caller must not be able to post to one endpoint and have
-          // another operation run.
-          command: declaration.name,
-          // A string is passed as sent. Anything else is not an operation id,
-          // and is passed as the empty one, which the envelope refuses: a
-          // number or an array is not converted into a string that passes
-          // (Sol 6 AUTHORITY-4).
-          operationId: typeof operationId === 'string' ? operationId : '',
-        },
+        request,
       );
       if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
       return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
