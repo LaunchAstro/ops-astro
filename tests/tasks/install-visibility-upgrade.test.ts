@@ -46,6 +46,24 @@ async function fieldRows(tx: TenantQuery): Promise<Readonly<Record<string, unkno
   return Object.fromEntries(rows.map((r) => [r.id, r.row]));
 }
 
+/**
+ * The title and state rows as tuples: `xmin`, and `ctid` beside it.
+ *
+ * `field_defs` has no revision, and an update that writes the value a row
+ * already holds leaves `to_jsonb` of it unchanged, so only the tuple shows
+ * whether the row was written. `xmin` alone cannot show it here, because this
+ * test runs in one transaction and every write in it carries the same xid;
+ * `ctid` moves on any update, one in the same transaction included.
+ */
+async function tuples(tx: TenantQuery, typeId: string): Promise<Readonly<Record<string, string>>> {
+  const rows = await tx.query<{ readonly key: string; readonly tuple: string }>(
+    `select key, xmin::text || ' ' || ctid::text as tuple from field_defs
+      where record_type_id = $1 and key in ('title', 'state') order by key`,
+    [typeId],
+  );
+  return Object.fromEntries(rows.map((r) => [r.key, r.tuple]));
+}
+
 async function recordRows(tx: TenantQuery): Promise<readonly unknown[]> {
   const rows = await tx.query<{ readonly row: unknown }>(
     `select to_jsonb(r) as row from records r where business_id = $1 order by id`,
@@ -169,9 +187,13 @@ describe.skipIf(serverUrl === undefined)(
         expect(after?.fields).toMatchObject({ title: TITLE, state: label });
         expect(JSON.stringify(after)).not.toContain(stateId);
 
-        // 3. Stability: a second run writes nothing at all.
+        // 3. Stability: a second run writes nothing at all, not even the
+        //    value the rows already hold (THERMO-RECHECK-3 R3B1).
+        const tuplesAfter = await tuples(tx, first.taskTypeId);
+        expect(Object.keys(tuplesAfter).toSorted()).toStrictEqual(['state', 'title']);
         const third = await installTaskSpine(tx);
         expect(third).toStrictEqual(again);
+        expect(await tuples(tx, first.taskTypeId)).toStrictEqual(tuplesAfter);
         expect(await fieldRows(tx)).toStrictEqual(fieldsAfter);
         expect(await recordRows(tx)).toStrictEqual(recordsBefore);
       });

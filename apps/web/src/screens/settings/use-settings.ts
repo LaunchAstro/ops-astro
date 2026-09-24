@@ -31,7 +31,7 @@
 // The write itself goes through `useCommand`, which classifies the answer; this
 // file keeps only what settings does with each kind.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CommandOutcome, MutationOptions, OperationsClient } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { sessionGeneration, type StorageLike } from '../../session/token.ts';
@@ -154,6 +154,13 @@ export function useSettings(
   });
   const [held, setHeld] = useState(fromMemory);
   const inHand = (was: Held): Held => (was.grantKey === grantKey ? was : fromMemory());
+  // The hold as it stands now, beside the one on screen. A save is decided
+  // from this and written to storage when it answers, never inside a state
+  // updater: React runs an updater on its next render, which an unmounted
+  // screen never has, and which can come after the denial's effect has
+  // written its mark over the value the save would then write back.
+  const latest = useRef<Held | null>(null);
+  const current = (): Held => inHand(latest.current ?? fromMemory());
   const { confirmed } = inHand(held);
   const command = useCommand();
   const [pressed, setPressed] = useState<Which>('four-eyes');
@@ -189,11 +196,14 @@ export function useSettings(
   const readOutcome = read.grantKey === grantKey ? read.outcome : 'loading';
   useEffect(() => {
     const memoryNow = sessionMemory(storage, businessKey, grantKey);
+    const now = latest.current?.grantKey === grantKey ? latest.current : null;
     if (readOutcome === 'denied') {
       memoryNow.deny();
-      setHeld({ grantKey, confirmed: {}, denied: true });
+      latest.current = { grantKey, confirmed: {}, denied: true };
+      setHeld(latest.current);
     } else if (readOutcome === 'ready' || readOutcome === 'empty') {
       memoryNow.lift();
+      if (now?.denied === true) latest.current = { ...now, denied: false };
       setHeld((was) => (was.grantKey === grantKey && was.denied ? { ...was, denied: false } : was));
     }
   }, [readOutcome, storage, businessKey, grantKey]);
@@ -220,15 +230,16 @@ export function useSettings(
     // A session refused the read keeps nothing until a read answers it. The
     // hold is judged as it stands now, not as it stood when Save was pressed:
     // a refusal that arrived while the write was in flight still holds, even
-    // when there is no storage to have recorded it. Keeping the same values
-    // twice is the same write, so the updater may be run again.
-    setHeld((was) => {
-      const now = inHand(was);
-      if (now.denied) return was;
-      const merged = { ...now.confirmed, ...kept };
-      memory.keep(merged);
-      return { grantKey, confirmed: merged, denied: false };
-    });
+    // when there is no storage to have recorded it. The value is kept now,
+    // whether or not the screen is still mounted; a refusal whose effect has
+    // not run yet writes its mark after this and wins.
+    const now = current();
+    if (!now.denied) {
+      const next: Held = { grantKey, confirmed: { ...now.confirmed, ...kept }, denied: false };
+      latest.current = next;
+      memory.keep(next.confirmed);
+      setHeld((was) => (inHand(was).denied ? was : next));
+    }
     // The row as the server holds it, not the echo and not what was typed.
     settings.reload();
   };
