@@ -150,10 +150,19 @@ export async function lockProposal(
   // is made obsolete by the version this call writes, so it is retired here
   // under the same ordered set rather than left able to settle.
   // Rechecked under the locks, before the first write. A lease picked up or
-  // released in between is a set this transaction did not lock for.
-  const { locks, found: liveWork } = await lockRediscovered(tx, {
-    discover: async () => await discoverLiveWork(tx, { versionIds: liveVersions }),
-    locks: async (work) => [
+  // released in between is a set this transaction did not lock for, and so
+  // (thermo O3) is a hold an approval of the superseded version opened: the
+  // classifier below would meet it outside these locks.
+  const {
+    locks,
+    found: [liveWork],
+  } = await lockRediscovered(tx, {
+    discover: async () =>
+      [
+        await discoverLiveWork(tx, { versionIds: liveVersions }),
+        await affectedByVersions(tx, liveVersions),
+      ] as const,
+    locks: ([work, held]) => [
       ...(accounting === null
         ? []
         : [
@@ -163,12 +172,12 @@ export async function lockProposal(
       { lockClass: 'task', id: request.taskId },
       { lockClass: 'lineage', id: lineageId ?? openingId },
       ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
-      ...(await affectedByVersions(tx, liveVersions)),
+      ...held,
       ...liveWorkLocks(work),
     ],
     rule: 'exact',
     changed:
-      'propose: the live work on the superseded version changed under discovery; roll back and rediscover',
+      'propose: the live work on the superseded version, or its holds, changed under discovery; roll back and rediscover',
   });
   return { locks, lineageId, restarts, accounting, openingId, liveWork };
 }

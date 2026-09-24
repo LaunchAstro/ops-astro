@@ -262,11 +262,12 @@ const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #31b71195';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**
- * Taken at 61a3d27, before the move. propose's held set is read once, before
- * its locks, and not again: only its live work is rechecked (thermo O3).
+ * Taken at 61a3d27, before the move, and unchanged by it. One change since, and
+ * on purpose: thermo O3's fix rechecks propose's held set under the locks as
+ * well as its live work, so its window ends with that read.
  */
 const PINNED = {
-  propose: [LIVE_BY_VERSION, HELD_BY_VERSION, ...LOCKS, LIVE_BY_VERSION],
+  propose: [LIVE_BY_VERSION, HELD_BY_VERSION, ...LOCKS, LIVE_BY_VERSION, HELD_BY_VERSION],
   cancel: [HELD_BY_LINEAGE, LIVE_BY_LINEAGE, ...LOCKS, HELD_BY_LINEAGE, LIVE_BY_LINEAGE],
   delegationRevoke: [
     LIVE_BY_DELEGATION,
