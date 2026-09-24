@@ -76,15 +76,8 @@ import { retryOnce } from './envelope.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
-import {
-  AGENT_OPERATIONS,
-  parseOperands,
-  type AgentCall,
-  type AgentRequest,
-} from './agent-operations.ts';
-
-export type { AgentRequest } from './agent-operations.ts';
-export { CREDENTIAL_NOT_REPLAYED } from './agent-replay.ts';
+import { AGENT_OPERATIONS, parseOperands } from './agent-operations.ts';
+import type { AgentCall, AgentRequest } from './agent-call.ts';
 
 /**
  * The two operations an agent may reach before it holds anything.

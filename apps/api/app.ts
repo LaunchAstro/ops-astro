@@ -40,10 +40,8 @@ import {
 } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { NO_AGENT_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
 import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import {
-  agentAnswer,
-  type AgentRequest,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { agentAnswer } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import {
   isCommandRefusal,
   refuseCommand,

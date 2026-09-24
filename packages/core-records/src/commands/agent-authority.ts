@@ -12,7 +12,8 @@ import {
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
-import type { AgentCall, AgentOperation, AgentRequest } from './agent-operations.ts';
+import type { AgentOperation } from './agent-operations.ts';
+import type { AgentCall, AgentRequest } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 export const NO_DELEGATION_FIXES: readonly string[] = [

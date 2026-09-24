@@ -18,10 +18,12 @@ import type { AgentSession } from '../../packages/core-records/src/identity/agen
 import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
 import {
   AGENT_OPERATIONS,
-  type AgentOperands,
   type AgentOperation,
-  type AgentRequest,
 } from '../../packages/core-records/src/commands/agent-operations.ts';
+import type {
+  AgentOperands,
+  AgentRequest,
+} from '../../packages/core-records/src/commands/agent-call.ts';
 import { pickupAsPerson } from '../../packages/core-records/src/commands/tasks-pickup.ts';
 import { heartbeatOwnLease } from '../../packages/core-records/src/commands/tasks-lease.ts';
 import { handbackOwnLease } from '../../packages/core-records/src/commands/tasks-handback.ts';

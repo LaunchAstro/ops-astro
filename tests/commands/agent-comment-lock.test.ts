@@ -12,10 +12,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { AgentSession } from '../../packages/core-records/src/identity/agent-login.ts';
-import {
-  AGENT_OPERATIONS,
-  type AgentRequest,
-} from '../../packages/core-records/src/commands/agent-operations.ts';
+import { AGENT_OPERATIONS } from '../../packages/core-records/src/commands/agent-operations.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import { lockTask } from '../../packages/core-records/src/commands/prepare.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';

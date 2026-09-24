@@ -19,7 +19,8 @@ import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import { capabilitiesOf, type AgentCall, type AgentOperation } from './agent-operations.ts';
+import { capabilitiesOf, type AgentOperation } from './agent-operations.ts';
+import type { AgentCall } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /**

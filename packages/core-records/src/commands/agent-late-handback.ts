@@ -13,7 +13,7 @@ import {
 import { retainHistoricalReport } from '../../../core-runtime/src/handback.ts';
 import type { CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
-import type { AgentCall, AgentOperands } from './agent-operations.ts';
+import type { AgentCall, AgentOperands } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /**
