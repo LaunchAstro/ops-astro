@@ -272,8 +272,8 @@ refusal, and `fields.source` stays `SOURCE_SPOOFED`.
 business's unboarded tasks. A board id must name a live task in the caller's
 business: a foreign, fabricated, malformed or trashed board is `NOT_FOUND` 404,
 the same body as any unknown record, audited in the caller's business with no
-subject, and never answered as an empty list (the `task.board` case of
-`serveRead` and `boardExists`, `reads/dispatch.ts`; minimum contract 8.2 cases
+subject, and never answered as an empty list (the `serve` of the
+`task.board` row and `boardExists`, `reads/catalogue.ts`; minimum contract 8.2 cases
 1 and 3).
 `tests/commands/board-not-found.test.ts` holds it. `WRONG_BUSINESS` stays
 registered and unproducible (minimum contract 4.4, as corrected 14 September
@@ -644,9 +644,10 @@ prefix, the command line (`apps/cli/client.ts`) and the web client
 there, and a row one surface cannot reach fails it.
 
 Every row below is a `COMMAND_SURFACE` declaration. Cites are symbols, not line
-numbers. A person-prefix write is the case of that name in `handleCommand`
-(`commands/handlers.ts`), and a person-prefix read is the case of that name in
-`serveRead` (`reads/dispatch.ts`). The tables name the function each case calls.
+numbers. A person-prefix write is the entry of that name in `HANDLERS`, which
+`handleCommand` calls (`commands/handlers.ts`), and a person-prefix read is the
+`serve` of the row of that name in `READ_CATALOGUE` (`reads/catalogue.ts`),
+which `serveRead` runs (`reads/dispatch.ts`). The tables name the function each case calls.
 
 The five support controls, with their owning functions:
 
