@@ -232,7 +232,7 @@ declaration's `authorisedOn` names it (`CommandDeclaration` in
 is checked against the task that the body's reservation or lease belongs to
 (`task.pickup`, `task.handback`, `task.heartbeat`; `SCOPE_OF.claim`). Every other
 command is checked against the business, whatever identifiers its body carries.
-Reads declare it too. `task.read` is `record`: it asks about the task once
+Reads declare it too. `task.read` is `record`. It asks about the task once
 `reads/dispatch.ts` resolves it, and about the business when it does not. Every
 other read is `business`. The read path decides from its catalogue row, and
 `tests/commands/read-authorised-on.test.ts` holds the declaration to it.

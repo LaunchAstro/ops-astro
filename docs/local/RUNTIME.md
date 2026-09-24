@@ -154,7 +154,7 @@ interface DecideRequest {
   signingKey: SigningKey;
   capId: string;
 }
-// Narrow on `decision` first: the four handles exist on the approve branch only.
+// Narrow on `decision` first. The four handles exist on the approve branch only.
 type Decided =
   | (DecidedCommon & {
       decision: 'approve';
