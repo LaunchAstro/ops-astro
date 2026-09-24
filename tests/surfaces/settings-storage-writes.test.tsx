@@ -169,7 +169,7 @@ describe('settings storage writes', () => {
 
     // keep, deny, lift and a keep after it, at the least: the check saw writes.
     expect(writes.length).toBeGreaterThanOrEqual(4);
-    expect(writes.filter(insideUpdater)).toEqual([]);
+    expect(writes.filter((stack) => insideUpdater(stack))).toEqual([]);
   });
 
   it('the check sees a write made inside a state updater', async () => {
@@ -179,6 +179,6 @@ describe('settings storage writes', () => {
     await page.unmount();
 
     expect(writes.length).toBeGreaterThanOrEqual(1);
-    expect(writes.filter(insideUpdater)).toHaveLength(writes.length);
+    expect(writes.filter((stack) => insideUpdater(stack))).toHaveLength(writes.length);
   });
 });

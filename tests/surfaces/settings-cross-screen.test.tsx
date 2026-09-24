@@ -109,7 +109,7 @@ const cached = (): string =>
     .join('');
 
 const outcome = (page: Mounted): string | null =>
-  page.find('[data-settings="read"]')?.getAttribute('data-outcome') ?? null;
+  page.host.querySelector<HTMLElement>('[data-settings="read"]')?.dataset['outcome'] ?? null;
 
 describe('a save answered after its screen closed, over another screen’s refusal', () => {
   beforeEach(() => {
