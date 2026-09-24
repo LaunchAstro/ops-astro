@@ -1,7 +1,7 @@
 # Configure and prove the merge policy
 
-This is the intended hosted configuration. No effective repository settings
-or enforcement results are claimed by this document. Configure and test them
+This is the intended hosted configuration. This document claims no effective
+repository settings or enforcement results. Configure and test them
 only during an authorised hosted preparation step.
 
 ## Configure two rulesets
@@ -25,8 +25,8 @@ finished. Copilot's review does not count towards a required approval.
 Conversation resolution governs comments that exist, so it blocks nothing
 when no review ran. Establishing that the independent model and Copilot both
 reviewed the final head, and that their findings are closed, is the merge
-decision's own work, and the checklist question about review findings does
-not by itself prove it.
+decision's own work. The checklist question about review findings does not
+prove it on its own.
 
 Enable merge commits only. Disable squash merging, rebase merging, linear
 history, and automatic merging, including dependency updates. These settings
@@ -46,9 +46,9 @@ Do not require a Copilot check by name. Copilot's review runs from the
 separate review ruleset, and the check run it produces is not counted toward
 a required status check: it belongs to a check suite raised outside the pull
 request event, and it is still ignored when the required context is bound to
-no app at all. Requiring that name blocks every merge. What the review
-ruleset and conversation resolution do is request Copilot's review and block
-a merge on an unresolved Copilot comment. Neither reports that a review
+no app at all. Requiring that name blocks every merge. The review ruleset and
+conversation resolution request Copilot's review and block a merge on an
+unresolved Copilot comment. Neither reports that a review
 finished, so neither is a completion gate.
 
 A missing required check remains pending and blocks merging. A wrong name

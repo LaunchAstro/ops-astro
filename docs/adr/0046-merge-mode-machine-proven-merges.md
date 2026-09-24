@@ -18,9 +18,9 @@ passes.
 credential, because his is the only account with push access. Its rule is
 every required check green on the head being merged, and it has no discretion
 beyond that rule. It notifies him after the merge, naming the pull request
-and the merged revision. Disabling automatic merging is what keeps this an
-invoked act with an actor who can be asked what they did; it is not a claim
-that a person presses the button.
+and the merged revision. Disabling automatic merging keeps this an invoked act
+with an actor who can be asked what they did. It does not mean a person
+presses the button.
 
 **What is not reachable by a green check**, and stays Nathan's own decision:
 the production deploy, the five protected parts (T1a, T1d1, T1d2, T1e, T1i),

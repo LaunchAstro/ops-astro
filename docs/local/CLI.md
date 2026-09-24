@@ -80,7 +80,10 @@ agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
 delegation credential to the delegation file and prints the answer with that
 credential replaced by `(saved to <file>)`. Later calls
 (`task.heartbeat`, `task.read`, `task.comment`, `task.handback`) send it in the
-`x-agent-delegation` header. A successful `task.handback` removes the file.
+`x-agent-delegation` header. A successful `task.handback` removes the file when
+it holds the credential that handback was sent with. A handback sent with
+another credential through `OPS_ASTRO_DELEGATION`, such as a replay of an older
+lease, leaves the saved one alone (`tests/cli/cli-delegation-replay.test.ts`).
 
 ```sh
 export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha

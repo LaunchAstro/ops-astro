@@ -14,7 +14,7 @@ Define the exact schema with the first transfer. Keep the fields to facts that a
 
 TypeScript validates the declarations and references it can see. A separate build check must discover the relevant exported code/schema/tool definitions and compare them with the map. A valid declared entry does not prove that no unregistered capability exists elsewhere.
 
-Reject missing registrations, duplicate IDs, broken implementation references and missing verification references. Test both directions: an implementation absent from the registry and a registry entry absent from the implementation must fail. Re-run the checks in CI; a local hook alone is insufficient enforcement.
+Reject missing registrations, duplicate IDs, broken implementation references and missing verification references. Test both directions: an implementation absent from the registry and a registry entry absent from the implementation must fail. Run the checks again in CI; a local hook alone does not enforce them.
 
 The first transfer must demonstrate a valid registration passing, then deliberate orphan, duplicate and stale entries failing. A generated index is not evidence that the capability works; its referenced behaviour tests and runtime evidence supply that proof.
 
@@ -22,7 +22,7 @@ The first transfer must demonstrate a valid registration passing, then deliberat
 
 The registry identifies capability definitions. Code implements behaviour. Specifications record the intended outcome. Tests and direct verification establish whether the implementation meets it. Operational records and approval history remain in the database.
 
-Do not manually mark a capability as operational merely because an entry or file exists. Runtime availability follows the actual implementation, configuration and relevant verified state. Views and traces must not invent missing evidence.
+Do not mark a capability operational by hand just because an entry or file exists. Runtime availability follows the actual implementation, configuration and relevant verified state. Views and traces must not invent missing evidence.
 
 ## Reproducible agent context
 

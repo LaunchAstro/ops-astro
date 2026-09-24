@@ -2,7 +2,7 @@
 //
 // A settled handback, replayed with no delegation credential, over HTTP.
 //
-// `authoriseReplay` in `agent-envelope.ts` releases a stored handback only to
+// `replaySettledHandback` in `agent-replay.ts` releases a stored handback only to
 // the credential that made it. With no credential at all the replay is what
 // any bare agent call outside the queue and a pickup is (root ruling 6 in
 // ROOT-906613f-RULINGS): `DELEGATION_EXCLUDES_OPERATION`, with nothing of the

@@ -104,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
       businessId: alpha,
       actorId: actorOf(cell.by),
       command: cell.op,
-      // A person's read records no operation (`reads/dispatch.ts:83`).
+      // A person's read records no operation (`runRead`, `reads/dispatch.ts`).
       operationId: READS.includes(cell.op) && cell.by.kind === 'person' ? null : body.operationId,
       outcome: 'refused',
       refusalCode: code,
@@ -326,8 +326,9 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
   }, 300_000);
 
   it('refuses a malformed operand on the agent prefix as a fabricated one', async () => {
-    // The live 503 at 6f15252: the envelope passes `String(reservationId ?? '')`
-    // (`commands/agent-operations.ts`, `task.pickup`'s row) and nothing shaped it before SQL.
+    // The live 503 at 6f15252: the envelope passed `String(reservationId ?? '')`
+    // and nothing shaped it before SQL. `pickupOperands` (`commands/agent-operations.ts`)
+    // now reads it by type.
     const bare: Presenter = { kind: 'agent', identity: w.h.world.agent };
     await probe([
       {

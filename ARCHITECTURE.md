@@ -1,10 +1,10 @@
 # Architecture
 
 The application is planned as a container package with an organisation-owned
-database. Part of it now exists: the tree carries a local task slice, and
-[the local slice](docs/local/README.md) describes what that slice does, what
+database. Part of it now exists as a local task slice.
+[The local slice](docs/local/README.md) describes what that slice does, what
 proves it, and where it falls short. The
-[current decisions](docs/current-decisions.md) distinguish selected direction
+[current decisions](docs/current-decisions.md) separate selected direction
 from proposals and pending proof.
 
 Read the state column below as implemented and tested on one machine. No
@@ -28,11 +28,11 @@ review of the integrated head has been recorded, so nothing here is accepted.
 The four rows marked not built are empty directories holding only a
 `.gitkeep`. The rest are source with tests beside them, run against a real
 local Postgres on one machine. [The local slice](docs/local/README.md) holds
-the commands, the evidence and the limits. A green tooling run proves this checkout builds, types, lints and
-passes its own tests. It proves nothing about a deployment, and there is no
-deployment.
+the commands, the evidence and the limits. A green tooling run proves this
+checkout builds, types, lints and passes its own tests. It proves nothing about
+a deployment, and there is no deployment.
 
-**No provider dispatch and no worker effect exist.** The runtime makes no
+No provider dispatch and no worker effect exist. The runtime makes no
 provider call: `planned_steps.dispatched_at` carries a constraint keeping it
 null, and an attempt names no provider and no model. An earlier proposal
 described a deterministic worker that performs one local effect. That part
@@ -49,7 +49,7 @@ Tasks use the fixed-slot records engine. Human tasks remain separate from
 machine runs and steps. Permissions are resource- and action-specific;
 assignment and clearance alone never grant access. Each business has a
 structural isolation boundary across database relationships and derived keys.
-All four hold in the tree: [the data layer](docs/local/DATA.md) has the slots,
+All four hold in the tree. [The data layer](docs/local/DATA.md) has the slots,
 the migrations and the tenancy suites, and
 [authority](docs/local/AUTHORITY.md) has the credential, membership and grant
 model the API resolves against.
@@ -60,10 +60,11 @@ expected-revision rule, `untargetedIdentifiers`, `runtimeShaped` and `agent`
 reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
 same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the
 web client imports the surface. A read's facts are one `READ_CATALOGUE` row
-(`reads/catalogue.ts`): identifiers, operand check, spine, subject, authority
-mode, outsider-not-found and serve. `reads/dispatch.ts` runs one pipeline over
-the row.
-See the [stack](docs/adr/0019-app-layer-vite-react-hono.md),
+(`reads/catalogue.ts`): identifiers, operand check (`parse`), spine, subject,
+authority mode, outsider-not-found and serve. A row is a `SpineRow`, handed the
+task spine and its subject, both read before the grant check, or a
+`BusinessRow`, handed neither. `reads/dispatch.ts` runs one pipeline over the
+row. See the [stack](docs/adr/0019-app-layer-vite-react-hono.md),
 [records](docs/adr/0030-fixed-typed-slots-no-runtime-ddl.md), and
 [identity and permissions](docs/adr/0014-business-id-on-every-table-and-key.md)
 decisions.
@@ -83,8 +84,8 @@ See the [task and gate contract](docs/adr/0013-gate-triple.md).
 
 `packages/core-runtime` implements that shape as five transactions and a
 recovery classifier, described in [the runtime](docs/local/RUNTIME.md). The
-effect at the end of it is the part that does not exist: work is claimed under
-a fenced lease and handed back, and nothing is dispatched to a provider.
+effect at the end of it does not exist. Work is claimed under a fenced lease
+and handed back, and nothing is dispatched to a provider.
 
 The credential broker, egress controls, sandbox, and database roles provide
 containment. A human decision alone provides no process isolation. The
@@ -111,9 +112,9 @@ integration is proven here. See the
 [capability-map contract](docs/capability-map.md) are foundation contracts.
 Transfer only the shared components needed by the first product slice, then
 prove their behaviour and visual fidelity. The components the slice needs have
-been transferred into `packages/ui` with tests; the typed registry and the
-independent code-discovery checks have not been built, so the contract is
-still a contract rather than an enforced one.
+been transferred into `packages/ui` with tests. The typed registry and the
+independent code-discovery checks have not been built, so nothing enforces the
+contract yet.
 [The web application](docs/local/WEB.md) records the visual gaps that remain
 against the pinned mockup.
 

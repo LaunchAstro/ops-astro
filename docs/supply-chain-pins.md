@@ -11,7 +11,7 @@ release when doing so.
 
 ## GitHub Actions
 
-The prior record reports that these pins were resolved on **6 September 2026**
+The prior record reports that these pins were resolved on 6 September 2026
 through the GitHub API, with annotated tags dereferenced and commits checked
 in their source repositories. Reproduce that lookup when updating a pin:
 
@@ -31,9 +31,8 @@ gh api repos/<owner>/<repo>/commits/<sha>               # must return 200
 | `ossf/scorecard-action`             | v2.4.4  | `2d1146689b8cda280b9bc96326124645441f03bc` | Annotated tag dereferenced, commit 200 |
 | `github/codeql-action/upload-sarif` | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
 
-What that check does and does not establish. It establishes that the hash is
-the commit the publisher's own release tag points at, so a later tag move
-cannot change what runs here. It does not establish that the code at that
+That check establishes that the hash is the commit the publisher's own release
+tag points at, so a later tag move cannot change what runs here. It does not establish that the code at that
 commit is trustworthy, and no automated check can. Raising a pin is a
 reviewed change like any other dependency bump, and Renovate is configured to
 propose them rather than merge them.
@@ -125,16 +124,15 @@ the point of it.
 The npm dependency tree is pinned by `pnpm-lock.yaml`, which is committed, and
 `pnpm install --frozen-lockfile` refuses to drift from it. Renovate proposes
 updates; they merge like any other change, and never by Renovate itself. An
-agent invokes that merge on Nathan's credential, because
-his is the only account with push access, once every required check is green
-on the head being merged, and it notifies him afterwards naming the pull
-request and the merged revision. That notification records what happened; it
-does not ask permission. The decisions
+agent invokes that merge on Nathan's credential once every required check is
+green on the head being merged; his is the only account with push access. It
+notifies him afterwards, naming the pull request and the merged revision. That
+notification records what happened; it does not ask permission. The decisions
 [Contributing](../CONTRIBUTING.md#who-invokes-the-merge) reserves to Nathan
 are not reachable by a green check, and a reduction of any check's tier is one
 of them, so no pin here is loosened by a dependency update merging.
 
-The local GoTrue container is not pinned by digest.
-`scripts/local/auth-up.sh` names it by tag, `public.ecr.aws/supabase/gotrue:v2.192.0`,
-and `scripts/pins-check.mjs` reads only the workflows, so nothing checks it.
+The local GoTrue container is not pinned by digest. `scripts/local/auth-up.sh`
+names it by tag, `public.ecr.aws/supabase/gotrue:v2.192.0`, and
+`scripts/pins-check.mjs` reads only the workflows, so nothing checks it.
 The local Postgres container uses the digest recorded above.

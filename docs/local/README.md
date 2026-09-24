@@ -14,7 +14,7 @@ does not do. Seven companion files describe the parts:
   how to run them, and the proofs that could not be written.
 - [CLI.md](CLI.md): the command line, which calls the same API as the app.
 
-New here? [Pickup and debugging](#pickup-and-debugging) is the short version:
+If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
 how a request travels, what to check before restarting anything, which command
 proves what, and what a bug report has to carry.
 
@@ -64,8 +64,7 @@ and no hosted service is involved at any point.
 ## Prerequisites
 
 - **Node 24.** The major is pinned in `.nvmrc`. The API runs its TypeScript
-  directly under Node's own type stripping, so 24 is the floor rather than a
-  preference.
+  directly under Node's own type stripping, so it needs 24 or newer.
 - **pnpm through corepack.** The version is pinned in `package.json`. Use
   `corepack pnpm …` and there is nothing to install globally.
 - **Docker.** Postgres and GoTrue run as containers. Postgres runs from the
@@ -83,7 +82,8 @@ does not.
 
 ## Start it
 
-In order. Each step is idempotent: running it twice is running it once.
+Run these in order. Each step is idempotent, so running it twice does the same
+as running it once.
 
 ```
 corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
@@ -97,10 +97,10 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
 - `auth:up` starts GoTrue on `127.0.0.1:54391` and writes `.local/auth.env`.
 - `auth:seed` mints the synthetic logins and writes `.local/synthetic-users.json`.
 - `db:seed` maps those subjects to people, memberships and grants. It seeds no
-  task: a seeded task is a task nobody created, and it would make the
+  task. Nobody would have created a seeded task, and it would make the
   acceptance cases pass without the product working.
 
-Before the API starts, name the installation's businesses for restart
+Before the API starts, name the deployment's businesses for restart
 recovery in `.local/recovery.env`. The file is gitignored, and
 `apps/api/server.ts` reads it beside the other `.local` files
 (`localEnvironment`); a value set in the real environment wins. The seeded
@@ -115,9 +115,9 @@ replays each named business's recorded, unclassified transitions in its own
 transaction before it binds the port ([RUNTIME.md, "Restart recovery at API
 startup"](RUNTIME.md#restart-recovery-at-api-startup)). `RECOVERY_BUSINESS_KEYS=none`
 is the only way to say there are none, and the server then logs `restart
-recovery: explicitly no installation businesses`. A blank or missing value is a
+recovery: explicitly no deployment businesses`. A blank or missing value is a
 failed start, never an empty scope, and so is a key that resolves to no
-business (`parseRecoveryScope` and `recoverInstallation` in
+business (`parseRecoveryScope` and `recoverDeployment` in
 `apps/api/recovery-entry.ts`). `scripts/local/api-up.sh` needs no argument for
 it.
 
@@ -129,7 +129,7 @@ corepack pnpm web:up    # http://127.0.0.1:5190
 ```
 
 Open `http://127.0.0.1:5190/`. The web server proxies `/api` to the API, so
-the browser only ever makes same-origin requests.
+the browser makes only same-origin requests.
 
 `corepack pnpm db:down` stops the database container. It keeps the named
 volume, so the data survives.
@@ -152,19 +152,19 @@ and none should be pasted into one.
 | `bea@bravo.local`    | bravo    |
 
 These are addresses, not contact details. RFC 6762 reserves `.local` for
-multicast DNS and it cannot be delegated, so none of them reaches a mailbox. The public
-content check allows exactly these five by name
-(`scripts/public-content-check.mjs`, `publishedAddresses`), so a sixth
-invented login is a finding until it is added here and there.
+multicast DNS and it cannot be delegated, so none of them reaches a mailbox.
+The public content check allows exactly these five by name
+(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a sixth
+invented login until that login is added here and there.
 
-Two businesses, keys `alpha` and `bravo`. The business selector on the sign-in
-page chooses the `/api/b/<key>` route prefix; it is a routing choice, not a
-claim, and the API resolves who you are and what you may see server-side.
+There are two businesses, keys `alpha` and `bravo`. The business selector on
+the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a
+route. The API resolves who you are and what you may see on the server.
 [DATA.md](DATA.md) names which identities carry which negative case.
 
 ### The external party's login
 
-`db:seed` adds a sixth login to the same file: the external party (R4), with
+`db:seed` adds a sixth login to the same file, the external party (R4), with
 `role: 'external'` (`scripts/local-seed.mjs`, `ensureExternalEntry` and
 `seedExternalUser`). Its address is built at seed time rather than written
 down, so it is not listed above. Read it from the file.
@@ -184,12 +184,13 @@ checkout, copy that checkout's existing external entry into your
 corepack pnpm verify:slice
 ```
 
-Signs in through the local GoTrue and walks create, start, complete, reopen
-and edit over HTTP, then the refusals: a foreign business, a fabricated id, a
-login with no membership, a replayed operation identity, a stale revision,
-writes to protected and system fields, and a body carrying an actor and a
-business that reach nothing. One line per case with the status and the code it
-observed; a case that cannot run prints `unrun` with its reason.
+It signs in through the local GoTrue and walks create, start, complete, reopen
+and edit over HTTP. Then it tries the refusals: a foreign business, a
+fabricated id, a login with no membership, a replayed operation identity, a
+stale revision, writes to protected and system fields, and a body carrying an
+actor and a business that reach nothing. It prints one line per case with the
+status and the code it observed. A case that cannot run prints `unrun` with
+its reason.
 
 ```
 mkdir -p .local/evidence/browser
@@ -199,18 +200,19 @@ SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" \
 
 `SHOT_DIR` is where the screenshots and `RESULTS.md` are written. Unset, it
 defaults to `.local/evidence/browser` inside this checkout, and the harness
-creates the directory (`SHOTS` in `tests/browser/harness.mjs`). `DOCKER_BIN` defaults to
-`/usr/local/bin/docker`, which is not where every installation puts it.
+creates the directory (`SHOTS` in `tests/browser/harness.mjs`). `DOCKER_BIN`
+defaults to `/usr/local/bin/docker`, which is not where every installation puts
+it.
 `WEB_URL` and `API_URL` override the two addresses if you moved them. The same
 four apply to `node tests/browser/keyboard-and-widths.mjs`.
 
-The command drives the browser acceptance cases through Playwright against the running
-application, so start the database, the identity service, the API and the web
-server first. The N6 revocation cases (a grant revoked underneath a live
+The command drives the browser acceptance cases through Playwright against the
+running application, so start the database, the identity service, the API and
+the web server first. The N6 revocation cases (a grant revoked underneath a live
 session, and an older in-flight response that cannot restore it) are part of
 that command: `tests/browser/slice-acceptance.mjs` runs them through
-`cases-n6-n7.mjs`, which imports `n6-revocation.mjs`. One further harness is
-not in that command and runs on its own: `node tests/browser/keyboard-and-widths.mjs`
+`cases-n6-n7.mjs`, which imports `n6-revocation.mjs`. One further harness runs
+on its own, outside that command: `node tests/browser/keyboard-and-widths.mjs`
 (keyboard paths, and the width captures the gaps below are recorded from).
 Running `node tests/browser/n6-revocation.mjs` alone revokes a grant that the
 caller normally restores; run `corepack pnpm db:seed` afterwards.
@@ -219,31 +221,32 @@ caller normally restores; run `corepack pnpm db:seed` afterwards.
 corepack pnpm build
 ```
 
-Builds the web bundle into `apps/web/dist` by running that application's own
-`vite build`, and names every workspace directory it does not build. The API is
-not built because it has no build step; `packages/ui` and
-`packages/core-records` are compiled into the web bundle from source. The build
-packages nothing and deploys nothing.
+This builds the web bundle into `apps/web/dist` by running that application's
+own `vite build`, and names every workspace directory it does not build. The
+API has no build step, and `packages/ui` and `packages/core-records` are
+compiled into the web bundle from source. The build packages nothing and
+deploys nothing.
 
 ```
 corepack pnpm check
 ```
 
-The whole blocking gate, tests included. The test suite needs `DATABASE_URL`
-and `DATABASE_ADMIN_URL` exported, and the public-content step reads the
-**staged** tree, so stage your changes before running it.
+This is the whole blocking gate, tests included. The test suite needs
+`DATABASE_URL` and `DATABASE_ADMIN_URL` exported, and the public-content step
+reads the staged tree, so stage your changes before running it.
 
 ## Pickup and debugging
 
-Enough to find your way to the code that is wrong, and to write a report the
-next person can act on.
+How to find the code that is wrong, and how to write a report the next person
+can act on.
 
 ### How a request travels
 
-The screen calls the shared operation client in `apps/web/src/operations/client.ts`,
-which posts to `/api/b/<business-key>/<command path>` with the session's token
-and nothing else identifying the caller. The API in `apps/api/app.ts` resolves
-that token to a verified subject and then to a session through
+The screen calls the shared operation client in
+`apps/web/src/operations/client.ts`, which posts to
+`/api/b/<business-key>/<command path>` with the session's token and nothing
+else identifying the caller. The API in `apps/api/app.ts` resolves that token
+to a verified subject and then to a session through
 `packages/core-records/src/identity/login-resolution.ts`, so who you are is
 what the token says, never what the body claims. [AUTHORITY.md](AUTHORITY.md)
 has the three credentials and what each confers. The route itself is derived
@@ -254,18 +257,18 @@ command with no declaration has no route, and a read is a declaration with
 included, carries an `operationId`, because the agent envelope refuses one
 without it (`runAgentCommand` in
 `packages/core-records/src/commands/agent-envelope.ts`). The handler prepares
-and applies the write against the
-fixed-slot records in `packages/core-records/src/records/`, or, for the
-proposal and decision path, against `packages/core-runtime/`
+and applies the write against the fixed-slot records in
+`packages/core-records/src/records/`, or, for the proposal and decision path,
+against `packages/core-runtime/`
 ([DATA.md](DATA.md), [RUNTIME.md](RUNTIME.md)). All of it commits inside one
 tenancy transaction opened by `withSession`. It sets the business on the
 connection and checks the grant in the same transaction as the write, so a
-revoked grant bites on the very next call.
+revoked grant bites on the next call.
 
 ### Before you restart anything
 
 When the slice "does not work", the process answering is usually not the one
-you think you are editing. Ask three questions in this order.
+you think you are editing. Check three things in this order.
 
 ```sh
 curl -s http://127.0.0.1:8790/api/health   # is anything answering, and is the database reachable
@@ -282,8 +285,8 @@ is mounted. It does not say which checkout the process was started from, and
 neither does starting the API again. `scripts/local/api-up.sh` checks
 `/api/health` first and exits `0` with "something is already answering" when it
 gets a reply, so a successful `pnpm api:up` is not evidence that your code is
-being served. The listener's working directory settles it. `-t` gives
-the pid on its own, and the last `lsof` prints that process's directory on a
+being served. The listener's working directory settles it. `-t` gives the pid
+on its own, and the last `lsof` prints that process's directory on a
 line beginning with `n`, on both macOS and Linux. If it is not the checkout you
 are editing, you are reading one tree and testing another.
 
@@ -306,15 +309,15 @@ matched a shared API that other people were using, and stopped it
 
 `pnpm api:up` and `pnpm web:up` both run in the foreground and print to the
 terminal you started them in. Neither writes a log file and neither writes a
-pid file. If you want a detached process, the redirection and the pid file are
-yours to choose, and no other file in this repository will know where you put
-them. The web server prints its three addresses on start; the API prints the
-one it is listening on.
+pid file. If you want a detached process, you choose the redirection and the
+pid file, and no other file in this repository will know where you put them.
+The web server prints its three addresses on start. The API prints the one it
+is listening on.
 
 ### The four kinds of verification
 
-They prove different things and fail for different reasons. Reaching for the
-slowest one first is the usual mistake.
+They prove different things and fail for different reasons. The usual mistake
+is to run the slowest one first.
 
 | Kind                 | Command                                                                                                                                      | Needs                                                                                                                                                                                    | Notes                                                                                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -330,8 +333,8 @@ disk, and installing the `playwright` package does not fetch one. Run
 The browser command is the one to be careful with. It restarts the API and the
 Postgres container, and the N6 cases issue a live grant and revoke it again, so
 it changes the state of the running stack while it runs. Two of them at once
-would fight over the same containers and the same port. **On a shared run, the
-browser suite gets one slot at a time**, and whoever is coordinating the run
+would fight over the same containers and the same port. On a shared run, the
+browser suite gets one slot at a time, and whoever is coordinating the run
 hands that slot out. The standalone N6 harness needs a reseed afterwards
 ([Verify it](#verify-it)).
 
@@ -345,10 +348,10 @@ or `SHOT_DIR`: `restart-legs-cases.jsonl` (one row per line as recorded),
 `MANIFEST.json` (rows and exit status) and screenshots. It exits 0 only when
 RL0 and RL-a to RL-d all pass.
 
-`corepack pnpm check` is the blocking gate rather than a fifth kind. It runs
-the tooling checks and the test suite together, wants `DATABASE_URL` and
-`DATABASE_ADMIN_URL` exported, and reads the **staged** tree for its
-public-content step.
+`corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
+tooling checks and the test suite together, needs `DATABASE_URL` and
+`DATABASE_ADMIN_URL` exported, and reads the staged tree for its public-content
+step.
 
 ### The optional local-run pointer
 
@@ -363,12 +366,12 @@ holds pointers and nothing else:
 | `integration_branch`   | The branch in it.                                   |
 | `state_entry`          | The file in `run_root` to read first.               |
 
-It is a signpost to a coordinator's live state held outside this repository,
-and it carries no status, no results and no credentials. **Its absence means
-there is no local-run metadata here.** It does not mean the work is finished,
-and no completion may be inferred from it either way. If the file is present
-and the directory it names is not, the pointer is stale: say so in your report
-rather than guessing what it meant.
+It points to a coordinator's live state held outside this repository, and it
+carries no status, no results and no credentials. If it is absent, there is no
+local-run metadata here. That does not mean the work is finished, and its
+presence or absence says nothing about completion. If the file is present and
+the directory it names is not, the pointer is stale. Say so in your report
+instead of guessing what it meant.
 
 ### Reporting a bug or handing back evidence
 
@@ -376,8 +379,8 @@ rather than guessing what it meant.
 written handback carries. Meet that list before you hand anything back: the
 exact HEAD and the dirty diff or a manifest, the command you ran, the failing
 case or refusal code, expected against actual, the relevant logs with secrets
-removed, where you put the evidence, and what you are still unsure of. A report
-missing the head is a report about a tree nobody can reconstruct.
+removed, where you put the evidence, and what you are still unsure of. Without
+the head, nobody can reconstruct the tree the report is about.
 
 Secrets live in `.local/`, which is gitignored for that reason: `db.env`,
 `auth.env`, `synthetic-users.json`, `synthetic-agents.json`, `gate.env` and
@@ -387,27 +390,27 @@ credential key.
 
 ## A note on the dev server
 
-`pnpm web:up` runs Vite's dev server, and a dev server serves files, not just
-the application. Every path under the workspace root is reachable through its
-`/@fs/` prefix, which is how a source import of `packages/ui` works at all.
+`pnpm web:up` runs Vite's dev server, which serves files as well as the
+application. Every path under the workspace root is reachable through its
+`/@fs/` prefix, which is how a source import of `packages/ui` works.
 
 On 23 September a probe of the running server asked for
 `/@fs/<worktree>/.local/db.env` and got 200 with the file's real content, and
 the same for `.local/auth.env` and `.local/synthetic-users.json`. The generated
 database password, the GoTrue secret and every synthetic login were readable by
 anything that could reach the port. The server binds to `127.0.0.1`, so that
-was one machine's own loopback rather than the network. That is why this is a
-gap rather than an incident.
+meant one machine's own loopback, not the network. That is why this counts as
+a gap, not an incident.
 
 `apps/web/vite.config.ts` now sets `server.fs.deny` over `**/.local/**` and
 `**/*.local`. That setting replaces Vite's default list, so the config repeats
-those defaults beside the two new patterns. The three paths answer 403; a source import such as
-`/@fs/<worktree>/apps/web/src/main.tsx` still answers 200, and so does
-`packages/ui/src/index.ts`.
+those defaults beside the two new patterns. The three paths now answer 403. A
+source import such as `/@fs/<worktree>/apps/web/src/main.tsx` still answers
+200, and so does `packages/ui/src/index.ts`.
 
-Two things this does not do. It is a dev server, and a dev server is for one
-person's machine on loopback. Do not put one on an address other people can
-reach, whatever it denies. It also constrains this server only. The API on its
+This has two limits. A dev server is for one person's machine on loopback, so
+do not put one on an address other people can reach, whatever it denies. It
+also constrains this server only. The API on its
 own port and anything else the start sequence runs are outside it.
 
 ## Limitations
@@ -417,13 +420,13 @@ own port and anything else the start sequence runs are outside it.
 - **There is no dark theme.** The application does not answer
   `prefers-color-scheme`, so a person who has chosen dark gets the light build.
   This is the largest visual gap and the one a person would call a defect.
-- **Three smaller width gaps.** They are recorded rather than closed, with the
-  board columns, facets, agent surfaces and subtasks that this build does not
-  store or draw, in [WEB.md, "Known gaps against the pinned
-  mockup"](WEB.md#known-gaps-against-the-pinned-mockup). Comments are stored and
-  drawn; what is missing there is the mockup's tabbed Internal / Client / All
-  activity conversation, which this build draws as one list with each row's
-  audience on it.
+- **Three smaller width gaps.** They are recorded, not closed, with the board
+  columns, facets, agent surfaces and subtasks that this build does not store
+  or draw, in [WEB.md, "Known gaps against the pinned
+  mockup"](WEB.md#known-gaps-against-the-pinned-mockup). Comments are stored
+  and drawn. What is missing there is the mockup's tabbed Internal / Client /
+  All activity conversation, which this build draws as one list with each
+  row's audience on it.
 - **An external party cannot be invited from the app.** The product reads a
   real external party's shared record ([AUTHORITY.md, "The external
   party"](AUTHORITY.md#the-external-party-r4)), but no route issues a share.

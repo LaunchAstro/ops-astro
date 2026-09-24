@@ -51,9 +51,8 @@ are refused rather than presented as complete history proof.
 
 Review the actual candidate and its manifest with a frontier model from a
 different company than the builder's. Record the manifest identity, findings,
-corrections and recheck. A local file review
-does not substitute for the later Copilot, signing or hosted enforcement
-requirements. Do not certify inherited preparation history as the first
+corrections and recheck. A local file review does not substitute for the
+later Copilot, signing or hosted enforcement requirements. Do not certify inherited preparation history as the first
 public root.
 
 After the owner separately authorises a signed first-root commit, the clean
