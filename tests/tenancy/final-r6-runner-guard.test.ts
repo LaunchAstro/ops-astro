@@ -14,7 +14,7 @@
 // own process, with nothing in its environment but the admin URL.
 
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -853,26 +853,48 @@ describe.skipIf(serverUrl === undefined)('the log and standard_conforming_string
     expect(unreadable(admin)).toContain('opaque');
   }, 60_000);
 
-  // SOL-FR11B-1: postgres.js puts a URL's query parameters into the startup
-  // packet after the wrapper's own, so a URL naming the setting, in any case,
-  // would start the connection off. The wrapper reads the startup parameters
-  // postgres.js resolved and refuses, before connecting, any that name the
-  // setting other than its own `on`. An `options` switch does not win:
-  // PostgreSQL applies the named startup parameter after it. SOL-FR11C-2:
-  // every URL here is built with URL.searchParams over a base that already
-  // has a query, so each parameter is really a parameter.
+  // SOL-FR11B-1, SOL-FR11D-1: postgres.js puts a URL's query parameters into
+  // the startup packet after the wrapper's own, so a URL naming the setting,
+  // in any case, with any value or none, would have its way. The wrapper owns
+  // the setting instead: it rewrites the startup parameters postgres.js
+  // resolved to hold exactly one `on`, and nothing is refused. Each row
+  // connects through a different factory and reads the setting back, so the
+  // rows also fail if a later postgres.js stops building its startup packet
+  // from `options.connection` when it connects. Every URL here is built with
+  // URL.searchParams over a base that already has a query (SOL-FR11C-2).
   it.each([
     ['connectObserved', 'standard_conforming_strings', 'off'],
     ['connectObserved', 'Standard_Conforming_Strings', 'off'],
     ['connect', 'STANDARD_CONFORMING_STRINGS', 'off'],
     ['connectAsAdmin', 'Standard_Conforming_Strings', 'on'],
-  ])('%s refuses a URL whose query sets %s=%s', (how, key, value) => {
-    const url = withQuery(withQuery(serverUrl ?? '', 'application_name', 'fr11'), key, value);
-    const open = { connectObserved, connect, connectAsAdmin }[how];
-    expect(() => open?.(url)).toThrow(
-      /^database: the URL sets standard_conforming_strings, which every connection sets on itself/u,
-    );
-  });
+    ['connectObserved', 'Standard_Conforming_Strings', ''],
+    ['connectAsAdmin', 'standard_conforming_strings', ''],
+  ])(
+    '%s starts on when the URL query sets %s=%j',
+    async (how, key, value) => {
+      const { url } = await database('fr11scsurl');
+      const built = withQuery(withQuery(url, 'application_name', 'review'), key, value);
+      const read = 'select current_setting($1) as on';
+      const setting = ['standard_conforming_strings'];
+      let rows: readonly { readonly on: string }[];
+      if (how === 'connect') {
+        const pool = connect(built, { source: 'runtime' });
+        opened.push(pool);
+        rows = await pool.withBusiness(randomUUID(), async (tx) => await tx.query(read, setting));
+      } else if (how === 'connectAsAdmin') {
+        const admin = connectAsAdmin(built, { source: 'runtime' });
+        opened.push(admin);
+        rows = await admin.execute(read, setting);
+      } else {
+        const pool = connectObserved(built, { source: 'runtime' });
+        opened.push(pool);
+        rows = await pool.betweenTransactions(read, setting);
+      }
+      expect(rows[0]?.on).toBe('on');
+      expect(unreadable(opened.at(-1) as Connection)).toStrictEqual([]);
+    },
+    60_000,
+  );
 
   // SOL-FR11C-1: what postgres.js does not send, the wrapper does not read. A
   // fragment is not a query, and the wrapper's own name and value is no
