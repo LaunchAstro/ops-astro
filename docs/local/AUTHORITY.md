@@ -271,8 +271,8 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is
-lane L3-CONTROLS's choice and awaits root or owner confirmation.
+the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
 (`authority/delegations.ts`, for a sequential second mint and for two first
@@ -428,7 +428,11 @@ every other role. See [API.md, "Reads"](API.md#reads).
 
 Both entries lock the task for `task.comment` through `lockTask`
 (`commands/prepare.ts`), which selects by tenant, task type and id
-`for update`. Neither entry filters out a trashed task.
+`for update`. `lockTask` holds a trashed row as well as a live one, because
+trash and restore need it. `writeTaskComment` (`commands/tasks-comment.ts`),
+which both entries call, answers a trashed task `NOT_FOUND` in the same bytes
+as a missing one and writes nothing (Nathan's ruling, OWNER-CARD section 6;
+`tests/acceptance/comment-rulings.test.ts`).
 
 ## preset.plan
 

@@ -76,7 +76,8 @@ agent logins are GoTrue passwords like a person's (`scripts/local-seed.mjs`,
 recorded in `.local/synthetic-agents.json`), so `login` works for them too. The
 agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
 `/api/a/b/<business>/...`. Before a pickup an agent can call `task.queue` and
-`task.pickup`; the API refuses anything else with
+`task.pickup`; the API refuses `task.decide` with
+`DELEGATION_EXCLUDES_DECISION` and anything else with
 `DELEGATION_EXCLUDES_OPERATION`. A successful `task.pickup` saves the
 delegation credential to the delegation file and prints the answer with that
 credential replaced by `(saved to <file>)`. Later calls
