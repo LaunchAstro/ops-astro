@@ -243,13 +243,16 @@ interface LoadedProps {
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
-  const { busy, failure, run: send } = useCommand();
-  // Somebody else moved the record on while this edit was being made. The
-  // draft stays on the screen (it is the person's work) and the screen asks
-  // them to resolve it rather than resending against a revision they never
-  // saw. Every other failure is quoted as it arrived.
-  const conflict = failure?.kind === 'stale' ? failure.refusal : null;
-  const because = failure === null || failure.kind === 'stale' ? null : failure.because;
+  // `conflict`: somebody else moved the record on while this edit was being
+  // made. The draft stays on the screen (it is the person's work) and the
+  // screen asks them to resolve it rather than resending against a revision
+  // they never saw. Every other failure is quoted as it arrived.
+  //
+  // The controls stay on `busy`, not `locked`: this one command state serves
+  // several commands (lifecycle, assignment, the details form), and one
+  // command's authority refusal must not close the others.
+  const { busy, because: failed, conflict, run: send } = useCommand();
+  const because = conflict === null ? failed : null;
   // The details form itself, so the resolve bar's Save can ask it whether the
   // edit it is about to send is a legal one.
   const fields = useRef<HTMLFormElement>(null);
