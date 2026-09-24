@@ -69,8 +69,16 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
         SUPABASE_JWT_SECRET: SECRET,
         GATE_SIGNING_KEY_ID: world.fixture.environment.GATE_SIGNING_KEY_ID,
         GATE_SIGNING_SECRET: world.fixture.environment.GATE_SIGNING_SECRET,
+        // The fixture's one business, named here as `restart-process.ts` names
+        // its world's, so startup recovery neither refuses an unset scope nor
+        // takes a checkout's `.local/recovery.env` keys for this database's.
+        RECOVERY_BUSINESS_KEYS: BUSINESS_KEY,
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let complaint = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      complaint += chunk.toString('utf8');
     });
     const pid = child.pid as number;
     started.push(pid);
@@ -84,7 +92,9 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
       // eslint-disable-next-line no-await-in-loop
       await sleep(100);
     }
-    if (exited || !(await health())) throw new Error('the API process did not answer');
+    if (exited || !(await health())) {
+      throw new Error(`the API process did not answer: ${complaint.trim() || '(no stderr)'}`);
+    }
     return {
       pid,
       stop: async () => {
