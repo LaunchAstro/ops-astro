@@ -265,7 +265,13 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
   });
 
   it('refuses an expired gate on the database clock', async () => {
-    const proposal = await proposeOn(database, fixture, { expiresAt: new Date(Date.now() - 1000) });
+    // A task of its own: the fixture task's envelope is filled by earlier
+    // cases, and a new lineage on it is refused at propose (SOL-R3-3).
+    const own = {
+      ...fixture,
+      taskId: await newTask(database.app, fixture.businessId, fixture.decider),
+    };
+    const proposal = await proposeOn(database, own, { expiresAt: new Date(Date.now() - 1000) });
 
     const refused = await database.app.withBusiness(
       fixture.businessId,
@@ -623,8 +629,22 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
     const taskId = await newTask(database.app, fixture.businessId, fixture.decider);
     const overCap = { ...fixture, taskId };
 
-    // The envelope this opens has room for the whole ask; the cap does not.
-    const proposal = await proposeOn(database, overCap, { maximumMinor: 150_000 });
+    // The envelope this opens has room for the whole ask; the cap does not by
+    // the time it is decided. The proposal fits the cap's room when it is
+    // made (a proposal past it is refused at propose, R2-RUNTIME-26), and
+    // another task's approval then takes 45,000 of that room.
+    const proposal = await proposeOn(database, overCap, { maximumMinor: 50_000 });
+    const filler = {
+      ...fixture,
+      taskId: await newTask(database.app, fixture.businessId, fixture.decider),
+    };
+    const filled = await decideOn(
+      database,
+      filler,
+      await proposeOn(database, filler, { maximumMinor: 45_000 }),
+      'approve',
+    );
+    expect(filled.ok).toBe(true);
 
     const before = await database.app.withBusiness(fixture.businessId, async (tx) =>
       tx.query<{ readonly held: string; readonly actual: string }>(

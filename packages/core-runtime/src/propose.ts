@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { readBusinessCapId } from '../../core-records/src/commands/runtime-config.ts';
 import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
 import type { LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
@@ -69,8 +70,10 @@ export interface ProposeRequest {
    * (`readBusinessCapId`). T1 validates existing budget authority at the
    * proposal, so the proposal needs the cap before its first write; a task
    * with an open envelope is checked against that envelope's own cap instead.
-   * Absent, and no envelope open, there is no ceiling to check against here,
-   * and the decision answers `BUDGET_UNAVAILABLE`.
+   * Absent, `lockProposal` reads the business cap itself (R2-RUNTIME-26
+   * residual (b), `restart`); with no cap at all and no envelope open there is
+   * no ceiling to check against here, and the decision answers
+   * `BUDGET_UNAVAILABLE`.
    */
   readonly capId?: string;
 }
@@ -167,7 +170,7 @@ export async function lockProposal(
   // Discovery first, acquisition second, writes third.
   const {
     locks,
-    found: [liveVersions, envelope, liveWork],
+    found: [liveVersions, envelope, liveWork, , businessCap],
   } = await lockRediscovered(tx, {
     discover: async () => {
       const versions =
@@ -187,10 +190,14 @@ export async function lockProposal(
         open === undefined ? null : { id: open.id, cap_id: open.capId },
         await discoverLiveWork(tx, { versionIds: versions }),
         await affectedByVersions(tx, versions),
+        // R2-RUNTIME-26 residual (b): a caller that passes no cap, which is
+        // `restart`, is checked against the cap `decide` would draw on, as
+        // `task.propose` is. Read here so it is locked and rechecked with the set.
+        request.capId ?? (await readBusinessCapId(tx)),
       ] as const;
     },
-    locks: ([, open, work, held]) => {
-      const capId = open?.cap_id ?? request.capId;
+    locks: ([, open, work, held, business]) => {
+      const capId = open?.cap_id ?? business;
       return [
         ...(capId === undefined ? [] : [{ lockClass: 'cap' as const, id: capId }]),
         ...(open === null ? [] : [{ lockClass: 'envelope' as const, id: open.id }]),
@@ -206,7 +213,7 @@ export async function lockProposal(
       'propose: the live work on the superseded version, its holds, the live version itself or the task envelope changed under discovery; roll back and rediscover',
   });
   const accounting = envelope;
-  const capId = accounting?.cap_id ?? request.capId ?? null;
+  const capId = accounting?.cap_id ?? businessCap ?? null;
   return { locks, lineageId, restarts, accounting, capId, liveVersions, openingId, liveWork };
 }
 
@@ -440,10 +447,24 @@ async function refuseBeyondEnvelope(
   envelopeId: string,
   fromEnvelope: string,
 ): Promise<RuntimeResult<never> | null> {
-  const envelope = await openEnvelopeOf(tx, request.taskId);
-  if (envelope?.id !== envelopeId) {
+  // By the locked id, not by task: `openEnvelopeOf` is the discovery read, and
+  // this is a read under the lock of what discovery found.
+  const envelope = (
+    await tx.query<{
+      readonly currency: string;
+      readonly maximum_minor: string;
+      readonly held_minor: string;
+      readonly actual_minor: string;
+    }>(
+      `select currency, maximum_minor::text as maximum_minor, held_minor::text as held_minor,
+              actual_minor::text as actual_minor
+         from public.task_envelopes where business_id = $1 and id = $2 and state = 'open'`,
+      [tx.businessId, envelopeId],
+    )
+  )[0];
+  if (envelope === undefined) {
     throw new RuntimeInvariantError(
-      `refuseBeyondEnvelope: the open envelope of task ${request.taskId} is not the locked ${envelopeId}`,
+      `refuseBeyondEnvelope: the locked envelope ${envelopeId} is not open under its lock`,
     );
   }
   if (request.currency !== envelope.currency) {
@@ -454,12 +475,12 @@ async function refuseBeyondEnvelope(
     );
   }
   const inEnvelope = String(
-    BigInt(envelope.heldMinor) + BigInt(envelope.actualMinor) - BigInt(fromEnvelope),
+    BigInt(envelope.held_minor) + BigInt(envelope.actual_minor) - BigInt(fromEnvelope),
   );
-  if (exceeds(inEnvelope, BigInt(request.maximumMinor), envelope.maximumMinor)) {
+  if (exceeds(inEnvelope, BigInt(request.maximumMinor), envelope.maximum_minor)) {
     return refuse(
       'PROPOSAL_OUT_OF_SCOPE',
-      `this task's envelope has ${inEnvelope} of ${envelope.maximumMinor} committed, and this ceiling does not fit its remaining room`,
+      `this task's envelope has ${inEnvelope} of ${envelope.maximum_minor} committed, and this ceiling does not fit its remaining room`,
       'Propose a ceiling within the envelope, or raise it through its authorised boundary.',
     );
   }

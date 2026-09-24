@@ -176,7 +176,8 @@ describe.skipIf(serverUrl === undefined)('the discover, lock and recheck sites, 
     await pickup(s, (await approve(s, first))['reservationId']);
     const body = proposeBody(taskId, await revisionOf(s, taskId), {
       lineageId: String(first['lineageId']),
-      maximumMinor: 2_500,
+      // Inside the 2,000 envelope the first approval opens (SOL-R3-3).
+      maximumMinor: 1_500,
       purpose,
     });
     pin('propose', windowOf(await run(body), PROPOSE_DISCOVERY));

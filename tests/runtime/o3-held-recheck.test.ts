@@ -166,7 +166,8 @@ describe.skipIf(serverUrl === undefined)('propose and reject rediscover their he
     const first: Detail = await propose(s, taskId, { maximumMinor: 2_000, purpose });
     const body = proposeBody(taskId, await revisionOf(s, taskId), {
       lineageId: String(first['lineageId']),
-      maximumMinor: 2_500,
+      // Inside the 2,000 envelope the first approval opens (SOL-R3-3).
+      maximumMinor: 1_500,
       purpose,
     });
 
@@ -201,7 +202,8 @@ describe.skipIf(serverUrl === undefined)('propose and reject rediscover their he
     const reservationId = String((await approve(s, first))['reservationId']);
     const second: Detail = await propose(s, taskId, {
       lineageId: String(first['lineageId']),
-      maximumMinor: 2_500,
+      // Inside the 2,000 envelope the first approval opens (SOL-R3-3).
+      maximumMinor: 1_500,
       purpose,
     });
     // The first version's hold was classified when the second superseded it.

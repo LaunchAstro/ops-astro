@@ -19,6 +19,7 @@
 // - R3-AUTHORITY-19: an upper-case lineageId, the same uuid, faulted 503 at
 //   the lineage lock-set check, where the lower-case one applies (R2-AUTHORITY-33).
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
@@ -281,6 +282,66 @@ describe.skipIf(serverUrl === undefined)(
         { version: '1', superseded: true },
         { version: '2', superseded: false },
       ]);
+    }, 60_000);
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'R2-RUNTIME-26 residual (b): task.restart checks the cap',
+  () => {
+    let s: Schedules;
+    const LIMIT = 1_000;
+
+    beforeAll(async () => {
+      s = await openSchedules('fr3_propose_restart', LIMIT);
+    }, 90_000);
+
+    afterAll(async () => {
+      await s?.db.drop();
+    });
+
+    it('a restart past the business cap room is refused with nothing written', async () => {
+      const taskId = await createTask(s, 'a rejected lineage restarted after the cap filled');
+      const rejected = await propose(s, taskId, { purpose: freshPurpose(), maximumMinor: LIMIT });
+      expect(codeOf(await asPerson(s, { ...approveBody(rejected), decision: 'reject' }))).toBe(
+        'applied',
+      );
+      const other = await createTask(s, 'a second task approved at 500');
+      await approve(s, await propose(s, other, { purpose: freshPurpose(), maximumMinor: 500 }));
+
+      const counted = async (table: 'proposal_versions' | 'gates') =>
+        await scalar(
+          s,
+          `select count(*)::text as n from public.${table} t
+           join public.proposal_lineages lin
+             on lin.business_id = t.business_id and lin.id = t.lineage_id
+          where t.business_id = $1 and lin.task_id = $2
+            ${table === 'gates' ? "and t.state = 'pending'" : ''}`,
+          [s.business, taskId],
+        );
+      const versions = await counted('proposal_versions');
+      const pending = await counted('gates');
+      const restarted = await asPerson(s, {
+        command: 'task.restart',
+        operationId: randomUUID(),
+        recordId: taskId,
+        lineageId: rejected['lineageId'],
+      });
+      const approval = isCommandRefusal(restarted)
+        ? null
+        : codeOf(await asPerson(s, approveBody(restarted.detail as Detail)));
+
+      expect({
+        answer: codeOf(restarted),
+        written: (await counted('proposal_versions')) - versions,
+        pendingWritten: (await counted('gates')) - pending,
+        approval,
+      }).toStrictEqual({
+        answer: 'PROPOSAL_OUT_OF_SCOPE',
+        written: 0,
+        pendingWritten: 0,
+        approval: null,
+      });
     }, 60_000);
   },
 );

@@ -30,7 +30,13 @@ import { executeCommand } from '../../packages/core-records/src/commands/envelop
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { authorised, createBusinessResolver, post, SECRET, tokenFor } from '../api/fixture.ts';
-import { agentPath, createControls, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
+import {
+  agentPath,
+  createControls,
+  detailOf,
+  PROPOSAL,
+  type Controls,
+} from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -78,7 +84,26 @@ describe.skipIf(serverUrl === undefined)('propose racing handback on one task', 
 
   it('completes both without a deadlock', async () => {
     const task = await c.createTask('a task proposed on while its work is handed back');
-    const first = await c.propose(task.id, task.revision);
+    // An envelope with room for a second line (SOL-R3-3 refuses a proposal past
+    // it): v1 approved at twice the fixture's ceiling opens the envelope at
+    // 5,000, and v2 at the fixture's 2,500 supersedes it, releasing v1's hold.
+    const wide = detailOf(
+      await c.asPerson('task.propose', {
+        recordId: task.id,
+        expectedRevision: task.revision,
+        ...PROPOSAL,
+        maximumMinor: PROPOSAL.maximumMinor * 2,
+      }),
+    );
+    await c.approve(wide);
+    const first = detailOf(
+      await c.asPerson('task.propose', {
+        recordId: task.id,
+        expectedRevision: task.revision,
+        ...PROPOSAL,
+        lineageId: wide['lineageId'],
+      }),
+    );
     const picked = await c.pickup(await c.approve(first));
 
     const gate: { release?: () => void } = {};
