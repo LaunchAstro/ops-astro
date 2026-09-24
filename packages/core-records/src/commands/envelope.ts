@@ -143,19 +143,37 @@ export async function executeCommand(
   entryPoint: EntryPoint,
   request: CommandRequest,
 ): Promise<CommandResult> {
+  return await retryOnce(
+    async () => await callOnce(database, businessId, presented, entryPoint, request),
+    // Only when the fault is actually being handed to the caller. A review
+    // found the earlier order leaving a `failed` event beside the `applied`
+    // one every time a retry won, which reads as two attempts.
+    async (cause) => await recordFailure(database, businessId, presented, request, cause),
+  );
+}
+
+/**
+ * `run`, and once more in a fresh attempt when the first lost a race
+ * `isRetryableViolation` names. Both entries take it: the person entry
+ * (`executeCommand`) and the agent entry (`agent-envelope.ts`).
+ *
+ * One retry, never more. Any other failure, or a second retryable one, goes to
+ * `onFinalFailure` when there is one and then propagates.
+ */
+export async function retryOnce<T>(
+  run: () => Promise<T>,
+  onFinalFailure?: (cause: unknown) => Promise<void>,
+): Promise<T> {
   for (let attempts = 0; ; attempts += 1) {
     try {
       // A retry is sequential by definition: the second attempt exists only
       // because the first one lost, and it has to read what the winner wrote.
       // oxlint-disable-next-line no-await-in-loop
-      return await callOnce(database, businessId, presented, entryPoint, request);
+      return await run();
     } catch (cause) {
       if (attempts === 0 && isRetryableViolation(cause)) continue;
-      // Only now, when the fault is actually being handed to the caller. A
-      // review found the earlier order leaving a `failed` event beside the
-      // `applied` one every time a retry won, which reads as two attempts.
       // oxlint-disable-next-line no-await-in-loop
-      await recordFailure(database, businessId, presented, request, cause);
+      if (onFinalFailure !== undefined) await onFinalFailure(cause);
       throw cause;
     }
   }
