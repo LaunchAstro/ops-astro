@@ -146,8 +146,10 @@ export async function planTaskPlacement(
 
 /**
  * Locked `for share` (a trash updates non-key columns, so not `for key share`):
- * a trash of the parent then waits and takes the new child into its batch, or
- * the child waits for the trash and is refused `PARENT_TRASHED`.
+ * a trash of the parent, or of any task above it, then waits and takes the new
+ * child into its batch, because `trashSubtree` locks each row it walks and
+ * walks again; or the child waits for the trash and is refused
+ * `PARENT_TRASHED`.
  */
 async function readParent(
   tx: TenantQuery,
@@ -203,7 +205,12 @@ export async function lockSiblings(
   parentId: string | null,
   board: string | null,
 ): Promise<void> {
-  const set = parentId === null ? `board:${board ?? 'none'}` : `parent:${parentId}`;
+  // A uuid names one set in either case, as the sibling reads (uuid-typed
+  // slots) see it, so the key takes the lower-case form (R2-RUNTIME-58).
+  const set =
+    parentId === null
+      ? `board:${board?.toLowerCase() ?? 'none'}`
+      : `parent:${parentId.toLowerCase()}`;
   await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
     `task.siblings:${tx.businessId}:${set}`,
   ]);
