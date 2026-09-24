@@ -340,7 +340,7 @@ async function serveComment(
     {
       commentTypeId: spine.taskCommentTypeId,
       declaration,
-      target: { id: task.id, revision: task.revision },
+      target: task,
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,

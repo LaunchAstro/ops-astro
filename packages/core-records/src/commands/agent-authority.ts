@@ -24,9 +24,10 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
 ];
 
 /**
- * What `authorise` answered: the refusal, or the delegation the call goes
- * ahead under, handed on so no later step resolves the credential again. The
- * pre-pickup pair goes ahead under none.
+ * What `authorise` answered: the refusal, or `run`, which serves the row
+ * under the delegation the check resolved and, on a record row, on the task
+ * it checked, so no later step resolves the credential or reads the body's id
+ * again. The pre-pickup pair runs under none.
  */
 export type Authorisation<O extends object> =
   { readonly refusal: CommandRefusal } | { readonly run: (operands: O) => Promise<HandlerOutcome> };
@@ -36,7 +37,7 @@ const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> =
 /**
  * The delegation check, in the order AUTHORITY.md puts it.
  *
- * Returns the refusal, or the delegation when the call may go ahead. The pre-pickup
+ * Returns the refusal, or `run` when the call may go ahead. The pre-pickup
  * pair short-circuits it: there is no delegation to intersect with, and the
  * two operations they are bounded to are the ones that cannot touch a task's
  * own data — the queue names reservations and a pickup claims one.

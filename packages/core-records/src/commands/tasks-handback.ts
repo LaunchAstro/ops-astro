@@ -44,8 +44,8 @@ export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
 /**
  * The handback refusals that have already written a report row L4 keeps.
  *
- * `core-runtime/src/handback.ts` calls its `retain` helper on exactly these
- * two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
+ * `core-runtime/src/handback.ts` calls its `refuseRetained` helper on exactly
+ * these two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
  * not among them: R6 refuses that one before the first write, so there is
  * nothing to keep.
  */

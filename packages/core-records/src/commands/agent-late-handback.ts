@@ -46,8 +46,8 @@ import { taskOfLease } from './prepare.ts';
  *
  * The code alone authorises nothing. Every other refusal, and any binding that
  * does not hold, retains nothing. A replay never reaches here: a refused
- * handback's replay is answered from its register row (`agent-envelope.ts`), and only a new
- * operation id is a new late report.
+ * handback's replay is answered from its register row (`answerReplay`,
+ * `agent-replay.ts`), and only a new operation id is a new late report.
  */
 export async function retainLateHandback(
   tx: TenantQuery,
