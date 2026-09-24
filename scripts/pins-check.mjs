@@ -20,6 +20,12 @@
 //      rule arrived with the database conformance job, which was the first
 //      service container in this repository; until then the check read only
 //      `uses:` and a moved image tag would have passed it.
+//      The security review of d77b375, finding 4, 24 September: the rule read
+//      only `image:`, so a job's `container: node:20` passed, and it skipped
+//      an image written as an expression. A `container:` naming its image
+//      directly is held to the same digest, and an expression is refused: it
+//      chooses the image at run time, so nothing in the workflow pins it. A
+//      bare `container:` opens a mapping whose own `image:` line is read.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
 
@@ -32,7 +38,8 @@ const recordPath = join(repoRoot, 'docs', 'supply-chain-pins.md');
 
 const USES = /^\s*-?\s*uses:\s*([^\s#]+)/gmu;
 const PINNED = /^(?<action>[^@]+)@(?<sha>[0-9a-f]{40})$/u;
-const IMAGE = /^\s*-?\s*image:\s*([^\s#]+)/gmu;
+const IMAGE = /^\s*-?\s*(?<key>image|container):[ \t]*(?<value>.*)$/u;
+const MAPPING_KEY = /^\s*[\w-]+:(?:\s|$)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
 const failures = [];
@@ -66,14 +73,36 @@ for (const file of workflows) {
     }
     pins.set(ref, `${file}`);
   }
-  for (const match of text.matchAll(IMAGE)) {
-    const ref = match[1];
-    if (ref === undefined) continue;
-    if (ref.startsWith('${{')) continue;
+  const lines = text.split('\n');
+  for (const [i, line] of lines.entries()) {
+    const match = IMAGE.exec(line);
+    if (match?.groups === undefined) continue;
+    const { key = '' } = match.groups;
+    const ref = (match.groups['value'] ?? '')
+      .replace(/(?:^|\s)#.*$/u, '')
+      .trim()
+      .replace(/^(['"])(.*)\1$/u, '$2');
+    if (ref === '') {
+      const next = lines.slice(i + 1).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
+      if (key === 'container' && next !== undefined && MAPPING_KEY.test(next)) continue;
+      failures.push(
+        `${file}:${i + 1}: \`${key}:\` names no image on its line.\n` +
+          '        Write the image, pinned to a sha256 digest, on the same line.',
+      );
+      continue;
+    }
+    if (ref.includes('${{')) {
+      failures.push(
+        `${file}:${i + 1}: the container image ${ref} is an expression.\n` +
+          '        It chooses the image at run time, so no digest here pins it.\n' +
+          '        Write the image itself: `image@sha256:<64 hex>`.',
+      );
+      continue;
+    }
     const digested = DIGESTED.exec(ref);
     if (digested?.groups === undefined) {
       failures.push(
-        `${file}: the container image ${ref} is not pinned to a sha256 digest.\n` +
+        `${file}:${i + 1}: the container image ${ref} is not pinned to a sha256 digest.\n` +
           '        A service container runs code in the job. Pin it the way an\n' +
           '        action is pinned: `image@sha256:<64 hex>`, with the tag it\n' +
           '        came from in a comment beside it.',
