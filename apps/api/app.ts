@@ -38,7 +38,10 @@ import {
   NO_MEMBERSHIP_FIXES,
   type VerifiedSubject,
 } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { NO_AGENT_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
+import {
+  NO_AGENT_FIXES,
+  refuseExpiredSession,
+} from '../../packages/core-records/src/identity/agent-login.ts';
 import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
   agentAnswer,
@@ -187,7 +190,7 @@ async function admit(
   // door, and a client shown `AUTH_UNKNOWN_LOGIN` for it cannot tell a
   // session that ended from a credential that was never good.
   if (presented === 'expired') {
-    return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED));
+    return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
 
   // The key comes from the path and is resolved by the server.
@@ -307,10 +310,10 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
-const EXPIRED: readonly string[] = [
-  'The session has expired. Sign in again to continue.',
-  'Nothing was changed by this call.',
-];
+// The canonical expired refusal's fixes, read from the agent envelope's own
+// constructor rather than copied, so the door and `refuseExpiredSession`
+// cannot drift apart. `tests/api/admission-enumeration.test.ts` pins the bytes.
+const EXPIRED_FIXES = refuseExpiredSession().fixes;
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
 /** A body that is not an object is refused rather than coerced into one. */
