@@ -691,12 +691,15 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
   // Delegation codes no reachable operation raises. `DELEGATION_NARROWED`
   // left this list with `grant.revoke`, the route that revokes the delegating
-  // person's grant between a pickup and the agent's next call. `DELEGATION_WIDENS` is a mint refusal and
-  // `task.pickup` mints from the authorising person's own live grants, so it
-  // cannot construct a widening one. The other three name a delegation
-  // lifecycle — intake, expiry as its own answer, an explicit revocation — that
-  // this head's one-task purpose does not distinguish.
-  'DELEGATION_WIDENS',
+  // person's grant between a pickup and the agent's next call.
+  // `DELEGATION_WIDENS` left it on the same route, one step earlier: the mint
+  // reads the approver's live grants when the agent picks the work up, not
+  // when the person approved it, so a grant revoked or expired in between
+  // leaves the pickup asking for authority the approver no longer holds
+  // (`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`). These
+  // three name a delegation lifecycle — intake, expiry as its own answer, an
+  // explicit revocation — that this head's one-task purpose does not
+  // distinguish.
   // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
   // already holds live, and `task.pickup` reaches it as a 409 instead of the

@@ -513,7 +513,16 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        { ...harness.probeBody(declaration), recordId: sibling.id },
+        declaration.name === 'task.heartbeat'
+          ? // A heartbeat, like a handback, names its task through the lease
+            // and never through a stray `recordId` (final review R1 #23), so
+            // the sibling is reached by its own lease.
+            {
+              ...harness.probeBody(declaration),
+              leaseId: siblingLease['leaseId'],
+              fence: siblingLease['fence'],
+            }
+          : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);

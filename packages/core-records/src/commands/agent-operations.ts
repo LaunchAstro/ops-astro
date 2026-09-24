@@ -11,7 +11,8 @@ import type { AgentSession } from '../identity/agent-login.ts';
 import { checkDelegatedAuthority, type Delegation } from '../authority/delegations.ts';
 import { readQueue } from '../reads/queue.ts';
 import { READ_CATALOGUE } from '../reads/catalogue.ts';
-import { READ_BODY_FIXES } from '../reads/dispatch.ts';
+import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
+import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
@@ -463,15 +464,23 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       serve: async (tx, _call, _operands, _delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
-        const task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
-          commentTypeId: spine.taskCommentTypeId,
-          // An agent is never an internal reader. It is a delegate working one
-          // task, not a member of the business, so it is shown what an external
-          // reader is shown — the client comments in the fields the catalogue
-          // marks `shared` — and internal notes are absent from its answer
-          // rather than hidden in it (I09).
-          internal: false,
-        });
+        let task: Awaited<ReturnType<typeof readTaskDetail>>;
+        try {
+          task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
+            commentTypeId: spine.taskCommentTypeId,
+            // An agent is never an internal reader. It is a delegate working one
+            // task, not a member of the business, so it is shown what an external
+            // reader is shown — the client comments in the fields the catalogue
+            // marks `shared` — and internal notes are absent from its answer
+            // rather than hidden in it (I09).
+            internal: false,
+          });
+        } catch (cause) {
+          // Decisions that do not verify are the fault the person read answers
+          // (`runRead`), not a retryable one: the same body on both prefixes.
+          if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
+          throw cause;
+        }
         return task === undefined
           ? NOT_FOUND()
           : { recordId: task.id, revision: task.revision, detail: { task } };

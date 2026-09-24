@@ -149,7 +149,17 @@ async function namedTaskId(
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter (Sol 6 AUTHORITY-2).
   const leaseId = request['leaseId'];
-  if (subjectTask === 'lease' && isUuid(leaseId)) return await taskOfLease(tx, leaseId);
+  // A lease call names its task through the lease and nothing else: a stray
+  // `recordId` beside a malformed lease id would otherwise steer the check,
+  // and the malformed id would answer unlike a fabricated one (final review
+  // R1 #23). Neither names a lease, so both are checked on the purpose scope.
+  if (subjectTask === 'lease') {
+    return isUuid(leaseId) ? await taskOfLease(tx, leaseId) : undefined;
+  }
   const named = request['recordId'];
-  return typeof named === 'string' ? named : undefined;
+  if (typeof named !== 'string') return undefined;
+  // One task, however its uuid is spelled: the person entry binds it as a
+  // uuid, so an upper-case spelling of the agent's own task is that task and
+  // not "another resource" (final review R1 #20).
+  return isUuid(named) ? named.toLowerCase() : named;
 }

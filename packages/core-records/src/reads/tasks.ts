@@ -109,7 +109,11 @@ const READ_COMMANDS: readonly string[] = [...READS];
  * is where an operator looks and where the refusal evidence for N1 to N7 comes
  * from.
  */
-async function historyOf(tx: TenantQuery, recordId: string): Promise<readonly HistoryEntry[]> {
+async function historyOf(
+  tx: TenantQuery,
+  recordId: string,
+  internal: boolean,
+): Promise<readonly HistoryEntry[]> {
   const rows = await tx.query<{
     readonly occurred_at: Date;
     readonly actor_id: string;
@@ -126,7 +130,11 @@ async function historyOf(tx: TenantQuery, recordId: string): Promise<readonly Hi
       where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
         and command <> all($3::text[])
       order by seq`,
-    [tx.businessId, recordId, READ_COMMANDS],
+    // A reader outside the business is not shown that a comment was written:
+    // its comments carry only what the catalogue shares, and an internal
+    // note's author and time in the history would be the note, hidden rather
+    // than absent (API.md, the agent's task.read; final review R1 #68).
+    [tx.businessId, recordId, internal ? READ_COMMANDS : [...READ_COMMANDS, 'task.comment']],
   );
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
@@ -231,7 +239,7 @@ export async function readTaskDetail(
   return {
     ...summaryOf(row),
     description: row.description,
-    history: await historyOf(tx, row.id),
+    history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
     // The proposals go to every reader of the detail, internal or external,
     // because the projection carries no comment body and no field value the

@@ -86,7 +86,7 @@ describe('the refusal register', () => {
       // own API path: `AUTH_NO_AGENT_IDENTITY`, `AUTH_SESSION_EXPIRED`,
       // `DELEGATION_NOT_LIVE`, `DELEGATION_OUT_OF_PURPOSE` and
       // `DELEGATION_EXCLUDES_DECISION` are all produced by an operation a
-      // caller can reach now. The six `DELEGATION_*` codes below still are not,
+      // caller can reach now. The three `DELEGATION_*` codes below still are not,
       // and `register.ts` says of each what it waits for. The three `PRESET_*`
       // codes are deliberately absent too — `preset.plan` produces them. So
       // are L4's three review-fix codes: `LINEAGE_NOT_ON_TASK`,
@@ -104,7 +104,8 @@ describe('the refusal register', () => {
       'DELEGATION_EXCLUDES_INTAKE',
       'DELEGATION_EXPIRED',
       'DELEGATION_REVOKED',
-      'DELEGATION_WIDENS',
+      // `DELEGATION_WIDENS` came off when the approver's task write was revoked
+      // between approval and pickup (`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`).
       'EVIDENCE_MISMATCH',
       'GATE_PENDING',
       'LEASE_EXPIRED',
