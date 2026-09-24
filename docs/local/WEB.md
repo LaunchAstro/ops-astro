@@ -531,7 +531,7 @@ that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
 labels stay in the table, because they make a partial run readable; they no
 longer buy a zero exit. The last recorded `verify:browser` result is 88 of 88 at
-`6f15252`. None is recorded at any later head, `c53aa25` included, so at this
+`6f15252`. None is recorded at any later head, `9d2dbde` included, so at this
 head the browser checklist is unrun
 ([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 
