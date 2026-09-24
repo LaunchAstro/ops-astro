@@ -105,6 +105,13 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
  * time, so a business created while the server is up is reachable without a
  * restart, and a wrong key cannot be turned into a cheap probe for one that
  * is.
+ *
+ * **A key two businesses hold names neither.** The schema does not make the
+ * key unique across businesses (`businesses_key_idx` is on `(business_id,
+ * key)`, and `business_id` is the row's own id), so the lookup reads up to
+ * two rows and answers the unresolved refusal for more than one, rather than
+ * serving and caching whichever row came back first. It is not cached, so the
+ * key resolves again once only one business holds it.
  */
 export function createBusinessResolver(
   admin: AdminConnection,
@@ -117,9 +124,10 @@ export function createBusinessResolver(
     if (cached !== undefined) return cached;
 
     const rows = await admin.execute<{ id: string }>(
-      'select id from public.businesses where key = $1',
+      'select id from public.businesses where key = $1 limit 2',
       [businessKey],
     );
+    if (rows.length !== 1) return undefined;
     const id = rows[0]?.id;
     if (id === undefined || !isBusinessId(id)) return undefined;
     known.set(businessKey, id);

@@ -83,7 +83,7 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
       // token's own header, so a token nominating `alg: none` verifies against
       // no key at all and lands here like any other forgery. Only a signature
       // that did verify can be reported as expired.
-      return isExpiry(cause) ? 'expired' : undefined;
+      return isExpiry(cause) && (await signatureVerifies(token, secret)) ? 'expired' : undefined;
     }
 
     const subject = claims['sub'];
@@ -97,7 +97,6 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
   };
 }
 
-/** `Authorization: Bearer <token>`, and nothing else counts as one. */
 /**
  * Whether Hono's verifier rejected a token for its `exp` rather than its
  * signature.
@@ -111,6 +110,27 @@ function isExpiry(cause: unknown): boolean {
   return cause instanceof Error && cause.name === 'JwtTokenExpired';
 }
 
+/**
+ * Whether a token Hono called expired is signed by this deployment's secret.
+ *
+ * **Hono's name for the error is not proof of the signature.** `hono/jwt`
+ * 4.10.7 checks `exp` before the signature (`utils/jwt/jwt.js:63-65` against
+ * `:92-101`), so a forged or unsigned bearer with a past `exp` throws
+ * `JwtTokenExpired` too. It is verified again with the expiry check off and
+ * everything else the first call checked still on: HS256 named, `nbf` and
+ * `iat` checked. Only a bearer that passes is `AUTH_SESSION_EXPIRED`; the
+ * rest are `AUTH_UNKNOWN_LOGIN` (API.md admission step 1).
+ */
+async function signatureVerifies(token: string, secret: string): Promise<boolean> {
+  try {
+    await verify(token, secret, { alg: 'HS256', exp: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `Authorization: Bearer <token>`, and nothing else counts as one. */
 function bearerOf(header: string | undefined): string | undefined {
   if (header === undefined) return undefined;
   const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());
