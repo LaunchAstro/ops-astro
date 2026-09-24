@@ -17,7 +17,14 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { purgeTrashedRecords, restoreBatch, trashSubtree } from '../tasks/trash.ts';
 import { readBusinessSetting } from '../records/business-settings.ts';
-import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { checkAuthority, subjectsOf } from '../authority/grants.ts';
+import {
+  fromReasoned,
+  fromRecords,
+  refuseCommand,
+  type CommandRefusal,
+  type ReasonedRefusal,
+} from './refusal.ts';
 import { refusePurgeOperands, refuseRestoreOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
@@ -37,7 +44,10 @@ export async function trashTask(tx: TenantQuery, context: CommandContext): Promi
   const trashed = await trashSubtree(tx, {
     rootId: target.id,
     actorId: context.session.actorId,
+    authorise: async (recordIds: readonly string[]) =>
+      await refuseUnreached(tx, context, target.id, recordIds),
   });
+  if ('denied' in trashed) return refused(fromReasoned(trashed.denied));
   if (isRecordsRefusal(trashed)) return refused(fromRecords(trashed));
   // Trashing writes `deleted_at`, so the revision moved. The handle carries
   // the new one: a caller that has to guess it would be refused
@@ -46,6 +56,45 @@ export async function trashTask(tx: TenantQuery, context: CommandContext): Promi
     batchId: trashed.batchId,
     trashed: trashed.recordIds.length,
   });
+}
+
+/**
+ * The envelope asked the declaration's authority on the root only. Every
+ * descendant the walk found is asked the same question at its own record
+ * scope, because a record-scoped grant matches its own record and no other
+ * (`authority/grants.ts`; R3, `core-runtime/src/propose.ts`). One business
+ * grant answers for all of them, so that is asked first. The first
+ * uncovered descendant refuses the whole trash with the authority refusal as
+ * it stands: no count and no name of what is below.
+ */
+async function refuseUnreached(
+  tx: TenantQuery,
+  context: CommandContext,
+  rootId: string,
+  recordIds: readonly string[],
+): Promise<ReasonedRefusal | undefined> {
+  const descendants = recordIds.filter((id) => id !== rootId);
+  if (descendants.length === 0) return undefined;
+  const subjects = subjectsOf(context.session);
+  const { collection, action } = context.declaration;
+  const whole = await checkAuthority(tx, subjects, {
+    collection,
+    action,
+    scope: { kind: 'business', id: null },
+  });
+  if (whole.ok) return undefined;
+  for (const id of descendants) {
+    // Sequential, and stopping at the first uncovered record: the answer is
+    // the same refusal whichever one it is.
+    // eslint-disable-next-line no-await-in-loop
+    const reached = await checkAuthority(tx, subjects, {
+      collection,
+      action,
+      scope: { kind: 'record', id },
+    });
+    if (!reached.ok) return reached.refusal;
+  }
+  return undefined;
 }
 
 export async function restoreTasks(
@@ -93,7 +142,12 @@ export async function purgeTasks(
     trashedBefore: await cutoff(tx, window),
   });
   if (isRecordsRefusal(purged)) return refused(fromRecords(purged));
-  return applied(null, null, { purged: purged.recordIds.length });
+  // `retained` names the aged trash the runtime still holds, so the stored
+  // result says what the purge kept as well as how much it removed.
+  return applied(null, null, {
+    purged: purged.recordIds.length,
+    retained: purged.retainedIds,
+  });
 }
 
 const RETENTION_WINDOW = 'retention_window_days';
