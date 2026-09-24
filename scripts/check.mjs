@@ -40,6 +40,7 @@ const STEPS = [
   ['size:cases', 'the size gate and its waivers'],
   ['review:cases', 'review evidence binds to a revision'],
   ['session:cases', 'the session check reads a scope correctly'],
+  ['pins:cases', 'pins-check refuses an unpinned action, image or container'],
   ['pins', 'actions pinned and recorded'],
   ['skills:refs', 'every skill reference resolves'],
   ['merge:policy', 'nothing merges itself'],

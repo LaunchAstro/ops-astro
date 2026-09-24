@@ -51,8 +51,12 @@ runs whatever arrives.
 ## Container images
 
 A service container runs code inside the job exactly as an action does, so it
-is pinned the same way. `scripts/pins-check.mjs` refuses an `image:` that is
-not a sha256 digest, and refuses a digest that is not recorded here.
+is pinned the same way. `scripts/pins-check.mjs` refuses an `image:` or a
+`container:` that is not a sha256 digest, refuses an image written as a
+`${{ }}` expression, since that picks the image at run time, and refuses a
+digest that is not recorded here. A bare `container:` opens a mapping, and its
+own `image:` line is held to the same rule. `tests/ci/pins-check-cases.sh`
+holds the cases.
 
 | Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
 | ---------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |

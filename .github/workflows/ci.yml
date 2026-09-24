@@ -49,6 +49,8 @@ jobs:
         run: bash tests/gate/hook-exit-cases.sh
       - name: Every action pinned to a hash, and every pin recorded
         run: node scripts/pins-check.mjs
+      - name: The pins checker's own cases
+        run: bash tests/ci/pins-check-cases.sh
       - name: Every skill reference resolves
         run: node scripts/skill-refs-check.mjs
       - name: The session check passes on a clean checkout
