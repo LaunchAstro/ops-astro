@@ -24,18 +24,8 @@ import {
 } from '../operations/client.ts';
 import { describeRefusal } from './submit.ts';
 
-/**
- * What a write came to, in the terms a screen acts on.
- *
- * - `ok`: stored.
- * - `stale`: `VERSION_STALE`. Somebody else moved the record on first.
- * - `closed`: `SCOPE_NOT_GRANTED`. About this reader, not the record, so a
- *   control that asks again would only be refused again.
- * - `failed`: any other refusal. The outcome is known and nothing was stored.
- * - `unknown`: the server did not answer. It may or may not have stored it.
- */
-export type Settlement =
-  | { readonly kind: 'ok' }
+/** A write that did not store, in the terms a screen acts on. */
+export type Failure =
   | {
       readonly kind: 'stale' | 'closed' | 'failed';
       readonly refusal: WireRefusal;
@@ -43,9 +33,19 @@ export type Settlement =
     }
   | { readonly kind: 'unknown'; readonly because: string };
 
-export type Failure = Exclude<Settlement, { readonly kind: 'ok' }>;
+/**
+ * What a write came to, in the terms a screen acts on.
+ *
+ * - `ok`: stored, with the server's answer, for a caller that reads its echo.
+ * - `stale`: `VERSION_STALE`. Somebody else moved the record on first.
+ * - `closed`: `SCOPE_NOT_GRANTED`. About this reader, not the record, so a
+ *   control that asks again would only be refused again.
+ * - `failed`: any other refusal. The outcome is known and nothing was stored.
+ * - `unknown`: the server did not answer. It may or may not have stored it.
+ */
+export type Settlement<T = unknown> = { readonly kind: 'ok'; readonly value: T } | Failure;
 
-export function settle(result: CallResult<unknown>): Settlement {
+export function settle<T>(result: CallResult<T>): Settlement<T> {
   if (isRefusal(result)) {
     const because = describeRefusal(result);
     if (result.code === 'VERSION_STALE') return { kind: 'stale', refusal: result, because };
@@ -53,7 +53,7 @@ export function settle(result: CallResult<unknown>): Settlement {
     return { kind: 'failed', refusal: result, because };
   }
   if (isUnavailable(result)) return { kind: 'unknown', because: result.because };
-  return { kind: 'ok' };
+  return { kind: 'ok', value: result.value };
 }
 
 export interface Command {
@@ -76,7 +76,7 @@ export interface Command {
   /** Send one write, and hand its settlement to the caller's own step. */
   readonly run: <T>(
     work: () => Promise<CallResult<T>>,
-    then?: (settlement: Settlement) => void,
+    then?: (settlement: Settlement<T>) => void,
   ) => void;
   /** Forget the last failure without sending anything. */
   readonly reset: () => void;

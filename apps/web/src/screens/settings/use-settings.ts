@@ -32,12 +32,7 @@
 // file keeps only what settings does with each kind.
 
 import { useEffect, useState } from 'react';
-import type {
-  CallResult,
-  CommandOutcome,
-  MutationOptions,
-  OperationsClient,
-} from '../../operations/client.ts';
+import type { CommandOutcome, MutationOptions, OperationsClient } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { sessionGeneration, type StorageLike } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
@@ -82,12 +77,6 @@ export interface Conflict {
   readonly because: string;
 }
 
-/** The server's own echo of the row it wrote, or nothing when it said nothing. */
-function echoed(result: CallResult<CommandOutcome>): unknown {
-  if (!('ok' in result)) return undefined;
-  return result.value.detail?.['value'];
-}
-
 const isThreshold = (value: unknown): value is number | null =>
   value === null || typeof value === 'number';
 
@@ -99,6 +88,13 @@ function remember(which: Which, echo: unknown, value: Draft): Confirmed {
   }
   const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
   return signOff === undefined ? {} : { signOff };
+}
+
+/** The session's memory as this screen holds it, and which session it is. */
+interface Held {
+  readonly grantKey: string;
+  readonly confirmed: Confirmed;
+  readonly denied: boolean;
 }
 
 export interface SettingsModel {
@@ -151,19 +147,18 @@ export function useSettings(
   // hold is kept in memory as well as in storage, so a storage that refuses
   // writes does not lift it.
   const memory = sessionMemory(storage, businessKey, grantKey);
-  const [held, setHeld] = useState(() => ({
+  const fromMemory = (): Held => ({
     grantKey,
     confirmed: memory.confirmed(),
     denied: memory.denied(),
-  }));
-  const current = held.grantKey === grantKey;
-  const confirmed = current ? held.confirmed : memory.confirmed();
-  const denied = current ? held.denied : memory.denied();
+  });
+  const [held, setHeld] = useState(fromMemory);
+  const inHand = (was: Held): Held => (was.grantKey === grantKey ? was : fromMemory());
+  const { confirmed } = inHand(held);
   const command = useCommand();
   const [pressed, setPressed] = useState<Which>('four-eyes');
   const [complaint, setComplaint] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
-  const [closed, setClosed] = useState(false);
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = command.failure?.kind === 'stale' ? null : command.failure;
@@ -181,7 +176,7 @@ export function useSettings(
       : caps.outcome === 'ready' || caps.outcome === 'empty'
         ? holdsManage(caps.value.grants)
         : false;
-  const shut = closed || !mayManage;
+  const shut = command.closed || !mayManage;
   // A conflict's reread still in flight: the row on screen is the one that
   // lost, so a press now would write against a revision nobody has seen.
   const rereading = conflict !== null && read.outcome === 'loading';
@@ -206,8 +201,7 @@ export function useSettings(
   const settle = (
     which: Which,
     value: Draft,
-    settlement: Settlement,
-    answer: CallResult<CommandOutcome> | undefined,
+    settlement: Settlement<CommandOutcome>,
     pressedIn: number,
   ): void => {
     // Answered after the session that pressed Save ended: the sign-out has
@@ -220,32 +214,36 @@ export function useSettings(
       settings.reload();
       return;
     }
-    if (settlement.kind === 'closed') setClosed(true);
     if (settlement.kind !== 'ok') return;
     setConflict(null);
-    // A session refused the read keeps nothing until a read answers it.
-    if (!denied && !memory.denied()) {
-      const echo = answer === undefined ? undefined : echoed(answer);
-      const merged = { ...confirmed, ...remember(which, echo, value) };
-      setHeld({ grantKey, confirmed: merged, denied: false });
+    const kept = remember(which, settlement.value.detail?.['value'], value);
+    // A session refused the read keeps nothing until a read answers it. The
+    // hold is judged as it stands now, not as it stood when Save was pressed:
+    // a refusal that arrived while the write was in flight still holds, even
+    // when there is no storage to have recorded it. Keeping the same values
+    // twice is the same write, so the updater may be run again.
+    setHeld((was) => {
+      const now = inHand(was);
+      if (now.denied) return was;
+      const merged = { ...now.confirmed, ...kept };
       memory.keep(merged);
-    }
+      return { grantKey, confirmed: merged, denied: false };
+    });
     // The row as the server holds it, not the echo and not what was typed.
     settings.reload();
   };
 
   const save = (which: Which, value: Draft): void => {
-    if (command.busy || shut) return;
+    if (command.locked || !mayManage) return;
     const revision = rowFor(which)?.revision;
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
     setPressed(which);
     setComplaint(null);
     const pressedIn = sessionGeneration();
-    let answer: CallResult<CommandOutcome> | undefined;
     command.run(
-      async () => (answer = await client.mutate(COMMAND[which], { value }, options)),
+      () => client.mutate(COMMAND[which], { value }, options),
       (settlement) => {
-        settle(which, value, settlement, answer, pressedIn);
+        settle(which, value, settlement, pressedIn);
       },
     );
   };
@@ -256,7 +254,7 @@ export function useSettings(
     answered: read.outcome === 'ready',
     fallback: read.outcome === 'unavailable',
     confirmed,
-    closed,
+    closed: command.closed,
     busy,
     disabled: busy !== null || shut || rereading,
     because,
