@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one process entry, read top to bottom */
 //
 // The runnable command line: `pnpm cli <operation> [flags]`.
 //
@@ -134,7 +135,8 @@ const HELP = [
   'usage: pnpm cli <operation> [--json <object> | --body-file <path>] [--business <key>]',
   '                               [--api <url>] [--agent]',
   '       pnpm cli login --email <address> [--gotrue <url>]   (password from',
-  '                               OPS_ASTRO_PASSWORD or the first line of stdin)',
+  '                               OPS_ASTRO_PASSWORD, the first line of piped stdin,',
+  '                               or a prompt with echo off at a terminal)',
   '       pnpm cli logout',
   '',
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
@@ -235,7 +237,15 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     // `kind` is what says which is which. The agent prefix is the exception: its
     // envelope refuses any call without one, reads included
     // (`packages/core-records/src/commands/agent-envelope.ts`).
-    const request = isWrite(verb) || agent ? { operationId: randomUUID(), ...payload } : payload;
+    // The id the command line chose is the caller's only way to replay a write
+    // whose answer never arrived, so a transport failure or a fault names it.
+    const generated =
+      (isWrite(verb) || agent) && !('operationId' in payload) ? randomUUID() : undefined;
+    const request = generated === undefined ? payload : { operationId: generated, ...payload };
+    const replayHint = (): void => {
+      if (generated === undefined) return;
+      io.err(`cli: operationId ${generated}; send it again with this operationId to replay`);
+    };
 
     const cli = createCli({
       businessKey: encodeURIComponent(businessKey),
@@ -259,6 +269,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       answer = await cli.run(verb, request);
     } catch (cause) {
       io.err(`cli: no answer from ${api}: ${(cause as Error).message}`);
+      replayHint();
       return EXIT.transport;
     }
     const ok = answer.status >= 200 && answer.status < 300 && answer.body !== undefined;
@@ -276,7 +287,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     }
     io.out(answer.body === undefined ? (answer.text ?? '') : JSON.stringify(answer.body));
     if (ok) return EXIT.ok;
-    return isRefusal(answer) ? EXIT.refused : EXIT.fault;
+    if (isRefusal(answer)) return EXIT.refused;
+    replayHint();
+    return EXIT.fault;
   } catch (cause) {
     if (!(cause instanceof UsageError)) throw cause;
     io.err(`cli: ${cause.message}`);
@@ -284,8 +297,41 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
   }
 }
 
+/**
+ * A terminal is asked for the password with echo off, so it never shows on the
+ * screen; the answer ends at Enter. Ctrl-C or Ctrl-D before Enter gives
+ * nothing, and `login` then refuses with exit 2.
+ */
+async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
+  // Echo goes off before the prompt shows, so nothing typed after it is echoed.
+  input.setRawMode(true);
+  input.setEncoding('utf8');
+  process.stderr.write('password: ');
+  try {
+    return await new Promise<string>((resolve) => {
+      let typed = '';
+      const onData = (chunk: string): void => {
+        for (const char of chunk) {
+          if (char === '\r' || char === '\n' || char === '\u0003' || char === '\u0004') {
+            input.off('data', onData);
+            resolve(char === '\r' || char === '\n' ? typed : '');
+            return;
+          }
+          typed = char === '\u007F' || char === '\b' ? typed.slice(0, -1) : typed + char;
+        }
+      };
+      input.on('data', onData);
+      input.once('end', () => resolve(''));
+    });
+  } finally {
+    input.setRawMode(false);
+    input.pause();
+    process.stderr.write('\n');
+  }
+}
+
 async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return '';
+  if (process.stdin.isTTY) return await promptHidden(process.stdin);
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');
