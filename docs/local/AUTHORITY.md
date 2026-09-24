@@ -9,15 +9,15 @@ and it cross-references DATA.md rather than restating it.
 
 Nothing here is a plan. Every mechanism below is implemented in the tree with a
 test beside it, and [what is not here](#what-is-not-here) says what is not.
-Implemented and tested is not accepted: no mechanism in this file has been
+Implemented and tested is not accepted. No mechanism in this file has been
 accepted on the integrated head, and the review of that head is still owed.
 
 ## The three credentials, which are three things
 
 A person's login, an agent login and a delegation credential are distinct
 (transaction contract, delegation). Collapsing any two is the failure the
-identity model exists to prevent, and it is the failure that arrives one layer
-up from the one migration 0002 guards.
+identity model exists to prevent. It arrives one layer up from the failure
+migration 0002 guards.
 
 | Credential   | Resolves through               | To                                | Confers                                             |
 | ------------ | ------------------------------ | --------------------------------- | --------------------------------------------------- |
@@ -56,8 +56,8 @@ The order of its checks matters:
    outside it three ways: a collection the purpose does not reach, an action it
    does not carry, or a scope that is not exactly the one task it was minted
    for. The last is the one-task ceiling. R5 is "R1's delegated agent,
-   purpose-scoped to one task", and R1's own grant is business-wide, so without
-   the stored scope a call on a sibling task reaches that same grant and passes
+   purpose-scoped to one task", and R1's own grant is business-wide. Without
+   the stored scope, a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
    request under a delegation is refused here too.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
@@ -80,7 +80,7 @@ The order of its checks matters:
 4. `DELEGATION_NARROWED`: the purpose reaches the call and the person's live
    grants no longer cover it. This is I08, and it keeps its own name.
    Substituting `SCOPE_NOT_GRANTED` would say the agent was never authorised,
-   when in fact the authority it drew on was taken away.
+   when the authority it drew on was taken away.
 
 Revoking the person's grant therefore refuses the agent's next call, and so
 does the grant reaching its own expiry. A delegation's expiry is the
@@ -101,8 +101,8 @@ as it is.
 
 ## The interfaces L3 consumes
 
-Import from `packages/core-records/src/authority/index.ts`, which is the pinned
-surface. A rearrangement behind it is not a change to what L3 imports.
+Import from `packages/core-records/src/authority/index.ts`. That file is
+pinned, so a rearrangement behind it is not a change to what L3 imports.
 
 ```ts
 // authority/delegations.ts
@@ -142,8 +142,7 @@ interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope
 ```ts
 // identity/agent-login.ts
 resolveAgentLogin(tx, presented: VerifiedSubject): Promise<AgentSession | AgentRefusal>
-refuseExpiredSession(): AgentRefusal            // AUTH_SESSION_EXPIRED
-EXPIRED_FIXES                                   // its fixes, also read by the HTTP door
+EXPIRED_FIXES                                   // the fixes the door sends with AUTH_SESSION_EXPIRED (apps/api/app.ts)
 // The agent entry is executeAgentCommand (commands/agent-envelope.ts). It opens
 // withBusiness and calls resolveAgentLogin itself; no session wrapper is exported.
 
@@ -227,14 +226,15 @@ The "no" rows are the reasons `UNPRODUCED_CODES` gives for them
 name.
 
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
-(`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`, for an
-operation an agent may not call whatever it holds: anything outside
-`AGENT_SURFACE`, which `runAgentCommand` refuses first. `AGENT_SURFACE` is read
-off the surface rows' own `agent` field (`COMMAND_SURFACE`), and every name in
-it has a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`) with its
-own `serve` (`tests/commands/agent-surface-derivation.test.ts`). It is 403 and
-not `DELEGATION_NOT_LIVE` 401 because a live credential would not change
-the answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
+(`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`. It
+answers an operation an agent may not call whatever it holds, which is anything
+outside `AGENT_SURFACE`, and `runAgentCommand` refuses that first.
+`AGENT_SURFACE` is read off the surface rows' own `agent` field
+(`COMMAND_SURFACE`), and every name in it has a row of `AGENT_OPERATIONS`
+(`commands/agent-operations.ts`) with its own `serve`
+(`tests/commands/agent-surface-derivation.test.ts`). It is 403 and not
+`DELEGATION_NOT_LIVE` 401 because a live credential would not change the
+answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
 over every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts`).
 
 It is also the answer to an agent call that presents no delegation credential,
@@ -269,9 +269,9 @@ is the one exception to "no credential, no call"
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)).
 `task.comment` has an agent row (the `task.comment` row of
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
-identity. The agent may write
-in the `internal` audience only (`AGENT_AUDIENCES`). A `client` comment is
-`AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
+identity. The agent may write in the `internal` audience only
+(`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
+the same case asserts. Internal-only is
 lane L3-CONTROLS's choice and awaits root or owner confirmation.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -284,16 +284,16 @@ audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
 it stays off ("has come off the unproduced list"), that it is registered at 409
 and caller-visible ("registers it, gives it 409"), and that it is not one of the
 twenty runtime codes ("is not one of the runtime codes"). The runtime passes
-it through from the authority layer, as `DELEGATION_NOT_LIVE` and
+it through from the authority layer, the same way `DELEGATION_NOT_LIVE` and
 `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
 ## The expired session
 
-`refuseExpiredSession()` pins what the server answers when a verified GoTrue
-token has expired: a typed `AUTH_SESSION_EXPIRED` refusal a client can turn into
-a re-login path. Its fixes are `EXPIRED_FIXES`, exported beside it, and the HTTP
-door answers an expired bearer with the same fixes before any envelope runs
-(`apps/api/app.ts`). It is never an empty result, a 500 or a silent failure. A
+The HTTP door (`apps/api/app.ts`) answers a verified GoTrue token that has
+expired before any envelope runs, on both prefixes: a typed
+`AUTH_SESSION_EXPIRED` 401 whose fixes are `EXPIRED_FIXES`
+(`identity/agent-login.ts`), which a client can turn into a re-login path. It is
+never an empty result, a 500 or a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
 "the server is broken", and only the first is something they can fix. The
 browser half (holding the draft, re-authenticating, resuming) is L5's.
@@ -334,8 +334,10 @@ fields and client-audience comments only".
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
-  the state's label, plus client-audience comments (I09 ruling). A sibling
-  record and the board are `NOT_FOUND`.
+  the state's label, plus client-audience comments (I09 ruling), on a business
+  a reseed upgraded as well as a fresh one
+  (`packages/core-records/src/tasks/reconcile-visibility.ts`). A sibling record
+  and the board are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
   rows in the matrix's case (g). `tests/acceptance/i10-inflight.test.ts` holds
@@ -356,14 +358,14 @@ fields and client-audience comments only".
 ## Every attempt at the door
 
 `authentication_attempts` (0008) is I13's separate authentication-attempt
-owner. The domain audit records what a command did; this records who got
-through and who did not, which is a different question with a different reader,
-and on the refusals it is the only record there is. A refused attempt never
-becomes an operation, so it has no audit event to hang off.
+owner. The domain audit records what a command did. This table records who got
+through and who did not, a different question with a different reader, and for
+a refusal it is the only record there is. A refused attempt never becomes an
+operation, so it has no audit event to hang off.
 
-- Written by both login paths, inside the caller's own transaction, so a
-  refusal and its record commit together.
-- The presented subject is stored as a sha256 digest, never whole. A refused
+- Both login paths write it, inside the caller's own transaction, so a refusal
+  and its record commit together.
+- It stores the presented subject as a sha256 digest, never whole. A refused
   attempt carries a subject this business has no relationship with, and storing
   it raw would park an identifier in a tenant that never agreed to hold it.
 - On success the verified subject is this business's own `login_id`, `actor_id`
@@ -379,7 +381,7 @@ Agent reads are registered under their `operationId`, and person reads are not.
 ## The model corrections
 
 **`owning_operation` is `text[]`** (0009). It shipped as one text column holding
-space-separated names, which is a list encoded in a string: a reader who forgets
+space-separated names, which is a list encoded in a string. A reader who forgets
 to split sees one operation called `task.complete task.reopen task.start`, and
 no such operation exists. The conversion used `string_to_array` on the separator
 the old constraint enforced, so no row changed meaning.
@@ -393,10 +395,10 @@ Both come from the same array and cannot disagree. New readers take the array.
 `tests/tasks/task-spine-unit.test.ts`, against `PROTECTED_TASK_FIELDS`, and the
 comment type's classifications are asserted in `tests/tasks/comments.test.ts`.
 
-**The free slots are indexed** (0009). `planSlotAssignment` refuses an
-unindexed slot, correctly, because a slot exists to hold a value that can be
-filtered, and 0005 indexed only the sixteen the spine reserves. So every one of
-the twenty free columns was unusable and `preset.plan`'s only possible answer
+**The free slots are indexed** (0009). `planSlotAssignment` rightly refuses an
+unindexed slot, because a slot exists to hold a value that can be filtered.
+0005 indexed only the sixteen the spine reserves, so every one of the twenty
+free columns was unusable and `preset.plan`'s only possible answer
 was `SLOT_INDEX_ABSENT`. All 38 slots are now indexed; 18 are still reserved,
 and the two counts are now separate assertions rather than one.
 
@@ -578,8 +580,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   attempt.
 - `grant.revoke` and `delegation.revoke` answer with `detail.classifiedHolds`:
   the ids of the reservations the revocation classified (`classifiedHolds`).
-- A delegation revoked because `grant.revoke` removed the authority it draws
-  on is revoked in the same transaction, with `authority_lost` as its recorded
+- When `grant.revoke` removes the authority a delegation draws on, the same
+  transaction revokes the delegation, with `authority_lost` as its recorded
   cause. The bound agent's next call on its still unexpired credential answers
   `DELEGATION_NARROWED`, and nothing is reactivated. An explicit
   `delegation.revoke`, cancellation or supersession, expiry, settlement,
@@ -642,11 +644,11 @@ grant revocation answers.
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege
-anywhere (no schema, no table, no function), and the revokes are written out
-rather than left implied, because a privilege nobody granted and one somebody
-revoked read the same in the catalogue and only one of them was decided (I01
-R6). Work reaches the database through an authorised delegation and the
-application role, never through a privilege the worker holds itself.
+anywhere (no schema, no table, no function). The revokes are written out rather
+than left implied. A privilege nobody granted and one somebody revoked read the
+same in the catalogue, and only one of them was decided (I01 R6). Work reaches
+the database through an authorised delegation and the application role, never
+through a privilege the worker holds itself.
 
 `tests/tenancy/restricted-calls.test.ts` and `restricted-calls-prefixes.test.ts`
 call every table and function as `ops_astro_worker`, beside the application

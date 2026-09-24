@@ -43,8 +43,8 @@ of the eight protected components, each affected component's conformance
 proof. Check that each expected result exists for the final revision.
 
 Do not require a Copilot check by name. Copilot's review runs from the
-separate review ruleset, and the check run it produces is not counted toward
-a required status check: it belongs to a check suite raised outside the pull
+separate review ruleset. The check run it produces does not count towards a
+required status check. It belongs to a check suite raised outside the pull
 request event, and it is still ignored when the required context is bound to
 no app at all. Requiring that name blocks every merge. The review ruleset and
 conversation resolution request Copilot's review and block a merge on an

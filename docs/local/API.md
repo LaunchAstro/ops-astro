@@ -30,9 +30,10 @@ containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
 `synthetic-agents.json` and `gate.env`. It is gitignored and never enters a
-commit. The last two are the seed's: the agent identities each business gets,
-with the password each signs in to GoTrue with, and the key decisions are
-signed with. The seed generates them once and reads them back, because a second
+commit. The seed writes the last two. `synthetic-agents.json` holds the agent
+identities each business gets and the password each signs in to GoTrue with.
+`gate.env` holds the key decisions are signed with. The seed generates them once
+and reads them back, because a second
 seed minting a new secret would leave every decision already on the chain
 signed by a key this deployment no longer holds.
 
@@ -67,10 +68,10 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
 2. An expired bearer is `AUTH_SESSION_EXPIRED` 401, before the business key or
    the body is read.
 3. A body that is not a JSON object is `COMMAND_BODY_INVALID` 400, whatever
-   business the key names. One `authentication_attempts` row is written only
-   when the key resolved to a business: owner `person_login` or
-   `agent_login`, outcome `refused`, code `COMMAND_BODY_INVALID`, and the
-   subject as a digest only (`recordBodyRefusal`,
+   business the key names. Admission writes one `authentication_attempts` row
+   only when the key resolved to a business. Its owner is `person_login` or
+   `agent_login`, its outcome `refused` and its code `COMMAND_BODY_INVALID`,
+   and it holds the subject only as a digest (`recordBodyRefusal`,
    `identity/authentication-attempts.ts`, which takes a verified subject only).
    A key that names none writes nothing and answers the same bytes. Neither
    case writes an `audit_events` row or stores the body or a credential.
@@ -105,8 +106,8 @@ plain-text 500 when an operand was missing. Each now answers
 
 The three `refuse…Operands` functions are in `commands/operands.ts`, beside
 `isFieldMap` and `invalid`, which the read catalogue shares. A read's operand
-check is the `parse` column of its `READ_CATALOGUE` row (`reads/catalogue.ts`):
-it answers the read's typed operands (`ReadOperands`) or the refusal, and the
+check is the `parse` column of its `READ_CATALOGUE` row (`reads/catalogue.ts`).
+It answers the read's typed operands (`ReadOperands`) or the refusal, and the
 row's `subject`, `authority` and `serve` see only those operands. `ReadRequest`
 is the unchecked body.
 
@@ -130,14 +131,16 @@ after the system-field and identifier checks and before the grant check, so a
 refused read writes its audit row like any other.
 `tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
 mistyped, and that a well-formed request still succeeds on each. `task.board`
-joined them later: a body with no `board` used to be answered the unboarded
+joined them later. A body with no `board` used to be answered the unboarded
 list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
-On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. The
-agent envelope reads `recordId` itself, and under a live delegation an absent
-one is `NOT_FOUND` 404 (`subjectTaskId` in `commands/agent-authority.ts`, and
-the `serve` of the `task.read` row of `AGENT_OPERATIONS` in
-`commands/agent-operations.ts`).
+On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. A
+`recordId` that is present and not a string is refused before any authority,
+in the person prefix's bytes. That is `FIELD_VALUE_INVALID` 422 naming
+`recordId` on `task.read` (the read catalogue's own `parse`) and `NOT_FOUND` 404
+on `task.comment` (`recordIdOperand` in `commands/agent-operations.ts`,
+THERMO-RECHECK-2 NNA1). Under a live delegation an absent one is `NOT_FOUND` 404. The check falls back to the delegation's own task, and the row serves only
+the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
@@ -200,7 +203,7 @@ agent's `session.capabilities` answer at the wire.
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
 returns it with the app's business resolver. It reads no environment, opens no
 socket and starts no process. `main()` runs only as the process entry
-(`import.meta.main`): it reads the environment, calls `composeApi`, runs
+(`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
@@ -225,7 +228,9 @@ grant's replay is `SCOPE_NOT_GRANTED` 403 and not the stored result. A person
 pickup replay is also released only while its lease is live and the caller's
 (`LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `RESERVATION_NOT_CLAIMABLE` 409).
 The register row is unchanged and the audit row is `refused` (`replayOrRefuse`
-and `withheldNow`, `commands/envelope.ts`).
+and `withheldNow`, `commands/envelope.ts`). The lease check is
+`pickupReceiptBinding` (`commands/tasks-pickup.ts`), the one statement the agent
+pickup replay also uses (`replayPickup`, `commands/agent-replay.ts`).
 `tests/runtime/person-replay-current-rights.test.ts` holds it.
 
 An identifier field an untargeted write does not take is refused
@@ -281,7 +286,7 @@ refusal, and `fields.source` stays `SOURCE_SPOOFED`.
 
 **`task.board` names its board or asks for none.** `board: null` lists the
 business's unboarded tasks. A board id must name a live task in the caller's
-business: a foreign, fabricated, malformed or trashed board is `NOT_FOUND` 404,
+business. A foreign, fabricated, malformed or trashed board is `NOT_FOUND` 404,
 the same body as any unknown record, audited in the caller's business with no
 subject, and never answered as an empty list (the `serve` of the `task.board`
 row and `boardExists`, `reads/catalogue.ts`; minimum contract 8.2 cases 1 and
@@ -310,9 +315,9 @@ hold. The author is the acting actor and the posting time is the server's;
 neither is a payload field.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
-success. It is the one read that does not take the `read` action,
-which is why the collection and the action are on the declaration rather than
-assumed from the kind.
+success. It is the one read that does not take the `read` action, which is why
+the collection and the action are on the declaration rather than assumed from
+the kind.
 
 **The grant `preset/plan` needs is `manage` on the family the request names,
 not on `preset`.** A body with `recordTypeKey: "task"` takes `manage` on
@@ -324,7 +329,7 @@ front of it rather than a wider one, so the two cannot disagree about who may
 plan what.
 
 A preset that names one new field key twice is refused `PRESET_FIELD_DUPLICATE`
-422 naming the repeated keys, before any action is planned: two entries
+422 naming the repeated keys, before any action is planned. Two entries
 claiming one key cannot both be created, and a plan promising something the
 apply cannot do would be worse than a refusal. Nothing is written, as with
 every other refusal here and with every success.
@@ -336,8 +341,8 @@ naming a revision the row has moved past is refused `VERSION_STALE` 409 with
 `names = ['revision=<current>']`, and the stored value is unchanged. It is
 optional because a caller who has not read the setting may still set it.
 Omitting it is a last-writer-wins write, and naming it is the optimistic check.
-The applied result carries the `revision` the row is
-now at, which is the one the next write names. How the writer locks and moves
+The applied result carries the `revision` the row is now at, which is the one
+the next write names. How the writer locks and moves
 the revision, and which tests hold it, is in
 [AUTHORITY.md, "Business settings"](AUTHORITY.md#business-settings); the column
 itself is in [DATA.md](DATA.md#a-setting-is-checked-against-its-revision).
@@ -380,11 +385,11 @@ constrain, before the write rather than at it: a `purpose` outside
 
 `task.propose` writes a proposal beside the task and leaves the task's own
 revision alone, so a caller may keep writing against the revision they hold.
-The proposer, the subjects and the expiry instant are the server's: a body
+The proposer, the subjects and the expiry instant are the server's. A body
 naming an absolute `expiresAt` could raise a gate nobody can decide or hold a
 ceiling open for a decade, and a duration the server adds to its own clock can
-do neither. `expiresInSeconds` is a whole number from 1 to 604800: maximum
-seven days (owner decision, 23 Sep 2026), and leaving it out takes seven days.
+do neither. `expiresInSeconds` is a whole number from 1 to 604800, a maximum of
+seven days (owner decision, 23 Sep 2026). Leaving it out takes seven days.
 604801, zero or a fraction is `FIELD_VALUE_INVALID` 422 naming
 `expiresInSeconds` and the maximum, and it writes nothing but its refused
 audit row (`tests/api/expiry-bound.test.ts`). Existing gates are not
@@ -399,8 +404,8 @@ the locks and never trusted, so a decision made from a page that has gone stale
 is `VERSION_SUPERSEDED` rather than a decision about something the decider never
 read. The refusal names the gate and the version it carries, never the version
 presented, so a foreign and a fabricated `versionId` on the caller's own gate
-answer the same bytes. The signing key and the budget cap are not in the body:
-the key comes from the deployment's environment and the cap is the business's
+answer the same bytes. The signing key and the budget cap are not in the body.
+The key comes from the deployment's environment and the cap is the business's
 own, read rather than created, because a command that created the ceiling it
 then spent against could never be refused `BUDGET_EXHAUSTED`.
 
@@ -430,9 +435,9 @@ report nobody can name is a report nobody can read.
 has finished one piece of work proposes the next without a person having to open
 the task again. Its caller-supplied half is `{ purpose, maximumMinor, currency,
 payload, step: { kind, payload }, expiresInSeconds? }`. `expiresInSeconds` is
-the same duration `task.propose` takes, read through the same `expiryFrom`:
-maximum seven days (owner decision, 23 Sep 2026), and leaving it out takes seven
-days. Over the maximum is `FIELD_VALUE_INVALID` 422 naming
+the same duration `task.propose` takes, read through the same `expiryFrom`, with
+a maximum of seven days (owner decision, 23 Sep 2026). Leaving it out takes
+seven days. Over the maximum is `FIELD_VALUE_INVALID` 422 naming
 `successor.expiresInSeconds`, and it settles nothing. An absolute
 `successor.expiresAt` is refused by name. `proposedByActorId` is not a body
 field. It is the agent actor of the session. A caller who sends it, under either
@@ -456,7 +461,7 @@ side of the successor and the tests that hold it are in
 
 **A handback refusal can commit.** `LEASE_NOT_OWNED` and `LEASE_EXPIRED`
 on `task.handback` are answered _after_ the runtime has written an append-only
-`handback_reports` row with `disposition = 'retained'`: a stale holder's work
+`handback_reports` row with `disposition = 'retained'`. A stale holder's work
 was still done, and the refusal and the retained report are one fact.
 Every other refusal rolls its handler's savepoint back; these two release it,
 and the handler says which it is rather than a list of codes held somewhere
@@ -494,12 +499,13 @@ reservation whose lease has expired succeeds into a fresh hold with a new
 beside the fresh one. The pickup settles the agent's expired delegation for
 that purpose in the same transaction before it mints the new one
 (`mintDelegation`, `authority/delegations.ts`), so the old credential answers
-`DELEGATION_NOT_LIVE`. `tests/api/task-runtime-routes.test.ts:352` holds it as
-a plain positive case.
+`DELEGATION_NOT_LIVE`. `tests/api/task-runtime-routes.test.ts` holds it as a
+plain positive case, in "recovers an expired lease into a fresh hold with new
+identifiers".
 
 **A person picks up, renews and hands back as themselves.** On the person prefix
 `task.pickup`, `task.heartbeat` and `task.handback` are served on a lease that
-carries no delegation: the holder is the session's own actor, the authority is
+carries no delegation. The holder is the session's own actor, the authority is
 the session's own live grants, re-read under the claim's locks, and no
 credential is minted (the `task.pickup`, `task.heartbeat` and `task.handback`
 cases of `handleCommand`, `commands/handlers.ts`, which call `pickupAsPerson` in
@@ -526,14 +532,14 @@ person's carries none of them and no placeholder
 hand this lease back and grants nothing. Its operands are keyed by the owning
 `task.handback` contract, `HandbackFields` (`HANDBACK_OPERANDS`,
 `commands/pickup-handback-shape.ts`), so an operand added, dropped or made
-optional there does not compile until the descriptor follows: `required`
-`leaseId`, `fence`, `outcome`; `optional` `report`, `actualMinor` (null only)
-and `successor`. `operationIdentity` is the envelope's `operationId` and its
-replay rule; `lease` repeats this pickup's `leaseId` and `fence`; `outcomes` is
-`completed` or `failed`. `credential` names where the claimant's credential
-travels, never the credential: the `x-agent-delegation` header for an agent, the
-person's own bearer for a person. `versionBinding` has no operand: the lease is
-bound to `versionId`, and the handback refuses `LEASE_NOT_OWNED`, keeping the
+optional there does not compile until the descriptor follows. `required` is
+`leaseId`, `fence` and `outcome`, and `optional` is `report`, `actualMinor`
+(null only) and `successor`. `operationIdentity` is the envelope's `operationId`
+and its replay rule; `lease` repeats this pickup's `leaseId` and `fence`;
+`outcomes` is `completed` or `failed`. `credential` names where the claimant's
+credential travels, never the credential itself. That is the
+`x-agent-delegation` header for an agent and the person's own bearer for a
+person. `versionBinding` has no operand. The lease is bound to `versionId`, and the handback refuses `LEASE_NOT_OWNED`, keeping the
 report, when that version was superseded or its lineage is no longer live
 (`handback`, `core-runtime/src/handback.ts`). `task.handback` takes no
 `expectedVersions` and no record revision; `expectedVersions.taskRevision` is
@@ -558,9 +564,8 @@ which delegates to `isUuid` in `tenancy/ids.ts`, as `isBusinessId` does),
 called where both claimants meet: `claim` in `commands/tasks-pickup.ts`,
 `renewLease` in `commands/tasks-lease.ts` and `settle` in
 `commands/tasks-handback.ts`. The agent envelope's lease lookup checks the same
-shape with its own pattern (`UUID` from `commands/agent-operations.ts`, in
-`subjectTaskId`, `commands/agent-authority.ts`). A malformed id never reaches
-a uuid parameter, so it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps
+shape with the same `isUuid` (in `namedTaskId`, `commands/agent-authority.ts`).
+A malformed id never reaches a uuid parameter, so it is never `SERVICE_UNAVAILABLE` 503, which TC:11 keeps
 for real faults. Both prefixes refuse a `reservationId` that is not a string,
 `COMMAND_BODY_INVALID` 400 (below). `tests/api/id-operand-shape.test.ts` holds
 it.
@@ -613,8 +618,9 @@ What each one does:
   of the reservations the revocation classified, and nothing about whose they
   were (`classifiedHolds`, `authority-controls.ts`). The envelope asks `manage`
   at the revoked row's own scope (`SCOPE_OF.target` and `TARGET_LOOKUPS`,
-  `commands/prepare.ts`), so `SCOPE_NOT_GRANTED` is also the answer for a manager whose `manage` does not
-  cover that scope, as well as for one outside the ceiling (`withinCeiling` and
+  `commands/prepare.ts`), so `SCOPE_NOT_GRANTED` is also the answer for a
+  manager whose `manage` does not cover that scope, as well as for one outside
+  the ceiling (`withinCeiling` and
   `OUTSIDE_CEILING`, `authority-controls.ts`). Nothing is cached, so the next
   call on the same session re-evaluates and is refused. A read admitted before
   the revocation finishes in its own transaction. This is I10's endpoint half,
@@ -653,11 +659,10 @@ The command line builds its verbs from the same table (`VERBS`,
 `apps/cli/client.ts`) and posts them to the person prefix, or to the agent
 prefix when a call asks for it. Both mounts are `PREFIX` in
 `commands/surface.ts` (`/api/b/` and `/api/a/b/`), and the delegation header's
-name is `DELEGATION_HEADER` there, which `apps/api/app.ts` re-exports.
+name is `DELEGATION_HEADER` there, which `apps/api/app.ts` imports.
 `GET /api/health` (its route in `composeApi`, `apps/api/server.ts`) is the one
-route outside the table. Every
-name is routed on both prefixes. The tables say where each is served and where
-it is refused.
+route outside the table. Every name is routed on both prefixes. The tables say
+where each is served and where it is refused.
 
 No test keeps a second list of names.
 `tests/acceptance/surface-inventory.test.ts` enumerates the surface from
@@ -733,8 +738,7 @@ refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 lineage first. It is on the detail rather than behind a read of its own because
 a page that showed the evidence and then fetched the version separately could
 offer a decision on a version it never displayed, and the exact version is the
-whole of what `decide` compares. One read, one answer, one `versionId` for the
-button to carry.
+whole of what `decide` compares.
 
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
@@ -776,7 +780,7 @@ proposals: {
 }[]
 ```
 
-Three things about the shape are load-bearing. First, `gate.expired` is the
+Three things about the shape matter. First, `gate.expired` is the
 server's answer, so a client with a skewed clock cannot disagree with the
 gate about whether it may still be decided. The owner decision of 23 September
 2026 governs it: show expired on read and preserve the stored record
@@ -802,7 +806,7 @@ decided gate with no decision, a gate-rejected lineage with no rejection, or a
 round its requested changes do not account for. The values handed back are the
 stored ones, never recomputed ones, and stored rows are never altered, because a
 tampered row is the evidence. Third, the evidence pack is the renderer's output
-as stored, never re-rendered on read: evidence that changed between the
+as stored, never re-rendered on read. Evidence that changed between the
 decision and the display is the one thing a gate cannot survive.
 
 **A read whose decisions do not verify is a fault, not a refusal.** It answers
@@ -866,7 +870,7 @@ agent presenting itself on the person path is `AUTH_NO_MEMBERSHIP` 403.
 
 `X-Agent-Delegation: <credential>` carries the delegation `task.pickup`
 returned. It is a header and not a body field for the same reason the bearer
-token is: a credential in a body is a credential that gets logged with the
+token is. A credential in a body is a credential that gets logged with the
 payload, stored in the register row and compared by a digest.
 
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
@@ -876,8 +880,8 @@ it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
 `session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
 (`authorise`; minimum contract 8.2 case 9). A credential that is presented and
-answers to no live delegation is `DELEGATION_NOT_LIVE` 401, one answer for
-unknown, expired, revoked and settled, deliberately. Telling them apart tells a
+answers to no live delegation is `DELEGATION_NOT_LIVE` 401. It is deliberately
+one answer for unknown, expired, revoked and settled. Telling them apart tells a
 caller holding a stolen credential which of those it is
 (`resolveDelegation`, `authority/delegations.ts`). The one exception is a
 delegation revoked because its person lost the authority it draws on, which
@@ -899,7 +903,7 @@ exactly the one task it was minted for.
 | `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
-against is read from the lease (`subjectTaskId`). A handback naming a lease on
+against is read from the lease (`namedTaskId`). A handback naming a lease on
 another task is `DELEGATION_OUT_OF_PURPOSE`. `LEASE_NOT_OWNED` is the answer
 for a stale fence on the agent's own task.
 
@@ -983,7 +987,7 @@ answers `AUTH_UNKNOWN_LOGIN`, because each is a guess. An expired token is not
 a guess. Its signature verifies against this deployment's own secret, so whoever
 sent it held a credential this server issued a session for. They learn nothing
 from being told it has run out that they could not already prove, and they gain
-the difference between a door they can open and one they cannot.
+the re-login path.
 
 An agent is never an internal reader. It is a delegate working one task, not a
 member of the business, so `task.read` gives it `externalCommentProjection`'s
@@ -1028,10 +1032,12 @@ shows its client `title` and `state` (Nathan's I09 ruling, OWNER-CARD section
 6), both classified `shared` on the task spine (`tasks/spine.ts`). `state` is
 shown as the state's label, never its identifier (`readSharedTask`,
 `reads/tasks.ts`). Every other field stays `internal` unless the catalogue
-classifies it. One limitation: the classification lives in `field_defs`, which
-the seed writes through `installTaskSpine` (`tasks/install.ts`), not a
-migration. A business whose spine was seeded before this landed shows `title` and `state` as `shared` only once its spine is seeded
-again. No such install has shipped, and the final live proofs reseed the demo.
+classifies it. The classification lives in `field_defs`, which the seed writes
+through `installTaskSpine` (`tasks/install.ts`), not a migration. A reseed
+brings an earlier install forward: on an existing task type the installer sets
+`title` and `state` to `shared` where they differ (`reconcileVisibility`,
+`tasks/reconcile-visibility.ts`), so an upgraded business shows both as a fresh
+one does.
 
 For an external party, a `task.read` of a record its shares do not cover and
 any `task.board` answer `NOT_FOUND` 404 (the row's
@@ -1046,7 +1052,7 @@ content. The agent path is unchanged: an agent reads its own task through
 `tests/acceptance/external-party.test.ts` drives all of it over HTTP, and matrix
 case (g) carries the rows. The web types the two answers as
 `TaskReadResult = InternalTaskRead | SharedTaskRead`
-(`apps/web/src/operations/shapes.ts:244-260`), told apart by the key.
+(`apps/web/src/operations/shapes.ts`), told apart by the key.
 
 | Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
 | ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -1055,9 +1061,9 @@ case (g) carries the rows. The web types the two answers as
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
-business fact every member works against, and changing one is an
-authority change. A member who cannot see the four-eyes band cannot tell a
-refusal from a bug when their own work stops at a second approver. The seed gives
+business fact every member works against, and changing one is an authority
+change. A member who cannot see the four-eyes band cannot tell a refusal from a
+bug when their own work stops at a second approver. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
 **`settings.read` carries a `revision` on every setting.** It is the number
@@ -1078,12 +1084,13 @@ holding no live grant is refused `SCOPE_NOT_GRANTED` 403, like every other
 operation, and never answered with an empty list (the `session.capabilities`
 row of `READ_CATALOGUE` and `NO_GRANT_AT_ALL`, `reads/catalogue.ts`; minimum
 contract 8.2 case 3). A login that resolves to neither a membership nor an
-external party's live share is `AUTH_NO_MEMBERSHIP` before any read runs. An external
-party is shown its shares' pairs. The grants are read live in the caller's own
-transaction through the same `effectiveGrants` the authority check uses, so a
-grant revoked a moment ago is missing from the answer rather than soon. It never
-carries a secret, and it never carries another person's grants: the subjects are
-the session's own and there is no parameter to point at somebody else.
+external party's live share is `AUTH_NO_MEMBERSHIP` before any read runs. An
+external party is shown its shares' pairs. The grants are read live in the
+caller's own transaction through the same `effectiveGrants` the authority check
+uses, so a grant revoked a moment ago is already missing from the answer. It
+never carries a secret, and it never carries another person's grants. The
+subjects are the session's own and there is no parameter to point at somebody
+else.
 
 On the agent prefix the same name answers only under a live delegation.
 Before a pickup it is refused `DELEGATION_EXCLUDES_OPERATION` 403, and a
@@ -1120,13 +1127,14 @@ replay is authorised as a fresh call and projected again for the credential
 presented now, so a replay under another delegation answers that delegation's
 scope and never the first one's (`replayCapabilities`).
 `tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
-`tests/api/capabilities-shape.test.ts:83` asserts the one shape on both
-prefixes and on a replay. `tests/acceptance/role-case-matrix.test.ts` asserts
-the person answer flattened with no `detail` and the no-grant refusal in case
-(e) (`:181-212`), the pre-pickup refusal in case (h) (`:358-373`), and the agent
-answer flattened with the picked-up task as `purposeScope` after a pickup, in
-case (i) ("(h), (i), (j) and (g): the agent journey, generated over the whole
-table").
+`tests/api/capabilities-shape.test.ts` asserts the one shape on both prefixes
+and on a replay ("answers flattened beside ok on both, and on a replay").
+`tests/acceptance/role-case-matrix.test.ts` asserts the person answer flattened
+with no `detail` and the no-grant refusal in case (e) ("(e) refuses every
+caller who holds nothing, and never answers empty"). It asserts the pre-pickup
+refusal in case (h) and the agent answer flattened with the picked-up task as
+`purposeScope` after a pickup in case (i), both in "(h), (i), (j) and (g): the
+agent journey, generated over the whole table".
 
 **A read payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
 422, naming the offending keys. It is the commands' own rule, applied by
@@ -1134,7 +1142,7 @@ table").
 rather than a second copy, so `actor_id`, `business_id`, `revision`,
 `updated_at`, the installed system fields and the rest are refused on a read
 exactly as they are on a write (D06). This used to be a silent drop with a `200`
-on top, which is the weaker answer the accepted ledger rules out: a client that
+on top, which is the weaker answer the accepted ledger rules out. A client that
 believed it had set `actor_id` got a success and no correction, so the mistake
 lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.

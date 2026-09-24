@@ -11,7 +11,7 @@
 //
 // **Where an expected status comes from.** The code is the domain's and the
 // status is the transport's, and neither is derived from the other
-// (`apps/api/status.ts`). So `refusal()` reads the status out of that table
+// (`statusOf`, `commands/register.ts`). So `refusal()` reads the status out of that table
 // rather than out of anyone's memory, and no case in this suite writes a
 // status literal beside a code. A test that remembered the pairing would keep
 // passing after the product changed it, which is the one failure a matrix of

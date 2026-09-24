@@ -14,10 +14,10 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at 158d6de, at d6787c5, at c53aa25 and again at
-9d2dbde, the head these docs describe (`pnpm test` 5,466 passed and 24
-skipped, `tests/acceptance` 3,852 and 16, `db:conformance` 125 named suites,
-4,788 of 4,788).
+joint gates were green at 158d6de, at d6787c5, at c53aa25, at 9d2dbde and
+again at efd5009 (`pnpm test` 5,491 passed and 24 skipped, `tests/acceptance`
+3,852 and 16, `db:conformance` 129 named suites, 4,800 of 4,800). The head these
+docs describe, 1ddb286, is efd5009 plus PR A's gate tooling (`135dd75`).
 [PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
@@ -43,7 +43,7 @@ together (`pickup.ts`, `pickup`). `dispatch_marker` stays false, since no code
 path sets it, and nothing is dispatched outside the database. Migration 0014
 declares `dispatched` as an attempt state and keeps `dispatch_marker` as a
 separate column (`migrations/0014_runtime_attempts.sql`,
-`attempts_state_known`). The name stays: renaming the state needs a migration
+`attempts_state_known`). The name stays. Renaming the state needs a migration
 and changes no behaviour.
 
 A gate is bound to its version, not only to its business, since migration
@@ -95,9 +95,9 @@ row, and it waits on the parked pickup's transaction for that row.
 write before the lock set. Two approvals racing one task both found no
 envelope, both inserted, and the loser met `duplicate key value violates unique
 constraint "task_envelopes_task_open_idx"` instead of the typed
-`GATE_ALREADY_DECIDED` it had earned. The gate race proof caught it. Envelope
-creation now happens under the locks, and the discovery pass before them only
-reads.
+`GATE_ALREADY_DECIDED` it had earned. The gate race proof caught it. `decide`
+now creates the envelope under the locks, and the discovery pass before them
+only reads.
 
 ## The interfaces L3 consumes
 
@@ -227,7 +227,7 @@ of seconds from 1 to 3600. `null`, a fraction or anything else is
 `FIELD_VALUE_INVALID` 422. Leaving it out gives 15 minutes, for a pickup and a
 renewal alike (`readLeaseSeconds` and `DEFAULT_RENEWAL_SECONDS` in
 `commands/tasks-lease.ts`, `DEFAULT_LEASE_SECONDS` in
-`commands/tasks-pickup.ts`). A present handback `report` must be an object:
+`commands/tasks-pickup.ts`). A present handback `report` must be an object.
 `null`, an array or a string is `FIELD_VALUE_INVALID` on both prefixes (the
 report check in `settle`, `commands/tasks-handback.ts`). The pickup's brief
 lists `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
@@ -299,17 +299,18 @@ delegation's own scope and not the presented one (`checkDelegatedAuthority`,
 reservation's terminal state is `abandoned`, never a zero `actual`. A released
 hold that wrote `actual_minor = 0` would be a claim that the work ran and cost
 nothing. Nothing in this head runs, so that claim would be an invention, and the
-schema refuses it: `reservations_actual_only_when_actual` makes carrying a
+schema refuses it. `reservations_actual_only_when_actual` makes carrying a
 number and being `actual` the same fact.
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
 second is the cap behind it.
 
-`core-runtime/src/budget.ts` owns the arithmetic that preflight and `reserve`
-share: the cap-committed read (`capCommitted`), the envelope and cap verdicts
-(`envelopeVerdict`, `capVerdict`) and the task's open envelope
-(`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
+`core-runtime/src/budget.ts` is the one cap-sum source: decide's preflight,
+`reserve`, and handback's successor bound (`withinBounds`,
+`core-runtime/src/handback.ts`) all read `capCommitted` and test room with
+`exceeds`. It also holds the envelope and cap verdicts (`envelopeVerdict`,
+`capVerdict`) and the task's open envelope (`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
 `reserve` alike, because a ceiling that cannot be read is not room (thermo O2,
 lead ruling, fail closed).
 
@@ -319,11 +320,18 @@ through rounding (`budgetRoom` in `core-runtime/src/decide.ts`, `exceeds` in
 `core-runtime/src/budget.ts`). The response converts fields such as
 `heldMinor` to numbers separately.
 
-Storage holds the cap ceiling as well, since migration 0025. Deferred
-constraint triggers on `task_envelopes` and `budget_caps` lock the cap row at
-commit. They refuse any transaction that leaves `sum(held_minor +
-actual_minor)` under the cap above `limit_minor` (`check_violation`,
-`budget_caps_ceiling`), whichever path wrote the rows. Only a write that can
+Storage holds the cap ceiling as well, since migration 0025 (constraint
+`budget_caps_ceiling`). Whichever path wrote the rows, the committed total under
+a cap, `sum(held_minor + actual_minor)` over every envelope drawing on it, never
+exceeds `limit_minor` at commit. Deferred constraint triggers on
+`task_envelopes` and `budget_caps` claim the cap row by rewriting its limit
+unchanged, then sum. Under read committed, a competing transaction waits,
+re-sums and is refused `23514` (`check_violation`, `budget_caps_ceiling`). Under
+repeatable read or serializable, a transaction whose snapshot predates a
+competing commit is refused `40001` (`serialization_failure`) and must retry in
+a fresh snapshot, so at those levels two concurrent raises under one cap
+serialise even when they would fit together. The app runs at read committed and
+nothing in it retries `40001`. Only a write that can
 raise the total is checked: a nonzero insert, a growing total, a move to
 another cap, or a falling limit. The command refuses first with a reason, and
 storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
@@ -346,7 +354,7 @@ the stored record. Nothing writes `expired` to `gates.state`. There is no timer
 and no migration, and no historical row is rewritten. A gate that passes its
 deadline undecided stays stored as `pending`.
 
-- **Decide refuses.** `decide` refuses it `GATE_EXPIRED` 410 and writes no
+- **Decide refuses.** It answers `GATE_EXPIRED` 410 and writes no
   decision (G06, `core-runtime/src/decide.ts`).
 - **Reads project it.** `task.read` derives `state: 'expired'` and
   `expired: true` in the proposals read
@@ -368,8 +376,8 @@ The cases are `tests/reads/gate-expiry.test.ts`, which crosses the deadline
 on the database clock through the production propose path, and
 `tests/surfaces/proposal-expired.test.tsx`.
 
-The deadline itself has a ceiling, the second owner decision of 23 September
-2026: `expiresInSeconds` is at most 604800, seven days, on `task.propose`, on
+The deadline itself has a ceiling, set by the second owner decision of 23
+September 2026. `expiresInSeconds` is at most 604800, seven days, on `task.propose`, on
 the handback successor and on `task.restart`, all through one `expiryFrom`.
 Over it is `FIELD_VALUE_INVALID` 422 and nothing is written
 (`tests/api/expiry-bound.test.ts`; the inputs are in
@@ -396,7 +404,7 @@ A decision that does not verify fails the read. So do stored decisions when no
 key is configured. The failure is `DecisionIntegrityError`, code
 `DECISION_INTEGRITY`. Over HTTP it is a fault, 500 with fixed words and no task
 in the body (`ReadIntegrityFault`, `reads/dispatch.ts`), not a refusal.
-Verifying writes nothing: the stored rows are left as they were found.
+Verifying writes nothing, and the stored rows stay as they were found.
 `tests/reads/verified-decisions.test.ts` and
 `tests/reads/decision-integrity-read.test.ts` tamper as the database owner and
 assert each failure, and that a clean read changes nothing.
@@ -448,14 +456,14 @@ Its limits:
 
 The fence is the identity of the claim, not of the task, and it is monotonic per
 task under the task lock. A holder whose lease was replaced presents the old
-fence and nothing changes: `LEASE_NOT_OWNED` on a superseded or mismatched
-fence, `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
+fence and nothing changes. It gets `LEASE_NOT_OWNED` on a superseded or
+mismatched fence, and `LEASE_EXPIRED` when the lease itself is over. Its report can be retained
 separately, but it cannot settle the replacement's work.
 
 Handback and pickup judge lease expiry on the database clock, read once their
 locks are held (`lockedInstant`, `clock.ts`), not on `now()`, which is when the
 transaction began. A command that waited on a lock past a lease's expiry treats
-the lease as expired: handback retains the report and refuses `LEASE_EXPIRED`,
+the lease as expired. Handback retains the report and refuses `LEASE_EXPIRED`,
 and pickup fences the lease and classifies its hold. A new lease's expiry is
 that instant plus the requested seconds, truncated to milliseconds.
 
@@ -468,7 +476,7 @@ row and returned none, throws `RuntimeInvariantError` (`only.ts`). That is never
 a refusal. It aborts the transaction.
 
 A handback names a lease, not a task. The agent envelope reads the task from the
-lease before the delegation check (`subjectTaskId`,
+lease before the delegation check (`namedTaskId`,
 `commands/agent-authority.ts`), so a handback naming a lease on another task is
 outside the one-task purpose and is refused `DELEGATION_OUT_OF_PURPOSE` before
 any handback write (matrix case (i),
@@ -507,7 +515,7 @@ gave:
   the task has since lapsed, by expiry or otherwise. The intake then runs only
   when `resolveHistoricalDelegation` finds nothing, and it has its own binding
   check. `narrowedOnLease` reads the task from the presented lease, with no
-  fallback: a lease outside this business names no task, and nothing is kept.
+  fallback. A lease outside this business names no task, and nothing is kept.
   `resolveNarrowedDelegation` resolves the credential as live through
   `resolveDelegation`'s own binding (this business, this authenticated agent,
   this credential digest). It then runs `checkDelegatedAuthority` for
@@ -569,7 +577,7 @@ raise `AffectedSetChanged`, and so do `task.propose`'s live-work recheck
 (`decide.ts`) and `grant.revoke`'s dependent-attempt recheck
 (`revokeGrantAsManager`, `commands/authority-controls.ts`). `task.handback`'s
 lease-binding recheck (`handback`, `handback.ts`) throws the same type but is
-not this pattern: it compares a different read, after the fence verdict. A
+not this pattern. It compares a different read, after the fence verdict. A
 propose that meets a pickup of the superseded hold, or a revocation that meets a
 handback of a dependent lease, retries once at the person entry. The handback recheck is a
 consistency guard that no schedule reaches, because nothing in this head
@@ -597,14 +605,14 @@ exact key, and the register is append-only, so the retry replays the first
 winner. `tests/runtime/retry-bounds.test.ts` forces a person `task.cancel` to
 lose its discovery twice and asserts two command attempts, one failed-audit
 transaction and nothing committed. Its agent double collision is a staged
-control: the test commits and then removes a register row under the append-only
+control. The test commits and then removes a register row under the append-only
 trigger's bypass, a state no schedule produces.
 
-**An abandoned hold is replaced, never revived** (R5). At pickup, a hold that
+**An abandoned hold is replaced, never revived** (R5). At pickup, a hold may have
 ended without settling, because its lease expired or the authority behind it was
-lost, on a version still approved and current on a live lineage, is replaced by
-a fresh hold and a fresh attempt on that version, under the locks the pickup
-already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
+lost. If its version is still approved and current on a live lineage, the pickup
+replaces it with a fresh hold and a fresh attempt on that version, under the
+locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`).
 
@@ -616,7 +624,7 @@ refusal (thermo O6, lead ruling). Its answer is `RESERVATION_NOT_CLAIMABLE` with
 its own reason, "the approval behind this reservation is no longer current"
 (`approvalNotCurrent`).
 
-The delegation expires with the lease: `pickup` passes the lease expiry as
+The delegation expires with the lease. `pickup` passes the lease expiry as
 `expiresAt`. A delegation outliving its lease would be an agent still holding
 narrowed authority over work somebody else now owns. The delegation's expiry is
 the lease's and is not clamped to the person's earliest grant expiry
@@ -633,14 +641,15 @@ successor creation and the success receipt together". Both halves are built.
 The writer is `packages/core-runtime/src/proposal-writer.ts`. It holds the
 version, run, step, evidence-pack and gate writes once, and `propose` and
 `handback` both go through it, so the head has one proposal writer rather than
-two that drift. It takes the caller's `LockSet` and opens no transaction: it
+two that drift. It takes the caller's `LockSet` and opens no transaction. It
 calls `LockSet.require` for the task and the lineage. When the task already has
 a cap and an envelope that a later decision will bind the version to, it
 requires those too. It throws if any is missing. That makes the contract's
 "helpers receive the already-held lock context" an argument rather than a
-comment. It is also why `handback` can create a successor without the thing T4
-forbids: it never calls `propose`, which would check the wrong actor's authority and open a
-lock set of its own part-way through a transaction that already holds the lease.
+comment. It is also why `handback` can create a successor without doing what T4
+forbids. It never calls `propose`, which would check the wrong actor's authority
+and open a lock set of its own part-way through a transaction that already holds
+the lease.
 
 `propose` preallocates the identity of a lineage it is about to open before it
 acquires, so the whole set is one ordered call and the lineage lock is never
@@ -652,8 +661,8 @@ handback, which settles and proposes nothing. Present is refused
 `SUCCESSOR_OUT_OF_BOUNDS`, before the first write, unless the ceiling is finite
 and positive, fits the room left in the cap behind the envelope, is denominated
 in that envelope's currency, and would not be the lineage's third formal round
-(G08). The successor is created after the classification, which is the order the
-facts come in: the classification is what makes the old attempt nonclaimable,
+(G08). `handback` creates the successor after the classification, which is the
+order the facts come in. The classification is what makes the old attempt nonclaimable,
 and the successor is the work somebody may now approve instead. It is not
 approved and it opens no hold. A stale fence never reaches it, because those
 paths retain their report and return. So a lease that cannot settle work cannot
@@ -665,7 +674,7 @@ check holds above 2^53, as the cap's own does
 **On the command surface.** L3 carries the successor through `task.handback`
 (`readSuccessor`, `commands/successor.ts`). The body's `successor` is read
 and checked before the runtime is reached, and `proposedByActorId` is not a body
-field: the agent actor of the session proposes it. A body that names it under
+field. The agent actor of the session proposes it. A body that names it under
 either spelling is refused `FIELD_NOT_WRITABLE` (`SUCCESSOR_SERVER_OWNED`). The
 expiry is `expiresInSeconds`, optional, read through the same `expiryFrom` as
 `task.propose`, so it defaults to the same week and has the same seven-day
@@ -686,9 +695,9 @@ so a caller has one spelling, the same as `task.propose`'s.
 ## What the classifier will not do
 
 `recovery.ts` closes the lifecycle of work that is durably no longer claimable.
-It is invoked from inside the authorised operations that write those
-transitions, and `classifyUnderLocks` takes no lock of its own because its
-caller holds the complete set already.
+The authorised operations that write those transitions call it, and
+`classifyUnderLocks` takes no lock of its own because its caller already holds
+the complete set.
 
 The classifier revalidates the cause a caller names against the durable rows,
 under the locks, before it releases anything: a lineage that is not cancelled does not
@@ -735,8 +744,8 @@ replay runs at the API's next start, and nothing polls.
   application role, with the tenant set by `set_config(..., true)` inside that
   transaction, one business after another.
 - **Failure.** A failed replay, including `AffectedSetChanged` when discovery
-  changed under the classifier's locks (`lockAndClassify`, `recovery.ts`), rolls
-  that business back. The process exits 1 with
+  changed under the classifier's locks (`replayRecordedTransitions`,
+  `recovery.ts`), rolls that business back. The process exits 1 with
   `restart recovery for business "<key>" rolled back: <reason>`. There is no
   automatic retry: the next normal start runs the replay again in a fresh
   transaction. A business that committed before the failure stays committed
@@ -759,12 +768,12 @@ each hold once (one completes; the other exits 1 on the changed discovery).
 
 `tests/runtime/gate.test.ts`, `tests/runtime/lease.test.ts`,
 `tests/runtime/review-fixes.test.ts`, `tests/runtime/classifier-race.test.ts`
-and `tests/runtime/decision-abort.test.ts`, 39 cases, all against a real
+and `tests/runtime/decision-abort.test.ts`, 42 cases, all against a real
 Postgres migrated from empty.
 
 **What these cases are and are not.** Each one below states what its own
 assertions cover, and nothing here is a claim beyond them. They are executed
-source regressions on a local database: they are not a runtime security
+source regressions on a local database. They are not a runtime security
 certification, not an executed proof of the full 42 obligations, and not
 evidence about a restarted browser, API or Postgres process. Where a case
 establishes one direction of an obligation, the obligation is named as
@@ -811,8 +820,8 @@ partly covered rather than proved.
   the transaction listed the envelope first. With the sort removed from
   `acquire` the same case reports `task_envelopes`, which is the crossing that
   deadlocks. This covers `acquire` in isolation. It does not establish that
-  every handler passes `acquire` its complete set, which is a separate property:
-  the dcbc8e8 review found recovery bypassing it, and the case below now holds
+  every handler passes `acquire` its complete set, which is a separate property.
+  The dcbc8e8 review found recovery bypassing it, and the case below now holds
   that half.
 - **The classifier asserts its caller's locks** (R1): `classifyUnderLocks`
   takes a required `LockSet` and calls `LockSet.require` for the reservation
@@ -825,8 +834,8 @@ partly covered rather than proved.
   complete set through `acquire`, and the second is watched into
   `wait_event_type = 'Lock'` in `pg_stat_activity` before the first commits, so
   the interleaving is observed rather than slept through. Exactly one reports
-  `released: true`; the loser reports `released: false` and says another
-  transaction classified it first; the envelope's held total falls by the
+  `released: true`. The loser reports `released: false` and says another
+  transaction classified it first. The envelope's held total falls by the
   hold's amount exactly once and its actual total does not move. This is the
   schedule the earlier structural case could not establish, and it is what the
   dcbc8e8 review's "two classifiers can both read `held`" asked for.
@@ -836,13 +845,13 @@ partly covered rather than proved.
   pending. This covers the binding.
 - **The post-write reservation refusal aborts, executed** (R2), in
   `tests/runtime/decision-abort.test.ts`: an owner-installed trigger shrinks the
-  envelope this approval opens, below the hold it is about to take, so
-  `decide`'s preflight passes on the cap alone, the signed decision row and the
-  approved gate are written, and `reserve` then refuses `BUDGET_UNAVAILABLE`
-  under the same locks. The call throws, and a new transaction reads back zero
+  envelope this approval opens to below the hold it is about to take. `decide`'s
+  preflight passes on the cap alone, `decide` writes the signed decision row and
+  the approved gate, and `reserve` then refuses `BUDGET_UNAVAILABLE` under the
+  same locks. The call throws, and a new transaction reads back zero
   decision rows, a still-pending gate, no reservation, no attempt, no envelope
   for that task and unchanged business totals. The trigger rewrites a value
-  instead of raising, on purpose: a trigger that raised would abort the
+  instead of raising, on purpose. A trigger that raised would abort the
   transaction by itself and would prove nothing about what `decide` does with a
   refusal it was handed. With the trigger dropped the same gate approves, which
   is what makes the abort an abort rather than an unapprovable fixture.
@@ -931,7 +940,7 @@ direct SQL.
   `register-store.ts`), so the first request answers with the applied cancel
   (`tests/runtime/cancel-rediscover.test.ts`). A second loss reaches the caller
   as a fault, with one `failed` audit event
-  (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry: a
+  (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry. A
   changed set there fails the start.
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
@@ -1074,7 +1083,7 @@ Otherwise it gives the current refusal (`DELEGATION_NOT_LIVE`,
 `DELEGATION_NARROWED`, `LEASE_NOT_OWNED`, `LEASE_EXPIRED`,
 `RESERVATION_NOT_CLAIMABLE`) and no receipt content (`replayPickup`,
 `commands/agent-replay.ts`). The register keeps the handles with a null
-credential (`storable`).
+credential (`storable`, `commands/agent-envelope.ts`).
 
 **The legacy limit.** Delegations minted before migration 0022 are
 `credential_scheme = 'legacy-random'`. Their random credentials cannot be

@@ -70,7 +70,7 @@ const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
 /**
  * Each runtime code with the status it is carried under, read from the
  * register rows marked `runtime`. It used to be a second table the runtime
- * suggested and a test compared with `apps/api/status.ts`; it is now a view of
+ * suggested and a test compared with the API's own status map; it is now a view of
  * the one table. Nothing in production reads it; it stays exported for the
  * tests that census the runtime's codes through it
  * (`tests/runtime/refusal-classes.test.ts`, `tests/commands/runtime-codes.test.ts`).

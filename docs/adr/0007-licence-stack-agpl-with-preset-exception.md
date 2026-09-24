@@ -3,8 +3,8 @@
 Accepted 6 September 2026; draft-exception status clarified 7 September.
 
 The core uses AGPL-3.0-only. A proposed section 7 exception covers published
-preset formats, a separate skill protocol, the REST API, and a future SDK,
-while leaving the core itself outside that exception. The exception is a
+preset formats, a separate skill protocol, the REST API, and a future SDK.
+The core itself stays outside that exception. The exception is a
 draft and is not granted. Counsel approval and a release are required before
 any work may rely on it.
 

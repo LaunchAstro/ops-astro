@@ -289,7 +289,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
      *
      * Flipped from `it.fails` to a plain `it` on the integration head once
      * L3-PART-B-3 registered `DELEGATION_ALREADY_LIVE` at 409 in
-     * `commands/register.ts` and `apps/api/status.ts`: the mint's refusal
+     * `commands/register.ts`: the mint's refusal
      * (`tests/identity`) now travels the envelope as a typed 409 instead of
      * raising in `agent-envelope.ts` as an unregistered code.
      */

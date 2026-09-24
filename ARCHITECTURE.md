@@ -33,10 +33,10 @@ checkout builds, types, lints and passes its own tests. It proves nothing about
 a deployment, and there is no deployment.
 
 No provider dispatch and no worker effect exist. The runtime makes no
-provider call: `planned_steps.dispatched_at` carries a constraint keeping it
-null, and an attempt names no provider and no model. An earlier proposal
-described a deterministic worker that performs one local effect. That part
-was not built. [The runtime](docs/local/RUNTIME.md) says where the seam is.
+provider call. A constraint keeps `planned_steps.dispatched_at` null, and an
+attempt names no provider and no model. An earlier proposal described a
+deterministic worker that performs one local effect. That part was not built.
+[The runtime](docs/local/RUNTIME.md) says where the seam is.
 
 ## Runtime and data
 
@@ -61,10 +61,11 @@ reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
 same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the
 web client imports the surface. A read's facts are one `READ_CATALOGUE` row
 (`reads/catalogue.ts`): identifiers, operand check (`parse`), spine, subject,
-authority mode, outsider-not-found and serve. A row is a `SpineRow`, handed the
-task spine and its subject, both read before the grant check, or a
-`BusinessRow`, handed neither. `reads/dispatch.ts` runs one pipeline over the
-row. See the [stack](docs/adr/0019-app-layer-vite-react-hono.md),
+authority mode, outsider-not-found and serve. A row is either a `SpineRow` or a
+`BusinessRow`. A `SpineRow` is handed the task spine and its subject, both read
+before the grant check. A `BusinessRow` is handed neither. `reads/dispatch.ts`
+runs one pipeline over the row. See the
+[stack](docs/adr/0019-app-layer-vite-react-hono.md),
 [records](docs/adr/0030-fixed-typed-slots-no-runtime-ddl.md), and
 [identity and permissions](docs/adr/0014-business-id-on-every-table-and-key.md)
 decisions.

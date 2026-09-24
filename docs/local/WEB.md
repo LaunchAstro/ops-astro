@@ -29,30 +29,30 @@ reports the API as unavailable, which is the intended reading.
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
 application never mints or inspects a token. The API verifies the signature.
-The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix; it
-is a routing choice and not a claim, so picking `bravo` with an alpha-only
-account gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
+The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
+is a routing choice, not a claim, so picking `bravo` with an alpha-only account
+gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
 
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
 ### When the session ends
 
-A local access token lives for one hour, and the API refuses a bearer it will
-not act on with HTTP 401 on one of two codes (`docs/local/API.md`). A missing, a
+A local access token lives for one hour. The API refuses a bearer it will not
+act on with HTTP 401 and one of two codes (`docs/local/API.md`). A missing, a
 forged, an unsigned and a subject-less bearer all answer `AUTH_UNKNOWN_LOGIN`,
 because telling them apart tells an unauthenticated caller which guess was
 closer. A bearer whose signature verifies against this deployment's own secret
 and whose `exp` has passed answers `AUTH_SESSION_EXPIRED` instead. That one is
-not a guess: whoever sent it held a credential this server issued a session for,
-so being told the session ran out gives them nothing they could not already
-prove, and it gives them the re-login door.
+not a guess. Whoever sent it held a credential this server issued a session
+for, so telling them the session ran out gives away nothing they could not
+already prove, and it sends them to sign in again.
 
-Both codes mean the same thing to the screen: the session has ended. The client
+To the screen, both codes mean the session has ended. The client
 (`operations/client.ts`) is the one place that recognises them, for a read and a
 mutation alike. It raises `onSessionEnded` with the refusal the server sent. On
 that signal the application drops the session, remembers the address the person
-was on, and goes to `/sign-in`, where a notice (`role="status"`,
+was on, and goes to `/sign-in`. There a notice (`role="status"`,
 `data-reason="session-ended"`) says the session has ended, quotes the server's
 own code so the person can repeat it, and says that anything unsaved was not
 saved. Signing in again returns to the remembered address, so a task page stays
@@ -60,21 +60,20 @@ a task page. With nothing remembered it goes to `/projects/`.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
-stopped being anybody's session: two reads leave together, the first 401 sends
-the person to sign-in, they sign in, and the second arrives afterwards. The
-session the client was built with comes back with the notification and the whole
-clear-and-navigate action is gated on it still being the one in hand, so a late
-refusal of an old token cannot sign a person out of the session that replaced
-it.
+stopped being anybody's session. Two reads leave together, the first 401 sends
+the person to sign-in, they sign in, and the second answer arrives afterwards.
+The notification carries the session the client was built with, and the
+application clears and navigates only if that session is still the one in hand.
+A late refusal of an old token cannot sign a person out of the session that
+replaced it.
 
 **An address is remembered with the business it meant.** A task key is
 business-local. The business is the `/api/b/<key>` prefix, not part of
 `/task/<key>`, so the same address names a different record in each business.
-The interruption keeps the business key beside the address, sign-in comes back
-offering that business rather than the first in the list, and the held address
-is reopened only when the new session is in the same business. Choosing another
-business deliberately is not refused: it goes to that business's board with a
-notice (`role="status"`, `data-notice="other-business"`) naming the business the
+The interruption keeps the business key beside the address. Sign-in then offers
+that business rather than the first in the list, and reopens the held address
+only when the new session is in the same business. Choosing another business on
+purpose is not refused. It goes to that business's board with a notice (`role="status"`, `data-notice="other-business"`) naming the business the
 held address belonged to. The token is never kept; the business key is the word
 in the URL prefix and the word in the top bar.
 
@@ -89,9 +88,8 @@ All browser storage is read and written through `jsonSlot` in
 `tabStorage()` in the same file. A tab with blocked site data draws the screens
 with nothing remembered rather than failing.
 
-No refresh-token call, no token inspection and no decoding anywhere in the web:
-the hour is the server's to decide and the browser only ever finds out by being
-refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
+Nothing in the web calls for a refresh token, inspects a token or decodes one.
+The server decides the hour, and the browser finds out only by being refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
 SX1 to SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real
 browser.
 
@@ -135,7 +133,9 @@ Every write on the task page, in the proposals view (`views/proposals.tsx`) and
 on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
 It sorts the answer once into one of five kinds:
 
-- `ok`: stored.
+- `ok`: stored. The settlement carries the server's answer (`Settlement<T>`),
+  so a caller reads a command's echo from it rather than capturing the result
+  by hand.
 - `stale`: `VERSION_STALE`. Somebody else moved the record on first.
 - `closed`: `SCOPE_NOT_GRANTED`. The refusal is about the reader, so asking
   again would only be refused again.
@@ -148,18 +148,18 @@ Beside `busy` and `failure` the hook returns `closed` (sticky once
 `SCOPE_NOT_GRANTED` answers, until the screen unmounts), `locked` (`busy ||
 closed`), `conflict` (the last `stale` refusal) and `because` (the last
 failure's text).
+
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
 confirmed write is in `confirmed.ts`.
 
 ## Comments on a task
 
-`task.read` has carried the task's comments since L3 (`docs/local/API.md`);
+`task.read` has carried the task's comments since L3 (`docs/local/API.md`).
 `/task/:key` draws them through `Comments` (`screens/task/Comments.tsx`). Each
-one is an `article[data-comment-id]` carrying `data-audience`, and the audience
-is printed in words above the body, because "who may read this" is the one thing
-the person writing the next comment needs to know and the one thing a colour
-cannot say. `InternalTaskComment` (`operations/shapes.ts`) is the internal
+one is an `article[data-comment-id]` carrying `data-audience`, with the audience
+printed in words above the body. Who may read a comment is the one thing the
+person writing the next comment needs to know, and a colour cannot say it. `InternalTaskComment` (`operations/shapes.ts`) is the internal
 reader's comment, with every field present. `TaskComment` is optional past `id`,
 because the shared projection sends only the fields the catalogue marks shared.
 
@@ -177,7 +177,7 @@ form.
 
 **A refusal is quoted and the box is closed.** There is no grant read anywhere
 in this build, so the screen cannot know whether a person holds `comment` before
-it asks. It asks once; on `SCOPE_NOT_GRANTED` it draws the server's own code in
+it asks. It asks once. On `SCOPE_NOT_GRANTED` it draws the server's own code in
 `p[data-comment="refusal"]`, disables the box and the button, and says why. A
 second press reaches nothing; C2 counts the requests rather than trusting the
 `disabled` attribute. Anything else the server refuses (an empty body, an
@@ -202,7 +202,7 @@ The task page draws every proposal on the task under the comments, out of the
 drawn beside it, from one answer, so the page cannot offer a decision on
 something it never displayed.
 
-Per lineage it draws the lineage's state, then its versions newest first. Each
+For each lineage it draws the lineage's state, then its versions newest first. Each
 version shows the purpose, the ceiling as money with the currency the proposal
 named, the payload digest, the payload, and the evidence pack with its renderer
 and its digest. After the versions come the gate's state, round and expiry, then
@@ -213,7 +213,7 @@ reported spending, and its lease and attempt.
 **Nothing on this screen is recomputed.** The evidence body and the payload are
 printed as they were stored, because evidence that changed between the decision
 and the display is the one thing a gate cannot survive. The hashes are the stored
-values: a recomputed hash drawn as though it were the stored one would make a
+values. A recomputed hash drawn as though it were the stored one would make a
 tampered link look sound. And whether a gate has expired is the server's
 `expired` field, never a comparison against the browser's clock, so a laptop a
 few minutes out cannot offer a decision the server is certain to refuse or hide
@@ -221,18 +221,18 @@ one it would have accepted.
 
 There are three states and no fourth. An empty projection says nobody has proposed
 anything (`[data-proposals="none"]`). A task read that carried no `proposals` key
-at all says so instead (`[data-proposals="not-carried"]`), because an absent
-projection and an empty one are different facts and defaulting one to the other
-would print "no proposals" over a projection nothing consulted. A read the server
-denied never reaches this section: `RecordState` draws the denial for the whole
-task. There is no path from any of the three to sample data.
+at all says so instead (`[data-proposals="not-carried"]`). An absent projection
+and an empty one are different facts, and defaulting one to the other would
+print "no proposals" over a projection nothing consulted. A read the server
+denied never reaches this section, because `RecordState` draws the denial for
+the whole task. There is no path from any of the three to sample data.
 
 **The propose form** (`form#task-propose`) sends `task.propose` with the task's
 own `recordId` and the revision the page is holding, the purpose, the ceiling and
 the currency. The amount is typed in dollars and converted to the server's minor
 units once, in the client, because three places that each convert are three
 places that can disagree. A refusal is quoted with the server's own code in
-`[data-propose="refusal"]`; on success the form clears and the task is read again,
+`[data-propose="refusal"]`. On success the form clears and the task is read again,
 so the new version appears because the server has it and not because the form
 drew what it sent.
 
@@ -240,14 +240,14 @@ drew what it sent.
 `[data-decide="reject"]`) are drawn only on the head version, and each carries
 the `data-version-id` and `data-gate-id` it will send. They are absent, with the
 reason in `[data-decide="closed"]`, when the gate is not pending, when the server
-says it has expired, and after a refusal about the reader's own authority. A
-refused decision is quoted verbatim in `[data-decide="refusal"]` and followed by
-a fresh `task.read`, because a refusal like `VERSION_SUPERSEDED` or
+says it has expired, and after a refusal about the reader's own authority. The
+screen quotes a refused decision verbatim in `[data-decide="refusal"]` and
+follows it with a fresh `task.read`. A refusal like `VERSION_SUPERSEDED` or
 `GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the
-record, and the answer to that is to read it again rather than to retry. The
-refusal text is held above the read state in `TaskDetail.tsx`, since the reread
-unmounts everything under it and a message that vanished with the thing it
-explained would leave the screen changing for no stated reason.
+record, and the answer is to read it again, not to retry. `TaskDetail.tsx` holds
+the refusal text above the read state, because the reread unmounts everything
+under it. A message that vanished with the thing it explained would leave the
+screen changing for no stated reason.
 
 What this screen does not read back, and cannot:
 
@@ -258,11 +258,12 @@ What this screen does not read back, and cannot:
   and the controls close. The answer is honest, but the first press of a
   control a person may not use is always a refused request. The same gap
   applies to comments.
-- **Only the seeded admin holds `task:decide`.** `scripts/local-seed.mjs` gives
-  its admin `task:decide` beside six other `task` actions, `person:read`,
+- **Only the seeded admin holds `task:decide`.** The seed gives its admin
+  `task:decide` beside six other `task` actions, `person:read`,
   `settings:manage` and `settings:read` (`GRANTS_BY_ROLE` in
-  `scripts/local-seed.mjs`). A member holds neither `decide` nor `manage`. So the admin in each business can
-  approve through the product and a member cannot. The browser case still
+  `scripts/local-seed.mjs`). A member holds neither `decide` nor `manage`, so
+  the admin in each business can approve through the product and a member
+  cannot. The browser case still
   issues its own `task:decide` grant through the authority path and revokes it
   afterwards, so its result does not depend on the seed.
 - Rejecting sends `decision: 'reject'` through the same control and the same
@@ -274,11 +275,11 @@ What this screen does not read back, and cannot:
   (`core-runtime/src/propose.ts`). `decide` checks the gate's state before the
   version it carries, so when a page has gone stale its Approve lands on a
   superseded gate and the honest answer is `GATE_ALREADY_DECIDED`. The screen
-  quotes whichever it gets and rereads either way; `cases-proposals.mjs` proves
+  quotes whichever it gets and rereads either way. `cases-proposals.mjs` proves
   `VERSION_SUPERSEDED` through the client, where a `lineageId` can be named, and
   the screen's own path separately.
-- The agent's own path has no surface here. Pickup, handback and the queue are
-  stored and projected; the web does not draw them yet.
+- The agent's own path has no screen. Pickup, handback and the queue are stored
+  and projected, and the web does not draw them yet.
 
 ## The settings screen
 
@@ -288,14 +289,14 @@ the command that owns it, `settings.set_four_eyes_threshold` or
 `settings.set_client_sign_off`, with an `operationId`, and with an
 `expectedRevision` when the read carried a revision for that row.
 
-**The values are the server's.** `settings.read` is asked on open and after
-every write, so the number beside a setting is the business's and not this
-browser's memory of its own write. Each row is drawn with its `updatedAt` in
+**The values are the server's.** The screen asks `settings.read` on open and
+after every write, so the number beside a setting is the business's and not this
+browser's memory of its own write. Each row draws its value and its `updatedAt` in
 `p[data-settings="four-eyes-value"]` and `p[data-settings="four-eyes-updated"]`
 (and the same pair for `sign-off`). The read goes through `useRead`, so the
 generation counter and the denial floor apply to it as to any other read.
 
-The four states are drawn and none of them draws a value: `loading`, `denied`
+The screen draws four states, and none of them shows a value: `loading`, `denied`
 with the refusal verbatim, `unavailable` with the absence stated as an
 absence, and `empty` for a business holding no rows. The state is on
 `div[data-settings="read"]` as `data-outcome`.
@@ -307,27 +308,27 @@ unavailable: no answer, an answer that is not JSON, or a non-2xx without a
 refusal, which is what a missing route gives. They never appear when the read is
 refused. `SCOPE_NOT_GRANTED` is the server declining to tell this reader the
 value, and nothing stands in for it. The refusal also removes the cached value
-and marks the session, so a later unavailable read, in the same screen or after
-a remount, still shows "not known", and a write confirmed before the next
-authorised read is not cached. An authorised read lifts the mark. The cached
+and marks the session. After that, a later unavailable read, in the same screen
+or after a remount, still shows "not known", and a write confirmed before the
+next authorised read is not cached. An authorised read lifts the mark. The cached
 value lives in `sessionStorage` under `ops-astro.settings.<business>`, tagged
 with the session that wrote it, so another session in the same tab sees "not
 known". `SessionStore.clear` in `apps/web/src/session/token.ts` removes it at
 sign-out and when a 401 refusal ends the session. A save answered after sign-out
-caches nothing: it notes the session generation (`sessionGeneration`) when
+caches nothing. It notes the session generation (`sessionGeneration`) when
 pressed and writes only if no session has ended since.
 `tests/surfaces/settings-denied-fallback.test.tsx` and
 `tests/surfaces/settings-late-save.test.tsx` hold both. The server's value and
 the cached one are never on the page together, and the screen never draws the
 shipped default.
 
-**The controls are opened by `session.capabilities`.** `settings:manage` in
-the grants opens them; its absence closes them and names the scope in
-`p[data-settings="capabilities-because"]`, sending nothing; a refused
+**`session.capabilities` opens the controls.** `settings:manage` in the grants
+opens them. Its absence closes them and names the scope in
+`p[data-settings="capabilities-because"]`, sending nothing. A refused
 capability read closes them too, because a screen that cannot find out what
 somebody may do does not guess in their favour. An _unavailable_ capability
-read leaves them open: nobody decided anything, and closing on an absence
-would make the screen unusable against a build that has not landed the read.
+read leaves them open. Nobody decided anything, and closing on an absence would
+make the screen unusable against a build that has not landed the read.
 A `SCOPE_NOT_GRANTED` on a write closes them whatever the capabilities said,
 since a grant can be revoked between the read and the press. The state is on
 `div[data-settings="capabilities"]` as `data-outcome`.
@@ -379,8 +380,8 @@ pnpm exec vitest run tests/surfaces
 
 These suites have no config of their own. The root Vitest config collects
 `tests/**/*.test.tsx` alongside `tests/**/*.test.ts`, so `pnpm test` picks them
-up with everything else and the command above is only how you run this lane's on
-their own.
+up with everything else. The command above runs this lane's suites on their
+own.
 
 The `.ts` suites need no browser: route derivation and the envelope against a
 stubbed `fetch`, and the generation/denial ordering in `authorised-read.ts`. The
@@ -407,7 +408,7 @@ The screenshots and `RESULTS.md` go to the directory `SHOT_DIR` names, which
 defaults to `.local/evidence/browser` inside the repository and is created if it
 is not there. The default is gitignored and belongs to the clone rather than to
 one machine, so anybody who has it can run the checklist and read its table
-without first recreating somebody else's folder; a coordinator's run sets
+without first recreating somebody else's folder. A coordinator's run sets
 `SHOT_DIR` to gather the evidence with the rest of the round's.
 `node tests/browser/keyboard-and-widths.mjs` takes the same default and the same
 override. `DOCKER_BIN` names the `docker` binary the database cases call, and
@@ -462,7 +463,7 @@ WEB_URL=http://127.0.0.1:5197 API_URL=http://127.0.0.1:8797 \
 ```
 
 The live pair goes through `scripts/local/db-down.sh` and `db-up.sh`, as it
-always has. A named container is stopped and started with `docker` directly,
+always has. B6 stops and starts a named container with `docker` directly,
 because those two scripts only know the live name. `restartTargetOf` in
 `harness.mjs` refuses `ops-astro-datafix-pg`, its volume, any `supabase_*` name,
 and a container named without its volume. The refusal happens when the module
@@ -522,8 +523,8 @@ task or the board answers `NOT_FOUND` while the share is live (the row's
 `preset.plan` is accepted and one with an unclassified field is refused
 `PRESET_FIELD_UNCLASSIFIED`, neither adding a `field_defs` row. R4X: the
 external party reads its shared task, is refused the sibling task and the
-board, and is refused the shared task after `grant.revoke`. Every call is
-`operations/client.ts` inside the page. Both files also run on their own.
+board, and is refused the shared task after `grant.revoke`. Every call goes
+through `operations/client.ts` inside the page. Both files also run on their own.
 
 `pnpm verify:browser` exits zero only when every row passed. `writeResults`
 returns the rows that did not pass, whether failed, pending or unrun, so a run
@@ -531,7 +532,7 @@ that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
 labels stay in the table, because they make a partial run readable; they no
 longer buy a zero exit. The last recorded `verify:browser` result is 88 of 88 at
-`6f15252`. None is recorded at any later head, `9d2dbde` included, so at this
+`6f15252`. None is recorded at any later head, `1ddb286` included, so at this
 head the browser checklist is unrun
 ([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 
@@ -548,8 +549,8 @@ its name matches both and fails on the ambiguity, so B4 presses the form's
 submit, the honest control for a case that edits the fields and then saves
 them. The three state buttons (`Lifecycle` in `screens/task/Lifecycle.tsx`)
 are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
-the same reason: an attribute the screen owns cannot be made ambiguous by a
-second control that happens to share a word.
+the same reason. A second control that happens to share a word cannot make an
+attribute the screen owns ambiguous.
 
 ## Known gaps against the pinned mockup
 
@@ -564,7 +565,7 @@ places this build does not yet reach it.
   task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
   projection", served by `packages/core-records/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry stays empty until there is a surface for a tab to open onto.
+  the panel registry stays empty until there is a screen for a tab to open.
 - Subtasks are not built. Comments are, and the task page draws them. The
   mockup's tabbed Internal / Client / All activity conversation is not built:
   the comments are one list with each row's audience on it, and history stays

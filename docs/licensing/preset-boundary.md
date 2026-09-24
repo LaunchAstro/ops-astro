@@ -65,7 +65,7 @@ depend on those and never on an AGPL package. No such package exists today.
 
 The core: the runtime, the records engine, the custody layer, the connectors
 and the interface packages. Changing any of them and offering the result over
-a network is exactly what section 13 of the AGPL is about. No exception is
+a network is what section 13 of the AGPL is about. No exception is
 intended to reach it.
 
 ## Open questions for counsel
