@@ -99,16 +99,47 @@ browser.
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
+The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
+looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
+authenticated route added to `apps/web/src/routes.ts` without a screen fails
+the typecheck. The screens build addresses with `pathTo` in `routes.ts` from a
+route id and its parameters, never as literal strings.
+
+The task page is `TaskDetailScreen` and `Loaded` in
+`apps/web/src/screens/TaskDetail.tsx`. The parts it draws live beside it in
+`apps/web/src/screens/task/`: `Comments.tsx`, `DetailsForm.tsx`,
+`Lifecycle.tsx` (the state buttons and the assignee select) and `History.tsx`.
+
 `/task/:key` for an external party (R4) draws `SharedTaskDetail` from
 `task.read`'s `sharedTask` answer: the shared fields under their server keys and
 the client comments, with no controls and no other read. The `sharedTask` key
-picks the view, never the role (`apps/web/src/screens/TaskDetail.tsx:185-186`).
-A revoked share draws the same denied state as a revoked grant.
+picks the view, never the role (`TaskDetailScreen` in
+`apps/web/src/screens/TaskDetail.tsx`). A revoked share draws the same denied
+state as a revoked grant.
+
+### How a write settles
+
+Every write on the task page, in the proposals view (`views/proposals.tsx`) and
+on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
+It sorts the answer once into one of five kinds:
+
+- `ok`: stored.
+- `stale`: `VERSION_STALE`. Somebody else moved the record on first.
+- `closed`: `SCOPE_NOT_GRANTED`. The refusal is about the reader, so asking
+  again would only be refused again.
+- `failed`: any other refusal. Nothing was stored.
+- `unknown`: no answer arrived, so the write may or may not have been stored.
+
+The refusal text is the server's, by code (`describeRefusal`). A caller adds
+only what happens next, such as clearing the comment box or rereading the task.
+The settings screen does not use `useCommand`; `use-settings.ts` settles its
+two commands itself.
 
 ## Comments on a task
 
 `task.read` has carried the task's comments since L3 (`docs/local/API.md`);
-`/task/:key` draws them. Each one is an `article[data-comment-id]` carrying
+`/task/:key` draws them through `Comments` (`screens/task/Comments.tsx`). Each
+one is an `article[data-comment-id]` carrying
 `data-audience`, and the audience is printed in words above the body, because
 "who may read this" is the one thing the person writing the next comment needs
 to know and the one thing a colour cannot say.
@@ -248,12 +279,20 @@ generation counter and the denial floor apply to it as to any other read.
 The four states are drawn and none of them draws a value: `loading`, `denied`
 with the refusal verbatim, `unavailable` with the absence stated as an
 absence, and `empty` for a business holding no rows. The state is on
-`div[data-settings="read"]` as `data-outcome`. Where the read is refused or
-absent the screen falls back to the last write this browser had confirmed,
-held in `sessionStorage` under `ops-astro.settings.<business>`, drawn in
-`p[data-settings="four-eyes-known"]` and named as this browser's word in
-`p[data-settings="not-readable"]`. Exactly one of the two provenances is on
-the page at a time. Never the shipped default.
+`div[data-settings="read"]` as `data-outcome`.
+
+The "Last confirmed by this browser" line (`p[data-settings="four-eyes-known"]`
+and `sign-off-known`) and the not-readable banner
+(`p[data-settings="not-readable"]`) appear only while `settings.read` is
+unavailable: no answer, an answer that is not JSON, or a non-2xx without a
+refusal, which is what a missing route gives. They never appear when the read
+is refused. `SCOPE_NOT_GRANTED` is the server declining to tell this reader the
+value, and nothing stands in for it. The cached value lives in `sessionStorage`
+under `ops-astro.settings.<business>`, tagged with the session that wrote it,
+so another session in the same tab sees "not known". `SessionStore.clear` in
+`apps/web/src/session/token.ts` removes it at sign-out and when a 401 refusal
+ends the session. The server's value and the cached one are never on the page
+together, and the screen never draws the shipped default.
 
 **The controls are opened by `session.capabilities`.** `settings:manage` in
 the grants opens them; its absence closes them and names the scope in
@@ -292,6 +331,13 @@ Not built: the read carries `conversation_window_days` and
   a person cannot quote is a refusal they cannot get help with.
 - `unavailable`: the API did not answer. Nothing has been decided about your
   access.
+
+Before anything draws it, a read is a `ReadState` (`data/authorised-read.ts`), a
+union on `outcome` with one member per state, so a reader that narrows on
+`outcome` gets the non-null field without a check. `loading.value` is the
+previous answer, kept while a reload is in flight. It is null on the first read
+and after a denial or an outage, because those already dropped it.
+`RecordState` still draws the loading state rather than that value.
 
 There is no path from a failed read to sample data anywhere in this application.
 
@@ -423,7 +469,8 @@ authority is one record grant. It records three rows: the next fetch is denied,
 an authorised response held back from before the revocation does not restore
 the task, and a later read is still denied. It runs after P and before B6/B7
 (`slice-acceptance.mjs:97-98`), because P issues and revokes a grant and B6/B7
-stop the API. `pnpm verify:browser` has not run with them in it on this head.
+stop the API. The last recorded `pnpm verify:browser` run with these rows in it
+was at `6f15252`. None is recorded at this head.
 
 The R4 rows (`r4-shared-page.mjs`) follow I10's order on an external party's
 shared page: the shared view opens, the next fetch after `grant.revoke` is
@@ -450,21 +497,23 @@ returns the rows that did not pass, whether failed, pending or unrun, so a run
 that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
 labels stay in the table, because they make a partial run readable; they no
-longer buy a zero exit. No `verify:browser` result is recorded at `b282216`, so
-at this head the browser checklist is unrun
+longer buy a zero exit. The last recorded `verify:browser` result is 88 of 88 at
+`6f15252`. None is recorded at any later head, `0395827` included, so at this
+head the browser checklist is unrun
 ([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 
 ### Cases address controls by attribute, not by text
 
 Two buttons on `/task/:key` read **Save changes**: the edit form's own
-`form#task-fields button[type="submit"]`, and the unsaved-changes bar's
-`button[data-draft-resolve="save"]` (both drawn by `Loaded` in
-`apps/web/src/screens/TaskDetail.tsx`). Both submit the same form. The bar's
+`form#task-fields button[type="submit"]`, drawn by `DetailsForm` in
+`apps/web/src/screens/task/DetailsForm.tsx`, and the unsaved-changes bar's
+`button[data-draft-resolve="save"]`, drawn by `Loaded` in
+`apps/web/src/screens/TaskDetail.tsx`. Both submit the same form. The bar's
 button is outside it and reaches it through `form="task-fields"`, so whichever
 one is pressed, a cleared title is refused. A case that asks for the button by
 its name matches both and fails on the ambiguity, so B4 presses the form's
 submit, the honest control for a case that edits the fields and then saves
-them. The three state buttons
+them. The three state buttons (`Lifecycle` in `screens/task/Lifecycle.tsx`)
 are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
 the same reason: an attribute the screen owns cannot be made ambiguous by a
 second control that happens to share a word.
