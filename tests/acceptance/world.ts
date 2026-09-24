@@ -63,7 +63,7 @@ import {
 export { ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
+import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
@@ -169,8 +169,8 @@ export async function createWorld(part: string): Promise<World> {
     // here, and an unknown key answers nothing, exactly as the server's does.
     resolveBusiness: async (key: string) => byKey[key],
     executeCommand,
-    executeRead: executeRead as unknown as ReadExecutor,
-    executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+    executeRead,
+    executeAgentCommand,
   });
 
   return {
@@ -216,8 +216,8 @@ export function rebuildApi(world: World): {
       verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
       resolveBusiness: async (key: string) => byKey[key],
       executeCommand,
-      executeRead: executeRead as unknown as ReadExecutor,
-      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+      executeRead,
+      executeAgentCommand,
     }),
     close: async () => {
       await database.close();

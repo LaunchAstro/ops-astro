@@ -22,7 +22,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import type { ReadExecutor } from '../../apps/api/app.ts';
 import { ACCEPTANCE_SECRET } from '../acceptance/cast.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { asAda, revisionOf } from '../acceptance/restart-harness.ts';
@@ -104,7 +103,7 @@ describe.skipIf(serverUrl === undefined)(
         database: world.db.app,
         admin: world.db.admin,
         secret: ACCEPTANCE_SECRET,
-        executeRead: executeRead as unknown as ReadExecutor,
+        executeRead,
       }).app;
     }, 120_000);
 

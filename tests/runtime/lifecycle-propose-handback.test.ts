@@ -27,7 +27,7 @@ import { connect, type Database } from '../../packages/core-records/src/tenancy/
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
+import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { authorised, createBusinessResolver, post, SECRET, tokenFor } from '../api/fixture.ts';
 import { agentPath, createControls, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
@@ -48,8 +48,8 @@ describe.skipIf(serverUrl === undefined)('propose racing handback on one task', 
       verify: createSupabaseVerifier({ secret: SECRET }),
       resolveBusiness: createBusinessResolver(c.fixture.db.admin),
       executeCommand,
-      executeRead: executeRead as unknown as ReadExecutor,
-      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+      executeRead,
+      executeAgentCommand,
     });
     const url = new URL(serverUrl as string);
     url.pathname = `/${c.fixture.db.name}`;

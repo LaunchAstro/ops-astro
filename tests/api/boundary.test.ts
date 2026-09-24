@@ -302,7 +302,8 @@ describe('the read half of the surface', () => {
     const calls: Array<{ businessId: string; presented: VerifiedSubject; read: string }> = [];
     const executeRead: ReadExecutor = async (_database, businessId, presented, request) => {
       calls.push({ businessId, presented, read: request.read });
-      return { ok: true, read: request.read };
+      // A result of the executor's own type; the case asks only which read ran.
+      return { ok: true, persons: [] };
     };
 
     const token = await tokenFor(MIA);

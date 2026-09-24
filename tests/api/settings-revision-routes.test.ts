@@ -97,13 +97,7 @@ describe.skipIf(serverUrl === undefined)('the settings revision over HTTP', () =
       // eslint-disable-next-line @typescript-eslint/require-await -- the port is async
       resolveBusiness: async (key) => (key === BUSINESS_KEY ? alpha : undefined),
       executeCommand,
-      executeRead: async (database, businessId, presented, request) =>
-        await executeRead(
-          database,
-          businessId,
-          presented,
-          request as unknown as Parameters<typeof executeRead>[3],
-        ),
+      executeRead,
     });
   }, 60_000);
 

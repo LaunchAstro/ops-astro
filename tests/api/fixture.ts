@@ -29,7 +29,6 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/l
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import type { ReadExecutor } from '../../apps/api/app.ts';
 import { composeApi } from '../../apps/api/server.ts';
 
 /**
@@ -201,7 +200,7 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
         database: db.app,
         admin: db.admin,
         secret: SECRET,
-        executeRead: executeRead as unknown as ReadExecutor,
+        executeRead,
       }).app;
     },
     async drop(): Promise<void> {

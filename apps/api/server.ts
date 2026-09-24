@@ -161,7 +161,7 @@ export interface ComposedApi {
  */
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
-  const executeRead = config.executeRead ?? (readExecutor as unknown as ReadExecutor);
+  const executeRead = config.executeRead ?? readExecutor;
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
 

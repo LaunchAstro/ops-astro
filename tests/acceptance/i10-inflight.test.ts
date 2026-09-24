@@ -24,7 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
+import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
@@ -226,8 +226,8 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
       verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
       resolveBusiness: async (key: string) => (key === 'alpha' ? world.alpha : undefined),
       executeCommand,
-      executeRead: executeRead as unknown as ReadExecutor,
-      executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+      executeRead,
+      executeAgentCommand,
     });
   }, 120_000);
 

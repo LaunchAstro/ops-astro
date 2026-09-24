@@ -55,6 +55,8 @@ import {
   type CommandDeclaration,
 } from '../../packages/core-records/src/commands/surface.ts';
 import type { CommandRequest } from '../../packages/core-records/src/commands/requests.ts';
+import type { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import type { ReadRequest } from '../../packages/core-records/src/reads/requests.ts';
 import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { statusFor } from './status.ts';
 
@@ -74,19 +76,16 @@ export function isRead(declaration: SurfaceDeclaration): boolean {
 }
 
 /**
- * A read, run under the same tenancy wrapper and the same grant path.
+ * A read, run under the same tenancy wrapper and the same grant path:
+ * `reads/execute.ts`'s signature, as `CommandExecutor` is the envelope's, so
+ * the real executor is passed without a cast.
  *
  * The request names the read in `read` rather than in `command`, which is the
  * discriminant `packages/core-records/src/reads/requests.ts` switches on. A
  * read carries no `operation_id` and no `expected_revision`, because there is
  * nothing to replay and nothing to be stale against.
  */
-export type ReadExecutor = (
-  database: Database,
-  businessId: string,
-  presented: VerifiedSubject,
-  request: { readonly read: string } & Readonly<Record<string, unknown>>,
-) => Promise<unknown>;
+export type ReadExecutor = typeof executeRead;
 
 export interface ApiOptions {
   readonly database: Database;
@@ -266,7 +265,7 @@ export function createApi(options: ApiOptions): Hono {
       const read = await execute(options.database, businessId, presented, {
         ...body,
         read: declaration.name,
-      });
+      } as ReadRequest);
       if (isObject(read) && isCommandRefusal(read)) return refuse(context, read);
       return context.json(read as Record<string, unknown>, 200);
     }
