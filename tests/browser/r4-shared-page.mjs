@@ -21,10 +21,19 @@
 // (AUTHORITY.md:349-350, :730-732), so its value must be in neither the
 // `task.read` body nor the page.
 //
+// The shared field set is exactly `SHARED_TASK_FIELDS`, `state` and `title`:
+// I09 (OWNER-CARD.md:127) shares the title and the status, AUTHORITY.md:351-354
+// and :730-732 name those two and make every other field internal, and the
+// spine marks only those two `shared` (spine.ts:76-77, :174-175). The row
+// holds the key set of `sharedTask.fields`, and the keys the page draws, to
+// that set: an extra key fails it whatever its value, null included, and so
+// does a missing one.
+//
 // Four rows, in I10's order:
 //   1. the open page draws the shared view: the shared title, the state's
-//      label (required, and drawn), the client comment, no internal comment,
-//      no internal description, no control that writes;
+//      label (required, and drawn), exactly the shared field set in the body
+//      and on the page, the client comment, no internal comment, no internal
+//      description, no control that writes;
 //   2. the next fetch after `grant.revoke` draws the denied state and none of
 //      the shared content;
 //   3. an authorised response taken before the revocation, held at the network
@@ -76,6 +85,12 @@ async function comment(adaToken, recordId, body, audience) {
   if (posted.status !== 200) throw new Error(`task.comment answered ${String(posted.status)}`);
 }
 
+/** The task fields this slice shares with an outside reader, sorted; see the header. */
+export const SHARED_TASK_FIELDS = Object.freeze(['state', 'title']);
+
+/** A key list as a sorted, comma-joined word, for comparing and reporting. */
+const keySet = (keys) => keys.toSorted().join(',');
+
 /** The internal description, written through the product's own update. */
 async function writeDescription(adaToken, recordId, description) {
   const read = await callApi(adaToken, 'task.read', { recordId });
@@ -103,16 +118,22 @@ export function openSharedVerdict({
   internal,
   description,
   title,
+  drawnFields,
   controls,
   errors,
 }) {
   let label;
+  let sentFields;
   try {
-    const state = JSON.parse(body)?.sharedTask?.fields?.state;
+    const fields = JSON.parse(body)?.sharedTask?.fields;
+    if (fields !== null && typeof fields === 'object') sentFields = keySet(Object.keys(fields));
+    const state = fields?.state;
     if (typeof state === 'string' && state !== '') label = state;
   } catch {
     label = undefined;
   }
+  const expected = keySet(SHARED_TASK_FIELDS);
+  const drawnSet = keySet(drawnFields);
   const labelShown = label !== undefined && text.includes(label);
   const descriptionOut = text.includes(description) || body.includes(description);
   return {
@@ -124,7 +145,9 @@ export function openSharedVerdict({
       `${text.includes(title) ? 'shown' : 'MISSING'}; state label ` +
       `${label === undefined ? 'NOT CARRIED' : labelShown ? 'shown' : 'MISSING'}; internal ` +
       `description ${text.includes(description) ? 'SHOWN' : 'absent'} on the page and ` +
-      `${body.includes(description) ? 'SENT' : 'absent'} in the body; ` +
+      `${body.includes(description) ? 'SENT' : 'absent'} in the body; field keys sent ` +
+      `[${sentFields ?? 'NONE'}]${sentFields === expected ? '' : ` NOT [${expected}]`}, drawn ` +
+      `[${drawnSet}]${drawnSet === expected ? '' : ` NOT [${expected}]`}; ` +
       `${String(controls)} control(s) in the task region; page errors ${JSON.stringify(errors)}`,
     ok:
       status === 200 &&
@@ -135,6 +158,8 @@ export function openSharedVerdict({
       text.includes(title) &&
       labelShown &&
       !descriptionOut &&
+      sentFields === expected &&
+      drawnSet === expected &&
       controls === 0 &&
       errors.length === 0,
   };
@@ -183,6 +208,9 @@ export async function casesR4SharedPage(run) {
       .catch(() => false);
     const openText = await page.locator('body').innerText();
     const controls = await page.locator(CONTROLS).count();
+    const drawnFields = await page
+      .locator('[data-shared-field]')
+      .evaluateAll((nodes) => nodes.map((node) => node.dataset.sharedField));
     const verdict = openSharedVerdict({
       status: first.status(),
       body: firstBody,
@@ -192,6 +220,7 @@ export async function casesR4SharedPage(run) {
       internal,
       description,
       title,
+      drawnFields,
       controls,
       errors,
     });
