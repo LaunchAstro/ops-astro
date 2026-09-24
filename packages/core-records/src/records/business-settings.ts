@@ -112,8 +112,8 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     key: 'retention_window_days',
     label: 'Retention window (days)',
     valueType: 'numeric',
-    // Thirty days, the accepted default, with erasure's floor and ceiling
-    // applied by the operation that reads it rather than by this row.
+    // Thirty days, the accepted default. The purge applies no floor or
+    // ceiling of its own, and no accepted source names one for this window.
     value: 30,
     writeMode: 'generic',
     owningOperations: [],

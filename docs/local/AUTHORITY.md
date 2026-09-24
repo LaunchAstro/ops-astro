@@ -493,10 +493,9 @@ the shipped default.
 through `readBusinessSetting`) inside the serving transaction, so the window is
 always the caller's business's row. The request body no longer carries one: a
 body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
-([API.md](API.md)). The purge applies no default, floor or ceiling of its own;
-the comment at `records/business-settings.ts:115-116` mentions "erasure's floor
-and ceiling", but no accepted source names one for the work window (C122-1's
-seven-day floor is the conversation window's). `conversation_window_days`,
+([API.md](API.md)). The purge applies no default, floor or ceiling of its own,
+and no accepted source names one for the work window (C122-1's seven-day floor
+is the conversation window's). `conversation_window_days`,
 `four_eyes_threshold` and `client_sign_off_required` still have no consumer
 among the first slice's operations.
 
