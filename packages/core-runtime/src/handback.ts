@@ -132,28 +132,19 @@ export interface StaleVerdict {
 }
 
 /**
- * The fence ladder, as a pure reading of the rows `handback` has under its
- * locks. The five causes are asked in this order and the first that holds is
- * the answer; `null` is a holder whose work may settle.
- *
- * `binding` is `null` until `handback` has read it. The lease's four causes
- * are answered before that read on purpose, so a stale fence is refused
- * without the binding query or its discovery-changed recheck ever running;
- * asked again with the binding, those four hold as before and only the fifth
- * can answer.
+ * The lease's rungs of the fence ladder, as a pure reading of the lease row
+ * `handback` has under its locks. The four causes are asked in this order and
+ * the first that holds is the answer; `null` is the current holder of a live
+ * lease. Asked before the binding is read, so a stale fence is refused without
+ * the binding query or its discovery-changed recheck ever running.
  */
-export function staleVerdict(
+export function fenceVerdict(
   lease: {
     readonly state: string;
     readonly fence: string;
     readonly expired: boolean;
     readonly current_fence: string;
   },
-  binding: {
-    readonly version_id: string;
-    readonly superseded: boolean;
-    readonly lineage_state: string;
-  } | null,
   request: { readonly leaseId: string; readonly fence: number },
 ): StaleVerdict | null {
   if (Number(lease.fence) !== request.fence) {
@@ -184,7 +175,20 @@ export function staleVerdict(
       fix: 'Pick the work up again under a new lease and a new fence. The report is retained.',
     };
   }
-  if (binding !== null && (binding.superseded || binding.lineage_state !== 'live')) {
+  return null;
+}
+
+/**
+ * The ladder's last rung, asked once the lease has passed `fenceVerdict` and
+ * the binding has been read under the locks: work on a superseded version or a
+ * lineage that is no longer live cannot settle. `null` is live work.
+ */
+export function bindingVerdict(binding: {
+  readonly version_id: string;
+  readonly superseded: boolean;
+  readonly lineage_state: string;
+}): StaleVerdict | null {
+  if (binding.superseded || binding.lineage_state !== 'live') {
     return {
       code: 'LEASE_NOT_OWNED',
       reason: binding.superseded
@@ -337,7 +341,7 @@ export async function handback(
   // each with its own code, because a caller told the wrong one retries
   // wrongly. Nothing below changes the task, the gate, the current lease or
   // any money; the retained report is append-only evidence.
-  const fenced = staleVerdict(lease, null, request);
+  const fenced = fenceVerdict(lease, request);
   if (fenced !== null) return refuseRetained(fenced);
 
   // F3. The lease is live and fenced, and that is still not enough: the work
@@ -374,7 +378,7 @@ export async function handback(
       'handback: the lease binding changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }
-  const unbound = staleVerdict(lease, binding, request);
+  const unbound = bindingVerdict(binding);
   if (unbound !== null) return refuseRetained(unbound);
 
   // R6. This head exports no dispatch, no worker and no provider adapter, so a
@@ -423,7 +427,7 @@ export async function handback(
     report: request.report,
   });
 
-  // Live and fenced under the lease lock (`staleVerdict` above), so the guard
+  // Live and fenced under the lease lock (`fenceVerdict` above), so the guard
   // in `endLease` changes nothing here.
   await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
