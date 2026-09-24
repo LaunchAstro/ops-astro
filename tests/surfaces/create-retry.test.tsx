@@ -120,7 +120,7 @@ const json = (body: unknown): Response =>
 function client(fetch: typeof globalThis.fetch): OperationsClient {
   let minted = 0;
   return new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'tok',
     fetch,

@@ -266,7 +266,7 @@ export async function throughSubmit(page, request) {
       const { submitEdit } = await import(ask.modules.submit);
       const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
       const client = new OperationsClient({
-        base: '/api',
+        origin: '',
         businessKey: ask.businessKey ?? session.businessKey,
         token: session.token,
         fetch: window.fetch.bind(window),
@@ -292,7 +292,7 @@ export async function throughClient(page, ask) {
         return await window.fetch(input, init);
       };
       const client = new OperationsClient({
-        base: '/api',
+        origin: '',
         businessKey: session.businessKey,
         token: session.token,
         fetch: spy,

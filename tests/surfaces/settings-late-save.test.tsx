@@ -72,7 +72,7 @@ const open = async (fetch: typeof globalThis.fetch): Promise<Mounted> => {
     <SettingsScreen
       client={
         new OperationsClient({
-          base: '/api',
+          origin: '',
           businessKey: ADA.businessKey,
           token: ADA.token,
           fetch,

@@ -51,7 +51,7 @@ function Root(): React.ReactElement {
       navigate={navigate}
       sessions={sessions}
       gotrueUrl={GOTRUE_URL}
-      apiBase={API_BASE}
+      apiOrigin={API_ORIGIN}
       fetch={window.fetch.bind(window)}
       storage={storage}
     />
@@ -60,7 +60,7 @@ function Root(): React.ReactElement {
 
 const GOTRUE_URL =
   (import.meta.env['VITE_GOTRUE_URL'] as string | undefined) ?? 'http://127.0.0.1:54391';
-const API_BASE = (import.meta.env['VITE_API_BASE'] as string | undefined) ?? '/api';
+const API_ORIGIN = (import.meta.env['VITE_API_ORIGIN'] as string | undefined) ?? '';
 
 // Read once, through the one guarded accessor: blocked site data makes the
 // `sessionStorage` global throw on access, not only on use.

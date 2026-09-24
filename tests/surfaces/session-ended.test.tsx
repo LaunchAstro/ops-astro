@@ -158,7 +158,7 @@ function Harness(props: {
       }}
       sessions={props.sessions}
       gotrueUrl="http://identity.invalid"
-      apiBase="/api"
+      apiOrigin=""
       fetch={props.fetch}
       storage={tabStorage()}
     />

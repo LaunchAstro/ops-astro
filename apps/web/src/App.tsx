@@ -25,8 +25,8 @@ export interface AppProps {
   readonly sessions: SessionStore;
   /** Where the identity provider is. Injected so a test never needs a network. */
   readonly gotrueUrl: string;
-  /** The API prefix. `/api` behind the dev proxy. */
-  readonly apiBase: string;
+  /** The API's origin: empty behind the dev proxy, which serves `/api` on the page's own. */
+  readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
   /** This tab's storage, read once by the entry, or null where it is blocked. */
   readonly storage: Storage | null;
@@ -127,7 +127,7 @@ export function App(props: AppProps): ReactElement {
   const client = useMemo(
     () =>
       new OperationsClient({
-        base: props.apiBase,
+        origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
         token: session?.token ?? null,
         fetch: props.fetch,
@@ -137,7 +137,7 @@ export function App(props: AppProps): ReactElement {
           if (session !== null) endedRef.current(session, refusal);
         },
       }),
-    [props.apiBase, props.fetch, session],
+    [props.apiOrigin, props.fetch, session],
   );
 
   const match = matchRoute(here);

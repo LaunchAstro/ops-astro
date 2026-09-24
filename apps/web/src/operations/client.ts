@@ -44,6 +44,7 @@
 // at 22:53Z; there is one spelling on the wire and this is it.
 
 import {
+  PREFIX,
   pathOf,
   type CommandName,
 } from '../../../../packages/core-records/src/commands/surface.ts';
@@ -182,8 +183,12 @@ export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
 }
 
 export interface ClientOptions {
-  /** Where the API is. `/api` in the browser, an absolute origin in a test. */
-  readonly base: string;
+  /**
+   * Where the API is served from: empty for the page's own origin, an absolute
+   * origin in a test. The mount itself is `PREFIX.person`, the one the API
+   * serves and the command line sends to.
+   */
+  readonly origin: string;
   /** `alpha` or `bravo`. It is a path segment, not a claim in a body. */
   readonly businessKey: string;
   /** The GoTrue access token. Absent means not signed in, which the API refuses. */
@@ -258,7 +263,7 @@ export class OperationsClient {
     name: CommandName,
     body: Readonly<Record<string, unknown>>,
   ): Promise<CallResult<T>> {
-    const url = `${this.#options.base}/b/${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
+    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     // The only credential this client sends. No actor header, no business
     // header, no forwarded host: there is nothing here for a tampered request
