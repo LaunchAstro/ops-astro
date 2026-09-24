@@ -59,6 +59,7 @@ import {
   SETTINGS_READ,
   SIGN_OFF,
   holdsManage,
+  rowsInHand,
   settingOf,
 } from './reads.ts';
 
@@ -222,7 +223,6 @@ export function useSettings(
 
   const read = settings.state;
   const caps = capabilities.state;
-  const grants = caps.value?.grants ?? [];
   // An absent capability read is not a denial. Nobody decided anything, so the
   // screen behaves as it did before the read existed: it offers the controls,
   // asks once, and closes on the server's refusal. Closing on an absence would
@@ -231,11 +231,11 @@ export function useSettings(
     caps.outcome === 'unavailable'
       ? true
       : caps.outcome === 'ready' || caps.outcome === 'empty'
-        ? holdsManage(grants)
+        ? holdsManage(caps.value.grants)
         : false;
   const shut = closed || !mayManage;
 
-  const rowFor = (which: Which): SettingRow | null => settingOf(read.value, KEY[which]);
+  const rowFor = (which: Which): SettingRow | null => settingOf(rowsInHand(read), KEY[which]);
 
   const settle = (which: Which, value: Draft, result: CallResult<CommandOutcome>): void => {
     setBusy(null);
