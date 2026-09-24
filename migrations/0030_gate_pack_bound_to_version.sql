@@ -34,6 +34,22 @@
 -- not the one its decision names, fails this migration with the gate named
 -- and stays at 0029 with its rows untouched. The check returns no rows on any
 -- database the runtime has written.
+--
+-- The check and the trigger must see the same gates. An application
+-- connection still at 0029 may update `gates`, so between the two it could
+-- move a decided gate onto another version, with that version's run, step
+-- and pack, and commit, and the upgrade would succeed holding what rule 2
+-- forbids (SOL-R3R-1). The lock below is taken before the check and held
+-- until this migration commits. SHARE ROW EXCLUSIVE conflicts with the
+-- application's INSERT and UPDATE and not with its SELECT, and it is the mode
+-- the `alter table` and `create trigger` below take on `gates` anyway, so the
+-- migration never has to upgrade its lock. A move already in flight is
+-- waited for and then judged by the check; one that starts later waits and
+-- is then refused by the trigger. Only `gates` is locked: rule 1 is checked
+-- again by the foreign key under its own lock, and a lock on
+-- `gate_decisions` would hold nothing once this commits.
+
+lock table public.gates in share row exclusive mode;
 
 do $$
 declare

@@ -367,6 +367,50 @@ describe.skipIf(serverUrl === undefined).each([
     },
   );
 
+  // R4-THERMO-4: the trigger has two guards, and each case below needs one
+  // of them alone. (d) holds only while a decision names the gate; (e) only
+  // while the gate has left `pending`.
+  it('refuses the application role when it (d) resets a decided gate to pending and then moves it, and moves nothing', async () => {
+    const on = await approved(built.db.app, fixture);
+    const before = await proposalState(built.db, fixture.businessId);
+    await expect(
+      built.db.app.withBusiness(fixture.businessId, async (tx) => {
+        await tx.query(
+          `update public.gates set state = 'pending', decided_at = null
+            where business_id = $1 and id = $2`,
+          [tx.businessId, on.gateId],
+        );
+        const added = await addVersion(tx, on.versionId, true);
+        await tx.query(
+          `update public.gates set version_id = $3, run_id = $4, step_id = $5, evidence_pack_id = $6
+            where business_id = $1 and id = $2`,
+          [tx.businessId, on.gateId, added.versionId, added.runId, added.stepId, added.packId],
+        );
+      }),
+    ).rejects.toMatchObject(VERSION_FIXED);
+    expect(await proposalState(built.db, fixture.businessId)).toBe(before);
+  });
+
+  it('refuses the application role when it (e) moves a superseded gate with no decision, and moves nothing', async () => {
+    const first = await proposed(built.db.app, fixture);
+    await proposed(built.db.app, fixture, { taskId: first.taskId, lineageId: first.lineageId });
+    const [gate] = await built.db.admin.execute<{
+      readonly state: string;
+      readonly decided: boolean;
+    }>(
+      `select g.state, exists (select 1 from public.gate_decisions d
+                                where d.business_id = g.business_id and d.gate_id = g.id) as decided
+         from public.gates g where g.id = $1`,
+      [first.gateId],
+    );
+    expect(gate).toStrictEqual({ state: 'superseded', decided: false });
+    const before = await proposalState(built.db, fixture.businessId);
+    await expect(TAMPERINGS.moveGate(built.db.app, fixture, first)).rejects.toMatchObject(
+      VERSION_FIXED,
+    );
+    expect(await proposalState(built.db, fixture.businessId)).toBe(before);
+  });
+
   it('commits the runtime’s own propose and approve', async () => {
     const on = await approved(built.db.app, fixture);
     const [row] = await built.db.admin.execute<{ readonly state: string; readonly bound: boolean }>(
