@@ -24,8 +24,13 @@
 import type { BusinessId, Database } from '../tenancy/database.ts';
 import type { VerifiedSubject } from '../identity/login-resolution.ts';
 import { withSession } from '../identity/login-resolution.ts';
-import { asCallerVisible, fromIdentity, isIdentityRefusal } from '../commands/refusal.ts';
-import type { CommandRefusal } from '../commands/refusal.ts';
+import {
+  asCallerVisible,
+  fromIdentity,
+  isCommandRefusal,
+  isIdentityRefusal,
+  type CommandRefusal,
+} from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
 import { runRead } from './dispatch.ts';
 
@@ -47,5 +52,5 @@ export async function executeRead(
 
 /** The discriminant a caller reads a read result through. */
 export function isReadRefusal(value: ReadResult | CommandRefusal): value is CommandRefusal {
-  return 'refused' in value;
+  return isCommandRefusal(value);
 }

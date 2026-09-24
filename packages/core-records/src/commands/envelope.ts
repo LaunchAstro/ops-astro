@@ -74,9 +74,6 @@ export async function runCommand(
   request: CommandRequest,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
-  if (declaration === undefined) {
-    throw new Error(`runCommand: ${request.command} is not in the command surface`);
-  }
   const digest = payloadDigest(comparablePayload(request));
 
   // The identity first, because an attempt with no identity is not an attempt

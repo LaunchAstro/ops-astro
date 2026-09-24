@@ -165,8 +165,7 @@ async function runAgentCommand(
   const { session, request } = presented;
   const digest = payloadDigest(comparable(request));
   const operation = AGENT_OPERATIONS.get(request.command);
-  const declaration = declarationOf(request.command);
-  if (declaration === undefined || operation === undefined) {
+  if (operation === undefined) {
     return await settle(
       tx,
       session,
@@ -183,7 +182,7 @@ async function runAgentCommand(
       true,
     );
   }
-  const call: AgentCall = { ...presented, declaration };
+  const call: AgentCall = { ...presented, declaration: declarationOf(request.command) };
 
   // `typeof` first, as the person envelope asks it (`envelope.ts`). The pattern
   // coerces what it is given, so a number or a one-element array would pass as
