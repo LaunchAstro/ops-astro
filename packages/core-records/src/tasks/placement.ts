@@ -165,9 +165,12 @@ async function readParent(
 
 /**
  * Would putting `taskId` under `parentId` close a loop, at any depth? Only a
- * reparent writes `parent` on an existing task, so reparents are serialised per
- * business by the advisory lock, and the walk, a later statement, sees what the
- * other committed under read committed. A row seen before ends the walk.
+ * reparent writes `parent` on an existing task, and reparents are serialised
+ * per business by the lock the envelope takes before the target (`serialise`
+ * on the declaration, `prepare.ts`), so the walk, a later statement, sees what
+ * the other committed under read committed. The order is that lock, then the
+ * target, then the parent (`readParent`); this walk takes nothing. A row seen
+ * before ends the walk.
  */
 export async function wouldCloseParentLoop(
   tx: TenantQuery,
@@ -175,9 +178,6 @@ export async function wouldCloseParentLoop(
   taskId: string,
   parentId: string,
 ): Promise<boolean> {
-  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `task.reparent:${tx.businessId}`,
-  ]);
   const rows = await tx.query<{ readonly reaches: boolean }>(
     `with recursive up (id, parent) as (
        select id, ${PARENT} from records
@@ -274,7 +274,7 @@ export async function siblingRanks(
  * ranked only against the working set would tie with it. The set is locked
  * first, so two creates in it cannot read the same last rank.
  */
-async function rankAfterSiblings(
+export async function rankAfterSiblings(
   tx: TenantQuery,
   taskTypeId: string,
   parentId: string | null,
