@@ -10,7 +10,9 @@
 //   `DECISION_INTEGRITY` 500, never the retryable `SERVICE_UNAVAILABLE`.
 // - R1-RUNTIME-52: a note whose object carries an own `__proto__` member,
 //   altered under that member with its old digest, signature and hash, is the
-//   named fault.
+//   named fault. `task.decide` refuses a note that is not a string (#53), so
+//   that decision is written here as a stored row, correctly signed, the way
+//   one written before that refusal, or by a later payload version, would be.
 //
 // Tampering is done as the database owner, with the append-only triggers off
 // for the one statement, as in `decision-signature-only.test.ts`.
@@ -19,11 +21,14 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readTaskProposals } from '../../packages/core-records/src/reads/proposals.ts';
 import { DecisionIntegrityError } from '../../packages/core-records/src/reads/verified-decisions.ts';
+import { gateSigningKey } from '../../packages/core-records/src/commands/runtime-config.ts';
 import {
   chainHash,
   decidedAtText,
   decisionLink,
+  digestOf,
   linkVersionOf,
+  sign,
 } from '../../packages/core-runtime/src/signing.ts';
 import {
   bearer,
@@ -136,8 +141,37 @@ async function readDirect(world: World, taskId: string): Promise<unknown> {
   }
 }
 
+/**
+ * Rewrites the one stored decision, as the owner, into a correctly signed
+ * decision whose note is `note`: a new payload digest, a signature under the
+ * world's own key and the chain hash recomputed over both. The read verifies
+ * it as it would any decision the server wrote.
+ */
+async function storeNote(world: World, note: unknown): Promise<void> {
+  const row = await onlyRow(world);
+  const key = gateSigningKey();
+  if (key?.id !== row.signing_key_id) throw new Error('final-r1-api-sign: not the world key');
+  const payload = { ...row.payload, note };
+  const payloadDigest = digestOf(payload);
+  const signature = sign(key, payloadDigest);
+  await tamper(
+    world,
+    `update public.gate_decisions
+        set payload = $3::text::jsonb, payload_digest = $4, signature = $5, hash = $6
+      where business_id = $1 and id = $2`,
+    [
+      world.alpha,
+      row.id,
+      JSON.stringify(payload),
+      payloadDigest,
+      signature,
+      hashWith({ ...row, payload_digest: payloadDigest }, signature),
+    ],
+  );
+}
+
 /** A task with one proposal and one approval, whose note is `note`. */
-async function decidedTask(world: World, note: unknown): Promise<string> {
+async function decidedTask(world: World, note: string): Promise<string> {
   const created = await asAda(world, '/task/create', {
     operationId: randomUUID(),
     fields: { title: `final-r1-api-sign ${randomUUID()}` },
@@ -255,8 +289,9 @@ describe.skipIf(serverUrl === undefined)('R1-RUNTIME-52 over the read', () => {
 
   beforeAll(async () => {
     world = await createWorld('fsp');
+    taskId = await decidedTask(world, 'approve as proposed');
     // Parsed, so `__proto__` is an own member as it is off the wire.
-    taskId = await decidedTask(world, JSON.parse('{"__proto__":{"reason":"approve 10"}}'));
+    await storeNote(world, JSON.parse('{"__proto__":{"reason":"approve 10"}}'));
     original = await onlyRow(world);
   }, 120_000);
 
