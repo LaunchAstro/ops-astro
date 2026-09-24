@@ -35,7 +35,7 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
-import { classifyUnderLocks, type Classification } from './recovery.ts';
+import { AffectedSetChanged, classifyUnderLocks, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -326,7 +326,7 @@ export async function handback(
     binding.lease_reservation !== found.reservation_id ||
     binding.lineage_id !== found.lineage_id
   ) {
-    throw new Error(
+    throw new AffectedSetChanged(
       'handback: the lease binding changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }

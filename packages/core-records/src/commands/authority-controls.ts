@@ -44,7 +44,11 @@ import {
   type Scope,
 } from '../authority/grants.ts';
 import { revokeDelegation } from '../authority/delegations.ts';
-import { classifyAuthorityLoss, type Classification } from '../../../core-runtime/src/recovery.ts';
+import {
+  AffectedSetChanged,
+  classifyAuthorityLoss,
+  type Classification,
+} from '../../../core-runtime/src/recovery.ts';
 import type { CommandContext } from './context.ts';
 import { declarationOf } from './surface.ts';
 import { refuseCommand } from './refusal.ts';
@@ -253,7 +257,7 @@ export async function revokeGrantAsManager(
       // locks do not cover.
       const current = await dependents(tx, grantId);
       if (JSON.stringify(current) !== JSON.stringify(candidates)) {
-        throw new Error(
+        throw new AffectedSetChanged(
           'grant.revoke: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
         );
       }
