@@ -5,6 +5,7 @@
 
 import { type PickedUp, type PickedUpByPerson } from '../../../core-runtime/src/pickup.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';
+import { DELEGATION_HEADER } from './surface.ts';
 
 /**
  * Whether an operand of the owning `task.handback` contract must be sent,
@@ -92,7 +93,7 @@ export function handbackShapeFor(picked: PickedUp | PickedUpByPerson): Record<st
       picked.claimant === 'agent'
         ? {
             transport: 'header',
-            header: 'x-agent-delegation',
+            header: DELEGATION_HEADER,
             value: 'the credential this pickup returned, beside the agent login bearer',
           }
         : {
