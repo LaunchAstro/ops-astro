@@ -45,6 +45,25 @@ if (serverUrl === undefined) {
   );
 }
 
+/**
+ * Point a gate at a pack of another version, as the owner. Since 0030 storage
+ * refuses this on any path (`gates_pack_in_same_version`), so the move is made
+ * with the gate's triggers off, which is what reaches the runtime's own
+ * EVIDENCE_MISMATCH check. The storage refusal itself is proved in
+ * `final-r2-dbtest-gate-pack-binding.test.ts`.
+ */
+async function repointPack(world: GateWorld, gateId: string, packId: string): Promise<void> {
+  await world.db.admin.execute('alter table public.gates disable trigger all');
+  try {
+    await world.db.admin.execute(`update public.gates set evidence_pack_id = $2 where id = $1`, [
+      gateId,
+      packId,
+    ]);
+  } finally {
+    await world.db.admin.execute('alter table public.gates enable trigger all');
+  }
+}
+
 describe.skipIf(serverUrl === undefined)('gate negatives', () => {
   let db: FreshDatabase;
   let world: GateWorld;
@@ -227,10 +246,7 @@ describe.skipIf(serverUrl === undefined)('gate negatives', () => {
         'a pack rendered for another proposal',
         async (w, proposal) => {
           const other = await w.propose(await w.createTask('G07 the other proposal'));
-          await w.db.admin.execute(`update public.gates set evidence_pack_id = $2 where id = $1`, [
-            proposal.gateId,
-            other.evidencePackId,
-          ]);
+          await repointPack(w, proposal.gateId, other.evidencePackId);
           return proposal;
         },
       ],
@@ -247,10 +263,7 @@ describe.skipIf(serverUrl === undefined)('gate negatives', () => {
             )[0]?.task_id as string,
             proposal.lineageId,
           );
-          await w.db.admin.execute(`update public.gates set evidence_pack_id = $2 where id = $1`, [
-            successor.gateId,
-            proposal.evidencePackId,
-          ]);
+          await repointPack(w, successor.gateId, proposal.evidencePackId);
           return successor;
         },
       ],
