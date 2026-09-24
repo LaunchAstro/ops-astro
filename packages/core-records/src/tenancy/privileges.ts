@@ -222,6 +222,29 @@ export async function defaultDenyConformance(
     }
   }
 
+  // TEMPORARY is a create privilege the schema checks above cannot see: it is
+  // on the database, PostgreSQL grants it to PUBLIC on every new one, and the
+  // relation it makes lives in `pg_temp`, which OWN_SCHEMAS leaves out. A
+  // temporary table outlives the transaction on a pooled backend, and the
+  // next tenant's unqualified `from records` finds it before `public.records`,
+  // with no row security on it (R2-AUTHORITY-61). The login is asked, which
+  // follows both the group and PUBLIC; PUBLIC is asked by name so the finding
+  // says where the grant is.
+  for (const role of ['public', ...applicationSide(roles)]) {
+    // oxlint-disable-next-line no-await-in-loop
+    const rows = await read<{ readonly temporary: boolean }>(
+      `select has_database_privilege($1, current_database(), 'TEMPORARY') as temporary`,
+      [role],
+    );
+    if (rows[0]?.temporary === true) {
+      findings.push({
+        rule: 'the application role may create nothing, not even a temporary table',
+        object: 'current_database()',
+        detail: role === 'public' ? 'PUBLIC holds TEMPORARY' : `${role} holds TEMPORARY`,
+      });
+    }
+  }
+
   // TRUNCATE empties a table without consulting a single row policy. Asked of
   // the login as well as the group: the login is what sends the statement.
   for (const role of applicationSide(roles)) {

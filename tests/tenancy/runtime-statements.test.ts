@@ -215,6 +215,8 @@ describe.skipIf(serverUrl === undefined)('T04/M03: what a production operation s
         'alter table public.records add column injected text',
         'create index injected_idx on public.records (id)',
         'drop table public.records',
+        // R2-AUTHORITY-61: a session-lived relation `from records` would find first.
+        'create temp table injected (id int)',
       ]) {
         // oxlint-disable-next-line no-await-in-loop
         await expect(app.withBusiness(business, (tx) => tx.query(statement))).rejects.toThrow(
@@ -227,7 +229,7 @@ describe.skipIf(serverUrl === undefined)('T04/M03: what a production operation s
       const injected = log
         .schemaChanging()
         .filter((entry) => /injected/u.test(entry.text) || /^drop table/iu.test(entry.text));
-      expect(injected.length).toBe(4);
+      expect(injected.length).toBe(5);
       expect(injected.every((entry) => entry.kind === 'ddl')).toBe(true);
     });
 
