@@ -263,9 +263,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
  * the same answer, and giving them different ones would tell a caller which
  * of their guesses were well formed.
  */
-function refuseMalformedIdentifier(request: CommandRequest): Refused | undefined {
+function refuseMalformedIdentifier(
+  request: CommandRequest,
+  declaration: CommandDeclaration,
+): Refused | undefined {
   const named = request as unknown as Record<string, unknown>;
-  const malformed = shapedHere(request.command).filter((field) => {
+  const malformed = shapedHere(declaration).filter((field) => {
     const value = named[field];
     return typeof value === 'string' && !UUID.test(value);
   });
@@ -277,34 +280,6 @@ const BODY_FIXES: readonly string[] = [
   'Send only the fields this command declares.',
   'A command that targets no existing record takes no record identifier.',
 ];
-
-/**
- * The identifier fields each *untargeted* command actually declares, written
- * out for the same reason `IDENTIFIER_FIELDS` is: a request type that grows an
- * identifier has to be named here rather than being silently covered.
- *
- * Only the untargeted commands are listed, because they are the ones with no
- * record of their own to be confused with the one a body names. A targeted
- * command's `recordId` *is* its target and is checked by reading it.
- *
- * `task.pickup` and `task.handback` take a `recordId` and still declare no
- * existing target: neither writes the task, and neither has landed. When they
- * do, what their authority is checked against is a decision for the part that
- * lands them, not a field this table can infer.
- */
-export const UNTARGETED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
-  'task.create': ['parentId', 'board', 'boardSection'],
-  'task.decide': ['gateId', 'versionId'],
-  'task.handback': ['leaseId'],
-  'task.pickup': ['reservationId'],
-  'task.purge': [],
-  'task.restore': ['batchId'],
-  // Neither settings command names a record. The setting is chosen by the
-  // command, so a body carrying a `recordId` is a body the caller believes was
-  // honoured and it is refused rather than dropped.
-  'settings.set_client_sign_off': [],
-  'settings.set_four_eyes_threshold': [],
-};
 
 /**
  * The identifier fields a body carries that its operation does not take.
@@ -334,9 +309,10 @@ function refuseIrrelevantTarget(
   request: CommandRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
-  if (declaration.targetsExistingRecord) return undefined;
-  const allowed = UNTARGETED_IDENTIFIERS[declaration.name];
-  if (allowed === undefined) return undefined;
+  // `untargetedIdentifiers` is absent exactly on a targeted row, and
+  // `unchecked` is a gap the row writes down (`surface.ts`).
+  const allowed = declaration.untargetedIdentifiers;
+  if (allowed === undefined || allowed === 'unchecked') return undefined;
   const irrelevant = irrelevantIdentifiers(request as unknown as Record<string, unknown>, allowed);
   if (irrelevant.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));
@@ -412,7 +388,7 @@ export async function prepareCommand(
 ): Promise<CommandContext | Refused> {
   const spoofed = await refuseSystemOwnedFields(tx, request);
   if (spoofed !== undefined) return spoofed;
-  const malformed = refuseMalformedIdentifier(request);
+  const malformed = refuseMalformedIdentifier(request, declaration);
   if (malformed !== undefined) return malformed;
 
   const irrelevant = refuseIrrelevantTarget(request, declaration);
@@ -522,21 +498,12 @@ export async function lockTask(
 }
 
 /**
- * The runtime handlers shape their own operand (`isIdentifier`, called from
- * `tasks-runtime.ts`) and answer a malformed one in their own code,
- * RESERVATION_NOT_CLAIMABLE or LEASE_NOT_OWNED, byte for byte as they answer
- * a fabricated one. A generic NOT_FOUND here told the two apart; the agent
- * envelope, which never comes through here, reached SQL and faulted. Any
- * other command naming these fields is still answered here.
+ * The identifier fields `refuseMalformedIdentifier` shapes for this command:
+ * every one but the operand the runtime handler shapes and answers in its own
+ * code (`CommandDeclaration.runtimeShaped`). The agent envelope, which never
+ * comes through here, reached SQL and faulted before that operand was the
+ * handler's. Any other command naming the field is still answered here.
  */
-export const RUNTIME_SHAPED: Readonly<Record<string, string>> = {
-  'task.pickup': 'reservationId',
-  'task.heartbeat': 'leaseId',
-  'task.handback': 'leaseId',
-};
-
-/** The identifier fields `refuseMalformedIdentifier` shapes for this command. */
-function shapedHere(command: string): readonly string[] {
-  const own = RUNTIME_SHAPED[command];
-  return IDENTIFIER_FIELDS.filter((field) => field !== own);
+function shapedHere(declaration: CommandDeclaration): readonly string[] {
+  return IDENTIFIER_FIELDS.filter((field) => field !== declaration.runtimeShaped);
 }

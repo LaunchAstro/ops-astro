@@ -4,6 +4,9 @@
 //
 // Written before the command facts were folded into the `COMMAND_SURFACE`
 // rows (architecture review bbdf2b2, candidate 1), and green before and after.
+// The tables no longer exist as lists: each is read here off the rows, and the
+// agent's two lists are also checked against `agent-envelope.ts`, which still
+// keeps its own copy until the agent path reads the rows.
 // Five tables are pinned by literal: the runtime-shaped identifier, the
 // identifiers each untargeted command takes, the commands that need no
 // expected revision, and the agent's two allow-lists. The handler map is
@@ -27,10 +30,6 @@ import {
   NEEDS_NO_EXPECTED_REVISION,
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
-import {
-  RUNTIME_SHAPED,
-  UNTARGETED_IDENTIFIERS,
-} from '../../packages/core-records/src/commands/prepare.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
@@ -277,6 +276,23 @@ const untargetedWrites = COMMAND_SURFACE.filter(
   (command) => command.kind === 'write' && !command.targetsExistingRecord,
 ).map((command) => command.name);
 
+/** One fact off every row that states it, by command name. */
+function view<T>(fact: (row: (typeof COMMAND_SURFACE)[number]) => T | undefined) {
+  return Object.fromEntries(
+    COMMAND_SURFACE.flatMap((row) => {
+      const value = fact(row);
+      return value === undefined ? [] : [[row.name, value]];
+    }),
+  );
+}
+
+const RUNTIME_SHAPED = view((row) => row.runtimeShaped);
+const UNTARGETED_IDENTIFIERS = view((row) => row.untargetedIdentifiers);
+const agentReach = (reach: readonly string[]) =>
+  COMMAND_SURFACE.filter((row) => reach.includes(row.agent))
+    .map((row) => row.name)
+    .toSorted();
+
 describe('the per-command tables at faf3285', () => {
   it('shapes the same runtime identifier for the same three commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
@@ -300,6 +316,8 @@ describe('the per-command tables at faf3285', () => {
   });
 
   it('lets an agent reach the same eight, two of them before a pickup', () => {
+    expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
+    expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
     expect([...BEFORE_PICKUP].toSorted()).toStrictEqual(PINNED_BEFORE_PICKUP);
   });
