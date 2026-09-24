@@ -143,8 +143,10 @@ the browser makes only same-origin requests.
 volume, so the data survives.
 
 To upgrade an existing install to a newer head, stop the application first.
-The runner enforces it: with a migration pending and anything else connected
-to the database, it applies nothing and names what is connected.
+The runner checks for it: with a migration pending and anything else connected
+to the database, it applies nothing and names what is connected. It cannot
+tell a stopped application from an idle one, so the stop below is your step
+([DATA.md, "Upgrade"](DATA.md#upgrade)).
 
 1. Stop the API: `kill <pid>` on the process you started with `api:up`, as
    [Stopping what you started](#stopping-what-you-started) says.

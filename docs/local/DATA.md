@@ -60,8 +60,8 @@ and GoTrue, run `node scripts/db-migrate.mjs` (`pnpm db:migrate`), then start
 GoTrue and the API again. [README.md, "Start it"](README.md#start-it) has the
 commands. A migration run beside a live application can go wrong in ways
 no single migration can rule out. 0030 alone had two (SOL-R3R-1 and
-SOL-R3R2-1), so the runner enforces the rule rather than leaving it to
-this page.
+SOL-R3R2-1), so the runner checks the rule rather than leaving it to this page,
+within the limit below.
 
 When at least one migration is pending, the runner
 (`packages/core-records/src/tenancy/migrate.ts`) reads `pg_stat_activity` for
@@ -88,6 +88,16 @@ locks, and it is no worse off than a session that connects the moment after
 the upgrade. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
 LIMIT` to close that window, because a crash between setting it and restoring
 it would leave the install refusing its own application.
+
+**The check cannot tell a stopped application from an idle one.** The API's
+pool (`postgres`, `tenancy/database.ts`) opens a connection when a query needs
+one, and an idle API or GoTrue may hold none between requests. A live drill on
+the local install saw none from a running, healthy API and GoTrue, and one from
+the API right after a request to `/api/health`. So an idle application passes
+the check, and reconnects on its next request, on whichever schema is there by
+then. Stopping the API and GoTrue is the operator's step, as README.md's
+upgrade steps give it, and a script that upgrades must stop them itself before
+`db:migrate`; the runner's check is a backstop, not the stop.
 
 `tests/tenancy/final-r6-runner-guard.test.ts` holds real sessions open against
 databases at 0023 and at the head. It covers the refusal with the application
