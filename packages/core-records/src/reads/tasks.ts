@@ -289,6 +289,8 @@ export async function readSharedTask(
   }
   return {
     id: recordId,
+    // `revision` is `bigint`, which this driver hands back as a string.
+    revision: Number(row['revision']),
     fields,
     comments: await commentsFor(tx, commentTypeId, recordId, false),
   };

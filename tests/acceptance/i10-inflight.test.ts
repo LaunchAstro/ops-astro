@@ -246,6 +246,8 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
     expect(admitted.status).toBe(200);
     expect(admitted.body['sharedTask']).toStrictEqual({
       id: recordId,
+      // The record's version, which a permitted client comment needs (R2-AUTHORITY-36).
+      revision: expect.any(Number),
       // The title and the state's label are shared (Nathan's I09 ruling).
       fields: { title: TITLE, state: expect.any(String) },
       comments: [expect.objectContaining({ audience: 'client', body: CLIENT_NOTE })],

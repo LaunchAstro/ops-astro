@@ -98,12 +98,21 @@ export interface TaskDetail extends TaskSummary {
 /**
  * What a reader outside the business is shown of one task (minimum contract
  * 8.1 R4, 8.2 case 7): its identifier, the task fields the catalogue marks
- * `shared`, and the client comments in their shared fields. Nothing else is
- * on it, so there is no internal field to hide: history, proposals, the
- * revision and every unclassified field are absent from the body, not blanked.
+ * `shared`, the client comments in their shared fields, and the record's
+ * revision. Nothing else is on it, so there is no internal field to hide:
+ * history, proposals and every unclassified field are absent from the body,
+ * not blanked.
  */
 export interface SharedTaskView {
   readonly id: string;
+  /**
+   * The record's version, which `task.comment` requires as
+   * `expectedRevision`. An external party with a provisioned `comment` grant
+   * may write a client comment (AUTHORITY.md R4), and without this nothing it
+   * can read carries the revision the write needs (final review round 2,
+   * R2-AUTHORITY-36). It is the record's version, not a field value.
+   */
+  readonly revision: number;
   /**
    * Keyed by field key: every task field the catalogue classifies `shared`,
    * which on the shipped task spine includes `title` and `state` (the state's

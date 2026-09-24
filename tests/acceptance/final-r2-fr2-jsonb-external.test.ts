@@ -3,19 +3,15 @@
 // FR2-JSONB, R2-AUTHORITY-36 (P3): an external party holding a read share and
 // a provisioned record-scoped `comment` grant may write a client comment
 // (AUTHORITY.md R4 ruling), and `task.comment` requires `expectedRevision`
-// (API.md). Nothing the party can read carries the revision: `sharedTask` is
-// `{ id, fields, comments }`. A comment without one is refused
-// `EXPECTED_REVISION_REQUIRED` at the envelope (the finding named
-// `VERSION_STALE` at `prepare.ts:481`; that is the answer to a guessed one),
-// and both fixes say to read the record for the revision. So the permitted
-// write is reachable only by guessing a revision and copying the real one out
-// of the `VERSION_STALE` refusal's names.
+// (API.md). At 3eb0cc1 nothing the party could read carried the revision
+// (`sharedTask` was `{ id, fields, comments }`), so the permitted write was
+// reachable only by guessing a revision and copying the real one out of a
+// `VERSION_STALE` refusal's names. With no revision the answer is
+// `EXPECTED_REVISION_REQUIRED` at the envelope, and both fixes say to read
+// the record for it.
 //
-// Reproduced at 3eb0cc1, and not fixed in this lane: the fix is the shared
-// read's projection (`reads/tasks.ts`, `readSharedTask`), outside this lane's
-// files, and handed back. The first case pins what the party sees today; the
-// second is the permitted write made from the party's own reads alone, which
-// fails until the projection carries the revision.
+// Fixed in FR2-JSONB-CONT (lead ruling): the shared read carries the record's
+// `revision`, and no other key changed.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -78,39 +74,34 @@ describe.skipIf(serverUrl === undefined)(
       await world?.close();
     });
 
-    it("the party's read has no revision; the comment is reached only through a refusal's names", async () => {
+    it("the party's read carries the revision and exactly the shared keys", async () => {
       const read = await as(ext, 'task.read', { recordId: shared });
       expect(read.code).toBe('ok');
       const sharedTask = read.body['sharedTask'] as Record<string, unknown>;
-      expect(Object.keys(sharedTask).toSorted()).toStrictEqual(['comments', 'fields', 'id']);
-      const body = {
+      expect(Object.keys(sharedTask).toSorted()).toStrictEqual([
+        'comments',
+        'fields',
+        'id',
+        'revision',
+      ]);
+      const owner = (await as(world.ada, 'task.read', { recordId: shared })).body['task'] as {
+        readonly revision: number;
+      };
+      expect(sharedTask['revision']).toBe(owner.revision);
+    });
+
+    it('a comment without a revision is still EXPECTED_REVISION_REQUIRED', async () => {
+      const written = await as(ext, 'task.comment', {
+        operationId: randomUUID(),
         recordId: shared,
         body: 'from the client',
         audience: 'client',
         commentType: 'client',
-      };
-      const without = await as(ext, 'task.comment', { operationId: randomUUID(), ...body });
-      expect(without.code).toBe('EXPECTED_REVISION_REQUIRED');
-      expect(without.body['fixes']).toContain(
-        'Read the record and send the revision you are writing against as expected_revision.',
-      );
-      const guessed = await as(ext, 'task.comment', {
-        operationId: randomUUID(),
-        ...body,
-        expectedRevision: 0,
       });
-      expect(guessed.code).toBe('VERSION_STALE');
-      const [named] = guessed.body['names'] as string[];
-      const copied = Number(String(named).replace('revision=', ''));
-      const landed = await as(ext, 'task.comment', {
-        operationId: randomUUID(),
-        ...body,
-        expectedRevision: copied,
-      });
-      expect(landed.code).toBe('ok');
+      expect(written.code).toBe('EXPECTED_REVISION_REQUIRED');
     });
 
-    it.fails('the party comments using only what its own reads returned', async () => {
+    it('the party comments using only what its own reads returned', async () => {
       const read = await as(ext, 'task.read', { recordId: shared });
       const sharedTask = read.body['sharedTask'] as Record<string, unknown>;
       const written = await as(ext, 'task.comment', {
@@ -122,6 +113,9 @@ describe.skipIf(serverUrl === undefined)(
         commentType: 'client',
       });
       expect(written.code).toBe('ok');
+      const after = await as(ext, 'task.read', { recordId: shared });
+      const comments = (after.body['sharedTask'] as { comments: { body: string }[] }).comments;
+      expect(comments.map((comment) => comment.body)).toContain('from the client');
     });
   },
 );

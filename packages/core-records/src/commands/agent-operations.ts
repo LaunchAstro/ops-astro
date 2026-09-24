@@ -18,6 +18,7 @@ import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isFieldMap } from './operands.ts';
+import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from './surface.ts';
 import {
   handbackLease,
@@ -211,6 +212,12 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
     if (!isFieldMap(report)) return refuseReport(report);
     operands = { ...operands, report };
   }
+  // A report or successor the stores cannot hold, by name and before any
+  // authority is read, so a refusal that would retain the report never
+  // reaches the insert that raised on it: the person path's rule, at its door
+  // (`prepare.ts`, `values.ts`; final review round 2, R1-THERMO-12 (b)).
+  const unstorable = unstorableOperands(request, ['report', 'successor']);
+  if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
   // Any non-null actual is refused here, before authority is read, and not
   // only by the runtime past it. A handback refused on authority reaches the
   // restricted report intake (`retainLateHandback`), which keeps an otherwise
