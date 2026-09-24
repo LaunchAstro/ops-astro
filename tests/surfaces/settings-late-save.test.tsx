@@ -148,4 +148,27 @@ describe('a settings write answered after sign-out', () => {
     expect(page.find('[data-settings="four-eyes-known"]')?.textContent).toContain('7777');
     await page.unmount();
   });
+
+  it('keeps the confirmed value when the same session left the screen before the answer', async () => {
+    // Leaving the page is not leaving the session. The write is kept when it
+    // answers, not on a render the unmounted screen will never have
+    // (THERMO-RECHECK-3 R3C1).
+    const sessions = new SessionStore(window.sessionStorage);
+    sessions.set(ADA);
+    const server = api();
+    const page = await open(server.fetch);
+    await page.type('#settings-four-eyes', '7777');
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+
+    await page.unmount();
+    server.answer();
+    await tick();
+
+    expect(cached()).toContain('7777');
+    const again = await open(server.fetch);
+    expect(again.find('[data-settings="read"]')?.getAttribute('data-outcome')).toBe('unavailable');
+    expect(again.find('[data-settings="four-eyes-known"]')?.textContent).toContain('7777');
+    await again.unmount();
+  });
 });
