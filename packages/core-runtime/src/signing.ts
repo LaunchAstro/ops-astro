@@ -45,12 +45,25 @@ export function canonicalise(value: unknown): Canonical {
   return JSON.stringify(order(value));
 }
 
+/**
+ * Members are defined rather than assigned. `JSON.parse` makes `__proto__` an
+ * own key like any other, and assigning `sorted['__proto__']` would call the
+ * prototype setter and drop the member, so the digest would not cover what is
+ * stored under it.
+ */
 function order(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => order(item));
   if (value === null || typeof value !== 'object') return value;
   const source = value as Record<string, unknown>;
   const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(source).toSorted()) sorted[key] = order(source[key]);
+  for (const key of Object.keys(source).toSorted()) {
+    Object.defineProperty(sorted, key, {
+      value: order(source[key]),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
   return sorted;
 }
 
@@ -62,11 +75,20 @@ export function sign(key: SigningKey, digest: string): string {
   return createHmac('sha256', key.secret).update(`${key.id}:${digest}`, 'utf8').digest('hex');
 }
 
+/** The one spelling `sign` writes: 64 lowercase hex characters. */
+const SIGNATURE_TEXT = /^[0-9a-f]{64}$/u;
+
 /**
  * Constant time, because a verifier that returns early on the first wrong byte
  * tells a caller how much of a forged signature was right.
+ *
+ * **The text is checked before it is decoded.** `Buffer.from(s, 'hex')`
+ * ignores case and stops at the first non-hex character, so an uppercased
+ * signature, or one with anything appended, would decode to the signed bytes
+ * and verify although the stored text had changed.
  */
 export function verify(key: SigningKey, digest: string, signature: string): boolean {
+  if (!SIGNATURE_TEXT.test(signature)) return false;
   const expected = Buffer.from(sign(key, digest), 'hex');
   const presented = Buffer.from(signature, 'hex');
   if (expected.length !== presented.length) return false;
@@ -166,11 +188,15 @@ export function decisionLink(
 
 /**
  * The link version a stored payload declares, or `undefined` for one this
- * code does not know (which fails the read rather than guessing).
+ * code does not know (which fails the read rather than guessing). A payload
+ * that is not a JSON object declares nothing and is `undefined` too: the
+ * stored JSON is whatever the column holds, and a `TypeError` here would
+ * reach the caller as a retryable fault rather than `DECISION_INTEGRITY`.
  */
-export function linkVersionOf(payload: Record<string, unknown>): LinkVersion | undefined {
+export function linkVersionOf(payload: unknown): LinkVersion | undefined {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined;
   if (!('link' in payload)) return 1;
-  const link = payload['link'];
+  const link = (payload as Record<string, unknown>)['link'];
   return link === 2 || link === 3 ? link : undefined;
 }
 
