@@ -4,13 +4,16 @@
 //
 // RUNTIME-1: the first approval on a task opens its envelope, and the cap
 // behind it is the money ceiling in one currency. A version in another
-// currency is refused `CAP_BINDING_MISMATCH` before anything is written, the
-// same code an existing envelope in another currency already answers.
+// currency is refused before anything is written. Since final review round 2
+// (R2-RUNTIME-26) that refusal is the proposal's, `PROPOSAL_OUT_OF_SCOPE`
+// under T1's existing budget authority, so no such version reaches a decision;
+// `decide` keeps `CAP_BINDING_MISMATCH` as its own second barrier.
 //
 // RUNTIME-2: a cap limit is a `bigint`, and one above 2^53 is still valid.
 // The committed total and the limit are compared as exact integers, so the
 // approval that would take the total one unit past the cap is refused
-// `BUDGET_EXHAUSTED`. Every total here is read from SQL as text.
+// `BUDGET_EXHAUSTED`. The three are proposed before any is approved, since a
+// proposal past the cap's remaining room is refused at the proposal. Every total here is read from SQL as text.
 //
 // RUNTIME-3: `now()` is the transaction's start. A decide or a heartbeat that
 // began before a deadline and waited on its lock until after it must judge
@@ -96,13 +99,14 @@ describe.skipIf(serverUrl === undefined)(
       const aud = await proposeWith(s, 'in the cap currency', { maximumMinor: 1_000 });
       expect(codeOf(await asPerson(s, approveBody(aud)))).toBe('applied');
 
-      const usd = await proposeWith(s, 'in another currency', {
+      const before = await footprint(s);
+      const taskId = await createTask(s, 'in another currency');
+      const answer = await asPerson(s, {
+        ...proposeBody(taskId, await revisionOf(s, taskId)),
         maximumMinor: 1_000,
         currency: 'USD',
       });
-      const before = await footprint(s);
-      const answer = await asPerson(s, approveBody(usd));
-      expect(codeOf(answer)).toBe('CAP_BINDING_MISMATCH');
+      expect(codeOf(answer)).toBe('PROPOSAL_OUT_OF_SCOPE');
       expect(await footprint(s)).toStrictEqual(before);
       const envelopes = await rows<{ readonly currency: string }>(
         s,
@@ -147,12 +151,12 @@ describe.skipIf(serverUrl === undefined)('RUNTIME-2: a cap above 2^53 is compare
     const first = await proposeWith(s, 'the largest safe hold', {
       maximumMinor: Number.MAX_SAFE_INTEGER,
     });
-    expect(codeOf(await asPerson(s, approveBody(first)))).toBe('applied');
     const second = await proposeWith(s, 'the last two units', { maximumMinor: 2 });
+    const third = await proposeWith(s, 'one unit past the cap', { maximumMinor: 1 });
+    expect(codeOf(await asPerson(s, approveBody(first)))).toBe('applied');
     expect(codeOf(await asPerson(s, approveBody(second)))).toBe('applied');
     expect(await committed()).toBe(LIMIT);
 
-    const third = await proposeWith(s, 'one unit past the cap', { maximumMinor: 1 });
     const before = await footprint(s);
     const answer = await asPerson(s, approveBody(third));
     expect(codeOf(answer)).toBe('BUDGET_EXHAUSTED');

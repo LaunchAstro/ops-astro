@@ -12,6 +12,8 @@ import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
+import { invalid, isFieldMap } from './operands.ts';
+import { readBusinessCapId } from './runtime-config.ts';
 
 export interface ProposeFields {
   readonly purpose: string;
@@ -32,12 +34,19 @@ export interface ProposeFields {
  */
 const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
 
-/** `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. */
-function isStep(step: unknown): step is { readonly kind: string; readonly payload: object } {
+/**
+ * `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. The
+ * payload is a JSON object, not an array: spreading an array or a string into
+ * one stores bytes the proposer never sent (final review round 2,
+ * R2-RUNTIME-64).
+ */
+function isStep(
+  step: unknown,
+): step is { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> } {
   if (typeof step !== 'object' || step === null) return false;
   const candidate = step as { kind?: unknown; payload?: unknown };
   if (typeof candidate.kind !== 'string' || candidate.kind === '') return false;
-  return typeof candidate.payload === 'object' && candidate.payload !== null;
+  return isFieldMap(candidate.payload);
 }
 
 /**
@@ -57,6 +66,12 @@ export async function proposeOnTask(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('proposeOnTask: reached without a task');
+  // A trashed task is gone to the work surface until its batch is restored,
+  // so a proposal on it answers as one on a task that is not there, before
+  // any operand and before the revision (final review round 2, R2-RUNTIME-52;
+  // `task.restart` in `tasks-controls.ts`, RUNTIME.md). Checked again under
+  // the lock below, for a trash that commits in between.
+  if (target.deleted_at !== null) return refused(refuseNotFound());
   // Two shapes the columns constrain, answered here rather than left to the
   // constraint. `proposal_versions_purpose_shape` and `planned_steps.kind not
   // null` both fault at the write, and a fault reaches the caller as
@@ -64,7 +79,12 @@ export async function proposeOnTask(
   // which is the difference checklist B7 asks to be real (WEB-PROPOSALS
   // handback, "Interface gaps for L3" 4). `FIELD_VALUE_INVALID` 422 is already
   // on this operation's row in `docs/local/API.md`.
-  if (!PURPOSE_SHAPE.test(fields.purpose)) {
+  //
+  // Each operand's type is checked before its shape, because the body is the
+  // caller's JSON and not `ProposeFields`: `RegExp.prototype.test` coerces
+  // `undefined`, `null` and `true` to strings the pattern matches, and each
+  // then faulted at the bound parameter (final review round 2, R2-RUNTIME-24).
+  if (typeof fields.purpose !== 'string' || !PURPOSE_SHAPE.test(fields.purpose)) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',
@@ -76,12 +96,36 @@ export async function proposeOnTask(
       { purpose: fields.purpose },
     );
   }
+  const currency: unknown = fields.currency;
+  if (typeof currency !== 'string' || currency === '') {
+    return refused(invalid('currency', 'Name the currency the ceiling is in, such as AUD.'), {
+      currency,
+    });
+  }
+  // Absent opens a new lineage; present and not a string is the body's shape,
+  // answered as `task.cancel` answers it (`tasks-controls.ts`).
+  const lineageId: unknown = fields.lineageId;
+  if (lineageId !== undefined && lineageId !== null && typeof lineageId !== 'string') {
+    return refused(
+      refuseCommand(
+        'COMMAND_BODY_INVALID',
+        ['lineageId'],
+        ['Name the lineage by its id, or leave it out to open a new one.'],
+      ),
+    );
+  }
+  // R2-RUNTIME-64: spread into an object, a string or an array became an
+  // index-keyed object, and absent became `{}`, so the approver signed over a
+  // payload the proposer never sent.
+  if (!isFieldMap(fields.payload)) {
+    return refused(invalid('payload', 'Send the payload as a JSON object.'));
+  }
   if (!isStep(fields.step)) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',
         ['step'],
-        ['Send a step as { kind, payload }, with a non-empty kind and an object payload.'],
+        ['Send a step as { kind, payload }, with a non-empty kind and a JSON object payload.'],
       ),
       { step: fields.step },
     );
@@ -105,7 +149,10 @@ export async function proposeOnTask(
     payload: { ...fields.payload },
     step: { kind: fields.step.kind, payload: { ...fields.step.payload } },
     expiresAt,
-    ...(fields.lineageId === undefined ? {} : { lineageId: fields.lineageId }),
+    ...(typeof lineageId === 'string' ? { lineageId } : {}),
+    // T1's existing budget authority, for a task with no envelope open yet:
+    // the cap the decision would draw on (R2-RUNTIME-26).
+    ...(await readBusinessCapId(tx).then((capId) => (capId === undefined ? {} : { capId }))),
   };
   // F1. The runtime takes cap, envelope, task and the rest in the contract's
   // order; the envelope only read the task (`targetLock: 'runtime'`). The
@@ -113,7 +160,7 @@ export async function proposeOnTask(
   // so a concurrent write is still refused `VERSION_STALE` and never merged.
   const held = await lockProposal(tx, proposal);
   const current = await lockTask(tx, context.spine.taskTypeId, target.id);
-  if (current === undefined) {
+  if (current === undefined || current.deleted_at !== null) {
     return refused(refuseNotFound());
   }
   if (fields.expectedRevision !== current.revision) {

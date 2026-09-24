@@ -111,8 +111,9 @@ function windowOf(transactions: readonly string[][], discovery: RegExp): readonl
   return tail.slice(0, end + 1).map((text) => label(text));
 }
 
-/** `discoverLiveWork` by version: `lockProposal`'s first unlocked read. */
-const PROPOSE_DISCOVERY = /run\.version_id = any\(\$2::uuid\[\]\)/u;
+/** The lineage's live version: `lockProposal`'s first unlocked read (R2-RUNTIME-25). */
+const PROPOSE_DISCOVERY =
+  /from public\.proposal_versions\s+where business_id = \$1 and lineage_id = \$2 and superseded_at is null/u;
 /** `cancelAndClassify`'s held-set discovery. */
 const CANCEL_DISCOVERY = /'lineage_cancelled' as cause/u;
 /** `classifyAuthorityLoss`'s live-work discovery by delegation and person lease. */
@@ -259,18 +260,24 @@ const LIVE_BY_LINEAGE = 'select l.id as lease_id, l.run_id, l.delegation_ #f4725
 const RUNS_BY_LINEAGE = 'select id from public.planned_runs where busines #04eb9ec9';
 const LIVE_BY_DELEGATION = 'select l.id as lease_id, l.run_id, l.delegation_ #b0bfa2b3';
 const HELD_BY_VERSION = 'select res.id as reservation_id, res.envelope_id #ddefafce';
+const LIVE_VERSION = 'select id from public.proposal_versions where bu #820e3c4d';
+const OPEN_ENVELOPE = 'select id, cap_id, currency, maximum_minor::text #eb3efe48';
 const HELD_BY_LINEAGE = 'select res.id as reservation_id, res.envelope_id #5168d3b0';
 const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #2223e6d4';
 const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #31b71195';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**
- * Taken at 21c99a0, before the move, and unchanged by it. One change since, and
- * on purpose: thermo O3's fix rechecks propose's held set under the locks as
- * well as its live work, so its window ends with that read.
+ * Taken at 21c99a0, before the move, and unchanged by it. Two changes since,
+ * both on purpose: thermo O3's fix rechecks propose's held set under the locks
+ * as well as its live work, so its window ends with that read; and final
+ * review round 2 (R2-RUNTIME-25) moved propose's reads of the live version and
+ * the task's envelope into the same discovery, so its window starts with them
+ * and they are read again under the locks.
  */
+const PROPOSE_SET = [LIVE_VERSION, OPEN_ENVELOPE, LIVE_BY_VERSION, HELD_BY_VERSION] as const;
 const PINNED = {
-  propose: [LIVE_BY_VERSION, HELD_BY_VERSION, ...LOCKS, LIVE_BY_VERSION, HELD_BY_VERSION],
+  propose: [...PROPOSE_SET, ...LOCKS, ...PROPOSE_SET],
   cancel: [
     HELD_BY_LINEAGE,
     LIVE_BY_LINEAGE,
