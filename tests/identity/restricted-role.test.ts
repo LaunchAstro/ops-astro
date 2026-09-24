@@ -9,14 +9,15 @@
 // privilege nobody granted and a privilege somebody revoked look the same in
 // `information_schema`, and only one of them was decided.
 //
-// `refuseExpiredSession` is the other half, one layer up: what the server
-// answers when a verified token has expired. It is a typed refusal because a
-// person has to be able to tell "sign in again" from "you may not see this"
-// and from "the server is broken", and only one of those is a door they can
-// open.
+// `EXPIRED_FIXES` is the other half, one layer up: what the door in
+// `apps/api/app.ts` answers, as `AUTH_SESSION_EXPIRED`, when a verified token
+// has expired. It is a typed refusal because a person has to be able to tell
+// "sign in again" from "you may not see this" and from "the server is broken",
+// and only one of those is a door they can open. The whole wire body, key set
+// included, is pinned where the server sends it (`tests/api/admission-enumeration.test.ts`).
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { refuseExpiredSession } from '../../packages/core-records/src/identity/agent-login.ts';
+import { EXPIRED_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -27,23 +28,12 @@ const serverUrl = databaseUrlFromEnvironment();
 const WORKER = 'ops_astro_worker';
 
 describe('the expired session', () => {
-  it('is a typed refusal a client can turn into a re-login path', () => {
-    const refusal = refuseExpiredSession();
-    expect(refusal.refused).toBe(true);
-    expect(refusal.code).toBe('AUTH_SESSION_EXPIRED');
-    expect(refusal.fixes.length).toBeGreaterThan(0);
-  });
-
-  it('carries no value the caller did not present', () => {
-    expect(Object.keys(refuseExpiredSession()).toSorted()).toStrictEqual([
-      'code',
-      'fixes',
-      'refused',
-    ]);
+  it('tells a client to sign in again, which is the re-login path', () => {
+    expect(EXPIRED_FIXES.join(' ')).toMatch(/sign in again/iu);
   });
 
   it('says that nothing was changed, because a client may retry after signing in', () => {
-    expect(refuseExpiredSession().fixes.join(' ')).toMatch(/nothing was changed/iu);
+    expect(EXPIRED_FIXES.join(' ')).toMatch(/nothing was changed/iu);
   });
 });
 
