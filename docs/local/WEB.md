@@ -610,7 +610,11 @@ its name matches both and fails on the ambiguity, so B4 presses the form's
 submit, the honest control for a case that edits the fields and then saves
 them. The three state buttons (`Lifecycle` in `screens/task/Lifecycle.tsx`)
 are pressed through `button[data-lifecycle="start"|"complete"|"reopen"]` for
-the same reason. A second control that happens to share a word cannot make an
+the same reason. On a completed task Start is disabled, titled "A completed
+task is reopened first.", because the server refuses it with
+`TRANSITION_NOT_PERMITTED`. Reopen stays enabled and sends the fixed reason
+"Reopened from the task page." that `task.reopen` requires (`completed` on
+`Lifecycle`, and the reopen body, in `TaskDetail.tsx`). A second control that happens to share a word cannot make an
 attribute the screen owns ambiguous.
 
 ## Known gaps against the pinned mockup

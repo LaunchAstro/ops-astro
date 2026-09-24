@@ -70,6 +70,13 @@ The class in front is `chain`, the business's decision chain (R10, `LOCK_ORDER`,
 `decide`, `decide.ts`), so a second approval racing in the same business waits
 on the chain lock, not on the cap row.
 
+`task.reparent` and `task.move` take a per-business advisory lock,
+`task.placement`, in the envelope before the target row lock (their `serialise`
+in `COMMAND_SURFACE`, `commands/surface.ts`; `serialiseOn` in
+`prepareCommand`, `commands/prepare.ts`). One key serves both, because a move
+carries its subtree's board and a reparent reads its parent, so either could
+otherwise hold a row the other waits for.
+
 `task.propose` takes cap, envelope, task, lineage, then the superseded version's
 holds, live lease and delegation, in one ordered call (`lockProposal`,
 `propose.ts`). It is declared `targetLock: 'runtime'`
@@ -1084,9 +1091,8 @@ direct SQL.
   task and lineage (`lineageOnTask`), `task.decide` the gate and version
   (`decide`, `decide.ts`), and `task.assign` the person it names
   (`commands/tasks-state.ts`), so an upper-case id of the right row is that row
-  (`tests/runtime/final-r2-fr2-runtime.test.ts`). `task.rank` does not yet: at
-  this head it compares `afterId` and `beforeId` as sent (`rankTask`,
-  `commands/tasks-place.ts`).
+  (`tests/runtime/final-r2-fr2-runtime.test.ts`). `task.rank` lower-cases
+  `afterId` and `beforeId` (`rankTask`, `commands/tasks-place.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
   (`recovery.ts`, called from `revokeGrantAsManager` and

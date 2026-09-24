@@ -195,3 +195,34 @@ describe('API.md task.create row (R2-THERMO-62)', () => {
     }
   });
 });
+
+describe('placement after FR2-PLACE-CONT (FR2-DOCS-3)', () => {
+  const place = read('packages/core-records/src/commands/tasks-place.ts');
+
+  it('says a move to another board ranks after its last task, as moveTask does', () => {
+    expect(bodyOf(place, 'moveTask')).toContain('rankAfterSiblings(');
+    expect(apiRow('task.move', '/task/move')).toContain("ranks after that board's last task");
+  });
+
+  it('says rank compares neighbours case-insensitively, as rankTask does', () => {
+    expect(bodyOf(place, 'rankTask')).toContain('.toLowerCase()');
+    expect(apiRow('task.rank', '/task/rank')).toContain('compare case-insensitively');
+  });
+
+  it('says reparent and move take task.placement before the target row lock', () => {
+    const surface = read('packages/core-records/src/commands/surface.ts');
+    expect(surface).toContain("const TASK_PLACEMENT_LOCK = 'task.placement';");
+    for (const command of ['task.reparent', 'task.move']) {
+      expect(surface).toContain(
+        `declare('${command}', 'write', { serialise: TASK_PLACEMENT_LOCK })`,
+      );
+    }
+    const prepare = read('packages/core-records/src/commands/prepare.ts');
+    const serialised = prepare.indexOf('await serialiseOn(tx, declaration.serialise)');
+    expect(serialised).toBeGreaterThan(0);
+    expect(serialised).toBeLessThan(prepare.indexOf('lockTask(', serialised - 2000));
+    expect(folded(read('docs/local/RUNTIME.md'))).toMatch(
+      /`task\.reparent` and `task\.move` take a per-business advisory lock, `task\.placement`, in the envelope before the target row lock/u,
+    );
+  });
+});

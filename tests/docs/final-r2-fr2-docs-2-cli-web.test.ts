@@ -153,12 +153,19 @@ describe('WEB.md on the decision refusal and Start (R2-THERMO-12, R2-RUNTIME-14)
     expect(doc).not.toMatch(/under the gate it was about, and only there/u);
   });
 
-  it('does not claim Start is withheld on a completed task until the page wires it', () => {
-    const detail = read('apps/web/src/screens/TaskDetail.tsx');
-    const wired = /<Lifecycle[^>]*\bcompleted=/u.test(detail);
-    if (!wired) {
-      expect(folded(read(WEB_DOC))).not.toContain('Start is not offered on a completed task');
-    }
+  it('says Start is disabled on a completed task, as the page wires it', () => {
+    expect(read('apps/web/src/screens/TaskDetail.tsx')).toMatch(/<Lifecycle[^>]*\bcompleted=/u);
+    const lifecycle = read('apps/web/src/screens/task/Lifecycle.tsx');
+    expect(lifecycle).toContain("'A completed task is reopened first.'");
+    expect(lifecycle).toContain('disabled={props.disabled || props.completed === true}');
+    const doc = folded(read(WEB_DOC));
+    expect(doc).toMatch(
+      /On a completed task Start is disabled, titled "A completed task is reopened first\."/u,
+    );
+    expect(read('apps/web/src/screens/TaskDetail.tsx')).toContain(
+      "{ reason: 'Reopened from the task page.' }",
+    );
+    expect(doc).toContain('"Reopened from the task page."');
   });
 });
 
