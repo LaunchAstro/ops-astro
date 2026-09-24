@@ -97,14 +97,14 @@ const DOLLAR_TAG = /^\$([\p{L}_][\p{L}\p{N}_]*)?\$/u;
 // one DDL statement whose leading verb reads as a read.
 const SELECT_INTO = /^SELECT\b[\s\S]*?\bINTO\b/iu;
 
-function skipLineComment(sql: string, from: number): number {
+export function skipLineComment(sql: string, from: number): number {
   const newline = sql.indexOf('\n', from);
   return newline < 0 ? sql.length : newline + 1;
 }
 
 // Block comments nest in PostgreSQL, so a depth counter is the only correct
 // reading. `/* /* */ */` closes once, not twice.
-function skipBlockComment(sql: string, from: number): number {
+export function skipBlockComment(sql: string, from: number): number {
   let depth = 0;
   let at = from;
   while (at < sql.length) {
@@ -125,7 +125,12 @@ function skipBlockComment(sql: string, from: number): number {
 // A quote doubled inside a quoted run is a literal quote, not the end of it.
 // A backslash escapes only inside an E'' string, which is why the caller says
 // whether one is open.
-function skipQuoted(sql: string, from: number, quote: string, backslashEscapes: boolean): number {
+export function skipQuoted(
+  sql: string,
+  from: number,
+  quote: string,
+  backslashEscapes: boolean,
+): number {
   let at = from + 1;
   while (at < sql.length) {
     const ch = sql[at];
@@ -145,7 +150,7 @@ function skipQuoted(sql: string, from: number, quote: string, backslashEscapes: 
   return sql.length;
 }
 
-function skipDollarQuoted(sql: string, from: number): number {
+export function skipDollarQuoted(sql: string, from: number): number {
   const opener = DOLLAR_TAG.exec(sql.slice(from));
   if (opener === null) return from;
   const tag = opener[0];
