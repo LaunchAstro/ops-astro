@@ -83,10 +83,11 @@ export async function retainLateHandback(
  * The live delegation this credential names, when the handback's own task is
  * within its purpose and its person no longer holds the write that covers it.
  *
- * The task is the presented lease's, read as `subjectTaskId` reads it but with
- * no fallback: a lease that is not this business's names no task, and nothing
- * is kept for it. Whether the lease is also this delegation's, this agent's
- * and this fence's is `retainHistoricalReport`'s exact binding, after this.
+ * The task is the presented lease's, read as `namedTaskId` (`agent-authority.ts`)
+ * reads it but with no fallback: a lease that is not this business's names no
+ * task, and nothing is kept for it. Whether the lease is also this
+ * delegation's, this agent's and this fence's is `retainHistoricalReport`'s
+ * exact binding, after this.
  */
 async function narrowedOnLease(
   tx: TenantQuery,

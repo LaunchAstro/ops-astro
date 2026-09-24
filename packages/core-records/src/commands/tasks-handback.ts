@@ -178,7 +178,8 @@ async function settle(
 
   // Both claimants come through here. A lease id that cannot exist names
   // nothing, and answers in the runtime's own bytes for a lease that does not
-  // exist (`core-runtime/src/handback.ts:145-150`), never at a uuid parameter.
+  // exist (the not-found refusal in `handback`, `core-runtime/src/handback.ts`),
+  // never at a uuid parameter.
   if (!isIdentifier(fields.leaseId)) {
     return refused(refuseCommand('LEASE_NOT_OWNED', [], NO_SUCH_LEASE));
   }
