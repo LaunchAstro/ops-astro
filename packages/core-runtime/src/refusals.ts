@@ -17,44 +17,19 @@ import type {
   DelegationRefusal,
   DelegationRefusalCode,
 } from '../../core-records/src/authority/delegations.ts';
+import {
+  REFUSAL_REGISTER,
+  type RuntimeRefusalCode,
+} from '../../core-records/src/commands/register.ts';
 
-export type RuntimeRefusalCode =
-  /** The gate names a version that is no longer the live one. */
-  | 'VERSION_SUPERSEDED'
-  /** The gate's stored digest and the version's own disagree. */
-  | 'EVIDENCE_MISMATCH'
-  | 'GATE_NOT_FOUND'
-  | 'GATE_ALREADY_DECIDED'
-  | 'GATE_EXPIRED'
-  /** The lineage is rejected or cancelled; only an authorised restart opens a new one. */
-  | 'LINEAGE_TERMINAL'
-  /** A third formal round (G08). */
-  | 'CHANGE_ROUNDS_EXHAUSTED'
-  /** The envelope cannot hold the accepted maximum. */
-  | 'BUDGET_UNAVAILABLE'
-  /** The cap has nothing left. Distinct from unavailable on purpose (W05). */
-  | 'BUDGET_EXHAUSTED'
-  /** The proposal asks for more than the caller's authority covers. */
-  | 'PROPOSAL_OUT_OF_SCOPE'
-  /** The named lineage belongs to a different task than the request does (R3). */
-  | 'LINEAGE_NOT_ON_TASK'
-  /** The request names a cap the task's existing envelope does not draw on (R2). */
-  | 'CAP_BINDING_MISMATCH'
-  /** This head dispatches nothing, so it has no observed expenditure to settle (R6). */
-  | 'ACTUAL_EXPENDITURE_UNSUPPORTED'
-  /**
-   * The successor a handback asked for is outside the bounds a settlement may
-   * propose within: the cap behind the envelope, that envelope's currency, or
-   * the lineage's two formal rounds (R4, T4).
-   */
-  | 'SUCCESSOR_OUT_OF_BOUNDS'
-  | 'RESERVATION_NOT_CLAIMABLE'
-  | 'LEASE_HELD'
-  | 'LEASE_NOT_OWNED'
-  | 'LEASE_EXPIRED'
-  | 'SCOPE_NOT_GRANTED'
-  /** A restart of a lineage that is live, completed, or already restarted (G05). */
-  | 'TRANSITION_NOT_PERMITTED';
+/**
+ * The codes this module returns as its own. Declared once, in the refusal
+ * register (`core-records/src/commands/register.ts`), on the rows marked
+ * `runtime`, with each code's meaning and HTTP status beside it. The register
+ * is L3's file and this module does not write to it; it reads the union from
+ * it, so a runtime code and its registration cannot drift apart.
+ */
+export type { RuntimeRefusalCode };
 
 export interface RuntimeRefusal {
   readonly code: RuntimeRefusalCode;
@@ -93,29 +68,13 @@ const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
 };
 
 /**
- * The status L3 should give each code when it registers them in
- * `apps/api/status.ts`. Suggested, not imposed: the HTTP surface is L3's file
- * and this module has no business writing to it.
+ * Each runtime code with the status it is carried under, read from the
+ * register rows marked `runtime`. It used to be a second table the runtime
+ * suggested and a test compared with `apps/api/status.ts`; it is now a view of
+ * the one table. Nothing in production reads it; it stays exported for the
+ * tests that census the runtime's codes through it
+ * (`tests/runtime/refusal-classes.test.ts`, `tests/commands/runtime-codes.test.ts`).
  */
-export const SUGGESTED_STATUS: Readonly<Record<RuntimeRefusalCode, number>> = {
-  VERSION_SUPERSEDED: 409,
-  EVIDENCE_MISMATCH: 409,
-  GATE_NOT_FOUND: 404,
-  GATE_ALREADY_DECIDED: 409,
-  GATE_EXPIRED: 410,
-  LINEAGE_TERMINAL: 409,
-  CHANGE_ROUNDS_EXHAUSTED: 409,
-  BUDGET_UNAVAILABLE: 409,
-  BUDGET_EXHAUSTED: 402,
-  PROPOSAL_OUT_OF_SCOPE: 403,
-  LINEAGE_NOT_ON_TASK: 409,
-  CAP_BINDING_MISMATCH: 409,
-  ACTUAL_EXPENDITURE_UNSUPPORTED: 422,
-  SUCCESSOR_OUT_OF_BOUNDS: 409,
-  RESERVATION_NOT_CLAIMABLE: 409,
-  LEASE_HELD: 409,
-  LEASE_NOT_OWNED: 403,
-  LEASE_EXPIRED: 410,
-  SCOPE_NOT_GRANTED: 403,
-  TRANSITION_NOT_PERMITTED: 409,
-};
+export const SUGGESTED_STATUS: Readonly<Record<RuntimeRefusalCode, number>> = Object.fromEntries(
+  REFUSAL_REGISTER.filter((row) => row.runtime).map((row) => [row.code, row.status]),
+) as Record<RuntimeRefusalCode, number>;
