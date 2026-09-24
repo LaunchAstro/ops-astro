@@ -215,8 +215,13 @@ describe('API.md operands and codes derived from the code', () => {
       'beforeId',
       'task.propose',
       'lineageId',
+      'task.create',
+      'parentId',
+      'board',
+      'boardSection',
       'task.decide',
       'gateId',
+      'versionId',
     ]);
     let operation = '';
     for (const name of typed) {

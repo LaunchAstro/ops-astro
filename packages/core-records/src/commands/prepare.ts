@@ -308,13 +308,19 @@ function refuseUnstorableOperands(request: CommandRequest): Refused | undefined 
  * answering 503. They are refused by name, as API.md says of every absent or
  * mistyped operand. `task.cancel` and `task.restart` type their `lineageId`
  * themselves and are not listed.
+ *
+ * Round 3 found two more. The R2-AUTHORITY-33 fix lower-cases `versionId` in
+ * `decide()`, which threw on one that was absent or not a string
+ * (R3-AUTHORITY-6), and `task.create` carries `parentId`, `board` and
+ * `boardSection` into its placement without typing any of them (R3-SURFACE-8).
  */
 const TYPED_IDENTIFIERS: Readonly<
   Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
 > = {
   'task.rank': { optional: ['afterId', 'beforeId'] },
   'task.propose': { optional: ['lineageId'] },
-  'task.decide': { required: ['gateId'] },
+  'task.create': { optional: ['parentId', 'board', 'boardSection'] },
+  'task.decide': { required: ['gateId', 'versionId'] },
 };
 
 const TYPED_IDENTIFIER_FIXES: readonly string[] = [
@@ -584,12 +590,14 @@ export async function prepareCommand(
     refuseMistypedIdentifier(request, declaration) ?? refuseUnstorableOperands(request);
   if (mistyped !== undefined) return mistyped;
 
-  // Before any task row: a command that rewrites a subtree's links takes its
-  // per-business lock first, so it never holds a row while waiting for it.
-  if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
-
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
+    // Before any task row: a command that rewrites a subtree's links takes its
+    // per-business lock first, so it never holds a row while waiting for it.
+    // Only here, where the target is read: a replay re-judges authority with
+    // `targetsExistingRecord` off, and it locks nothing (`withheldNow`; final
+    // review R3-THERMO-25).
+    if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
     // F1. A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
@@ -631,6 +639,13 @@ export async function prepareCommand(
  */
 const TENANT_PREDICATE = 'business_id = $1';
 
+/** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
+export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `${key}:${tx.businessId}`,
+  ]);
+}
+
 /**
  * The target, held for the rest of the transaction.
  *
@@ -646,13 +661,6 @@ const TENANT_PREDICATE = 'business_id = $1';
  * nothing, and the second caller gets `NOT_FOUND` — which is the same answer
  * it would have got a moment later anyway.
  */
-/** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
-export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
-  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `${key}:${tx.businessId}`,
-  ]);
-}
-
 export async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,
