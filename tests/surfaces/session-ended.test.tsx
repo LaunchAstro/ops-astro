@@ -23,7 +23,7 @@
 import { describe, expect, it } from 'vitest';
 import { useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
 const SESSION = { token: 'the-hour-old-token', businessKey: 'alpha', email: 'mia@alpha.local' };
@@ -160,6 +160,7 @@ function Harness(props: {
       gotrueUrl="http://identity.invalid"
       apiBase="/api"
       fetch={props.fetch}
+      storage={tabStorage()}
     />
   );
 }

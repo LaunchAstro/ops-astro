@@ -38,11 +38,15 @@ import {
   NO_MEMBERSHIP_FIXES,
   type VerifiedSubject,
 } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { NO_AGENT_FIXES } from '../../packages/core-records/src/identity/agent-login.ts';
+import {
+  NO_AGENT_FIXES,
+  refuseExpiredSession,
+} from '../../packages/core-records/src/identity/agent-login.ts';
 import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import {
   agentAnswer,
   type AgentRequest,
+  type executeAgentCommand,
 } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import {
   isCommandRefusal,
@@ -60,22 +64,8 @@ import type { CommandRequest } from '../../packages/core-records/src/commands/re
 import type { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import type { ReadRequest } from '../../packages/core-records/src/reads/requests.ts';
 import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
-import { statusFor } from './status.ts';
-
-/**
- * The surface declaration as this boundary reads it.
- *
- * `kind` is SLICE-DATA's addition for the three read declarations the local
- * slice contract names (`task.read`, `task.board`, `person.list`). It is
- * optional here so that the boundary compiles and behaves correctly against a
- * surface that has not grown it yet: absent means the draft's original
- * meaning, which is that everything is a mutation.
- */
-export type SurfaceDeclaration = CommandDeclaration & { readonly kind?: 'read' | 'write' };
-
-export function isRead(declaration: SurfaceDeclaration): boolean {
-  return declaration.kind === 'read';
-}
+import type { Verifier } from './auth/supabase.ts';
+import { statusOf } from '../../packages/core-records/src/commands/register.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -97,7 +87,7 @@ export interface ApiOptions {
    * enters the system, and it is passed in rather than chosen here so a
    * deployment cannot be talked into a second one.
    */
-  readonly verify: (request: Context['req']) => Promise<VerifiedSubject | 'expired' | undefined>;
+  readonly verify: Verifier;
   /**
    * The business key from the path to the server's own identifier, or nothing
    * if there is no such business. Injected for the same reason `verify` is:
@@ -105,12 +95,11 @@ export interface ApiOptions {
    */
   readonly resolveBusiness: (businessKey: string) => Promise<string | undefined>;
   /**
-   * The read half of the surface. Absent until SLICE-DATA's reads land, and a
-   * declared read with no executor refuses `DEPENDENCY_NOT_LANDED` rather than
-   * 404 — the same answer the surface already gives for a command whose part
-   * has not been built.
+   * The read half of the surface, `reads/execute.ts` in every deployment.
+   * Required for the same reason `executeCommand` is: every declaration the
+   * surface marks `kind: 'read'` is mounted, and each needs an executor.
    */
-  readonly executeRead?: ReadExecutor;
+  readonly executeRead: ReadExecutor;
   /**
    * The person path's command envelope, `commands/envelope.ts` in every
    * deployment. Required, and never imported here, so the composition root
@@ -135,18 +124,11 @@ export interface ApiOptions {
 export type CommandExecutor = typeof executeCommand;
 
 /**
- * The agent path's executor. The credential travels beside the request, not
- * inside it, which is why it is an argument rather than a body field. The
- * request is the agent envelope's own type, so `executeAgentCommand` is one
- * without a cast.
+ * The agent path's executor: `commands/agent-envelope.ts`'s signature. The
+ * credential travels beside the request, not inside it, which is why it is an
+ * argument rather than a body field.
  */
-export type AgentExecutor = (
-  database: Database,
-  businessId: string,
-  presented: VerifiedSubject | 'expired',
-  credential: string | undefined,
-  request: AgentRequest,
-) => Promise<unknown>;
+export type AgentExecutor = typeof executeAgentCommand;
 
 /** Where it always was for the tests that import it; the one copy is in `commands/surface.ts`. */
 export { DELEGATION_HEADER };
@@ -202,7 +184,7 @@ async function admit(
   // door, and a client shown `AUTH_UNKNOWN_LOGIN` for it cannot tell a
   // session that ended from a credential that was never good.
   if (presented === 'expired') {
-    return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED));
+    return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
 
   // The key comes from the path and is resolved by the server.
@@ -228,12 +210,12 @@ export function createApi(options: ApiOptions): Hono {
     entry: Entry,
     run: (
       context: Context,
-      declaration: SurfaceDeclaration,
+      declaration: CommandDeclaration,
       admitted: Admitted,
     ) => Promise<Response>,
   ): void {
     const routes = new Hono();
-    for (const declaration of COMMAND_SURFACE as readonly SurfaceDeclaration[]) {
+    for (const declaration of COMMAND_SURFACE) {
       routes.post(pathOf(declaration.name), async (context) => {
         const admitted = await admit(options, context, entry);
         if (admitted instanceof Response) return admitted;
@@ -247,21 +229,17 @@ export function createApi(options: ApiOptions): Hono {
     const { presented, businessId, body } = admitted;
     // The command comes from the route, never from the body, so a caller
     // cannot post to one endpoint and have another operation run.
-    if (isRead(declaration)) {
-      const execute = options.executeRead;
-      if (execute === undefined) {
-        return refuse(context, refuseCommand('DEPENDENCY_NOT_LANDED', [declaration.name], READS));
-      }
+    if (declaration.kind === 'read') {
       // An absent or mistyped operand is refused by the read itself, inside
       // its audited transaction (`reads/dispatch.ts`), not here.
       // The name comes from the route here too, so a caller cannot post to
       // one read and have another one run.
-      const read = await execute(options.database, businessId, presented, {
+      const read = await options.executeRead(options.database, businessId, presented, {
         ...body,
         read: declaration.name,
       } as ReadRequest);
-      if (isObject(read) && isCommandRefusal(read)) return refuse(context, read);
-      return context.json(read as Record<string, unknown>, 200);
+      if (isCommandRefusal(read)) return refuse(context, read);
+      return context.json(read, 200);
     }
 
     const request = { ...body, command: declaration.name } as CommandRequest;
@@ -298,7 +276,7 @@ export function createApi(options: ApiOptions): Hono {
         context.req.header(DELEGATION_HEADER),
         request,
       );
-      if (isObject(result) && isCommandRefusal(result)) return refuse(context, result);
+      if (isCommandRefusal(result)) return refuse(context, result);
       return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
     });
   }
@@ -321,24 +299,16 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   // boundary returns arrived there as an outage.
   return context.json(
     { refused: true, code: refusal.code, names: refusal.names, fixes: refusal.fixes },
-    statusFor(refusal.code),
+    statusOf(refusal.code),
   );
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
-const EXPIRED: readonly string[] = [
-  'The session has expired. Sign in again to continue.',
-  'Nothing was changed by this call.',
-];
+// The canonical expired refusal's fixes, read from the agent envelope's own
+// constructor rather than copied, so the door and `refuseExpiredSession`
+// cannot drift apart. `tests/api/admission-enumeration.test.ts` pins the bytes.
+const EXPIRED_FIXES = refuseExpiredSession().fixes;
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
-const READS: readonly string[] = [
-  'The read half of the command surface has not been mounted in this deployment.',
-];
-
-/** `isCommandRefusal` takes an object; a read executor's result is unknown until then. */
-function isObject(value: unknown): value is object {
-  return typeof value === 'object' && value !== null;
-}
 
 /** A body that is not an object is refused rather than coerced into one. */
 async function readObject(

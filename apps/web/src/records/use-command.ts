@@ -61,6 +61,18 @@ export interface Command {
   readonly busy: boolean;
   /** The last write's failure, until the next write starts or `reset` is called. */
   readonly failure: Failure | null;
+  /** The last failure's text, the server's own, or null. */
+  readonly because: string | null;
+  /**
+   * The server has said this reader may not make this write (`closed`). It
+   * holds until the screen unmounts, `reset` included, so the same refusal is
+   * not fetched again on the next press.
+   */
+  readonly closed: boolean;
+  /** `busy || closed`: a control that would start a write is disabled on it. */
+  readonly locked: boolean;
+  /** The last failure's refusal when it was `stale`, or null. */
+  readonly conflict: WireRefusal | null;
   /** Send one write, and hand its settlement to the caller's own step. */
   readonly run: <T>(
     work: () => Promise<CallResult<T>>,
@@ -73,14 +85,19 @@ export interface Command {
 export function useCommand(): Command {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
+  const [closed, setClosed] = useState(false);
 
+  // Only `busy` stops a run here. A screen that has adopted `locked` guards on
+  // it; the ones that have not may still ask again after a `closed`.
   const run: Command['run'] = (work, then) => {
+    if (busy) return;
     setBusy(true);
     setFailure(null);
     void (async () => {
       const settlement = settle(await work());
       setBusy(false);
       setFailure(settlement.kind === 'ok' ? null : settlement);
+      if (settlement.kind === 'closed') setClosed(true);
       then?.(settlement);
     })();
   };
@@ -88,6 +105,10 @@ export function useCommand(): Command {
   return {
     busy,
     failure,
+    because: failure?.because ?? null,
+    closed,
+    locked: busy || closed,
+    conflict: failure?.kind === 'stale' ? failure.refusal : null,
     run,
     reset: () => {
       setFailure(null);

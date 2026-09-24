@@ -9,7 +9,7 @@
 // carry a second status the way it could when `core-runtime` spelled its own
 // union and `SUGGESTED_STATUS` beside `apps/api/status.ts` (architecture review
 // bbdf2b2, candidate 2). What was a four-way parity check is now a derivation
-// check: `SUGGESTED_STATUS` and `statusFor` are two views of one column and
+// check: `SUGGESTED_STATUS` and `statusOf` are two views of one column and
 // the cases below hold them to it. The statuses themselves are pinned by
 // value in `tests/commands/refusal-catalogue.test.ts`.
 
@@ -22,9 +22,9 @@ import {
   CALLER_VISIBLE,
   UNPRODUCED_CODES,
   registeredRefusal,
+  statusOf,
   type RefusalCode,
 } from '../../packages/core-records/src/commands/register.ts';
-import { statusFor } from '../../apps/api/status.ts';
 
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
@@ -38,7 +38,7 @@ describe('the runtime refusal codes L3 registers', () => {
 
   it('gives each of them the status the runtime suggested', () => {
     for (const code of RUNTIME_CODES) {
-      expect(statusFor(code as RefusalCode), code).toBe(SUGGESTED_STATUS[code]);
+      expect(statusOf(code as RefusalCode), code).toBe(SUGGESTED_STATUS[code]);
     }
   });
 
@@ -107,7 +107,7 @@ describe('the runtime refusal codes L3 registers', () => {
 describe('the delegation code a pickup now produces', () => {
   it('registers it, gives it 409, and shows it to the caller', () => {
     expect(registeredRefusal('DELEGATION_ALREADY_LIVE')).toBeDefined();
-    expect(statusFor('DELEGATION_ALREADY_LIVE')).toBe(409);
+    expect(statusOf('DELEGATION_ALREADY_LIVE')).toBe(409);
     expect(CALLER_VISIBLE.has('DELEGATION_ALREADY_LIVE')).toBe(true);
   });
 

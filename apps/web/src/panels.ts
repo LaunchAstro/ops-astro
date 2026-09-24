@@ -22,10 +22,11 @@
 // tab at all.
 //
 // **A registration with a route the router does not serve is the failure this
-// registry has to avoid.** `route` is a `RouteId`, so a registration can only
-// name a route `routes.ts` serves, and the tab has somewhere to arrive.
+// registry has to avoid.** `route` is a `StaticRouteId`, so a registration can
+// only name a route `routes.ts` serves at an address with no parameters, and
+// the tab has somewhere to arrive.
 
-import type { RouteId } from './routes.ts';
+import type { StaticRouteId } from './routes.ts';
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -34,7 +35,7 @@ export interface PanelRegistration {
   /** Announced on the panel element itself. */
   readonly ariaLabel: string;
   /** The route that draws the same surface at an address of its own, if any. */
-  readonly route: RouteId | null;
+  readonly route: StaticRouteId | null;
 }
 
 export const PANELS: readonly PanelRegistration[] = [

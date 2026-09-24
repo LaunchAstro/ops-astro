@@ -21,6 +21,7 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import {
   OperationsClient,
   isRefusal,
@@ -59,6 +60,7 @@ const api = createApi({
   verify: createSupabaseVerifier({ secret: SECRET }),
   resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
   executeCommand,
+  executeRead,
 });
 
 /**
