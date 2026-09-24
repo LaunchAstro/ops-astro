@@ -154,13 +154,14 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => AgentO
 function pickupOperands(request: AgentRequest): AgentOperands | Refused {
   const reservationId = request['reservationId'];
   if (typeof reservationId !== 'string') {
+    // No attempted value, as the person entry records none for it: the two
+    // audit rows are the same row (`tests/api/id-operand-shape.test.ts`).
     return refused(
       refuseCommand(
         'COMMAND_BODY_INVALID',
         ['reservationId'],
         ['Name a reservation from task.queue.'],
       ),
-      { reservationId },
     );
   }
   const lease = leaseSecondsOperand(MAXIMUM_LEASE_SECONDS)(request);
