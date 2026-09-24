@@ -184,7 +184,15 @@ export async function trashSubtree<Denied>(
   const locked = new Set<string>();
   let ids = await walk();
   while (ids.some((id) => !locked.has(id))) {
-    // In id order, so two walks over one subtree queue rather than deadlock.
+    // In id order, which orders only this loop's own locks. The envelope has
+    // already locked the root, and a move or reparent its target, outside that
+    // order, so a nested trash, a move, a reparent or a restore can still
+    // deadlock with this walk. The server rolls the victim back whole and the
+    // envelope retries it once (register-store.ts, 40P01), and the retry
+    // answers from what the winner committed: a nested trash applies without
+    // the winner's batch (final-r3-place.test.ts, R4-RUNTIME-7). Taking the
+    // root in this order would not help, since the envelope holds it before
+    // the walk runs.
     // eslint-disable-next-line no-await-in-loop
     await tx.query(
       `select id from records where business_id = $1 and id = any ($2::uuid[])

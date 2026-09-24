@@ -14,6 +14,10 @@
 // cases, took different sibling locks and tied.
 // R3-SURFACE-22: task.move to the task's own board in upper case re-ranked it
 // and rewrote its subtree.
+// R4-THERMO-5: task.move sent a task's own board, stored in upper case by a row
+// written before b98b9c5, re-ranked it and rewrote its subtree.
+// R4-RUNTIME-7: two nested trashes can deadlock, and the loser is answered by
+// the envelope's one retry.
 //
 // Interleavings are observed through pg_stat_activity rather than slept
 // through, as in final-r2-fr2-trash.test.ts.
@@ -32,7 +36,7 @@ import { executeCommand } from '../../packages/core-records/src/commands/envelop
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
 import { readTaskSpine } from '../../packages/core-records/src/commands/context.ts';
 import { planTaskPlacement } from '../../packages/core-records/src/tasks/placement.ts';
-import { restoreBatch } from '../../packages/core-records/src/tasks/trash.ts';
+import { restoreBatch, trashSubtree } from '../../packages/core-records/src/tasks/trash.ts';
 import { readBoard } from '../../packages/core-records/src/reads/tasks.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
 
@@ -310,6 +314,77 @@ describe.skipIf(serverUrl === undefined)('final review round 3: placement', () =
     }, 20_000);
   });
 
+  describe('R4-RUNTIME-7: nested trashes can deadlock, and the retry answers', () => {
+    const deadlocks = async (): Promise<number> =>
+      Number(
+        (
+          await db.admin.execute<{ readonly n: string }>(
+            `select deadlocks::text as n from pg_stat_database where datname = current_database()`,
+          )
+        )[0]?.n ?? 0,
+      );
+
+    /** The server's deadlock count, once it is past `floor`, by the deadline. */
+    const deadlocksPast = async (floor: number, deadline: number): Promise<number> => {
+      await db.admin.execute('select pg_stat_clear_snapshot()');
+      const now = await deadlocks();
+      if (now > floor || Date.now() > deadline) return now;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      return await deadlocksPast(floor, deadline);
+    };
+
+    it('applies trash(R) on its retry when trash(D) under it holds D and waits on a child', async () => {
+      const r = await create();
+      const d = await create({ parentId: r });
+      const sibling = await create({ parentId: r });
+      // A child of D whose id sorts below D's, so trash(R)'s id-ordered lock
+      // takes it before it reaches D.
+      const children: string[] = [];
+      while (!children.some((id) => id < d)) {
+        // Sequential: each create is one more draw at an id below D's.
+        // eslint-disable-next-line no-await-in-loop
+        children.push(await create({ parentId: d }));
+      }
+      const before = await deadlocks();
+      const operationId = randomUUID();
+      let trashingR: Promise<Answer | { readonly threw: string }> | undefined;
+      let waited = false;
+      let batchD: unknown;
+      await db.app.withBusiness(business, async (tx) => {
+        // What the envelope does for task.trash(D): the target, locked, first.
+        await tx.query(`select id from records where business_id = $1 and id = $2 for update`, [
+          business,
+          d,
+        ]);
+        trashingR = as(worker, 'task.trash', r, { operationId }, second);
+        waited = await blockedOnLock(Date.now() + 2_000);
+        // trash(D)'s walk: its id-ordered lock needs the child trash(R) holds.
+        const result = await trashSubtree(tx, { rootId: d, actorId: worker.actorId });
+        batchD = 'batchId' in result ? result.batchId : result;
+      });
+      expect(seen((await trashingR) ?? { threw: 'no trash ran' })).toStrictEqual({ applied: true });
+      expect(waited).toBe(true);
+      // The two walks did not queue: the server broke a deadlock between them.
+      expect(await deadlocksPast(before, Date.now() + 5_000)).toBeGreaterThan(before);
+
+      const [root, under, beside] = [await read(r), await read(d), await read(sibling)];
+      expect(under.trash_batch_id).toBe(batchD);
+      expect(beside.trash_batch_id).toBe(root.trash_batch_id);
+      expect(root.trash_batch_id).not.toBe(batchD);
+      for (const child of children) {
+        // eslint-disable-next-line no-await-in-loop
+        expect((await read(child)).trash_batch_id).toBe(batchD);
+      }
+      const outcomes = await db.admin.execute<{ readonly outcome: string }>(
+        `select outcome from audit_events where business_id = $1 and operation_id = $2`,
+        [business, operationId],
+      );
+      expect(outcomes.map((each) => each.outcome)).toStrictEqual(['applied']);
+    }, 30_000);
+  });
+
   describe('R2-RUNTIME-58: one sibling set is one lock, however the id is cased', () => {
     it('makes a create naming the parent in upper case wait, so the two ranks differ', async () => {
       const parent = await create();
@@ -395,6 +470,42 @@ describe.skipIf(serverUrl === undefined)('final review round 3: placement', () =
       expect([after.rank, after.data['board']]).toStrictEqual([before.rank, b]);
       expect([childAfter.data['board'], childAfter.revision]).toStrictEqual([
         b,
+        childBefore.revision,
+      ]);
+    });
+  });
+
+  describe('R4-THERMO-5: task.move compares a stored upper-case board however it is cased', () => {
+    it('keeps the rank, the spelling and the subtree when a legacy row is sent its own board', async () => {
+      const b = await create();
+      await create({ board: b });
+      const t = await create({ board: b });
+      await create({ board: b });
+      const c = await create({ parentId: t });
+      const section = await create();
+      // The shape of a row written before b98b9c5, when the board was stored
+      // as sent: the task and its subtree carry the board in upper case.
+      const legacy = b.toUpperCase();
+      await db.admin.execute(
+        `update records set data = jsonb_set(data, '{board}', to_jsonb($3::text))
+          where business_id = $1 and id = any ($2::uuid[])`,
+        [business, [t, c], legacy],
+      );
+      const [before, childBefore] = [await read(t), await read(c)];
+      expect(before.data['board']).toBe(legacy);
+
+      const answer = seen(
+        await as(worker, 'task.move', t, { board: legacy, boardSection: section }),
+      );
+      expect(answer).toStrictEqual({ applied: true });
+      const [after, childAfter] = [await read(t), await read(c)];
+      expect([after.rank, after.data['board'], after.data['board_section']]).toStrictEqual([
+        before.rank,
+        legacy,
+        section,
+      ]);
+      expect([childAfter.data['board'], childAfter.revision]).toStrictEqual([
+        legacy,
         childBefore.revision,
       ]);
     });

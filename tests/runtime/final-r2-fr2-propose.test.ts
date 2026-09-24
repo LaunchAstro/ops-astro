@@ -29,9 +29,12 @@ import type { Database, TenantQuery } from '../../packages/core-records/src/tena
 import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
 import {
   approve,
+  approveBody,
   asPerson,
+  capCommitted,
   codeOf,
   createTask,
+  envelopeHeld,
   freshPurpose,
   openSchedules,
   propose,
@@ -76,6 +79,10 @@ const answerOf = (result: Answer): string =>
 
 const namesOf = (result: Answer): unknown =>
   isFault(result) ? undefined : (result as { names?: unknown }).names;
+
+/** The refusal's fixes, which name the room that refused: the cap's or the envelope's. */
+const reasonOf = (result: Answer): string =>
+  isFault(result) ? '' : ((result as { fixes?: readonly string[] }).fixes ?? []).join(' ');
 
 async function outcomesOf(s: Schedules, operationId: unknown): Promise<readonly string[]> {
   return (
@@ -349,6 +356,46 @@ describe.skipIf(serverUrl === undefined)(
         }),
       );
       expect(answerOf(successor)).toBe('applied');
+    }, 60_000);
+
+    // R4-THERMO-6: above, the envelope is full, so the envelope answers before
+    // the cap can. Here the envelope has room and the cap is what binds, so
+    // the cap's own check answers, with the superseded hold given back.
+    it('with an open envelope that has room: the cap room, less the superseded hold, binds', async () => {
+      // A's envelope opens at 4,000; rejecting a second version of that
+      // lineage releases the first's hold and leaves the envelope open, empty.
+      const a = await createTask(s, 'a task whose envelope has room');
+      const opening = await propose(s, a, { purpose: freshPurpose(), maximumMinor: 4_000 });
+      await approve(s, opening);
+      const rejected = await propose(s, a, {
+        lineageId: String(opening['lineageId']),
+        purpose: freshPurpose(),
+        maximumMinor: 4_000,
+      });
+      expect(answerOf(await attempt(s, { ...approveBody(rejected), decision: 'reject' }))).toBe(
+        'applied',
+      );
+      expect(await envelopeHeld(s, a)).toBe(0);
+      // A holds 1,000 of its 4,000 envelope, and B fills the cap to 9,000 of 10,000.
+      const purpose = freshPurpose();
+      const held = await propose(s, a, { purpose, maximumMinor: 1_000 });
+      await approve(s, held);
+      // The cases above left their own holds on this cap, so B asks for the rest.
+      const b = await createTask(s, 'a second task filling the cap');
+      const fill = LIMIT - 1_000 - (await capCommitted(s));
+      await approve(s, await propose(s, b, { purpose: freshPurpose(), maximumMinor: fill }));
+      expect(await capCommitted(s)).toBe(LIMIT - 1_000);
+
+      // A successor on A may ask the cap room plus A's own 1,000 back: 2,000.
+      // The envelope would allow 4,000, so one past 2,000 is the cap's refusal.
+      const successor = (maximumMinor: number) =>
+        bodyWith(s, a, { lineageId: held['lineageId'], purpose, maximumMinor });
+      const over = await attempt(s, await successor(2_001));
+      expect([answerOf(over), reasonOf(over)]).toStrictEqual([
+        'PROPOSAL_OUT_OF_SCOPE',
+        expect.stringContaining('budget cap'),
+      ]);
+      expect(answerOf(await attempt(s, await successor(2_000)))).toBe('applied');
     }, 60_000);
 
     it('with no envelope yet: the business cap is the authority', async () => {

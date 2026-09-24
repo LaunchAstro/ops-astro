@@ -246,6 +246,11 @@ export async function moveTask(
   const board = typeof sentBoard === 'string' ? sentBoard.toLowerCase() : sentBoard;
   const target = context.target;
   if (target === undefined) throw new Error('moveTask: the envelope read no target');
+  // The stored side too: a row written before the sent board was lower-cased
+  // can hold it in upper case (R4-THERMO-5). Its spelling is kept on a section
+  // change, so the task and its subtree still spell the board alike.
+  const storedBoard = (target.data['board'] as string | undefined) ?? null;
+  const sameBoard = board === (storedBoard?.toLowerCase() ?? null);
   const isSubtask = (target.data['parent'] ?? null) !== null;
   if (isSubtask && boardSection !== null) {
     return refused(
@@ -289,15 +294,16 @@ export async function moveTask(
   // one would: the rank it had was among the old board's tasks and can equal
   // one already here. A section change within the board keeps it.
   let boardRank: number | undefined;
-  if (board !== ((target.data['board'] as string | undefined) ?? null)) {
+  if (!sameBoard) {
     const carried = await carryBoardToDescendants(tx, context, target.id, board);
     if (carried !== undefined) return refused(carried);
     boardRank = await rankAfterSiblings(tx, context.spine.taskTypeId, null, board);
   }
 
   const placed = boardRank === undefined ? {} : { board_rank: boardRank };
-  const data = mergeFieldValues(target.data, { board, board_section: boardSection, ...placed });
-  return await writeData(tx, context, data, { board, board_section: boardSection, ...placed });
+  const moved = { board: sameBoard ? storedBoard : board, board_section: boardSection, ...placed };
+  const data = mergeFieldValues(target.data, moved);
+  return await writeData(tx, context, data, moved);
 }
 
 const NEIGHBOUR_NOT_ADJACENT = [
