@@ -471,19 +471,25 @@ async function classifyAll<T>(
 }
 
 /**
- * Discover, lock, rediscover, classify. The rediscovery is the contract's
- * restart rule in one function: if the affected set changed between the
- * unlocked discovery and the locks, this transaction has the wrong lock set
- * and must not write under it.
+ * Restart replay. It finds reservations whose **recorded** transition already
+ * made them nonclaimable and whose classification did not commit, and runs the
+ * same classifier over them under the complete ordered lock set (R1).
+ *
+ * It manufactures no eligibility. The query below asks only about rows whose
+ * lineage is terminal, whose version is superseded, whose lease was fenced or
+ * whose delegation was revoked. Each is a fact another authorised operation
+ * wrote, and none is age, a missing claimant or a null lease.
  */
-async function lockAndClassify(
+export async function replayRecordedTransitions(
   tx: TenantQuery,
-  discover: () => Promise<readonly Affected[]>,
-  extraLocks: readonly LockRequest[] = [],
 ): Promise<readonly Classification[]> {
+  // Discover, lock, rediscover, classify. The rediscovery is the contract's
+  // restart rule: if the affected set changed between the unlocked discovery
+  // and the locks, this transaction has the wrong lock set and must not write
+  // under it.
   const { locks, found: after } = await lockRediscovered(tx, {
-    discover,
-    locks: (rows) => [...locksFor(rows), ...extraLocks],
+    discover: async () => discoverEligible(tx, null),
+    locks: locksFor,
     rule: 'exact',
     changed:
       'recovery: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
@@ -509,22 +515,6 @@ async function lockAndClassify(
       await reopenRuns(tx, [row.run_id], locks);
     },
   );
-}
-
-/**
- * Restart replay. It finds reservations whose **recorded** transition already
- * made them nonclaimable and whose classification did not commit, and runs the
- * same classifier over them under the complete ordered lock set (R1).
- *
- * It manufactures no eligibility. The query below asks only about rows whose
- * lineage is terminal, whose version is superseded, whose lease was fenced or
- * whose delegation was revoked. Each is a fact another authorised operation
- * wrote, and none is age, a missing claimant or a null lease.
- */
-export async function replayRecordedTransitions(
-  tx: TenantQuery,
-): Promise<readonly Classification[]> {
-  return await lockAndClassify(tx, async () => discoverEligible(tx, null));
 }
 
 /** The eligible set, business-wide or scoped to one lineage. Read-only; acquires nothing. */

@@ -53,7 +53,8 @@
     "PROTECTED-MIGRATIONS adds cap-storage-backstop (migrations 0024 and 0025 through the application role, on a fresh database and on one seeded at 0023 then upgraded: a USD envelope under an AUD cap, a cap currency change beneath an envelope and an envelope moved to another currency or cap refused by task_envelopes_cap_currency_fkey; a cap filled to exactly its ceiling, then one unit more on hold, on actual, by insert, by lowering the limit and by the second of two open transactions that each fit alone refused budget_caps_ceiling at commit; seeded rows unchanged by the upgrade; a 0023 database holding a mismatched or over-ceiling row stops before the rule with the row untouched).",
     "CAP-RR extends cap-storage-backstop (Sol 6 SURFACE-R-2: two application-role transactions whose snapshots both saw room under one cap, each raise fitting alone, together over it; at read committed the second is refused budget_caps_ceiling, at repeatable read and serializable it is refused serialization_failure, and the committed total stays within the cap on fresh and upgraded databases).",
     "OWNER-RULINGS-FIX adds comment-rulings (Nathan's first-slice rulings over HTTP: a delegated agent's client-audience comment refused AUDIENCE_NOT_PERMITTED 422 on the agent prefix and AUTH_NO_MEMBERSHIP 403 on the person prefix, its internal note written, nothing else written; a comment on a trashed task refused NOT_FOUND 404 on both entries in the bytes of an identifier nothing carries, no comment written) and moves external-party to the I09 ruling (a shared task shows its client the title and the state's label).",
-    "ARCH-4 adds rediscovery-pin (the statement sequence from the first unlocked discovery to the end of the recheck at propose, cancel, delegation.revoke, grant.revoke and the startup replay, taken before those sites moved onto one rediscovery module; propose's window gains its held-set recheck with O3), and o3-held-recheck (thermo O3: task.propose meeting an approval of the version it supersedes, forced between discovery and locks, and a rejection meeting a hold revived by a test write in the same window, each answer the first request after one AffectedSetChanged retry with the hold classified under the right cause and nothing written by the lost attempt)."
+    "ARCH-4 adds rediscovery-pin (the statement sequence from the first unlocked discovery to the end of the recheck at propose, cancel, delegation.revoke, grant.revoke and the startup replay, taken before those sites moved onto one rediscovery module; propose's window gains its held-set recheck with O3), and o3-held-recheck (thermo O3: task.propose meeting an approval of the version it supersedes, forced between discovery and locks, and a rejection meeting a hold revived by a test write in the same window, each answer the first request after one AffectedSetChanged retry with the hold classified under the right cause and nothing written by the lost attempt).",
+    "THERMO-FIX-RUNTIME adds successor-bounds-edge (thermo NB1 at 9d2dbde through the command entry: with 2 units of cap room, a successor ceiling of 3 and a successor in USD under an AUD cap are each refused SUCCESSOR_OUT_OF_BOUNDS in their exact bytes with no report retained and nothing moved, and a ceiling of exactly 2 is accepted)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -174,7 +175,8 @@
     "tests/api/agent-read-targets.test.ts",
     "tests/runtime/handback-envelope-totals.test.ts",
     "tests/runtime/cap-storage-backstop.test.ts",
-    "tests/runtime/o3-held-recheck.test.ts"
+    "tests/runtime/o3-held-recheck.test.ts",
+    "tests/runtime/successor-bounds-edge.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

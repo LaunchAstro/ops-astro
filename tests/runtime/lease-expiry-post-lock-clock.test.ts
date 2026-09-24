@@ -27,7 +27,9 @@ import {
   openSchedules,
   racer,
   rows,
+  startedBefore,
   type Schedules,
+  waitPast,
 } from './schedules-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -39,37 +41,6 @@ if (serverUrl === undefined) {
 }
 
 const leaseExpiry = `select expires_at from public.leases where id = $1`;
-
-/** Poll the database clock, never the test's, until it is past `expiresSql`. */
-async function waitPast(s: Schedules, expiresSql: string, id: unknown): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    // Polling is sequential by definition.
-    // eslint-disable-next-line no-await-in-loop
-    const found = await rows<{ readonly past: boolean }>(
-      s,
-      `select clock_timestamp() > (${expiresSql}) as past`,
-      [id],
-    );
-    if (found[0]?.past === true) return;
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => {
-      setTimeout(resolve, 25);
-    });
-  }
-  throw new Error('the deadline never passed on the database clock');
-}
-
-/** The parked command's own transaction began before the deadline it is judged against. */
-async function startedBefore(s: Schedules, expiresSql: string, id: unknown): Promise<boolean> {
-  const found = await rows<{ readonly before: boolean }>(
-    s,
-    `select bool_and(a.xact_start < (${expiresSql})) as before
-       from pg_stat_activity a
-      where a.datname = current_database() and a.wait_event_type = 'Lock'`,
-    [id],
-  );
-  return found[0]?.before === true;
-}
 
 /** Three seconds left on the lease and its delegation, on the database clock. */
 async function expireSoon(s: Schedules, leaseId: unknown): Promise<void> {

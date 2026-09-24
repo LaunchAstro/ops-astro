@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The budget arithmetic `decide` asks twice: once read-only before the first
-// write (preflight), and again inside `reserve` as the second barrier. The two
+// write (preflight), and again inside `reserve` as the second barrier.
+// `handback` asks the cap half a third time, for a successor's ceiling. The two
 // used to be word-for-word copies of the cap SQL and the refusal texts, and
 // they had drifted on one point: `reserve` let a missing cap through where
 // preflight refused it. Thermo O2, lead ruling: both refuse it now, with the
@@ -158,8 +159,9 @@ export function capVerdict(of: {
  * Sol 6 RUNTIME-2: would `adding` take `committed` past `limit`? All three are
  * exact minor units. The two totals arrive as SQL text and are compared as
  * `bigint`, because a valid cap above 2^53 rounds as a JavaScript number and
- * the rounding can let one approval past the ceiling.
+ * the rounding can let one approval, or one handback's successor, past the
+ * ceiling.
  */
-function exceeds(committed: string, adding: bigint, limit: string): boolean {
+export function exceeds(committed: string, adding: bigint, limit: string): boolean {
   return BigInt(committed) + adding > BigInt(limit);
 }
