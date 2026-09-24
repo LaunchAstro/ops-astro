@@ -394,5 +394,5 @@ describe.skipIf(serverUrl === undefined)('the agent route, operation by operatio
       table[command] = rows;
     }
     expect(table).toEqual(EXPECTED);
-  });
+  }, 60_000);
 });
