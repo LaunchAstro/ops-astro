@@ -32,14 +32,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
-import {
-  classifyStatement,
-  skipBlockComment,
-  skipDollarQuoted,
-  skipLineComment,
-  skipQuoted,
-  splitStatements,
-} from './statements.ts';
+import { classifyStatement, scanToken, splitStatements } from './statements.ts';
 
 export interface Migration {
   readonly version: string;
@@ -212,25 +205,11 @@ function words(statement: string): string {
   let text = '';
   let at = 0;
   while (at < statement.length) {
-    const ch = statement[at] ?? '';
-    let after = at;
-    if (statement.startsWith('--', at)) {
-      after = skipLineComment(statement, at);
-    } else if (statement.startsWith('/*', at)) {
-      after = skipBlockComment(statement, at);
-    } else if (ch === "'" || ch === '"') {
-      const previous = at > 0 ? statement[at - 1] : undefined;
-      after = skipQuoted(statement, at, ch, ch === "'" && (previous === 'e' || previous === 'E'));
-    } else if (ch === '$') {
-      after = skipDollarQuoted(statement, at);
-    }
-    if (after === at) {
-      text += ch;
-      at += 1;
-    } else {
-      text += ch === '-' || ch === '/' ? ' ' : ' ? ';
-      at = after;
-    }
+    const token = scanToken(statement, at);
+    if (token.kind === 'comment') text += ' ';
+    else if (token.kind === 'quoted') text += ' ? ';
+    else text += statement.slice(at, token.end);
+    at = token.end;
   }
   return text.trim().replaceAll(/\s+/gu, ' ').toLowerCase();
 }

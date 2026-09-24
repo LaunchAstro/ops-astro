@@ -313,40 +313,54 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     expect(await state(built)).toBe(before);
   }, 120_000);
 
-  // SOL-FR7-1: a COMMIT behind a nested comment would end the one transaction
-  // after the first file, so the first file and its ledger row would stay
-  // when the third fails. It must be refused before anything runs.
-  it('refuses a COMMIT behind a nested comment before the first of three files runs', async () => {
-    const built = await createEmptyDatabase({ part: 'fr9nested' });
-    db = built;
-    await migrate(built.admin, 'migrations');
-    const before = await state(built);
+  // SOL-FR7-1, SOL-FR9-1: a COMMIT the reader cannot see would end the one
+  // transaction after the first file, so the first file and its ledger row
+  // would stay when the third fails. It must be refused before anything runs.
+  // It hides behind a nested comment, behind `$$` at the end of an
+  // identifier, or behind the last `e` of a word read as an E-string prefix.
+  it.each([
+    ['fr9nested', '/* outer /* inner */ outer */ COMMIT'],
+    ['fr10dollar', 'CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
+    ['fr10estring', "select name'\\'; commit; --'"],
+  ])(
+    'refuses a hidden COMMIT (%s) before the first of three files runs',
+    async (part, sql) => {
+      const built = await createEmptyDatabase({ part });
+      db = built;
+      await migrate(built.admin, 'migrations');
+      const before = await state(built);
 
-    const outcome = await applyMigrations(built.admin, [
-      ...onDisk,
-      syntheticMigration('9001_fr9_first', 'create table ops.fr9_first (id int)'),
-      syntheticMigration('9002_fr9_commit', '/* outer /* inner */ outer */ COMMIT'),
-      syntheticMigration('9003_fr9_broken', 'select 1 / 0'),
-    ]).catch((error: unknown) => error);
+      const outcome = await applyMigrations(built.admin, [
+        ...onDisk,
+        syntheticMigration('9001_fr9_first', 'create table ops.fr9_first (id int)'),
+        syntheticMigration('9002_fr9_commit', sql),
+        syntheticMigration('9003_fr9_broken', 'select 1 / 0'),
+      ]).catch((error: unknown) => error);
 
-    const [left] = await built.admin.execute<{ readonly first: boolean; readonly table: boolean }>(
-      `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
-              to_regclass('ops.fr9_first') is not null as table`,
-    );
-    expect({
-      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
-      first: left?.first,
-      table: left?.table,
-    }).toStrictEqual({
-      message: expect.stringMatching(
-        /^migrate: 9002_fr9_commit holds a statement PostgreSQL will not run inside/u,
-      ),
-      first: false,
-      table: false,
-    });
-    expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
-    expect(await state(built)).toBe(before);
-  }, 120_000);
+      const [left] = await built.admin.execute<{
+        readonly first: boolean;
+        readonly table: boolean;
+      }>(
+        `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
+              to_regclass('ops.fr9_first') is not null
+                or to_regclass('ops."fr9_second$$"') is not null as table`,
+      );
+      expect({
+        message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+        first: left?.first,
+        table: left?.table,
+      }).toStrictEqual({
+        message: expect.stringMatching(
+          /^migrate: 9002_fr9_commit holds a statement PostgreSQL will not run inside/u,
+        ),
+        first: false,
+        table: false,
+      });
+      expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
+      expect(await state(built)).toBe(before);
+    },
+    120_000,
+  );
 
   // R6-AUTHORITY-2: a role that is neither superuser nor in pg_read_all_stats
   // sees other roles' sessions with a null backend_type, so a predicate on it
@@ -458,6 +472,12 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['alter database other set tablespace pg_default'],
     ['alter table ops.partitioned detach partition ops.part1 concurrently'],
     ['alter subscription s refresh publication'],
+    // SOL-FR9-1: `$$` after an identifier is part of it, so neither a quote
+    // nor the end of the file hides what follows.
+    ['CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
+    ['ALTER TABLE ops.t$$ DETACH PARTITION ops.p CONCURRENTLY'],
+    // The same boundary for E'': the e of `name` does not open an escape string.
+    ["select name'\\'; commit; --'"],
   ])('refuses %j and touches nothing', async (statement) => {
     await expect(
       applyMigrations(untouched, [

@@ -88,23 +88,36 @@ const SESSION_VERBS: ReadonlySet<string> = new Set([
   'NOTIFY',
 ]);
 
-// A dollar-quote tag is an identifier or nothing. It can never start with a
-// digit, which is what keeps `$1` a parameter placeholder rather than the
-// opening of a quoted run.
-const DOLLAR_TAG = /^\$([\p{L}_][\p{L}\p{N}_]*)?\$/u;
+// PostgreSQL's own scanner (src/backend/parser/scan.l, REL_18_STABLE) is the
+// rule. An unquoted identifier starts with a letter, `_` or any character past
+// ASCII and continues with those, digits and `$` (ident_start, ident_cont). A
+// dollar-quote tag is the same without `$`, so it cannot hold one, and it can
+// never start with a digit, which keeps `$1` a parameter (dolq_start,
+// dolq_cont). The scanner takes the longest match, so `$$` straight after an
+// identifier continues the identifier and opens nothing: a dollar quote starts
+// only where a token does (syntax.sgml, "Dollar-Quoted String Constants").
+const IDENTIFIER = /[A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9$\u{80}-\u{10FFFF}]*/uy;
+const DECIMAL_DIGITS = /[0-9][0-9_]*/uy;
+const DOLLAR_TAG = /\$([A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9\u{80}-\u{10FFFF}]*)?\$/uy;
+
+/** How many characters a sticky pattern matches at `at`, or 0. */
+function lengthAt(pattern: RegExp, sql: string, at: number): number {
+  pattern.lastIndex = at;
+  return pattern.exec(sql)?.[0].length ?? 0;
+}
 
 // `SELECT ... INTO new_table` creates a table without saying CREATE. It is the
 // one DDL statement whose leading verb reads as a read.
 const SELECT_INTO = /^SELECT\b[\s\S]*?\bINTO\b/iu;
 
-export function skipLineComment(sql: string, from: number): number {
+function skipLineComment(sql: string, from: number): number {
   const newline = sql.indexOf('\n', from);
   return newline < 0 ? sql.length : newline + 1;
 }
 
 // Block comments nest in PostgreSQL, so a depth counter is the only correct
 // reading. `/* /* */ */` closes once, not twice.
-export function skipBlockComment(sql: string, from: number): number {
+function skipBlockComment(sql: string, from: number): number {
   let depth = 0;
   let at = from;
   while (at < sql.length) {
@@ -125,12 +138,7 @@ export function skipBlockComment(sql: string, from: number): number {
 // A quote doubled inside a quoted run is a literal quote, not the end of it.
 // A backslash escapes only inside an E'' string, which is why the caller says
 // whether one is open.
-export function skipQuoted(
-  sql: string,
-  from: number,
-  quote: string,
-  backslashEscapes: boolean,
-): number {
+function skipQuoted(sql: string, from: number, quote: string, backslashEscapes: boolean): number {
   let at = from + 1;
   while (at < sql.length) {
     const ch = sql[at];
@@ -150,12 +158,54 @@ export function skipQuoted(
   return sql.length;
 }
 
-export function skipDollarQuoted(sql: string, from: number): number {
-  const opener = DOLLAR_TAG.exec(sql.slice(from));
-  if (opener === null) return from;
-  const tag = opener[0];
+function skipDollarQuoted(sql: string, from: number): number {
+  const length = lengthAt(DOLLAR_TAG, sql, from);
+  if (length === 0) return from;
+  const tag = sql.slice(from, from + length);
   const close = sql.indexOf(tag, from + tag.length);
   return close < 0 ? sql.length : close + tag.length;
+}
+
+export interface Token {
+  /**
+   * `comment` is either comment form, nested block comments included;
+   * `quoted` is a string, an E'' string, a quoted identifier or a
+   * dollar-quoted body; `word` is an identifier, keyword or number, which
+   * may run through `$`; `other` is one character of anything else.
+   */
+  readonly kind: 'comment' | 'quoted' | 'word' | 'other';
+  readonly end: number;
+}
+
+/**
+ * The token that starts at `from`, read as PostgreSQL's scanner reads it as
+ * far as finding statements needs. A word is taken whole, so that a `$` or a
+ * quote after it is read where the server reads it.
+ */
+export function scanToken(sql: string, from: number): Token {
+  const rest = sql.slice(from, from + 2);
+  if (rest === '--') return { kind: 'comment', end: skipLineComment(sql, from) };
+  if (rest === '/*') return { kind: 'comment', end: skipBlockComment(sql, from) };
+  const ch = sql[from] ?? '';
+  // Only a lone E opens an escape string (xestart). The e that ends a longer
+  // word is part of the word, and the quote after it opens a plain string.
+  if (rest === "e'" || rest === "E'") {
+    return { kind: 'quoted', end: skipQuoted(sql, from + 1, "'", true) };
+  }
+  if (ch === "'" || ch === '"') return { kind: 'quoted', end: skipQuoted(sql, from, ch, false) };
+  if (ch === '$') {
+    const after = skipDollarQuoted(sql, from);
+    return after === from ? { kind: 'other', end: from + 1 } : { kind: 'quoted', end: after };
+  }
+  const word = lengthAt(IDENTIFIER, sql, from);
+  if (word > 0) return { kind: 'word', end: from + word };
+  // A number ends before a `$`, which may then open a dollar quote; letters
+  // straight after its digits are PostgreSQL's trailing junk, one token.
+  const digits = lengthAt(DECIMAL_DIGITS, sql, from);
+  if (digits > 0) {
+    return { kind: 'word', end: from + digits + lengthAt(IDENTIFIER, sql, from + digits) };
+  }
+  return { kind: 'other', end: from + 1 };
 }
 
 /**
@@ -176,26 +226,12 @@ export function splitStatements(sql: string): readonly string[] {
     if (piece !== '' && leadingVerb(piece) !== '') found.push(piece);
   };
   while (at < sql.length) {
-    const ch = sql[at];
-    if (ch === undefined) break;
-    if (sql.startsWith('--', at)) {
-      at = skipLineComment(sql, at);
-    } else if (sql.startsWith('/*', at)) {
-      at = skipBlockComment(sql, at);
-    } else if (ch === "'" || ch === '"') {
-      const previous = at > 0 ? sql[at - 1] : undefined;
-      const escapes = ch === "'" && (previous === 'e' || previous === 'E');
-      at = skipQuoted(sql, at, ch, escapes);
-    } else if (ch === '$') {
-      const after = skipDollarQuoted(sql, at);
-      at = after === at ? at + 1 : after;
-    } else if (ch === ';') {
+    const token = scanToken(sql, at);
+    if (token.kind === 'other' && sql[at] === ';') {
       take(at);
-      at += 1;
-      start = at;
-    } else {
-      at += 1;
+      start = token.end;
     }
+    at = token.end;
   }
   take(sql.length);
   return found;
