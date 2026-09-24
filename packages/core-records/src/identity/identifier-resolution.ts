@@ -70,8 +70,18 @@ export function normaliseIdentifier(kind: IdentifierKind, value: string): string
 // The CYCLE clause is not decoration. `person_merges` stops one person being
 // absorbed twice at once, but nothing stops A being absorbed into B and B into
 // A, and a recursive query over that pair does not terminate. With CYCLE it
-// stops and marks the row; discarding marked rows leaves the identity row at
-// depth zero, so a cycle degrades to "no merge" rather than to a hung request.
+// stops and marks the row that came back round, and that row's person is where
+// the cycle starts. A chain that went round resolves there, not to the deepest
+// unmarked row, which is just wherever the walk stood when it noticed: so a
+// person inside a cycle is themselves, and a cycle degrades to "no merge"
+// rather than to a hung request or to one member silently absorbing another.
+//
+// A person absorbed into a cycle from outside stops at the member they were
+// absorbed into. That merge is not part of the cycle and nobody has undone it,
+// so it still holds; only the merges that go round are read as undecided.
+//
+// A person is absorbed once at a time, so each chain is a line and has at most
+// one marked row.
 const SURVIVORS = `
   with recursive chain(person_id, current_id, depth) as (
     select p.id, p.id, 0
@@ -84,8 +94,7 @@ const SURVIVORS = `
   ) cycle current_id set is_cycle using path
   select distinct on (person_id) current_id as survivor_id
     from chain
-   where not is_cycle
-   order by person_id, depth desc`;
+   order by person_id, is_cycle desc, depth desc`;
 
 /** The surviving people the given people resolve to, deduplicated and ordered. */
 export async function survivingPersonIds(
