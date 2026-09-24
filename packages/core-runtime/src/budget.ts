@@ -4,8 +4,8 @@
 // write (preflight), and again inside `reserve` as the second barrier. The two
 // used to be word-for-word copies of the cap SQL and the refusal texts, and
 // they had drifted on one point: `reserve` let a missing cap through where
-// preflight refused it. That difference is now the `missingCap` parameter, so a
-// reader sees it at the call rather than finding it by diffing two functions.
+// preflight refused it. Thermo O2, lead ruling: both refuse it now, with the
+// code preflight already used, so the one copy here fails closed for both.
 //
 // W05's two reasons stay distinct: `BUDGET_UNAVAILABLE` is "this envelope has
 // no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
@@ -71,9 +71,8 @@ export function envelopeVerdict(
 /**
  * Does `wanted` fit under the cap? `null` when it does.
  *
- * `missingCap` is the drift made explicit: preflight (`'refuse'`) answers a
- * missing cap with `BUDGET_UNAVAILABLE`, while `reserve` (`'pass'`) lets it
- * through, as it always has. `currency` is the version's currency when the
+ * A missing cap is `BUDGET_UNAVAILABLE` for every caller: a ceiling that
+ * cannot be read is not room (thermo O2, lead ruling). `currency` is the version's currency when the
  * caller binds it here, as preflight does (Sol 6 RUNTIME-1), and `null` when
  * the caller does not, as `reserve` does not: `openEnvelope` has already bound
  * it at the write.
@@ -83,17 +82,14 @@ export function capVerdict(of: {
   readonly capId: string;
   readonly wanted: bigint;
   readonly currency: string | null;
-  readonly missingCap: 'pass' | 'refuse';
 }): RuntimeResult<never> | null {
   const { cap } = of;
   if (cap === undefined) {
-    return of.missingCap === 'pass'
-      ? null
-      : refuse(
-          'BUDGET_UNAVAILABLE',
-          `no budget cap ${of.capId} in this business`,
-          'Provision the cap before approving work that draws on it.',
-        );
+    return refuse(
+      'BUDGET_UNAVAILABLE',
+      `no budget cap ${of.capId} in this business`,
+      'Provision the cap before approving work that draws on it.',
+    );
   }
   // Sol 6 RUNTIME-1: the cap is a ceiling in one currency, and a version in
   // another is refused here, before the first write, with the code an

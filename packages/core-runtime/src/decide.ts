@@ -674,7 +674,6 @@ export async function reserve(
     capId: envelope.cap_id,
     wanted: held,
     currency: null,
-    missingCap: 'pass',
   });
   if (overCap !== null) return overCap;
 
@@ -766,7 +765,6 @@ async function budgetRoom(
     capId: of.capId,
     wanted: of.wantedMinor,
     currency: of.currency,
-    missingCap: 'refuse',
   });
   if (overCap !== null) return overCap;
   return { ok: true, value: null };
