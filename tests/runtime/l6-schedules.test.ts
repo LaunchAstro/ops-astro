@@ -70,7 +70,7 @@ function answered(result: PromiseSettledResult<CommandResult>): CommandResult {
 /**
  * A racer the product may fault rather than answer, because what it read
  * before its locks changed under them. The fault is a rollback: at HTTP it
- * is `SERVICE_UNAVAILABLE` with a retry fix (`apps/api/server.ts:215-219`).
+ * is `SERVICE_UNAVAILABLE` with a retry fix (`apps/api/server.ts`, `onError`).
  * Anything else is not this fault, and fails here.
  */
 function faultedWith(result: PromiseSettledResult<CommandResult>, message: string): boolean {

@@ -13,7 +13,7 @@
 // own refusals of those three are a case of their own below.
 //
 // **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). An agent's call draws on
-// its approver's grant (`tasks-runtime.ts:354`, `delegations.ts:365-372`); once
+// its approver's grant (`tasks-pickup.ts` `claim`, `delegations.ts:365-372`); once
 // `grant.revoke` takes it, the next call is `DELEGATION_NARROWED`, audited.
 
 import { randomUUID } from 'node:crypto';
@@ -344,7 +344,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
 
   it('audits the person-path refusal of the three lease operations', async () => {
     // PERSON-WORK serves these to a person (8c08ccb). A handback carries the
-    // outcome it validates first (`tasks-runtime.ts` `settle`), so the refusal
+    // outcome it validates first (`tasks-handback.ts` `settle`), so the refusal
     // is the lease's. Whatever it answers, I13 wants the attempt recorded.
     const problems: string[] = [];
     for (const name of LEASE_WORK) {
