@@ -148,14 +148,15 @@ database.
 
 ## The proof files
 
-| File                        | Covers                                                       | State                |
-| --------------------------- | ------------------------------------------------------------ | -------------------- |
-| `world.ts`                  | the shared fixture; not a proof                              | not a proof          |
-| `surface-inventory.test.ts` | item 1, the exported-surface inventory (I02 to I06)          | green, 10 cases      |
-| `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1 to N7) | see the matrix below |
-| `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02 to D04)     | green, 38 cases      |
-| `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14)    | see below            |
-| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)    | green, 5 cases       |
+| File                        | Covers                                                                                                              | State                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `world.ts`                  | the shared fixture; not a proof                                                                                     | not a proof          |
+| `surface-inventory.test.ts` | item 1, the exported-surface inventory (I02 to I06)                                                                 | green, 10 cases      |
+| `role-case-matrix.test.ts`  | item 2, the six roles and nine cases (SPEC 8, T1h, N1 to N7)                                                        | see the matrix below |
+| `protected-fields.test.ts`  | item 3, the protected set on three surfaces (D02 to D04)                                                            | green, 38 cases      |
+| `predicate-rls.test.ts`     | item 4, the four-state predicate/RLS mutation proof (I14)                                                           | see below            |
+| `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)                                                           | green, 5 cases       |
+| `comment-rulings.test.ts`   | the comment rulings: agent comments internal only on both prefixes; a trashed task `NOT_FOUND` to a comment on both | tested, 2 cases      |
 
 ## The per-file cap, and why two files are harnesses
 

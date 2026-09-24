@@ -333,7 +333,8 @@ fields and client-audience comments only".
   overturn it. Doing so is one line, an empty `EXTERNAL_WRITES`.
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
-  parts cut ([API.md, "Reads"](API.md#reads)). A sibling record and the board
+  parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
+  the state's label, plus client-audience comments (I09 ruling). A sibling record and the board
   are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as

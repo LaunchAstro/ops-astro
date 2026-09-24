@@ -980,6 +980,14 @@ the difference between a door they can open and one they cannot.
 An agent is never an internal reader. It is a delegate working one task, not a
 member of the business, so `task.read` gives it `externalCommentProjection`'s
 answer and an internal note is absent from it rather than hidden in it (I09).
+An agent's `task.comment` is `internal` only: `client` is
+`AUDIENCE_NOT_PERMITTED` 422 on the agent prefix, and the agent credential on
+the person prefix is `AUTH_NO_MEMBERSHIP` 403
+(`tests/acceptance/comment-rulings.test.ts`).
+
+A comment on a trashed task is `NOT_FOUND` 404 on the person and agent
+prefixes, in the same body as an identifier nothing carries, and nothing is
+written (`writeTaskComment`, `commands/tasks-comment.ts`; comment-rulings).
 
 ## Reads
 
@@ -1006,9 +1014,16 @@ role nobody classified sees the client view rather than everything.
 
 A reader who is not internal on the person prefix gets a different key:
 `{ ok: true, sharedTask: { id, fields, comments } }`, never `task` (the
-`serve` of the `task.read` row in `READ_CATALOGUE`, `reads/catalogue.ts`). `fields` holds the task fields the
-catalogue marks `shared`, and as shipped none are, so R4 sees the id and the
-client comments. For an external party, a `task.read` of a record its shares do
+`serve` of the `task.read` row in `READ_CATALOGUE`, `reads/catalogue.ts`).
+`fields` holds the task fields the catalogue marks `shared`. A shared task
+shows its client `title` and `state` (Nathan's I09 ruling, OWNER-CARD section
+6), both classified `shared` on the task spine (`tasks/spine.ts`). `state` is
+shown as the state's label, never its identifier (`readSharedTask`,
+`reads/tasks.ts`). Every other field stays `internal` unless the catalogue
+classifies it. The limitation: the classification is written to `field_defs`
+when a business's spine is installed, so a business installed before this
+landed keeps `title` and `state` internal until it is reseeded. No data migration changes it, and no
+such install has shipped; the final live proofs reseed the demo. For an external party, a `task.read` of a record its shares do
 not cover and any `task.board` answer `NOT_FOUND` 404 (the row's
 `outsiderNotFound` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` when the grant check refuses, `reads/dispatch.ts`;
