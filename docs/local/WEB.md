@@ -285,14 +285,22 @@ The "Last confirmed by this browser" line (`p[data-settings="four-eyes-known"]`
 and `sign-off-known`) and the not-readable banner
 (`p[data-settings="not-readable"]`) appear only while `settings.read` is
 unavailable: no answer, an answer that is not JSON, or a non-2xx without a
-refusal, which is what a missing route gives. They never appear when the read
-is refused. `SCOPE_NOT_GRANTED` is the server declining to tell this reader the
-value, and nothing stands in for it. The cached value lives in `sessionStorage`
-under `ops-astro.settings.<business>`, tagged with the session that wrote it,
-so another session in the same tab sees "not known". `SessionStore.clear` in
-`apps/web/src/session/token.ts` removes it at sign-out and when a 401 refusal
-ends the session. The server's value and the cached one are never on the page
-together, and the screen never draws the shipped default.
+refusal, which is what a missing route gives. They never appear when the read is
+refused. `SCOPE_NOT_GRANTED` is the server declining to tell this reader the
+value, and nothing stands in for it. The refusal also removes the cached value
+and marks the session, so a later unavailable read, in the same screen or after
+a remount, still shows "not known", and a write confirmed before the next
+authorised read is not cached. An authorised read lifts the mark. The cached
+value lives in `sessionStorage` under `ops-astro.settings.<business>`, tagged
+with the session that wrote it, so another session in the same tab sees "not
+known". `SessionStore.clear` in `apps/web/src/session/token.ts` removes it at
+sign-out and when a 401 refusal ends the session. A save answered after sign-out
+caches nothing: it notes the session generation (`sessionGeneration`) when
+pressed and writes only if no session has ended since.
+`tests/surfaces/settings-denied-fallback.test.tsx` and
+`tests/surfaces/settings-late-save.test.tsx` hold both. The server's value and
+the cached one are never on the page together, and the screen never draws the
+shipped default.
 
 **The controls are opened by `session.capabilities`.** `settings:manage` in
 the grants opens them; its absence closes them and names the scope in
