@@ -306,10 +306,11 @@ number and being `actual` the same fact.
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
 second is the cap behind it.
 
-`core-runtime/src/budget.ts` owns the arithmetic that preflight and `reserve`
-share: the cap-committed read (`capCommitted`), the envelope and cap verdicts
-(`envelopeVerdict`, `capVerdict`) and the task's open envelope
-(`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
+`core-runtime/src/budget.ts` is the one cap-sum source: decide's preflight,
+`reserve`, and handback's successor bound (`withinBounds`,
+`core-runtime/src/handback.ts`) all read `capCommitted` and test room with
+`exceeds`. It also holds the envelope and cap verdicts (`envelopeVerdict`,
+`capVerdict`) and the task's open envelope (`openEnvelopeOf`). A missing cap is `BUDGET_UNAVAILABLE` at preflight and at
 `reserve` alike, because a ceiling that cannot be read is not room (thermo O2,
 lead ruling, fail closed).
 
