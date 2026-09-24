@@ -138,7 +138,23 @@ const fields = (text) => {
 // the one that does not authorise a merge.
 const ABSENT =
   /\b(?:not\s+run|not\s+performed|not\s+done|no[tn]e?\s+yet|skipped?|pending|outstanding|waived|to\s?do|n\/a|deferred|will\s+run)\b/iu;
-const NEGATIVE = /\b(?:failed?|blocked|rejected|findings?\s+open|open\s+findings?|unresolved)\b/iu;
+// Round eleven, 24 September, found the counting reading only `findings` and
+// `closed`, so `approved with 2 issues; 1 closed` and `2 findings; 1
+// resolved` passed. Every noun a reviewer raises and every verb that closes
+// one is read the same way, in the negative, positive and counting rules.
+const NOUN = String.raw`(?:findings?|issues?|problems?|blockers?|concerns?)`;
+const CLOSURE = String.raw`(?:closed|resolved|fixed|addressed)`;
+
+const NEGATIVE = new RegExp(
+  String.raw`\b(?:failed?|blocked|rejected|${NOUN}\s+open|(?<!\bno\s+)open\s+${NOUN}|unresolved)\b`,
+  'iu',
+);
+
+// The same round found `approved subject to resolving 1 finding` passing on
+// `approved`. An approval that waits on something is not a final outcome,
+// wherever the condition sits on the line.
+const CONDITIONAL =
+  /\b(?:subject\s+to|pending|once|after|if|provided|providing|unless|until|conditional(?:ly)?|on\s+condition|contingent)\b/iu;
 
 // The words a reviewer uses for a clean result. The multi-word phrases come
 // first so the longest one wins: `no findings` is read whole, rather than as
@@ -147,10 +163,10 @@ const POSITIVE_WORDS = [
   String.raw`no\s+(?:open\s+)?(?:findings?|issues?|problems?|blockers?|concerns?)`,
   String.raw`(?:found|raised|turned\s+up|reported)\s+nothing`,
   String.raw`nothing\s+(?:was\s+)?(?:found|raised)`,
-  String.raw`findings?\s+(?:are\s+)?(?:all\s+)?closed`,
-  String.raw`all\s+(?:findings?\s+)?closed`,
-  String.raw`(?:is|are)\s+closed`,
-  String.raw`closed`,
+  String.raw`${NOUN}\s+(?:are\s+)?(?:all\s+)?${CLOSURE}`,
+  String.raw`(?:all|both)\s+(?:${NOUN}\s+)?${CLOSURE}`,
+  String.raw`(?:is|are)\s+${CLOSURE}`,
+  CLOSURE,
   String.raw`passe[sd]`,
   String.raw`pass(?:ing)?`,
   String.raw`clean`,
@@ -183,7 +199,7 @@ const NEGATED = new RegExp(String.raw`\b${NEGATOR}${GAP}(?:${POSITIVE_WORDS})\b`
 // out. `approved, no findings` still passes; `approved; not blocking` now
 // fails, and the author says it without the negator. A false refusal costs a
 // rewording, a false approval costs a merge.
-const SELF_NEGATING = /\bno\s+(?:open\s+)?(?:findings?|issues?|problems?|blockers?|concerns?)\b/giu;
+const SELF_NEGATING = new RegExp(String.raw`\bno\s+(?:open\s+)?${NOUN}\b`, 'giu');
 const BARE_NEGATOR = new RegExp(String.raw`\b${NEGATOR}\b`, 'iu');
 const negated = (value) =>
   NEGATED.test(value) || BARE_NEGATOR.test(value.replace(SELF_NEGATING, ' '));
@@ -216,17 +232,22 @@ const count = (token) => {
 // compared, wherever it stands: any closed count short of any raised count is
 // partial. `1 of them closed` states a closed count against the raised one.
 const CLOSED_OF = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT}|them|these|those)\b[\s\S]*?\bclosed\b`,
+  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT}|them|these|those)\b[\s\S]*?\b${CLOSURE}\b`,
   'giu',
 );
-const RAISED = new RegExp(String.raw`\b(${COUNT})\s+(?:open\s+)?findings?\b`, 'giu');
+const RAISED = new RegExp(String.raw`\b(${COUNT})\s+(?:open\s+)?${NOUN}\b`, 'giu');
 const CLOSED_COUNT = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:findings?\s+)?(?:(?:is|are|were)\s+)?closed\b`,
+  String.raw`\b(${COUNT})\s+(?:${NOUN}\s+)?(?:(?:is|are|were|was|(?:has|have)\s+been)\s+)?${CLOSURE}\b`,
   'giu',
 );
 // A disposition that says in words that it is incomplete.
-const SOME_CLOSED =
-  /\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[\s\S]*?\bclosed\b/iu;
+const SOME_CLOSED = new RegExp(
+  String.raw`\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[\s\S]*?\b${CLOSURE}\b`,
+  'iu',
+);
+// A disposition that says in words that it is complete.
+const ALL_CLOSED = new RegExp(String.raw`\b(?:all|every|each|both)\b[\s\S]*?\b${CLOSURE}\b`, 'iu');
+const MENTIONS = new RegExp(String.raw`\b${NOUN}\b`, 'iu');
 
 const counts = (pattern, value, group) =>
   [...value.matchAll(pattern)].map((m) => count(m[group])).filter((n) => !Number.isNaN(n));
@@ -238,9 +259,23 @@ const partial = (value) => {
   return closed.some((c) => raised.some((r) => c < r));
 };
 
+// Sol's recheck asked for the durable shape: a line that raises findings
+// passes only on an explicit disposition closing all of them. Mentioning a
+// finding at all, outside `no findings` and its kin, obliges the line to say
+// every one is closed, in words (`all`, `every`, `both`) or in counts that
+// reach the number raised. `approved with some issues` says neither.
+const closesAll = (value) => {
+  const text = value.replace(SELF_NEGATING, ' ');
+  if (!MENTIONS.test(text) || ALL_CLOSED.test(text)) return true;
+  const raised = [...counts(RAISED, text, 1), ...counts(CLOSED_OF, text, 2)];
+  const closed = [...counts(CLOSED_COUNT, text, 1), ...counts(CLOSED_OF, text, 1)];
+  if (raised.length > 0 && raised.every((r) => r === 0)) return true;
+  return raised.length > 0 && closed.length > 0;
+};
+
 /**
- * 'placeholder' | 'empty' | 'absent' | 'negative' | 'partial' | 'positive' |
- * 'unstated'
+ * 'placeholder' | 'empty' | 'absent' | 'negative' | 'conditional' | 'partial' |
+ * 'unclosed' | 'positive' | 'unstated'
  */
 const outcome = (value) => {
   if (PLACEHOLDERS.some((p) => value.toLowerCase().includes(p.toLowerCase()))) return 'placeholder';
@@ -248,7 +283,9 @@ const outcome = (value) => {
   if (ABSENT.test(value)) return 'absent';
   if (NEGATIVE.test(value)) return 'negative';
   if (negated(value)) return 'negative';
+  if (CONDITIONAL.test(value)) return 'conditional';
   if (partial(value)) return 'partial';
+  if (!closesAll(value)) return 'unclosed';
   if (POSITIVE.test(value)) return 'positive';
   return 'unstated';
 };
@@ -258,7 +295,9 @@ const explain = {
   empty: 'is empty, so it records that someone typed a heading',
   absent: 'says the review was not run',
   negative: 'says the review failed or left findings open',
+  conditional: 'approves on a condition, so it is not a final outcome',
   partial: 'closes some of the findings it raised and not the rest',
+  unclosed: 'mentions findings without saying that every one is closed',
   unstated: 'states no outcome, so it records that someone typed a heading',
 };
 

@@ -304,6 +304,38 @@ Code review: 2 findings. 2 closed
 
 $SEC_ONLY" "packages/core-custody/broker.ts"
 
+# Round eleven, 24 September. Counting read only `findings` and `closed`, so
+# the same partial disposition in other words passed, and `approved` anywhere
+# on the line approved a review that made its approval conditional.
+for line in "approved with 2 findings; 1 resolved" "approved with 2 issues; 1 closed" \
+  "approved with some issues"; do
+  run_case "a code review line '$line' fails" 1 "$BARE_BLOCK
+
+Code review: $line
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+  run_case "a security review line '$line' fails" 1 "$GOOD_BLOCK
+
+Security review: run against $HEAD, $line" "packages/core-custody/broker.ts"
+done
+for line in "approved subject to resolving 1 finding" "approved pending the fix" \
+  "approved once the blocker is fixed" "approved after the concern is addressed" \
+  "approved if the problem is resolved" "approved provided the issue is closed"; do
+  run_case "a conditional approval '$line' fails" 1 "$BARE_BLOCK
+
+Code review: $line
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+done
+run_case "every issue counted and resolved passes" 0 "$BARE_BLOCK
+
+Code review: approved with 2 issues; 2 resolved
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+run_case "two concerns, both addressed, passes" 0 "$GOOD_BLOCK
+
+Security review: run against $HEAD, 2 concerns, both addressed" "packages/core-custody/broker.ts"
+
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then
