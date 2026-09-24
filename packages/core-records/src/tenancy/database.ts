@@ -99,22 +99,19 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
     },
   });
   // postgres.js puts a URL's query parameters into the startup packet after
-  // `connection` above, so one naming the setting, in any case, would start
-  // the connection with its value instead (SOL-FR11B-1). What it will send is
-  // `sql.options.connection`, so that is what is read: a form it ignores, such
-  // as a fragment, is ignored here too (SOL-FR11C-1). An `options=-c ...`
-  // switch is no conflict: the server applies the named parameter after it.
-  // Nothing has connected yet; postgres.js connects on the first query.
-  const named = Object.entries(sql.options.connection).filter(
-    ([key]) => key.toLowerCase() === 'standard_conforming_strings',
-  );
-  if (named.length !== 1 || named[0]?.[1] !== 'on') {
-    void sql.end();
-    throw new Error(
-      'database: the URL sets standard_conforming_strings, which every connection sets on ' +
-        'itself so that the statement log reads strings as the server does. Remove it from the URL.',
-    );
+  // `connection` above, so one naming the setting, in any case and with any
+  // value or none, would have its way (SOL-FR11B-1, SOL-FR11D-1). The wrapper
+  // owns the setting instead of refusing the URL: it rewrites the parameters
+  // postgres.js resolved, which every connection of this handle shares and
+  // reads when it builds its startup packet (connection.js, StartupMessage),
+  // to hold exactly one `on`. Nothing has connected yet; postgres.js connects
+  // on the first query. An `options=-c ...` switch is no conflict: the server
+  // applies the named parameter after it.
+  const startup = sql.options.connection as Record<string, unknown>;
+  for (const key of Object.keys(startup)) {
+    if (key.toLowerCase() === 'standard_conforming_strings') delete startup[key];
   }
+  startup['standard_conforming_strings'] = 'on';
   return { sql, log };
 }
 
