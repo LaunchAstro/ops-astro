@@ -44,7 +44,8 @@
     "RETRY-GAPS adds retry-gaps (task.propose meeting a pickup of the superseded hold and grant.revoke meeting a handback of a dependent lease, each forced between discovery and locks, answer the first request after one retry; propose losing twice answers AffectedSetChanged after two attempts with nothing committed; the unreachable handback binding recheck is proved typed and bounded by a rewritten read).",
     "COMMAND-CATALOGUE adds stray-identifiers (a stray identifier on task.heartbeat, task.cancel, task.restart, grant.revoke and delegation.revoke is refused COMMAND_BODY_INVALID with nothing written; architecture observation 2).",
     "THERMO-RUNTIME adds recovery-replay-pin (replay's eligible set unchanged when discovery is shared) and pickup-refusal-order (the ruled O6 order: approval refused before any replacement write), both against a real database.",
-    "SOL6-RUNTIME-FIX-2 adds lease-expiry-post-lock-clock (Sol 6 RUNTIME-1 at 158d6de through the command entry: a handback parked on the cap past its lease expiry refused LEASE_EXPIRED, its report retained, lease, hold, envelope, gates and versions unchanged; a person pickup parked on the cap past the bound lease's expiry fences it, classifies the old hold lease_expired_and_fenced and opens exactly one fresh hold, its lease running from the post-lock instant); and successor-bounds-exact (Sol 6 RUNTIME-2: a cap of 2^54 + 3 with 2^54 + 1 committed through valid holds, a successor ceiling of 4 refused SUCCESSOR_OUT_OF_BOUNDS with no report, no successor and nothing moved, and a ceiling of 2 accepted with a pending successor gate)."
+    "SOL6-RUNTIME-FIX-2 adds lease-expiry-post-lock-clock (Sol 6 RUNTIME-1 at 158d6de through the command entry: a handback parked on the cap past its lease expiry refused LEASE_EXPIRED, its report retained, lease, hold, envelope, gates and versions unchanged; a person pickup parked on the cap past the bound lease's expiry fences it, classifies the old hold lease_expired_and_fenced and opens exactly one fresh hold, its lease running from the post-lock instant); and successor-bounds-exact (Sol 6 RUNTIME-2: a cap of 2^54 + 3 with 2^54 + 1 committed through valid holds, a successor ceiling of 4 refused SUCCESSOR_OUT_OF_BOUNDS with no report, no successor and nothing moved, and a ceiling of 2 accepted with a pending successor gate).",
+    "PROTECTED-MIGRATIONS adds cap-storage-backstop (migrations 0024 and 0025 through the application role, on a fresh database and on one seeded at 0023 then upgraded: a USD envelope under an AUD cap, a cap currency change beneath an envelope and an envelope moved to another currency or cap refused by task_envelopes_cap_currency_fkey; a cap filled to exactly its ceiling, then one unit more on hold, on actual, by insert, by lowering the limit and by the second of two open transactions that each fit alone refused budget_caps_ceiling at commit; seeded rows unchanged by the upgrade; a 0023 database holding a mismatched or over-ceiling row stops before the rule with the row untouched)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -156,7 +157,8 @@
     "tests/authority/non-member-grants.test.ts",
     "tests/commands/agent-operation-id.test.ts",
     "tests/runtime/lease-expiry-post-lock-clock.test.ts",
-    "tests/runtime/successor-bounds-exact.test.ts"
+    "tests/runtime/successor-bounds-exact.test.ts",
+    "tests/runtime/cap-storage-backstop.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
