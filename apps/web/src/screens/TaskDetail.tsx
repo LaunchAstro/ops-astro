@@ -572,7 +572,11 @@ function Loaded(props: LoadedProps): ReactElement {
         </section>
       )}
 
-      <Lifecycle disabled={busy || dirty} onLifecycle={lifecycle} />
+      <Lifecycle
+        disabled={busy || dirty}
+        completed={task.completedAt !== null}
+        onLifecycle={lifecycle}
+      />
 
       <Assignee
         people={people.state}
