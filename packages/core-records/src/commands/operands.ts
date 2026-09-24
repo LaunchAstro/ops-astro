@@ -38,8 +38,8 @@ export function refuseCreateOperands(fields: unknown): CommandRefusal | undefine
 
 /**
  * `task.update` writes the fields it is sent as `task.create` does, so it needs
- * the same map. The five owning operations (`task.assign` and the rest, in
- * `tasks-state.ts`) read `fields` the same way and want the same check.
+ * the same map, and so do the five owning operations (`task.assign` and the
+ * rest), which `writeOwnedFields` in `tasks-state.ts` checks with this first.
  */
 export function refuseUpdateOperands(fields: unknown): CommandRefusal | undefined {
   return refuseCreateOperands(fields);
