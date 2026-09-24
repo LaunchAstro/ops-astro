@@ -21,7 +21,9 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { openEnvelopeOf } from './budget.ts';
 import { acquire, type LockSet } from './locks.ts';
+import { only } from './only.ts';
 import {
   AffectedSetChanged,
   affectedByVersions,
@@ -134,12 +136,8 @@ export async function lockProposal(
   // of a hold that is still live -- an envelope whose holds are all terminal is
   // just as real and just as much the parent of this version. Discovered here,
   // before the locks, and taken in the same ordered call as everything else.
-  const envelopes = await tx.query<{ readonly id: string; readonly cap_id: string }>(
-    `select id, cap_id from public.task_envelopes
-      where business_id = $1 and task_id = $2 and state = 'open'`,
-    [tx.businessId, request.taskId],
-  );
-  const accounting = envelopes[0] ?? null;
+  const envelope = await openEnvelopeOf(tx, request.taskId);
+  const accounting = envelope === undefined ? null : { id: envelope.id, cap_id: envelope.capId };
 
   // T4's "preallocate any new successor identities before lock acquisition;
   // this is identity preparation, not a write or approval". A lineage opened by
@@ -214,7 +212,7 @@ export async function proposeUnderLocks(
        returning id, state, task_id`,
       [tx.businessId, openingId, request.taskId, request.proposedByActorId, restarts],
     );
-    lineage = opened[0] as LineageRow;
+    lineage = only(opened, 'propose: the lineage inserted above');
   } else {
     const found = await tx.query<LineageRow>(
       `select id, state, task_id from public.proposal_lineages

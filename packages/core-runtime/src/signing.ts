@@ -234,6 +234,23 @@ export function decidedAtText(expression: string): string {
   return `to_char(${expression} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 }
 
+/** The columns of a stored row that `verifyChain` checks. */
+export interface ChainRow {
+  readonly seq: bigint | number;
+  readonly prev_hash: string;
+  readonly hash: string;
+  /**
+   * The persisted payload itself, not the digest the row asserts about it.
+   * Required (R9): a verifier given only the digest checks that a number
+   * matches a number, and altered content paired with its old digest,
+   * signature and hash passes every one of those checks.
+   */
+  readonly payload: Record<string, unknown>;
+  readonly payload_digest: string;
+  readonly signature: string;
+  readonly signing_key_id: string;
+}
+
 /**
  * Walk a chain and say where it first breaks. Returns `null` when it holds.
  * A verifier that returns a boolean makes "it is broken" and "it is broken at
@@ -241,26 +258,14 @@ export function decidedAtText(expression: string): string {
  *
  * `keys` resolves each row's `signing_key_id` to the key it was signed under,
  * so a chain that spans a key change verifies; an id it does not know is the
- * break. `linkFields` gives what the row's own link version covers.
+ * break. `linkFields` gives what the row's own link version covers, and is
+ * handed the caller's own row type, so it reads the columns the link needs
+ * without a cast.
  */
-export function verifyChain(
+export function verifyChain<R extends ChainRow>(
   keys: KeyResolver | SigningKey,
-  rows: readonly {
-    readonly seq: bigint | number;
-    readonly prev_hash: string;
-    readonly hash: string;
-    /**
-     * The persisted payload itself, not the digest the row asserts about it.
-     * Required (R9): a verifier given only the digest checks that a number
-     * matches a number, and altered content paired with its old digest,
-     * signature and hash passes every one of those checks.
-     */
-    readonly payload: Record<string, unknown>;
-    readonly payload_digest: string;
-    readonly signature: string;
-    readonly signing_key_id: string;
-  }[],
-  linkFields: (row: (typeof rows)[number]) => Record<string, unknown>,
+  rows: readonly R[],
+  linkFields: (row: R) => Record<string, unknown>,
 ): string | null {
   // A single key is a resolver with one entry, which is what every caller had
   // before rows could be signed under more than one.

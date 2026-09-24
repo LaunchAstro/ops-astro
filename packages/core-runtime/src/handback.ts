@@ -35,7 +35,13 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
-import { AffectedSetChanged, classifyUnderLocks, type Classification } from './recovery.ts';
+import { only } from './only.ts';
+import {
+  AffectedSetChanged,
+  classifyUnderLocks,
+  endLease,
+  type Classification,
+} from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -117,6 +123,78 @@ export interface HandedBack {
   readonly successorStepId: string | null;
 }
 
+/** Why a stale holder's report is retained rather than settled, and what it is told. */
+export interface StaleVerdict {
+  readonly code: 'LEASE_NOT_OWNED' | 'LEASE_EXPIRED';
+  readonly reason: string;
+  readonly fix: string;
+}
+
+/**
+ * The fence ladder, as a pure reading of the rows `handback` has under its
+ * locks. The five causes are asked in this order and the first that holds is
+ * the answer; `null` is a holder whose work may settle.
+ *
+ * `binding` is `null` until `handback` has read it. The lease's four causes
+ * are answered before that read on purpose, so a stale fence is refused
+ * without the binding query or its discovery-changed recheck ever running;
+ * asked again with the binding, those four hold as before and only the fifth
+ * can answer.
+ */
+export function staleVerdict(
+  lease: {
+    readonly state: string;
+    readonly fence: string;
+    readonly expired: boolean;
+    readonly current_fence: string;
+  },
+  binding: {
+    readonly version_id: string;
+    readonly superseded: boolean;
+    readonly lineage_state: string;
+  } | null,
+  request: { readonly leaseId: string; readonly fence: number },
+): StaleVerdict | null {
+  if (Number(lease.fence) !== request.fence) {
+    return {
+      code: 'LEASE_NOT_OWNED',
+      reason: `lease ${request.leaseId} holds fence ${lease.fence}, and fence ${request.fence} was presented`,
+      fix: 'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
+    };
+  }
+  if (Number(lease.fence) < Number(lease.current_fence)) {
+    return {
+      code: 'LEASE_NOT_OWNED',
+      reason: `fence ${request.fence} has been superseded by ${lease.current_fence} on this task`,
+      fix: 'The replacement owns the work. This report is retained, not settled.',
+    };
+  }
+  if (lease.state !== 'live') {
+    return {
+      code: 'LEASE_EXPIRED',
+      reason: `lease ${request.leaseId} is ${lease.state}`,
+      fix: 'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
+    };
+  }
+  if (lease.expired) {
+    return {
+      code: 'LEASE_EXPIRED',
+      reason: `lease ${request.leaseId} expired before this handback`,
+      fix: 'Pick the work up again under a new lease and a new fence. The report is retained.',
+    };
+  }
+  if (binding !== null && (binding.superseded || binding.lineage_state !== 'live')) {
+    return {
+      code: 'LEASE_NOT_OWNED',
+      reason: binding.superseded
+        ? `the version ${binding.version_id} this lease worked has been superseded, so its work cannot settle`
+        : `the lineage this lease worked is ${binding.lineage_state}, so its work cannot settle`,
+      fix: 'The report is retained, not accepted. Work the current version under a new pickup.',
+    };
+  }
+  return null;
+}
+
 export async function handback(
   tx: TenantQuery,
   request: HandbackRequest,
@@ -192,13 +270,7 @@ export async function handback(
        from public.leases l where l.business_id = $1 and l.id = $2`,
     [tx.businessId, request.leaseId],
   );
-  const lease = leases[0] as {
-    state: string;
-    fence: string;
-    expired: boolean;
-    current_fence: string;
-    holder_actor_id: string;
-  };
+  const lease = only(leases, 'handback: the lease locked above');
 
   // EX-01. Ownership before anything is written, retained reports included: a
   // caller that never held this lease has no work of its own on it to keep.
@@ -239,62 +311,26 @@ export async function handback(
    * row records which refusal retained it, so a reader can tell a retained
    * report from a settlement without joining anything.
    */
-  const retain = async (code: 'LEASE_NOT_OWNED' | 'LEASE_EXPIRED'): Promise<void> => {
-    await tx.query(
-      `insert into public.handback_reports
-         (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
-          outcome, refusal_code, report)
-       values ($1, $2, $3, $4, $5, $6, 'retained', $7, $8, $9::text::jsonb)`,
-      [
-        tx.businessId,
-        randomUUID(),
-        request.leaseId,
-        found.reservation_id,
-        found.run_id,
-        request.fence,
-        request.outcome,
-        code,
-        JSON.stringify(request.report),
-      ],
-    );
+  const refuseRetained = async (verdict: StaleVerdict): Promise<RuntimeResult<never>> => {
+    await insertReport(tx, {
+      id: randomUUID(),
+      leaseId: request.leaseId,
+      reservationId: found.reservation_id,
+      runId: found.run_id,
+      fence: request.fence,
+      outcome: request.outcome,
+      refusalCode: verdict.code,
+      report: request.report,
+    });
+    return refuse(verdict.code, verdict.reason, verdict.fix);
   };
 
   // The fence check, before anything else is written. Three distinct causes,
   // each with its own code, because a caller told the wrong one retries
   // wrongly. Nothing below changes the task, the gate, the current lease or
   // any money; the retained report is append-only evidence.
-  if (Number(lease.fence) !== request.fence) {
-    await retain('LEASE_NOT_OWNED');
-    return refuse(
-      'LEASE_NOT_OWNED',
-      `lease ${request.leaseId} holds fence ${lease.fence}, and fence ${request.fence} was presented`,
-      'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
-    );
-  }
-  if (Number(lease.fence) < Number(lease.current_fence)) {
-    await retain('LEASE_NOT_OWNED');
-    return refuse(
-      'LEASE_NOT_OWNED',
-      `fence ${request.fence} has been superseded by ${lease.current_fence} on this task`,
-      'The replacement owns the work. This report is retained, not settled.',
-    );
-  }
-  if (lease.state !== 'live') {
-    await retain('LEASE_EXPIRED');
-    return refuse(
-      'LEASE_EXPIRED',
-      `lease ${request.leaseId} is ${lease.state}`,
-      'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
-    );
-  }
-  if (lease.expired) {
-    await retain('LEASE_EXPIRED');
-    return refuse(
-      'LEASE_EXPIRED',
-      `lease ${request.leaseId} expired before this handback`,
-      'Pick the work up again under a new lease and a new fence. The report is retained.',
-    );
-  }
+  const fenced = staleVerdict(lease, null, request);
+  if (fenced !== null) return refuseRetained(fenced);
 
   // F3. The lease is live and fenced, and that is still not enough: the work
   // it holds is bound to one reservation and one approved version, and T4
@@ -330,16 +366,8 @@ export async function handback(
       'handback: the lease binding changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }
-  if (binding.superseded || binding.lineage_state !== 'live') {
-    await retain('LEASE_NOT_OWNED');
-    return refuse(
-      'LEASE_NOT_OWNED',
-      binding.superseded
-        ? `the version ${binding.version_id} this lease worked has been superseded, so its work cannot settle`
-        : `the lineage this lease worked is ${binding.lineage_state}, so its work cannot settle`,
-      'The report is retained, not accepted. Work the current version under a new pickup.',
-    );
-  }
+  const unbound = staleVerdict(lease, binding, request);
+  if (unbound !== null) return refuseRetained(unbound);
 
   // R6. This head exports no dispatch, no worker and no provider adapter, so a
   // reported cost -- including zero -- is a number nothing observed. Settling
@@ -370,34 +398,26 @@ export async function handback(
       where business_id = $1 and reservation_id = $2`,
     [tx.businessId, found.reservation_id],
   );
-  const attempt = attempts[0] as { id: string; marked: boolean };
+  const attempt = only(attempts, "handback: the reservation's attempt");
 
   // R4. The work, retained. It commits with the settlement below or with
   // neither of them, which is what makes it the handback's evidence rather
   // than a note somebody wrote near it.
   const reportId = randomUUID();
-  await tx.query(
-    `insert into public.handback_reports
-       (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
-        outcome, refusal_code, report)
-     values ($1, $2, $3, $4, $5, $6, 'settled', $7, null, $8::text::jsonb)`,
-    [
-      tx.businessId,
-      reportId,
-      request.leaseId,
-      found.reservation_id,
-      found.run_id,
-      request.fence,
-      request.outcome,
-      JSON.stringify(request.report),
-    ],
-  );
+  await insertReport(tx, {
+    id: reportId,
+    leaseId: request.leaseId,
+    reservationId: found.reservation_id,
+    runId: found.run_id,
+    fence: request.fence,
+    outcome: request.outcome,
+    refusalCode: null,
+    report: request.report,
+  });
 
-  await tx.query(
-    `update public.leases set state = 'released', released_at = now()
-      where business_id = $1 and id = $2`,
-    [tx.businessId, request.leaseId],
-  );
+  // Live and fenced under the lease lock (`staleVerdict` above), so the guard
+  // in `endLease` changes nothing here.
+  await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
   await tx.query(
     `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
@@ -537,24 +557,57 @@ export async function retainHistoricalReport(
   );
   const lease = leases[0];
   if (lease === undefined) return false;
+  await insertReport(tx, {
+    id: randomUUID(),
+    leaseId: intake.leaseId,
+    reservationId: lease.reservation_id,
+    runId: lease.run_id,
+    fence: intake.fence,
+    outcome: intake.outcome,
+    refusalCode: intake.refusalCode,
+    report: intake.report,
+  });
+  return true;
+}
+
+/**
+ * One `handback_reports` row, the only writer of that table. The disposition
+ * is read off the refusal rather than passed beside it: a settled report was
+ * refused by nothing and a retained one was kept by exactly one refusal, the
+ * rule `handback_reports_refusal_matches_disposition` enforces (0018), so
+ * the two cannot be handed in disagreeing.
+ */
+async function insertReport(
+  tx: TenantQuery,
+  row: {
+    readonly id: string;
+    readonly leaseId: string;
+    readonly reservationId: string;
+    readonly runId: string;
+    readonly fence: number;
+    readonly outcome: string;
+    readonly refusalCode: string | null;
+    readonly report: Readonly<Record<string, unknown>>;
+  },
+): Promise<void> {
   await tx.query(
     `insert into public.handback_reports
        (business_id, id, lease_id, reservation_id, run_id, fence, disposition,
         outcome, refusal_code, report)
-     values ($1, $2, $3, $4, $5, $6, 'retained', $7, $8, $9::text::jsonb)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::jsonb)`,
     [
       tx.businessId,
-      randomUUID(),
-      intake.leaseId,
-      lease.reservation_id,
-      lease.run_id,
-      intake.fence,
-      intake.outcome,
-      intake.refusalCode,
-      JSON.stringify(intake.report),
+      row.id,
+      row.leaseId,
+      row.reservationId,
+      row.runId,
+      row.fence,
+      row.refusalCode === null ? 'settled' : 'retained',
+      row.outcome,
+      row.refusalCode,
+      JSON.stringify(row.report),
     ],
   );
-  return true;
 }
 
 /**

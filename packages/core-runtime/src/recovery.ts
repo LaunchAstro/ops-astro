@@ -351,25 +351,44 @@ interface LiveWork {
   readonly delegation_id: string | null;
 }
 
+/** Whose live leases `discoverLiveWork` reads. */
+type LiveWorkTarget =
+  | { readonly lineageId: string }
+  | { readonly versionIds: readonly string[] }
+  /** EX-01: the leases issued under these delegations, and these person leases, which carry none. */
+  | { readonly delegationIds: readonly string[]; readonly personLeaseIds: readonly string[] };
+
 /**
  * Read-only: the live leases on a lineage's runs, or on the runs of a set of
  * versions. Cancellation and supersession both end the work these leases
  * authorise, so their leases and delegations belong to the lock set those
- * operations take, discovered here before any lock (F2, F3).
+ * operations take, discovered here before any lock (F2, F3). Authority loss
+ * reads the same leases by the delegations and person leases it may cost (F4).
+ *
+ * The run join filters nothing: every lease names a run in its own business.
  */
 export async function discoverLiveWork(
   tx: TenantQuery,
-  target: { readonly lineageId: string } | { readonly versionIds: readonly string[] },
+  target: LiveWorkTarget,
 ): Promise<readonly LiveWork[]> {
-  const byLineage = 'lineageId' in target;
+  const [scope, parameters] =
+    'lineageId' in target
+      ? ['run.lineage_id = $2::uuid', [target.lineageId]]
+      : 'versionIds' in target
+        ? ['run.version_id = any($2::uuid[])', [target.versionIds]]
+        : [
+            `(l.delegation_id = any($2::uuid[])
+               or (l.delegation_id is null and l.id = any($3::uuid[])))`,
+            [target.delegationIds, target.personLeaseIds],
+          ];
   return await tx.query<LiveWork>(
     `select l.id as lease_id, l.run_id, l.delegation_id
        from public.leases l
        join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
       where l.business_id = $1 and l.state = 'live'
-        and ${byLineage ? 'run.lineage_id = $2::uuid' : 'run.version_id = any($2::uuid[])'}
+        and ${scope}
       order by l.id`,
-    [tx.businessId, byLineage ? target.lineageId : target.versionIds],
+    [tx.businessId, ...parameters],
   );
 }
 
@@ -381,6 +400,24 @@ export function liveWorkLocks(work: readonly LiveWork[]): readonly LockRequest[]
       ? []
       : [{ lockClass: 'delegation' as const, id: row.delegation_id }]),
   ]);
+}
+
+/**
+ * End a live lease, as `released` (its work is over) or `expired` (a
+ * replacement takes its place). The `state = 'live'` guard is the one rule
+ * every caller shares: a lease already ended keeps the end it had, and its
+ * `released_at` is not moved. Under the caller's lock on the lease.
+ */
+export async function endLease(
+  tx: TenantQuery,
+  leaseId: string,
+  to: 'released' | 'expired',
+): Promise<void> {
+  await tx.query(
+    `update public.leases set state = $3, released_at = now()
+      where business_id = $1 and id = $2 and state = 'live'`,
+    [tx.businessId, leaseId, to],
+  );
 }
 
 /**
@@ -403,11 +440,7 @@ export async function retireWork(
     locks.require('lease', row.lease_id);
     if (row.delegation_id !== null) locks.require('delegation', row.delegation_id);
     // eslint-disable-next-line no-await-in-loop
-    await tx.query(
-      `update public.leases set state = 'released', released_at = now()
-        where business_id = $1 and id = $2 and state = 'live'`,
-      [tx.businessId, row.lease_id],
-    );
+    await endLease(tx, row.lease_id, 'released');
     if (row.delegation_id !== null) {
       // Cancellation or supersession. A delegation authority loss already
       // revoked keeps that first cause; this write is then a no-op.
@@ -442,6 +475,31 @@ async function reopenRuns(
 }
 
 /**
+ * Classify each row in the order given, under the caller's locks. One at a
+ * time, inside the caller's transaction: running these in parallel would
+ * interleave their reads of the same envelope totals. `prepare`, when given,
+ * runs for a row immediately before that row is classified.
+ */
+async function classifyAll<T>(
+  tx: TenantQuery,
+  rows: readonly T[],
+  locks: LockSet,
+  request: (row: T) => ClassifyRequest,
+  prepare?: (row: T) => Promise<void>,
+): Promise<Classification[]> {
+  const one = async (row: T): Promise<Classification> => {
+    if (prepare !== undefined) await prepare(row);
+    return await classifyUnderLocks(tx, request(row), locks);
+  };
+  const classified: Classification[] = [];
+  for (const row of rows) {
+    // eslint-disable-next-line no-await-in-loop
+    classified.push(await one(row));
+  }
+  return classified;
+}
+
+/**
  * Discover, lock, rediscover, classify. The rediscovery is the contract's
  * restart rule in one function: if the affected set changed between the
  * unlocked discovery and the locks, this transaction has the wrong lock set
@@ -461,34 +519,26 @@ async function lockAndClassify(
     );
   }
 
-  const classified: Classification[] = [];
-  for (const row of after) {
-    // F4. A revocation that committed without its classification also left
-    // its lease live, because the old handler wrote only the timestamp. The
-    // lease and delegation are already in this set, so finishing the
-    // transition here fences them rather than leaving an inert live claim on
-    // the task until it expires.
-    if (row.cause === 'authority_revoked' && row.lease_id !== null) {
-      // eslint-disable-next-line no-await-in-loop
+  return await classifyAll(
+    tx,
+    after,
+    locks,
+    (row) => ({ reservationId: row.reservation_id, cause: row.cause, causeId: row.cause_id }),
+    async (row) => {
+      // F4. A revocation that committed without its classification also left
+      // its lease live, because the old handler wrote only the timestamp. The
+      // lease and delegation are already in this set, so finishing the
+      // transition here fences them rather than leaving an inert live claim on
+      // the task until it expires.
+      if (row.cause !== 'authority_revoked' || row.lease_id === null) return;
       await retireWork(
         tx,
         [{ lease_id: row.lease_id, run_id: row.run_id, delegation_id: row.delegation_id }],
         locks,
       );
-      // eslint-disable-next-line no-await-in-loop
       await reopenRuns(tx, [row.run_id], locks);
-    }
-    // One at a time, inside the caller's transaction. Running these in
-    // parallel would interleave their reads of the same envelope totals.
-    // eslint-disable-next-line no-await-in-loop
-    const one = await classifyUnderLocks(
-      tx,
-      { reservationId: row.reservation_id, cause: row.cause, causeId: row.cause_id },
-      locks,
-    );
-    classified.push(one);
-  }
-  return classified;
+    },
+  );
 }
 
 /**
@@ -523,7 +573,6 @@ async function discoverEligible(
                  when held_delegation.revoked_at is not null then held_delegation.id
                  else res.lease_id end as cause_id
        ${AFFECTED_JOINS}
-       left join public.leases lease on lease.business_id = res.business_id and lease.id = res.lease_id
        left join public.delegations held_delegation
          on held_delegation.business_id = res.business_id
         and held_delegation.id = held_lease.delegation_id
@@ -540,7 +589,7 @@ async function discoverEligible(
              -- exactly-once case W04 asks recovery to finish. It is still not
              -- a clock: the lease's own terminal state is the fact, and a live
              -- lease -- expired by its timestamp or not -- is not in this set.
-             or lease.state in ('expired', 'released'))
+             or held_lease.state in ('expired', 'released'))
       order by res.id`,
     [tx.businessId, lineageId],
   );
@@ -572,13 +621,7 @@ export async function classifyVersions(
       order by id`,
     [tx.businessId, versionIds],
   );
-  const classified: Classification[] = [];
-  for (const row of rows) {
-    // eslint-disable-next-line no-await-in-loop
-    const one = await classifyUnderLocks(tx, { reservationId: row.id, cause, causeId }, locks);
-    classified.push(one);
-  }
-  return classified;
+  return await classifyAll(tx, rows, locks, (row) => ({ reservationId: row.id, cause, causeId }));
 }
 
 /** Read-only: the reservations a set of versions still holds, with their parents. */
@@ -682,16 +725,11 @@ export async function cancelAndClassify(
     [tx.businessId, request.lineageId],
   );
 
-  const classified: Classification[] = [];
-  for (const row of after) {
-    // eslint-disable-next-line no-await-in-loop
-    const one = await classifyUnderLocks(
-      tx,
-      { reservationId: row.reservation_id, cause: 'lineage_cancelled', causeId: row.cause_id },
-      locks,
-    );
-    classified.push(one);
-  }
+  const classified = await classifyAll(tx, after, locks, (row) => ({
+    reservationId: row.reservation_id,
+    cause: 'lineage_cancelled',
+    causeId: row.cause_id,
+  }));
   return { ok: true, value: classified };
 }
 
@@ -706,6 +744,17 @@ export type RevocationWrite<T> =
       /** EX-01: the person's own leases, which carry no delegation, that lost it. */
       readonly lostLeases?: readonly string[];
     };
+
+/** The two columns a lost unit is matched on, which live work and held rows share. */
+type Leased = Pick<Affected, 'lease_id' | 'delegation_id'>;
+
+/** One delegation or person lease whose work authority a revocation cost. */
+interface LostUnit {
+  readonly match: (row: Leased) => boolean;
+  readonly causeId: string;
+  /** The delegation to revoke, when the unit is one. A person's lease has none. */
+  readonly revoke?: string;
+}
 
 export interface AuthorityLoss<T> {
   readonly value: T;
@@ -745,17 +794,8 @@ export async function classifyAuthorityLoss<T>(
 ): Promise<AuthorityLoss<T>> {
   const ids = [...new Set(request.delegationIds)].toSorted();
   const leaseIds = [...new Set(request.personLeases?.leaseIds ?? [])].toSorted();
-  const leaseCause = request.personLeases?.causeId ?? null;
   const discoverWork = async (): Promise<readonly LiveWork[]> =>
-    await tx.query<LiveWork>(
-      `select l.id as lease_id, l.run_id, l.delegation_id
-         from public.leases l
-        where l.business_id = $1 and l.state = 'live'
-          and (l.delegation_id = any($2::uuid[])
-               or (l.delegation_id is null and l.id = any($3::uuid[])))
-        order by l.id`,
-      [tx.businessId, ids, leaseIds],
-    );
+    await discoverLiveWork(tx, { delegationIds: ids, personLeaseIds: leaseIds });
   const discoverHeld = async (): Promise<readonly Affected[]> =>
     await tx.query<Affected>(
       `select ${AFFECTED_COLUMNS}, 'authority_revoked' as cause,
@@ -765,7 +805,7 @@ export async function classifyAuthorityLoss<T>(
           and (held_lease.delegation_id = any($2::uuid[])
                or (held_lease.delegation_id is null and held_lease.id = any($3::uuid[])))
         order by res.id`,
-      [tx.businessId, ids, leaseIds, leaseCause],
+      [tx.businessId, ids, leaseIds, request.personLeases?.causeId ?? null],
     );
 
   const workBefore = await discoverWork();
@@ -787,52 +827,56 @@ export async function classifyAuthorityLoss<T>(
   const written = await request.revoke(locks);
   if (!written.applied) return { value: written.value, applied: false, classified: [] };
 
+  // Each unit that lost its authority, delegations first and then a person's
+  // own leases. `match` picks out the unit's live work and its holds, and
+  // `causeId` is the recorded cause those holds are classified under.
   const lost = new Set(written.lost);
+  const lostLeases = new Set(written.lostLeases ?? []);
+  const person = request.personLeases;
+  const units: readonly LostUnit[] = [
+    ...ids
+      .filter((each) => lost.has(each))
+      .map((id) => ({ match: (row: Leased) => row.delegation_id === id, causeId: id, revoke: id })),
+    ...(person === undefined
+      ? []
+      : leaseIds
+          .filter((each) => lostLeases.has(each))
+          .map((leaseId) => ({
+            match: (row: Leased) => row.lease_id === leaseId && row.delegation_id === null,
+            causeId: person.causeId,
+          }))),
+  ];
+
   const classified: Classification[] = [];
   const ended: string[] = [];
-  for (const id of ids.filter((each) => lost.has(each))) {
-    locks.require('delegation', id);
-    // Revoked here as well as by `delegation.revoke`'s own write, because a
-    // grant revocation costs the delegation its authority without touching
-    // its row, and the classifier's fact is that row's `revoked_at`. The cause
-    // is recorded in the same write and the same transaction (root ruling
-    // R-B): `authority_lost`, which the agent's next call on that credential
-    // answers as `DELEGATION_NARROWED`. After an explicit `delegation.revoke`
-    // the row is already revoked with its own cause and this writes nothing.
-    // eslint-disable-next-line no-await-in-loop
-    await revokeDelegation(tx, id, 'authority_lost');
-    const work = workAfter.filter((row) => row.delegation_id === id);
-    // eslint-disable-next-line no-await-in-loop
+  const end = async (unit: LostUnit): Promise<void> => {
+    if (unit.revoke !== undefined) {
+      locks.require('delegation', unit.revoke);
+      // Revoked here as well as by `delegation.revoke`'s own write, because a
+      // grant revocation costs the delegation its authority without touching
+      // its row, and the classifier's fact is that row's `revoked_at`. The
+      // cause is recorded in the same write and the same transaction (root
+      // ruling R-B): `authority_lost`, which the agent's next call on that
+      // credential answers as `DELEGATION_NARROWED`. After an explicit
+      // `delegation.revoke` the row is already revoked with its own cause and
+      // this writes nothing.
+      await revokeDelegation(tx, unit.revoke, 'authority_lost');
+    }
+    const work = workAfter.filter((row) => unit.match(row));
     await retireWork(tx, work, locks);
     ended.push(...work.map((row) => row.run_id));
-    for (const row of heldAfter.filter((each) => each.delegation_id === id)) {
-      // eslint-disable-next-line no-await-in-loop
-      const one = await classifyUnderLocks(
-        tx,
-        { reservationId: row.reservation_id, cause: 'authority_revoked', causeId: id },
-        locks,
-      );
-      classified.push(one);
-    }
-  }
-  const lostLeases = new Set(written.lostLeases ?? []);
-  for (const leaseId of leaseIds.filter((each) => lostLeases.has(each))) {
-    if (leaseCause === null) throw new Error('authority loss: a person lease lost with no cause');
-    const work = workAfter.filter((row) => row.lease_id === leaseId && row.delegation_id === null);
+    const holds = heldAfter.filter((row) => unit.match(row));
+    classified.push(
+      ...(await classifyAll(tx, holds, locks, (row) => ({
+        reservationId: row.reservation_id,
+        cause: 'authority_revoked',
+        causeId: unit.causeId,
+      }))),
+    );
+  };
+  for (const unit of units) {
     // eslint-disable-next-line no-await-in-loop
-    await retireWork(tx, work, locks);
-    ended.push(...work.map((row) => row.run_id));
-    for (const row of heldAfter.filter(
-      (each) => each.lease_id === leaseId && each.delegation_id === null,
-    )) {
-      // eslint-disable-next-line no-await-in-loop
-      const one = await classifyUnderLocks(
-        tx,
-        { reservationId: row.reservation_id, cause: 'authority_revoked', causeId: leaseCause },
-        locks,
-      );
-      classified.push(one);
-    }
+    await end(unit);
   }
   await reopenRuns(tx, ended, locks);
   return { value: written.value, applied: true, classified };

@@ -31,6 +31,7 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
+import { only } from './only.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** One renewal's reach, the same ceiling a pickup's own lease has. */
@@ -39,6 +40,8 @@ export const MAXIMUM_RENEWAL_SECONDS: number = 60 * 60;
 export const MAXIMUM_LEASE_LIFETIME_SECONDS: number = 8 * 60 * 60;
 
 export interface HeartbeatRequest {
+  /** Optional so existing agent callers stay unchanged; a person is always named. */
+  readonly claimant?: 'agent';
   readonly leaseId: string;
   readonly fence: number;
   /** The agent actor the session resolved, never a body field. */
@@ -77,7 +80,7 @@ export async function heartbeat(
   tx: TenantQuery,
   request: HeartbeatRequest | PersonHeartbeatRequest,
 ): Promise<RuntimeResult<Renewed>> {
-  const delegationId = 'claimant' in request ? null : request.delegationId;
+  const delegationId = request.claimant === 'person' ? null : request.delegationId;
   // A constant reason: the presented lease and fence are not echoed, so a
   // foreign, a fabricated and a same-business lease answer in the same bytes
   // (root ruling 2).
@@ -137,7 +140,7 @@ export async function heartbeat(
   // A person's lease carries no delegation, so its liveness is the person's
   // own current authority instead, and losing it is the same answer.
   const authorityLive =
-    'claimant' in request
+    request.claimant === 'person'
       ? (
           await checkAuthority(tx, request.subjects, {
             collection: request.collection,
@@ -146,7 +149,7 @@ export async function heartbeat(
           })
         ).ok
       : lease.delegation_live;
-  if (!authorityLive && 'claimant' in request && lease.state === 'live' && !lease.expired) {
+  if (!authorityLive && request.claimant === 'person' && lease.state === 'live' && !lease.expired) {
     return refuse(
       'SCOPE_NOT_GRANTED',
       `no live grant of yours covers work on task ${lease.task_id} any more`,
@@ -177,7 +180,7 @@ export async function heartbeat(
       lockedAt,
     ],
   );
-  const expiresAt = (renewed[0] as { readonly expires_at: Date }).expires_at;
+  const expiresAt = only(renewed, 'heartbeat: the live lease renewed above').expires_at;
   // Copied from the lease row in SQL, not through the `Date` above, which
   // keeps milliseconds where the column keeps microseconds.
   if (delegationId === null) {

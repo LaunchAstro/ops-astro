@@ -85,7 +85,6 @@ import {
   type SigningKey,
   decidedAtText,
   decisionLink,
-  keyResolver,
   linkVersionOf,
   verifyChain,
 } from '../../../core-runtime/src/signing.ts';
@@ -127,6 +126,9 @@ export interface VerifiedDecisionRow {
 export interface VerifiedDecision extends VerifiedDecisionRow {
   readonly link_version: LinkVersion;
 }
+
+/** A row as `verifyChain` walks it: `seq` is a number rather than its text. */
+type ChainedDecision = Omit<VerifiedDecision, 'seq'> & { readonly seq: number };
 
 /**
  * The decisions on these lineages, oldest first, each verified along the
@@ -211,10 +213,9 @@ function verified(
     }
     versioned.push(Object.assign({}, row, { link_version: version }));
   }
-  const resolve = typeof keys === 'function' ? keys : keyResolver([keys]);
   const broken = verifyChain(
-    resolve,
-    versioned.map((row) => Object.assign({}, row, { seq: Number(row.seq) })),
+    keys,
+    versioned.map((row): ChainedDecision => Object.assign({}, row, { seq: Number(row.seq) })),
     linkFields,
   );
   if (broken !== null) throw new DecisionIntegrityError(broken);
@@ -459,22 +460,21 @@ async function readSnapshot(
  * field added there and not here fails every read, which is the loud
  * direction to be wrong in.
  */
-function linkFields(row: { readonly seq: number | bigint }): Record<string, unknown> {
-  const full = row as unknown as VerifiedDecision;
-  return decisionLink(full.link_version, {
-    id: full.id,
-    seq: Number(full.seq),
-    gate: full.gate_id,
-    version: full.version_id,
-    decision: full.decision,
-    person: full.decided_by_person_id,
-    payloadDigest: full.payload_digest,
-    signature: full.signature,
-    round: full.round,
-    decidedAt: full.decided_at_text,
-    lineage: full.lineage_id,
-    actor: full.decided_by_actor_id,
-    evidence: full.evidence_digest,
-    key: full.signing_key_id,
+function linkFields(row: ChainedDecision): Record<string, unknown> {
+  return decisionLink(row.link_version, {
+    id: row.id,
+    seq: row.seq,
+    gate: row.gate_id,
+    version: row.version_id,
+    decision: row.decision,
+    person: row.decided_by_person_id,
+    payloadDigest: row.payload_digest,
+    signature: row.signature,
+    round: row.round,
+    decidedAt: row.decided_at_text,
+    lineage: row.lineage_id,
+    actor: row.decided_by_actor_id,
+    evidence: row.evidence_digest,
+    key: row.signing_key_id,
   });
 }
