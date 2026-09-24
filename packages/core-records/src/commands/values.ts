@@ -17,6 +17,7 @@ import type { FieldDefinition } from '../records/fields.ts';
 import { isLive } from '../records/fields.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { FieldValues } from './requests.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 const NUL = String.fromCodePoint(0);
 
@@ -25,12 +26,10 @@ const NUL = String.fromCodePoint(0);
 const ISO_8601 =
   /^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/u;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean {
   switch (valueType) {
     case 'uuid':
-      return typeof value === 'string' && UUID.test(value);
+      return isUuid(value);
     case 'text':
       // A NUL byte cannot be stored in a text column or a jsonb string, so a
       // value carrying one is refused here rather than raised on by the

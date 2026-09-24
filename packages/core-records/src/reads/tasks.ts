@@ -25,8 +25,7 @@ import { readFieldDefinitions } from '../records/field-store.ts';
 import { isLive } from '../records/fields.ts';
 import { READS } from '../commands/surface.ts';
 import { readTaskProposals } from './proposals.ts';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+import { isUuid } from '../tenancy/ids.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -150,7 +149,7 @@ export async function resolveTaskId(
   taskTypeId: string,
   given: string,
 ): Promise<string | undefined> {
-  if (UUID.test(given)) return given;
+  if (isUuid(given)) return given;
   const rows = await tx.query<{ readonly id: string }>(
     `select r.id from records r
       where r.business_id = $1 and r.record_type_id = $2 and r.txt_1 = $3
@@ -215,7 +214,7 @@ export async function readTaskDetail(
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
   // answer a caller can learn from, which is one more than they should get.
-  if (!UUID.test(recordId)) return undefined;
+  if (!isUuid(recordId)) return undefined;
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
@@ -254,7 +253,7 @@ export async function readSharedTask(
   recordId: string,
   commentTypeId: string | undefined,
 ): Promise<SharedTaskView | undefined> {
-  if (!UUID.test(recordId)) return undefined;
+  if (!isUuid(recordId)) return undefined;
   const rows = await tx.query<Readonly<Record<string, unknown>>>(
     `select r.* from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
@@ -282,13 +281,16 @@ export async function readSharedTask(
  * Unboarded is a real answer and not a missing filter: `task.create` takes no
  * board (acceptance B1), so every task starts here and a board read that
  * quietly returned everything would make the first case untestable.
+ *
+ * A named board is already a live task by the time it gets here: `task.board`
+ * refuses anything else, a malformed identifier included, through
+ * `boardExists` before it calls this.
  */
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
 ): Promise<readonly TaskSummary[]> {
-  if (board !== null && !UUID.test(board)) return [];
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null

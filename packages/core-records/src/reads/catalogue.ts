@@ -43,6 +43,7 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -320,11 +321,9 @@ function fromPresetPlan(refusal: PresetPlanRefusal): CommandRefusal {
   return refuseCommand(refusal.code, refusal.names, refusal.fixes);
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 /** Whether `board` names a live task in the caller's business: `task.move`'s own check. */
 async function boardExists(tx: TenantQuery, taskTypeId: string, board: string): Promise<boolean> {
-  if (!UUID.test(board)) return false;
+  if (!isUuid(board)) return false;
   const found = await tx.query<{ readonly id: string }>(
     `select id from records
       where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,

@@ -30,8 +30,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { checkAuthority, issueGrant, revokeGrant, type Subject } from './grants.ts';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+import { isUuid } from '../tenancy/ids.ts';
 
 /** Who is sharing: the person, and the actor the grant row names as granter. */
 export interface Sharer {
@@ -116,7 +115,7 @@ async function refuseShare(
   sharer: Sharer,
   request: ShareRequest,
 ): Promise<ShareDecision<never> | undefined> {
-  if (!UUID.test(request.recordId) || !UUID.test(request.personId)) return notFound();
+  if (!isUuid(request.recordId) || !isUuid(request.personId)) return notFound();
   const authorised = await checkAuthority(tx, subjectsOfSharer(sharer), {
     collection: request.collection,
     action: 'share',
