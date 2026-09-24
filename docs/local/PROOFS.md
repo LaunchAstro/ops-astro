@@ -2,10 +2,9 @@
 
 # The assembled proofs, as lane L5 built them
 
-`tests/acceptance/` takes the mechanisms the other lanes built and checks,
-through the surfaces a caller has, whether they hold. None of it is a plan and
-none of it counts declarations. Where a proof could not be written, this file
-names it.
+`tests/acceptance/` checks whether the mechanisms the other lanes built hold,
+through the surfaces a caller has. None of it is a plan and none of it counts
+declarations. Where a proof could not be written, this file names it.
 
 ## Current counts, and what they are
 
@@ -61,13 +60,13 @@ The final live verification at the final head is owed and has not been run.
 | `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11))                                                               | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved                                | tested (lane run on `20363eb`)                                                |
 | The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                                                                                   | 30 of 30, twice, on the RESTART-LEGS lane's own stack; skipped in the counts above                   | tested (lane run on `90ec7c6`); not run at a merge trial since                |
 
-The 24 skipped in `pnpm test` include the suites that spawn the real
-`server.ts` and skip without `SURFACE_API_PORT`
-(`tests/api/server-onerror.test.ts`, `tests/cli/mounted-cli.test.ts`),
-`tests/runtime/pickup-replay-restart.test.ts`, which skips without its own
-declared container, and the restart cases, which skip without their disposable
-container. RESTART-LEGS added five restart cases, which is why the skipped
-count went from 19 at `9e2192e` to 24 at `bbdf2b2` with the same 5,199 passed.
+The 24 skipped in `pnpm test` include three groups. The suites that spawn the
+real `server.ts` skip without `SURFACE_API_PORT`
+(`tests/api/server-onerror.test.ts`, `tests/cli/mounted-cli.test.ts`).
+`tests/runtime/pickup-replay-restart.test.ts` skips without its own declared
+container. The restart cases skip without their disposable container.
+RESTART-LEGS added five restart cases, which is why the skipped count went from
+19 at `9e2192e` to 24 at `bbdf2b2` with the same 5,199 passed.
 The named-suite list and why the port suites stay unnamed are in
 [database-conformance.md](../agents/database-conformance.md).
 
@@ -77,14 +76,14 @@ are 35 operations × 27 top-level keys × API, CLI and web (2,835: the 22
 in `d06-cases.ts`), plus 7 `fields` operations × 3 installed system fields on
 each of the three surfaces (63). The first two plain tests read the installed
 field metadata and list the operations whose bodies carry record fields. That
-settles the old 2,375 against 2,373: at `9221c29` the file ran 2,373 cells and
+settles the old 2,375 against 2,373. At `9221c29` the file ran 2,373 cells and
 the same two tests, 2,375 in all. Each of the 2,898 cells runs between a
 passing positive control and a passing clean retry on the same work, and a
 third plain test asserts that from the executed tally. That includes person
 `task.pickup`, `task.heartbeat` and `task.handback`, which run on the person's
-own work (EX-01, those three branches of `handlers.ts`): a fresh approved
-reservation, or a lease the person's own pickup took. Until PROOF-CLOSURE
-their 243 cells sent fabricated ids with no control and no retry.
+own work (EX-01, those three branches of `handlers.ts`). That work is a fresh
+approved reservation, or a lease the person's own pickup took. Until
+PROOF-CLOSURE their 243 cells sent fabricated ids with no control and no retry.
 `d06-agent.test.ts` holds the contract and exclusion cells for the agent
 route, including the top-level system-field keys, which the agent route now
 also refuses `FIELD_NOT_WRITABLE`.
@@ -93,8 +92,8 @@ The in-flight half of I10 is `tests/acceptance/i10-inflight.test.ts`. A read
 is held at admission (after `effectiveGrants`) in its open transaction while
 `grant.revoke` commits over HTTP. The read finishes with its content, and the
 next call is `AUTH_NO_MEMBERSHIP` (R4 on a `shareRecord` share) or
-`SCOPE_NOT_GRANTED` (a member on a record grant). The overlap is shown by
-`pg_stat_activity` and the audit `seq` order.
+`SCOPE_NOT_GRANTED` (a member on a record grant). `pg_stat_activity` and the
+audit `seq` order show the overlap.
 
 ## How to run them
 
@@ -109,7 +108,7 @@ Every file here builds its own throwaway database, but they share one Postgres
 _server_, and `restart-and-expiry.test.ts` restarts that server's container. In
 parallel, the restart kills the sibling suites' connections and they fail with
 `terminating connection due to administrator command` and `ECONNREFUSED`, a
-failure that says nothing about the product. Run one file at a time, they
+failure that says nothing about the product. Run one file at a time and they
 pass. Vitest's file parallelism is set in `vitest.config.ts`, which this lane
 does not own, so the run passes the flag instead of editing that config.
 
@@ -138,8 +137,8 @@ Every case runs in process against the real application.
 `createApi` with the real database, the real `executeRead`, the real
 `executeAgentCommand` and the real GoTrue-shaped verifier. That is the same
 composition `apps/api/server.ts` binds a port to. The suite drives it through
-`app.fetch`. There is no network and no API server, and nothing below the
-boundary is substituted.
+`app.fetch`. There is no network and no API server, and the suite substitutes
+nothing below the boundary.
 
 `tests/api/boundary.test.ts` stubs the database on purpose, because its
 questions are the transport's. The questions here are the other half: whether
@@ -216,8 +215,8 @@ Last measured on branch `slice/matrix-docs`, from `local/working-slice` at
 | Declared and not landed                               | none                   |
 | Person-prefix untyped faults                          | none                   |
 
-Web `read()` reach: 7 of 7 declared reads; none reachable only through
-`mutate()`. The five new rows are L3-CONTROLS' support controls.
+The web client's `read()` reaches 7 of 7 declared reads, and none is reachable
+only through `mutate()`. The five new rows are L3-CONTROLS' support controls.
 
 Reachable means routed, not permitted: the request arrives at the operation
 that owns the rule. Whether the operation then says yes or no is authority, and
@@ -322,8 +321,8 @@ The four `session.capabilities` rows now pass with the contract's outcome.
 (e) `noah`, a member holding nothing, is refused `SCOPE_NOT_GRANTED` (minimum
 contract 8.2 case 3); (e) `mia`, who holds grants, is answered her own pairs as
 the control. (h) before a pickup the agent login is refused
-`DELEGATION_EXCLUDES_OPERATION` (case 9); (i) under the live delegation it is
-answered with `purposeScope` the picked-up task.
+`DELEGATION_EXCLUDES_OPERATION` (case 9); (i) under the live delegation its
+answer has `purposeScope` set to the picked-up task.
 
 Twenty-three rows are not applicable: (e) for `mia`, one on each pair she
 holds. Case 3 is R2 against every endpoint (minimum contract line 493), and R2
@@ -351,11 +350,10 @@ once executed alternatives, pass as well.
 Nineteen rows are the (c)/(d) case, recorded as `cd-not-applicable` under
 `ada`, one for each operation the swap does not reach (ledger I03, root ruling
 3). `alternativeFor` in `tests/acceptance/cd-alternatives.ts` builds each
-reason, and `identifier-negatives.test.ts`
-titles its cases from the same `CASE` table, so a row and the case it cites
-cannot drift apart. Ten rows are executed alternatives: the cited
-`identifier-negatives.test.ts` case compares a foreign and a fabricated
-operand by status and raw bytes, audited at home.
+reason, and `identifier-negatives.test.ts` titles its cases from the same
+`CASE` table, so a row and the case it cites cannot drift apart. Ten rows are
+executed alternatives: the cited `identifier-negatives.test.ts` case compares a
+foreign and a fabricated operand by status and raw bytes, audited at home.
 
 | Operations                        | Operand                    | `identifier-negatives.test.ts` case                                                |
 | --------------------------------- | -------------------------- | ---------------------------------------------------------------------------------- |
@@ -374,9 +372,9 @@ Nine rows are not applicable, because the operation names no target:
 `settings.read` and `session.capabilities`. With no foreign target there is
 nothing to compare with a fabricated one (SC2, root ruling 3). Each row cites
 the case "refuses a target a target-free operation has no use for (SC2
-reading)", which shows a positive request moves and shows nothing of bravo's,
-and refuses a `recordId` aimed at bravo `COMMAND_BODY_INVALID` with its audit
-row in alpha and none in bravo.
+reading)". That case shows a positive request moves and shows nothing of
+bravo's. It refuses a `recordId` aimed at bravo `COMMAND_BODY_INVALID`, with
+its audit row in alpha and none in bravo.
 
 Case (k) drives the three operations the old rows only described:
 
@@ -432,9 +430,9 @@ the engine classifies. On `task.update` it refuses only `source`
 `protected-fields.test.ts` asserts that too, on every surface, creating
 nothing. An update that carries both `source` and `intake_state` is answered
 `SOURCE_SPOOFED`, because `source` is checked first. The same codes are
-asserted by name in `tests/commands/task-fields.test.ts:103-115`. Every status
-is read through `statusOf`, which reads the status column of the register
-itself, so the boundary is proved to use the register rather than a number it
+asserted by name in `tests/commands/task-fields.test.ts:103-115`. The test reads
+every status through `statusOf`, which reads the status column of the register
+itself, so it proves the boundary uses the register rather than a number it
 chose.
 
 The positive controls sit beside them, because a server that refused
@@ -447,10 +445,10 @@ and clear, and an ordinary `title`/`due`/`priority` edit.
 operation, so there is no positive control to put beside them. The test file
 says so.
 
-**The proof is falsifiable, and a run showed it.** With the `assignee` case
-routed through `task.assign`, the operation that writes the field, for the
-demonstration, the database readback failed 33 cases
-with `+ "assignee": "cfaa5cb8-…"`, then passed 38 again on revert. The
+**The proof is falsifiable, and a run showed it.** For the demonstration, the
+`assignee` case went through `task.assign`, the operation that writes the
+field. The database readback then failed 33 cases with
+`+ "assignee": "cfaa5cb8-…"`, and passed 38 again on revert. The
 refusal-writes-anyway failure this proof exists to catch is reachable.
 
 ## Item 5: the restart proof (W06), as one named run
@@ -639,13 +637,16 @@ lane does not own.
   `task:decide` (`scripts/local-seed.mjs:98`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
   holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
-  `world.ts`'s `MEMBER_ACTIONS` is `read`, `write`, `assign` and `comment` on
-  `task` only. The matrix does not depend on it, because it reads grants back
-  out of the `grants` table rather than trusting the list, but `mia` is not
-  the same person in the two places.
-- **`lockTask` is not exported.** The proof hand-writes the predicate-less
-  variant of the record lookup instead of taking it from the module it
-  proves.
+  the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)
+  is `read`, `write`, `assign` and `comment` on `task` only. The matrix does
+  not depend on it, because it reads grants back out of the `grants` table
+  rather than trusting the list, but `mia` is not the same person in the two
+  places.
+- **Closed: `lockTask` was not exported.** It is exported from
+  `packages/core-records/src/commands/prepare.ts` now, and
+  `tests/tenancy/production-lookup.test.ts` runs it under each mutation.
+  `predicate-rls.test.ts` still hand-writes the predicate-less variant of the
+  record lookup, as supplementary evidence (its header says so).
 - **`SPOOFABLE_ON_UPDATE` is not exported.** `tasks-write.ts` holds `['source']`
   privately for `task.update` (and `SPOOFABLE_ON_CREATE`, `['source',
 'intake_state']`, for `task.create`), so `PROVENANCE_FIELDS` in
@@ -727,10 +728,10 @@ Two separate `vitest run` invocations, one file each, also work.
 
 `tests/browser/d06-mounted.mjs` (`pnpm verify:d06-mounted`, beside
 `verify:browser` rather than inside it) runs the in-process D06 grid again in
-a real Chromium page. The person signs in through GoTrue, and every request
-is made by the `OperationsClient` module Vite serves to that page
-(`throughClient`), against the API on a socket and a real Postgres. The grid
-is not copied. The operations, keys, probe values and durable comparison come
+a real Chromium page. The person signs in through GoTrue, and the
+`OperationsClient` module Vite serves to that page makes every request
+(`throughClient`), against the API on a socket and a real Postgres. The grid is
+not copied. The operations, keys, probe values and durable comparison come
 from `tests/acceptance/d06-cases.ts`, and the positive bodies from
 `role-case-bodies.ts` with their `asPerson` pointed at the page.
 
@@ -837,11 +838,11 @@ suite is green as committed.
   mutants. T04 (c): the `DECISION_INTEGRITY` read, captured on the shipped
   wrapper, is begin, local setting, work, `rollback`, with nothing outside. T05:
   the session-wide mutant, run through pooled-crossover's sequence on one
-  backend, leaves A's id at the `:168` read and B's at the `:206` read. The
-  restored wrapper leaves `''` at both. A session-wide setting made inside a
-  transaction that rolls back is undone with it, so `:206` goes red on the
-  previous commit's leftover, not on A's rollback. The suite shows this on a
-  fresh backend.
+  backend, leaves A's id at the `pooled-crossover.test.ts:168` read and B's at
+  the `:206` read. The restored wrapper leaves `''` at both. A session-wide
+  setting made inside a transaction that rolls back is undone with it, so
+  `:206` goes red on the previous commit's leftover, not on A's rollback. The
+  suite shows this on a fresh backend.
 - **Signature only:** `tests/reads/decision-signature-only.test.ts` (G02 a). Only
   `gate_decisions.signature` is altered. With the stored hash kept, and with the
   unkeyed chain recomputed over the new signature, the HTTP read answers 500
@@ -866,8 +867,9 @@ Four suites close the L6 rows G04, G05, W02 (b, c), W04 (schedules) and W05
   The retry that loses the identity claim is rolled back and replays on the
   caller's retry, because the agent entry does not retry that loss itself. W04:
   pickup against `task.cancel` in both orders, and two pickups over an expired
-  lease. One outcome, the hold classified at most once (the envelope's held
-  total equals its held reservations) and no reservation revived.
+  lease. Each ends with one outcome, the hold classified at most once (the
+  envelope's held total equals its held reservations) and no reservation
+  revived.
 - **Cases:** `tests/runtime/l6-cases.test.ts`. G04: a held, unleased
   reservation superseded by a real `task.propose` is `RESERVATION_NOT_CLAIMABLE`
   with no runtime row changed and one refused audit row. G05 ruling 3: a
@@ -965,8 +967,8 @@ includes every case below. `retry-bounds`, `projection-snapshot` and
     affected set between discovery and locks. The case asserts the revocation
     applies in one transaction, its first locking statement is the grant row,
     and at least one waiter is observed.
-  - Red: with both entries' bound widened to three attempts, a throwaway edit
-    since reverted, the first two cases failed.
+  - Red: a throwaway edit, since reverted, widened both entries' bound to three
+    attempts, and the first two cases failed.
 - **Grant-expiry intake:** `tests/runtime/historical-handback-intake.test.ts`
   gains a `grant-expired` path of 3 cases: 13 of 13 at `20c57b0`, and 2 failed
   at `9e2192e`. The person's only task write grant expires while the agent's
