@@ -20,6 +20,24 @@ import type { FieldValues } from './requests.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 const NUL = String.fromCodePoint(0);
+// With the `u` flag a paired surrogate is one code point and does not match.
+const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
+
+/**
+ * A string `records.data` can hold. Every field value lands in that jsonb
+ * column, and a jsonb string refuses U+0000 and an unpaired surrogate alike.
+ */
+function storableText(value: string): boolean {
+  return !value.includes(NUL) && !UNPAIRED_SURROGATE.test(value);
+}
+
+/** A json value whose every string and key `records.data` can hold. */
+function storableJson(value: unknown): boolean {
+  if (typeof value === 'string') return storableText(value);
+  if (Array.isArray(value)) return value.every((member) => storableJson(member));
+  if (typeof value !== 'object' || value === null) return true;
+  return Object.entries(value).every(([key, member]) => storableText(key) && storableJson(member));
+}
 
 // A date, optionally a time, optionally a zone. Anything looser is a value
 // the column will refuse after this function has said it was fine.
@@ -34,8 +52,10 @@ function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean 
       // A NUL byte cannot be stored in a text column or a jsonb string, so a
       // value carrying one is refused here rather than raised on by the
       // server. It arrives from real clients: a fixed-width field padded with
-      // zeros, a C string that kept its terminator.
-      return typeof value === 'string' && !value.includes(NUL);
+      // zeros, a C string that kept its terminator. An unpaired surrogate is
+      // the same case: half of a character a client split (final review
+      // round 1, FR1-JSONB continuation).
+      return typeof value === 'string' && storableText(value);
     case 'numeric':
       return typeof value === 'number' && Number.isFinite(value);
     case 'boolean':
@@ -47,7 +67,7 @@ function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean 
       // and the parse second, and the shape is the one a JSON client sends.
       return typeof value === 'string' && ISO_8601.test(value) && !Number.isNaN(Date.parse(value));
     case 'json':
-      return true;
+      return storableJson(value);
   }
 }
 
