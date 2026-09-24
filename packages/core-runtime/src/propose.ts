@@ -24,8 +24,8 @@ import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { openEnvelopeOf } from './budget.ts';
 import { acquire, type LockSet } from './locks.ts';
 import { only } from './only.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
 import {
-  AffectedSetChanged,
   affectedByVersions,
   classifyVersions,
   discoverLiveWork,

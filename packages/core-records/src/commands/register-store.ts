@@ -15,7 +15,7 @@
 // trip through `jsonb` unchanged.
 
 import { randomUUID } from 'node:crypto';
-import { AffectedSetChanged } from '../../../core-runtime/src/recovery.ts';
+import { AffectedSetChanged } from '../../../core-runtime/src/rediscovery.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isCommandRefusal, type CommandRefusal } from './refusal.ts';
 import type { CommandName } from './surface.ts';

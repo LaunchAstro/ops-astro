@@ -44,11 +44,8 @@ import {
   type Scope,
 } from '../authority/grants.ts';
 import { revokeDelegation } from '../authority/delegations.ts';
-import {
-  AffectedSetChanged,
-  classifyAuthorityLoss,
-  type Classification,
-} from '../../../core-runtime/src/recovery.ts';
+import { classifyAuthorityLoss, type Classification } from '../../../core-runtime/src/recovery.ts';
+import { AffectedSetChanged } from '../../../core-runtime/src/rediscovery.ts';
 import type { CommandContext } from './context.ts';
 import { declarationOf } from './surface.ts';
 import { refuseCommand } from './refusal.ts';
