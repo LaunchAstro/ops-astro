@@ -511,7 +511,7 @@ an authorised response held back from before the revocation does not restore
 the task, and a later read is still denied. It runs after P and before B6/B7
 (`casesI10OpenPage` follows `casesProposals` in `slice-acceptance.mjs`),
 because P issues and revokes a grant and B6/B7 stop the API. The last recorded `pnpm verify:browser` run with these rows in it
-was at `6f15252`. None is recorded at this head.
+was at `d62f1bc`. None is recorded at this head.
 
 The R4 rows (`r4-shared-page.mjs`) follow I10's order on an external party's
 shared page: the shared view opens, the next fetch after `grant.revoke` is
@@ -542,7 +542,7 @@ that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
 labels stay in the table, because they make a partial run readable; they no
 longer buy a zero exit. The last recorded `verify:browser` result is 88 of 88 at
-`6f15252`. None is recorded at any later head, the integrated head included, so at this
+`d62f1bc`. None is recorded at any later head, the integrated head included, so at this
 head the browser checklist is unrun
 ([PROOFS.md](PROOFS.md#current-counts-and-what-they-are)).
 

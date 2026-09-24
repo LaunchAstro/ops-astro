@@ -189,8 +189,8 @@ The one write before the executor is admission's body refusal, which runs in
 the resolved business's own `withBusiness`.
 
 It imports no executor. `createApi` (`apps/api/app.ts`) takes all three from
-its caller: `executeCommand` is required, and `executeRead` and
-`executeAgentCommand` are optional. `ReadExecutor` is `typeof executeRead` and
+its caller: `executeCommand` and `executeRead` are required, and
+`executeAgentCommand` is optional. `ReadExecutor` is `typeof executeRead` and
 `CommandExecutor` is `typeof executeCommand`, both type-only imports, so the
 real executors pass without a cast. With no `executeAgentCommand` the agent
 prefix is not mounted. The one value the boundary takes from an envelope
@@ -238,7 +238,7 @@ pickup replay also uses (`replayPickup`, `commands/agent-replay.ts`).
 An identifier field an untargeted write does not take is refused
 `COMMAND_BODY_INVALID` 400 naming it, before authority. That holds on every
 untargeted person-path write, including `task.heartbeat`, `task.cancel`,
-`task.restart`, `grant.revoke` and `delegation.revoke`, since `610c1cc`. The
+`task.restart`, `grant.revoke` and `delegation.revoke`, since `4a5e615`. The
 fields each write takes are its row's `untargetedIdentifiers` in
 `COMMAND_SURFACE`, checked by `refuseIrrelevantTarget` (`commands/prepare.ts`).
 
@@ -370,13 +370,13 @@ half, including that the envelope receives the raw value, and
 `NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
 `DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
 
-| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                            |
-| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                     |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403 |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `RESERVATION_NOT_CLAIMABLE` 409, `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                   |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                                        |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                           |
+| Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                                                      |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?` | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_OUT_OF_SCOPE` 403, `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                               |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision`, `note`                                                                                   | `NOT_FOUND` 404, `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `VERSION_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403                           |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                            | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person) |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                      | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422                                                                                                                                  |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                      | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                     |
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
@@ -1194,7 +1194,7 @@ Named so they are not read as settled:
   `AUDIENCE_NOT_PERMITTED`.
   The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
-  `core-runtime/src/heartbeat.ts`). Root ruling 6 at 906613f covers bare agent
+  `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent
   calls and replay only, and confirms neither.
 
 ## Verifying it

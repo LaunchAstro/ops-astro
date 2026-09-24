@@ -14,8 +14,8 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at 158d6de, at d6787c5, at c53aa25, at 9d2dbde, at
-efd5009 and again at the integrated head, 5dd08fa, which these docs describe
+joint gates were green at 9ddfa09, at ca0b79c, at 67fa922, at e84add2, at
+9abf30d and again at the integrated head, 1486b4c, which these docs describe
 (`pnpm test` 5,506 passed and 24 skipped, `tests/acceptance` 3,852 and 16,
 `db:conformance` 129 named suites, 4,800 of 4,800, `db:cases` 15 of 15 and
 `pnpm check` green).
@@ -306,9 +306,15 @@ delegation's own scope and not the presented one (`checkDelegatedAuthority`,
 `task_envelopes` carries `held_minor` and `actual_minor` separately, and the
 reservation's terminal state is `abandoned`, never a zero `actual`. A released
 hold that wrote `actual_minor = 0` would be a claim that the work ran and cost
-nothing. Nothing in this head runs, so that claim would be an invention, and the
-schema refuses it. `reservations_actual_only_when_actual` makes carrying a
-number and being `actual` the same fact.
+nothing. Nothing in this head runs, so that claim would be an invention. The
+handback is what refuses it: any `actualMinor` is
+`ACTUAL_EXPENDITURE_UNSUPPORTED` 422 before the first write (`handback`,
+`handback.ts`). Storage does not. `reservations_actual_only_when_actual` makes
+carrying a number and being `actual` the same fact, so it refuses a number on
+an `abandoned` row. Nothing refuses an `actual` row, and `reservations.actual_minor`
+has no sign check, so an update by the application role to `actual` with 0, or
+with a negative number, commits (`migrations/0013_runtime_budget_and_leases.sql`).
+A storage backstop would be a protected migration, which only Nathan approves.
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
@@ -829,7 +835,7 @@ partly covered rather than proved.
   `acquire` the same case reports `task_envelopes`, which is the crossing that
   deadlocks. This covers `acquire` in isolation. It does not establish that
   every handler passes `acquire` its complete set, which is a separate property.
-  The dcbc8e8 review found recovery bypassing it, and the case below now holds
+  The e7426eb review found recovery bypassing it, and the case below now holds
   that half.
 - **The classifier asserts its caller's locks** (R1): `classifyUnderLocks`
   takes a required `LockSet` and calls `LockSet.require` for the reservation
@@ -846,7 +852,7 @@ partly covered rather than proved.
   transaction classified it first. The envelope's held total falls by the
   hold's amount exactly once and its actual total does not move. This is the
   schedule the earlier structural case could not establish, and it is what the
-  dcbc8e8 review's "two classifiers can both read `held`" asked for.
+  e7426eb review's "two classifiers can both read `held`" asked for.
 - **The envelope's cap is the cap** (R2): a decision naming a cap the task's
   existing envelope does not draw on is refused `CAP_BINDING_MISMATCH`, and
   the case reads back that no decision row was written and the gate is still

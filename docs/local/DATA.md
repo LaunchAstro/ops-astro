@@ -310,7 +310,7 @@ idempotent by lookup: a second run finds every row and inserts none. One
 exception brings an earlier install forward: on a business whose task type
 already exists, the installer sets `title` and `state` to their declared
 visibility class (`shared`, I09) where they differ, so a reseed shows a client
-those two fields on a business installed before 77bcc54 (`reconcileVisibility`,
+those two fields on a business installed before 035967b (`reconcileVisibility`,
 `tasks/reconcile-visibility.ts`). It changes no other field row and no record.
 `tests/tasks/install-visibility-upgrade.test.ts` pins that a second run writes
 nothing by `xmin` and `ctid`, because `field_defs` has no revision column and a

@@ -46,9 +46,9 @@ function isStep(step: unknown): step is { readonly kind: string; readonly payloa
  * The expiry is named as a duration and turned into an instant **here**,
  * rather than taken as a date from the body. A caller who could post an
  * absolute `expiresAt` could post one in the past and raise a gate nobody can
- * decide; a duration the server adds to its own clock cannot. There is no
- * upper bound on the duration yet, so a very long one still holds a gate open
- * for as long as it names.
+ * decide; a duration the server adds to its own clock cannot. `expiryFrom`
+ * bounds the duration at `MAXIMUM_EXPIRY_SECONDS`, seven days (owner decision,
+ * 23 Sep 2026). Over it is `FIELD_VALUE_INVALID`, and no gate is written.
  */
 export async function proposeOnTask(
   tx: TenantQuery,

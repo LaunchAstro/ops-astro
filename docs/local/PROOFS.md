@@ -17,37 +17,41 @@ Each count below carries one of three labels:
 - **accepted**: a review recorded it against a head.
 
 **Nothing below is accepted.** The last head with a complete live verification
-is `6f15252`: checks, a reseed at migration 0023, `verify:slice` 48 of 48,
+is `d62f1bc`: checks, a reseed at migration 0023, `verify:slice` 48 of 48,
 `verify:browser` 88 of 88 and the restart proof 25 of 25. Its evidence is kept
-with the build run under `runs/6f15252`, outside this repository. Heads merged
+with the build run under `runs/6f15252`, outside this repository. The landing
+history was rewritten with every tree kept, so each commit took a new hash. The
+hashes in these docs are the new ones; evidence kept outside the repository is
+still filed under a head's old hash, as `runs/6f15252` and `runs/54700f7` are.
+Heads merged
 since have merge-trial evidence only: each lane was merged with the commands
 below run on the integration trial, and nothing more. The joint gates at
-`b282216`, the merge of GRANT-EXPIRY-INTAKE (`fc49c35`), PROJECTION-SNAPSHOT
-(`b7afcf8`) and RETRY-BOUNDS (`b282216`), passed: `pnpm test` 5,210 passed and
+`b483399`, the merge of GRANT-EXPIRY-INTAKE (`55c5f19`), PROJECTION-SNAPSHOT
+(`640c435`) and RETRY-BOUNDS (`b483399`), passed: `pnpm test` 5,210 passed and
 24 skipped, `tests/acceptance` 3,850 and 16, `db:conformance` 107 named suites,
 4,713 of 4,713. SOL-RUNTIME-FIX, SOL-AUTHORITY-FIX and DOCS-4 merged next, and
-the joint gates at `faf3285` passed. `0395827`, the next batch, was red on one
-test file and fixed forward at `3881a9d`. The batch merge of TEST-TIMEOUTS,
+the joint gates at `06ab232` passed. `056aa7c`, the next batch, was red on one
+test file and fixed forward at `d31afc1`. The batch merge of TEST-TIMEOUTS,
 THERMO-SURFACE, THERMO-AGENT, THERMO-RUNTIME, COMMAND-CATALOGUE and DOCS-5 at
-`158d6de` passed every joint gate: `pnpm test` 5,376 passed and 24 skipped,
+`9ddfa09` passed every joint gate: `pnpm test` 5,376 passed and 24 skipped,
 `tests/acceptance` 3,850 and 16, `db:conformance` 114 named suites, 4,741 of
-4,741 (events log, 2026-09-24T01:31:58Z). `d6787c5` added WORDING and
+4,741 (events log, 2026-09-24T01:31:58Z). `ca0b79c` added WORDING and
 LIVE-PREP, and its joint gates passed with `pnpm test` 5,398 and 24. The
-next head, `c53aa25`, is `d6787c5` plus DOCS-6, SWEEP-2, SOL6-RUNTIME-FIX-2,
+next head, `67fa922`, is `ca0b79c` plus DOCS-6, SWEEP-2, SOL6-RUNTIME-FIX-2,
 SOL6-WEB-FIX, SOL6-AUTHORITY-FIX-2, THERMO-2, PROTECTED-MIGRATIONS (the last
 migration is 0025), OWNER-RULINGS-FIX and ARCH-4. Its joint gates passed with
 `pnpm test` 5,465 and 24, `tests/acceptance` 3,852 and 16, and
-`db:conformance` 125 named suites, 4,789 of 4,789. `9d2dbde` added FINAL-SWEEP
+`db:conformance` 125 named suites, 4,789 of 4,789. `e84add2` added FINAL-SWEEP
 (with the SOL6-AUTHORITY-FIX-2 continuation) and passed with `pnpm test` 5,466
 and 24, `tests/acceptance` 3,852 and 16, and `db:conformance` 125 named suites,
-4,788 of 4,788 (2026-09-24T04:12Z). `efd5009` adds DOCS-7, THERMO-FIX-WEB,
+4,788 of 4,788 (2026-09-24T04:12Z). `9abf30d` adds DOCS-7, THERMO-FIX-WEB,
 CAP-RR (migration 0025 edited in place), SPINE-UPGRADE, THERMO-FIX-READS,
 THERMO-FIX-RUNTIME and THERMO-FIX-AGENT, and passed with `pnpm test` 5,491 and
 24, `tests/acceptance` 3,852 and 16, and `db:conformance` 129 named suites, 4,800
-of 4,800. The integrated head, and the head these docs describe, is `5dd08fa`.
+of 4,800. The integrated head, and the head these docs describe, is `1486b4c`.
 It adds PR A's gate tooling (`135dd75`), DOCS-8, THERMO-FIX-AGENT-2,
 THERMO-FIX-WEB-2, DB-CASES-FIX, THERMO-FIX-WEB-3 and DB-READY-FIX, and its joint
-gates passed with the counts in the table. The run at `a8accb6` before
+gates passed with the counts in the table. The run at `9da823a` before
 DB-READY-FIX was red on `pnpm check` alone, a readiness race in the `db:cases`
 harness that DB-READY-FIX closed.
 The final live verification at the final head is owed and has not been run.
@@ -60,12 +64,12 @@ The final live verification at the final head is owed and has not been run.
 | `db:conformance`                                                                                                                                                               | 129 named suites (122 invariant, 7 conformance), 4,800 of 4,800                                      | tested (joint gates, the integrated head)                                     |
 | `db:cases`                                                                                                                                                                     | 15 of 15                                                                                             | tested (joint gates, the integrated head)                                     |
 | `pnpm check`                                                                                                                                                                   | green                                                                                                | tested (joint gates, the integrated head)                                     |
-| `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                                       | tested (lane run on `a3d0afe`)                                                |
-| `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                                       | tested (lane run on `209eb29`)                                                |
-| `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 16, 4 and 1 tests; `historical-handback-intake` had 13 at `20c57b0` and SOL-AUTHORITY-FIX added 3 | tested (lane runs on `85bf346`, `20c57b0`, `aed9384`; merge trial, `faf3285`) |
-| `verify:browser`, including the in-flight, R4 and surface-final rows                                                                                                           | 88 of 88 at `6f15252`                                                                                | tested (live run, `6f15252`); not run since                                   |
-| `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11))                                                               | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved                                | tested (lane run on `20363eb`)                                                |
-| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                                                                                   | 30 of 30, twice, on the RESTART-LEGS lane's own stack; skipped in the counts above                   | tested (lane run on `90ec7c6`); not run at a merge trial since                |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                                       | tested (lane run on `e1b78b3`)                                                |
+| `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                                       | tested (lane run on `8819fac`)                                                |
+| `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 16, 4 and 1 tests; `historical-handback-intake` had 13 at `91cda99` and SOL-AUTHORITY-FIX added 3 | tested (lane runs on `867f391`, `91cda99`, `163969b`; merge trial, `06ab232`) |
+| `verify:browser`, including the in-flight, R4 and surface-final rows                                                                                                           | 88 of 88 at `d62f1bc`                                                                                | tested (live run, `d62f1bc`); not run since                                   |
+| `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11))                                                               | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved                                | tested (lane run on `b1fd9f3`)                                                |
+| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                                                                                   | 30 of 30, twice, on the RESTART-LEGS lane's own stack; skipped in the counts above                   | tested (lane run on `6e06d3b`); not run at a merge trial since                |
 
 The 24 skipped in `pnpm test` include three groups. The suites that spawn the
 real `server.ts` skip without `SURFACE_API_PORT`
@@ -73,7 +77,7 @@ real `server.ts` skip without `SURFACE_API_PORT`
 `tests/runtime/pickup-replay-restart.test.ts` skips without its own declared
 container. The restart cases skip without their disposable container.
 RESTART-LEGS added five restart cases, which is why the skipped count went from
-19 at `9e2192e` to 24 at `bbdf2b2` with the same 5,199 passed.
+19 at `9f61aa6` to 24 at `d8746a2` with the same 5,199 passed.
 The named-suite list and why the port suites stay unnamed are in
 [database-conformance.md](../agents/database-conformance.md).
 
@@ -83,7 +87,7 @@ are 35 operations × 27 top-level keys × API, CLI and web (2,835: the 22
 in `d06-cases.ts`), plus 7 `fields` operations × 3 installed system fields on
 each of the three surfaces (63). The first two plain tests read the installed
 field metadata and list the operations whose bodies carry record fields. That
-settles the old 2,375 against 2,373. At `9221c29` the file ran 2,373 cells and
+settles the old 2,375 against 2,373. At `d6a7c36` the file ran 2,373 cells and
 the same two tests, 2,375 in all. Each of the 2,898 cells runs between a
 passing positive control and a passing clean retry on the same work, and a
 third plain test asserts that from the executed tally. That includes person
@@ -214,7 +218,7 @@ between this lane's base and its merge, and both rows arrived with no edit to
 the proof.
 
 Last measured on branch `slice/matrix-docs`, from `local/working-slice` at
-`88f78fe`, on 23 September 2026:
+`57bc21b`, on 23 September 2026:
 
 | Count                                                 | Measured               |
 | ----------------------------------------------------- | ---------------------- |
@@ -251,18 +255,18 @@ and the whole matrix is written to `.local/l5-matrix.tsv` as
 
 384 rows: 338 pass, 46 named exceptions, zero failures, as
 `.local/l5-matrix.tsv` recorded them in the ACCEPTANCE-ROWS lane's run of
-`tests/acceptance` on its own Postgres at `209eb29` (tested, lane run). The
-joint gates at `9e2192e` ran `tests/acceptance` green with the same file. The 46
+`tests/acceptance` on its own Postgres at `8819fac` (tested, lane run). The
+joint gates at `9f61aa6` ran `tests/acceptance` green with the same file. The 46
 are 14 executed alternative and 32 not applicable; no row is missing coverage.
-At `cca3c89` and `6f15252` it was 363 rows, 336 pass and 27 exceptions: 4
+At `8b7c6cb` and `d62f1bc` it was 363 rows, 336 pass and 27 exceptions: 4
 executed alternative and 23 not applicable. ACCEPTANCE-ROWS added the 19
 named (c)/(d) rows, which are all exceptions, and two passing (j) rows. At
-`74d583c` it was 331 rows, 296 pass and 35 exceptions: 9 executed alternative
+`4757d72` it was 331 rows, 296 pass and 35 exceptions: 9 executed alternative
 and 26 missing coverage. On `slice/capabilities` it was 330 pass, 6 executed
 alternative, 23 not applicable and 4 missing coverage: the admin's
 `task.pickup` and the member's `task.pickup`, `task.handback` and
 `task.heartbeat`. The test change for those four landed with PERSON-WORK's
-merge (`8c08ccb`), which gave a person the route. OWN-LEASE-SCOPE (`cca3c89`)
+merge (`4f93f9a`), which gave a person the route. OWN-LEASE-SCOPE (`8b7c6cb`)
 changed the production path the rows run through; the L6 packet did not verify
 its effect on them.
 
@@ -483,8 +487,8 @@ on failure the exit trap stops every API process the run wrote to its pid file,
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
 removed`, and `Tests 30 passed (30)`, with no expected failure.
-The 30 is the count at `bea6ab7` and again at `90ec7c6` (RESTART-LEGS: 25 at
-`3eddfbe` plus the five restart legs below); it was 24 before `3eddfbe`. A lane
+The 30 is the count at `3c3ceab` and again at `6e06d3b` (RESTART-LEGS: 25 at
+`610983f` plus the five restart legs below); it was 24 before `610983f`. A lane
 with its own stack passes `--name`, `--port` and `--api-port` rather than
 taking the defaults, which belong to the coordinator.
 
@@ -511,18 +515,18 @@ more named cases run in `restart-http.test.ts`:
 - **I08.** Before the restart, `grant.revoke` removes a person's only write
   grant under a live agent lease. Afterwards heartbeat and handback with the same
   credential answer 403 `DELEGATION_NARROWED`. Since AGENT-BOUNDARY-2 (merged
-  at `9e2192e`) the handback keeps its report as one `retained` row naming
+  at `9f61aa6`) the handback keeps its report as one `retained` row naming
   `DELEGATION_NARROWED`, and nothing else moves. A retry of the same operation
   keeps no second row, and a new operation id is a second retained row. The
   explicit `delegation.revoke` control answers 401 `DELEGATION_NOT_LIVE`, and
   its handback keeps one `retained` report (AGENT-BOUNDARY's late intake,
-  merged at `e4cb2ae`).
+  merged at `2f766d3`).
 - **G06.** `task.read` of the gate that lapsed while nothing ran draws it
   `expired` (`expired: true`) on the database clock, and the stored row is
   still `pending`.
 
-Since `e4cb2ae` the handback-once case also expects the second, refused
-handback's report as a `retained` row beside the settled one. At `3eddfbe`
+Since `2f766d3` the handback-once case also expects the second, refused
+handback's report as a `retained` row beside the settled one. At `610983f`
 that case was red (`Tests 1 failed | 24 passed (25)`) because it still
 expected one receipt.
 
@@ -554,7 +558,7 @@ port no longer answers, starts a new process and reads again.
 the database clock with nothing serving, then starts a new API process. Every
 call after that goes over the socket to the new process on the API port.
 
-| W06 claim                              | Postgres restart                                                                                   | API process restart, over HTTP                                                                                                                                                                                              | browser B6 leg (lane stack, 1e1eef2)                |
+| W06 claim                              | Postgres restart                                                                                   | API process restart, over HTTP                                                                                                                                                                                              | browser B6 leg (lane stack, e1d34a5)                |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | task identity                          | row read back through a fresh `createApi`                                                          | `task.read`, same id                                                                                                                                                                                                        | yes: screen and `task.read` identical               |
 | lineage, version, evidence pack        | ids and lineage state compared                                                                     | same in the `proposals` projection                                                                                                                                                                                          | no                                                  |
@@ -577,7 +581,7 @@ and `decide.ts` refuses it on the database clock (G06). Expiry is read, never
 written.
 
 **Still open, by name.** (1) The browser leg carries a pending gate, a lease
-and a dispatched attempt across a restart (B6, merged at 1e1eef2), proved on
+and a dispatched attempt across a restart (B6, merged at e1d34a5), proved on
 the lane's own stack only. The run at the integrated candidate is with the
 coordinator. B6 does not reload onto a proposal's lineage, a decision chain
 or a cancelled lineage. (2) `tests/browser/restart-legs.mjs` holds the W06 (b)
@@ -586,7 +590,7 @@ gate as expired, version 2 of a Request Changes round, a cancelled lineage's
 restart with the old lineage terminal, and a decision clicked on the page's
 own Approve button. RESTART-LEGS committed it unrun, and nobody has run it
 since. Cancellation and authorised restart are closed over HTTP: L3-CONTROLS
-declared `task.cancel` and `task.restart` (9bf4c69), both cases run as plain
+declared `task.cancel` and `task.restart` (d41c842), both cases run as plain
 `it`, and the cancelled-lineage fixture in `walkTheOtherLineages` cancels
 through `task.cancel` on the API.
 
@@ -622,7 +626,7 @@ the fix.
    `client` comment.
 5. **Fixed: the command line could not report a fault.** It read every answer
    with `response.json()`, which throws on a body that is not JSON. Since
-   `26219e3`, `run` in `createCli` (`apps/cli/client.ts`) reads the text and
+   `22530b6`, `run` in `createCli` (`apps/cli/client.ts`) reads the text and
    parses it inside a `try`, so a non-JSON answer keeps its status and its text
    and exits 4 ([CLI.md](CLI.md#output-and-exit-codes)).
    `tests/cli/cli-answers.test.ts` holds it ("a non-JSON 503 is a fault too:
@@ -693,8 +697,8 @@ counts above and are not named for `db:conformance`:
   and a D03 cell.
 
 Both ran green on the SURFACE-FINAL lane's stack, 7 of 7 on the DOCS-2 lane's
-own stack at `cca3c89` (tested, lane run), and 7 of 7 serially in the
-coordinator's live run at `6f15252`. Neither has a merge-trial run with the port
+own stack at `8b7c6cb` (tested, lane run), and 7 of 7 serially in the
+coordinator's live run at `d62f1bc`. Neither has a merge-trial run with the port
 set.
 
 The real command line is proved separately and needs no port:
@@ -715,14 +719,14 @@ server listens, and a second start classifies nothing. A fault injected before
 commit rolls back and exits 1, and the next start completes. Claimable and
 unfenced live holds are untouched, only the configured businesses change, and
 two racing starts release each hold once. It ran 7 of 7 in the RECOVERY-ENTRY
-lane (`e39b863`), and the joint gates at `3eddfbe` ran it green in
+lane (`5878c90`), and the joint gates at `610983f` ran it green in
 `db:conformance`. See [RUNTIME.md](RUNTIME.md#restart-recovery-at-api-startup).
 
 **Run them one file at a time.** Each file spawns its own `apps/api/server.ts`
 on the one port `SURFACE_API_PORT` names. Under Vitest's default file
 parallelism the two servers start together, the second cannot bind
 (`EADDRINUSE`), and its suite fails with "the API process did not answer" (U1
-in `server-onerror.test.ts`). The coordinator's live run at `54700f7` showed
+in `server-onerror.test.ts`). The coordinator's live run at `6e5a139` showed
 both results: 4 passed, 1 file failed together, 7 of 7 passed serially
 (`parent-observations/runs/54700f7/surface-api-port.log` and
 `surface-api-port-serial.log`). Run them like this, with the stack's
@@ -794,7 +798,7 @@ from `tests/acceptance/d06-cases.ts`, and the positive bodies from
   PNG. The served modules are Vite's dev transform of the source (the local
   slice is served by Vite dev), not a `vite build` bundle.
 
-**Lane runs on `20363eb`** (tested, lane run, own stack: Postgres on 54399,
+**Lane runs on `b1fd9f3`** (tested, lane run, own stack: Postgres on 54399,
 API 8799, Vite 5199):
 
 - **Grid:** 939 of 966 cells passed on both runs (118 s and 139 s).
@@ -836,7 +840,7 @@ same thing as in the rulings table below.
 ## Tenancy wrapper mutations and decision-chain negatives
 
 Three suites for ledger T04, T05 (`:49`, `:50`, `:105`) and G02 (`:87`), proved
-at `e5cbcba`. Each negative went red with its expectation inverted, and each
+at `3c7928d`. Each negative went red with its expectation inverted, and each
 suite is green as committed.
 
 - **Wrapper mutation:** `tests/tenancy/wrapper-mutation.test.ts`. On a
@@ -900,11 +904,11 @@ Four suites close the L6 rows G04, G05, W02 (b, c), W04 (schedules) and W05
 
 ## L6 acceptance rows: I03, I04 and I07 (ACCEPTANCE-ROWS)
 
-These close L6 rows I03, I04 and I07 under root ruling 3 at 906613f and root
-ruling 9 at 6f15252 (`parent-observations/runs/6f15252/L6/DISPOSITIONS.md`).
+These close L6 rows I03, I04 and I07 under root ruling 3 at dd30aa8 and root
+ruling 9 at d62f1bc (`parent-observations/runs/6f15252/L6/DISPOSITIONS.md`).
 The three suites below are named in `tests/db/named-suites.json`. The lane
 also named `i10-inflight` and `board-not-found`, the two that L6 section 9
-item 13 left unnamed. Tested in the lane run on `209eb29`.
+item 13 left unnamed. Tested in the lane run on `8819fac`.
 
 - **I03, 35/35:** `role-case-matrix.test.ts` (c)/(d). The swap compares 16
   operations, and each of the other 19 has one `cd-not-applicable` row, with
@@ -938,15 +942,15 @@ item 13 left unnamed. Tested in the lane run on `209eb29`.
 ## Retry bounds, grant-expiry intake and the proposal snapshot
 
 RETRY-BOUNDS, GRANT-EXPIRY-INTAKE and PROJECTION-SNAPSHOT merged jointly at
-`b282216`. Every count here comes from the lane's own run on its own Postgres.
-The joint gates at `b282216` then passed, with `pnpm test` at 5,210 passed and
+`b483399`. Every count here comes from the lane's own run on its own Postgres.
+The joint gates at `b483399` then passed, with `pnpm test` at 5,210 passed and
 24 skipped and `db:conformance` at 107 named suites, 4,713 of 4,713. That run
 includes every case below. `retry-bounds`, `projection-snapshot` and
 `proposal-snapshot` are newly named in `tests/db/named-suites.json`;
 `historical-handback-intake` was already named.
 
 - **Retry bounds:** `tests/runtime/retry-bounds.test.ts`, 3 tests, 3 of 3 on
-  three runs in a row at `8cb6e84` and once at `85bf346` after the title
+  three runs in a row at `baba43d` and once at `867f391` after the title
   change. The test wraps the command's connection, records every transaction
   and statement, and forces each schedule between two statements, so no
   timing is guessed.
@@ -981,8 +985,8 @@ includes every case below. `retry-bounds`, `projection-snapshot` and
   - Red: a throwaway edit, since reverted, widened both entries' bound to three
     attempts, and the first two cases failed.
 - **Grant-expiry intake:** `tests/runtime/historical-handback-intake.test.ts`
-  gains a `grant-expired` path of 3 cases: 13 of 13 at `20c57b0`, and 2 failed
-  at `9e2192e`. The person's only task write grant expires while the agent's
+  gains a `grant-expired` path of 3 cases: 13 of 13 at `91cda99`, and 2 failed
+  at `9f61aa6`. The person's only task write grant expires while the agent's
   delegation is still live. The agent's handback answers
   `DELEGATION_NARROWED` and keeps exactly one `retained` report. Nothing is
   revoked, the delegation stays live and its `revocation_cause` stays null. A
@@ -995,7 +999,7 @@ includes every case below. `retry-bounds`, `projection-snapshot` and
   `retainLateHandback` in `agent-late-handback.ts`.
 - **Proposal snapshot:** `tests/reads/projection-snapshot.test.ts`, 4 tests,
   and `tests/surfaces/proposal-snapshot.test.tsx`, 1 test, both green at
-  `aed9384`. At `9e2192e` 3 of the 4 and the surface test were red.
+  `163969b`. At `9f61aa6` 3 of the 4 and the surface test were red.
   `readTaskProposals` now takes versions, gates and reservations in the
   verifier's one statement (`readVerifiedProjection` in
   `verified-decisions.ts`). A real approve lands before or after that
@@ -1010,11 +1014,11 @@ includes every case below. `retry-bounds`, `projection-snapshot` and
 
 ## The Sol 6 fixes and the API root
 
-SOL-RUNTIME-FIX and SOL-AUTHORITY-FIX merged with DOCS-4 at `faf3285`, and the
+SOL-RUNTIME-FIX and SOL-AUTHORITY-FIX merged with DOCS-4 at `06ab232`, and the
 joint gates there passed. REFACTOR-API-ROOT reached the branch inside
-SWEEP-API, which merged at `0395827`. The joint gates there were red on
-`refusal-catalogue.test.ts`, fixed forward at `3881a9d`. They passed at
-`158d6de`, at `d6787c5`, at `c53aa25`, at `9d2dbde`, at `efd5009` and at the
+SWEEP-API, which merged at `056aa7c`. The joint gates there were red on
+`refusal-catalogue.test.ts`, fixed forward at `d31afc1`. They passed at
+`9ddfa09`, at `ca0b79c`, at `67fa922`, at `e84add2`, at `9abf30d` and at the
 integrated head
 ([Current counts](#current-counts-and-what-they-are)). Each test count below
 is the `it(` calls in the file, with parametrised tables expanded, read from
@@ -1035,7 +1039,7 @@ the file, not from a run.
   expired claim. The same agent replaces its own claim after waiting past the
   delegation's expiry. `tests/runtime/successor-bounds-exact.test.ts`, 1 test
   (RUNTIME-2): with 2 left in the cap, a successor ceiling of 4 is refused and
-  a ceiling of 2 is accepted. Tested (merge trial, `faf3285`).
+  a ceiling of 2 is accepted. Tested (merge trial, `06ab232`).
 - **R4, spend and the agent's operation id, SOL-AUTHORITY-FIX.**
   `tests/authority/non-member-grants.test.ts`, 3 tests. Record-scoped
   `comment` and `write` grants alone give no standing, so every call is
@@ -1048,7 +1052,7 @@ the file, not from a run.
   actual is still retained. `tests/commands/agent-operation-id.test.ts`, 5
   tests: a number, an array, `null` or an absent agent `operationId` is
   `OPERATION_ID_REQUIRED` with no register row, and the string registers.
-  Tested (merge trial, `faf3285`).
+  Tested (merge trial, `06ab232`).
 - **Admission and the operation id at the boundary, REFACTOR-API-ROOT and
   SWEEP-API.** `tests/api/admission-enumeration.test.ts`, 17 tests through
   `composeApi`. On both prefixes, for a valid and a malformed body, a foreign
@@ -1060,13 +1064,13 @@ the file, not from a run.
   tests: the agent boundary hands the envelope `operationId` exactly as the
   JSON carried it, and a number, an array, `null` or an absent field is
   `OPERATION_ID_REQUIRED` 422 with nothing registered. Tested (SWEEP-API lane
-  run on `491fbf6`, which includes REFACTOR-API-ROOT; merge trial, `158d6de`
-  and `d6787c5`).
+  run on `3737480`, which includes REFACTOR-API-ROOT; merge trial, `9ddfa09`
+  and `ca0b79c`).
 
 ## Engineering rulings, and how far each is proved
 
-The build's root ruled on contract questions the lanes raised at `906613f`,
-`01a437a` and after the item-5 triage. Each ruling is an engineering reading of
+The build's root ruled on contract questions the lanes raised at `dd30aa8`,
+`4ccc94c` and after the item-5 triage. Each ruling is an engineering reading of
 an existing clause, not a new product decision, not a waiver and not
 acceptance. The status column uses the labels above; "tested" means a merge
 trial ran the named suite green, nothing more.
@@ -1082,10 +1086,10 @@ trial ran the named suite green, nothing more.
 | A lost pickup response is recovered by an authorised retry that returns the same credential, derived under a dedicated delegation key after current-rights and binding checks. Ordinary replay never rotates a credential. Legacy random credentials cannot be recovered and are labelled so ([RUNTIME.md](RUNTIME.md)).                                                                                                                                                                                                                                                          | T3                                                      | tested (merge trial); the custody boundary is owed to the independent correction review |
 | A present `null` `leaseSeconds` or `report` is `FIELD_VALUE_INVALID`; omitting either keeps the default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | T3, T4                                                  | tested (merge trial)                                                                    |
 | **D03 precedence.** On `task.update`, any `intake_state` in `fields`, `accepted` included, is `TRANSITION_PROTECTED` naming `task.triage`. The specification's T1-N3 and ledger row D03 take precedence over the older minimum-contract 6.1 wording, which answered `SOURCE_SPOOFED`. `task.create` keeps `SOURCE_SPOOFED` for `source` and `intake_state` (minimum contract, create rules).                                                                                                                                                                                      | T1-N3, ledger D03, minimum contract 6.1                 | tested (merge trial): `protected-fields`                                                |
-| The external party's task page draws only the server's shared projection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | R4                                                      | tested (live run, `6f15252`): `verify:browser` 88 of 88; not run since                  |
+| The external party's task page draws only the server's shared projection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | R4                                                      | tested (live run, `d62f1bc`): `verify:browser` 88 of 88; not run since                  |
 | When a grant's loss revokes a delegation, the server records the cause (`authority_lost`), and the bound agent's next call on its unexpired credential is `DELEGATION_NARROWED`. Nothing is reactivated; explicit revocation, expiry and settlement keep `DELEGATION_NOT_LIVE`.                                                                                                                                                                                                                                                                                                   | minimum contract 8.2 case 6, ledger I08, T5             | tested (merge trial): `authority-loss-narrowed`, `runtime-residuals`                    |
 | New decisions sign round, decision time, acting actor and their chain context in a versioned payload (v3). Older rows are verified for what they signed and never rewritten.                                                                                                                                                                                                                                                                                                                                                                                                      | T2                                                      | tested (merge trial): `decision-v3`                                                     |
-| `task.purge` reads the caller's business's `retention_window_days` inside the serving transaction and purges trash older than that window by the database clock; a body `olderThanDays`, any value, is `COMMAND_BODY_INVALID` 400 with no mutation and one refused audit row. No default, floor or ceiling is applied. Source interpretation, recorded as root ruling 2's: consuming the stored setting completes the L3 retention contract for this retained operation. It is not a claim that Nathan moved Q46 forward, and it does not discharge the other G5 completion rows. | SPEC 14.3, SPEC:319, C12-5 Q46, ledger L3 retention row | tested (merge trial since `54700f7`; a `db:conformance` named suite): `purge-retention` |
+| `task.purge` reads the caller's business's `retention_window_days` inside the serving transaction and purges trash older than that window by the database clock; a body `olderThanDays`, any value, is `COMMAND_BODY_INVALID` 400 with no mutation and one refused audit row. No default, floor or ceiling is applied. Source interpretation, recorded as root ruling 2's: consuming the stored setting completes the L3 retention contract for this retained operation. It is not a claim that Nathan moved Q46 forward, and it does not discharge the other G5 completion rows. | SPEC 14.3, SPEC:319, C12-5 Q46, ledger L3 retention row | tested (merge trial since `6e5a139`; a `db:conformance` named suite): `purge-retention` |
 | A read whose decisions fail to verify is a fault (`DECISION_INTEGRITY`, 500) that rolls back, not a committed refusal, so no tamper audit row is kept.                                                                                                                                                                                                                                                                                                                                                                                                                            | TC11                                                    | tested (merge trial); the live `onError` probe is owed at the final restart             |
 
 ## Deferred limits
@@ -1112,12 +1116,12 @@ None is a waiver.
 
 ## Open for the owner
 
-These three are open for Nathan. Nobody has decided them.
+These two are open for Nathan. Nobody has decided them. The two protected
+storage migrations SOL-RUNTIME-FIX proposed are no longer on this list: Nathan
+approved both (OWNER-CARD section 6), and they are written as 0024 (a cap and
+its envelope in one currency) and 0025 (the aggregate cap ceiling at commit)
+([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
 
-- **Two protected storage migrations.** SOL-RUNTIME-FIX proposed a trigger
-  holding a cap and its envelope to one currency, and an aggregate cap-ceiling
-  constraint trigger. Neither is written. Both are protected migrations and
-  wait on Nathan's acceptance.
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing
   else, and a read share alone writes nothing. That is the lead's ruling, not
@@ -1147,7 +1151,7 @@ Each is named so the unfinished work stays countable.
   (`MAXIMUM_LEASE_LIFETIME_SECONDS`), both in
   `packages/core-runtime/src/heartbeat.ts`. They are lane choices still
   awaiting root or owner confirmation
-  ([RUNTIME.md](RUNTIME.md#the-work-controls)). Root ruling 6 at `906613f`
+  ([RUNTIME.md](RUNTIME.md#the-work-controls)). Root ruling 6 at `dd30aa8`
   does not cover them. It settles bare agent calls and replay codes only, and
   the same rulings file leaves the agent's comment audience preference
   "pending separately".
