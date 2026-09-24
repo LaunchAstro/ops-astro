@@ -9,26 +9,26 @@
 // draw.
 
 import type { ReactElement } from 'react';
-import type { AuthenticatedRouteId } from './routes.ts';
+import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 
 /** What the application hands whichever screen the address resolves to. */
-export interface ScreenContext {
+export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
   readonly client: OperationsClient;
   readonly grantKey: string;
   /** The route's parameters, decoded. */
-  readonly params: Readonly<Record<string, string>>;
+  readonly params: ParamsOf<Id>;
   /** Why the board was reached instead of the address that was held. */
   readonly notice: string | null;
   readonly storage: Storage | null;
 }
 
-export const SCREENS: Readonly<
-  Record<AuthenticatedRouteId, (context: ScreenContext) => ReactElement>
-> = {
+export const SCREENS: {
+  readonly [Id in AuthenticatedRouteId]: (context: ScreenContext<Id>) => ReactElement;
+} = {
   'agency:projects-board': (context) => (
     <>
       {context.notice === null ? null : (
@@ -46,7 +46,15 @@ export const SCREENS: Readonly<
     <TaskDetailScreen
       client={context.client}
       grantKey={context.grantKey}
-      taskKey={context.params['key'] ?? ''}
+      taskKey={context.params.key}
     />
   ),
 };
+
+/** The screen a matched address draws, handed that route's own parameters. */
+export function drawScreen<Id extends AuthenticatedRouteId>(
+  match: RouteMatch<Id>,
+  context: Omit<ScreenContext<Id>, 'params'>,
+): ReactElement {
+  return SCREENS[match.id]({ ...context, params: match.params });
+}

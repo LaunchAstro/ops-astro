@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount } from './mount.tsx';
 
 function storage(seed: Record<string, string> = {}): StorageLike {
@@ -43,6 +43,7 @@ function open(path: string, signedIn: boolean) {
       gotrueUrl="http://identity.invalid"
       apiBase="/api"
       fetch={fetch}
+      storage={tabStorage()}
     />,
   );
 }

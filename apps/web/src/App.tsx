@@ -11,12 +11,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell, type RailEntry } from '@launchastro/ui';
-import { ROUTES, matchRoute, pathTo } from './routes.ts';
+import { ROUTES, gateOf, matchRoute, pathTo } from './routes.ts';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, tabStorage, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { SCREENS } from './screen-registry.tsx';
+import { drawScreen } from './screen-registry.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -28,6 +28,8 @@ export interface AppProps {
   /** The API prefix. `/api` behind the dev proxy. */
   readonly apiBase: string;
   readonly fetch: typeof globalThis.fetch;
+  /** This tab's storage, read once by the entry, or null where it is blocked. */
+  readonly storage: Storage | null;
 }
 
 export function App(props: AppProps): ReactElement {
@@ -139,51 +141,49 @@ export function App(props: AppProps): ReactElement {
   );
 
   const match = matchRoute(here);
-  const route = match?.route ?? null;
   const grantKey = grantKeyOf(session);
 
-  const rail: readonly RailEntry[] = ROUTES.filter((entry) => entry.rail).map((entry) => ({
-    id: entry.id,
-    label: entry.title,
-    href: entry.path,
-  }));
+  const rail: readonly RailEntry[] = Object.entries(ROUTES)
+    .filter(([, entry]) => entry.rail)
+    .map(([id, entry]) => ({
+      id,
+      label: entry.title,
+      href: entry.path,
+    }));
 
-  // An address that needs a session and has none is the sign-in screen, and the
-  // sign-in screen is where a signed-out person lands. Neither is an error.
-  const content =
-    route === null ? (
-      <NotFound path={here} />
-    ) : session === null || !route.authenticated ? (
-      session !== null && !route.authenticated ? (
-        <SignedInAlready
-          onGo={() => {
-            props.navigate(pathTo('agency:projects-board'));
-          }}
-        />
-      ) : (
-        <SignIn
-          gotrueUrl={props.gotrueUrl}
-          fetch={props.fetch}
-          onSignedIn={onSignedIn}
-          ended={props.sessions.interruption}
-        />
-      )
-    ) : (
-      SCREENS[route.id]({
-        client,
-        grantKey,
-        params: match?.params ?? {},
-        notice,
-        storage: tabStorage(),
-      })
-    );
+  const content = ((): ReactElement => {
+    const gate = gateOf(match, session !== null);
+    switch (gate.kind) {
+      case 'not-found':
+        return <NotFound path={here} />;
+      case 'sign-in':
+        return (
+          <SignIn
+            gotrueUrl={props.gotrueUrl}
+            fetch={props.fetch}
+            onSignedIn={onSignedIn}
+            ended={props.sessions.interruption}
+          />
+        );
+      case 'signed-in-already':
+        return (
+          <SignedInAlready
+            onGo={() => {
+              props.navigate(pathTo('agency:projects-board'));
+            }}
+          />
+        );
+      case 'screen':
+        return drawScreen(gate.match, { client, grantKey, notice, storage: props.storage });
+    }
+  })();
 
   return (
     <Shell
       face="agency"
       rail={rail}
       here={here}
-      title={route?.title ?? 'Not found'}
+      title={match?.route.title ?? 'Not found'}
       meta={
         session === null ? null : (
           <span className="topbar__who">

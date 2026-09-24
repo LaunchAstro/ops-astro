@@ -11,9 +11,20 @@ import { ROUTES, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import { PANELS } from '../../apps/web/src/panels.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 
+// Never called: each is a type error. A route's parameters are read off its
+// path, so a missing key or a stray one does not compile rather than throwing.
+const missing = (): string =>
+  // @ts-expect-error agency:task-detail needs its key
+  pathTo('agency:task-detail');
+const extra = (): string =>
+  // @ts-expect-error agency:settings takes no parameters
+  pathTo('agency:settings', { key: 'TSK-1' });
+
 describe('the route registry', () => {
   it('has a screen for every authenticated route and none for a public one', () => {
-    const authenticated = ROUTES.filter((route) => route.authenticated).map((route) => route.id);
+    const authenticated = Object.entries(ROUTES)
+      .filter(([, route]) => route.authenticated)
+      .map(([id]) => id);
     expect(Object.keys(SCREENS).toSorted()).toEqual(authenticated.toSorted());
   });
 
@@ -27,14 +38,14 @@ describe('the route registry', () => {
     });
   });
 
-  it('refuses to build an address with a parameter missing', () => {
-    expect(() => pathTo('agency:task-detail')).toThrow(/needs the parameter key/);
+  it('refuses to build an address with a parameter missing, at compile time', () => {
+    expect([missing, extra]).toHaveLength(2);
   });
 
   it('points every panel at a route the registry serves', () => {
     for (const panel of PANELS) {
       if (panel.route === null) continue;
-      expect(matchRoute(pathTo(panel.route))?.route.id).toBe(panel.route);
+      expect(matchRoute(pathTo(panel.route))?.id).toBe(panel.route);
     }
   });
 });

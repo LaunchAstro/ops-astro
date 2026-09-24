@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, settle } from './mount.tsx';
 
 /** A storage that is just a map, so the session survives a remount in-test. */
@@ -92,6 +92,7 @@ async function open(fetch: typeof globalThis.fetch, path = '/projects/') {
       gotrueUrl="http://identity.invalid"
       apiBase="/api"
       fetch={fetch}
+      storage={tabStorage()}
     />,
   );
 }
@@ -224,6 +225,7 @@ describe('the address decides the screen', () => {
         gotrueUrl="http://identity.invalid"
         apiBase="/api"
         fetch={fetch}
+        storage={tabStorage()}
       />,
     );
     expect(view.find('#signin-email')).not.toBeNull();

@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount } from './mount.tsx';
 
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
@@ -56,6 +56,7 @@ describe('a tab whose sessionStorage throws', () => {
         gotrueUrl="http://identity.invalid"
         apiBase="/api"
         fetch={fetch}
+        storage={tabStorage()}
       />,
     );
     expect(view.find('[data-settings="capabilities"]')).not.toBeNull();

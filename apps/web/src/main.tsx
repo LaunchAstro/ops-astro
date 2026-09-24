@@ -20,7 +20,7 @@ import '../../../packages/ui/src/styles/4-board.css';
 import '../../../packages/ui/src/styles/5-task.css';
 import './styles/6-slice.css';
 import { App } from './App.tsx';
-import { SessionStore } from './session/token.ts';
+import { SessionStore, tabStorage } from './session/token.ts';
 
 /**
  * The address, as state.
@@ -53,6 +53,7 @@ function Root(): React.ReactElement {
       gotrueUrl={GOTRUE_URL}
       apiBase={API_BASE}
       fetch={window.fetch.bind(window)}
+      storage={storage}
     />
   );
 }
@@ -61,16 +62,10 @@ const GOTRUE_URL =
   (import.meta.env['VITE_GOTRUE_URL'] as string | undefined) ?? 'http://127.0.0.1:54391';
 const API_BASE = (import.meta.env['VITE_API_BASE'] as string | undefined) ?? '/api';
 
-const sessions = new SessionStore(storage());
-
-/** `sessionStorage` throws outright in a blocked-site-data context. */
-function storage(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
+// Read once, through the one guarded accessor: blocked site data makes the
+// `sessionStorage` global throw on access, not only on use.
+const storage = tabStorage();
+const sessions = new SessionStore(storage);
 
 const host = document.getElementById('app');
 if (host !== null) {
