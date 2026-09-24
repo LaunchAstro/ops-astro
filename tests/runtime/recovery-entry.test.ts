@@ -92,9 +92,9 @@ async function approved(
     return {
       taskId,
       lineageId: proposed.value.lineageId,
-      reservationId: decided.value.reservationId as string,
-      attemptId: decided.value.attemptId as string,
-      envelopeId: decided.value.envelopeId as string,
+      reservationId: decided.value.reservationId,
+      attemptId: decided.value.attemptId,
+      envelopeId: decided.value.envelopeId,
     };
   });
 }

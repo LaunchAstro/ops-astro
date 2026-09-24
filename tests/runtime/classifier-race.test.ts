@@ -194,8 +194,8 @@ async function approveOn(
   if (decided.value.decision !== 'approve')
     throw new Error(`expected an approval, got ${decided.value.decision}`);
   return {
-    reservationId: decided.value.reservationId as string,
-    envelopeId: decided.value.envelopeId as string,
+    reservationId: decided.value.reservationId,
+    envelopeId: decided.value.envelopeId,
   };
 }
 

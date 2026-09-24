@@ -91,8 +91,8 @@ async function staleExpiredClaim(database: Database, fixture: RuntimeFixture): P
       throw new Error(`expected an approval, got ${decided.value.decision}`);
     return {
       versionId: proposed.value.versionId,
-      reservationId: decided.value.reservationId as string,
-      attemptId: decided.value.attemptId as string,
+      reservationId: decided.value.reservationId,
+      attemptId: decided.value.attemptId,
     };
   });
 

@@ -692,7 +692,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
     if (!approved.ok) throw new Error('unreachable');
     if (approved.value.decision !== 'approve')
       throw new Error(`expected an approval, got ${approved.value.decision}`);
-    const envelopeId = approved.value.envelopeId as string;
+    const envelopeId = approved.value.envelopeId;
 
     const opened = barrier();
     const rival: Database = connect(database.appUrl, { max: 1, source: 'lock-rival' });
