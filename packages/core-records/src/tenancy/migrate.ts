@@ -32,14 +32,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
-import {
-  classifyStatement,
-  skipBlockComment,
-  skipDollarQuoted,
-  skipLineComment,
-  skipQuoted,
-  splitStatements,
-} from './statements.ts';
+import { classifyStatement, scanToken, splitStatements } from './statements.ts';
 
 export interface Migration {
   readonly version: string;
@@ -190,12 +183,14 @@ async function refuseIfConnected(
  * refuses it, which fails closed; a file that really needs one of these is a
  * change to how the runner applies files, not a file to slip past it. The
  * statements that would end the runner's own transaction are the scanner's
- * `transaction` kind, plus PREPARE TRANSACTION.
+ * `transaction` kind, plus PREPARE TRANSACTION. `ALTER TYPE ... ADD VALUE` is
+ * not refused: PostgreSQL 12 and later run it inside a block, and a later use
+ * of the new value in the same run fails and rolls the whole run back (the
+ * ALTER TYPE reference page, Notes).
  */
 const OUTSIDE_A_TRANSACTION: readonly RegExp[] = [
   /^(create (unique )?index|drop index)\b.*\bconcurrently\b/u,
   /^alter table\b.*\bdetach partition\b.*\bconcurrently\b/u,
-  /^alter type\b.*\badd value\b/u,
   /^(vacuum|reindex|cluster|alter system|discard all|prepare transaction)\b/u,
   /^(create|drop) (database|tablespace)\b/u,
   /^alter database\b.*\bset tablespace\b/u,
@@ -212,25 +207,11 @@ function words(statement: string): string {
   let text = '';
   let at = 0;
   while (at < statement.length) {
-    const ch = statement[at] ?? '';
-    let after = at;
-    if (statement.startsWith('--', at)) {
-      after = skipLineComment(statement, at);
-    } else if (statement.startsWith('/*', at)) {
-      after = skipBlockComment(statement, at);
-    } else if (ch === "'" || ch === '"') {
-      const previous = at > 0 ? statement[at - 1] : undefined;
-      after = skipQuoted(statement, at, ch, ch === "'" && (previous === 'e' || previous === 'E'));
-    } else if (ch === '$') {
-      after = skipDollarQuoted(statement, at);
-    }
-    if (after === at) {
-      text += ch;
-      at += 1;
-    } else {
-      text += ch === '-' || ch === '/' ? ' ' : ' ? ';
-      at = after;
-    }
+    const token = scanToken(statement, at);
+    if (token.kind === 'comment') text += ' ';
+    else if (token.kind === 'quoted') text += ' ? ';
+    else text += statement.slice(at, token.end);
+    at = token.end;
   }
   return text.trim().replaceAll(/\s+/gu, ' ').toLowerCase();
 }
@@ -321,37 +302,45 @@ export async function applyMigrations(
   // application running passes.
   if (pending.length === 0) return { applied: [], alreadyApplied };
   const names = pending.map((migration) => migration.version);
+  // The one transaction rolls a failure back to where the run started.
+  const last = alreadyApplied.at(-1);
+  const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
 
   // The check runs before the transaction, inside it before each file, and
   // once more before the commit, so a session that connects after the first
   // look still refuses the run, and the whole run rolls back.
   await refuseIfBlind(admin.execute, names);
   await refuseIfConnected(admin.execute, names);
-  await admin.transaction(async (execute) => {
-    // Migrations are ordered and each one may depend on the last, so they are
-    // applied one at a time on purpose. The same goes for the statements
-    // inside one migration. `Promise.all` here would apply a schema in an
-    // order nobody wrote.
-    for (const migration of pending) {
-      // oxlint-disable-next-line no-await-in-loop
-      await refuseIfConnected(execute, names);
-      for (const statement of migration.statements) {
-        try {
-          // oxlint-disable-next-line no-await-in-loop
-          await execute(statement);
-        } catch (cause) {
-          throw new Error(`migrate: ${migration.version} failed on: ${statement.slice(0, 200)}`, {
-            cause,
-          });
+  await admin.transaction(
+    async (execute) => {
+      // Migrations are ordered and each one may depend on the last, so they are
+      // applied one at a time on purpose. The same goes for the statements
+      // inside one migration. `Promise.all` here would apply a schema in an
+      // order nobody wrote.
+      for (const migration of pending) {
+        // oxlint-disable-next-line no-await-in-loop
+        await refuseIfConnected(execute, names);
+        for (const statement of migration.statements) {
+          try {
+            // oxlint-disable-next-line no-await-in-loop
+            await execute(statement);
+          } catch (cause) {
+            throw new Error(
+              `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
+                `applied; the database is still ${startedAt}.`,
+              { cause },
+            );
+          }
         }
+        // oxlint-disable-next-line no-await-in-loop
+        await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
+          migration.version,
+          migration.checksum,
+        ]);
       }
-      // oxlint-disable-next-line no-await-in-loop
-      await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
-        migration.version,
-        migration.checksum,
-      ]);
-    }
-    await refuseIfConnected(execute, names);
-  });
+      await refuseIfConnected(execute, names);
+    },
+    { oneCommandEach: true },
+  );
   return { applied: names, alreadyApplied };
 }

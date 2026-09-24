@@ -25,6 +25,7 @@ import {
 import {
   applyMigrations,
   MigrationRefused,
+  MigrationRoleCannotSee,
   migrate,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
@@ -307,44 +308,105 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
         syntheticMigration('9001_fr7_first', 'create table ops.fr7_first (id int)'),
         syntheticMigration('9002_fr7_broken', 'select 1 / 0'),
       ]),
-    ).rejects.toThrow(/9002_fr7_broken failed on: select 1 \/ 0/u);
+    ).rejects.toThrow(
+      // R7-RUNTIME-4: the failure says the run rolled back, and to where.
+      new RegExp(
+        `^migrate: 9002_fr7_broken failed on: select 1 / 0\\. Nothing was applied; the ` +
+          `database is still at ${String(onDisk.at(-1)?.version)}\\.$`,
+        'u',
+      ),
+    );
 
     expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
     expect(await state(built)).toBe(before);
   }, 120_000);
 
-  // SOL-FR7-1: a COMMIT behind a nested comment would end the one transaction
-  // after the first file, so the first file and its ledger row would stay
-  // when the third fails. It must be refused before anything runs.
-  it('refuses a COMMIT behind a nested comment before the first of three files runs', async () => {
-    const built = await createEmptyDatabase({ part: 'fr9nested' });
+  // SOL-FR7-1, SOL-FR9-1: a COMMIT the reader cannot see would end the one
+  // transaction after the first file, so the first file and its ledger row
+  // would stay when the third fails. It must be refused before anything runs.
+  // It hides behind a nested comment, behind `$$` at the end of an
+  // identifier, or behind the last `e` of a word read as an E-string prefix.
+  it.each([
+    ['fr9nested', '/* outer /* inner */ outer */ COMMIT'],
+    ['fr10dollar', 'CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
+    ['fr10estring', "select name'\\'; commit; --'"],
+  ])(
+    'refuses a hidden COMMIT (%s) before the first of three files runs',
+    async (part, sql) => {
+      const built = await createEmptyDatabase({ part });
+      db = built;
+      await migrate(built.admin, 'migrations');
+      const before = await state(built);
+
+      const outcome = await applyMigrations(built.admin, [
+        ...onDisk,
+        syntheticMigration('9001_fr9_first', 'create table ops.fr9_first (id int)'),
+        syntheticMigration('9002_fr9_commit', sql),
+        syntheticMigration('9003_fr9_broken', 'select 1 / 0'),
+      ]).catch((error: unknown) => error);
+
+      const [left] = await built.admin.execute<{
+        readonly first: boolean;
+        readonly table: boolean;
+      }>(
+        `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
+              to_regclass('ops.fr9_first') is not null
+                or to_regclass('ops."fr9_second$$"') is not null as table`,
+      );
+      expect({
+        message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+        first: left?.first,
+        table: left?.table,
+      }).toStrictEqual({
+        message: expect.stringMatching(
+          /^migrate: 9002_fr9_commit holds a statement PostgreSQL will not run inside/u,
+        ),
+        first: false,
+        table: false,
+      });
+      expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
+      expect(await state(built)).toBe(before);
+    },
+    120_000,
+  );
+
+  // FR10-GUARD part 2, the backstop: whatever the scanner misreads, the runner
+  // sends each piece so that PostgreSQL refuses one holding two commands. The
+  // piece is built by hand, past the splitter, so the guard reads it as one
+  // CREATE TABLE and lets it through.
+  it('has PostgreSQL refuse a piece holding two commands, and rolls the run back whole', async () => {
+    const built = await createEmptyDatabase({ part: 'fr10backstop' });
     db = built;
     await migrate(built.admin, 'migrations');
     const before = await state(built);
 
     const outcome = await applyMigrations(built.admin, [
       ...onDisk,
-      syntheticMigration('9001_fr9_first', 'create table ops.fr9_first (id int)'),
-      syntheticMigration('9002_fr9_commit', '/* outer /* inner */ outer */ COMMIT'),
-      syntheticMigration('9003_fr9_broken', 'select 1 / 0'),
+      syntheticMigration('9001_fr10_first', 'create table ops.fr10_first (id int)'),
+      {
+        version: '9002_fr10_two',
+        checksum: 'fr10',
+        statements: ['create table ops.fr10_second (id int); commit'],
+      },
+      syntheticMigration('9003_fr10_broken', 'select 1 / 0'),
     ]).catch((error: unknown) => error);
 
     const [left] = await built.admin.execute<{ readonly first: boolean; readonly table: boolean }>(
       `select exists (select 1 from ops.schema_migrations where version like '9%') as first,
-              to_regclass('ops.fr9_first') is not null as table`,
+              to_regclass('ops.fr10_first') is not null
+                or to_regclass('ops.fr10_second') is not null as table`,
     );
     expect({
       message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      cause: outcome instanceof Error ? String(outcome.cause) : '',
       first: left?.first,
       table: left?.table,
     }).toStrictEqual({
-      message: expect.stringMatching(
-        /^migrate: 9002_fr9_commit holds a statement PostgreSQL will not run inside/u,
-      ),
+      message: expect.stringMatching(/^migrate: 9002_fr10_two failed on: .* Nothing was applied;/u),
+      cause: expect.stringContaining('cannot insert multiple commands into a prepared statement'),
       first: false,
       table: false,
     });
-    expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
     expect(await state(built)).toBe(before);
   }, 120_000);
 
@@ -377,6 +439,7 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
       syntheticMigration('9001_fr7_blind', 'select 1'),
     ]).catch((error: unknown) => error);
 
+    expect(outcome).toBeInstanceOf(MigrationRoleCannotSee);
     expect(outcome instanceof Error ? outcome.message : JSON.stringify(outcome)).toMatch(
       /cannot read every session/u,
     );
@@ -394,6 +457,42 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     // The harness's own owner session is on this database too, and is named with it.
     expect(seen.sessions.map((s) => s.pid)).toContain(app.pid);
     expect(await state(built)).toBe(before);
+  }, 120_000);
+
+  // R7-THERMO-9: the CLI reports the blind-role refusal and exits 2, naming
+  // the role and the grant, rather than crashing with exit 1.
+  it('refuses a role that cannot read every session through the command line', async () => {
+    const on = await at0023('fr10blindcli');
+    const blind = `${on.name}_mig`;
+    const password = randomBytes(24).toString('base64url');
+    await on.admin.execute(
+      `create role "${blind}" login password '${password}' nosuperuser createrole`,
+    );
+    extraRoles.push(blind);
+    await on.admin.execute(`grant usage on schema ops to "${blind}"`);
+    await on.admin.execute(`grant select, insert on ops.schema_migrations to "${blind}"`);
+    const url = new URL(ownerUrl(on));
+    url.username = blind;
+    url.password = password;
+    const before = await state(on);
+
+    const run = await promisify(execFile)(process.execPath, ['scripts/db-migrate.mjs'], {
+      env: { PATH: process.env['PATH'] ?? '', DATABASE_ADMIN_URL: url.toString() },
+    }).then(
+      () => ({ code: 0, stderr: '' }),
+      (error: { readonly code?: number; readonly stderr?: string }) => ({
+        code: error.code,
+        stderr: error.stderr ?? '',
+      }),
+    );
+
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain(
+      `db-migrate: migrate: refusing to apply ${String(PENDING_AFTER_0023.length)} pending migration(s)`,
+    );
+    expect(run.stderr).toContain(`the role ${blind} cannot read every session`);
+    expect(run.stderr).toContain(`grant ${blind} pg_read_all_stats`);
+    expect(await state(on)).toBe(before);
   }, 120_000);
 
   it('refuses through the command line, with nothing in the environment to get round it', async () => {
@@ -437,7 +536,6 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['CREATE UNIQUE INDEX\n  CONCURRENTLY i ON public.t (a)'],
     ['drop index concurrently i'],
     ['reindex index concurrently i'],
-    ["alter type ops.kind add value 'x'"],
     ['vacuum public.t'],
     ['create database other'],
     ['alter system set work_mem = 1'],
@@ -458,6 +556,14 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['alter database other set tablespace pg_default'],
     ['alter table ops.partitioned detach partition ops.part1 concurrently'],
     ['alter subscription s refresh publication'],
+    // SOL-FR9-1: `$$` after an identifier is part of it, so neither a quote
+    // nor the end of the file hides what follows.
+    ['CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
+    ['ALTER TABLE ops.t$$ DETACH PARTITION ops.p CONCURRENTLY'],
+    // R7-RUNTIME-1's form: `$a$` inside two identifiers read as one quote.
+    ['create table ops.x$a$ (id int); commit; create table ops.y$a$ (id int)'],
+    // The same boundary for E'': the e of `name` does not open an escape string.
+    ["select name'\\'; commit; --'"],
   ])('refuses %j and touches nothing', async (statement) => {
     await expect(
       applyMigrations(untouched, [
@@ -476,6 +582,9 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ["alter type ops.kind rename value 'a' to 'b' /* add value later */"],
     ["create function ops.f() returns void language sql as $$ select 'commit' $$"],
     ['analyze ops.t'],
+    // R7-SURFACE-6: PostgreSQL 12 and later run ADD VALUE inside a transaction
+    // block. A later use in the same run fails and rolls the run back whole.
+    ["alter type ops.kind add value 'x'"],
   ])('passes %j', async (statement) => {
     await expect(
       applyMigrations(untouched, [syntheticMigration('0001_fine', statement)]),

@@ -55,6 +55,36 @@ describe('splitStatements', () => {
   it('honours backslash escapes inside an E string and not outside one', () => {
     expect(splitStatements(`select E'\\'; drop table t'`)).toHaveLength(1);
   });
+
+  // SOL-FR9-1: `$` continues an unquoted identifier, so `$$` straight after
+  // one is part of it and opens nothing (PostgreSQL's scan.l, ident_cont).
+  it('reads $$ at the end of an identifier as part of it, not as a dollar quote', () => {
+    expect(
+      splitStatements('create table ops.t$$ (id int); /* a /* b */ c */ commit'),
+    ).toStrictEqual(['create table ops.t$$ (id int)', '/* a /* b */ c */ commit']);
+  });
+
+  it('reads $a$ inside two identifiers as parts of them, not as one quote', () => {
+    expect(
+      splitStatements('create table ops.x$a$ (id int);\ncommit;\ncreate table ops.y$a$ (id int);'),
+    ).toStrictEqual(['create table ops.x$a$ (id int)', 'commit', 'create table ops.y$a$ (id int)']);
+  });
+
+  it('still opens a dollar quote after a parameter or a space', () => {
+    expect(splitStatements('select $1$$;$$; select $$;$$')).toStrictEqual([
+      'select $1$$;$$',
+      'select $$;$$',
+    ]);
+  });
+
+  // `name'\'` is the type `name` and a plain string: only a lone E opens an
+  // escape string, not the last letter of a longer word.
+  it('does not read the last e of a word as an E-string prefix', () => {
+    expect(splitStatements(`select name'\\'; commit; --'`)).toStrictEqual([
+      `select name'\\'`,
+      'commit',
+    ]);
+  });
 });
 
 describe('classifyStatement', () => {

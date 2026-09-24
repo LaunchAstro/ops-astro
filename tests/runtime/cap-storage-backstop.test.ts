@@ -506,11 +506,30 @@ describe.skipIf(serverUrl === undefined).each([
 
 describe.skipIf(serverUrl === undefined)('a 0023 database holding a row a new rule forbids', () => {
   it.each([
-    ['a USD envelope under an AUD cap', 'AUD', 1000, 'USD', 10, /currency/u, '0023'],
-    ['an AUD cap committed past its limit', 'AUD', 100, 'AUD', 101, /ceiling/u, '0023'],
+    // The run is one transaction, so the ledger stays at 0023 whichever file
+    // refuses; the file the runner names is what says the rule's own
+    // migration refused. 0031 repeats 0025's check with the same message.
+    [
+      'a USD envelope under an AUD cap',
+      'AUD',
+      1000,
+      'USD',
+      10,
+      /currency/u,
+      '0024_cap_envelope_currency_binding',
+    ],
+    [
+      'an AUD cap committed past its limit',
+      'AUD',
+      100,
+      'AUD',
+      101,
+      /ceiling/u,
+      '0025_cap_ceiling_at_commit',
+    ],
   ] as const)(
     'refuses the upgrade for %s, stopping before the rule with the row untouched',
-    async (_label, capCurrency, limit, envelopeCurrency, held, message, stopsAt) => {
+    async (_label, capCurrency, limit, envelopeCurrency, held, message, refusedBy) => {
       const db = await createEmptyDatabase({ part: 'caprefused' });
       try {
         await applyMigrations(
@@ -527,13 +546,16 @@ describe.skipIf(serverUrl === undefined)('a 0023 database holding a row a new ru
         const seeded = await seedSnapshot(db);
         // The runner refuses while this database has other sessions; seeding opened one.
         await db.closeSessions();
-        await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
-          message.test(String((error as { cause?: unknown }).cause ?? error)),
+        const refused = await migrate(db.admin, 'migrations').catch((error: unknown) => error);
+        expect(refused).toBeInstanceOf(Error);
+        expect((refused as Error).message).toMatch(
+          new RegExp(`^migrate: ${refusedBy} failed on:`, 'u'),
         );
+        expect(String((refused as { cause?: unknown }).cause ?? refused)).toMatch(message);
         const [ledger] = await db.admin.execute<{ readonly last: string }>(
           `select max(version) as last from ops.schema_migrations`,
         );
-        expect(ledger?.last.slice(0, 4)).toBe(stopsAt);
+        expect(ledger?.last.slice(0, 4)).toBe('0023');
         expect(await seedSnapshot(db)).toBe(seeded);
       } finally {
         await db.drop();
