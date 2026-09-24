@@ -75,7 +75,7 @@ export async function shareRecord(
   sharer: Sharer,
   request: ShareRequest,
 ): Promise<ShareDecision<string>> {
-  const refused = await refuseShare(tx, sharer, request);
+  const refused = await refuseShare(tx, sharer, request, 'live');
   if (refused !== undefined) return refused;
 
   const live = await liveShares(tx, request);
@@ -99,7 +99,10 @@ export async function revokeShare(
   sharer: Sharer,
   request: ShareRequest,
 ): Promise<ShareDecision<number>> {
-  const refused = await refuseShare(tx, sharer, request);
+  // A trashed record's shares can still be withdrawn: the share outlives the
+  // trash until a purge revokes it, so refusing here would leave its holder
+  // standing with nobody able to take it back (R2-AUTHORITY-60).
+  const refused = await refuseShare(tx, sharer, request, 'live or trashed');
   if (refused !== undefined) return refused;
   const live = await liveShares(tx, request);
   for (const grantId of live) {
@@ -110,10 +113,18 @@ export async function revokeShare(
   return { ok: true, value: live.length };
 }
 
+/**
+ * Whether this sharer may share or unshare this record, and whether it is there.
+ *
+ * `live` is what sharing needs: a trashed record is not shared anew.
+ * `live or trashed` is what withdrawing needs. A purged record is absent either
+ * way, and its grants were revoked by the purge.
+ */
 async function refuseShare(
   tx: TenantQuery,
   sharer: Sharer,
   request: ShareRequest,
+  record: 'live' | 'live or trashed',
 ): Promise<ShareDecision<never> | undefined> {
   if (!isUuid(request.recordId) || !isUuid(request.personId)) return notFound();
   const authorised = await checkAuthority(tx, subjectsOfSharer(sharer), {
@@ -136,10 +147,16 @@ async function refuseShare(
                       join public.record_types t
                         on t.business_id = r.business_id and t.id = r.record_type_id
                      where r.business_id = $1 and r.id = $2 and t.key = $3
-                       and r.deleted_at is null) as record,
+                       and (r.deleted_at is null or $5::boolean)) as record,
             exists (select 1 from public.people p
                      where p.business_id = $1 and p.id = $4) as person`,
-    [tx.businessId, request.recordId, request.collection, request.personId],
+    [
+      tx.businessId,
+      request.recordId,
+      request.collection,
+      request.personId,
+      record === 'live or trashed',
+    ],
   );
   if (found[0]?.record !== true || found[0]?.person !== true) return notFound();
   return undefined;
