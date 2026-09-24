@@ -18,7 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { bearer, call, personPath, serverUrl, type Answer } from './world.ts';
 

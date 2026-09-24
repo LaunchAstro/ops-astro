@@ -25,7 +25,7 @@ import {
   tokenFor,
   type ApiFixture,
 } from './fixture.ts';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';

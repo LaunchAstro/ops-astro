@@ -10,7 +10,7 @@
 
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { runCli } from './cli-process-harness.ts';
 
 interface Seen {

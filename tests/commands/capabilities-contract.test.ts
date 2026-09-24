@@ -25,7 +25,7 @@ import {
   type Answer,
   type ApiFixture,
 } from '../api/fixture.ts';
-import { DELEGATION_HEADER } from '../../apps/api/app.ts';
+import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import { enrol, type Member } from './fixture.ts';
 import {
   COMMAND_SURFACE,
