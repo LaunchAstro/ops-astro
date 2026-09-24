@@ -1125,7 +1125,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:728-739`). With neither setting present, the
+  rewrites it (`local-seed.mjs:783-794`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   The database stores only `credential_hash` (SHA-256) and the nonsecret
   `credential_scheme` and `credential_key_id` (migration 0022).
