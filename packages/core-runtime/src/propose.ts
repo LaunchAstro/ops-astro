@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { readBusinessCapId } from '../../core-records/src/commands/runtime-config.ts';
 import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
 import type { LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
@@ -69,8 +70,10 @@ export interface ProposeRequest {
    * (`readBusinessCapId`). T1 validates existing budget authority at the
    * proposal, so the proposal needs the cap before its first write; a task
    * with an open envelope is checked against that envelope's own cap instead.
-   * Absent, and no envelope open, there is no ceiling to check against here,
-   * and the decision answers `BUDGET_UNAVAILABLE`.
+   * Absent, `lockProposal` reads the business cap itself (R2-RUNTIME-26
+   * residual (b), `restart`); with no cap at all and no envelope open there is
+   * no ceiling to check against here, and the decision answers
+   * `BUDGET_UNAVAILABLE`.
    */
   readonly capId?: string;
 }
@@ -124,8 +127,12 @@ export async function lockProposal(
   tx: TenantQuery,
   request: ProposeRequest,
 ): Promise<HeldProposal> {
-  const lineageId = request.lineageId ?? null;
-  const restarts = lineageId === null ? (request.restartsLineageId ?? null) : null;
+  // Final review round 3, R3-AUTHORITY-19: the caller's lineage id is the lock
+  // key, and `writeProposal` requires the lineage by the database's own
+  // lower-case id. An upper-case spelling of the same uuid found the lineage
+  // through the cast and then faulted at the lock-set check (R2-AUTHORITY-33).
+  const lineageId = request.lineageId?.toLowerCase() ?? null;
+  const restarts = lineageId === null ? (request.restartsLineageId?.toLowerCase() ?? null) : null;
   // T4's "preallocate any new successor identities before lock acquisition;
   // this is identity preparation, not a write or approval". A lineage opened by
   // this call has no row to lock yet, and taking its lock after the reservation
@@ -163,7 +170,7 @@ export async function lockProposal(
   // Discovery first, acquisition second, writes third.
   const {
     locks,
-    found: [liveVersions, envelope, liveWork],
+    found: [liveVersions, envelope, liveWork, , businessCap],
   } = await lockRediscovered(tx, {
     discover: async () => {
       const versions =
@@ -183,10 +190,14 @@ export async function lockProposal(
         open === undefined ? null : { id: open.id, cap_id: open.capId },
         await discoverLiveWork(tx, { versionIds: versions }),
         await affectedByVersions(tx, versions),
+        // R2-RUNTIME-26 residual (b): a caller that passes no cap, which is
+        // `restart`, is checked against the cap `decide` would draw on, as
+        // `task.propose` is. Read here so it is locked and rechecked with the set.
+        request.capId ?? (await readBusinessCapId(tx)),
       ] as const;
     },
-    locks: ([, open, work, held]) => {
-      const capId = open?.cap_id ?? request.capId;
+    locks: ([, open, work, held, business]) => {
+      const capId = open?.cap_id ?? business;
       return [
         ...(capId === undefined ? [] : [{ lockClass: 'cap' as const, id: capId }]),
         ...(open === null ? [] : [{ lockClass: 'envelope' as const, id: open.id }]),
@@ -202,7 +213,7 @@ export async function lockProposal(
       'propose: the live work on the superseded version, its holds, the live version itself or the task envelope changed under discovery; roll back and rediscover',
   });
   const accounting = envelope;
-  const capId = accounting?.cap_id ?? request.capId ?? null;
+  const capId = accounting?.cap_id ?? businessCap ?? null;
   return { locks, lineageId, restarts, accounting, capId, liveVersions, openingId, liveWork };
 }
 
@@ -230,25 +241,13 @@ export async function proposeUnderLocks(
     );
   }
 
-  const outOfBudget = await refuseBeyondBudget(tx, request, capId, liveVersions);
-  if (outOfBudget !== null) return outOfBudget;
-
   if (restarts !== null) {
     const refused = await refuseRestart(tx, restarts, request.taskId);
     if (refused !== undefined) return refused;
   }
 
-  let lineage: LineageRow;
-  if (lineageId === null) {
-    const opened = await tx.query<LineageRow>(
-      `insert into public.proposal_lineages
-         (business_id, id, task_id, opened_by_actor_id, restarts_lineage_id)
-       values ($1, $2, $3, $4, $5)
-       returning id, state, task_id`,
-      [tx.businessId, openingId, request.taskId, request.proposedByActorId, restarts],
-    );
-    lineage = only(opened, 'propose: the lineage inserted above');
-  } else {
+  let lineage: LineageRow | undefined;
+  if (lineageId !== null) {
     const found = await tx.query<LineageRow>(
       `select id, state, task_id from public.proposal_lineages
         where business_id = $1 and id = $2`,
@@ -291,6 +290,31 @@ export async function proposeUnderLocks(
       );
     }
     lineage = row;
+  }
+
+  // Final review round 3, R3-AUTHORITY-20: after a named lineage is known to be
+  // on this task and live, and before any write. Priced first, a lineage on another task released that
+  // task's hold into the refusal's committed figure, and whether the answer
+  // was LINEAGE_NOT_ON_TASK depended on the ceiling.
+  const outOfBudget = await refuseBeyondBudget(
+    tx,
+    request,
+    capId,
+    accounting?.id ?? null,
+    liveVersions,
+  );
+  if (outOfBudget !== null) return outOfBudget;
+
+  // The first write: a new lineage opens only once every refusal has passed.
+  if (lineage === undefined) {
+    const opened = await tx.query<LineageRow>(
+      `insert into public.proposal_lineages
+         (business_id, id, task_id, opened_by_actor_id, restarts_lineage_id)
+       values ($1, $2, $3, $4, $5)
+       returning id, state, task_id`,
+      [tx.businessId, openingId, request.taskId, request.proposedByActorId, restarts],
+    );
+    lineage = only(opened, 'propose: the lineage inserted above');
   }
 
   const written = await writeProposal(
@@ -355,11 +379,19 @@ export async function proposeUnderLocks(
  * ask for the room its predecessor gives back. With no cap to read (no envelope
  * and no `capId`), there is no ceiling here, and the decision answers
  * `BUDGET_UNAVAILABLE`.
+ *
+ * Final review round 3, SOL-R3-3: the open envelope is authority too, and
+ * `budgetRoom` in `decide.ts` asks it before the cap. A ceiling within the cap
+ * but past the envelope's room, less the superseded version's own hold in it,
+ * was written with a gate every approval refused `BUDGET_UNAVAILABLE`. The
+ * envelope was locked and rediscovered exactly with the rest of the set, so
+ * the envelope read here is the one `accounting` names.
  */
 async function refuseBeyondBudget(
   tx: TenantQuery,
   request: ProposeRequest,
   capId: string | null,
+  envelopeId: string | null,
   liveVersions: readonly string[],
 ): Promise<RuntimeResult<never> | null> {
   if (capId === null) return null;
@@ -374,22 +406,82 @@ async function refuseBeyondBudget(
       'Propose the work in the currency the cap holds.',
     );
   }
-  const released =
+  const { released, fromEnvelope } =
     liveVersions.length === 0
-      ? '0'
+      ? { released: '0', fromEnvelope: '0' }
       : await tx
-          .query<{ readonly released: string }>(
-            `select coalesce(sum(held_minor), 0)::text as released from public.reservations
+          .query<{ readonly released: string; readonly from_envelope: string }>(
+            `select coalesce(sum(held_minor), 0)::text as released,
+                    coalesce(sum(held_minor) filter (where envelope_id = $3), 0)::text as from_envelope
+               from public.reservations
               where business_id = $1 and state = 'held' and version_id = any($2::uuid[])`,
-            [tx.businessId, liveVersions],
+            [tx.businessId, liveVersions, envelopeId],
           )
-          .then((rows) => rows[0]?.released ?? '0');
+          .then((rows) => ({
+            released: rows[0]?.released ?? '0',
+            fromEnvelope: rows[0]?.from_envelope ?? '0',
+          }));
+  if (envelopeId !== null) {
+    const pastEnvelope = await refuseBeyondEnvelope(tx, request, envelopeId, fromEnvelope);
+    if (pastEnvelope !== null) return pastEnvelope;
+  }
   const committed = String(BigInt(cap.committed) - BigInt(released));
   if (exceeds(committed, BigInt(request.maximumMinor), cap.limitMinor)) {
     return refuse(
       'PROPOSAL_OUT_OF_SCOPE',
       `the budget cap behind this task has ${committed} of ${cap.limitMinor} committed, and this ceiling does not fit its remaining room`,
       'Propose a ceiling within the cap, or raise the cap through its own authorised decision.',
+    );
+  }
+  return null;
+}
+
+/**
+ * SOL-R3-3's half of `refuseBeyondBudget`: the task's open envelope, which
+ * `budgetRoom` asks before the cap. `fromEnvelope` is what the superseded
+ * version holds in it, released by this transaction.
+ */
+async function refuseBeyondEnvelope(
+  tx: TenantQuery,
+  request: ProposeRequest,
+  envelopeId: string,
+  fromEnvelope: string,
+): Promise<RuntimeResult<never> | null> {
+  // By the locked id, not by task: `openEnvelopeOf` is the discovery read, and
+  // this is a read under the lock of what discovery found.
+  const envelope = (
+    await tx.query<{
+      readonly currency: string;
+      readonly maximum_minor: string;
+      readonly held_minor: string;
+      readonly actual_minor: string;
+    }>(
+      `select currency, maximum_minor::text as maximum_minor, held_minor::text as held_minor,
+              actual_minor::text as actual_minor
+         from public.task_envelopes where business_id = $1 and id = $2 and state = 'open'`,
+      [tx.businessId, envelopeId],
+    )
+  )[0];
+  if (envelope === undefined) {
+    throw new RuntimeInvariantError(
+      `refuseBeyondEnvelope: the locked envelope ${envelopeId} is not open under its lock`,
+    );
+  }
+  if (request.currency !== envelope.currency) {
+    return refuse(
+      'PROPOSAL_OUT_OF_SCOPE',
+      `this task's envelope is in ${envelope.currency}, and a proposal in another currency is outside it`,
+      'Propose the work in the currency the envelope holds.',
+    );
+  }
+  const inEnvelope = String(
+    BigInt(envelope.held_minor) + BigInt(envelope.actual_minor) - BigInt(fromEnvelope),
+  );
+  if (exceeds(inEnvelope, BigInt(request.maximumMinor), envelope.maximum_minor)) {
+    return refuse(
+      'PROPOSAL_OUT_OF_SCOPE',
+      `this task's envelope has ${inEnvelope} of ${envelope.maximum_minor} committed, and this ceiling does not fit its remaining room`,
+      'Propose a ceiling within the envelope, or raise it through its authorised boundary.',
     );
   }
   return null;

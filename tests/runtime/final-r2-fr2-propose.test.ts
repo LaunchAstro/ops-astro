@@ -335,17 +335,17 @@ describe.skipIf(serverUrl === undefined)(
       expect(await refusedOutOfScope(taskId, { maximumMinor: LIMIT - 4_000 + 1 })).toStrictEqual(
         refusedNothingWritten,
       );
-      // Controls: in the cap's currency, within its room, the proposal applies;
-      // and a new version of the approved lineage may use the room its
-      // superseded hold gives back.
-      const within = await attempt(s, await bodyWith(s, taskId, { maximumMinor: LIMIT - 4_000 }));
-      expect(answerOf(within)).toBe('applied');
+      // Control: in the cap's currency, a new version of the approved lineage
+      // may use the room its superseded hold gives back. Final review round 3,
+      // SOL-R3-3: that room is the envelope's (4,000) as well as the cap's, so
+      // this control asked 10,000 of a 4,000 envelope at 61c167a and was a gate
+      // no approval could pass (`final-r3-propose.test.ts`).
       const successor = await attempt(
         s,
         await bodyWith(s, taskId, {
           lineageId: first['lineageId'],
           purpose,
-          maximumMinor: LIMIT,
+          maximumMinor: 4_000,
         }),
       );
       expect(answerOf(successor)).toBe('applied');
@@ -428,9 +428,11 @@ describe.skipIf(serverUrl === undefined)(
       const purpose = freshPurpose();
       const first: Detail = await propose(s, taskId, { maximumMinor: 2_000, purpose });
       const lineageId = String(first['lineageId']);
+      // Within the 2,500 envelope the racing approval opens: SOL-R3-3 refuses a
+      // successor past it, which at 61c167a this asked for (3,000).
       const body = proposeBody(taskId, await revisionOf(s, taskId), {
         lineageId,
-        maximumMinor: 3_000,
+        maximumMinor: 2_000,
         purpose,
       });
 

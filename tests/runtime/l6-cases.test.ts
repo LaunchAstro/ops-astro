@@ -308,15 +308,13 @@ describe.skipIf(serverUrl === undefined)('L6 cases: G04, G05 and W05', () => {
 
   it('W05: no room in the envelope under a cap with room is BUDGET_UNAVAILABLE, and writes nothing', async () => {
     const taskId = await createTask(s, 'an envelope sized by its first approval');
-    const purpose = freshPurpose();
-    const v1 = await propose(s, taskId, { purpose, maximumMinor: 2_000 });
+    // Two lineages proposed before any envelope exists, each fitting the cap.
+    // Approving the first opens the envelope at its 2,000 and fills it; the
+    // second then asks 2,000 of an envelope with no room left. Proposing it
+    // after the approval is refused at propose since SOL-R3-3.
+    const v1 = await propose(s, taskId, { purpose: freshPurpose(), maximumMinor: 2_000 });
+    const v2 = await propose(s, taskId, { purpose: freshPurpose(), maximumMinor: 2_000 });
     await approve(s, v1);
-    // The same lineage asks for more than the envelope the first approval opened.
-    const v2 = await propose(s, taskId, {
-      purpose,
-      lineageId: String(v1['lineageId']),
-      maximumMinor: 3_000,
-    });
     // The cap has room for it many times over.
     const capRoom = await count(
       `select (c.limit_minor - coalesce(sum(e.held_minor + e.actual_minor), 0))::text as n

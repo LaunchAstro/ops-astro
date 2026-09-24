@@ -197,7 +197,8 @@ describe.skipIf(serverUrl === undefined)(
       const revise = async (): Promise<Body> =>
         proposeBody(taskId, await revisionOf(s, taskId), {
           lineageId: String(first['lineageId']),
-          maximumMinor: 2_500,
+          // Inside the 2,000 envelope the first approval opens (SOL-R3-3).
+          maximumMinor: 1_500,
           purpose,
         });
       return { taskId, first, reservationId, revise };
