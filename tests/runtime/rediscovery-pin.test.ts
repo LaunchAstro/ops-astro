@@ -254,6 +254,9 @@ const LOCKS = [
 ] as const;
 const LIVE_BY_VERSION = 'select l.id as lease_id, l.run_id, l.delegation_ #460e3290';
 const LIVE_BY_LINEAGE = 'select l.id as lease_id, l.run_id, l.delegation_ #f4725945';
+// Final review R1 #3: cancel discovers the lineage's open runs and locks them
+// before the lineage, rather than updating them after it.
+const RUNS_BY_LINEAGE = 'select id from public.planned_runs where busines #04eb9ec9';
 const LIVE_BY_DELEGATION = 'select l.id as lease_id, l.run_id, l.delegation_ #b0bfa2b3';
 const HELD_BY_VERSION = 'select res.id as reservation_id, res.envelope_id #ddefafce';
 const HELD_BY_LINEAGE = 'select res.id as reservation_id, res.envelope_id #5168d3b0';
@@ -268,7 +271,15 @@ const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
  */
 const PINNED = {
   propose: [LIVE_BY_VERSION, HELD_BY_VERSION, ...LOCKS, LIVE_BY_VERSION, HELD_BY_VERSION],
-  cancel: [HELD_BY_LINEAGE, LIVE_BY_LINEAGE, ...LOCKS, HELD_BY_LINEAGE, LIVE_BY_LINEAGE],
+  cancel: [
+    HELD_BY_LINEAGE,
+    LIVE_BY_LINEAGE,
+    RUNS_BY_LINEAGE,
+    ...LOCKS,
+    HELD_BY_LINEAGE,
+    LIVE_BY_LINEAGE,
+    RUNS_BY_LINEAGE,
+  ],
   delegationRevoke: [
     LIVE_BY_DELEGATION,
     HELD_BY_DELEGATION,

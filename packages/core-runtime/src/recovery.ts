@@ -23,6 +23,7 @@
 // never erase a real liability.
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { revokeDelegation } from '../../core-records/src/authority/delegations.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { lockRediscovered } from './rediscovery.ts';
@@ -648,15 +649,37 @@ export async function cancelAndClassify(
   // means this transaction holds the wrong rows, and it rolls back rather
   // than extending its locks backwards; a set that only shrank (a handback
   // committed in between, N1) is covered by the locks held and goes on.
+  //
+  // Final review R1 #3. The runs this cancellation ends are in the set too,
+  // every planned or claimed one on the lineage, not only those behind a hold
+  // or a live lease. Updating a run it had not locked took that row after the
+  // lineage, which is backwards: `task.decide` takes run before lineage, and
+  // the two closed a cycle that Postgres broke with 40P01. A run a concurrent
+  // proposal adds in between needs a lock not held, and rolls back here.
+  const openRuns = async (): Promise<readonly string[]> =>
+    (
+      await tx.query<{ readonly id: string }>(
+        `select id from public.planned_runs
+          where business_id = $1 and lineage_id = $2 and state in ('planned', 'claimed')
+          order by id`,
+        [tx.businessId, request.lineageId],
+      )
+    ).map((row) => row.id);
+
   const {
     locks,
-    found: [after, workAfter],
+    found: [after, workAfter, runsAfter],
   } = await lockRediscovered(tx, {
     discover: async () =>
-      [await discover(), await discoverLiveWork(tx, { lineageId: request.lineageId })] as const,
-    locks: ([held, work]) => [
+      [
+        await discover(),
+        await discoverLiveWork(tx, { lineageId: request.lineageId }),
+        await openRuns(),
+      ] as const,
+    locks: ([held, work, runs]) => [
       ...locksFor(held),
       ...liveWorkLocks(work),
+      ...runs.map((id) => ({ lockClass: 'run' as const, id })),
       { lockClass: 'lineage', id: request.lineageId },
     ],
     rule: 'covered',
@@ -676,10 +699,11 @@ export async function cancelAndClassify(
   await retireWork(tx, workAfter, locks);
   // Nothing in this head dispatches, so the ordinary cancellation completes as
   // cancelled (T5). A run already handed back keeps that outcome as history.
+  for (const id of runsAfter) locks.require('run', id);
   await tx.query(
     `update public.planned_runs set state = 'cancelled'
-      where business_id = $1 and lineage_id = $2 and state in ('planned', 'claimed')`,
-    [tx.businessId, request.lineageId],
+      where business_id = $1 and id = any($2::uuid[]) and state in ('planned', 'claimed')`,
+    [tx.businessId, runsAfter],
   );
 
   const classified = await classifyAll(tx, after, locks, (row) => ({
@@ -688,6 +712,52 @@ export async function cancelAndClassify(
     causeId: row.cause_id,
   }));
   return { ok: true, value: classified };
+}
+
+/**
+ * The revocation race (RUNTIME-LIFECYCLE F4 residual). `grant.revoke` takes
+ * `for update` on the grant row before any runtime lock, then rediscovers the
+ * live leases its loss affects. A pickup that read the grant before that
+ * revocation and committed after its rediscovery was a live claim nobody
+ * classified. Holding `for share` on every grant the claim's authority could
+ * rest on -- the subjects' own grants in this collection and each grant they
+ * descend from -- makes the two serialise: a revocation that locked first is
+ * seen by the authority read below, and one that locks second waits for this
+ * pickup to commit and then finds its lease.
+ *
+ * It is taken before the runtime set, where `grant.revoke` takes its own, so
+ * neither side ever waits on a grant row while holding a runtime lock.
+ * `task.decide` holds its decide grants the same way (final review R1 #4),
+ * which is why this lives here, beside the authority-loss classifier
+ * `grant.revoke` runs, rather than in either caller.
+ */
+export async function holdCoveringGrants(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  collection: string,
+): Promise<void> {
+  await tx.query(
+    `with recursive chain as (
+       select g.id, g.parent_grant_id from public.grants g
+        where g.business_id = $1 and g.collection = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                       where s.kind = g.subject_kind and s.id = g.subject_id)
+       union
+       select p.id, p.parent_grant_id from public.grants p
+         join chain c on p.id = c.parent_grant_id
+        where p.business_id = $1
+     )
+     select g.id from public.grants g
+      where g.business_id = $1 and g.id in (select id from chain)
+      order by g.id
+      for share`,
+    [
+      tx.businessId,
+      collection,
+      subjects.map((subject) => subject.kind),
+      subjects.map((subject) => subject.id),
+    ],
+  );
 }
 
 /** What a revocation wrote under the locks, and whose work authority it cost. */

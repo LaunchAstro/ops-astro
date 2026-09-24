@@ -37,10 +37,11 @@ import {
 } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { lockedInstant } from './clock.ts';
-import { acquire } from './locks.ts';
+import type { LockRequest } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
-import { classifyUnderLocks, endLease } from './recovery.ts';
+import { classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
+import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 export interface QueueEntry {
@@ -176,6 +177,38 @@ export const NOT_CLAIMABLE_FIX =
   'A reservation with no approval behind it is not work anybody authorised.';
 
 /** Who the claim's authority is read from, as grant subjects. */
+/** A live lease on the task, with the held reservation bound to it when there is one. */
+interface TaskLease {
+  readonly lease_id: string;
+  readonly reservation_id: string | null;
+  readonly envelope_id: string | null;
+  readonly cap_id: string | null;
+  readonly run_id: string | null;
+  readonly lineage_id: string | null;
+}
+
+/** The lease, and everything classifying its hold touches. `acquire` sorts it. */
+function taskLeaseLocks(row: TaskLease): readonly LockRequest[] {
+  const lease: LockRequest = { lockClass: 'lease', id: row.lease_id };
+  if (
+    row.reservation_id === null ||
+    row.envelope_id === null ||
+    row.cap_id === null ||
+    row.run_id === null ||
+    row.lineage_id === null
+  ) {
+    return [lease];
+  }
+  return [
+    { lockClass: 'cap', id: row.cap_id },
+    { lockClass: 'envelope', id: row.envelope_id },
+    { lockClass: 'run', id: row.run_id },
+    { lockClass: 'lineage', id: row.lineage_id },
+    lease,
+    { lockClass: 'reservation', id: row.reservation_id },
+  ];
+}
+
 function authoritySubjects(request: PickupRequest): readonly Subject[] {
   return request.claimant === 'person'
     ? [
@@ -186,49 +219,6 @@ function authoritySubjects(request: PickupRequest): readonly Subject[] {
         { kind: 'person', id: request.authorisedByPersonId },
         { kind: 'actor', id: request.mintedByActorId },
       ];
-}
-
-/**
- * The revocation race (RUNTIME-LIFECYCLE F4 residual). `grant.revoke` takes
- * `for update` on the grant row before any runtime lock, then rediscovers the
- * live leases its loss affects. A pickup that read the grant before that
- * revocation and committed after its rediscovery was a live claim nobody
- * classified. Holding `for share` on every grant the claim's authority could
- * rest on -- the subjects' own grants in this collection and each grant they
- * descend from -- makes the two serialise: a revocation that locked first is
- * seen by the authority read below, and one that locks second waits for this
- * pickup to commit and then finds its lease.
- *
- * It is taken before the runtime set, where `grant.revoke` takes its own, so
- * neither side ever waits on a grant row while holding a runtime lock.
- */
-async function holdCoveringGrants(
-  tx: TenantQuery,
-  subjects: readonly Subject[],
-  collection: string,
-): Promise<void> {
-  await tx.query(
-    `with recursive chain as (
-       select g.id, g.parent_grant_id from public.grants g
-        where g.business_id = $1 and g.collection = $2
-          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
-                       where s.kind = g.subject_kind and s.id = g.subject_id)
-       union
-       select p.id, p.parent_grant_id from public.grants p
-         join chain c on p.id = c.parent_grant_id
-        where p.business_id = $1
-     )
-     select g.id from public.grants g
-      where g.business_id = $1 and g.id in (select id from chain)
-      order by g.id
-      for share`,
-    [
-      tx.businessId,
-      collection,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
-    ],
-  );
 }
 
 export async function pickup(
@@ -274,28 +264,51 @@ export async function pickup(
     );
   }
 
-  const live = await tx.query<{ readonly id: string }>(
-    `select id from public.leases
-      where business_id = $1 and task_id = $2 and state = 'live'`,
-    [tx.businessId, found.task_id],
-  );
-
   await holdCoveringGrants(tx, authoritySubjects(request), request.collection);
+
+  // Final review R1 #5. The task's live lease may be another reservation's,
+  // and if it has expired this pickup fences it below. Fencing it is the
+  // transition that makes that lease's hold nonclaimable, so the hold is
+  // classified here too (R5), which needs its reservation, run, lineage and
+  // accounting parents in this set rather than reached for afterwards.
+  const discoverTaskLeases = async (): Promise<readonly TaskLease[]> =>
+    await tx.query<TaskLease>(
+      `select l.id as lease_id, res.id as reservation_id, res.envelope_id, env.cap_id,
+              run.id as run_id, run.lineage_id
+         from public.leases l
+         left join public.reservations res
+           on res.business_id = l.business_id and res.lease_id = l.id
+          and res.state = 'held' and res.id <> $3
+         left join public.task_envelopes env
+           on env.business_id = res.business_id and env.id = res.envelope_id
+         left join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+        where l.business_id = $1 and l.task_id = $2 and l.state = 'live'
+        order by l.id, res.id`,
+      [tx.businessId, found.task_id, request.reservationId],
+    );
 
   // R5. The cap is in the set because a replacement hold reads its committed
   // total, and the reservation's own lease is in it because that is the lease
   // this transaction may have to fence. Discovering either of them after the
   // reservation lock would be the backwards acquisition the contract forbids.
-  const locks = await acquire(tx, [
-    { lockClass: 'cap', id: found.cap_id },
-    { lockClass: 'envelope', id: found.envelope_id },
-    { lockClass: 'task', id: found.task_id },
-    { lockClass: 'run', id: found.run_id },
-    { lockClass: 'lineage', id: found.lineage_id },
-    ...(live[0] === undefined ? [] : [{ lockClass: 'lease' as const, id: live[0].id }]),
-    ...(found.lease_id === null ? [] : [{ lockClass: 'lease' as const, id: found.lease_id }]),
-    { lockClass: 'reservation', id: request.reservationId },
-  ]);
+  // A lease that appears between discovery and the locks needs a lock not
+  // held and rolls back as `AffectedSetChanged`; one that ended goes on (N1).
+  const { locks, found: taskLeases } = await lockRediscovered(tx, {
+    discover: discoverTaskLeases,
+    locks: (leases) => [
+      { lockClass: 'cap', id: found.cap_id },
+      { lockClass: 'envelope', id: found.envelope_id },
+      { lockClass: 'task', id: found.task_id },
+      { lockClass: 'run', id: found.run_id },
+      { lockClass: 'lineage', id: found.lineage_id },
+      ...(found.lease_id === null ? [] : [{ lockClass: 'lease' as const, id: found.lease_id }]),
+      { lockClass: 'reservation', id: request.reservationId },
+      ...leases.flatMap(taskLeaseLocks),
+    ],
+    rule: 'covered',
+    changed:
+      'pickup: the live leases on the task changed under discovery; roll back and rediscover rather than extending the lock set',
+  });
 
   // Sol 6 RUNTIME-1 (158d6de): `now()` is when this transaction began, and a
   // pickup that waited on these locks past a lease's expiry would still read
@@ -395,8 +408,24 @@ export async function pickup(
       );
     }
     // Read live just above under the task lock, so the guard in `endLease`
-    // changes nothing here.
+    // changes nothing here. Its hold is classified in this transaction, under
+    // the locks taken for it above, rather than left counted until a restart
+    // replay finds it (final review R1 #5). A marked hold is quarantined by
+    // the classifier and stays with its recorded owner; this pickup goes on.
     await endLease(tx, current.id, 'expired');
+    for (const row of taskLeases) {
+      if (row.lease_id !== current.id || row.reservation_id === null) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await classifyUnderLocks(
+        tx,
+        {
+          reservationId: row.reservation_id,
+          cause: 'lease_expired_and_fenced',
+          causeId: current.id,
+        },
+        locks,
+      );
+    }
   }
 
   // From the database instant above, not the process clock. Whole
