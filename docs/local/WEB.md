@@ -5,6 +5,9 @@
 The staff application: sign in, the projects board, one task page. It is a Vite
 dev server on `127.0.0.1:5190` that proxies `/api` to the API on
 `127.0.0.1:8790`, so the browser only ever makes same-origin requests.
+`OperationsClient` takes an `origin`, empty for same-origin, and posts under
+`PREFIX.person` from `commands/surface.ts`. `App` takes it as `apiOrigin`, which
+`main.tsx` reads from `VITE_API_ORIGIN` (unset in local runs).
 
 ## Start it
 
@@ -108,7 +111,11 @@ The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
 authenticated route added to `apps/web/src/routes.ts` without a screen fails
 the typecheck. The screens build addresses with `pathTo` in `routes.ts` from a
-route id and its parameters, never as literal strings.
+route id and its parameters, never as literal strings. `ROUTES` is keyed by
+route id, and each route's parameters are typed from its path: `pathTo` takes
+`{ key }` for `agency:task-detail` and nothing for the others, and a missing
+parameter is a type error. The sign-in gate is `gateOf` in `routes.ts`. The
+tab's `storage` reaches `App` as a prop from `main.tsx`.
 
 The task page is `TaskDetailScreen` and `Loaded` in
 `apps/web/src/screens/TaskDetail.tsx`. The parts it draws live beside it in
@@ -137,6 +144,10 @@ It sorts the answer once into one of five kinds:
 
 The refusal text is the server's, by code (`describeRefusal`). A caller adds
 only what happens next, such as clearing the comment box or rereading the task.
+Beside `busy` and `failure` the hook returns `closed` (sticky once
+`SCOPE_NOT_GRANTED` answers, until the screen unmounts), `locked` (`busy ||
+closed`), `conflict` (the last `stale` refusal) and `because` (the last
+failure's text).
 The settings screen does not use `useCommand`; `use-settings.ts` settles its
 two commands itself.
 

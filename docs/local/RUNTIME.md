@@ -237,7 +237,7 @@ lists `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
 
 `RuntimeRefusalCode` is read off the refusal register's rows marked `runtime`
 (`packages/core-records/src/commands/register.ts`). Each row carries its HTTP
-status, and `apps/api/status.ts` reads that column, so a runtime code is
+status, and `statusOf` in the same file reads that column, so a runtime code is
 declared once. `SUGGESTED_STATUS` (`core-runtime/src/refusals.ts`) is a view
 derived from those rows. Nothing in production reads it, and the tests that
 census the runtime's codes keep it exported. `fromRuntime` is in
@@ -664,7 +664,7 @@ liability.
 
 TRANSACTION-CONTRACT lines 84 and 92: a first-head restart resumes the same
 bounded classifier. An API process start or restart is the resume entry. `main`
-in `apps/api/server.ts` awaits `recoverInstallation`
+in `apps/api/server.ts` awaits `recoverDeployment`
 (`apps/api/recovery-entry.ts`) after its dependencies and the delegation
 credential keyring are validated and before `serve` binds the port. There is no
 database-only reconnect callback: if Postgres restarts under a running API, the
@@ -676,7 +676,7 @@ replay runs at the API's next start, and nothing polls.
   Unset, blank, an empty entry, an entry holding whitespace, `none` beside a
   key, or a key that resolves to no business stops the start with exit 1 and
   names the setting, before any replay (`parseRecoveryScope`,
-  `recoverInstallation`). The literal `none` logs that there are no installation
+  `recoverDeployment`). The literal `none` logs that there are no installation
   businesses and serves. No request, seed, fixture or scan of
   `public.businesses` supplies the set. The administrative connection runs only
   the key lookups.
@@ -1046,7 +1046,7 @@ legacy row as derivable, and 0022's trigger forbids it.
   command surface: `task.propose`, `task.decide`, `task.pickup`,
   `task.handback`, `task.queue`, `task.cancel`, `task.restart` and
   `task.heartbeat` are routed there, and its codes are
-  registered in `commands/register.ts` and `apps/api/status.ts`
+  registered, with their statuses, in `commands/register.ts`
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for

@@ -421,7 +421,7 @@ the engine classifies. On `task.update` it refuses only `source`
 nothing. An update that carries both `source` and `intake_state` is answered
 `SOURCE_SPOOFED`, because `source` is checked first. The same codes are
 asserted by name in `tests/commands/task-fields.test.ts:103-115`. Every status
-is read through `statusFor`, which reads the status column of the register
+is read through `statusOf`, which reads the status column of the register
 itself, so the boundary is proved to use the register rather than a number it
 chose.
 

@@ -100,7 +100,7 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
   task: a seeded task is a task nobody created, and it would make the
   acceptance cases pass without the product working.
 
-Before the API starts, name the installation's businesses for restart
+Before the API starts, name the deployment's businesses for restart
 recovery in `.local/recovery.env`. The file is gitignored, and
 `apps/api/server.ts` reads it beside the other `.local` files
 (`localEnvironment`); a value set in the real environment wins. The seeded
@@ -117,7 +117,7 @@ startup"](RUNTIME.md#restart-recovery-at-api-startup)). `RECOVERY_BUSINESS_KEYS=
 is the only way to say there are none, and the server then logs `restart
 recovery: explicitly no installation businesses`. A blank or missing value is a
 failed start, never an empty scope, and so is a key that resolves to no
-business (`parseRecoveryScope` and `recoverInstallation` in
+business (`parseRecoveryScope` and `recoverDeployment` in
 `apps/api/recovery-entry.ts`). `scripts/local/api-up.sh` needs no argument for
 it.
 

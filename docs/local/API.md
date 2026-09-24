@@ -57,8 +57,8 @@ of the surface is mounted.
 
 A success is the envelope's outcome: `recordId`, `revision`, `detail`. A
 refusal is `{ refused: true, code, names, fixes }` (`refuse` in
-`apps/api/app.ts`) under the status `apps/api/status.ts` maps the code to. The
-code is what a client branches on. The status is what a proxy and a log reader
+`apps/api/app.ts`) under the status the refusal register's own column gives
+the code (`statusOf`, `commands/register.ts`). The code is what a client branches on. The status is what a proxy and a log reader
 see, and neither is derived from the other.
 
 **Admission is the same on both prefixes.** Every generated route goes
@@ -72,7 +72,7 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    when the key resolved to a business: owner `person_login` or
    `agent_login`, outcome `refused`, code `COMMAND_BODY_INVALID`, and the
    subject as a digest only (`recordBodyRefusal`,
-   `identity/authentication-attempts.ts`). A key that names none writes
+   `identity/authentication-attempts.ts`, which takes a verified subject only). A key that names none writes
    nothing and answers the same bytes. Neither case writes an `audit_events`
    row or stores the body or a credential.
 4. A key that names no business answers exactly as login resolution answers a
@@ -973,8 +973,8 @@ executeRead(database, businessId, presented, request) => Promise<unknown>
 
 exported as `executeRead` from `packages/core-records/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
-A declared read with no executor refuses `DEPENDENCY_NOT_LANDED` rather than
-`404`, which is the answer the surface already gives for a part not yet built.
+`executeRead` is a required option of `createApi`, so every declared read has
+an executor.
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.

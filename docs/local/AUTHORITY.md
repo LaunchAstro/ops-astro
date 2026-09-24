@@ -140,6 +140,7 @@ interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope
 // identity/agent-login.ts
 resolveAgentLogin(tx, presented: VerifiedSubject): Promise<AgentSession | AgentRefusal>
 refuseExpiredSession(): AgentRefusal            // AUTH_SESSION_EXPIRED
+EXPIRED_FIXES                                   // its fixes, also read by the HTTP door
 // The agent entry is executeAgentCommand (commands/agent-envelope.ts). It opens
 // withBusiness and calls resolveAgentLogin itself; no session wrapper is exported.
 
@@ -197,7 +198,8 @@ These are **not** in `IdentityRefusalCode` or `RecordsRefusalCode`, deliberately
 `commands/register.ts` derives its `RefusalCode` from those unions and the
 register is L3's file. A model module reaching into the command surface to add a
 code is the coupling the register exists to prevent. L3 has registered every one
-of them, with the HTTP status in `apps/api/status.ts`. The last column says
+of them, with the HTTP status in the register's own column (`statusOf`,
+`commands/register.ts`). The last column says
 whether a caller can meet the code on this head, and where that is shown.
 
 | Code                                                                         | Status | Reachable on this head                                                                                                 |
@@ -285,7 +287,9 @@ and `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
 `refuseExpiredSession()` pins what the server answers when a verified GoTrue
 token has expired: a typed `AUTH_SESSION_EXPIRED` refusal a client can turn into
-a re-login path. Never an empty result, never a 500, never a silent failure. A
+a re-login path. Its fixes are `EXPIRED_FIXES`, exported beside it, and the HTTP
+door answers an expired bearer with the same fixes before any envelope runs
+(`apps/api/app.ts`). Never an empty result, never a 500, never a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
 "the server is broken", and only one of those is a door they can open. The
 browser half (holding the draft, re-authenticating, resuming) is L5's.
