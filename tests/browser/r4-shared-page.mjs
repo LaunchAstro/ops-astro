@@ -15,12 +15,25 @@
 // must never show. The title is on the page: Nathan's I09 ruling is that a
 // shared task shows the client its title and status, so the task spine
 // classifies `title` and `state` `shared` and the projection carries the
-// state as its label (docs/local/AUTHORITY.md:351-354).
+// state as its label (docs/local/AUTHORITY.md:351-354). ada also writes the
+// task's description through `task.update`. The spine leaves it internal, and
+// only `shared` fields leave the database on the shared read
+// (AUTHORITY.md:349-350, :730-732), so its value must be in neither the
+// `task.read` body nor the page.
+//
+// The shared field set is exactly `SHARED_TASK_FIELDS`, `state` and `title`:
+// I09 (OWNER-CARD.md:127) shares the title and the status, AUTHORITY.md:351-354
+// and :730-732 name those two and make every other field internal, and the
+// spine marks only those two `shared` (spine.ts:76-77, :174-175). The row
+// holds the key set of `sharedTask.fields`, and the keys the page draws, to
+// that set: an extra key fails it whatever its value, null included, and so
+// does a missing one.
 //
 // Four rows, in I10's order:
 //   1. the open page draws the shared view: the shared title, the state's
-//      label when the projection carries one, the client comment, no internal
-//      comment, no control that writes;
+//      label (required, and drawn), exactly the shared field set in the body
+//      and on the page, the client comment, no internal comment, no internal
+//      description, no control that writes;
 //   2. the next fetch after `grant.revoke` draws the denied state and none of
 //      the shared content;
 //   3. an authorised response taken before the revocation, held at the network
@@ -72,10 +85,29 @@ async function comment(adaToken, recordId, body, audience) {
   if (posted.status !== 200) throw new Error(`task.comment answered ${String(posted.status)}`);
 }
 
+/** The task fields this slice shares with an outside reader, sorted; see the header. */
+export const SHARED_TASK_FIELDS = Object.freeze(['state', 'title']);
+
+/** A key list as a sorted, comma-joined word, for comparing and reporting. */
+const keySet = (keys) => keys.toSorted().join(',');
+
+/** The internal description, written through the product's own update. */
+async function writeDescription(adaToken, recordId, description) {
+  const read = await callApi(adaToken, 'task.read', { recordId });
+  const updated = await callApi(adaToken, 'task.update', {
+    operationId: randomUUID(),
+    recordId,
+    expectedRevision: read.body.task.revision,
+    fields: { description },
+  });
+  if (updated.status !== 200) throw new Error(`task.update answered ${String(updated.status)}`);
+}
+
 /**
  * Row 1's verdict from what the open page showed. `body` is the `task.read`
- * text and `text` the page's; the state's label is required only when the
- * projection carried one, since the page draws what arrived and nothing else.
+ * text and `text` the page's. The state's label is required (I09): the body
+ * must carry it as a non-empty string and the page must draw it. The internal
+ * `description` must be in neither.
  */
 export function openSharedVerdict({
   status,
@@ -84,18 +116,26 @@ export function openSharedVerdict({
   text,
   client,
   internal,
+  description,
   title,
+  drawnFields,
   controls,
   errors,
 }) {
   let label;
+  let sentFields;
   try {
-    const state = JSON.parse(body)?.sharedTask?.fields?.state;
+    const fields = JSON.parse(body)?.sharedTask?.fields;
+    if (fields !== null && typeof fields === 'object') sentFields = keySet(Object.keys(fields));
+    const state = fields?.state;
     if (typeof state === 'string' && state !== '') label = state;
   } catch {
     label = undefined;
   }
-  const labelShown = label === undefined || text.includes(label);
+  const expected = keySet(SHARED_TASK_FIELDS);
+  const drawnSet = keySet(drawnFields);
+  const labelShown = label !== undefined && text.includes(label);
+  const descriptionOut = text.includes(description) || body.includes(description);
   return {
     observed:
       `task.read answered ${String(status)} with ` +
@@ -103,7 +143,11 @@ export function openSharedVerdict({
       `${drawn ? 'drawn' : 'NOT drawn'}; client comment ${text.includes(client) ? 'shown' : 'MISSING'}; ` +
       `internal note ${text.includes(internal) ? 'SHOWN' : 'absent'}; shared title ` +
       `${text.includes(title) ? 'shown' : 'MISSING'}; state label ` +
-      `${label === undefined ? 'not carried' : labelShown ? 'shown' : 'MISSING'}; ` +
+      `${label === undefined ? 'NOT CARRIED' : labelShown ? 'shown' : 'MISSING'}; internal ` +
+      `description ${text.includes(description) ? 'SHOWN' : 'absent'} on the page and ` +
+      `${body.includes(description) ? 'SENT' : 'absent'} in the body; field keys sent ` +
+      `[${sentFields ?? 'NONE'}]${sentFields === expected ? '' : ` NOT [${expected}]`}, drawn ` +
+      `[${drawnSet}]${drawnSet === expected ? '' : ` NOT [${expected}]`}; ` +
       `${String(controls)} control(s) in the task region; page errors ${JSON.stringify(errors)}`,
     ok:
       status === 200 &&
@@ -113,6 +157,9 @@ export function openSharedVerdict({
       !text.includes(internal) &&
       text.includes(title) &&
       labelShown &&
+      !descriptionOut &&
+      sentFields === expected &&
+      drawnSet === expected &&
       controls === 0 &&
       errors.length === 0,
   };
@@ -132,12 +179,14 @@ export async function casesR4SharedPage(run) {
   const title = `R4 shared title ${stamp}`;
   const client = `R4 client comment ${stamp}`;
   const internal = `R4 internal note ${stamp}`;
+  const description = `R4 internal description ${stamp}`;
   const adaToken = await tokenOf('ada@alpha.local');
   const { recordId, grantId } = await sharedTask(
     { database, admin, alpha, adaToken },
     email,
     title,
   );
+  await writeDescription(adaToken, recordId, description);
   await comment(adaToken, recordId, client, 'client');
   await comment(adaToken, recordId, internal, 'internal');
 
@@ -159,6 +208,9 @@ export async function casesR4SharedPage(run) {
       .catch(() => false);
     const openText = await page.locator('body').innerText();
     const controls = await page.locator(CONTROLS).count();
+    const drawnFields = await page
+      .locator('[data-shared-field]')
+      .evaluateAll((nodes) => nodes.map((node) => node.dataset.sharedField));
     const verdict = openSharedVerdict({
       status: first.status(),
       body: firstBody,
@@ -166,7 +218,9 @@ export async function casesR4SharedPage(run) {
       text: openText,
       client,
       internal,
+      description,
       title,
+      drawnFields,
       controls,
       errors,
     });
@@ -174,7 +228,7 @@ export async function casesR4SharedPage(run) {
       case: 'R4 open shared task',
       action:
         `${email} opened /task/${recordId}, shared with it by shareRecord; ada had posted ` +
-        'one client and one internal comment',
+        'one client and one internal comment and set an internal description',
       observed: verdict.observed,
       ok: verdict.ok,
       shot: await shot(page, drawn ? 'R4-open-shared' : 'R4-open-blank'),
