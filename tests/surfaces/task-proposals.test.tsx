@@ -433,6 +433,32 @@ describe('the propose form', () => {
     await page.unmount();
   });
 
+  it('closes the form on an authority refusal and does not ask again', async () => {
+    const { client, proposed } = server({
+      refusePropose: { code: 'SCOPE_NOT_GRANTED', status: 403 },
+    });
+    const page = await mount(screenFor(client));
+    await tick();
+
+    await page.type('#propose-purpose', 'client_budget');
+    await page.type('#propose-maximum', '10');
+    await page.click('[data-propose="submit"]');
+    await tick();
+
+    expect(proposed).toHaveLength(1);
+    expect(page.find('[data-propose="refusal"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+    expect(page.find('[data-propose="closed"]')).not.toBeNull();
+    expect((page.find('[data-propose="submit"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((page.find('#propose-purpose') as HTMLInputElement).disabled).toBe(true);
+
+    // A second press is not a second request.
+    await page.click('[data-propose="submit"]');
+    await tick();
+    expect(proposed).toHaveLength(1);
+
+    await page.unmount();
+  });
+
   it('will not send a purpose the database would reject', async () => {
     // The column's own check is `^[a-z][a-z0-9_]{0,62}$` (migration 0010), and a
     // violated check arrives from the API as a 503 rather than as a refusal
