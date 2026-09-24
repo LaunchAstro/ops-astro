@@ -27,12 +27,17 @@
 //      chooses the image at run time, so nothing in the workflow pins it. A
 //      bare `container:` opens a mapping whose own `image:` line is read.
 //      The rerun at 356dbe5 added `uses: docker://`, held to the same digest.
-//
-// The workflows are read line by line, in block style: a value may continue
-// on the next line, and a key in a flow collection or an explicit `? ` key is
-// refused rather than read, since reading it would mean parsing YAML.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
+//
+// This is not a YAML parser. It reads the workflows line by line, with LF,
+// CRLF or CR endings. It reads a `uses`, `image` or `container` key written
+// plain or quoted, with space before its colon, and with its value on the same
+// line or the next. It refuses a line where such a key follows `{` or `[`
+// outside quotes and before a comment, and any explicit `? ` key line. Other
+// key forms, such as a tagged key (`!!str uses:`) or an escaped quoted key, are
+// not guaranteed to be read. The follow-up is to parse the workflows as YAML
+// (security rerun at d1a2cef, S2).
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -51,7 +56,34 @@ const MAPPING_KEY = /^\s*(['"]?)[\w-]+\1[ \t]*:(?:\s|$)/u;
 // explicit `? ` key was never seen. Parsing YAML would need a dependency this
 // gate does not take on, so both are refused and the author writes the key in
 // block style.
-const FLOW_KEY = /[{[][^#]*?(?:^|[\s{[,'"])(?:uses|image|container)['"]?[ \t]*:/u;
+const FLOW_KEY = /(?:^|[\s{[,'"])(?:uses|image|container)['"]?[ \t]*:/u;
+
+/**
+ * Does a `uses`, `image` or `container` key follow a flow bracket on this
+ * line? Sol's recheck of d1a2cef: a key straight after the bracket, and a `#`
+ * inside a scalar before the key, hid it. So the line is scanned the way YAML
+ * reads it: a quote opens a scalar only at the start of a token, a `#` starts
+ * a comment only outside quotes and after a space or at the start of the line,
+ * and a bracket inside quotes is text. A comment line is never flagged.
+ */
+const flowKey = (line) => {
+  let quote = '';
+  let bracket = -1;
+  let end = line.length;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i] ?? '';
+    const before = i === 0 ? ' ' : (line[i - 1] ?? '');
+    if (quote === '"' && c === '\\') i += 1;
+    else if (quote !== '' && c === quote) quote = '';
+    else if (quote !== '') continue;
+    else if ((c === '"' || c === "'") && /[\s{[,:]/u.test(before)) quote = c;
+    else if (c === '#' && /\s/u.test(before)) {
+      end = i;
+      break;
+    } else if ((c === '{' || c === '[') && bracket === -1) bracket = i;
+  }
+  return bracket !== -1 && FLOW_KEY.test(line.slice(bracket + 1, end));
+};
 const EXPLICIT_KEY = /^\s*(?:-\s+)?\?(?:\s|$)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
@@ -79,12 +111,14 @@ if (workflows.length === 0) {
 
 for (const file of workflows) {
   const text = readFileSync(join(workflowDir, file), 'utf8');
-  const lines = text.split('\n');
+  // The security rerun at d1a2cef, S1: a split on LF alone left `\r` on every
+  // line of a CRLF workflow, no key matched, and the check said green.
+  const lines = text.split(/\r\n|\r|\n/u);
   const significant = (from) =>
     lines.slice(from).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
   for (const [i, line] of lines.entries()) {
     const where = `${file}:${i + 1}`;
-    if (FLOW_KEY.test(line) || EXPLICIT_KEY.test(line)) {
+    if (flowKey(line) || EXPLICIT_KEY.test(line)) {
       failures.push(
         `${where}: a \`uses\`, \`image\` or \`container\` key in flow style, or an\n` +
           '        explicit `? ` key. This check reads block style only. Write the key\n' +

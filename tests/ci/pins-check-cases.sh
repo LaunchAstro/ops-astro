@@ -146,6 +146,10 @@ run_case "a quoted image key on a tag fails" 1 "jobs:
       postgres:
         'image': postgres:18-alpine
 $STEPS"
+run_case "a double-quoted uses key on a tag fails" 1 "jobs:
+  a:
+    steps:
+      - \"uses\": actions/checkout@v4"
 run_case "uses : on a tag fails" 1 "jobs:
   a:
     steps:
@@ -207,6 +211,31 @@ run_case "R2 - ? uses / : actions/checkout@v4 fails" 1 "jobs:
 run_case "a pinned uses in a flow sequence still fails" 1 "jobs:
   a:
     steps: [ uses: $ACTION ]"
+# Sol's recheck of d1a2cef: a key straight after the bracket, and a `#` inside
+# a scalar before the key, hid the key. A `#` is a comment only outside quotes
+# and after a space, and a comment line is never scanned.
+for l in '- {uses: actions/checkout@v4}' '- {name: "#", uses: actions/checkout@v4}' \
+  "- {name: '#', uses: actions/checkout@v4}" '- {name: step#1, uses: actions/checkout@v4}'; do
+  run_case "flow step $l fails" 1 "jobs:
+  a:
+    steps:
+      $l"
+done
+run_case "db: {image: node:20} fails" 1 "jobs:
+  a:
+    services:
+      db: {image: node:20}
+$STEPS"
+run_case "a commented-out flow step passes" 0 "jobs:
+  a:
+    steps:
+      # - { uses: actions/checkout@v4 }
+      - uses: $ACTION"
+run_case "a flow key inside a quoted run value passes" 0 "jobs:
+  a:
+    steps:
+      - run: echo '{ uses: x }' \"[image: y]\"
+      - uses: $ACTION"
 run_case "a pinned workflow in block style still passes" 0 "jobs:
   a:
     container:
@@ -219,6 +248,28 @@ run_case "a pinned workflow in block style still passes" 0 "jobs:
         uses: $ACTION # v7
       - uses: docker://postgres@sha256:$DIGEST
       - run: echo '{ not a key }'"
+# Security rerun at d1a2cef, S1: lines were split on LF alone, so a CRLF or
+# CR-only workflow kept a `\r` on every line, no key matched, and the check
+# said green. A workflow saved on Windows is committed as it is.
+crlf() { printf '%s\n' "$1" | awk '{ printf "%s\r\n", $0 }'; }
+cr() { printf '%s\n' "$1" | tr '\n' '\r'; }
+TAGGED="jobs:
+  a:
+    steps:
+      - uses: actions/checkout@v4"
+run_case "a CRLF workflow with a tagged uses fails" 1 "$(crlf "$TAGGED")"
+run_case "a CR-only workflow with a tagged uses fails" 1 "$(cr "$TAGGED")"
+run_case "a CRLF container: node:20 fails" 1 "$(crlf "jobs:
+  a:
+    container: node:20
+$STEPS")"
+run_case "a CRLF workflow, fully pinned and recorded, passes" 0 "$(crlf "jobs:
+  a:
+    container:
+      image: postgres@sha256:$DIGEST
+    steps:
+      - uses: $ACTION # v7
+      - uses: docker://postgres@sha256:$DIGEST")"
 run_case "an image: with no value on its line fails" 1 "jobs:
   db:
     services:

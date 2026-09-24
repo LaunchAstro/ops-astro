@@ -54,12 +54,20 @@ A service container runs code inside the job exactly as an action does, so it
 is pinned the same way. `scripts/pins-check.mjs` refuses an `image:`, a
 `container:` or a `uses: docker://` step that is not a sha256 digest, refuses
 an image written as a `${{ }}` expression, since that picks the image at run
-time, and refuses a digest that is not recorded here. A key is read with or
-without quotes and with space before its colon, and its value may continue on
-the next line. A bare `container:` opens a mapping, and its own `image:` line
-is held to the same rule. The check reads block style only: a `uses`, `image`
-or `container` key inside a flow collection (`{ }` or `[ ]`), and any explicit
-`? ` key, is refused, so write those keys one per line.
+time, and refuses a digest that is not recorded here. A bare `container:`
+opens a mapping, and its own `image:` line is held to the same rule.
+
+The check is not a YAML parser. It reads each workflow line by line, with LF,
+CRLF or CR line endings. It reads a `uses`, `image` or `container` key written
+plain or quoted, with or without space before its colon, and with its value
+on the same line or the next. It refuses a line where such a key follows a `{`
+or `[`, with or without a space after the bracket, and any line holding an
+explicit `? ` key. A bracket or a `#` inside a quoted scalar is text, and a `#`
+is a comment only after a space, so `name: "#"` or `name: step#1` before the
+key does not hide it; a comment line is never refused. Other key forms are not
+guaranteed to be read, for example a tagged key (`!!str uses:`) or an escaped
+quoted key. Write each of these keys in block style, one per line.
+Parsing the workflows as YAML is a recorded follow-up.
 `tests/ci/pins-check-cases.sh` holds the cases.
 
 | Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
