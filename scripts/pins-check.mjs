@@ -37,8 +37,11 @@
 // outside quotes and before a comment, and any explicit `? ` key line. Other
 // key forms are not guaranteed to be read: a tagged key (`!!str uses:`), an
 // escaped quoted key, and a key inside a flow collection, or a quoted scalar,
-// that spans lines. The follow-up is to parse the workflows as YAML (security
-// reruns at d1a2cef, S2, and 3f2b259, T2).
+// that spans lines. The flow scan does not know block scalars either, so a
+// `run: |` line holding an unquoted `{` or `[` followed by a `uses:`, `image:`
+// or `container:` string can be refused: a false red, not a pin getting
+// through (Sol's recheck of 022034a). The follow-up is to parse the workflows
+// as YAML (security reruns at d1a2cef, S2, and 3f2b259, T2).
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
