@@ -82,7 +82,10 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     'own credential': ['not-a-refusal', 'applied:-'],
     replayed: ['not-a-refusal', 'applied:-,replayed:-'],
     'replayed without credential': ['not-a-refusal', 'applied:-,replayed:-,replayed:-'],
-    'replayed, body changed': ['OPERATION_ID_REUSED', 'applied:-,replayed:-,replayed:-'],
+    'replayed, body changed': [
+      'OPERATION_ID_REUSED',
+      'applied:-,replayed:-,replayed:-,refused:OPERATION_ID_REUSED',
+    ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },
   'task.pickup': {
@@ -112,7 +115,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'refused:RESERVATION_NOT_CLAIMABLE,replayed:RESERVATION_NOT_CLAIMABLE,replayed:RESERVATION_NOT_CLAIMABLE',
+      'refused:RESERVATION_NOT_CLAIMABLE,replayed:RESERVATION_NOT_CLAIMABLE,replayed:RESERVATION_NOT_CLAIMABLE,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['RESERVATION_NOT_CLAIMABLE', 'refused:RESERVATION_NOT_CLAIMABLE'],
   },
@@ -140,7 +143,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION',
+      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['DELEGATION_NOT_LIVE', 'refused:DELEGATION_NOT_LIVE'],
   },
@@ -168,7 +171,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION',
+      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },
@@ -199,7 +202,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION',
+      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },
@@ -230,7 +233,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION',
+      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },
@@ -264,7 +267,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'refused:DELEGATION_EXCLUDES_DECISION,replayed:DELEGATION_EXCLUDES_DECISION,replayed:DELEGATION_EXCLUDES_DECISION',
+      'refused:DELEGATION_EXCLUDES_DECISION,replayed:DELEGATION_EXCLUDES_DECISION,replayed:DELEGATION_EXCLUDES_DECISION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': [
       'DELEGATION_EXCLUDES_DECISION',
@@ -298,7 +301,7 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'replayed, body changed': [
       'OPERATION_ID_REUSED',
-      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION',
+      'applied:-,replayed:-,refused:DELEGATION_EXCLUDES_OPERATION,refused:OPERATION_ID_REUSED',
     ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },

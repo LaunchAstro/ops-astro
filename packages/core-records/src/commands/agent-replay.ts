@@ -27,7 +27,7 @@ import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
-import { settle, writeCallEvent } from './agent-settle.ts';
+import { writeCallEvent } from './agent-settle.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
@@ -220,18 +220,23 @@ export async function answerReplay(
 ): Promise<CommandResult> {
   const { session, request } = call;
   if (seen.payload_digest !== digest) {
-    return await settle(
-      tx,
-      session,
-      request,
-      digest,
+    // Not registered, because the identity already holds its first request's
+    // row, but audited under that identity: the request carried a usable one,
+    // so the chain ties the collision to it, as the person entry does
+    // (`envelope.ts`, `registered` apart from `withoutIdentity`).
+    const visible = asCallerVisible(
       refuseCommand(
         'OPERATION_ID_REUSED',
         [seen.command],
         ['This identity already carries a different request. Use a new operation_id.'],
       ),
-      true,
     );
+    await writeCallEvent(tx, session, request, digest, {
+      outcome: 'refused',
+      refusalCode: visible.code,
+      attempted: null,
+    });
+    return visible;
   }
   const replayed = seen.result as unknown as CommandResult;
   // A stored refusal carries nothing protected. A stored success is released
