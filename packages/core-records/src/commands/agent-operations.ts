@@ -8,14 +8,14 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
-import { checkDelegatedAuthority, resolveDelegation } from '../authority/delegations.ts';
+import { checkDelegatedAuthority, type Delegation } from '../authority/delegations.ts';
 import { readQueue } from '../reads/queue.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf, type CommandName } from './surface.ts';
-import { fromRuntime, handbackLease, pickupReservation } from './tasks-runtime.ts';
+import { handbackLease, pickupReservation } from './tasks-runtime.ts';
 import { heartbeatLease } from './tasks-controls.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
@@ -65,10 +65,12 @@ export interface AgentOperation {
   readonly subjectTask: 'lease' | 'record';
   /** The operands read before any authority, after the system-owned fields. */
   readonly operands?: (request: AgentRequest) => AgentOperands | Refused;
+  /** What it does, under the delegation `authorise` resolved (none before a pickup). */
   readonly serve: (
     tx: TenantQuery,
     call: AgentCall,
     operands: AgentOperands,
+    delegation: Delegation | undefined,
   ) => Promise<HandlerOutcome>;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay: 'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback';
@@ -170,7 +172,8 @@ export async function parseOperands(
 }
 
 /**
- * What an agent may do under the credential it presents, right now.
+ * What an agent may do under the delegation its credential resolved to, right
+ * now. `authorise` has resolved it and checked its purpose is still reached.
  *
  * The pairs are the intersection root ruling 5 names: each collection and
  * action the delegation's purpose carries, kept only while the delegating
@@ -184,34 +187,39 @@ export async function parseOperands(
 export async function capabilitiesOf(
   tx: TenantQuery,
   session: AgentSession,
-  credential: string | undefined,
+  delegation: Delegation | undefined,
 ): Promise<AgentCapabilities> {
-  const resolved =
-    credential === undefined || credential === ''
-      ? undefined
-      : await resolveDelegation(tx, session.actorId, credential);
-  const delegation = resolved !== undefined && resolved.ok ? resolved.value : undefined;
+  const held = heldBy(delegation, 'session.capabilities');
   const grants: Capability[] = [];
-  if (delegation !== undefined) {
-    for (const collection of delegation.collections) {
-      for (const action of delegation.actions) {
-        // Sequential: one transaction, one connection.
-        // oxlint-disable-next-line no-await-in-loop
-        const held = await checkDelegatedAuthority(tx, delegation, {
-          collection,
-          action,
-          scope: delegation.purposeScope,
-        });
-        if (held.ok) grants.push({ collection, action });
-      }
+  for (const collection of held.collections) {
+    for (const action of held.actions) {
+      // Sequential: one transaction, one connection.
+      // oxlint-disable-next-line no-await-in-loop
+      const reach = await checkDelegatedAuthority(tx, held, {
+        collection,
+        action,
+        scope: held.purposeScope,
+      });
+      if (reach.ok) grants.push({ collection, action });
     }
   }
   return {
     agentActorId: session.actorId,
     businessKey: await businessKeyOf(tx),
-    purposeScope: delegation?.purposeScope ?? null,
+    purposeScope: held.purposeScope,
     grants,
   };
+}
+
+/**
+ * The delegation an operation past the pre-pickup pair runs under. `authorise`
+ * refuses every such call that resolves none, so its absence here is a fault.
+ */
+function heldBy(delegation: Delegation | undefined, command: CommandName): Delegation {
+  if (delegation === undefined) {
+    throw new Error(`agent-operations: ${command} was served without a delegation`);
+  }
+  return delegation;
 }
 
 const NOT_FOUND = (): Refused => ({
@@ -255,14 +263,12 @@ async function serveComment(tx: TenantQuery, { session, request }: AgentCall) {
 
 async function serveHeartbeat(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  { session, request }: AgentCall,
   operands: AgentOperands,
+  delegation: Delegation | undefined,
 ) {
-  // `authorise` resolved this credential a moment ago in this transaction;
-  // it is resolved again for its id rather than threaded through, the way
-  // `session.capabilities` does above.
-  const resolved = await resolveDelegation(tx, session.actorId, credential ?? '');
-  if (!resolved.ok) return { refusal: fromRuntime(resolved.refusal) };
+  // The delegation `authorise` resolved for this call. The runtime locks it
+  // and asks again whether it is live before renewing (`heartbeat`).
   return await heartbeatLease(
     tx,
     {
@@ -271,7 +277,7 @@ async function serveHeartbeat(
       ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
     },
     session.actorId,
-    resolved.value.id,
+    heldBy(delegation, 'task.heartbeat').id,
   );
 }
 
@@ -413,10 +419,10 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // different subject in it. What the agent has is a purpose, and the
       // pairs reported are that purpose as the delegating person's grants
       // still cover it on the picked-up task, read now (`capabilitiesOf`).
-      serve: async (tx, { session, credential }) => ({
+      serve: async (tx, { session }, _operands, delegation) => ({
         recordId: null,
         revision: null,
-        detail: { ...(await capabilitiesOf(tx, session, credential)) },
+        detail: { ...(await capabilitiesOf(tx, session, delegation)) },
       }),
     },
   ],

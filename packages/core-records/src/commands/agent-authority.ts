@@ -31,9 +31,19 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
 ];
 
 /**
+ * What `authorise` answered: the refusal, or the delegation the call goes
+ * ahead under, handed on so no later step resolves the credential again. The
+ * pre-pickup pair goes ahead under none.
+ */
+export type Authorisation =
+  { readonly refusal: CommandRefusal } | { readonly delegation: Delegation | undefined };
+
+const refusing = (refusal: CommandRefusal): Authorisation => ({ refusal });
+
+/**
  * The delegation check, in the order AUTHORITY.md puts it.
  *
- * Returns the refusal, or nothing when the call may go ahead. The pre-pickup
+ * Returns the refusal, or the delegation when the call may go ahead. The pre-pickup
  * pair short-circuits it: there is no delegation to intersect with, and the
  * two operations they are bounded to are the ones that cannot touch a task's
  * own data — the queue names reservations and a pickup claims one.
@@ -42,19 +52,25 @@ export async function authorise(
   tx: TenantQuery,
   { session, credential, request }: AgentCall,
   operation: AgentOperation,
-): Promise<CommandRefusal | undefined> {
-  if (operation.authority === 'beforePickup') return undefined;
+): Promise<Authorisation> {
+  if (operation.authority === 'beforePickup') return { delegation: undefined };
 
   // No credential is an agent login before any pickup, and it reaches the two
   // operations above and nothing else (minimum contract 8.2 case 9): an
   // exclusion, named for what was asked, and a decision named as one.
   if (credential === undefined || credential === '') {
-    return operation.authority === 'decision'
-      ? refuseCommand('DELEGATION_EXCLUDES_DECISION', [request.command], PRE_PICKUP_DECISION_FIXES)
-      : refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
+    return refusing(
+      operation.authority === 'decision'
+        ? refuseCommand(
+            'DELEGATION_EXCLUDES_DECISION',
+            [request.command],
+            PRE_PICKUP_DECISION_FIXES,
+          )
+        : refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES),
+    );
   }
   const resolved = await resolveDelegation(tx, session.actorId, credential);
-  if (!resolved.ok) return fromRuntime(resolved.refusal);
+  if (!resolved.ok) return refusing(fromRuntime(resolved.refusal));
   const delegation = resolved.value;
 
   // Under a live delegation the agent may ask what it may do: the answer is
@@ -71,7 +87,7 @@ export async function authorise(
       action: 'read',
       scope: delegation.purposeScope,
     });
-    return reach.ok ? undefined : fromRuntime(reach.refusal);
+    return reach.ok ? { delegation } : refusing(fromRuntime(reach.refusal));
   }
 
   const taskId = await subjectTaskId(tx, delegation, request, operation);
@@ -86,7 +102,7 @@ export async function authorise(
       collection: 'task',
       taskId,
     });
-    return fromRuntime(excluded.ok ? unreachable() : excluded.refusal);
+    return refusing(fromRuntime(excluded.ok ? unreachable() : excluded.refusal));
   }
 
   const declaration = declarationOf(request.command);
@@ -98,7 +114,7 @@ export async function authorise(
     // ceiling is the whole of what `purposeScope` buys.
     scope: { kind: 'record', id: taskId },
   });
-  return decision.ok ? undefined : fromRuntime(decision.refusal);
+  return decision.ok ? { delegation } : refusing(fromRuntime(decision.refusal));
 }
 
 function unreachable(): never {

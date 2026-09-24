@@ -7,7 +7,12 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
-import { checkDelegatedAuthority, digestOf, type Delegation } from '../authority/delegations.ts';
+import {
+  checkDelegatedAuthority,
+  digestOf,
+  resolveLiveById,
+  resolveSettledByLease,
+} from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -34,8 +39,10 @@ export async function releaseReplay(
       return await replayCapabilities(tx, call, operation);
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
-    case 'reauthorise':
-      return await authorise(tx, call, operation);
+    case 'reauthorise': {
+      const authorised = await authorise(tx, call, operation);
+      return 'refusal' in authorised ? authorised.refusal : undefined;
+    }
   }
 }
 
@@ -48,13 +55,13 @@ async function replayCapabilities(
   call: AgentCall,
   operation: AgentOperation,
 ): Promise<CommandResult> {
-  const refusal = await authorise(tx, call, operation);
-  if (refusal !== undefined) return refusal;
+  const authorised = await authorise(tx, call, operation);
+  if ('refusal' in authorised) return authorised.refusal;
   return {
     command: call.request.command,
     recordId: null,
     revision: null,
-    detail: { ...(await capabilitiesOf(tx, call.session, call.credential)) },
+    detail: { ...(await capabilitiesOf(tx, call.session, authorised.delegation)) },
   };
 }
 
@@ -111,7 +118,8 @@ async function replayPickup(
     return typeof value === 'string' && UUID.test(value) ? value : '';
   };
   const delegationId = named('delegationId');
-  const held = await heldDelegation(tx, session, 'live', delegationId);
+  const held =
+    delegationId === '' ? undefined : await resolveLiveById(tx, session.actorId, delegationId);
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
 
   const declaration = declarationOf('task.pickup');
@@ -222,13 +230,10 @@ async function replaySettledHandback(
   if (credential === undefined || credential === '') {
     return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
   }
-  const held = await heldDelegation(
-    tx,
-    session,
-    'settled',
-    String(stored.detail['leaseId'] ?? ''),
-    credential,
-  );
+  const leaseId = String(stored.detail['leaseId'] ?? '');
+  const held = UUID.test(leaseId)
+    ? await resolveSettledByLease(tx, session.actorId, leaseId, credential)
+    : undefined;
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
   const declaration = declarationOf(request.command);
   const decision = await checkDelegatedAuthority(tx, held, {
@@ -237,61 +242,4 @@ async function replaySettledHandback(
     scope: held.purposeScope,
   });
   return decision.ok ? undefined : fromRuntime(decision.refusal);
-}
-
-interface HeldDelegationRow {
-  readonly id: string;
-  readonly agent_actor_id: string;
-  readonly delegate_person_id: string;
-  readonly minted_by_actor_id: string;
-  readonly purpose: string;
-  readonly collections: readonly string[];
-  readonly actions: Delegation['actions'];
-  readonly purpose_scope_id: string;
-  readonly expires_at: Date;
-}
-
-/**
- * This agent's unexpired, unrevoked delegation: `live` by its own id, or
- * `settled` through the lease it settled and the credential it was minted with.
- */
-async function heldDelegation(
-  tx: TenantQuery,
-  session: AgentSession,
-  state: 'live' | 'settled',
-  key: string,
-  credential?: string,
-): Promise<Delegation | undefined> {
-  if (!UUID.test(key)) return undefined;
-  const rows = await tx.query<HeldDelegationRow>(
-    state === 'live'
-      ? `select d.id, d.agent_actor_id, d.delegate_person_id, d.minted_by_actor_id, d.purpose,
-                d.collections, d.actions, d.purpose_scope_id, d.expires_at
-           from public.delegations d
-          where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
-            and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`
-      : `select d.id, d.agent_actor_id, d.delegate_person_id, d.minted_by_actor_id, d.purpose,
-                d.collections, d.actions, d.purpose_scope_id, d.expires_at
-           from public.delegations d
-           join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
-          where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
-            and d.credential_hash = $4
-            and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
-    state === 'live'
-      ? [tx.businessId, session.actorId, key]
-      : [tx.businessId, session.actorId, key, digestOf(credential ?? '')],
-  );
-  const row = rows[0];
-  if (row === undefined) return undefined;
-  return {
-    id: row.id,
-    agentActorId: row.agent_actor_id,
-    delegatePersonId: row.delegate_person_id,
-    mintedByActorId: row.minted_by_actor_id,
-    purpose: row.purpose,
-    collections: row.collections,
-    actions: row.actions,
-    purposeScope: { kind: 'record', id: row.purpose_scope_id },
-    expiresAt: row.expires_at,
-  };
 }

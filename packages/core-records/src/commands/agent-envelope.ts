@@ -279,13 +279,13 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
   }
 
   const authorised = await authorise(tx, call, operation);
-  if (authorised !== undefined) {
-    await operation.onRefused?.(tx, call, operands, authorised);
-    return await settle(tx, session, request, digest, authorised);
+  if ('refusal' in authorised) {
+    await operation.onRefused?.(tx, call, operands, authorised.refusal);
+    return await settle(tx, session, request, digest, authorised.refusal);
   }
 
   await tx.query('savepoint agent_work');
-  const outcome = await operation.serve(tx, call, operands);
+  const outcome = await operation.serve(tx, call, operands, authorised.delegation);
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(

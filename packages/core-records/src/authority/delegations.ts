@@ -132,6 +132,27 @@ interface DelegationRow {
   readonly expires_at: Date;
 }
 
+/** The columns `delegationOf` reads, in one place for every query that returns a delegation. */
+const DELEGATION_COLUMNS = [
+  'id',
+  'agent_actor_id',
+  'delegate_person_id',
+  'minted_by_actor_id',
+  'purpose',
+  'collections',
+  'actions',
+  'purpose_scope_kind',
+  'purpose_scope_id',
+  'expires_at',
+] as const;
+
+/** `DELEGATION_COLUMNS` for a select list, qualified by `alias` when the query joins. */
+function delegationColumns(alias?: string): string {
+  return DELEGATION_COLUMNS.map((column) =>
+    alias === undefined ? column : `${alias}.${column}`,
+  ).join(', ');
+}
+
 const DECISION_FIX = 'A person decides. Propose the change and let one of them decide it.';
 
 function refuse(
@@ -269,8 +290,7 @@ export async function mintDelegation(
      values ($1, $12, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14)
      on conflict (business_id, agent_actor_id, purpose)
        where revoked_at is null and settled_at is null do nothing
-     returning id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-               collections, actions, purpose_scope_kind, purpose_scope_id, expires_at`,
+     returning ${delegationColumns()}`,
     [
       tx.businessId,
       request.agentActorId,
@@ -333,8 +353,7 @@ export async function resolveDelegation(
   const rows = await tx.query<
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
   >(
-    `select id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-            collections, actions, purpose_scope_kind, purpose_scope_id, expires_at,
+    `select ${delegationColumns()},
             (revoked_at is null and settled_at is null and expires_at > now()) as live,
             (revoked_at is not null and settled_at is null and expires_at > now()
              and revocation_cause = 'authority_lost') as narrowed
@@ -435,6 +454,56 @@ export async function resolveNarrowedDelegation(
   const reach = await checkDelegatedAuthority(tx, resolved.value, request);
   if (reach.ok || reach.refusal.code !== 'DELEGATION_NARROWED') return undefined;
   return { id: resolved.value.id };
+}
+
+/**
+ * This agent's own live delegation, by its id: unexpired, unrevoked and
+ * unsettled. `delegationId` must already be a UUID.
+ *
+ * A pickup's replay, whose lost response carried the credential, has only the
+ * id its receipt names to reach the delegation by (root ruling 6).
+ */
+export async function resolveLiveById(
+  tx: TenantQuery,
+  agentActorId: string,
+  delegationId: string,
+): Promise<Delegation | undefined> {
+  const rows = await tx.query<DelegationRow>(
+    `select ${delegationColumns('d')}
+       from public.delegations d
+      where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
+        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`,
+    [tx.businessId, agentActorId, delegationId],
+  );
+  const row = rows[0];
+  return row === undefined ? undefined : delegationOf(row);
+}
+
+/**
+ * This agent's settled delegation, through the lease it settled and the
+ * credential it was minted with: unexpired and unrevoked. `leaseId` must
+ * already be a UUID.
+ *
+ * A handback settles its own delegation, so its replay cannot resolve the
+ * credential as live; this is the binding it is released to instead.
+ */
+export async function resolveSettledByLease(
+  tx: TenantQuery,
+  agentActorId: string,
+  leaseId: string,
+  credential: string,
+): Promise<Delegation | undefined> {
+  const rows = await tx.query<DelegationRow>(
+    `select ${delegationColumns('d')}
+       from public.delegations d
+       join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
+      where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
+        and d.credential_hash = $4
+        and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
+    [tx.businessId, agentActorId, leaseId, digestOf(credential)],
+  );
+  const row = rows[0];
+  return row === undefined ? undefined : delegationOf(row);
 }
 
 /**
