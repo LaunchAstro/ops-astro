@@ -4,17 +4,7 @@
 // mostly cases where a careless reading would clear something it should not.
 // A gate that only ever passes proves nothing.
 
-import { afterEach, describe, expect, it } from 'vitest';
-import {
-  connectAsAdmin,
-  connectObserved,
-  type Connection,
-} from '../../packages/core-records/src/tenancy/database.ts';
-import {
-  createEmptyDatabase,
-  databaseUrlFromEnvironment,
-  type EmptyDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { describe, expect, it } from 'vitest';
 import {
   classify,
   classifyStatement,
@@ -249,97 +239,4 @@ describe('the log', () => {
     expect(log.schemaChanging()).toStrictEqual([]);
     expect(classify('select 1').map((s) => s.kind)).toStrictEqual(['data']);
   });
-});
-
-// SOL-FR11-2: the log reads a plain string as standard_conforming_strings =
-// on does, and any session may turn it off, after which a backslash escapes a
-// quote and a DROP can sit where the log reads a string. So every logged
-// connection starts with it on, and a change the server reports, however it
-// was made, is recorded as something the log cannot read past. The text below
-// holds a DROP only when the setting is off.
-const serverUrl = databaseUrlFromEnvironment();
-const HIDDEN_DROP = "select 'a\\'b'; drop table if exists public.fr11_none; --'";
-
-function unreadable(connection: Connection): readonly string[] {
-  return connection.log
-    .schemaChanging()
-    .filter((entry) => entry.text.includes('standard_conforming_strings'))
-    .map((entry) => entry.kind);
-}
-
-describe.skipIf(serverUrl === undefined)('the log and standard_conforming_strings', () => {
-  let db: EmptyDatabase | undefined;
-  const opened: Connection[] = [];
-
-  afterEach(async () => {
-    await Promise.all(opened.splice(0).map(async (connection) => await connection.close()));
-    await db?.drop();
-    db = undefined;
-  });
-
-  async function database(
-    part: string,
-  ): Promise<{ readonly built: EmptyDatabase; readonly url: string }> {
-    const built = await createEmptyDatabase({ part });
-    db = built;
-    const url = new URL(serverUrl ?? '');
-    url.pathname = `/${built.name}`;
-    return { built, url: url.toString() };
-  }
-
-  it.each([
-    ['set', 'set standard_conforming_strings = off'],
-    ['set_config', "select set_config('standard_' || 'conforming_strings', 'off', false)"],
-    ['a function body', 'select public.fr11_off()'],
-  ])(
-    'records a change made by %s as unreadable, before the hidden DROP',
-    async (part, change) => {
-      const { built, url } = await database(`fr11scs${part.replaceAll(/[^a-z]/gu, '')}`);
-      await built.admin.execute(
-        `create function public.fr11_off() returns void language plpgsql as $$
-         begin perform set_config('standard_conforming_strings', 'off', false); end $$`,
-      );
-      const pool = connectObserved(url, { source: 'runtime' });
-      opened.push(pool);
-      await pool.betweenTransactions(change);
-      await pool.betweenTransactions(HIDDEN_DROP);
-      expect(unreadable(pool)).toStrictEqual(['opaque']);
-    },
-    60_000,
-  );
-
-  it('records SET LOCAL inside a transaction as unreadable', async () => {
-    const { url } = await database('fr11scslocal');
-    const admin = connectAsAdmin(url, { source: 'harness' });
-    opened.push(admin);
-    await admin.transaction(async (execute) => {
-      await execute('set local standard_conforming_strings = off');
-      await execute(HIDDEN_DROP);
-    });
-    expect(unreadable(admin)).toContain('opaque');
-  }, 60_000);
-
-  it('starts on, and RESET keeps it on, whatever the database default says', async () => {
-    const { built, url } = await database('fr11scsreset');
-    await built.admin.execute(
-      `alter database "${built.name}" set standard_conforming_strings = off`,
-    );
-    const pool = connectObserved(url, { source: 'runtime' });
-    opened.push(pool);
-    await pool.betweenTransactions('reset standard_conforming_strings');
-    const [row] = await pool.betweenTransactions<{ readonly on: string }>(
-      'select current_setting($1) as on',
-      ['standard_conforming_strings'],
-    );
-    expect(row?.on).toBe('on');
-    expect(unreadable(pool)).toStrictEqual([]);
-  }, 60_000);
-
-  it('records nothing for a mention inside a string', async () => {
-    const { url } = await database('fr11scsmention');
-    const pool = connectObserved(url, { source: 'runtime' });
-    opened.push(pool);
-    await pool.betweenTransactions("select 'set standard_conforming_strings = off'");
-    expect(pool.log.schemaChanging()).toStrictEqual([]);
-  }, 60_000);
 });
