@@ -16,6 +16,7 @@ import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { isFieldMap } from './operands.ts';
 import type { CommandName } from './surface.ts';
 import { handbackLease } from './tasks-handback.ts';
 import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
@@ -181,10 +182,10 @@ function handbackOperands(request: AgentRequest): AgentOperands | Refused {
   let operands: AgentOperands = { outcome, fence };
   if ('report' in request) {
     const report = request['report'];
-    if (typeof report !== 'object' || report === null || Array.isArray(report)) {
+    if (!isFieldMap(report)) {
       return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
     }
-    operands = { ...operands, report: report as Readonly<Record<string, unknown>> };
+    operands = { ...operands, report };
   }
   // Any non-null actual is refused here, before authority is read, and not
   // only by the runtime past it. A handback refused on authority reaches the
