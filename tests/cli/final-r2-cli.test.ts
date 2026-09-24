@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one lane's CLI cases, sharing one stand-in and one runner */
 //
 // Final review round 2, lane FR2-CLI: the command line as its own process, with
 // no database and no API. An HTTP stand-in plays the API and records every body.
@@ -14,7 +15,7 @@
 //    never re-serialised as null (`docs/local/API.md`, `COMMAND_BODY_INVALID`).
 
 import { spawn } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -235,5 +236,145 @@ describe('R2-SURFACE-65: a body with no canonical form is exit 2 with nothing se
     expect(run.code, run.stderr).toBe(0);
     expect(api.seen).toHaveLength(1);
     expect((JSON.parse(api.seen[0]?.raw ?? '{}') as { value?: unknown }).value).toBe(1e300);
+  }, 30_000);
+});
+
+// Continuation (coordinator 32): the other places a committed or local step
+// touches a credential file. Each ran unguarded at 2bc5018 and escaped as exit
+// 1, which a caller reads as refused, with a stack.
+
+const NO_STACK = /\n\s+at /u;
+
+// eslint-disable-next-line max-lines-per-function -- one stand-in, the calls that share it
+describe('FR2-CLI-CONT: a credential file this machine cannot change is never read as refused', () => {
+  let api: StandIn;
+  let scratch: string;
+  const env = (extra: Readonly<Record<string, string>>) => ({
+    OPS_ASTRO_API_URL: api.origin,
+    OPS_ASTRO_GOTRUE_URL: api.origin,
+    OPS_ASTRO_BUSINESS: 'alpha',
+    OPS_ASTRO_TOKEN: 'a-bearer-for-the-stand-in',
+    OPS_ASTRO_TOKEN_FILE: join(scratch, 'token'),
+    OPS_ASTRO_DELEGATION_FILE: join(scratch, 'delegation'),
+    ...extra,
+  });
+
+  beforeAll(async () => {
+    api = await standIn();
+    scratch = mkdtempSync(join(tmpdir(), 'final-r2-cli-cont-'));
+  });
+
+  afterAll(async () => {
+    await api.close();
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  // eslint-disable-next-line max-lines-per-function -- lost removal, then the replay that finishes it
+  it('a handback whose spent credential cannot be removed is exit 4, names the id, and that id replays', async () => {
+    const dir = mkdtempSync(join(scratch, 'handback-'));
+    const file = join(dir, 'delegation');
+    writeFileSync(file, `${CREDENTIAL}\n`, { mode: 0o600 });
+    const answer = { detail: { leaseId: 'L', released: true } };
+    api.seen.length = 0;
+    api.handle = (_request, _raw, response) => {
+      chmodSync(dir, 0o500);
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(answer));
+    };
+    const handback = ['task.handback', '--json', JSON.stringify({ leaseId: 'L', fence: 1 })];
+    const lost = await runCli(
+      handback,
+      env({ OPS_ASTRO_AGENT: '1', OPS_ASTRO_DELEGATION_FILE: file }),
+    );
+    chmodSync(dir, 0o700);
+    expect(lost.code, lost.stderr).toBe(4);
+    const sent = (JSON.parse(api.seen[0]?.raw ?? '{}') as { operationId?: unknown }).operationId;
+    expect(typeof sent).toBe('string');
+    expect(namedId(lost.stderr)).toBe(sent);
+    expect(lost.stderr).toContain(`could not be removed from ${file}`);
+    expect(lost.stderr).not.toMatch(NO_STACK);
+    expect(lost.stderr).not.toContain(CREDENTIAL);
+    expect(JSON.parse(lost.stdout)).toStrictEqual(answer);
+
+    api.handle = (_request, _raw, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(answer));
+    };
+    const replay = await runCli(
+      ['task.handback', '--json', JSON.stringify({ leaseId: 'L', fence: 1, operationId: sent })],
+      env({ OPS_ASTRO_AGENT: '1', OPS_ASTRO_DELEGATION_FILE: file }),
+    );
+    expect(replay.code, replay.stderr).toBe(0);
+    expect(existsSync(file)).toBe(false);
+  }, 30_000);
+
+  it('login with a token file it cannot write is exit 2 with nothing sent', async () => {
+    const locked = mkdtempSync(join(scratch, 'login-'));
+    chmodSync(locked, 0o500);
+    api.seen.length = 0;
+    api.handle = (_request, _raw, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ access_token: 'a-bearer-from-the-stand-in' }));
+    };
+    try {
+      const run = await runCli(
+        ['login', '--email', 'a@example.test'],
+        env({ OPS_ASTRO_PASSWORD: 'pw', OPS_ASTRO_TOKEN_FILE: join(locked, 'token') }),
+      );
+      expect(run.code, run.stderr).toBe(2);
+      expect(api.seen).toHaveLength(0);
+      expect(run.stderr).not.toMatch(NO_STACK);
+    } finally {
+      chmodSync(locked, 0o700);
+    }
+  }, 30_000);
+
+  it('login whose token cannot be saved after it was issued is exit 4, never printing it', async () => {
+    const dir = mkdtempSync(join(scratch, 'login-late-'));
+    api.seen.length = 0;
+    api.handle = (_request, _raw, response) => {
+      chmodSync(dir, 0o500);
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ access_token: 'a-bearer-from-the-stand-in' }));
+    };
+    const run = await runCli(
+      ['login', '--email', 'a@example.test'],
+      env({ OPS_ASTRO_PASSWORD: 'pw', OPS_ASTRO_TOKEN_FILE: join(dir, 'token') }),
+    );
+    chmodSync(dir, 0o700);
+    expect(run.code, run.stderr).toBe(4);
+    expect(run.stderr).toContain(`could not be saved to ${join(dir, 'token')}`);
+    expect(run.stderr).not.toMatch(NO_STACK);
+    expect(`${run.stdout}${run.stderr}`).not.toContain('a-bearer-from-the-stand-in');
+  }, 30_000);
+
+  it('logout that cannot remove a credential file is exit 4 and names it', async () => {
+    const dir = mkdtempSync(join(scratch, 'logout-'));
+    const token = join(dir, 'token');
+    writeFileSync(token, 'a-saved-bearer\n', { mode: 0o600 });
+    chmodSync(dir, 0o500);
+    try {
+      const run = await runCli(['logout'], env({ OPS_ASTRO_TOKEN_FILE: token }));
+      expect(run.code, run.stderr).toBe(4);
+      expect(run.stderr).toContain(`could not remove ${token}`);
+      expect(run.stderr).not.toMatch(NO_STACK);
+      expect(run.stdout).toBe('');
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+  }, 30_000);
+
+  // The lead's two named schedules, which already answer with their own exits.
+  it('an unreadable --body-file is exit 2 and a dropped connection exit 3, never 1', async () => {
+    const unreadable = join(scratch, 'body.json');
+    writeFileSync(unreadable, '{}', { mode: 0o000 });
+    const bad = await runCli(['task.create', '--body-file', unreadable], env({}));
+    expect(bad.code, bad.stderr).toBe(2);
+    expect(bad.stderr).not.toMatch(NO_STACK);
+
+    api.handle = (request) => request.socket.destroy();
+    const dropped = await runCli(['task.create', '--json', '{"fields":{}}'], env({}));
+    expect(dropped.code, dropped.stderr).toBe(3);
+    expect(dropped.stderr).not.toMatch(NO_STACK);
   }, 30_000);
 });

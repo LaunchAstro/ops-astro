@@ -117,19 +117,17 @@ function writeSecret(file: string, value: string): void {
 }
 
 /**
- * A pickup's credential can be saved to `file`, checked before the pickup is
- * sent: a claim that commits with nowhere to keep its credential leaves a lease
- * the agent cannot reach until its delegation expires.
+ * A credential can be saved to `file`, checked before the request that issues
+ * it is sent: a pickup that commits with nowhere to keep its credential leaves
+ * a lease the agent cannot reach until its delegation expires.
  */
-function assertWritable(file: string): void {
+function assertWritable(file: string, what: string): void {
   try {
     mkdirSync(dirname(file), { recursive: true });
     accessSync(dirname(file), constants.W_OK);
     if (existsSync(file)) accessSync(file, constants.W_OK);
   } catch (cause) {
-    throw new UsageError(
-      `cannot save a pickup's credential to ${file}: ${(cause as Error).message}`,
-    );
+    throw new UsageError(`cannot save ${what} to ${file}: ${(cause as Error).message}`);
   }
 }
 
@@ -207,13 +205,23 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   const password = env['OPS_ASTRO_PASSWORD'] ?? (await io.stdin()).split('\n')[0] ?? '';
   if (password === '') throw new UsageError('login needs a password on stdin');
   const gotrueUrl = text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue;
+  assertWritable(tokenFile, 'the login token');
   // The web sign-in's own function: the same password grant, the same endpoint.
   const result = await signIn({ gotrueUrl, email, password, fetch: globalThis.fetch });
   if (!result.ok) {
     io.err(`login: ${result.because}`);
     return EXIT.refused;
   }
-  writeSecret(tokenFile, result.token);
+  try {
+    writeSecret(tokenFile, result.token);
+  } catch (cause) {
+    // The token is never printed; signing in again issues another.
+    io.err(
+      `cli: login succeeded but its token could not be saved to ${tokenFile}: ` +
+        (cause as Error).message,
+    );
+    return EXIT.fault;
+  }
   io.out(JSON.stringify({ ok: true, saved: tokenFile }));
   return EXIT.ok;
 }
@@ -239,8 +247,16 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     if (extra.length > 0) throw new UsageError(`unexpected argument ${extra[0] as string}`);
     if (verb === 'login') return await login(parsed, env, io, tokenFile);
     if (verb === 'logout') {
-      rmSync(tokenFile, { force: true });
-      rmSync(delegationFile, { force: true });
+      let removed = true;
+      for (const file of [tokenFile, delegationFile]) {
+        try {
+          rmSync(file, { force: true });
+        } catch (cause) {
+          io.err(`cli: logout could not remove ${file}: ${(cause as Error).message}`);
+          removed = false;
+        }
+      }
+      if (!removed) return EXIT.fault;
       io.out(JSON.stringify({ ok: true }));
       return EXIT.ok;
     }
@@ -263,7 +279,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const delegation = agent
       ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
       : undefined;
-    if (agent && verb === 'task.pickup') assertWritable(delegationFile);
+    if (agent && verb === 'task.pickup') assertWritable(delegationFile, "a pickup's credential");
     const api = (text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
       /\/$/u,
       '',
@@ -330,10 +346,20 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     // Only the credential this handback was sent with is over: an older one
     // replayed from the environment leaves a newer saved credential alone.
     const spent = agent && verb === 'task.handback' && ok ? delegation : undefined;
-    if (spent !== undefined && readOptional(delegationFile) === spent) {
-      rmSync(delegationFile, { force: true });
-    }
     io.out(answer.body === undefined ? (answer.text ?? '') : JSON.stringify(answer.body));
+    if (spent !== undefined && readOptional(delegationFile) === spent) {
+      try {
+        rmSync(delegationFile, { force: true });
+      } catch (cause) {
+        // The handback committed; a replay with its id removes the file.
+        io.err(
+          `cli: handback applied but its spent credential could not be removed from ` +
+            `${delegationFile}: ${(cause as Error).message}`,
+        );
+        io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+        return EXIT.fault;
+      }
+    }
     if (ok) return EXIT.ok;
     if (isRefusal(answer)) return EXIT.refused;
     replayHint();
