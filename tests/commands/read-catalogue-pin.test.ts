@@ -144,7 +144,7 @@ describe('the per-read facts at faf3285', () => {
           name,
           {
             spine: row.spine,
-            subject: row.subject !== undefined,
+            subject: row.spine && row.subject !== undefined,
             authority: typeof row.authority === 'function' ? 'from the request' : row.authority,
           },
         ])

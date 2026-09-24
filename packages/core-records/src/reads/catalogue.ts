@@ -55,15 +55,14 @@ export type Parsed<K extends ReadName> =
   | { readonly ok: true; readonly operands: ReadOperands[K] }
   | { readonly ok: false; readonly refusal: CommandRefusal };
 
-/** What the pipeline found before the read is served. */
+/** What the pipeline found for a row that reads the spine, before it is served. */
 export interface Found {
-  /** Present exactly when the row asks for the spine. */
-  readonly spine: TaskSpine | undefined;
+  readonly spine: TaskSpine;
   /** The one record the read is about, resolved; absent for a business read. */
   readonly recordId: string | undefined;
 }
 
-export interface ReadRow<K extends ReadName> {
+interface RowBase<K extends ReadName> {
   /**
    * The identifier fields the read takes (root ruling 3). Any other is refused
    * `COMMAND_BODY_INVALID`, as on the command path: a body whose identifier
@@ -78,18 +77,6 @@ export interface ReadRow<K extends ReadName> {
    * What it hands back is all the row's later steps are given.
    */
   readonly parse: (body: Readonly<Record<string, unknown>>) => Parsed<K>;
-  /** Whether the read needs the installed task type's identifiers. */
-  readonly spine: boolean;
-  /**
-   * The one record the read is about, resolved before the grant check and
-   * never after it: a record-scoped grant is a grant on a record, not on
-   * whichever spelling the caller used. Absent on a read about the business.
-   */
-  readonly subject?: (
-    tx: TenantQuery,
-    spine: TaskSpine,
-    operands: ReadOperands[K],
-  ) => Promise<string | undefined>;
   /**
    * How the grant check is asked. `declared`: the row's own collection and
    * action, at the subject's record scope or the business's. A function: the
@@ -105,6 +92,25 @@ export interface ReadRow<K extends ReadName> {
    * about a sibling. A member keeps the in-tenant code (I05).
    */
   readonly outsiderNotFound: boolean;
+}
+
+/**
+ * A read that needs the installed task type's identifiers. The pipeline reads
+ * them before the grant check, and `subject` and `serve` are handed them, so
+ * neither has a missing spine to answer (thermo recheck 158d6de, NA2).
+ */
+export interface SpineRow<K extends ReadName> extends RowBase<K> {
+  readonly spine: true;
+  /**
+   * The one record the read is about, resolved before the grant check and
+   * never after it: a record-scoped grant is a grant on a record, not on
+   * whichever spelling the caller used. Absent on a read about the business.
+   */
+  readonly subject?: (
+    tx: TenantQuery,
+    spine: TaskSpine,
+    operands: ReadOperands[K],
+  ) => Promise<string | undefined>;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -112,6 +118,18 @@ export interface ReadRow<K extends ReadName> {
     found: Found,
   ) => Promise<ReadResult | CommandRefusal>;
 }
+
+/** A read about the business that needs no spine and names no record. */
+export interface BusinessRow<K extends ReadName> extends RowBase<K> {
+  readonly spine: false;
+  readonly serve: (
+    tx: TenantQuery,
+    session: Session,
+    operands: ReadOperands[K],
+  ) => Promise<ReadResult | CommandRefusal>;
+}
+
+export type ReadRow<K extends ReadName> = SpineRow<K> | BusinessRow<K>;
 
 /** A JSON object that is not an array, which is what a field map has to be. */
 function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -171,7 +189,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: true,
     async serve(tx, session, _operands, { spine, recordId }) {
-      if (recordId === undefined || spine === undefined) return refuseNotFound();
+      if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
       // first among them, gets the shared view, which is built from the
       // catalogue's `shared` fields and never from the detail with parts cut.
@@ -208,8 +226,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: true,
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, _session, request, { spine }) {
-      if (spine === undefined) throw new Error('runRead: task.board reached without the spine');
+    async serve(tx, _session, operands, { spine }) {
       // A board is a task record, so one that is not alpha's is refused the
       // way `task.move` refuses it, and never listed as a board with nothing
       // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
@@ -217,12 +234,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // success. Foreign, fabricated, malformed and trashed all get the one
       // answer. `null` is the list of tasks on no board and is not a lookup.
       if (
-        typeof request.board === 'string' &&
-        !(await boardExists(tx, spine.taskTypeId, request.board))
+        typeof operands.board === 'string' &&
+        !(await boardExists(tx, spine.taskTypeId, operands.board))
       ) {
         return refuseNotFound();
       }
-      return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, request.board) };
+      return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
     },
   },
   'person.list': {
