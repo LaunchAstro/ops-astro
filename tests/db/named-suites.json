@@ -45,7 +45,8 @@
     "COMMAND-CATALOGUE adds stray-identifiers (a stray identifier on task.heartbeat, task.cancel, task.restart, grant.revoke and delegation.revoke is refused COMMAND_BODY_INVALID with nothing written; architecture observation 2).",
     "THERMO-RUNTIME adds recovery-replay-pin (replay's eligible set unchanged when discovery is shared) and pickup-refusal-order (the ruled O6 order: approval refused before any replacement write), both against a real database.",
     "SOL6-AUTHORITY-FIX-2 adds person-replay-current-rights (a person replay of a stored success answers current authority: pickup after the only covering write grant is revoked is SCOPE_NOT_GRANTED with no receipt, no second lease and the register row unchanged; a pickup whose lease was handed back is LEASE_EXPIRED; task.create after revocation is refused; live rights replay as stored; Sol 6 AUTHORITY-1).",
-    "SOL6-AUTHORITY-FIX-2 adds agent-operand-types (on the agent prefix an array reservationId is COMMAND_BODY_INVALID with no lease, a string fence or array outcome is FIELD_VALUE_INVALID with the lease live and no report, and after the person's write grant lapses an array outcome retains nothing; string ids, numeric fences and string outcomes still claim, settle and retain; Sol 6 AUTHORITY-2), and sends agent-person-wording's pickup and handback rows the same full body on both entries."
+    "SOL6-AUTHORITY-FIX-2 adds agent-operand-types (on the agent prefix an array reservationId is COMMAND_BODY_INVALID with no lease, a string fence or array outcome is FIELD_VALUE_INVALID with the lease live and no report, and after the person's write grant lapses an array outcome retains nothing; string ids, numeric fences and string outcomes still claim, settle and retain; Sol 6 AUTHORITY-2), and sends agent-person-wording's pickup and handback rows the same full body on both entries.",
+    "SOL6-AUTHORITY-FIX-2 adds agent-read-targets (on the agent prefix a stray recordId on task.queue or session.capabilities and a stray board on task.read is COMMAND_BODY_INVALID naming the field, one body for own, foreign and fabricated ids, one refused audit event per call, before the delegation is read and in the person prefix bytes; the reads without it answer 200; Sol 6 AUTHORITY-3)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -157,7 +158,8 @@
     "tests/authority/non-member-grants.test.ts",
     "tests/commands/agent-operation-id.test.ts",
     "tests/runtime/person-replay-current-rights.test.ts",
-    "tests/runtime/agent-operand-types.test.ts"
+    "tests/runtime/agent-operand-types.test.ts",
+    "tests/api/agent-read-targets.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

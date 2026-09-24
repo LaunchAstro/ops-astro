@@ -10,6 +10,8 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
 import { checkDelegatedAuthority, type Delegation } from '../authority/delegations.ts';
 import { readQueue } from '../reads/queue.ts';
+import { READ_CATALOGUE } from '../reads/catalogue.ts';
+import { READ_BODY_FIXES } from '../reads/dispatch.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
@@ -23,7 +25,12 @@ import { heartbeatLease } from './tasks-controls.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
-import { claimedSystemFields, lockTask, SYSTEM_OWNED_FIXES } from './prepare.ts';
+import {
+  claimedSystemFields,
+  irrelevantIdentifiers,
+  lockTask,
+  SYSTEM_OWNED_FIXES,
+} from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
 
 /**
@@ -70,6 +77,13 @@ export interface AgentOperation {
   readonly authority: 'beforePickup' | 'purpose' | 'decision' | 'record';
   /** Where a `record` or `decision` check finds its task: the lease the body names, or the record. */
   readonly subjectTask: 'lease' | 'record';
+  /**
+   * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
+   * so the two entries refuse the same stray field in the same words. Any
+   * other is refused before the operands (Sol 6 AUTHORITY-3). Absent on a
+   * command, whose identifiers its own operands and handler read.
+   */
+  readonly identifiers?: readonly string[];
   /** The operands read before any authority, after the system-owned fields. */
   readonly operands?: (request: AgentRequest) => AgentOperands | Refused;
   /** What it does, under the delegation `authorise` resolved (none before a pickup). */
@@ -222,6 +236,16 @@ export async function parseOperands(
       claimed.values,
     );
   }
+  // A target the read does not take, next and before any lookup, as the
+  // person read path refuses it (`reads/dispatch.ts`): one answer for an own,
+  // a foreign and a fabricated id.
+  const irrelevant =
+    operation.identifiers === undefined
+      ? []
+      : irrelevantIdentifiers(request, operation.identifiers);
+  if (irrelevant.length > 0) {
+    return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, READ_BODY_FIXES));
+  }
   return operation.operands?.(request) ?? {};
 }
 
@@ -339,6 +363,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'beforePickup',
       subjectTask: 'record',
       replay: 'reauthorise',
+      identifiers: READ_CATALOGUE['task.queue'].identifiers,
       serve: async (tx) => ({
         recordId: null,
         revision: null,
@@ -415,6 +440,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'record',
       subjectTask: 'record',
       replay: 'reauthorise',
+      identifiers: READ_CATALOGUE['task.read'].identifiers,
       serve: async (tx, { request }) => {
         const spine = await readTaskSpine(tx);
         const task = await readTaskDetail(tx, spine.taskTypeId, String(request['recordId'] ?? ''), {
@@ -460,6 +486,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'purpose',
       subjectTask: 'record',
       replay: 'capabilities',
+      identifiers: READ_CATALOGUE['session.capabilities'].identifiers,
       // An agent holds no grants of its own -- `identity/agent-login.ts`
       // confers nothing at all -- so this is not the person answer with a
       // different subject in it. What the agent has is a purpose, and the
