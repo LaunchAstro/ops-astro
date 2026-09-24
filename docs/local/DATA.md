@@ -302,7 +302,12 @@ memberships and grants. It also installs each business's task spine and
 business settings, enrols one agent login per business with a budget cap
 (recorded in `.local/synthetic-agents.json`), and creates `.local/gate.env` and
 `.local/delegation.env` once, reading them back on every later run. It is
-idempotent by lookup: a second run finds every row and inserts none.
+idempotent by lookup: a second run finds every row and inserts none. One
+exception brings an earlier install forward: on a business whose task type
+already exists, the installer sets `title` and `state` to their declared
+visibility class (`shared`, I09) where they differ, so a reseed shows a client
+those two fields on a business installed before 77bcc54 (`reconcileVisibility`,
+`tasks/reconcile-visibility.ts`). It changes no other field row and no record.
 
 It never seeds a task. Nobody would have created a seeded task, and it would
 make every acceptance case pass without the product working.

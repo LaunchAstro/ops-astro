@@ -334,8 +334,10 @@ fields and client-audience comments only".
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
-  the state's label, plus client-audience comments (I09 ruling). A sibling
-  record and the board are `NOT_FOUND`.
+  the state's label, plus client-audience comments (I09 ruling), on a business
+  a reseed upgraded as well as a fresh one
+  (`packages/core-records/src/tasks/reconcile-visibility.ts`). A sibling record
+  and the board are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
   rows in the matrix's case (g). `tests/acceptance/i10-inflight.test.ts` holds
