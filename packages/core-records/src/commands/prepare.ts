@@ -471,6 +471,13 @@ export async function prepareCommand(
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseNotFound());
     }
+    // A comment on a trashed task is answered as one on a missing task, before
+    // the revision: the trash bumped it, and naming the current revision would
+    // tell the caller the task is there (OWNER-CARD section 6; final review
+    // round 1, #25). The handler keeps its own check for the agent path.
+    if (declaration.name === 'task.comment' && target.deleted_at !== null) {
+      return refused(refuseNotFound());
+    }
     if (declaration.targetLock === 'command' && expectedRevisionOf(request) !== target.revision) {
       return refused(
         refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
