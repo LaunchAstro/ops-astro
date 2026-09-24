@@ -449,6 +449,32 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // SOL-FR11-1: a block comment the file ends inside is PostgreSQL's lexical
+  // error (<xc><<EOF>>), so the piece is sent and refused, and the run with it.
+  it('refuses a file that ends inside a block comment, and applies nothing', async () => {
+    const built = await createEmptyDatabase({ part: 'fr11eof' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const before = await state(built);
+
+    const outcome = await applyMigrations(built.admin, [
+      ...onDisk,
+      syntheticMigration('9001_fr11_open', 'create table ops.fr11_a (id int); /* unfinished'),
+    ]).catch((error: unknown) => error);
+
+    expect({
+      message: outcome instanceof Error ? outcome.message : JSON.stringify(outcome),
+      cause: outcome instanceof Error ? String(outcome.cause) : '',
+    }).toStrictEqual({
+      message:
+        `migrate: 9001_fr11_open failed on: /* unfinished. Nothing was applied; the database ` +
+        `is still at ${String(onDisk.at(-1)?.version)}.`,
+      cause: expect.stringContaining('unterminated /* comment'),
+    });
+    expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
   // R8-AUTHORITY-4: the version a failed run is still at comes from the
   // ledger, not from the list the caller passed.
   it('names the version the ledger is at when the caller passes a partial list', async () => {
@@ -733,7 +759,10 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ["create function ops.f() returns void language sql as $$ select 'commit' $$"],
     ['analyze ops.t'],
     // R7-SURFACE-6: PostgreSQL 12 and later run ADD VALUE inside a transaction
-    // block. A later use in the same run fails and rolls the run back whole.
+    // block. A later use in the same run fails and rolls the run back whole
+    // when the type was committed before the run (every upgrade), and
+    // succeeds when the run created the type too (a fresh install): see the
+    // live case in FR6-RUNNER.
     ["alter type ops.kind add value 'x'"],
   ])('passes %j', async (statement) => {
     await expect(
