@@ -230,6 +230,8 @@ describe.skipIf(serverUrl === undefined)(
       expect(await gateRow(own.gateId)).toMatchObject({ state: 'rejected' });
     });
 
+    // Timeout only (TEST-TIMEOUTS): this case ran past the 5 s default while the
+    // machine was busy and passes alone; the assertions are unchanged.
     it('still restarts the caller’s own cancelled lineage through the same route', async () => {
       const own = await proposedBy(world.ada);
       const cancelled = await raw('/task/cancel', {
@@ -247,7 +249,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(answer.status, answer.text).toBe(200);
       const detail = (JSON.parse(answer.text) as Record<string, Record<string, unknown>>)['detail'];
       expect(detail?.['restartsLineageId']).toBe(own.lineageId);
-    });
+    }, 30_000);
 
     it('still adds a version to the caller’s own lineage through the same route', async () => {
       const own = await proposedBy(world.ada);

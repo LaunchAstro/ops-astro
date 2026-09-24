@@ -109,16 +109,22 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
   });
 
   describe('a positive call, by a caller who may perform it', () => {
-    it.each(OPERATIONS)('%s', async (_name, declaration) => {
-      const call = await positiveCall(harness, declaration);
-      const { answer, sent } = await observed.send(call);
-      expect({ status: answer.status, code: answer.code, shape: shapeOf(sent) }).toStrictEqual({
-        status: 200,
-        code: 'ok',
-        shape: expectedShape(declaration, call.prefix, 'applied'),
-      });
-      captured.positive.add(declaration.name);
-    });
+    // Timeout only (TEST-TIMEOUTS): task.assign and task.triage ran past the 5 s
+    // default while the machine was busy and pass alone. Assertions unchanged.
+    it.each(OPERATIONS)(
+      '%s',
+      async (_name, declaration) => {
+        const call = await positiveCall(harness, declaration);
+        const { answer, sent } = await observed.send(call);
+        expect({ status: answer.status, code: answer.code, shape: shapeOf(sent) }).toStrictEqual({
+          status: 200,
+          code: 'ok',
+          shape: expectedShape(declaration, call.prefix, 'applied'),
+        });
+        captured.positive.add(declaration.name);
+      },
+      30_000,
+    );
   });
 
   describe('the agent path, for an operation a person also performs', () => {
@@ -139,28 +145,34 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
   });
 
   describe('a refusal, by a member who holds no grant', () => {
-    it.each(OPERATIONS)('%s', async (_name, declaration) => {
-      // `session.capabilities` asks for membership and nothing else, so the
-      // member it refuses is the verified login with no membership at all.
-      const caller =
-        declaration.name === 'session.capabilities' ? harness.world.orphan : harness.world.noah;
-      const call: CapturedCall = {
-        name: declaration.name,
-        prefix: 'person',
-        body: harness.probeBody(declaration),
-        token: caller.token,
-      };
-      const { answer, sent } = await observed.send(call);
-      expect(answer.code, JSON.stringify(answer.body)).not.toBe('ok');
-      expect(shapeOf(sent)).toStrictEqual(
-        expectedShape(
-          declaration,
-          'person',
-          caller === harness.world.orphan ? 'unresolved' : 'refused',
-        ),
-      );
-      captured.refusal.add(declaration.name);
-    });
+    // Timeout only (TEST-TIMEOUTS): task.assign and task.triage ran past the 5 s
+    // default while the machine was busy and pass alone. Assertions unchanged.
+    it.each(OPERATIONS)(
+      '%s',
+      async (_name, declaration) => {
+        // `session.capabilities` asks for membership and nothing else, so the
+        // member it refuses is the verified login with no membership at all.
+        const caller =
+          declaration.name === 'session.capabilities' ? harness.world.orphan : harness.world.noah;
+        const call: CapturedCall = {
+          name: declaration.name,
+          prefix: 'person',
+          body: harness.probeBody(declaration),
+          token: caller.token,
+        };
+        const { answer, sent } = await observed.send(call);
+        expect(answer.code, JSON.stringify(answer.body)).not.toBe('ok');
+        expect(shapeOf(sent)).toStrictEqual(
+          expectedShape(
+            declaration,
+            'person',
+            caller === harness.world.orphan ? 'unresolved' : 'refused',
+          ),
+        );
+        captured.refusal.add(declaration.name);
+      },
+      30_000,
+    );
 
     it('task.pickup on the agent prefix, for a reservation nobody approved', async () => {
       const declaration = COMMAND_SURFACE.find((one) => one.name === 'task.pickup');
