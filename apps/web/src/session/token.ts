@@ -14,9 +14,11 @@
 // plain `.ts` file with no DOM in it.
 //
 // **Where a person was when the session ended is kept here too.** The token
-// lasts an hour and the API cannot tell an expired one from an unverifiable
-// one, so the only honest handling is to end the session and ask again — and
-// asking again is only usable if the address survives it. It is the same store
+// lasts an hour, and the API refuses one it will not act on with either
+// `AUTH_SESSION_EXPIRED` (it verifies and its `exp` has passed) or
+// `AUTH_UNKNOWN_LOGIN` (anything else). Either way the handling is to end the
+// session and ask again — and asking again is only usable if the address
+// survives it. It is the same store
 // because it has the same lifetime and the same rule: `sessionStorage`, never
 // `localStorage`, gone when the tab is.
 
@@ -141,10 +143,11 @@ export function grantKeyOf(session: Session | null): string {
  * What was interrupted: the address the person was on, the business that
  * address meant, and the server's word for why they are being asked again.
  *
- * The code is carried rather than translated. `AUTH_UNKNOWN_LOGIN` is the one
- * the API gives for a missing, an expired and an unverifiable bearer alike, and
- * a client that rewrote it as "expired" would be claiming a distinction the
- * server refused to make.
+ * The code is carried rather than translated. The API answers
+ * `AUTH_SESSION_EXPIRED` for a bearer whose signature verifies and whose `exp`
+ * has passed, and `AUTH_UNKNOWN_LOGIN` for a missing, forged, unsigned or
+ * subject-less one (`docs/local/WEB.md`). The server's own word is the one
+ * kept, so a client never claims more, or less, than the server said.
  *
  * **The business is part of the address, even though it is not in it.** A task
  * address is `/task/<key>` and the key is business-local: the business is what

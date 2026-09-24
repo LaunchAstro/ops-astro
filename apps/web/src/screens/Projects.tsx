@@ -215,9 +215,20 @@ const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
 
 const dayOf = (iso: string): string => iso.slice(0, 10);
 
-function dueTone(iso: string | null): BoardRow['due'] {
+const pad = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * Overdue, today or later, judged against the reader's own calendar day.
+ *
+ * The stored date part is the day the person picked in a local date input
+ * (task/DetailsForm.tsx), so "today" is the local day too. Taking it from
+ * `toISOString()` would be the UTC day, which in Australia lags the local one
+ * for the first ten hours of every morning and draws yesterday's work as due
+ * today.
+ */
+export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['due'] {
   if (iso === null) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const day = iso.slice(0, 10);
   if (day < today) return 'past';
   return day === today ? 'today' : 'later';

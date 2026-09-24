@@ -10,7 +10,10 @@
 // `operation` rather than `generic` because a setting that changes who must
 // agree is an authority change wearing configuration's clothes — so neither is
 // reachable through a generic edit, and each has a named command of its own.
-// This screen posts to those two commands and nowhere else.
+// This screen posts to those two commands and nowhere else. They are storage
+// without a consumer so far: no first-slice operation reads either value
+// (`docs/local/AUTHORITY.md`), and the copy on the page says so rather than
+// describing a stop that does not happen yet.
 //
 // **The values are the server's now.** `settings.read` answers each row with
 // the instant the server last wrote it, so the number beside a setting is the
@@ -100,6 +103,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       <ConflictBlock
         conflict={model.conflict}
         row={model.rowFor(which)}
+        reading={model.read.outcome === 'loading'}
         disabled={model.disabled}
         onWriteOver={model.writeOver}
       />
@@ -110,9 +114,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       <header className="tpr">
         <h2 className="tpr__title">Settings for {businessKey}</h2>
         <div className="card__sub">
-          Two settings the model classifies <code>operation</code>: each changes who must agree
-          before something happens, so each has a command of its own and neither is reachable
-          through an ordinary edit.
+          Two settings the model classifies <code>operation</code>: each has a command of its own
+          and neither is reachable through an ordinary edit. Both are stored and shown here; no
+          operation applies either one yet.
         </div>
       </header>
 
@@ -150,8 +154,17 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           <span className="sb__k">Four-eyes threshold</span>
         </div>
         <p className="card__sub">
-          The amount above which a second person must agree before money moves. Off means one person
-          is enough at any amount.
+          The amount above which a second person is to agree before money moves. Off means one
+          person is enough at any amount.
+        </p>
+        {/*
+          Storage without a consumer (docs/local/AUTHORITY.md, the settings
+          section): no operation in the first slice reads the band. Its
+          consumers are the deferred top-up and write-off workflows, and the
+          screen must not imply a stop that does not exist.
+        */}
+        <p className="card__sub" data-settings="not-applied">
+          Stored and shown only: no operation applies it yet.
         </p>
         {model.answered ? <ValueLine which="four-eyes" row={model.rowFor('four-eyes')} /> : null}
         {confirmedLine('four-eyes')}
@@ -203,7 +216,11 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           <span className="sb__k">Client sign-off</span>
         </div>
         <p className="card__sub">
-          Whether the client must agree before work is counted as complete.
+          Whether the client is to agree before work is counted as complete.
+        </p>
+        {/* Storage without a consumer, as the band above: nothing asks for it. */}
+        <p className="card__sub" data-settings="not-applied">
+          Stored and shown only: no operation applies it yet.
         </p>
         {model.answered ? <ValueLine which="sign-off" row={model.rowFor('sign-off')} /> : null}
         {confirmedLine('sign-off')}

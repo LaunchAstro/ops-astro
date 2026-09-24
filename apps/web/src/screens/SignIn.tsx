@@ -12,13 +12,20 @@
 // A task address is business-local, so sign-in defaulting to `alpha` after an
 // interruption in Bravo is an invitation to reopen the wrong record.
 //
-// **The notice above the form does not say "expired".** A local token does last
-// an hour, but the API answers a missing, an expired and an unverifiable bearer
-// with the same 401 and the same `AUTH_UNKNOWN_LOGIN`, so expiry is a guess the
-// application is in no position to make. It says what it knows: the session has
-// ended, this is the word the server used, and anything unsaved is gone. The
-// code is printed because a refusal a person cannot quote is a refusal they
-// cannot get help with -- the same rule the read states follow.
+// **The notice above the form prints the server's code.** The API refuses a
+// bearer it will not act on with a 401 on one of two codes
+// (`docs/local/WEB.md`, "When the session ends"): `AUTH_SESSION_EXPIRED` for a
+// bearer whose signature verifies and whose `exp` has passed, and
+// `AUTH_UNKNOWN_LOGIN` for a missing, forged, unsigned or subject-less one. Both
+// end the session the same way, so the notice says what holds for both: the
+// session has ended, this is the word the server used, and anything unsaved is
+// gone. The code is printed because a refusal a person cannot quote is a refusal
+// they cannot get help with -- the same rule the read states follow.
+//
+// **A failed sign-in is paired with the password control and announced.** The
+// control carries `aria-invalid` and points at the message with
+// `aria-describedby`, the pairing `FieldError` documents, and the message sits
+// in an alert region so a screen reader hears it when it appears.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { FieldError } from '@launchastro/ui';
@@ -102,6 +109,8 @@ export function SignIn(props: SignInProps): ReactElement {
             type="password"
             autoComplete="current-password"
             required
+            aria-invalid={because !== null}
+            aria-describedby={because === null ? undefined : 'signin-password-error'}
             value={password}
             onChange={(event) => {
               setPassword(event.target.value);
@@ -127,7 +136,11 @@ export function SignIn(props: SignInProps): ReactElement {
             ))}
           </select>
         </div>
-        {because === null ? null : <FieldError controlId="signin-password" say={because} />}
+        {because === null ? null : (
+          <div role="alert">
+            <FieldError controlId="signin-password" say={because} />
+          </div>
+        )}
         <button className="btn btn--primary" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>

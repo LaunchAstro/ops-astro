@@ -124,19 +124,30 @@ export function ValueLine(props: {
  * Both numbers are on the page — what the reread found and what the person
  * asked for — and the button is the person choosing between them. The screen
  * does not choose.
+ *
+ * **Until the reread answers, the server's value is not known.** The row in
+ * hand meanwhile is the one that lost, and drawing it as what the server holds
+ * would show the person a value the screen already knows is stale.
  */
 export function ConflictBlock(props: {
   readonly conflict: Conflict;
   readonly row: SettingRow | null;
+  /** The conflict's reread is still in flight. */
+  readonly reading: boolean;
   readonly disabled: boolean;
   readonly onWriteOver: () => void;
 }): ReactElement {
   const asked = draftInWords(props.conflict.draft);
+  const held = props.reading
+    ? 'not known yet, reading'
+    : props.row === null
+      ? 'not known'
+      : inWords(props.row);
   return (
     <div className="readstate" role="alert" data-settings="conflict">
       <p className="field__error">{props.conflict.because}</p>
       <p className="card__sub" data-settings="conflict-server">
-        The server holds: <strong>{props.row === null ? 'not known' : inWords(props.row)}</strong>
+        The server holds: <strong>{held}</strong>
       </p>
       <p className="card__sub" data-settings="conflict-draft">
         You asked for: <strong>{asked}</strong>
