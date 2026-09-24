@@ -22,9 +22,8 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { openEnvelopeOf } from './budget.ts';
-import { acquire, type LockSet } from './locks.ts';
+import type { LockSet } from './locks.ts';
 import { only } from './only.ts';
-import { AffectedSetChanged } from './rediscovery.ts';
 import {
   affectedByVersions,
   classifyVersions,
@@ -33,6 +32,7 @@ import {
   retireWork,
 } from './recovery.ts';
 import { writeProposal } from './proposal-writer.ts';
+import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 // The version, run, step, evidence pack and gate inserts moved to
@@ -149,28 +149,27 @@ export async function lockProposal(
   // F3. The live version's own work -- a picked-up lease and its delegation --
   // is made obsolete by the version this call writes, so it is retired here
   // under the same ordered set rather than left able to settle.
-  const liveWork = await discoverLiveWork(tx, { versionIds: liveVersions });
-  const locks = await acquire(tx, [
-    ...(accounting === null
-      ? []
-      : [
-          { lockClass: 'cap' as const, id: accounting.cap_id },
-          { lockClass: 'envelope' as const, id: accounting.id },
-        ]),
-    { lockClass: 'task', id: request.taskId },
-    { lockClass: 'lineage', id: lineageId ?? openingId },
-    ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
-    ...(await affectedByVersions(tx, liveVersions)),
-    ...liveWorkLocks(liveWork),
-  ]);
   // Rechecked under the locks, before the first write. A lease picked up or
   // released in between is a set this transaction did not lock for.
-  const liveNow = await discoverLiveWork(tx, { versionIds: liveVersions });
-  if (JSON.stringify(liveNow) !== JSON.stringify(liveWork)) {
-    throw new AffectedSetChanged(
+  const { locks, found: liveWork } = await lockRediscovered(tx, {
+    discover: async () => await discoverLiveWork(tx, { versionIds: liveVersions }),
+    locks: async (work) => [
+      ...(accounting === null
+        ? []
+        : [
+            { lockClass: 'cap' as const, id: accounting.cap_id },
+            { lockClass: 'envelope' as const, id: accounting.id },
+          ]),
+      { lockClass: 'task', id: request.taskId },
+      { lockClass: 'lineage', id: lineageId ?? openingId },
+      ...(restarts === null ? [] : [{ lockClass: 'lineage' as const, id: restarts }]),
+      ...(await affectedByVersions(tx, liveVersions)),
+      ...liveWorkLocks(work),
+    ],
+    rule: 'exact',
+    changed:
       'propose: the live work on the superseded version changed under discovery; roll back and rediscover',
-    );
-  }
+  });
   return { locks, lineageId, restarts, accounting, openingId, liveWork };
 }
 
