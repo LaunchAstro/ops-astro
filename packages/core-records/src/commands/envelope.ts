@@ -52,7 +52,7 @@ import { comparablePayload, type CommandRequest } from './requests.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
 import { handleCommand } from './handlers.ts';
 import { isRefused, refused, type Applied, type Refused } from './outcome.ts';
-import { pickupReceiptBinding } from './tasks-pickup.ts';
+import { pickupReceiptBinding } from './pickup-receipt.ts';
 import { REVISION_FIXES, expectedRevisionOf, prepareCommand } from './prepare.ts';
 
 const IDENTITY_FIXES: readonly string[] = [

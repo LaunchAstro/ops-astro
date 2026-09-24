@@ -72,10 +72,10 @@ import { statusOf } from '../../packages/core-records/src/commands/register.ts';
  * `reads/execute.ts`'s signature, as `CommandExecutor` is the envelope's, so
  * the real executor is passed without a cast.
  *
- * The request names the read in `read` rather than in `command`, which is the
- * discriminant `packages/core-records/src/reads/requests.ts` switches on. A
- * read carries no `operation_id` and no `expected_revision`, because there is
- * nothing to replay and nothing to be stale against.
+ * The request names the read in `read` rather than in `command`, and
+ * `packages/core-records/src/reads/dispatch.ts` looks its catalogue row up by
+ * that name. A read carries no `operation_id` and no `expected_revision`,
+ * because there is nothing to replay and nothing to be stale against.
  */
 export type ReadExecutor = typeof executeRead;
 
@@ -274,7 +274,7 @@ export function createApi(options: ApiOptions): Hono {
         request,
       );
       if (isCommandRefusal(result)) return refuse(context, result);
-      return context.json(agentAnswer(declaration.name, result) as Record<string, unknown>, 200);
+      return context.json(agentAnswer(declaration.name, result), 200);
     });
   }
 

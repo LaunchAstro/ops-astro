@@ -226,6 +226,8 @@ describe.skipIf(serverUrl === undefined)(
       const approved = await approveOn(database, fixture, proposed);
       expect(approved.ok).toBe(true);
       if (!approved.ok) return;
+      if (approved.value.decision !== 'approve')
+        throw new Error(`expected an approval, got ${approved.value.decision}`);
       expect(approved.value.heldMinor).toBe(MAGIC_MAXIMUM_MINOR);
     });
   },

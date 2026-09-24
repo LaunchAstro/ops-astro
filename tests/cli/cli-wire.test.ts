@@ -5,8 +5,9 @@
 //
 // The real `apps/cli/main.ts` runs as its own process against an HTTP stand-in
 // that records the path and the headers of every request. The header name is
-// compared with the API's own `DELEGATION_HEADER`, so the two sides cannot
-// drift apart without this file failing.
+// compared with `DELEGATION_HEADER` from `packages/core-records/src/commands/
+// surface.ts`, the constant the API reads the header by, so the two sides
+// cannot drift apart without this file failing.
 
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

@@ -34,7 +34,7 @@ import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../co
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { executeRead, isReadRefusal } from '../../packages/core-records/src/reads/execute.ts';
+import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -132,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('T04/M03: what a production operation s
     ] as const) {
       // oxlint-disable-next-line no-await-in-loop
       const seen = await executeRead(app, business, worker.presented, request);
-      if (isReadRefusal(seen)) throw new Error(`${request.read} refused ${seen.code}`);
+      if (isCommandRefusal(seen)) throw new Error(`${request.read} refused ${seen.code}`);
     }
   }, 120_000);
 

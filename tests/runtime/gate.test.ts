@@ -690,6 +690,8 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
     const approved = await decideOn(database, locking, proposal, 'approve');
     expect(approved.ok).toBe(true);
     if (!approved.ok) throw new Error('unreachable');
+    if (approved.value.decision !== 'approve')
+      throw new Error(`expected an approval, got ${approved.value.decision}`);
     const envelopeId = approved.value.envelopeId as string;
 
     const opened = barrier();

@@ -138,6 +138,12 @@ export async function heartbeatLease(
 ): Promise<HandlerOutcome> {
   return await renewLease(
     fields,
-    async (lease) => await heartbeat(tx, { ...lease, holderActorId: agent.actorId, delegationId }),
+    async (lease) =>
+      await heartbeat(tx, {
+        ...lease,
+        claimant: 'agent',
+        holderActorId: agent.actorId,
+        delegationId,
+      }),
   );
 }

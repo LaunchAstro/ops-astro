@@ -32,7 +32,7 @@ import {
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
-import { pickup } from '../../packages/core-runtime/src/pickup.ts';
+import { pickup, type AgentPickupRequest } from '../../packages/core-runtime/src/pickup.ts';
 import {
   buildFixture,
   subjectsOf,
@@ -87,6 +87,8 @@ async function staleExpiredClaim(database: Database, fixture: RuntimeFixture): P
       capId: fixture.capId,
     });
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    if (decided.value.decision !== 'approve')
+      throw new Error(`expected an approval, got ${decided.value.decision}`);
     return {
       versionId: proposed.value.versionId,
       reservationId: decided.value.reservationId as string,
@@ -115,8 +117,9 @@ async function staleExpiredClaim(database: Database, fixture: RuntimeFixture): P
   return { ...work, leaseId: claimed.value.leaseId };
 }
 
-function request(fixture: RuntimeFixture, reservationId: string) {
+function request(fixture: RuntimeFixture, reservationId: string): AgentPickupRequest {
   return {
+    claimant: 'agent',
     reservationId,
     agentActorId: fixture.agentActorId,
     authorisedByPersonId: fixture.decider.personId,

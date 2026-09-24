@@ -48,13 +48,11 @@ import { classifyAuthorityLoss, type Classification } from '../../../core-runtim
 import { requireUnchanged } from '../../../core-runtime/src/rediscovery.ts';
 import type { CommandContext } from './context.ts';
 import { declarationOf } from './surface.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
-const NOT_FOUND = refused(
-  refuseCommand('NOT_FOUND', [], ['Check the identifier against the one you were given.']),
-);
+const NOT_FOUND = refused(refuseNotFound());
 
 const absent = (field: string): HandlerOutcome =>
   refused(refuseCommand('COMMAND_BODY_INVALID', [field], [`Name the ${field} to revoke.`]));
@@ -325,7 +323,7 @@ export async function revokeDelegationAsManager(
           : null;
       return revokedAt === null
         ? { applied: false, value: null }
-        : { applied: true, value: revokedAt, lost: [delegationId] };
+        : { applied: true, value: revokedAt, lost: [delegationId], lostLeases: [] };
     },
   });
   const revokedAt = loss.value;

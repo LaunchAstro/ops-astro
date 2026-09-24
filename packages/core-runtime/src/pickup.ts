@@ -109,7 +109,7 @@ interface PickupCommon {
 }
 
 export interface AgentPickupRequest extends PickupCommon {
-  readonly claimant?: 'agent';
+  readonly claimant: 'agent';
   readonly agentActorId: string;
   /** The approving person's acting identity. The delegation's ceiling is their live grants. */
   readonly mintedByActorId: string;

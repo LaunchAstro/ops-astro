@@ -92,6 +92,8 @@ async function approvedWork(
     });
     if (!decided.ok)
       throw new Error(`decide refused ${decided.refusal.code}: ${decided.refusal.reason}`);
+    if (decided.value.decision !== 'approve')
+      throw new Error(`expected an approval, got ${decided.value.decision}`);
 
     return {
       gateId: proposed.value.gateId,
@@ -154,6 +156,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -182,6 +185,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -212,6 +216,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -273,6 +278,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -392,6 +398,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -721,6 +728,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: work.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
@@ -774,6 +782,7 @@ describe.skipIf(serverUrl === undefined)('the lease', () => {
         fixture.businessId,
         async (tx) =>
           await pickup(tx, {
+            claimant: 'agent',
             reservationId: work.reservationId,
             agentActorId: fixture.agentActorId,
             authorisedByPersonId: fixture.decider.personId,

@@ -87,6 +87,8 @@ async function approved(
       capId: fixture.capId,
     });
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    if (decided.value.decision !== 'approve')
+      throw new Error(`expected an approval, got ${decided.value.decision}`);
     return {
       taskId,
       lineageId: proposed.value.lineageId,

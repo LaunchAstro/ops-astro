@@ -27,7 +27,6 @@ import { withSession } from '../identity/login-resolution.ts';
 import {
   asCallerVisible,
   fromIdentity,
-  isCommandRefusal,
   isIdentityRefusal,
   type CommandRefusal,
 } from '../commands/refusal.ts';
@@ -48,9 +47,4 @@ export async function executeRead(
   );
   if (isIdentityRefusal(outcome)) return asCallerVisible(fromIdentity(outcome));
   return outcome;
-}
-
-/** The discriminant a caller reads a read result through. */
-export function isReadRefusal(value: ReadResult | CommandRefusal): value is CommandRefusal {
-  return isCommandRefusal(value);
 }

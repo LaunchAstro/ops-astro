@@ -55,7 +55,7 @@ import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import type { VerifiedSubject } from '../identity/verified-subject.ts';
 import { resolveAgentLogin } from '../identity/agent-login.ts';
 import { payloadDigest } from './digest.ts';
-import { asCallerVisible, fromAgentIdentity, isCommandRefusal, refuseCommand } from './refusal.ts';
+import { asCallerVisible, fromAgentIdentity, refuseCommand } from './refusal.ts';
 import {
   COMMAND_SURFACE,
   declarationOf,
@@ -149,13 +149,14 @@ export async function executeAgentCommand(
  * which prefix it was on (L5-PROOFS handback, "Defects" 4). It is flattened
  * here, at the wire, rather than in `serve`: the register row keeps the handle
  * every other agent answer is stored as, so a replay reads the same record and
- * is shaped the same way on the way out.
+ * is shaped the same way on the way out. A refusal never reaches here: the
+ * boundary answers it first (`apps/api/app.ts`).
  */
-export function agentAnswer(command: string, result: unknown): unknown {
-  if (command !== 'session.capabilities') return result;
-  if (typeof result !== 'object' || result === null || isCommandRefusal(result)) return result;
-  const detail = (result as Partial<CommandHandle>).detail;
-  return typeof detail === 'object' && detail !== null ? { ok: true, ...detail } : result;
+export function agentAnswer(
+  command: CommandName,
+  result: CommandHandle,
+): CommandHandle | Readonly<Record<string, unknown>> {
+  return command === 'session.capabilities' ? { ok: true, ...result.detail } : result;
 }
 
 async function runAgentCommand(
