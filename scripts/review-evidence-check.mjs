@@ -124,17 +124,27 @@ const PLACEHOLDERS = [
 // name. The security review of d77b375, finding 2: a contradicting line
 // written as a heading, a blockquote or a numbered item was not read, though
 // GitHub shows it as an ordinary field line. So any run of heading marks,
-// quote marks, list bullets and list numbers may come first, and bold or
-// underscore emphasis may wrap the name.
+// quote marks, list bullets, list numbers and checklist boxes may come first,
+// and bold or underscore emphasis may wrap the name, the colon or the line.
+// Sol's recheck of 356dbe5 added the checklist box and emphasis closing after
+// the colon: `- [ ] Security review: rejected` was not read, and
+// `**Security review:** run against <head>, no findings` read as `** run …`.
+//
+// Each prefix token matches a run one way only. The security rerun at 356dbe5,
+// N1: `#{1,6}` with optional space between tokens split a line of `#` every
+// possible way, and 40 of them took 41.8 s. `#+(?!#)` takes the whole run as
+// one token, so a line of any length is read in linear time, and seven or
+// more `#` still lead a field rather than hiding it.
 const FIELD =
-  /^[ \t]*(?:(?:#{1,6}|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,2}(code|security)[ -]review[*_]{0,2}[ \t]*:[ \t]*(.*)$/gimu;
+  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)]|\[[ x]\])[ \t]*)*[*_]{0,3}(code|security)[ -]review[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
 
 /** Every occurrence of a field, in order, as {name, value, line}. */
 const fields = (text) => {
   FIELD.lastIndex = 0;
   return [...text.matchAll(FIELD)].map((m) => ({
     name: (m[1] ?? '').toLowerCase(),
-    value: (m[2] ?? '').trim(),
+    // Emphasis closing at the end of the line wraps the outcome, not part of it.
+    value: (m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim(),
     line: m[0].trim(),
   }));
 };
