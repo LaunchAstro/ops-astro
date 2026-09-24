@@ -463,13 +463,11 @@ function Propose(props: ProposeProps): ReactElement {
   const [purpose, setPurpose] = useState('');
   const [maximum, setMaximum] = useState('');
   const [currency, setCurrency] = useState('AUD');
-  const { busy, failure, run } = useCommand();
-  const because = failure?.because ?? null;
-  const closed = failure?.kind === 'closed';
+  const { busy, because, closed, locked, run } = useCommand();
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (busy || closed) return;
+    if (locked) return;
     run(
       () =>
         props.client.mutate(
@@ -542,7 +540,7 @@ function Propose(props: ProposeProps): ReactElement {
         */}
         <input
           className="input"
-          disabled={busy || closed}
+          disabled={locked}
           id="propose-purpose"
           onChange={(event) => {
             setPurpose(event.target.value);
@@ -563,7 +561,7 @@ function Propose(props: ProposeProps): ReactElement {
         </label>
         <input
           className="input"
-          disabled={busy || closed}
+          disabled={locked}
           id="propose-maximum"
           min="0"
           onChange={(event) => {
@@ -581,7 +579,7 @@ function Propose(props: ProposeProps): ReactElement {
         </label>
         <select
           className="input"
-          disabled={busy || closed}
+          disabled={locked}
           id="propose-currency"
           onChange={(event) => {
             setCurrency(event.target.value);
@@ -595,12 +593,7 @@ function Propose(props: ProposeProps): ReactElement {
           ))}
         </select>
       </div>
-      <button
-        className="btn btn--primary"
-        data-propose="submit"
-        disabled={busy || closed}
-        type="submit"
-      >
+      <button className="btn btn--primary" data-propose="submit" disabled={locked} type="submit">
         {busy ? 'Proposing…' : 'Propose'}
       </button>
       {!closed ? null : (

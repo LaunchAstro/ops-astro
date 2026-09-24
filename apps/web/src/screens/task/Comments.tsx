@@ -50,17 +50,16 @@ export function Comments(props: CommentsProps): ReactElement {
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState('internal');
   const [kind, setKind] = useState('note');
-  const { busy, failure, run } = useCommand();
-  const because = failure?.because ?? null;
-  // Set when the server has said this reader may not comment. It disables the
-  // control rather than merely reporting, so the same refusal is not fetched
-  // again on the next press. Only an authority refusal closes the form: a body
-  // the server did not like is something the person can fix and try again.
-  const refusedOutright = failure?.kind === 'closed';
+  // `closed` is set when the server has said this reader may not comment. It
+  // disables the control rather than merely reporting, so the same refusal is
+  // not fetched again on the next press. Only an authority refusal closes the
+  // form: a body the server did not like is something the person can fix and
+  // try again.
+  const { busy, because, closed, locked, run } = useCommand();
   const form = useRef<HTMLFormElement>(null);
 
   const post = (): void => {
-    if (busy || refusedOutright) return;
+    if (locked) return;
     if (form.current?.reportValidity() === false) return;
     run(
       () =>
@@ -138,7 +137,7 @@ export function Comments(props: CommentsProps): ReactElement {
             className="input"
             rows={3}
             required
-            disabled={busy || refusedOutright}
+            disabled={locked}
             value={body}
             onChange={(event) => {
               setBody(event.target.value);
@@ -152,7 +151,7 @@ export function Comments(props: CommentsProps): ReactElement {
           <select
             id="comment-audience"
             className="input"
-            disabled={busy || refusedOutright}
+            disabled={locked}
             value={audience}
             onChange={(event) => {
               setAudience(event.target.value);
@@ -172,7 +171,7 @@ export function Comments(props: CommentsProps): ReactElement {
           <select
             id="comment-kind"
             className="input"
-            disabled={busy || refusedOutright}
+            disabled={locked}
             value={kind}
             onChange={(event) => {
               setKind(event.target.value);
@@ -185,15 +184,10 @@ export function Comments(props: CommentsProps): ReactElement {
             ))}
           </select>
         </div>
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-comment="post"
-          disabled={busy || refusedOutright}
-        >
+        <button className="btn btn--primary" type="submit" data-comment="post" disabled={locked}>
           {busy ? 'Posting…' : 'Post comment'}
         </button>
-        {!refusedOutright ? null : (
+        {!closed ? null : (
           <p className="card__sub" data-comment="closed">
             The server refused this. The box is closed rather than asking again on your behalf.
           </p>
