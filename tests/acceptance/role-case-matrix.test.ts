@@ -367,8 +367,16 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               ? 'DELEGATION_EXCLUDES_DECISION'
               : 'DELEGATION_EXCLUDES_OPERATION',
           );
+      // A handback's outcome and fence are read by type before the delegation
+      // (Sol 6 AUTHORITY-2), so they are sent well formed: the answer is the
+      // exclusion, not the operand.
       // eslint-disable-next-line no-await-in-loop
-      const answer = await harness.asAgent(declaration.name, harness.probeBody(declaration));
+      const answer = await harness.asAgent(declaration.name, {
+        ...harness.probeBody(declaration),
+        ...(declaration.name === 'task.handback'
+          ? { leaseId: randomUUID(), fence: 1, outcome: 'completed' }
+          : {}),
+      });
       observe('agent-before-pickup', 'h-pre-pickup', declaration.name, answer, expected);
     }
 

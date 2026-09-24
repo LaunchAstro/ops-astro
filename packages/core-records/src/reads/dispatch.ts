@@ -29,7 +29,7 @@ import type { ReadRequest, ReadResult } from './requests.ts';
 import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './catalogue.ts';
 import { DecisionIntegrityError } from './verified-decisions.ts';
 
-const READ_BODY_FIXES: readonly string[] = [
+export const READ_BODY_FIXES: readonly string[] = [
   'Send only the fields this read declares.',
   'A read about the business rather than one record takes no record identifier.',
 ];

@@ -84,12 +84,13 @@ async function agentServes(command: string, fields: Record<string, unknown>): Pr
 const WRONG_SECONDS: readonly unknown[] = [0, -5, 1.5, 'ninety', null, [60]];
 
 describe('an operand refused on both entries', () => {
+  // Both entries are sent the same body. The agent reads `reservationId`,
+  // `outcome` and `fence` by type as operands (Sol 6 AUTHORITY-2), so a body
+  // without them would pin that refusal instead of this one.
   it.each(WRONG_SECONDS)('task.pickup leaseSeconds %j', async (sent) => {
-    const agent = agentOperands('task.pickup', { leaseSeconds: sent });
-    const theirs = await pickupAsPerson(tx, person, {
-      reservationId: randomUUID(),
-      leaseSeconds: sent,
-    } as never);
+    const body = { reservationId: randomUUID(), leaseSeconds: sent };
+    const agent = agentOperands('task.pickup', body);
+    const theirs = await pickupAsPerson(tx, person, body as never);
     expect(agent).toStrictEqual(theirs);
   });
 
@@ -104,13 +105,9 @@ describe('an operand refused on both entries', () => {
   });
 
   it.each([null, [1, 2], 'done', 7])('task.handback report %j', async (sent) => {
-    const agent = agentOperands('task.handback', { report: sent });
-    const theirs = await handbackOwnLease(tx, person, {
-      leaseId: randomUUID(),
-      fence: 1,
-      outcome: 'completed',
-      report: sent as never,
-    });
+    const body = { leaseId: randomUUID(), fence: 1, outcome: 'completed', report: sent as never };
+    const agent = agentOperands('task.handback', body);
+    const theirs = await handbackOwnLease(tx, person, body);
     expect(agent).toStrictEqual(theirs);
   });
 });

@@ -136,10 +136,13 @@ async function subjectTaskId(
   request: AgentRequest,
   operation: AgentOperation,
 ): Promise<string> {
-  if (operation.subjectTask === 'lease' && UUID.test(String(request['leaseId']))) {
+  // The id as sent: `String([id])` is the id, and the array itself would then
+  // reach the bound parameter (Sol 6 AUTHORITY-2).
+  const leaseId = request['leaseId'];
+  if (operation.subjectTask === 'lease' && typeof leaseId === 'string' && UUID.test(leaseId)) {
     const rows = await tx.query<{ readonly task_id: string }>(
       `select task_id from public.leases where business_id = $1 and id = $2`,
-      [tx.businessId, request['leaseId']],
+      [tx.businessId, leaseId],
     );
     return rows[0]?.task_id ?? delegation.purposeScope.id;
   }

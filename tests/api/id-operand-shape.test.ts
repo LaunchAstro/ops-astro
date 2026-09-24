@@ -384,27 +384,31 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
     ]);
   }, 300_000);
 
-  it('answers an agent pickup whose reservationId is not a string as a fabricated one', async () => {
-    // The envelope reads the operand with `String(... ?? '')`, so a number is
-    // the string it spells and names nothing. The person route's own
-    // COMMAND_BODY_INVALID for a non-string (`tasks-pickup.ts` `pickupAsPerson`) is unchanged.
+  it('answers an agent pickup whose reservationId is not a string as the person route does', async () => {
+    // Sol 6 AUTHORITY-2. The envelope used to read the operand with
+    // `String(... ?? '')`, so a number was the string it spells and an array
+    // of one approved id was that id, and claimed it. It is now read by its
+    // JSON type (`pickupOperands`): a number is the person route's own
+    // COMMAND_BODY_INVALID, byte for byte, and a fabricated string still
+    // names nothing.
     const bare: Presenter = { kind: 'agent', identity: w.h.world.agent };
     const cell: Cell = {
       op: 'task.pickup',
       operand: 'reservationId',
       by: bare,
-      code: 'RESERVATION_NOT_CLAIMABLE',
+      code: 'COMMAND_BODY_INVALID',
       body: (reservationId) => ({ reservationId }),
     };
-    const fabricated = await refusedAlone(cell, 'fabricated', randomUUID());
-    const numeric = await refusedAlone(cell, 'number', 42);
-    expect(numeric.status).toBe(fabricated.status);
-    expect(numeric.text).toBe(fabricated.text);
-    const person = await refusedAlone(
-      { ...cell, by: ada, code: 'COMMAND_BODY_INVALID' },
-      'number',
-      42,
+    const fabricated = await refusedAlone(
+      { ...cell, code: 'RESERVATION_NOT_CLAIMABLE' },
+      'fabricated',
+      randomUUID(),
     );
+    expect(fabricated.status).toBe(409);
+    const numeric = await refusedAlone(cell, 'number', 42);
+    const person = await refusedAlone({ ...cell, by: ada }, 'number', 42);
     expect(person.status).toBe(400);
+    expect(numeric.status).toBe(person.status);
+    expect(numeric.text).toBe(person.text);
   }, 120_000);
 });

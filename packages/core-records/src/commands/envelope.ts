@@ -51,7 +51,8 @@ import {
 import { comparablePayload, type CommandRequest } from './requests.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
 import { handleCommand } from './handlers.ts';
-import { isRefused, type Applied, type Refused } from './outcome.ts';
+import { isRefused, refused, type Applied, type Refused } from './outcome.ts';
+import { isIdentifier } from './operands.ts';
 import { REVISION_FIXES, expectedRevisionOf, prepareCommand } from './prepare.ts';
 
 const IDENTITY_FIXES: readonly string[] = [
@@ -95,7 +96,9 @@ export async function runCommand(
   }
 
   const seen = await lookupAttempt(tx, session.actorId, request.operationId);
-  if (seen !== undefined) return await replayOrRefuse(tx, session, request, digest, seen);
+  if (seen !== undefined) {
+    return await replayOrRefuse(tx, session, entryPoint, request, digest, declaration, seen);
+  }
 
   if (declaration.targetsExistingRecord && typeof expectedRevisionOf(request) !== 'number') {
     return await settle(tx, session, request, digest, {
@@ -235,11 +238,18 @@ async function recordFailure(
   }
 }
 
+const REUSED_FIXES: readonly string[] = [
+  'This identity already carries a different request. Use a new operation_id.',
+  'The first result stands; returning it for a second payload would hide your bug.',
+];
+
 async function replayOrRefuse(
   tx: TenantQuery,
   session: Session,
+  entryPoint: EntryPoint,
   request: CommandRequest,
   digest: string,
+  declaration: CommandDeclaration,
   seen: RegisteredAttempt,
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
@@ -249,14 +259,7 @@ async function replayOrRefuse(
   // digest rather than a check on the request.
   if (seen.payload_digest !== digest) {
     return await settle(tx, session, request, digest, {
-      refusal: refuseCommand(
-        'OPERATION_ID_REUSED',
-        [seen.command],
-        [
-          'This identity already carries a different request. Use a new operation_id.',
-          'The first result stands; returning it for a second payload would hide your bug.',
-        ],
-      ),
+      refusal: refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES),
       // The register already holds this identity, so nothing is written to it.
       registered: true,
     });
@@ -265,6 +268,15 @@ async function replayOrRefuse(
   // The original result, returned exactly. A caller cannot tell a replay from
   // the first call, which is the point; the chain can, which is also the point.
   const replayed = seen.result as unknown as CommandResult;
+  // A stored refusal carries nothing protected. A stored success is released
+  // only to the rights held now, as the agent replay releases its own
+  // (`agent-replay.ts`): a revocation bites on the next call, and a replay is
+  // a call (Sol 6 AUTHORITY-1). The register row stays as it was: the
+  // operation happened, and nothing here repeats it.
+  const withheld = await withheldNow(tx, session, entryPoint, request, declaration, replayed);
+  if (withheld !== undefined) {
+    return await settle(tx, session, request, digest, { ...withheld, registered: true });
+  }
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.command,
@@ -276,6 +288,96 @@ async function replayOrRefuse(
   });
   return replayed;
 }
+
+/**
+ * The refusal a stored success answers with now, or nothing when it goes out
+ * as stored. A stored refusal always goes out as stored.
+ *
+ * The same preparation a fresh call takes, with the target's revision left
+ * out: the scope, the R4 rule and the grant decision are the ones the first
+ * call answered to, and the revision is the one thing the first call itself
+ * moved. Nothing is locked and the handler does not run.
+ *
+ * A pickup's receipt is its lease, so it is released only while that lease is
+ * still the caller's claim, as the agent pickup replay asks (`agent-replay.ts`,
+ * step 3).
+ */
+async function withheldNow(
+  tx: TenantQuery,
+  session: Session,
+  entryPoint: EntryPoint,
+  request: CommandRequest,
+  declaration: CommandDeclaration,
+  stored: CommandResult,
+): Promise<Refused | undefined> {
+  if (isCommandRefusal(stored)) return undefined;
+  const prepared = await prepareCommand(tx, session, entryPoint, request, {
+    ...declaration,
+    targetsExistingRecord: false,
+  });
+  if ('refusal' in prepared) return prepared;
+  if (declaration.name !== 'task.pickup') return undefined;
+  return await unboundPickup(tx, session, stored);
+}
+
+const PICKUP_REPLAY_FIXES: readonly string[] = [
+  'The work this pickup claimed is no longer yours to resume.',
+  'Re-read the queue.',
+];
+
+/**
+ * Whether the receipt's lease, hold and attempt are still bound to one
+ * another, to this person and to the receipt's task and version, with the
+ * lease live and unexpired, the hold held and the approval behind it current.
+ */
+async function unboundPickup(
+  tx: TenantQuery,
+  session: Session,
+  stored: CommandHandle,
+): Promise<Refused | undefined> {
+  const named = (key: string): string => {
+    const value = stored.detail[key];
+    return isIdentifier(value) ? value : NIL_UUID;
+  };
+  const rows = await tx.query<{ readonly lease_live: boolean; readonly approval_current: boolean }>(
+    `select (l.state = 'live' and l.expires_at > now() and res.state = 'held') as lease_live,
+            (g.state = 'approved' and lin.state = 'live' and ver.superseded_at is null)
+              as approval_current
+       from public.leases l
+       join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+       join public.attempts att
+         on att.business_id = l.business_id and att.reservation_id = res.id and att.lease_id = l.id
+       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+       join public.proposal_versions ver
+         on ver.business_id = res.business_id and ver.id = res.version_id
+       join public.proposal_lineages lin
+         on lin.business_id = res.business_id and lin.id = run.lineage_id
+       join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
+      where l.business_id = $1 and l.id = $2 and res.id = $3 and att.id = $4
+        and l.holder_actor_id = $5 and l.delegation_id is null
+        and l.task_id = $6 and res.version_id = $7`,
+    [
+      tx.businessId,
+      named('leaseId'),
+      named('reservationId'),
+      named('attemptId'),
+      session.actorId,
+      named('taskId'),
+      named('versionId'),
+    ],
+  );
+  const bound = rows[0];
+  if (bound === undefined)
+    return refused(refuseCommand('LEASE_NOT_OWNED', [], PICKUP_REPLAY_FIXES));
+  if (!bound.lease_live) return refused(refuseCommand('LEASE_EXPIRED', [], PICKUP_REPLAY_FIXES));
+  if (!bound.approval_current) {
+    return refused(refuseCommand('RESERVATION_NOT_CLAIMABLE', [], PICKUP_REPLAY_FIXES));
+  }
+  return undefined;
+}
+
+/** Stands in for a receipt handle that is not an identifier, so it matches no row. */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 async function attempt(
   tx: TenantQuery,
