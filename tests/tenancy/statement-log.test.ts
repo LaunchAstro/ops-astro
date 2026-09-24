@@ -64,6 +64,12 @@ describe('splitStatements', () => {
     ).toStrictEqual(['create table ops.t$$ (id int)', '/* a /* b */ c */ commit']);
   });
 
+  it('reads $a$ inside two identifiers as parts of them, not as one quote', () => {
+    expect(
+      splitStatements('create table ops.x$a$ (id int);\ncommit;\ncreate table ops.y$a$ (id int);'),
+    ).toStrictEqual(['create table ops.x$a$ (id int)', 'commit', 'create table ops.y$a$ (id int)']);
+  });
+
   it('still opens a dollar quote after a parameter or a space', () => {
     expect(splitStatements('select $1$$;$$; select $$;$$')).toStrictEqual([
       'select $1$$;$$',

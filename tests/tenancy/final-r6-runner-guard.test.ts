@@ -25,6 +25,7 @@ import {
 import {
   applyMigrations,
   MigrationRefused,
+  MigrationRoleCannotSee,
   migrate,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
@@ -307,7 +308,14 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
         syntheticMigration('9001_fr7_first', 'create table ops.fr7_first (id int)'),
         syntheticMigration('9002_fr7_broken', 'select 1 / 0'),
       ]),
-    ).rejects.toThrow(/9002_fr7_broken failed on: select 1 \/ 0/u);
+    ).rejects.toThrow(
+      // R7-RUNTIME-4: the failure says the run rolled back, and to where.
+      new RegExp(
+        `^migrate: 9002_fr7_broken failed on: select 1 / 0\\. Nothing was applied; the ` +
+          `database is still at ${String(onDisk.at(-1)?.version)}\\.$`,
+        'u',
+      ),
+    );
 
     expect(await lastApplied(built)).toBe(onDisk.at(-1)?.version);
     expect(await state(built)).toBe(before);
@@ -391,6 +399,7 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
       syntheticMigration('9001_fr7_blind', 'select 1'),
     ]).catch((error: unknown) => error);
 
+    expect(outcome).toBeInstanceOf(MigrationRoleCannotSee);
     expect(outcome instanceof Error ? outcome.message : JSON.stringify(outcome)).toMatch(
       /cannot read every session/u,
     );
@@ -408,6 +417,42 @@ describe.skipIf(serverUrl === undefined)('FR6-RUNNER: the runner refuses while c
     // The harness's own owner session is on this database too, and is named with it.
     expect(seen.sessions.map((s) => s.pid)).toContain(app.pid);
     expect(await state(built)).toBe(before);
+  }, 120_000);
+
+  // R7-THERMO-9: the CLI reports the blind-role refusal and exits 2, naming
+  // the role and the grant, rather than crashing with exit 1.
+  it('refuses a role that cannot read every session through the command line', async () => {
+    const on = await at0023('fr10blindcli');
+    const blind = `${on.name}_mig`;
+    const password = randomBytes(24).toString('base64url');
+    await on.admin.execute(
+      `create role "${blind}" login password '${password}' nosuperuser createrole`,
+    );
+    extraRoles.push(blind);
+    await on.admin.execute(`grant usage on schema ops to "${blind}"`);
+    await on.admin.execute(`grant select, insert on ops.schema_migrations to "${blind}"`);
+    const url = new URL(ownerUrl(on));
+    url.username = blind;
+    url.password = password;
+    const before = await state(on);
+
+    const run = await promisify(execFile)(process.execPath, ['scripts/db-migrate.mjs'], {
+      env: { PATH: process.env['PATH'] ?? '', DATABASE_ADMIN_URL: url.toString() },
+    }).then(
+      () => ({ code: 0, stderr: '' }),
+      (error: { readonly code?: number; readonly stderr?: string }) => ({
+        code: error.code,
+        stderr: error.stderr ?? '',
+      }),
+    );
+
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain(
+      `db-migrate: migrate: refusing to apply ${String(PENDING_AFTER_0023.length)} pending migration(s)`,
+    );
+    expect(run.stderr).toContain(`the role ${blind} cannot read every session`);
+    expect(run.stderr).toContain(`grant ${blind} pg_read_all_stats`);
+    expect(await state(on)).toBe(before);
   }, 120_000);
 
   it('refuses through the command line, with nothing in the environment to get round it', async () => {
@@ -451,7 +496,6 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ['CREATE UNIQUE INDEX\n  CONCURRENTLY i ON public.t (a)'],
     ['drop index concurrently i'],
     ['reindex index concurrently i'],
-    ["alter type ops.kind add value 'x'"],
     ['vacuum public.t'],
     ['create database other'],
     ['alter system set work_mem = 1'],
@@ -476,6 +520,8 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     // nor the end of the file hides what follows.
     ['CREATE TABLE ops.fr9_second$$ (id int); /* outer /* inner */ outer */ COMMIT'],
     ['ALTER TABLE ops.t$$ DETACH PARTITION ops.p CONCURRENTLY'],
+    // R7-RUNTIME-1's form: `$a$` inside two identifiers read as one quote.
+    ['create table ops.x$a$ (id int); commit; create table ops.y$a$ (id int)'],
     // The same boundary for E'': the e of `name` does not open an escape string.
     ["select name'\\'; commit; --'"],
   ])('refuses %j and touches nothing', async (statement) => {
@@ -496,6 +542,9 @@ describe('FR7-RUNNER: a statement the one transaction cannot hold is refused fir
     ["alter type ops.kind rename value 'a' to 'b' /* add value later */"],
     ["create function ops.f() returns void language sql as $$ select 'commit' $$"],
     ['analyze ops.t'],
+    // R7-SURFACE-6: PostgreSQL 12 and later run ADD VALUE inside a transaction
+    // block. A later use in the same run fails and rolls the run back whole.
+    ["alter type ops.kind add value 'x'"],
   ])('passes %j', async (statement) => {
     await expect(
       applyMigrations(untouched, [syntheticMigration('0001_fine', statement)]),

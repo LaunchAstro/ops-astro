@@ -183,12 +183,14 @@ async function refuseIfConnected(
  * refuses it, which fails closed; a file that really needs one of these is a
  * change to how the runner applies files, not a file to slip past it. The
  * statements that would end the runner's own transaction are the scanner's
- * `transaction` kind, plus PREPARE TRANSACTION.
+ * `transaction` kind, plus PREPARE TRANSACTION. `ALTER TYPE ... ADD VALUE` is
+ * not refused: PostgreSQL 12 and later run it inside a block, and a later use
+ * of the new value in the same run fails and rolls the whole run back (the
+ * ALTER TYPE reference page, Notes).
  */
 const OUTSIDE_A_TRANSACTION: readonly RegExp[] = [
   /^(create (unique )?index|drop index)\b.*\bconcurrently\b/u,
   /^alter table\b.*\bdetach partition\b.*\bconcurrently\b/u,
-  /^alter type\b.*\badd value\b/u,
   /^(vacuum|reindex|cluster|alter system|discard all|prepare transaction)\b/u,
   /^(create|drop) (database|tablespace)\b/u,
   /^alter database\b.*\bset tablespace\b/u,
@@ -300,6 +302,9 @@ export async function applyMigrations(
   // application running passes.
   if (pending.length === 0) return { applied: [], alreadyApplied };
   const names = pending.map((migration) => migration.version);
+  // The one transaction rolls a failure back to where the run started.
+  const last = alreadyApplied.at(-1);
+  const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
 
   // The check runs before the transaction, inside it before each file, and
   // once more before the commit, so a session that connects after the first
@@ -319,9 +324,11 @@ export async function applyMigrations(
           // oxlint-disable-next-line no-await-in-loop
           await execute(statement);
         } catch (cause) {
-          throw new Error(`migrate: ${migration.version} failed on: ${statement.slice(0, 200)}`, {
-            cause,
-          });
+          throw new Error(
+            `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
+              `applied; the database is still ${startedAt}.`,
+            { cause },
+          );
         }
       }
       // oxlint-disable-next-line no-await-in-loop
