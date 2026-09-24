@@ -312,6 +312,9 @@ already exists, the installer sets `title` and `state` to their declared
 visibility class (`shared`, I09) where they differ, so a reseed shows a client
 those two fields on a business installed before 77bcc54 (`reconcileVisibility`,
 `tasks/reconcile-visibility.ts`). It changes no other field row and no record.
+`tests/tasks/install-visibility-upgrade.test.ts` pins that a second run writes
+nothing by `xmin` and `ctid`, because `field_defs` has no revision column and a
+same-transaction update leaves `xmin` unchanged.
 
 It never seeds a task. Nobody would have created a seeded task, and it would
 make every acceptance case pass without the product working.
