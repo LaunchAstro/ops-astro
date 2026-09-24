@@ -272,8 +272,12 @@ if (sensitive.length > 0) {
     // match. A later line naming an older revision is evidence for that older
     // revision, and this check exists to say exactly that.
     for (const field of securityFields) {
-      const match = /\b([0-9a-f]{7,40})\b/u.exec(field.value);
-      const recorded = match === null ? '' : (match[1] ?? '');
+      // Round fourteen, 24 September: the outcome is matched ignoring case,
+      // and the revision was read case-sensitively, so a head written in
+      // uppercase hex read as none. Both sides are compared in lowercase.
+      const match = /\b([0-9a-f]{7,40})\b/iu.exec(field.value);
+      const recorded = match === null ? '' : (match[1] ?? '').toLowerCase();
+      const current = head.toLowerCase();
       if (recorded === '') {
         failures.push(
           `a security review line states no revision, so nothing binds it to\n` +
@@ -281,7 +285,7 @@ if (sensitive.length > 0) {
             `          ${field.line}\n` +
             '        Record the head it ran against.',
         );
-      } else if (!head.startsWith(recorded) && !recorded.startsWith(head)) {
+      } else if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
         failures.push(
           `a security review line records ${recorded}, and this pull request is\n` +
             `        at ${head}:\n` +

@@ -398,6 +398,29 @@ Both were naming nits in the tests; neither needed a second pass.
 
 $SEC_ONLY" "packages/core-custody/broker.ts"
 
+# Round fourteen, 24 September. The outcome was matched case-insensitively
+# and the revision on the security line was read case-sensitively, so a head
+# written in uppercase hex read as no revision at all. The head above is all
+# digits, which uppercasing cannot change, so these use one with letters.
+SAVED_HEAD="$HEAD"
+HEAD=abcdef0123456789abcdef0123456789abcdef01
+UPPER_HEAD="$(printf '%s' "$HEAD" | tr a-f A-F)"
+HEX_BLOCK="Review checkpoint
+  head:        $HEAD
+
+Code review: no findings"
+run_case "an uppercase full head on the security line passes" 0 "$HEX_BLOCK
+
+Security review: RUN AGAINST $UPPER_HEAD, NO FINDINGS" "packages/core-custody/broker.ts"
+run_case "an uppercase seven-character prefix passes" 0 "$HEX_BLOCK
+
+Security review: RUN AGAINST ${UPPER_HEAD:0:7}, NO FINDINGS" "packages/core-custody/broker.ts"
+run_case "an uppercase stale revision fails" 1 "$HEX_BLOCK
+
+Security review: RUN AGAINST FEDCBA9876543210FEDCBA9876543210FEDCBA98, NO FINDINGS" \
+  "packages/core-custody/broker.ts"
+HEAD="$SAVED_HEAD"
+
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then
