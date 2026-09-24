@@ -456,7 +456,13 @@ pending migration while any other client session is connected to the database
 start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
 `tests/tenancy/final-r6-runner-guard.test.ts`). Stop the API and GoTrue, run
 `pnpm db:migrate`, and start them again. With nothing pending the check does not
-run. An idle API or GoTrue may hold no connection between requests, so the check
+run. An upgrade run is all or nothing: `db:migrate` applies every pending
+migration in one transaction, so a refusal (another session connected) or a
+failed migration leaves the database at the version it started at, with no
+ledger row added (SOL-FR6-2, `applyMigrations`). When anything is pending, the
+runner's role must be a superuser or in `pg_read_all_stats`, or it refuses
+(`MigrationRoleCannotSee`): a role that cannot read every session could not
+tell that nobody else is connected. An idle API or GoTrue may hold no connection between requests, so the check
 cannot tell a stopped application from an idle one: the stop is the operator's
 step, and a script that upgrades must do it itself. See
 [DATA.md, "Upgrade"](DATA.md#upgrade).
