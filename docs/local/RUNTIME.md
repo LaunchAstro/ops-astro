@@ -14,14 +14,10 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at b282216 and again at faf3285 (`pnpm test` 5,225
-passed and 24 skipped, `tests/acceptance` 3,850 and 16, `db:conformance` 110
-named suites, 4,728 of 4,728). The joint gates at 0395827, the batch merge of
-retry-gaps, refactor-dead, refactor-refusals, sol-surface-fix, thermo-web and
-sweep-api, were red on `typecheck` and `pnpm test` for one test file,
-`tests/commands/refusal-catalogue.test.ts`, fixed forward in the test at
-3881a9d. The full joint gates rerun on the next batch head, so the rest are
-unrun here. [PROOFS.md](PROOFS.md) holds the full count table.
+joint gates were green at 158d6de and again at d6787c5, the head these docs
+describe (`pnpm test` 5,398 passed and 24 skipped, `tests/acceptance` 3,850 and
+16, `db:conformance` 114 named suites, 4,741 of 4,741).
+[PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
 
