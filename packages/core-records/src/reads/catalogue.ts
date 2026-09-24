@@ -44,6 +44,7 @@ import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -131,11 +132,6 @@ export interface BusinessRow<K extends ReadName> extends RowBase<K> {
 
 export type ReadRow<K extends ReadName> = SpineRow<K> | BusinessRow<K>;
 
-/** A JSON object that is not an array, which is what a field map has to be. */
-function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * An array of field maps. That is all a read checks of a preset's fields: the
  * keys each one carries are the planner's to refuse, in its own words, so the
@@ -145,11 +141,12 @@ function isFieldList(value: unknown): value is readonly PresetFieldRequest[] {
   return Array.isArray(value) && value.every(isFieldMap);
 }
 
-function invalid(
+/** A body refused on one operand, in the command path's words (`commands/operands.ts`). */
+function rejected(
   name: string,
   fix: string,
 ): { readonly ok: false; readonly refusal: CommandRefusal } {
-  return { ok: false, refusal: refuseCommand('FIELD_VALUE_INVALID', [name], [fix]) };
+  return { ok: false, refusal: invalid(name, fix) };
 }
 
 function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
@@ -179,7 +176,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     parse: ({ recordId }) =>
       typeof recordId === 'string'
         ? parsed({ recordId })
-        : invalid('recordId', 'Send recordId as the task’s identifier or its key.'),
+        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
     // and learns nothing from it either way, and an unresolved name is checked
@@ -219,7 +216,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     parse: ({ board }) =>
       typeof board === 'string' || board === null
         ? parsed({ board })
-        : invalid(
+        : rejected(
             'board',
             'Send board as a board task’s identifier, or null for tasks on no board.',
           ),
@@ -265,12 +262,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     identifiers: [],
     parse({ recordTypeKey, presetKey, fields }) {
       if (typeof recordTypeKey !== 'string' || recordTypeKey === '') {
-        return invalid('recordTypeKey', 'Send recordTypeKey as a non-empty string.');
+        return rejected('recordTypeKey', 'Send recordTypeKey as a non-empty string.');
       }
       if (typeof presetKey !== 'string' || presetKey === '') {
-        return invalid('presetKey', 'Send presetKey as a non-empty string.');
+        return rejected('presetKey', 'Send presetKey as a non-empty string.');
       }
-      if (!isFieldList(fields)) return invalid('fields', PRESET_FIELDS_FIX);
+      if (!isFieldList(fields)) return rejected('fields', PRESET_FIELDS_FIX);
       return parsed({ recordTypeKey, presetKey, fields });
     },
     spine: false,

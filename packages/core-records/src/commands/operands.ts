@@ -21,11 +21,12 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /** A JSON object that is not an array, which is what a field map has to be. */
-function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> {
+export function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function invalid(name: string, fix: string): CommandRefusal {
+/** `FIELD_VALUE_INVALID` naming one operand, with the fix for it. */
+export function invalid(name: string, fix: string): CommandRefusal {
   return refuseCommand('FIELD_VALUE_INVALID', [name], [fix]);
 }
 
