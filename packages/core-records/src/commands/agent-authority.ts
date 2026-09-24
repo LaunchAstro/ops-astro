@@ -10,7 +10,7 @@ import {
   type Delegation,
 } from '../authority/delegations.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
-import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { AgentOperation } from './agent-operations.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
@@ -67,7 +67,7 @@ export async function authorise(
     );
   }
   const resolved = await resolveDelegation(tx, session.actorId, credential);
-  if (!resolved.ok) return refusing(fromRuntime(resolved.refusal));
+  if (!resolved.ok) return refusing(fromReasoned(resolved.refusal));
   const delegation = resolved.value;
 
   // Under a live delegation the agent may ask what it may do: the answer is
@@ -84,7 +84,7 @@ export async function authorise(
       action: 'read',
       scope: delegation.purposeScope,
     });
-    return reach.ok ? { delegation } : refusing(fromRuntime(reach.refusal));
+    return reach.ok ? { delegation } : refusing(fromReasoned(reach.refusal));
   }
 
   const taskId = await subjectTaskId(tx, delegation, request, operation);
@@ -99,7 +99,7 @@ export async function authorise(
       collection: 'task',
       taskId,
     });
-    return refusing(fromRuntime(excluded.ok ? unreachable() : excluded.refusal));
+    return refusing(fromReasoned(excluded.ok ? unreachable() : excluded.refusal));
   }
 
   const declaration = declarationOf(request.command);
@@ -111,7 +111,7 @@ export async function authorise(
     // ceiling is the whole of what `purposeScope` buys.
     scope: { kind: 'record', id: taskId },
   });
-  return decision.ok ? { delegation } : refusing(fromRuntime(decision.refusal));
+  return decision.ok ? { delegation } : refusing(fromReasoned(decision.refusal));
 }
 
 function unreachable(): never {

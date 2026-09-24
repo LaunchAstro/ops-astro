@@ -15,7 +15,7 @@ import { subjectsOf } from '../authority/grants.ts';
 import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import { fromRuntime, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
@@ -95,7 +95,7 @@ export async function cancelOnTask(
   if (isOutcome(found)) return found;
 
   const result = await cancelAndClassify(tx, { lineageId: found.lineageId, reason });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) return refused(fromReasoned(result.refusal));
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',
@@ -131,7 +131,7 @@ export async function restartOnTask(
     subjects: subjectsOf(context.session),
     expiresAt,
   });
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) return refused(fromReasoned(result.refusal));
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,

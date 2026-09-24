@@ -15,7 +15,7 @@ import {
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
-import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
@@ -129,7 +129,7 @@ async function replayPickup(
     action: declaration?.action ?? 'write',
     scope: held.purposeScope,
   });
-  if (!decision.ok) return fromRuntime(decision.refusal);
+  if (!decision.ok) return fromReasoned(decision.refusal);
 
   const rows = await tx.query<PickupBindingRow>(
     `select d.credential_scheme, d.credential_key_id, d.credential_hash,
@@ -242,5 +242,5 @@ async function replaySettledHandback(
     action: declaration?.action ?? 'write',
     scope: held.purposeScope,
   });
-  return decision.ok ? undefined : fromRuntime(decision.refusal);
+  return decision.ok ? undefined : fromReasoned(decision.refusal);
 }

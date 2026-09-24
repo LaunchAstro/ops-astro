@@ -11,7 +11,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 import { checkAuthority, subjectsOf } from '../authority/grants.ts';
 import {
-  fromAuthority,
+  fromReasoned,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
@@ -223,7 +223,7 @@ async function serveRead<K extends ReadName>(
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
       if (session.roleKey === null && row.outsiderNotFound) return served(refuseNotFound());
-      return served(fromAuthority(authorised.refusal));
+      return served(fromReasoned(authorised.refusal));
     }
   }
 
