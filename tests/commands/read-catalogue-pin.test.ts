@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The per-read facts, pinned as they stood at faf3285.
+//
+// Written before the read facts were folded into one typed catalogue (thermo
+// review b282216, H3), and green before and after. Each read's identifiers and
+// whether an outsider is told NOT_FOUND are pinned by literal, and its operand
+// check by the exact refusal it gives each of a set of bodies, so a
+// refactor that moved a check, loosened one or changed its words fails here
+// before a caller sees it. The refusal order itself is pinned by
+// `tests/acceptance/identifier-timing` and `identifier-negatives`.
+//
+// This suite moves the database counter by zero, so it is a unit suite and
+// must not be named in `tests/db/named-suites.json`.
+
+import { describe, expect, it } from 'vitest';
+import { READS } from '../../packages/core-records/src/commands/surface.ts';
+import {
+  OUTSIDER_NOT_FOUND,
+  READ_IDENTIFIERS,
+} from '../../packages/core-records/src/reads/dispatch.ts';
+import { refuseReadOperands } from '../../packages/core-records/src/commands/operands.ts';
+
+const PINNED_IDENTIFIERS = {
+  'person.list': [],
+  'preset.plan': [],
+  'session.capabilities': [],
+  'settings.read': [],
+  'task.board': ['board'],
+  'task.queue': [],
+  'task.read': ['recordId'],
+};
+
+const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.read'];
+
+const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
+  ['empty', {}],
+  ['recordId string', { recordId: 'T-1' }],
+  ['recordId number', { recordId: 7 }],
+  ['board null', { board: null }],
+  ['board string', { board: 'b' }],
+  ['board number', { board: 1 }],
+  ['plan complete', { recordTypeKey: 'task', presetKey: 'p', fields: [] }],
+  ['plan empty key', { recordTypeKey: '', presetKey: 'p', fields: [] }],
+  ['plan no preset', { recordTypeKey: 'task', fields: [] }],
+  ['plan fields object', { recordTypeKey: 'task', presetKey: 'p', fields: {} }],
+  ['plan fields of non-objects', { recordTypeKey: 'task', presetKey: 'p', fields: [1] }],
+];
+
+const RECORD_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the task’s identifier or its key.'],
+};
+const BOARD = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['board'],
+  fixes: ['Send board as a board task’s identifier, or null for tasks on no board.'],
+};
+const plan = (name: string) => ({
+  code: 'FIELD_VALUE_INVALID',
+  names: [name],
+  fixes: [`Send ${name} as a non-empty string.`],
+});
+const PLAN_FIELDS = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['fields'],
+  fixes: ['Send fields as an array of field objects, which may be empty.'],
+};
+
+/** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
+const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
+  'task.read': [
+    RECORD_ID,
+    null,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+    RECORD_ID,
+  ],
+  'task.board': [BOARD, BOARD, BOARD, null, null, BOARD, BOARD, BOARD, BOARD, BOARD, BOARD],
+  'preset.plan': [
+    plan('recordTypeKey'),
+    plan('recordTypeKey'),
+    plan('recordTypeKey'),
+    plan('recordTypeKey'),
+    plan('recordTypeKey'),
+    plan('recordTypeKey'),
+    null,
+    plan('recordTypeKey'),
+    plan('presetKey'),
+    PLAN_FIELDS,
+    PLAN_FIELDS,
+  ],
+  'task.queue': BODIES.map(() => null),
+  'person.list': BODIES.map(() => null),
+  'settings.read': BODIES.map(() => null),
+  'session.capabilities': BODIES.map(() => null),
+};
+
+/** The refusal without its `refused` flag, or null. */
+function answerOf(read: string, body: Readonly<Record<string, unknown>>): unknown {
+  const refusal = refuseReadOperands(read, body);
+  if (refusal === undefined) return null;
+  return { code: refusal.code, names: refusal.names, fixes: refusal.fixes };
+}
+
+describe('the per-read facts at faf3285', () => {
+  it('names the same seven reads', () => {
+    expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
+  });
+
+  it('takes the same identifiers on each read', () => {
+    expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
+  });
+
+  it('tells an outsider NOT_FOUND on the same two', () => {
+    expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
+  });
+
+  it.each(Object.keys(PINNED_OPERANDS))('checks the operands of %s the same way', (read) => {
+    expect(BODIES.map(([, body]) => answerOf(read, body))).toStrictEqual(PINNED_OPERANDS[read]);
+  });
+});

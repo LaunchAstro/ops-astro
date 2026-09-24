@@ -51,7 +51,7 @@ import { readCapabilities } from './capabilities.ts';
 import { DecisionIntegrityError } from './verified-decisions.ts';
 
 /** The reads an external party is told NOT_FOUND about when its shares do not cover them. */
-const OUTSIDER_NOT_FOUND: ReadonlySet<string> = new Set(['task.read', 'task.board']);
+export const OUTSIDER_NOT_FOUND: ReadonlySet<string> = new Set(['task.read', 'task.board']);
 
 /**
  * `session.capabilities` for a caller holding no live grant, in the words
@@ -76,7 +76,7 @@ const NO_GRANT_AT_ALL: Refusal = {
  * Keyed by every read name, so a read added to the union is a type error here
  * until someone says what it takes.
  */
-const READ_IDENTIFIERS: Readonly<Record<ReadRequest['read'], readonly string[]>> = {
+export const READ_IDENTIFIERS: Readonly<Record<ReadRequest['read'], readonly string[]>> = {
   'task.read': ['recordId'],
   'task.board': ['board'],
   'task.queue': [],
