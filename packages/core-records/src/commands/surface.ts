@@ -21,6 +21,15 @@
 // reason: specification 14.3 requires the purge to write an audit event, and
 // an audit event is written by a command.
 //
+// **One row per command.** Every fact about a command that more than one module
+// reads is on its row: what it is authorised on, whether it takes an expected
+// revision, which identifiers an untargeted write may carry, which identifier
+// the runtime shapes itself, and whether an agent may reach it. `prepare.ts`,
+// the envelope and the agent path read the row rather than a list of names of
+// their own, so adding a command is one row (architecture review bbdf2b2,
+// candidate 1). The handlers stay in `handlers.ts`, keyed by the same name,
+// because the web client imports this table and must not import the database.
+//
 // **What the flags are for.** `landed` says whether the part this command
 // rests on has been built. A command that is declared and not landed still
 // runs the whole envelope — identity, revision, audit — and then refuses
@@ -163,6 +172,29 @@ export interface CommandDeclaration {
   readonly landed: boolean;
   /** What it waits for, in words a reader can act on. Empty when it has landed. */
   readonly waitingOn: string;
+  /**
+   * The identifier fields an untargeted write may carry. Any other identifier
+   * in its body is refused `COMMAND_BODY_INVALID` rather than ignored
+   * (`prepare.ts`, `refuseIrrelevantTarget`), so a request type that grows an
+   * identifier has to be named here rather than being silently covered.
+   *
+   * Absent on a targeted write, whose
+   * `recordId` *is* its target and is checked by reading it, and on a read,
+   * which `reads/dispatch.ts` checks against its own list.
+   */
+  readonly untargetedIdentifiers?: readonly string[];
+  /**
+   * The identifier the runtime handler shapes itself (`isIdentifier`) and
+   * answers in its own code, RESERVATION_NOT_CLAIMABLE or LEASE_NOT_OWNED, byte
+   * for byte as it answers a fabricated one. `prepare.ts` leaves that one field
+   * alone: a generic NOT_FOUND there would tell the two apart.
+   */
+  readonly runtimeShaped?: string;
+  /**
+   * Whether an agent login may reach it: `never`, only under a delegation, or
+   * also `before-pickup`, when it holds nothing yet (minimum contract 8.2).
+   */
+  readonly agent: 'never' | 'delegated' | 'before-pickup';
 }
 
 function declare(
@@ -175,11 +207,18 @@ function declare(
     readonly targetLock?: CommandDeclaration['targetLock'];
     readonly contractNine?: boolean;
     readonly waitingOn?: string;
+    readonly untargetedIdentifiers?: readonly string[];
+    readonly runtimeShaped?: string;
+    readonly agent?: CommandDeclaration['agent'];
   } = {},
 ): CommandDeclaration {
   const waitingOn = options.waitingOn ?? '';
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
   return {
+    ...(options.untargetedIdentifiers === undefined
+      ? {}
+      : { untargetedIdentifiers: options.untargetedIdentifiers }),
+    ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -190,6 +229,7 @@ function declare(
     contractNine: options.contractNine ?? false,
     landed: waitingOn === '',
     waitingOn,
+    agent: options.agent ?? 'never',
   };
 }
 
@@ -202,7 +242,11 @@ const SESSION_COLLECTION = 'session';
  * revision, and is always landed: the records it reads are the ones the
  * commands above already write.
  */
-function read(name: CommandName, collection: string, action: Action = 'read'): CommandDeclaration {
+function read(
+  name: CommandName,
+  collection: string,
+  options: { readonly action?: Action; readonly agent?: CommandDeclaration['agent'] } = {},
+): CommandDeclaration {
   return {
     name,
     kind: 'read',
@@ -210,23 +254,35 @@ function read(name: CommandName, collection: string, action: Action = 'read'): C
     targetsExistingRecord: false,
     authorisedOn: 'business',
     targetLock: 'command',
-    action,
+    action: options.action ?? 'read',
     contractNine: false,
     landed: true,
     waitingOn: '',
+    agent: options.agent ?? 'never',
   };
 }
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
-  declare('task.create', 'write', { targetsExistingRecord: false, contractNine: true }),
+  declare('task.create', 'write', {
+    targetsExistingRecord: false,
+    contractNine: true,
+    untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
+  }),
   declare('task.update', 'write', { contractNine: true }),
   declare('task.complete', 'write', { contractNine: true }),
   declare('task.reopen', 'write', { contractNine: true }),
-  declare('task.comment', 'comment', { contractNine: true }),
+  declare('task.comment', 'comment', { contractNine: true, agent: 'delegated' }),
   // F1. The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
   declare('task.propose', 'write', { contractNine: true, targetLock: 'runtime' }),
-  declare('task.decide', 'decide', { targetsExistingRecord: false, contractNine: true }),
+  // In the agent's reach so a delegated agent is refused by the decision
+  // itself, not by the surface: a person decides (case (j) of the matrix).
+  declare('task.decide', 'decide', {
+    targetsExistingRecord: false,
+    contractNine: true,
+    untargetedIdentifiers: ['gateId', 'versionId'],
+    agent: 'delegated',
+  }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a
   // record-scoped writer picks up, renews and hands back on that task.
@@ -234,11 +290,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     contractNine: true,
     authorisedOn: 'claim',
+    untargetedIdentifiers: ['reservationId'],
+    runtimeShaped: 'reservationId',
+    agent: 'before-pickup',
   }),
   declare('task.handback', 'write', {
     targetsExistingRecord: false,
     contractNine: true,
     authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
   }),
 
   declare('task.start', 'write'),
@@ -252,21 +314,24 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
-  declare('task.restore', 'write', { targetsExistingRecord: false }),
-  declare('task.purge', 'manage', { targetsExistingRecord: false }),
+  declare('task.restore', 'write', {
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['batchId'],
+  }),
+  declare('task.purge', 'manage', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
 
-  read('task.read', TASK_COLLECTION),
+  read('task.read', TASK_COLLECTION, { agent: 'delegated' }),
   read('task.board', TASK_COLLECTION),
   // The work a decision approved and nobody has picked up (I12). It is a read
   // because it writes nothing and it is a *projection* rather than a claim:
   // reading the queue reserves nothing, and two workers reading it see the
   // same row until one of them picks it up.
-  read('task.queue', TASK_COLLECTION),
+  read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
   // request and `planPresetSync` checks again from its own mapping.
-  read('preset.plan', 'preset', 'manage'),
+  read('preset.plan', 'preset', { action: 'manage' }),
   // `read` on `settings`, not `manage`: a setting is a business fact every
   // member works against, and a member who cannot see the four-eyes band
   // cannot tell a refusal from a bug. The writes stay `manage`, which is the
@@ -277,15 +342,24 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // alone. The declaration still carries the pair because the table is what
   // the route generator and the surface inventory read, and a row missing half its
   // shape would be a special case in three more places than one.
-  read('session.capabilities', SESSION_COLLECTION),
+  //
+  // An agent reaches it only under a delegation, where it answers the
+  // delegation's purpose; before a pickup it is refused like every other
+  // operation outside the two (minimum contract 8.2 case 9).
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
 
+  // Neither settings command names a record. The setting is chosen by the
+  // command, so a body carrying a `recordId` is a body the caller believes was
+  // honoured and it is refused rather than dropped.
   declare('settings.set_four_eyes_threshold', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
+    untargetedIdentifiers: [],
   }),
   declare('settings.set_client_sign_off', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
+    untargetedIdentifiers: [],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
@@ -293,21 +367,40 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // envelope asks nothing business-wide here; `authority-controls.ts` asks the
   // manager's ceiling against the target: `manage` and the same action, held
   // at a scope covering the grant or delegation being revoked.
-  declare('grant.revoke', 'manage', { targetsExistingRecord: false, authorisedOn: 'target' }),
+  declare('grant.revoke', 'manage', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: [],
+  }),
   declare('delegation.revoke', 'manage', {
     targetsExistingRecord: false,
     authorisedOn: 'target',
+    untargetedIdentifiers: [],
   }),
   // Work control is `write` on the task, the authority `task.propose` asks,
   // and it is asked of that task: a record-scoped writer controls its own
   // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
   // and the handler refuses a lineage opened on another task. They take no
   // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
-  declare('task.restart', 'write', { targetsExistingRecord: false, authorisedOn: 'record' }),
+  declare('task.cancel', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'lineageId'],
+  }),
+  declare('task.restart', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'lineageId'],
+  }),
   // The lease owner's, asked of the lease's task like pickup and handback; the
   // agent path checks the delegation, then the lease.
-  declare('task.heartbeat', 'write', { targetsExistingRecord: false, authorisedOn: 'claim' }),
+  declare('task.heartbeat', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -317,46 +410,29 @@ export function declarationOf(name: CommandName): CommandDeclaration | undefined
 }
 
 /**
- * The commands with no existing record to be stale against, written out rather
- * than derived from the table above.
+ * The commands with no existing record to be stale against: the rows that
+ * target none.
  *
- * It was derived once, and a review pointed out that the test comparing the
- * two was comparing a derivation with its source and could not fail. Written
- * by hand, the same test is the check it was meant to be: a declaration and
- * this list that disagree is a failure, and a new exemption is still a diff to
- * this file.
+ * It was once derived, then written by hand, because a test comparing the two
+ * was comparing a derivation with its source and could not fail. It is derived
+ * again now that `tests/commands/command-catalogue-pin.test.ts` holds the list
+ * as a literal: that test is the check the hand-written copy was, and a new
+ * exemption is still a diff to it.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal
  * version rather than a record revision, `task.pickup` mints a lease without
- * writing the task, and  `task.handback` echoes expected versions for
+ * writing the task, and `task.handback` echoes expected versions for
  * everything it touched (minimum contract 4.3). The reads write nothing, so
  * there is no revision for any of them to be writing against. `settings.read`
  * answers with the revision 0020 gave `business_settings`, so a settings write
  * can send it back, but the read itself writes against nothing.
  */
-export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set([
-  'delegation.revoke',
-  'grant.revoke',
-  'person.list',
-  'preset.plan',
-  'session.capabilities',
-  'settings.read',
-  'settings.set_client_sign_off',
-  'settings.set_four_eyes_threshold',
-  'task.board',
-  'task.cancel',
-  'task.create',
-  'task.decide',
-  'task.handback',
-  'task.heartbeat',
-  'task.pickup',
-  'task.purge',
-  'task.queue',
-  'task.read',
-  'task.restart',
-  'task.restore',
-]);
+export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set(
+  COMMAND_SURFACE.filter((command) => !command.targetsExistingRecord).map(
+    (command) => command.name,
+  ),
+);
 
 /** The contract's nine, kept separate from the operations the model requires. */
 export const CONTRACT_NINE: readonly CommandName[] = COMMAND_SURFACE.filter(

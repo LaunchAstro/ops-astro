@@ -201,6 +201,10 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
   // time over HTTP, which takes about 5 s alone and ran past the 5 s default
   // while the machine was busy. The assertions are unchanged.
   it('item 3: every write is refused on authority, nothing moves, and every attempt is audited', async () => {
+    const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+      'grant.revoke': { grantId: randomUUID() },
+      'delegation.revoke': { delegationId: randomUUID() },
+    };
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.
@@ -223,10 +227,18 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     for (const declaration of writes) {
       // eslint-disable-next-line no-await-in-loop -- one attempt at a time, in the audit's order
       const prepared = await positiveBody(declaration);
+      // The two revocations have no body in the matrix (it records their
+      // positive control elsewhere), so each is sent naming a row of its own
+      // kind: a `recordId` they do not take is refused as a stray identifier
+      // before authority is asked (architecture observation 2).
       const body =
         'body' in prepared
           ? prepared.body
-          : { recordId: shared, expectedRevision: revision, fields: { title: 'from outside' } };
+          : (REVOCATION_BODIES[declaration.name] ?? {
+              recordId: shared,
+              expectedRevision: revision,
+              fields: { title: 'from outside' },
+            });
       const aimed =
         'recordId' in body && body['recordId'] !== shared
           ? [body, { ...body, recordId: shared, expectedRevision: revision }]

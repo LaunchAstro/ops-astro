@@ -183,10 +183,8 @@ describe.skipIf(serverUrl === undefined)('installed system fields at the top lev
   });
 
   // The agent prefix classifies in `agent-envelope.ts`'s `parseOperands`,
-  // which calls the synchronous envelope-only `claimedSystemOwnedFields` and
-  // is PICKUP-REPLAY's file, not this lane's. The case is written, and is
-  // expected to fail until that call site moves to `claimedSystemFields`
-  // (handback, unfinished 1). When it passes, `it.fails` goes red and says so.
+  // which calls `claimedSystemFields`, so an installed system field is refused
+  // on the agent route as on the person route.
   it('agent task.queue refuses top-level completed_at (agent route, handed back)', async () => {
     const answer = await post(
       api,
