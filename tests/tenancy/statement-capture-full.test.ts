@@ -97,6 +97,9 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
     });
   });
 
+  // Timeout only (TEST-TIMEOUTS): prepares a positive body for every operation,
+  // one at a time against the database, and ran past the 5 s default while the
+  // machine was busy (green run 1, 5003 ms). Assertions unchanged.
   it('has a positive case for every operation, and a recipe only where the matrix has none', async () => {
     const without: string[] = [];
     for (const declaration of COMMAND_SURFACE) {
@@ -106,7 +109,7 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
     }
     expect(without.toSorted()).toStrictEqual(Object.keys(AGENT_RECIPES).toSorted());
     expect(new Set(COMMAND_SURFACE.map((one) => one.name)).size).toBe(COMMAND_SURFACE.length);
-  });
+  }, 30_000);
 
   describe('a positive call, by a caller who may perform it', () => {
     // Timeout only (TEST-TIMEOUTS): task.assign and task.triage ran past the 5 s
