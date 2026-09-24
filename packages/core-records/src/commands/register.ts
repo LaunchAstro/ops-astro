@@ -746,13 +746,18 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   //
   // `LINEAGE_NOT_ON_TASK`: `task.propose` takes `lineageId` from the caller,
   // so naming a live lineage opened on another task of the same business is an
-  // ordinary request, and R3 refuses it.
+  // ordinary request, and R3 refuses it. `task.cancel` and `task.restart`
+  // answer it from `lineageOnTask` (`tasks-controls.ts`) before the runtime.
   //
-  // `CAP_BINDING_MISMATCH`: the cap half of R2 is not command-reachable, since
-  // `readBusinessCapId` hands every decision on a business the same cap. The
-  // currency half is. `task.propose` takes `currency`, the first approval opens
-  // the envelope in the version's currency, and a second proposal on that task
-  // in another currency is refused when it is decided.
+  // `CAP_BINDING_MISMATCH`: `decide` still raises it, as the second barrier
+  // behind the proposal, and no command case reaches it. The cap half of R2 is
+  // not command-reachable, since `readBusinessCapId` hands every decision on a
+  // business the same cap. Nor, since final review round 2 (R2-RUNTIME-26), is
+  // the currency half: `task.propose` checks the currency against the task's
+  // cap (its envelope's, else the business cap) before the first write, and
+  // refuses another currency `PROPOSAL_OUT_OF_SCOPE`, so no version in another
+  // currency reaches a decision. It stays off this list because the runtime
+  // produces it; the list names codes nothing produces.
   //
   // `ACTUAL_EXPENDITURE_UNSUPPORTED`: `task.handback` refuses any non-null
   // `actualMinor`, so a caller reporting a cost — including zero — produces it.
