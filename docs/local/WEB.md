@@ -148,8 +148,9 @@ Beside `busy` and `failure` the hook returns `closed` (sticky once
 `SCOPE_NOT_GRANTED` answers, until the screen unmounts), `locked` (`busy ||
 closed`), `conflict` (the last `stale` refusal) and `because` (the last
 failure's text).
-The settings screen does not use `useCommand`; `use-settings.ts` settles its
-two commands itself.
+The settings screen's writes go through `useCommand` too. `use-settings.ts`
+keeps only what settings does with each kind, and its memory of the last
+confirmed write is in `confirmed.ts`.
 
 ## Comments on a task
 
