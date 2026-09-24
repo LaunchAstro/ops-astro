@@ -30,6 +30,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import {
   createEmptyDatabase,
   databaseUrlFromEnvironment,
@@ -221,9 +222,17 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
     await db?.drop();
   });
 
-  it('has twenty-five migrations on disk, 0001 to 0025, and covers each below', () => {
+  // Read from the directory, not counted here, so the next migration is covered
+  // with no edit to this suite (docs/local/DATA.md, "A new migration extends the
+  // proof by itself").
+  it('reads every migration on disk, numbered from 0001 with no gap, and covers each below', () => {
+    expect(onDisk.map((migration) => `${migration.version}.sql`)).toStrictEqual(
+      readdirSync('migrations')
+        .filter((name) => name.endsWith('.sql'))
+        .toSorted(),
+    );
     expect(onDisk.map((migration) => migration.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: 25 }, (_, i) => String(i + 1).padStart(4, '0')),
+      Array.from({ length: onDisk.length }, (_, i) => String(i + 1).padStart(4, '0')),
     );
   });
 
