@@ -12,8 +12,8 @@
 // `null` and `''` are refused correctly -- it is the absent field that gets
 // through (L5-PROOFS handback, "Defects found in other lanes' files" 1).
 //
-// `apps/api/status.ts:83` promises `OPERATION_ID_REQUIRED` 422 for exactly
-// this, so the case asks for the status the table already says.
+// The register (`commands/register.ts`) promises `OPERATION_ID_REQUIRED` 422
+// for exactly this, so the case asks for the status the table already says.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

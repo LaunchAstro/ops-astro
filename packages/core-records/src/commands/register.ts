@@ -10,8 +10,8 @@
 // that says a code exists, what it means, which contract row owns it, which
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's
-// own union is read off the rows marked `runtime`, and `apps/api/status.ts`
-// reads the status column (architecture review bbdf2b2, candidate 2).
+// own union is read off the rows marked `runtime`, and the HTTP door reads the
+// status column through `statusOf` (architecture review bbdf2b2, candidate 2).
 //
 // **Why a table rather than a union alone.** A union stops a typo. It cannot
 // say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
@@ -40,7 +40,8 @@ export type Visibility = 'caller' | 'audit';
  * rather than a silent 500. That matters more than it sounds: an unmapped
  * refusal defaulting to 500 would turn a refusal into a fault, and case T1-N5
  * requires two different refusals to be indistinguishable in **status** as
- * well as in body. `apps/api/status.ts` reads this column; it declares nothing.
+ * well as in body. `apps/api/app.ts` reads this column through `statusOf`; it
+ * declares nothing.
  *
  * By class: 401, not signed in, or signed in as nobody this business knows;
  * 403, signed in and not allowed; 404, it is not there, or it is not yours to
