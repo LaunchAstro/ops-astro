@@ -4,7 +4,7 @@
 // route.
 //
 // `renewLease` reads the operand through `readLeaseSeconds` with the route's
-// maximum, `MAXIMUM_RENEWAL_SECONDS` (`tasks-runtime.ts:902-924`, `:947`).
+// maximum, `MAXIMUM_RENEWAL_SECONDS` (`tasks-lease.ts` `readLeaseSeconds`, `renewLease`).
 // `controls-work.test.ts` refuses 100000; this pins the boundary itself. The
 // maximum is accepted and renews to it; one second more is `FIELD_VALUE_INVALID`
 // naming the operand, audited, and moves neither the lease nor its delegation.

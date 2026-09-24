@@ -20,13 +20,11 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
-import {
-  decideOnGate,
-  handbackOwnLease,
-  heartbeatOwnLease,
-  pickupAsPerson,
-  proposeOnTask,
-} from './tasks-runtime.ts';
+import { decideOnGate } from './tasks-decide.ts';
+import { handbackOwnLease } from './tasks-handback.ts';
+import { heartbeatOwnLease } from './tasks-lease.ts';
+import { pickupAsPerson } from './tasks-pickup.ts';
+import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { expectedRevisionOf } from './prepare.ts';

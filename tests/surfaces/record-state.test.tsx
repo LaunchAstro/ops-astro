@@ -43,7 +43,7 @@ const draw = (state: ReadState<Rows>) => (
 
 describe('the five renderings', () => {
   it('loading says so, politely, and draws no rows', async () => {
-    const view = await mount(draw({ ...base, outcome: 'loading' }));
+    const view = await mount(draw({ ...base, outcome: 'loading', previous: null }));
     expect(view.find('[data-outcome="loading"]')).not.toBeNull();
     expect(view.find('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
     expect(view.all('li')).toHaveLength(0);
