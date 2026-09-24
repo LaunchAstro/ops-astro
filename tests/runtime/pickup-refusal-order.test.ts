@@ -131,7 +131,12 @@ function markAfterFence(tx: TenantQuery, attemptId: string): TenantQuery {
     businessId: tx.businessId,
     async query<Row>(text: string, parameters?: readonly unknown[]) {
       const rows = await tx.query<Row>(text, parameters);
-      if (!marked && text.trim().startsWith("update public.leases set state = 'expired'")) {
+      // The fence is `endLease(..., 'expired')`: the lease update whose new
+      // state is `expired`, whichever way the statement spells it.
+      const fence =
+        text.trim().startsWith('update public.leases set state =') &&
+        (text.includes("state = 'expired'") || parameters?.includes('expired') === true);
+      if (!marked && fence) {
         marked = true;
         await tx.query(
           `update public.attempts set dispatch_marker = true, state = 'quarantined'

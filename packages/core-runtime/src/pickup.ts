@@ -38,7 +38,7 @@ import {
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { reserve } from './decide.ts';
-import { classifyUnderLocks } from './recovery.ts';
+import { classifyUnderLocks, endLease } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 export interface QueueEntry {
@@ -336,11 +336,7 @@ export async function pickup(
   // fences the old lease and classifies the old hold under the locks it
   // already holds; the replacement hold is opened below.
   if (expiredLeaseId !== null) {
-    await tx.query(
-      `update public.leases set state = 'expired', released_at = now()
-        where business_id = $1 and id = $2 and state = 'live'`,
-      [tx.businessId, expiredLeaseId],
-    );
+    await endLease(tx, expiredLeaseId, 'expired');
     const classified = await classifyUnderLocks(
       tx,
       {
@@ -396,11 +392,9 @@ export async function pickup(
         'Wait for it to be handed back, or for it to expire.',
       );
     }
-    await tx.query(
-      `update public.leases set state = 'expired', released_at = now()
-        where business_id = $1 and id = $2`,
-      [tx.businessId, current.id],
-    );
+    // Read live just above under the task lock, so the guard in `endLease`
+    // changes nothing here.
+    await endLease(tx, current.id, 'expired');
   }
 
   const expiresAt = new Date(Date.now() + request.leaseSeconds * 1000);

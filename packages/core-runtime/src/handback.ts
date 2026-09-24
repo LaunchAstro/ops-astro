@@ -36,7 +36,12 @@ import { settleDelegation } from '../../core-records/src/authority/delegations.t
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
-import { AffectedSetChanged, classifyUnderLocks, type Classification } from './recovery.ts';
+import {
+  AffectedSetChanged,
+  classifyUnderLocks,
+  endLease,
+  type Classification,
+} from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -410,11 +415,9 @@ export async function handback(
     report: request.report,
   });
 
-  await tx.query(
-    `update public.leases set state = 'released', released_at = now()
-      where business_id = $1 and id = $2`,
-    [tx.businessId, request.leaseId],
-  );
+  // Live and fenced under the lease lock (`staleVerdict` above), so the guard
+  // in `endLease` changes nothing here.
+  await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
   await tx.query(
     `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,

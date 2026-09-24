@@ -403,6 +403,24 @@ export function liveWorkLocks(work: readonly LiveWork[]): readonly LockRequest[]
 }
 
 /**
+ * End a live lease, as `released` (its work is over) or `expired` (a
+ * replacement takes its place). The `state = 'live'` guard is the one rule
+ * every caller shares: a lease already ended keeps the end it had, and its
+ * `released_at` is not moved. Under the caller's lock on the lease.
+ */
+export async function endLease(
+  tx: TenantQuery,
+  leaseId: string,
+  to: 'released' | 'expired',
+): Promise<void> {
+  await tx.query(
+    `update public.leases set state = $3, released_at = now()
+      where business_id = $1 and id = $2 and state = 'live'`,
+    [tx.businessId, leaseId, to],
+  );
+}
+
+/**
  * End the work authority a transition has made obsolete: fence and release
  * each live lease, and revoke the delegation it was issued under. T5 names
  * both halves for cancellation ("releases the live lease and revokes the
@@ -422,11 +440,7 @@ export async function retireWork(
     locks.require('lease', row.lease_id);
     if (row.delegation_id !== null) locks.require('delegation', row.delegation_id);
     // eslint-disable-next-line no-await-in-loop
-    await tx.query(
-      `update public.leases set state = 'released', released_at = now()
-        where business_id = $1 and id = $2 and state = 'live'`,
-      [tx.businessId, row.lease_id],
-    );
+    await endLease(tx, row.lease_id, 'released');
     if (row.delegation_id !== null) {
       // Cancellation or supersession. A delegation authority loss already
       // revoked keeps that first cause; this write is then a no-op.

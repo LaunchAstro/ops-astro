@@ -28,8 +28,9 @@ import {
   type Delegation,
 } from '../../core-records/src/authority/delegations.ts';
 import { lockedInstant } from './clock.ts';
-import { capCommitted, capVerdict, envelopeVerdict } from './budget.ts';
+import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { acquire } from './locks.ts';
+import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
 import { affectedByVersions, classifyVersions } from './recovery.ts';
 import {
@@ -178,7 +179,7 @@ export async function decide(
   // concurrent approvals on one task both found no envelope, both inserted,
   // and the loser met a unique-index violation instead of the typed refusal it
   // had earned. So this reads, and `openEnvelope` below writes under the locks.
-  const existing = await existingEnvelope(tx, found.task_id);
+  const existing = await openEnvelopeOf(tx, found.task_id);
 
   // R2. The envelope's own cap is the cap this approval draws on, and the
   // request's is a claim about it. Discovery returned only an envelope id
@@ -322,19 +323,18 @@ export async function decide(
   }
 
   // G08: two formal rounds, and the third is refused before anything is written.
-  if (request.decision === 'request_changes' && gate.round >= 2) {
-    const used = await tx.query<{ readonly rounds: string }>(
-      `select count(*)::text as rounds from public.gate_decisions
-        where business_id = $1 and lineage_id = $2 and decision = 'request_changes'`,
-      [tx.businessId, gate.lineage_id],
+  // `roundsUsed` counts the round this decision would open, so two requested
+  // already is a third on offer. The count is read only from round two on.
+  if (
+    request.decision === 'request_changes' &&
+    gate.round >= 2 &&
+    (await roundsUsed(tx, gate.lineage_id)) > 2
+  ) {
+    return refuse(
+      'CHANGE_ROUNDS_EXHAUSTED',
+      'this lineage has used its two formal rounds of requested changes',
+      'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
     );
-    if (Number(used[0]?.rounds ?? 0) >= 2) {
-      return refuse(
-        'CHANGE_ROUNDS_EXHAUSTED',
-        'this lineage has used its two formal rounds of requested changes',
-        'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
-      );
-    }
   }
 
   // W01 and T2: "approval/reservation cannot half-commit". The decision below
@@ -494,7 +494,7 @@ export async function decide(
 
   // Under the locks now: the gate lock has already refused the loser of a
   // race, and the task lock serialises envelope creation for this task.
-  const envelope = await openEnvelope(tx, capId, found.task_id, gate.version_id);
+  const envelope = await openEnvelope(tx, capId, found.task_id, version);
   if (!envelope.ok) return envelope;
 
   const reserved = await reserve(tx, {
@@ -535,51 +535,24 @@ export async function decide(
 }
 
 /**
- * Read-only discovery, so the lock set can include an envelope that exists —
- * and, since R2, the cap that envelope actually draws on, which is the one
- * preflight and reservation both have to use.
+ * Open the task's envelope, or bind to the one it already has. Under the locks.
+ * `version` is the row `decide` already re-read under them, so its maximum and
+ * currency are read once per approval.
  */
-async function existingEnvelope(
-  tx: TenantQuery,
-  taskId: string,
-): Promise<{ readonly id: string; readonly capId: string; readonly currency: string } | undefined> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly cap_id: string;
-    readonly currency: string;
-  }>(
-    `select id, cap_id, currency from public.task_envelopes
-      where business_id = $1 and task_id = $2 and state = 'open'`,
-    [tx.businessId, taskId],
-  );
-  const row = rows[0];
-  return row === undefined ? undefined : { id: row.id, capId: row.cap_id, currency: row.currency };
-}
-
-/** Open the task's envelope, or bind to the one it already has. Under the locks. */
 async function openEnvelope(
   tx: TenantQuery,
   capId: string,
   taskId: string,
-  versionId: string,
+  version: { readonly maximum_minor: string; readonly currency: string },
 ): Promise<RuntimeResult<{ readonly envelopeId: string }>> {
-  const existing = await tx.query<{ readonly id: string; readonly currency: string }>(
-    `select id, currency from public.task_envelopes
-      where business_id = $1 and task_id = $2 and state = 'open'`,
-    [tx.businessId, taskId],
-  );
-  const open = existing[0];
+  const open = await openEnvelopeOf(tx, taskId);
   if (open !== undefined) {
     // R2's other half: the envelope's currency is canonical too, and a version
     // denominated in another one is not work this envelope can hold.
-    const proposed = await tx.query<{ readonly currency: string }>(
-      `select currency from public.proposal_versions where business_id = $1 and id = $2`,
-      [tx.businessId, versionId],
-    );
-    if (proposed[0]?.currency !== open.currency) {
+    if (version.currency !== open.currency) {
       return refuse(
         'CAP_BINDING_MISMATCH',
-        `this task's envelope is in ${open.currency} and the version is in ${proposed[0]?.currency ?? 'nothing'}`,
+        `this task's envelope is in ${open.currency} and the version is in ${version.currency}`,
         'Propose the work in the currency the envelope holds.',
       );
     }
@@ -597,19 +570,6 @@ async function openEnvelope(
       'BUDGET_UNAVAILABLE',
       `no budget cap ${capId} in this business`,
       'Provision the cap before approving work that draws on it.',
-    );
-  }
-  const versions = await tx.query<{ readonly maximum_minor: string; readonly currency: string }>(
-    `select maximum_minor::text as maximum_minor, currency from public.proposal_versions
-      where business_id = $1 and id = $2`,
-    [tx.businessId, versionId],
-  );
-  const version = versions[0];
-  if (version === undefined) {
-    return refuse(
-      'GATE_NOT_FOUND',
-      'no such proposal version in this business',
-      'Re-read the gate.',
     );
   }
 
@@ -745,19 +705,7 @@ async function budgetRoom(
     readonly currency: string;
   },
 ): Promise<RuntimeResult<null>> {
-  const envelopes = await tx.query<{
-    readonly maximum_minor: string;
-    readonly held_minor: string;
-    readonly actual_minor: string;
-    readonly currency: string;
-  }>(
-    `select maximum_minor::text as maximum_minor, held_minor::text as held_minor,
-            actual_minor::text as actual_minor, currency
-       from public.task_envelopes
-      where business_id = $1 and task_id = $2 and state = 'open'`,
-    [tx.businessId, of.taskId],
-  );
-  const envelope = envelopes[0];
+  const envelope = await openEnvelopeOf(tx, of.taskId);
   if (envelope !== undefined) {
     if (envelope.currency !== of.currency) {
       return refuse(
@@ -766,14 +714,7 @@ async function budgetRoom(
         'Propose the work in the currency the envelope holds.',
       );
     }
-    const tooFull = envelopeVerdict(
-      {
-        maximumMinor: envelope.maximum_minor,
-        heldMinor: envelope.held_minor,
-        actualMinor: envelope.actual_minor,
-      },
-      of.wantedMinor,
-    );
+    const tooFull = envelopeVerdict(envelope, of.wantedMinor);
     if (tooFull !== null) return tooFull;
   }
 

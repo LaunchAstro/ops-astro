@@ -28,6 +28,49 @@ export interface EnvelopeTotals {
   readonly actualMinor: string;
 }
 
+/** A task's open envelope: its identity, its cap and currency, and its totals. */
+export interface OpenEnvelope extends EnvelopeTotals {
+  readonly id: string;
+  readonly capId: string;
+  readonly currency: string;
+}
+
+/**
+ * The task's open envelope, or nothing. At most one is open per task, so this
+ * is the one read every caller shares, before the locks as discovery or under
+ * them as the value it decides on. It takes no lock itself.
+ */
+export async function openEnvelopeOf(
+  tx: TenantQuery,
+  taskId: string,
+): Promise<OpenEnvelope | undefined> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly cap_id: string;
+    readonly currency: string;
+    readonly maximum_minor: string;
+    readonly held_minor: string;
+    readonly actual_minor: string;
+  }>(
+    `select id, cap_id, currency, maximum_minor::text as maximum_minor,
+            held_minor::text as held_minor, actual_minor::text as actual_minor
+       from public.task_envelopes
+      where business_id = $1 and task_id = $2 and state = 'open'`,
+    [tx.businessId, taskId],
+  );
+  const row = rows[0];
+  return row === undefined
+    ? undefined
+    : {
+        id: row.id,
+        capId: row.cap_id,
+        currency: row.currency,
+        maximumMinor: row.maximum_minor,
+        heldMinor: row.held_minor,
+        actualMinor: row.actual_minor,
+      };
+}
+
 /** The cap's limit and its committed total, or nothing when no such cap exists. */
 export async function capCommitted(
   tx: TenantQuery,
