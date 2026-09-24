@@ -38,7 +38,6 @@ import {
   DOCKER,
   VIEWPORT,
   WEB,
-  fromEnvFile,
   outcomeOf,
   record,
   results,
@@ -73,6 +72,52 @@ if (
   CONTAINER.startsWith('supabase_')
 ) {
   throw new Error(`restart-legs: refusing container ${String(CONTAINER)}`);
+}
+
+// The database is named, never inherited. Without these two the admin pool and
+// the API this run starts both fall back to the worktree's `.local/db.env`,
+// which in the integration worktree is the live 54390, while the restart below
+// only ever touches CONTAINER. So each URL must be set, must not be another
+// stack's database, and must be the port CONTAINER publishes.
+const REFUSED_DATABASE_PORTS = new Set(['54390', '54391', '54392']);
+
+function publishedPorts() {
+  try {
+    return sh(DOCKER, ['port', CONTAINER, '5432/tcp'])
+      .trim()
+      .split('\n')
+      .map((line) => line.slice(line.lastIndexOf(':') + 1));
+  } catch {
+    throw new Error(`restart-legs: ${CONTAINER} publishes no 5432/tcp port`);
+  }
+}
+
+function databasePort(name) {
+  const value = process.env[name];
+  if (value === undefined || value === '') {
+    throw new Error(`restart-legs: set ${name} to ${CONTAINER}'s database`);
+  }
+  let port;
+  try {
+    ({ port } = new URL(value));
+  } catch {
+    throw new Error(`restart-legs: ${name} is not a URL`);
+  }
+  if (REFUSED_DATABASE_PORTS.has(port)) {
+    throw new Error(`restart-legs: ${name} port ${port} is another stack's database`);
+  }
+  return port;
+}
+
+const DATABASE_NAMES = ['DATABASE_ADMIN_URL', 'DATABASE_URL'];
+const databasePorts = DATABASE_NAMES.map((name) => databasePort(name));
+const published = publishedPorts();
+for (const [at, port] of databasePorts.entries()) {
+  if (!published.includes(port)) {
+    throw new Error(
+      `restart-legs: ${DATABASE_NAMES[at]} port ${port || '(none)'} is not ${CONTAINER}'s published ${published.join(', ')}`,
+    );
+  }
 }
 
 const stamp = new Date().toISOString();
@@ -300,7 +345,7 @@ async function restart(first, made) {
     }
   }, 60);
   const startedAfter = sh(DOCKER, ['inspect', '-f', '{{.State.StartedAt}}', CONTAINER]).trim();
-  const admin = connectAsAdmin(fromEnvFile('DATABASE_ADMIN_URL'), { source: 'restart-legs' });
+  const admin = connectAsAdmin(process.env.DATABASE_ADMIN_URL, { source: 'restart-legs' });
   const lapsed = await until(
     async () =>
       (await gateRow(admin, made.lapsing.proposed.gateId).catch(() => undefined))?.lapsed ===
