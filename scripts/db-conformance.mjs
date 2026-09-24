@@ -52,7 +52,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -147,6 +147,32 @@ try {
 
 let ran = { total: 0, passed: 0, failed: 0, skipped: 0, todo: 0 };
 
+const vitestBin = join(repoRoot, 'node_modules/vitest/vitest.mjs');
+
+// A literal path as a glob, so an exclusion names that file and no other.
+const literal = (path) => path.replace(/[*?[\]{}()!+@\\]/gu, '\\$&');
+
+/**
+ * Every file vitest would run for this suite other than the suite itself.
+ * Round ten, 24 September, found vitest reading a path as a substring
+ * filter: naming `invariant.test.ts` also ran `invariant.test.ts.db.test.ts`,
+ * so a sibling's transactions moved the counter this suite is measured by.
+ * vitest has no exact-path filter, so it is asked what the filter selects,
+ * without loading any of it, and everything else it names is excluded.
+ */
+const siblingsOf = (suite) => {
+  const listed = spawnSync(process.execPath, [vitestBin, 'list', '--filesOnly', suite], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, CI: 'true' },
+  });
+  return (listed.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && resolve(repoRoot, line) !== resolve(repoRoot, suite))
+    .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
+};
+
 /**
  * One vitest run over one named suite, with the database's counter read
  * either side of it. Running the suites together made rule 7 a whole-run
@@ -166,10 +192,11 @@ const runSuite = async (suite) => {
   const run = spawnSync(
     process.execPath,
     [
-      join(repoRoot, 'node_modules/vitest/vitest.mjs'),
+      vitestBin,
       'run',
       '--reporter=json',
       `--outputFile=${reportPath}`,
+      ...siblingsOf(suite).map((path) => `--exclude=${path}`),
       suite,
     ],
     {
@@ -273,6 +300,16 @@ if (failures.length === 0) {
       reported.set(resolve(repoRoot, String(file.name ?? '')), file);
     }
     const file = reported.get(resolve(repoRoot, suite));
+    // Only this file, or the counter and the counts were shared with another.
+    const others = [...reported.keys()].filter((path) => path !== resolve(repoRoot, suite));
+    if (others.length > 0) {
+      unbound.push(
+        `${suite}\n            vitest ran other files in the same run, so its ` +
+          `counts are not its own:\n` +
+          others.map((path) => `              ${relative(repoRoot, path)}`).join('\n'),
+      );
+      continue;
+    }
     if (file === undefined) {
       unbound.push(`${suite}\n            vitest never reported this file, so it did not run.`);
       continue;
