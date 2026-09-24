@@ -64,9 +64,11 @@ on the same line or the next. It refuses a line where such a key follows a `{`
 or `[`, with or without a space after the bracket, and any line holding an
 explicit `? ` key. A bracket or a `#` inside a quoted scalar is text, and a `#`
 is a comment only after a space, so `name: "#"` or `name: step#1` before the
-key does not hide it; a comment line is never refused. Other key forms are not
-guaranteed to be read, for example a tagged key (`!!str uses:`) or an escaped
-quoted key. Write each of these keys in block style, one per line.
+key does not hide it; a doubled `''` inside single quotes is text too. A
+comment line is never refused. Other key forms are not guaranteed to be read:
+a tagged key (`!!str uses:`), an escaped quoted key, and a key inside a flow
+collection, or a quoted scalar, that spans lines. Write each of these keys in
+block style, one per line.
 Parsing the workflows as YAML is a recorded follow-up.
 `tests/ci/pins-check-cases.sh` holds the cases.
 

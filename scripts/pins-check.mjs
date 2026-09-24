@@ -35,9 +35,10 @@
 // plain or quoted, with space before its colon, and with its value on the same
 // line or the next. It refuses a line where such a key follows `{` or `[`
 // outside quotes and before a comment, and any explicit `? ` key line. Other
-// key forms, such as a tagged key (`!!str uses:`) or an escaped quoted key, are
-// not guaranteed to be read. The follow-up is to parse the workflows as YAML
-// (security rerun at d1a2cef, S2).
+// key forms are not guaranteed to be read: a tagged key (`!!str uses:`), an
+// escaped quoted key, and a key inside a flow collection, or a quoted scalar,
+// that spans lines. The follow-up is to parse the workflows as YAML (security
+// reruns at d1a2cef, S2, and 3f2b259, T2).
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -62,8 +63,9 @@ const FLOW_KEY = /(?:^|[\s{[,'"])(?:uses|image|container)['"]?[ \t]*:/u;
  * Does a `uses`, `image` or `container` key follow a flow bracket on this
  * line? Sol's recheck of d1a2cef: a key straight after the bracket, and a `#`
  * inside a scalar before the key, hid it. So the line is scanned the way YAML
- * reads it: a quote opens a scalar only at the start of a token, a `#` starts
- * a comment only outside quotes and after a space or at the start of the line,
+ * reads it: a quote opens a scalar only at the start of a token, `''` inside
+ * single quotes and `\"` inside double quotes are text, a `#` starts a
+ * comment only outside quotes and after a space or at the start of the line,
  * and a bracket inside quotes is text. A comment line is never flagged.
  */
 const flowKey = (line) => {
@@ -74,6 +76,9 @@ const flowKey = (line) => {
     const c = line[i] ?? '';
     const before = i === 0 ? ' ' : (line[i - 1] ?? '');
     if (quote === '"' && c === '\\') i += 1;
+    // T1 at 3f2b259: YAML escapes a single quote by doubling it, so `''` in a
+    // single-quoted scalar is text, not a close and a reopen.
+    else if (quote === "'" && c === "'" && line[i + 1] === "'") i += 1;
     else if (quote !== '' && c === quote) quote = '';
     else if (quote !== '') continue;
     else if ((c === '"' || c === "'") && /[\s{[,:]/u.test(before)) quote = c;

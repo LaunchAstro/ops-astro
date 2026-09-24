@@ -221,6 +221,30 @@ for l in '- {uses: actions/checkout@v4}' '- {name: "#", uses: actions/checkout@v
     steps:
       $l"
 done
+# T1 at 3f2b259 (Sol rated it P2): YAML escapes a single quote by doubling it,
+# and reading `''` as a close and a reopen let a later `#` read as a comment.
+for l in "- { name: 'it''s # x', uses: actions/checkout@v4 }" \
+  "- {name: 'can''t # hide this', uses: actions/checkout@v4}"; do
+  run_case "flow step $l fails" 1 "jobs:
+  a:
+    steps:
+      $l"
+done
+run_case "db: {name: 'can''t # x', image: node:20} fails" 1 "jobs:
+  a:
+    services:
+      db: {name: 'can''t # x', image: node:20}
+$STEPS"
+run_case "a pinned image after a doubled quote in a flow scalar still fails as flow" 1 "jobs:
+  a:
+    services:
+      db: {name: 'it''s', image: postgres@sha256:$DIGEST}
+$STEPS"
+run_case "a doubled quote in a block run value passes" 0 "jobs:
+  a:
+    steps:
+      - run: echo 'it''s # { uses: x }'
+      - uses: $ACTION"
 run_case "db: {image: node:20} fails" 1 "jobs:
   a:
     services:
