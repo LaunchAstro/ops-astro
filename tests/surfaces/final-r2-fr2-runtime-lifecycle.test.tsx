@@ -72,10 +72,9 @@ async function startButton(category: 'unstarted' | 'started' | 'completed') {
 }
 
 describe('R2-RUNTIME-14: Start on a completed task', () => {
-  // Red at ef02a40 and still red here: the page renders `<Lifecycle>` without
-  // saying the task is completed (TaskDetail.tsx:575, not this lane's file).
-  // Pinned as a known failure so the one-line fix there must flip it to `it`.
-  it.fails('is not offered on the task page; Reopen is', async () => {
+  // Red at ef02a40 and at 26ee374: the page rendered `<Lifecycle>` without
+  // saying the task is completed (TaskDetail.tsx).
+  it('is not offered on the task page; Reopen is', async () => {
     const { page, start, reopen } = await startButton('completed');
     expect(start).not.toBeNull();
     expect(start?.disabled).toBe(true);
