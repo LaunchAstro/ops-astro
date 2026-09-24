@@ -247,9 +247,12 @@ export interface TaskDetail extends TaskSummary {
  * What a reader outside the business is shown of one task: the server's
  * shared projection (`SharedTaskView` in `packages/core-records`).
  *
- * **It is not a task with parts missing.** There is no revision, history or
- * proposal on it because the server never read them on this path, and the
- * screen does not ask for them anywhere else. `fields` is keyed by the field's
+ * **It is not a task with parts missing.** There is no history or proposal on
+ * it because the server never read them on this path, and the screen does not
+ * ask for them anywhere else. The server's shared read also carries the
+ * record's `revision`, which an external party with a comment grant sends as
+ * `expectedRevision`; this type does not declare it because the web does not
+ * read it yet. `fields` is keyed by the field's
  * own key and holds only what the catalogue marks `shared` (on the shipped
  * task spine, `title` and the state's label as `state`); it is empty when
  * nothing is. `comments` are the client comments in their shared fields.
