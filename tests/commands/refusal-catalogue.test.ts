@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { statusFor } from '../../apps/api/status.ts';
 import {
@@ -293,6 +294,7 @@ const api = createApi({
   database: stubDatabase(),
   verify: createSupabaseVerifier({ secret: SECRET }),
   resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  executeCommand,
 });
 
 async function raw(
@@ -337,7 +339,7 @@ describe('the boundary’s own refusals, as the HTTP response carries them', () 
     ]);
     expect(await raw('bravo', create, token)).toStrictEqual([
       403,
-      '{"refused":true,"code":"AUTH_NO_MEMBERSHIP","names":[],"fixes":["Check that the business named in the path is the intended one.","Ask an administrator of that business to link this login to a person."]}',
+      '{"refused":true,"code":"AUTH_NO_MEMBERSHIP","names":[],"fixes":["ask an administrator of this business to link this login to a person","check that the business named in the request is the intended one"]}',
     ]);
   });
 });
