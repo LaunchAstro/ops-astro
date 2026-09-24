@@ -240,19 +240,26 @@ const SESSION_COLLECTION = 'session';
 /**
  * A read. It takes the `read` action on the collection it names, targets no
  * revision, and is always landed: the records it reads are the ones the
- * commands above already write.
+ * commands above already write. It is authorised on the business unless it
+ * names one task, which `reads/dispatch.ts` asks about at record scope; the
+ * read path decides that from its catalogue row, and
+ * `tests/commands/read-authorised-on.test.ts` holds this field to it.
  */
 function read(
   name: CommandName,
   collection: string,
-  options: { readonly action?: Action; readonly agent?: CommandDeclaration['agent'] } = {},
+  options: {
+    readonly action?: Action;
+    readonly agent?: CommandDeclaration['agent'];
+    readonly authorisedOn?: 'record' | 'business';
+  } = {},
 ): CommandDeclaration {
   return {
     name,
     kind: 'read',
     collection,
     targetsExistingRecord: false,
-    authorisedOn: 'business',
+    authorisedOn: options.authorisedOn ?? 'business',
     targetLock: 'command',
     action: options.action ?? 'read',
     contractNine: false,
@@ -320,7 +327,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   declare('task.purge', 'manage', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
 
-  read('task.read', TASK_COLLECTION, { agent: 'delegated' }),
+  read('task.read', TASK_COLLECTION, { agent: 'delegated', authorisedOn: 'record' }),
   read('task.board', TASK_COLLECTION),
   // The work a decision approved and nobody has picked up (I12). It is a read
   // because it writes nothing and it is a *projection* rather than a claim:
