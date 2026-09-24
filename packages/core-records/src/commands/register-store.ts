@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { AffectedSetChanged } from '../../../core-runtime/src/rediscovery.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isCommandRefusal, type CommandRefusal } from './refusal.ts';
+import { storable } from './audit.ts';
 import type { CommandName } from './surface.ts';
 
 /** What a caller gets when a command applies: a durable handle, never a record. */
@@ -91,7 +92,9 @@ export async function registerAttempt(
       attempt.actorId,
       attempt.digest,
       isCommandRefusal(result) ? 'refused' : 'applied',
-      result,
+      // A refusal's names can echo a key the caller sent, and this column is
+      // jsonb: stored by construction for every writer, person and agent.
+      storable(result),
       attempt.recordId,
       isCommandRefusal(result) ? null : result.revision,
     ],
@@ -104,7 +107,10 @@ export async function registerAttempt(
  *
  * Two unique claims, and one rollback. `record_unique_values_claim_idx` is a
  * counted `key` two creates picked at once. `operations_identity_key` is two
- * callers presenting one identity at once. `AffectedSetChanged` is a
+ * callers presenting one identity at once. A deadlock victim (40P01) was
+ * rolled back whole by the server, so it has written nothing and the retry
+ * asks again from the start, as the contract's roll-back-and-rediscover rule
+ * asks (TRANSACTION-CONTRACT.md, lock order). `AffectedSetChanged` is a
  * cancellation or revocation whose discovered set grew under its locks (a
  * pickup committed a lease in between), so it rolled back, writing nothing,
  * rather than extend its lock set; the retry discovers again and takes the
@@ -123,6 +129,7 @@ export function isRetryableViolation(cause: unknown): boolean {
   if (cause instanceof AffectedSetChanged) return true;
   if (typeof cause !== 'object' || cause === null) return false;
   const error = cause as { readonly code?: unknown; readonly constraint_name?: unknown };
+  if (error.code === '40P01') return true;
   if (error.code !== '23505') return false;
   return (
     typeof error.constraint_name === 'string' && RETRYABLE_CONSTRAINTS.has(error.constraint_name)

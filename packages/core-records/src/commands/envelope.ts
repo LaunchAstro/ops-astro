@@ -222,7 +222,7 @@ async function recordFailure(
         command: request.command,
         operationId: OPERATION_ID.test(request.operationId) ? request.operationId : null,
         outcome: 'failed',
-        payloadDigest: payloadDigest(comparablePayload(request)),
+        payloadDigest: failedDigest(request),
       });
       return undefined;
     });
@@ -234,6 +234,25 @@ async function recordFailure(
     });
   }
 }
+
+/**
+ * The digest a `failed` event carries.
+ *
+ * A payload with no canonical form (a non-finite number from a direct caller;
+ * the HTTP door refuses one before this) is often why the attempt failed, and
+ * taking its digest again would throw inside the fallback and lose the event
+ * (final review round 1, #11). It gets the all-zero digest instead, which the
+ * column's shape admits and no SHA-256 of a payload will realistically be.
+ */
+function failedDigest(request: CommandRequest): string {
+  try {
+    return payloadDigest(comparablePayload(request));
+  } catch {
+    return UNREPRESENTABLE_DIGEST;
+  }
+}
+
+const UNREPRESENTABLE_DIGEST = '0'.repeat(64);
 
 const REUSED_FIXES: readonly string[] = [
   'This identity already carries a different request. Use a new operation_id.',
@@ -429,13 +448,7 @@ async function work(
   return await handleCommand(tx, prepared, request);
 }
 
-/**
- * One register row for this request, whatever it came to.
- *
- * `result` is jsonb, and a refusal's names can echo a key the caller sent, so
- * a refusal is stored in the form `storable` gives, which `settle` answers
- * with too.
- */
+/** One register row for this request, whatever it came to. */
 async function record(
   tx: TenantQuery,
   session: Session,
@@ -449,7 +462,7 @@ async function record(
     command: request.command,
     actorId: session.actorId,
     digest,
-    result: isCommandRefusal(result) ? storable(result) : result,
+    result,
     recordId,
   });
 }
@@ -469,9 +482,9 @@ async function settle(
   settlement: Settlement,
 ): Promise<CommandRefusal> {
   const { refusal, attempted } = settlement;
-  // A name can echo a key the caller sent, and the register row is jsonb. The
-  // caller is answered with the stored form, so a replay's bytes are the first
-  // answer's.
+  // A name can echo a key the caller sent, and `registerAttempt` stores it in
+  // the form `storable` gives. The caller is answered with that form, so a
+  // replay's bytes are the first answer's.
   const visible = storable(asCallerVisible(refusal));
   if (settlement.registered !== true && settlement.withoutIdentity !== true) {
     await record(tx, session, request, digest, visible, null);
