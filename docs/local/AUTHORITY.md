@@ -321,6 +321,11 @@ fields and client-audience comments only".
   (`authority/shares.ts`) issues a root `read` grant at
   `scope_kind = 'record'`, under the sharer's own live `share` grant. A member
   without one is `SCOPE_NOT_GRANTED`. `revokeShare` (same file) takes it back.
+  `revokeShare` withdraws a share whether the record is live or in the trash;
+  `shareRecord` shares live records only, and a trashed or unknown record is
+  `NOT_FOUND` (`refuseShare`; `tests/authority/final-r2-fr2-trash-cont.test.ts`).
+  A purge revokes the shares on what it removes
+  (`tests/commands/final-r2-fr2-trash.test.ts`).
 - **Standing is a live scoped `read` grant.** `STANDING` in
   `identity/login-resolution.ts` counts unrevoked, unexpired grants below
   business scope whose action is `read`, held by the person or their acting
@@ -348,9 +353,17 @@ fields and client-audience comments only".
   a reseed upgraded as well as a fresh one
   (`packages/core-records/src/tasks/reconcile-visibility.ts`). A sibling record
   and the board are `NOT_FOUND`.
-- **`session.capabilities`** shows the party its shares' pairs.
-- **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
-  rows in the matrix's case (g). `tests/acceptance/i10-inflight.test.ts` holds
+- **`session.capabilities`** shows the party its shares' pairs, plus
+  `task:comment` when it holds a comment grant. A provisioned `write` or
+  `assign` row is not shown, since the R4 gate refuses every write but
+  `task.comment` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
+  with `person.list` refused and naming no member, by
+  `tests/authority/final-r2-fr2-api-capabilities.test.ts`.
+- **Proved** over HTTP by `tests/acceptance/external-party.test.ts`: the
+  login refused until a share exists, the `sharedTask` read, a sibling task and
+  the board `NOT_FOUND`, and every write refused. The matrix's case (g) holds
+  the read and the two `NOT_FOUND` rows. Neither calls `session.capabilities`.
+  `tests/acceptance/i10-inflight.test.ts` holds
   an admitted shared read open across a `grant.revoke`: the read finishes with
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with

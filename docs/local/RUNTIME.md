@@ -78,6 +78,15 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
 (`commands/tasks-propose.ts`).
 
+Under those locks and before the first write, `task.propose` checks the cap's
+currency and room, T1's "existing budget authority", as the handback's
+successor bound does (`refuseBeyondBudget`, `propose.ts`). The cap is the open
+envelope's, else the business cap (`readBusinessCapId`). A version in another
+currency, or a ceiling past the cap's room less the hold the superseded version
+releases, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written
+(`tests/runtime/final-r2-fr2-propose.test.ts`). With no envelope and no cap
+there is no ceiling to check, and the decision answers `BUDGET_UNAVAILABLE`.
+
 Grants stay outside that order. `task.pickup` share-locks the grant chain behind
 the claim's authority before it acquires the runtime set: the claimant's own
 grants in the collection and every grant they descend from
@@ -98,7 +107,19 @@ locks, after `lockedInstant` and before the first write (`decide`,
 `decide.ts`). A revocation that locks the grant first is seen by that check,
 and the decision is refused `SCOPE_NOT_GRANTED` with nothing written. One that
 arrives second waits for the decision to commit
-(`tests/runtime/final-r1-fr1-runtime.test.ts`).
+(`tests/runtime/final-r1-fr1-runtime.test.ts`). The check judges the decide
+grant again at the locked instant (`checkAuthorityAt`, `lockedAt`), so a grant
+that expires while the decision waits on the chain or the cap does not count
+(`checkAuthorityAt`, `recovery.ts`; `tests/runtime/final-r2-fr2-runtime.test.ts`).
+
+The runtime's other person checks under the locks are judged the same way. In
+pickup, heartbeat and handback, a person's write on the task, and for an agent
+pickup the delegating person's read, comment and write, are judged at the locked
+instant (`checkAuthorityAt`, `lockedAt`). A grant that expires while the call
+waits on its locks does not count. An agent pickup refused this way answers
+`DELEGATION_WIDENS`, in `mintDelegation`'s own words, before anything is minted
+(`pickup`, `pickup.ts`; `heartbeat.ts`; `handback.ts`;
+`tests/runtime/final-r2-fr2-runtime-cont.test.ts`).
 
 `decide.ts` once opened the task's envelope before acquiring its locks, a
 write before the lock set. Two approvals racing one task both found no
@@ -368,6 +389,16 @@ raise the total is checked: a nonzero insert, a growing total, a move to
 another cap, or a falling limit. The command refuses first with a reason, and
 storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
 
+Since migration 0029 the backstop also fails closed. The trigger reads the cap
+under the tenancy setting the transaction holds at commit, and the application
+role may clear `app.business_id` or set it to another business after its write.
+If the cap row cannot be read at commit, the commit is refused
+`budget_caps_ceiling` whether or not the total fits. A ceiling that cannot be
+read is not room, the same rule as `BUDGET_UNAVAILABLE` above
+(`budget_caps_ceiling_holds`, `migrations/0029_cap_ceiling_fails_closed.sql`;
+`tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`). A transaction that
+keeps its setting, as every command path does, is judged as before.
+
 The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
 version whose currency differs from the cap's, or from that of the task's open
 envelope, with `CAP_BINDING_MISMATCH` before the first write (`budgetRoom`).
@@ -491,6 +522,15 @@ Its limits:
   (`configuredKeys`, `proposals.ts`), so a row signed under an earlier key id
   fails the read as an unknown signing key. Retaining an older key is a
   configuration change this head has not made.
+- The read binds each returned decision's signed evidence digest to what it
+  shows. The gate must still carry the decision's version and that version's
+  pack, the pack's stored digest must equal the signed one and its body must
+  still hash to it, and the body's version, lineage, ceiling and currency must
+  match the version row. Anything else is `DECISION_INTEGRITY`
+  (`unboundEvidence`, `verified-decisions.ts`;
+  `tests/reads/final-r2-fr2-runtime-integrity.test.ts`). The version and pack
+  rows themselves stay mutable: the read detects a change, it does not prevent
+  one.
 
 ## Why the lease is fenced
 
@@ -644,7 +684,10 @@ costs at most one extra attempt, at either entry.
 `task.propose` and a rejecting `task.decide` recheck the holds their versions
 own under the locks (thermo O3). An approval of the superseded version that
 commits between a proposal's discovery and its locks costs one retry, where
-before it was an unretried lock-order fault. A rejection's recheck is a
+before it was an unretried lock-order fault. `task.propose`'s recheck also
+covers the live version and the task envelope, as well as their work and holds,
+so a version proposed and approved in that window costs one retry as well
+(`lockProposal`, `propose.ts`). A rejection's recheck is a
 consistency guard, since no command opens a hold on a lineage whose gate is
 pending. A rejection racing an approval of the same gate therefore costs one
 bounded retry before the same `GATE_ALREADY_DECIDED` answer (F-A4-1, accepted
@@ -874,7 +917,8 @@ partly covered rather than proved.
   unit `BUDGET_EXHAUSTED` (`tests/runtime/cap-exact-and-post-lock-clock.test.ts`,
   which also holds the currency refusal and the decide and heartbeat that
   waited on a lock past their deadline). Storage refuses the same over-ceiling
-  commit on any path (`budget_caps_ceiling`, migration 0025).
+  commit on any path (`budget_caps_ceiling`, migrations 0025 and 0029,
+  including when the cap is hidden at commit).
 - **The interruption, both ways** (W01): the same production `propose` and
   `decide` calls followed by a throw at the transaction boundary leave a fresh
   connection zero decisions, envelopes, reservations and attempts; committed,
@@ -1000,8 +1044,10 @@ direct SQL.
   locks rolls the cancellation back for one retry (`cancelAndClassify`;
   `tests/runtime/final-r1-fr1-runtime.test.ts`). Cancellation reaches a trashed
   task's lineage, so a trashed task's approved hold can still be released, and
-  `task.restart` on a trashed task stays `NOT_FOUND` (`lineageOnTask`,
-  `commands/tasks-controls.ts`; `tests/commands/final-r1-fr1-trash.test.ts`).
+  `task.restart` and `task.propose` on a trashed task stay `NOT_FOUND`
+  (`lineageOnTask`, `commands/tasks-controls.ts`; `proposeOnTask`,
+  `commands/tasks-propose.ts`; `tests/commands/final-r1-fr1-trash.test.ts`,
+  `tests/runtime/final-r2-fr2-propose.test.ts`).
   The delegation's recorded cause is `work_retired` (`retireWork`). A run already handed back
   keeps that state. The cancelled agent's next call answers
   `DELEGATION_NOT_LIVE`, and the same agent can pick up a restarted lineage
@@ -1016,7 +1062,13 @@ direct SQL.
   (`tests/runtime/cancel-rediscover.test.ts`). A second loss reaches the caller
   as a fault, with one `failed` audit event
   (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry. A
-  changed set there fails the start.
+  changed set there fails the start. `task.cancel` holds the canceller's
+  covering grants for share before its runtime set, as decide and pickup do,
+  and re-reads `write` on the task at the locked instant before its first write
+  (`holdCoveringGrants` and `checkAuthorityAt` in `cancelAndClassify`). A
+  revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
+  with nothing written, and one that comes second waits for the cancel to
+  commit (`tests/runtime/final-r2-fr2-runtime.test.ts`).
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `commands/surface.ts`;
@@ -1027,6 +1079,14 @@ direct SQL.
   their own lease on that task. An id that resolves to nothing is asked at
   business scope, so a foreign and a fabricated id get the same answer
   (`SCOPE_OF.claim`, `commands/prepare.ts`).
+- **Identifiers.** A uuid is one identifier however it is cased; handlers
+  compare the lower-case form. `task.cancel` and `task.restart` lower-case the
+  task and lineage (`lineageOnTask`), `task.decide` the gate and version
+  (`decide`, `decide.ts`), and `task.assign` the person it names
+  (`commands/tasks-state.ts`), so an upper-case id of the right row is that row
+  (`tests/runtime/final-r2-fr2-runtime.test.ts`). `task.rank` does not yet: at
+  this head it compares `afterId` and `beforeId` as sent (`rankTask`,
+  `commands/tasks-place.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
   (`recovery.ts`, called from `revokeGrantAsManager` and
@@ -1127,6 +1187,11 @@ under a dedicated delegation credential key
   first use creates that file once, with a fresh random key id, and never
   rewrites it (`local-seed.mjs:783-794`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
+  `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
+  (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
+  environment, the API server does not read `.local/delegation.env` at all
+  (`localEnvironment`, `apps/api/server.ts`;
+  `tests/api/final-r2-fr2-api-keyring.test.ts`).
   The database stores only `credential_hash` (SHA-256) and the nonsecret
   `credential_scheme` and `credential_key_id` (migration 0022).
 - **Backup.** Back up the delegation key file with the database. A database

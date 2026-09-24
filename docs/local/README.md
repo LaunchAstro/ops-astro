@@ -51,7 +51,9 @@ If you are new to this checkout, read this section first.
   key comes from the environment (`DELEGATION_CREDENTIAL_KEY_ID` and
   `DELEGATION_CREDENTIAL_KEYS`) or from the ignored `.local/delegation.env`.
   `db:seed` creates that file once, or the API creates it on first use, and
-  neither rewrites it. Back it up with the
+  neither rewrites it. With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
+  environment, the server does not read `.local/delegation.env`. Back it up
+  with the
   database; a database restored without it cannot replay a lost pickup
   response ([RUNTIME.md](RUNTIME.md#the-delegation-credential-key)).
 - **The seed can change the external party's password.** See

@@ -68,6 +68,13 @@ line chose the `operationId` and the call gets no answer (exit 3) or a fault
 (exit 4), stderr names it:
 `cli: operationId <id>; send it again with this operationId to replay`. Put
 that id in the body and send it again (`replayHint`, `apps/cli/main.ts`).
+A pickup that was applied but whose credential could not be saved (exit 4)
+also names its operationId, including one the caller supplied:
+`cli: pickup applied but its credential could not be saved to <file>: <reason>`.
+Make the location writable and send the same body again with that id to get
+the credential back. The same applies to an agent `task.handback` that was
+applied but whose saved credential could not be removed: make the location
+writable and send the same body again with the id named on stderr.
 
 ## Person and agent use
 
@@ -111,13 +118,13 @@ printed exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
 The one exception is a successful agent `task.pickup`, whose credential is
 replaced by where it was saved.
 
-| Exit | Meaning                                                                                                                                        |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                     |
-| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer. |
-| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body, or no bearer or business. No request sent.                                |
-| 3    | Transport: no answer arrived.                                                                                                                  |
-| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON.                                      |
+| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, or a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written. No request sent.                                                                                                                                               |
+| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
 
 ## What it does not do
 
