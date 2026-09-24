@@ -31,7 +31,7 @@ import {
   type PresetField,
   type PresetPlanRefusal,
 } from '../records/preset-plan.ts';
-import type { ReadRequest, ReadResult } from './requests.ts';
+import type { PresetFieldRequest, ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
   isInternalReader,
   readBoard,
@@ -47,8 +47,13 @@ import { isUuid } from '../tenancy/ids.ts';
 
 export type ReadName = ReadRequest['read'];
 
-/** One read's request, narrowed by name. */
+/** One read's request, narrowed by name and still unchecked. */
 export type ReadOf<K extends ReadName> = ReadRequest & { readonly read: K };
+
+/** A read's body checked: its operands, or the refusal the body earned. */
+export type Parsed<K extends ReadName> =
+  | { readonly ok: true; readonly operands: ReadOperands[K] }
+  | { readonly ok: false; readonly refusal: CommandRefusal };
 
 /** What the pipeline found before the read is served. */
 export interface Found {
@@ -70,8 +75,9 @@ export interface ReadRow<K extends ReadName> {
    * The operands the read cannot be asked without, checked before any lookup
    * so an absent or mistyped one is a refusal and not a fault at a bound
    * parameter (checklist B7), and audited like every other refused read (I13).
+   * What it hands back is all the row's later steps are given.
    */
-  readonly operands: (body: Readonly<Record<string, unknown>>) => CommandRefusal | undefined;
+  readonly parse: (body: Readonly<Record<string, unknown>>) => Parsed<K>;
   /** Whether the read needs the installed task type's identifiers. */
   readonly spine: boolean;
   /**
@@ -82,7 +88,7 @@ export interface ReadRow<K extends ReadName> {
   readonly subject?: (
     tx: TenantQuery,
     spine: TaskSpine,
-    request: ReadOf<K>,
+    operands: ReadOperands[K],
   ) => Promise<string | undefined>;
   /**
    * How the grant check is asked. `declared`: the row's own collection and
@@ -90,7 +96,7 @@ export interface ReadRow<K extends ReadName> {
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
    */
-  readonly authority: 'declared' | 'holds-any-grant' | ((request: ReadOf<K>) => string);
+  readonly authority: 'declared' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -102,7 +108,7 @@ export interface ReadRow<K extends ReadName> {
   readonly serve: (
     tx: TenantQuery,
     session: Session,
-    request: ReadOf<K>,
+    operands: ReadOperands[K],
     found: Found,
   ) => Promise<ReadResult | CommandRefusal>;
 }
@@ -112,11 +118,28 @@ function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> 
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function invalid(name: string, fix: string): CommandRefusal {
-  return refuseCommand('FIELD_VALUE_INVALID', [name], [fix]);
+/**
+ * An array of field maps. That is all a read checks of a preset's fields: the
+ * keys each one carries are the planner's to refuse, in its own words, so the
+ * narrowing to `PresetFieldRequest` is the wire's promise and not this check's.
+ */
+function isFieldList(value: unknown): value is readonly PresetFieldRequest[] {
+  return Array.isArray(value) && value.every(isFieldMap);
 }
 
-const NONE = (): undefined => undefined;
+function invalid(
+  name: string,
+  fix: string,
+): { readonly ok: false; readonly refusal: CommandRefusal } {
+  return { ok: false, refusal: refuseCommand('FIELD_VALUE_INVALID', [name], [fix]) };
+}
+
+function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
+  return { ok: true, operands };
+}
+
+const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, never>> } =>
+  parsed({});
 
 /** The planner reads each preset field as an object; which keys it needs is its own question. */
 const PRESET_FIELDS_FIX = 'Send fields as an array of field objects, which may be empty.';
@@ -135,19 +158,19 @@ const NO_GRANT_AT_ALL: Refusal = {
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   'task.read': {
     identifiers: ['recordId'],
-    operands: (body) =>
-      typeof body['recordId'] === 'string'
-        ? undefined
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
         : invalid('recordId', 'Send recordId as the task’s identifier or its key.'),
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
     // and learns nothing from it either way, and an unresolved name is checked
     // at business scope, so "there is no such task" is still answered by the
     // read and never by the authority check.
-    subject: (tx, spine, request) => resolveTaskId(tx, spine.taskTypeId, request.recordId),
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, _request, { spine, recordId }) {
+    async serve(tx, session, _operands, { spine, recordId }) {
       if (recordId === undefined || spine === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
       // first among them, gets the shared view, which is built from the
@@ -175,9 +198,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // not, and answering it with that list gave a body that asked nothing
     // the answer to a question it never put (I14-SEAM U1). A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    operands: (body) =>
-      typeof body['board'] === 'string' || body['board'] === null
-        ? undefined
+    parse: ({ board }) =>
+      typeof board === 'string' || board === null
+        ? parsed({ board })
         : invalid(
             'board',
             'Send board as a board task’s identifier, or null for tasks on no board.',
@@ -204,7 +227,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   'person.list': {
     identifiers: [],
-    operands: NONE,
+    parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
@@ -215,7 +238,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // audit row would make "who read this record" false for the others.
   'task.queue': {
     identifiers: [],
-    operands: NONE,
+    parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
@@ -223,17 +246,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   'preset.plan': {
     identifiers: [],
-    operands(body) {
-      for (const name of ['recordTypeKey', 'presetKey'] as const) {
-        if (typeof body[name] !== 'string' || body[name] === '') {
-          return invalid(name, `Send ${name} as a non-empty string.`);
-        }
+    parse({ recordTypeKey, presetKey, fields }) {
+      if (typeof recordTypeKey !== 'string' || recordTypeKey === '') {
+        return invalid('recordTypeKey', 'Send recordTypeKey as a non-empty string.');
       }
-      const fields = body['fields'];
-      if (!Array.isArray(fields) || !fields.every(isFieldMap)) {
-        return invalid('fields', PRESET_FIELDS_FIX);
+      if (typeof presetKey !== 'string' || presetKey === '') {
+        return invalid('presetKey', 'Send presetKey as a non-empty string.');
       }
-      return undefined;
+      if (!isFieldList(fields)) return invalid('fields', PRESET_FIELDS_FIX);
+      return parsed({ recordTypeKey, presetKey, fields });
     },
     spine: false,
     // The collection is the family the request names, because that is the
@@ -250,9 +271,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // mapping: should the two ever differ, the planner still asks its own
     // question afterwards, so this check can only be redundant or narrower --
     // never wider than the authority the plan is granted under.
-    authority: (request) => request.recordTypeKey,
+    authority: (operands) => operands.recordTypeKey,
     outsiderNotFound: false,
-    async serve(tx, session, request) {
+    async serve(tx, session, operands) {
       // L2's planner checks the same authority again, from its own module, and
       // that repetition is deliberate: the guarantee "this plan was authorised"
       // belongs to the planner whichever surface reaches it, and the guarantee
@@ -262,9 +283,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         tx,
         { personId: session.personId, actorId: session.actorId },
         {
-          recordTypeKey: request.recordTypeKey,
-          presetKey: request.presetKey,
-          fields: request.fields as readonly PresetField[],
+          recordTypeKey: operands.recordTypeKey,
+          presetKey: operands.presetKey,
+          fields: operands.fields as readonly PresetField[],
         },
       );
       if (!planned.ok) return fromPresetPlan(planned.refusal);
@@ -276,7 +297,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // `settings` row in `records` to name in the column even if there were.
   'settings.read': {
     identifiers: [],
-    operands: NONE,
+    parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
@@ -295,7 +316,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // three more places.
   'session.capabilities': {
     identifiers: [],
-    operands: NONE,
+    parse: NONE,
     spine: false,
     authority: 'holds-any-grant',
     outsiderNotFound: false,
