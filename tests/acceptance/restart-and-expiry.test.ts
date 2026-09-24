@@ -333,7 +333,7 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     // `AUTH_UNKNOWN_LOGIN` alone, so the hook fired zero times for the one
     // refusal it exists for, and the case asserted that zero *as observed* so
     // that it would fail on the day it was fixed. It has been fixed —
-    // `apps/web/src/operations/client.ts:259` now carries both codes — and
+    // `apps/web/src/operations/client.ts` `SESSION_ENDED` now carries both codes — and
     // this is that failure, turned round. The assertion is now the behaviour:
     // the hook fires once, with the code the server really sent.
     //

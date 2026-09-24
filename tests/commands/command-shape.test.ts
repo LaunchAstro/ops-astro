@@ -22,10 +22,6 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import {
-  COMMAND_SURFACE,
-  NEEDS_NO_EXPECTED_REVISION,
-} from '../../packages/core-records/src/commands/surface.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
@@ -111,13 +107,12 @@ describe.skipIf(serverUrl === undefined)('command_shape', () => {
   });
 
   describe('every command that mutates an existing record requires a revision', () => {
-    it('agrees with the declarations, so the list cannot drift from the table', () => {
-      for (const command of COMMAND_SURFACE) {
-        expect(command.targetsExistingRecord, command.name).toBe(
-          !NEEDS_NO_EXPECTED_REVISION.has(command.name),
-        );
-      }
-    });
+    // Which commands are exempt is pinned by name in `command-catalogue-pin`
+    // ("exempts the same twenty"). The case that compared the set with
+    // `targetsExistingRecord` here went (COMMAND-CATALOGUE unfinished 4):
+    // `surface.ts` derives the one from the other, so it could fail only if
+    // that derivation broke, which the pin catches too, and a flag flipped on
+    // a declaration moved both sides at once, which only the pin catches.
 
     it('refuses an update that names no revision', async () => {
       const made = await create('needs a revision');
