@@ -114,9 +114,9 @@ in which a named suite skipped.
 
 `statement-capture-full.test.ts` reads its operation list from the registry, so
 an operation added without a case fails. Each call runs on a logged `max: 1`
-runtime connection and must be one transaction, with the business set locally
-as its first statement, no session-wide setting, no DDL, an audit row, and the
-work savepoint released on success or rolled back on refusal
+runtime connection and must be one transaction. Its first statement sets the
+business locally, and it must carry no session-wide setting, no DDL, an audit
+row, and the work savepoint released on success or rolled back on refusal
 (`statement-capture-cases.ts` is its harness, not a suite). The runtime
 connection sends one statement outside a transaction: the `postgres` driver's
 per-connection lookup of array types in `pg_type` (`fetch_types`), which the
@@ -131,13 +131,13 @@ that the table's contents are unchanged after every write. The full-schema
 suite runs on the acceptance world, walked through the real application to a
 handback, so the other-tenant cases filter rows that exist. The expected grants
 are `APPLICATION_GRANTS` in `restricted-calls-cases.ts`, which is a harness,
-not a suite; a new table fails both suites until its grant row is added there.
+not a suite. A new table fails both suites until its grant row is added there.
 A BEFORE ROW insert trigger answers before row security's WITH CHECK, so a
 foreign insert into `delegations` is refused with `check_violation`
 (`BEFORE_ROW_REFUSALS`). `handback_reports_append_only` is `security definer`
 (migration 0018), but no application role reaches it: the group holds only
-`select` and `insert` on `handback_reports`, so `update` and `delete` are
-refused by privilege before the trigger. Its only live caller is the owner,
+`select` and `insert` on `handback_reports`, so the privilege check refuses
+`update` and `delete` before the trigger runs. Its only live caller is the owner,
 whom it refuses.
 
 At every migration prefix, every tenant table holds an owner-written row per
@@ -181,9 +181,9 @@ does not rest on it.
 
 ### The migration prefixes
 
-Running the conformance set only against the end state misses real states. An
-installation is really in the state after `0001`, and a deploy that stops
-between two migrations leaves it in one of them. So
+Running the conformance set only against the end state misses real states.
+Every installation passes through the state after `0001`, and a deploy that
+stops between two migrations leaves it in one of them. So
 `packages/core-records/src/tenancy/testing/prefix-harness.ts` applies the
 migrations one at a time and, after each, runs the tenancy catalogue, the
 composite-key linter and the default-deny set in
@@ -218,14 +218,14 @@ before the other's uncommitted write, and both passed the comparison. The second
 then restored what the first had replaced and still told its caller `applied`.
 With the lock, the second waits, re-reads the committed revision and is refused
 `VERSION_STALE`. A declaration with `targetLock: 'runtime'` (`task.propose`) is
-the one exception: `prepareCommand` only reads that task, because the runtime
+the one exception. `prepareCommand` only reads that task, because the runtime
 takes its own locks in its own order, and the handler compares the revision once
 it holds them.
 
 **The authority target comes from the declaration, not the body.** Each
 declaration's `authorisedOn` names it (`CommandDeclaration` in
 `commands/surface.ts`). `record` is checked against the task named in
-`recordId`; that is every command with `targetsExistingRecord`, and
+`recordId`. That is every command with `targetsExistingRecord`, plus
 `task.cancel` and `task.restart`, which name their task without writing it.
 `target` is checked at the scope of the grant or delegation being revoked
 (`grant.revoke`, `delegation.revoke`; `SCOPE_OF.target` in `prepare.ts`). `claim`
