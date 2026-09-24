@@ -10,9 +10,12 @@
 // mark. This file records the call stack of every storage write while the
 // screen saves, is refused and is answered, and fails if any write came
 // through `basicStateReducer`, the frame React calls every `useState` updater
-// from, whether eagerly on dispatch or during the render.
+// from, whether eagerly on dispatch or during the render. A control writes from
+// inside an updater on purpose and must be seen, so a React that renames or
+// inlines the frame fails here rather than passing without checking anything
+// (THERMO-RECHECK-4 R4W2).
 
-import { act } from 'react';
+import { act, useState, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsScreen } from '../../apps/web/src/screens/Settings.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -67,6 +70,28 @@ function api(): { answer: ReadAnswer; readonly fetch: typeof globalThis.fetch } 
     throw new Error(`unrouted ${at}`);
   }) as unknown as typeof globalThis.fetch;
   return Object.assign(held, { fetch });
+}
+
+/** The call came through a `useState` updater. */
+const insideUpdater = (stack: string): boolean => stack.includes('basicStateReducer');
+
+/** A counter whose updater writes the tab's storage: what the screen must never do. */
+function WritesInUpdater(props: { readonly storage: Storage }): ReactElement {
+  const [count, setCount] = useState(0);
+  return (
+    <button
+      type="button"
+      data-control="bump"
+      onClick={() => {
+        setCount((was) => {
+          props.storage.setItem('ops-astro.settings.control', String(was + 1));
+          return was + 1;
+        });
+      }}
+    >
+      {count}
+    </button>
+  );
 }
 
 /** The tab's storage, with the stack of every write to a settings slot. */
@@ -144,6 +169,16 @@ describe('settings storage writes', () => {
 
     // keep, deny, lift and a keep after it, at the least: the check saw writes.
     expect(writes.length).toBeGreaterThanOrEqual(4);
-    expect(writes.filter((stack) => stack.includes('basicStateReducer'))).toEqual([]);
+    expect(writes.filter((stack) => insideUpdater(stack))).toEqual([]);
+  });
+
+  it('the check sees a write made inside a state updater', async () => {
+    const { storage, writes } = recording();
+    const page = await mount(<WritesInUpdater storage={storage} />);
+    await page.click('[data-control="bump"]');
+    await page.unmount();
+
+    expect(writes.length).toBeGreaterThanOrEqual(1);
+    expect(writes.filter((stack) => insideUpdater(stack))).toHaveLength(writes.length);
   });
 });

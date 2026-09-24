@@ -788,7 +788,7 @@ export async function classifyAuthorityLoss<T>(
   // own leases. `match` picks out the unit's live work and its holds, and
   // `causeId` is the recorded cause those holds are classified under.
   const lost = new Set(written.lost);
-  const lostLeases = new Set(written.lostLeases ?? []);
+  const lostLeases = new Set(written.lostLeases);
   const person = request.personLeases;
   const units: readonly LostUnit[] = [
     ...ids

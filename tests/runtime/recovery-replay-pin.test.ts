@@ -105,7 +105,7 @@ describe.skipIf(serverUrl === undefined)('restart replay: the discovered set', (
       if (decided.value.decision !== 'approve')
         throw new Error(`expected an approval, got ${decided.value.decision}`);
       return {
-        reservationId: decided.value.reservationId as string,
+        reservationId: decided.value.reservationId,
         lineageId: proposed.value.lineageId,
       };
     });

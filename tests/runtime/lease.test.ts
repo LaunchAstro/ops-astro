@@ -99,9 +99,9 @@ async function approvedWork(
       gateId: proposed.value.gateId,
       versionId: proposed.value.versionId,
       lineageId: proposed.value.lineageId,
-      reservationId: decided.value.reservationId as string,
-      attemptId: decided.value.attemptId as string,
-      envelopeId: decided.value.envelopeId as string,
+      reservationId: decided.value.reservationId,
+      attemptId: decided.value.attemptId,
+      envelopeId: decided.value.envelopeId,
     };
   });
 }
