@@ -80,6 +80,8 @@ describe('the task an agent comments on', () => {
       {},
       // The comment row does not read its delegation.
       undefined as never,
+      // The task `authorise` checked, which is the one served.
+      recordId,
     );
 
     expect(locks(person.sent)).toHaveLength(1);

@@ -89,6 +89,8 @@ async function agentServes(command: string, fields: Record<string, unknown>): Pr
     },
     {},
     undefined as never,
+    // The task `authorise` checked, which is the one served.
+    typeof fields['recordId'] === 'string' ? fields['recordId'] : undefined,
   );
 }
 

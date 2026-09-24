@@ -65,6 +65,19 @@ type DelegatedServe = (
 ) => Promise<HandlerOutcome>;
 
 /**
+ * What a record operation does: under the delegation, on the task the check
+ * was made on (`authorise`), or `undefined` when the call named none and the
+ * check fell back to the delegation's own scope. Never the body read again.
+ */
+type RecordServe = (
+  tx: TenantQuery,
+  call: AgentCall,
+  operands: AgentOperands,
+  delegation: Delegation,
+  taskId: string | undefined,
+) => Promise<HandlerOutcome>;
+
+/**
  * One agent operation, by the check `authorise` (`agent-authority.ts`) asks,
  * so a row says whether it runs under a delegation and nothing has to find
  * out again (THERMO-RECHECK NA1):
@@ -91,7 +104,7 @@ export type AgentOperation =
       readonly authority: 'record';
       /** Where the check finds its task: the lease the body names, or the record. */
       readonly subjectTask: 'lease' | 'record';
-      readonly serve: DelegatedServe;
+      readonly serve: RecordServe;
     })
   | (AgentOperationRow & { readonly authority: 'decision' });
 
@@ -206,6 +219,25 @@ function handbackOperands(request: AgentRequest): AgentOperands | Refused {
 }
 
 /**
+ * A `recordId` that is present and not a string, refused before any authority
+ * in the words the person prefix answers the same body with (`refusal`).
+ *
+ * `String(["<sibling>"])` is the sibling's id: the check used to take the
+ * agent's own task for a non-string and `serve` then acted on the id the value
+ * printed as, so an agent commented on and read a sibling task
+ * (THERMO-RECHECK-2 NNA1). Absent stays absent: it is checked on the
+ * delegation's own task and names nothing to serve.
+ */
+function recordIdOperand(
+  refusal: (request: AgentRequest) => CommandRefusal | undefined,
+): (request: AgentRequest) => AgentOperands | Refused {
+  return (request) => {
+    if (!('recordId' in request) || typeof request['recordId'] === 'string') return {};
+    return refused(refusal(request) ?? refuseNotFound());
+  };
+}
+
+/**
  * The request's system-owned fields refused, then its operands read.
  *
  * Neither tells the caller anything about the business, so both come before
@@ -281,15 +313,22 @@ export async function capabilitiesOf(
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
-async function serveComment(tx: TenantQuery, { session, request, declaration }: AgentCall) {
+async function serveComment(
+  tx: TenantQuery,
+  { session, request, declaration }: AgentCall,
+  _operands: AgentOperands,
+  _delegation: Delegation,
+  taskId: string | undefined,
+) {
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
   // the delegating person's live grant. The task is locked by the person
   // path's own `lockTask`, the same statement and filter (thermo O8), and the
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
+  if (taskId === undefined) return NOT_FOUND();
   const spine = await readTaskSpine(tx);
-  const task = await lockTask(tx, spine.taskTypeId, String(request['recordId'] ?? ''));
+  const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
   return await writeTaskComment(
     tx,
@@ -412,9 +451,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       subjectTask: 'record',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.read'].identifiers,
-      serve: async (tx, { request }) => {
+      // The person read's own operand rule, so the two prefixes refuse a
+      // non-string id in one body.
+      operands: recordIdOperand((request) => {
+        const read = READ_CATALOGUE['task.read'].parse(request);
+        return read.ok ? undefined : read.refusal;
+      }),
+      serve: async (tx, _call, _operands, _delegation, taskId) => {
+        if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
-        const task = await readTaskDetail(tx, spine.taskTypeId, String(request['recordId'] ?? ''), {
+        const task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
           commentTypeId: spine.taskCommentTypeId,
           // An agent is never an internal reader. It is a delegate working one
           // task, not a member of the business, so it is shown what an external
@@ -431,7 +477,15 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
   ],
   [
     'task.comment',
-    { authority: 'record', subjectTask: 'record', replay: 'reauthorise', serve: serveComment },
+    {
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      // The person command path answers a non-string record id as a missing
+      // record (`prepare.ts`, `lockTask`), so this one does too.
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveComment,
+    },
   ],
   [
     'task.decide',
