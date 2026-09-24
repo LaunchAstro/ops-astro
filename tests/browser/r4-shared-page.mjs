@@ -12,12 +12,15 @@
 //
 // ada writes two comments on the task before sharing it: a client one, which
 // is the content the external page must show, and an internal one, which it
-// must never show. The internal title is also never on the page, because no
-// task field is classified `shared` in this slice.
+// must never show. The title is on the page: Nathan's I09 ruling is that a
+// shared task shows the client its title and status, so the task spine
+// classifies `title` and `state` `shared` and the projection carries the
+// state as its label (docs/local/AUTHORITY.md:351-354).
 //
 // Four rows, in I10's order:
-//   1. the open page draws the shared view: the client comment, no internal
-//      comment, no title, no control that writes;
+//   1. the open page draws the shared view: the shared title, the state's
+//      label when the projection carries one, the client comment, no internal
+//      comment, no control that writes;
 //   2. the next fetch after `grant.revoke` draws the denied state and none of
 //      the shared content;
 //   3. an authorised response taken before the revocation, held at the network
@@ -70,6 +73,52 @@ async function comment(adaToken, recordId, body, audience) {
 }
 
 /**
+ * Row 1's verdict from what the open page showed. `body` is the `task.read`
+ * text and `text` the page's; the state's label is required only when the
+ * projection carried one, since the page draws what arrived and nothing else.
+ */
+export function openSharedVerdict({
+  status,
+  body,
+  drawn,
+  text,
+  client,
+  internal,
+  title,
+  controls,
+  errors,
+}) {
+  let label;
+  try {
+    const state = JSON.parse(body)?.sharedTask?.fields?.state;
+    if (typeof state === 'string' && state !== '') label = state;
+  } catch {
+    label = undefined;
+  }
+  const labelShown = label === undefined || text.includes(label);
+  return {
+    observed:
+      `task.read answered ${String(status)} with ` +
+      `${body.includes('"sharedTask"') ? 'sharedTask' : 'NO sharedTask'}; shared view ` +
+      `${drawn ? 'drawn' : 'NOT drawn'}; client comment ${text.includes(client) ? 'shown' : 'MISSING'}; ` +
+      `internal note ${text.includes(internal) ? 'SHOWN' : 'absent'}; shared title ` +
+      `${text.includes(title) ? 'shown' : 'MISSING'}; state label ` +
+      `${label === undefined ? 'not carried' : labelShown ? 'shown' : 'MISSING'}; ` +
+      `${String(controls)} control(s) in the task region; page errors ${JSON.stringify(errors)}`,
+    ok:
+      status === 200 &&
+      body.includes('"sharedTask"') &&
+      drawn &&
+      text.includes(client) &&
+      !text.includes(internal) &&
+      text.includes(title) &&
+      labelShown &&
+      controls === 0 &&
+      errors.length === 0,
+  };
+}
+
+/**
  * The four rows, for the external party on a record grant.
  *
  * `run` is the checklist runner's: its browser, pools and business.
@@ -80,7 +129,7 @@ export async function casesR4SharedPage(run) {
   const email = users.find((user) => user.role === 'external')?.email;
   if (email === undefined) throw new Error('no role: external entry in synthetic-users.json');
   const stamp = new Date().toISOString();
-  const title = `R4 internal title ${stamp}`;
+  const title = `R4 shared title ${stamp}`;
   const client = `R4 client comment ${stamp}`;
   const internal = `R4 internal note ${stamp}`;
   const adaToken = await tokenOf('ada@alpha.local');
@@ -110,27 +159,24 @@ export async function casesR4SharedPage(run) {
       .catch(() => false);
     const openText = await page.locator('body').innerText();
     const controls = await page.locator(CONTROLS).count();
+    const verdict = openSharedVerdict({
+      status: first.status(),
+      body: firstBody,
+      drawn,
+      text: openText,
+      client,
+      internal,
+      title,
+      controls,
+      errors,
+    });
     record({
       case: 'R4 open shared task',
       action:
         `${email} opened /task/${recordId}, shared with it by shareRecord; ada had posted ` +
         'one client and one internal comment',
-      observed:
-        `task.read answered ${String(first.status())} with ` +
-        `${firstBody.includes('"sharedTask"') ? 'sharedTask' : 'NO sharedTask'}; shared view ` +
-        `${drawn ? 'drawn' : 'NOT drawn'}; client comment ${openText.includes(client) ? 'shown' : 'MISSING'}; ` +
-        `internal note ${openText.includes(internal) ? 'SHOWN' : 'absent'}; title ` +
-        `${openText.includes(title) ? 'SHOWN' : 'absent'}; ${String(controls)} control(s) in the ` +
-        `task region; page errors ${JSON.stringify(errors)}`,
-      ok:
-        first.status() === 200 &&
-        firstBody.includes('"sharedTask"') &&
-        drawn &&
-        openText.includes(client) &&
-        !openText.includes(internal) &&
-        !openText.includes(title) &&
-        controls === 0 &&
-        errors.length === 0,
+      observed: verdict.observed,
+      ok: verdict.ok,
       shot: await shot(page, drawn ? 'R4-open-shared' : 'R4-open-blank'),
     });
     if (!drawn) return;
