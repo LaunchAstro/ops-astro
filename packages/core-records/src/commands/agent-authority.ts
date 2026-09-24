@@ -10,9 +10,8 @@ import {
   type Delegation,
 } from '../authority/delegations.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
-import { fromRuntime } from './tasks-runtime.ts';
 import {
   UUID,
   type AgentCall,

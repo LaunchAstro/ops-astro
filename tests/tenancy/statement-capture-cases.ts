@@ -36,12 +36,7 @@ import {
   type RecordedStatement,
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
-import {
-  DELEGATION_HEADER,
-  createApi,
-  type AgentExecutor,
-  type ReadExecutor,
-} from '../../apps/api/app.ts';
+import { DELEGATION_HEADER, createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   ACCEPTANCE_SECRET,
@@ -88,8 +83,8 @@ export function observe(world: World): Observed {
     verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
     resolveBusiness: async (key: string) => byKey[key],
     executeCommand,
-    executeRead: executeRead as unknown as ReadExecutor,
-    executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+    executeRead,
+    executeAgentCommand,
   });
   return {
     log,

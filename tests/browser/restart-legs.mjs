@@ -38,7 +38,6 @@ import {
   DOCKER,
   VIEWPORT,
   WEB,
-  fromEnvFile,
   outcomeOf,
   record,
   results,
@@ -75,12 +74,63 @@ if (
   throw new Error(`restart-legs: refusing container ${String(CONTAINER)}`);
 }
 
+// The database is named, never inherited. Without these two the admin pool and
+// the API this run starts both fall back to the worktree's `.local/db.env`,
+// which in the integration worktree is the live 54390, while the restart below
+// only ever touches CONTAINER. So each URL must be set, must not be another
+// stack's database, and must be the port CONTAINER publishes.
+const REFUSED_DATABASE_PORTS = new Set(['54390', '54391', '54392']);
+
+function publishedPorts() {
+  try {
+    return sh(DOCKER, ['port', CONTAINER, '5432/tcp'])
+      .trim()
+      .split('\n')
+      .map((line) => line.slice(line.lastIndexOf(':') + 1));
+  } catch {
+    throw new Error(`restart-legs: ${CONTAINER} publishes no 5432/tcp port`);
+  }
+}
+
+function databasePort(name) {
+  const value = process.env[name];
+  if (value === undefined || value === '') {
+    throw new Error(`restart-legs: set ${name} to ${CONTAINER}'s database`);
+  }
+  let port;
+  try {
+    ({ port } = new URL(value));
+  } catch {
+    throw new Error(`restart-legs: ${name} is not a URL`);
+  }
+  if (REFUSED_DATABASE_PORTS.has(port)) {
+    throw new Error(`restart-legs: ${name} port ${port} is another stack's database`);
+  }
+  return port;
+}
+
+const DATABASE_NAMES = ['DATABASE_ADMIN_URL', 'DATABASE_URL'];
+const databasePorts = DATABASE_NAMES.map((name) => databasePort(name));
+const published = publishedPorts();
+for (const [at, port] of databasePorts.entries()) {
+  if (!published.includes(port)) {
+    throw new Error(
+      `restart-legs: ${DATABASE_NAMES[at]} port ${port || '(none)'} is not ${CONTAINER}'s published ${published.join(', ')}`,
+    );
+  }
+}
+
 const stamp = new Date().toISOString();
 const head = sh('git', ['rev-parse', 'HEAD']).trim();
 const RUN_DIR =
   process.env.SHOT_DIR ?? `${root}.local/restart-legs-browser/${stamp.replaceAll(':', '')}`;
 mkdirSync(RUN_DIR, { recursive: true });
 const PIDS = `${RUN_DIR}/pids`;
+// One JSON line per row as it is recorded, as `d06-mounted-cells.jsonl` does,
+// so a run cut short still leaves the rows it reached. MANIFEST.json repeats
+// them at the end with the exit status.
+const CASES = `${RUN_DIR}/restart-legs-cases.jsonl`;
+writeFileSync(CASES, '');
 console.log(`restart-legs: head ${head}, web ${WEB}, api ${API}, container ${CONTAINER}`);
 
 const settle = async (ms) => {
@@ -139,6 +189,11 @@ async function startApi(label) {
       await gone;
     },
   };
+}
+
+function recordCase(entry) {
+  record(entry);
+  appendFileSync(CASES, `${JSON.stringify({ head, ...entry })}\n`);
 }
 
 const detailOf = (result) => result.value?.detail ?? result.value ?? {};
@@ -290,7 +345,7 @@ async function restart(first, made) {
     }
   }, 60);
   const startedAfter = sh(DOCKER, ['inspect', '-f', '{{.State.StartedAt}}', CONTAINER]).trim();
-  const admin = connectAsAdmin(fromEnvFile('DATABASE_ADMIN_URL'), { source: 'restart-legs' });
+  const admin = connectAsAdmin(process.env.DATABASE_ADMIN_URL, { source: 'restart-legs' });
   const lapsed = await until(
     async () =>
       (await gateRow(admin, made.lapsing.proposed.gateId).catch(() => undefined))?.lapsed ===
@@ -302,7 +357,7 @@ async function restart(first, made) {
     .log()
     .split('\n')
     .filter((line) => line.startsWith('restart recovery'));
-  record({
+  recordCase({
     case: 'RL0 API and Postgres restart',
     action: `API ${String(first.pid)} -> ${String(second.pid)}; ${CONTAINER} started ${startedBefore} -> ${startedAfter}`,
     observed: `ready=${String(ready)} lapsed-while-down=${String(lapsed)}; ${recovery.join('; ')}`,
@@ -330,7 +385,7 @@ async function after(browser, admin, made) {
     const stored = await gateRow(admin, lapsing.proposed.gateId);
     const readGate = (await serverTask(page, lapsing.task.recordId))?.proposals?.[0]?.versions?.[0]
       ?.gate;
-    record({
+    recordCase({
       case: 'RL-a expired gate drawn after restart',
       action: `opened ${lapsing.task.href} in a new context`,
       observed: `screen ${JSON.stringify(drawnLapsed?.versions?.[0])}, controls closed=${String(closed)}; task.read ${String(readGate?.state)} expired=${String(readGate?.expired)}; stored ${stored?.state} decisions ${stored?.decisions}`,
@@ -354,7 +409,7 @@ async function after(browser, admin, made) {
     const gates = Object.fromEntries(
       (drawnRound?.versions ?? []).map((one) => [one.version, one.gateState]),
     );
-    record({
+    recordCase({
       case: 'RL-b Request Changes round decided',
       action: `v1 sent back before the restart; v2 proposed and approved through the client after it`,
       observed: `lineage ${String(drawnRound?.state)}, gates by version ${JSON.stringify(gates)}`,
@@ -374,7 +429,7 @@ async function after(browser, admin, made) {
     const old = lineages.find((one) => one.id === cancelled.proposed.lineageId);
     const fresh = lineages.find((one) => one.id === restarted.lineageId);
     const freshGate = (await drawn(page, restarted.lineageId))?.versions?.[0]?.gateState;
-    record({
+    recordCase({
       case: 'RL-c cancelled lineage and its restart',
       action: `task.restart through the client on ${cancelled.task.href}`,
       observed: `old ${String(old?.state)}, new ${String(fresh?.id).slice(0, 8)}… ${String(fresh?.state)} gate ${String(freshGate)}, restarts ${String(restarted.restartsLineageId).slice(0, 8)}…`,
@@ -398,7 +453,7 @@ async function after(browser, admin, made) {
     const drawnDecided = await drawn(page, pending.proposed.lineageId);
     const reservation = await page.locator('[data-reservation-id]').count();
     const decidedRow = await gateRow(admin, pending.proposed.gateId);
-    record({
+    recordCase({
       case: 'RL-d browser-driven decision',
       action: `clicked Approve on ${pending.task.href} after the restart`,
       observed: `screen gate ${String(drawnDecided?.versions?.[0]?.gateState)}, reservations drawn ${String(reservation)}; stored ${decidedRow?.state} decisions ${decidedRow?.decisions}`,
@@ -427,7 +482,12 @@ try {
   admin = restarted.admin;
   await after(browser, admin, made);
 } catch (error) {
-  record({ case: 'RL run', action: 'the run', observed: String(error).slice(0, 400), ok: false });
+  recordCase({
+    case: 'RL run',
+    action: 'the run',
+    observed: String(error).slice(0, 400),
+    ok: false,
+  });
 } finally {
   await api?.stop().catch(() => undefined);
   await admin?.close().catch(() => undefined);

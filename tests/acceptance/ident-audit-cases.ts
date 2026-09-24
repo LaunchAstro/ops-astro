@@ -34,6 +34,7 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
+import { isUuid } from '../../packages/core-records/src/tenancy/ids.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 
@@ -342,12 +343,10 @@ export async function auditSince(
   return rows.filter((row) => BigInt(row.seq) > (mark.get(row.business_id) ?? 0n));
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 /** The string values a body carries that are content rather than identity. */
 function contentOf(value: unknown, out: string[] = []): string[] {
   if (typeof value === 'string') {
-    if (!UUID.test(value) && value.length >= 4) out.push(value);
+    if (value.length >= 4 && !isUuid(value)) out.push(value);
   } else if (Array.isArray(value)) {
     for (const one of value) contentOf(one, out);
   } else if (typeof value === 'object' && value !== null) {

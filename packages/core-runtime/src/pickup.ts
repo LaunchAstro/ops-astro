@@ -36,7 +36,9 @@ import {
   type MintedDelegation,
 } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
+import { only } from './only.ts';
 import { reserve } from './decide.ts';
 import { classifyUnderLocks, endLease } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -295,6 +297,13 @@ export async function pickup(
     { lockClass: 'reservation', id: request.reservationId },
   ]);
 
+  // Sol 6 RUNTIME-1 (158d6de): `now()` is when this transaction began, and a
+  // pickup that waited on these locks past a lease's expiry would still read
+  // that lease as live and refuse the replacement. The clock read here, after
+  // the locks, is the one instant every lease-expiry decision below and the new
+  // lease's own expiry use.
+  const lockedAt = await lockedInstant(tx);
+
   // Re-read under the locks. Everything above was discovery.
   const claimable = await tx.query<ClaimState>(
     `select res.state, res.lease_id, res.held_minor::text as held_minor, run.state as run_state,
@@ -309,7 +318,7 @@ export async function pickup(
             att.id as attempt_id, att.state as attempt_state,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
-            (bound.expires_at <= now()) as bound_lease_expired
+            (bound.expires_at <= $3::timestamptz) as bound_lease_expired
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
@@ -318,7 +327,7 @@ export async function pickup(
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        left join public.leases bound on bound.business_id = res.business_id and bound.id = res.lease_id
       where res.business_id = $1 and res.id = $2`,
-    [tx.businessId, request.reservationId],
+    [tx.businessId, request.reservationId, lockedAt],
   );
   const state = claimable[0];
   if (state === undefined) {
@@ -372,9 +381,9 @@ export async function pickup(
   // Never steal a live lease. An expired one is fenced out by the new fence
   // below rather than deleted, so a late report from it can still be retained.
   const held = await tx.query<{ readonly id: string; readonly expired: boolean }>(
-    `select id, (expires_at <= now()) as expired from public.leases
+    `select id, (expires_at <= $3::timestamptz) as expired from public.leases
       where business_id = $1 and task_id = $2 and state = 'live'`,
-    [tx.businessId, found.task_id],
+    [tx.businessId, found.task_id, lockedAt],
   );
   const current = held[0];
   if (current !== undefined) {
@@ -390,7 +399,14 @@ export async function pickup(
     await endLease(tx, current.id, 'expired');
   }
 
-  const expiresAt = new Date(Date.now() + request.leaseSeconds * 1000);
+  // From the database instant above, not the process clock. Whole
+  // milliseconds, so the `Date` the delegation is minted with and the lease
+  // column hold the same instant.
+  const expiry = await tx.query<{ readonly at: Date }>(
+    `select date_trunc('milliseconds', $1::timestamptz + make_interval(secs => $2)) as at`,
+    [lockedAt, request.leaseSeconds],
+  );
+  const expiresAt = only(expiry, 'pickup: the new lease expiry').at;
 
   // The claimant's authority, read under the locks (T3 lines 62-64).
   let delegation: MintedDelegation | undefined;

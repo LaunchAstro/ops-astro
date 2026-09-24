@@ -53,8 +53,7 @@ import type { CommandContext } from './context.ts';
 import { declarationOf } from './surface.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+import { isUuid } from '../tenancy/ids.ts';
 
 const NOT_FOUND = refused(
   refuseCommand('NOT_FOUND', [], ['Check the identifier against the one you were given.']),
@@ -207,7 +206,7 @@ export async function revokeGrantAsManager(
   grantId: unknown,
 ): Promise<HandlerOutcome> {
   if (typeof grantId !== 'string') return absent('grantId');
-  if (!UUID.test(grantId)) return NOT_FOUND;
+  if (!isUuid(grantId)) return NOT_FOUND;
   const rows = await tx.query<{
     readonly collection: string;
     readonly action: Action;
@@ -291,7 +290,7 @@ export async function revokeDelegationAsManager(
   delegationId: unknown,
 ): Promise<HandlerOutcome> {
   if (typeof delegationId !== 'string') return absent('delegationId');
-  if (!UUID.test(delegationId)) return NOT_FOUND;
+  if (!isUuid(delegationId)) return NOT_FOUND;
   const rows = await tx.query<{
     readonly collections: readonly string[];
     readonly actions: readonly Action[];

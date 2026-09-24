@@ -160,7 +160,7 @@ async function serveRead<K extends ReadName>(
     throw new Error(`runRead: ${request.read} is not in the command surface`);
   }
   const row: ReadRow<K> = READ_CATALOGUE[request.read];
-  const body = request as Readonly<Record<string, unknown>>;
+  const body: Readonly<Record<string, unknown>> = request;
 
   // D06, on the read half, with the commands' own list and the commands' own
   // code. A read takes no command envelope, so `prepareCommand` never sees it
@@ -194,12 +194,13 @@ async function serveRead<K extends ReadName>(
   // parameter and answers a fault (checklist B7). It used to be refused at the
   // HTTP boundary, which left a refused read with no audit row; here it is
   // audited like every other refused read (I13).
-  const operands = row.operands(body);
-  if (operands !== undefined) return { outcome: operands, subjectRecordId: null };
+  const parsed = row.parse(body);
+  if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
+  const { operands } = parsed;
   const spine = row.spine ? await readTaskSpine(tx) : undefined;
   const recordId =
     row.subject !== undefined && spine !== undefined
-      ? await row.subject(tx, spine, request)
+      ? await row.subject(tx, spine, operands)
       : undefined;
 
   const served = (outcome: ReadResult | CommandRefusal): ServedRead => ({
@@ -211,7 +212,7 @@ async function serveRead<K extends ReadName>(
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
-      collection: row.authority === 'declared' ? declaration.collection : row.authority(request),
+      collection: row.authority === 'declared' ? declaration.collection : row.authority(operands),
       action: declaration.action,
       // A record-scoped grant is checked against the record named, exactly as
       // a targeted command's is. A business-scoped grant covers both, which is
@@ -226,5 +227,5 @@ async function serveRead<K extends ReadName>(
     }
   }
 
-  return served(await row.serve(tx, session, request, { spine, recordId }));
+  return served(await row.serve(tx, session, operands, { spine, recordId }));
 }

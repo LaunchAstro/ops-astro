@@ -18,6 +18,7 @@
 // like any other.
 
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 /** A JSON object that is not an array, which is what a field map has to be. */
 function isFieldMap(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -57,8 +58,6 @@ export function refusePurgeOperands(olderThanDays: unknown): CommandRefusal | un
   );
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 /**
  * Could this operand be an identifier at all? Every id column is a uuid, and a
  * string that is not one would reach a bound parameter and be raised on by the
@@ -67,5 +66,5 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
  * it exactly as it answers a well-formed id that names nothing (root ruling 2).
  */
 export function isIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && UUID.test(value);
+  return isUuid(value);
 }

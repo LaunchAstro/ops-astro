@@ -449,6 +449,25 @@ export function pathOf(name: CommandName): string {
   return `/${name.replace('.', '/')}`;
 }
 
+/**
+ * The two mounts the API serves the surface under and the command line sends
+ * to, each followed by the business key and then `pathOf(name)`. One copy for
+ * both sides (thermo review b282216, M11). The agent's is its own so that an
+ * agent asking and a person asking cannot be mistaken for each other.
+ */
+export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
+
+/**
+ * The header an agent presents its delegation credential in.
+ *
+ * A header rather than a body field for the same reason the bearer token is
+ * one: it is a credential, and a credential in a body is a credential that
+ * gets logged with the payload, stored in the register row and compared by a
+ * digest. The register compares what the request *is*; the authority it was
+ * made under is not part of that.
+ */
+export const DELEGATION_HEADER = 'x-agent-delegation';
+
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',

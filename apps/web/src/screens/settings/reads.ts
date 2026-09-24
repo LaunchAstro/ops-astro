@@ -28,7 +28,7 @@ export const SIGN_OFF = 'client_sign_off_required';
 
 /**
  * The rows in hand: the answer, or while a reread is in flight the previous
- * answer, which `loading` keeps as its `value`. A denial or an outage has none.
+ * answer, which `loading` keeps as its `previous`. A denial or an outage has none.
  */
 export function rowsInHand(state: ReadState<SettingsReadResult>): SettingsReadResult | null {
   switch (state.outcome) {
@@ -36,7 +36,7 @@ export function rowsInHand(state: ReadState<SettingsReadResult>): SettingsReadRe
     case 'empty':
       return state.value;
     case 'loading':
-      return state.value;
+      return state.previous;
     default:
       return null;
   }

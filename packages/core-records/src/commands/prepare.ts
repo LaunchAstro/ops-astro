@@ -46,6 +46,7 @@ import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
 import type { CommandRequest } from './requests.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 export const REVISION_FIXES: readonly string[] = [
   'Read the record and send the revision you are writing against as expected_revision.',
@@ -231,8 +232,6 @@ const IDENTIFIER_FIELDS: readonly string[] = [
   'leaseId',
 ];
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 /**
  * `NOT_FOUND`, and not a code that says "malformed".
  *
@@ -247,7 +246,7 @@ function refuseMalformedIdentifier(
   const named = request as unknown as Record<string, unknown>;
   const malformed = shapedHere(declaration).filter((field) => {
     const value = named[field];
-    return typeof value === 'string' && !UUID.test(value);
+    return typeof value === 'string' && !isUuid(value);
   });
   if (malformed.length === 0) return undefined;
   return refused(refuseNotFound());
@@ -327,7 +326,7 @@ async function firstScope(
   const named = request as unknown as Record<string, unknown>;
   for (const [field, find] of lookups) {
     const id = named[field];
-    if (typeof id !== 'string' || !UUID.test(id)) continue;
+    if (!isUuid(id)) continue;
     // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
     const scope = await find(tx, id);
     if (scope !== undefined) return scope;
@@ -516,7 +515,7 @@ export async function lockTask(
   recordId: string,
   options: { readonly forUpdate?: boolean } = {},
 ): Promise<TaskRow | undefined> {
-  if (!UUID.test(recordId)) return undefined;
+  if (!isUuid(recordId)) return undefined;
   // `revision` is `bigint`, and this driver hands a bigint back as a string.
   // It is read as text and converted once, here, so no command has to know
   // that and none of them compares a number against a string.

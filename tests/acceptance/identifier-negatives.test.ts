@@ -410,7 +410,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       }
       // Green at 403267f. RED at 74d583c for the five reads: a read takes a `recordId` it has no
       // use for and answers as if it had not been sent (the target check,
-      // `commands/prepare.ts:253-266`, runs on the command path only).
+      // `commands/prepare.ts` `refuseIrrelevantTarget`, runs on the command path only).
       expect(answered).toStrictEqual(
         Object.fromEntries(TARGET_FREE.map(([op]) => [op, 'COMMAND_BODY_INVALID'])),
       );

@@ -15,14 +15,13 @@
 
 import postgres from 'postgres';
 import { createStatementLog, type StatementLog } from './statements.ts';
+import { isUuid } from './ids.ts';
 
 /** A business identifier. Checked before it reaches the server, never interpolated. */
 export type BusinessId = string;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 export function isBusinessId(value: string): value is BusinessId {
-  return UUID.test(value);
+  return isUuid(value);
 }
 
 export interface TenantQuery {

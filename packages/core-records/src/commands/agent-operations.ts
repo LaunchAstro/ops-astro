@@ -17,8 +17,8 @@ import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { declarationOf, type CommandName } from './surface.ts';
-import { handbackLease, pickupReservation } from './tasks-runtime.ts';
-import { MAXIMUM_LEASE_SECONDS } from './tasks-pickup.ts';
+import { handbackLease } from './tasks-handback.ts';
+import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
 import { leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import { heartbeatLease } from './tasks-controls.ts';
