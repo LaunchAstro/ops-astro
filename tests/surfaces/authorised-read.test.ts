@@ -33,6 +33,11 @@ function projection(grantKey = 'alpha:tok'): {
   return { read, seen };
 }
 
+/** What the state holds: the answer, or while loading the previous one (M13). */
+function inHand(state: ReadState<Rows>): Rows | null {
+  return state.outcome === 'loading' ? state.previous : state.value;
+}
+
 describe('the generation counter', () => {
   it('starts loading and becomes ready on the answer to the current generation', () => {
     const { read } = projection();
@@ -40,7 +45,7 @@ describe('the generation counter', () => {
     expect(read.state.outcome).toBe('loading');
     expect(read.accept(generation, ok(['a']), 'alpha:tok')).toBe(true);
     expect(read.state.outcome).toBe('ready');
-    expect(read.state.value?.rows).toEqual(['a']);
+    expect(inHand(read.state)?.rows).toEqual(['a']);
   });
 
   it('drops an older answer that arrives after a newer one was asked for', () => {
@@ -49,7 +54,7 @@ describe('the generation counter', () => {
     const second = read.begin();
     expect(read.accept(second, ok(['new']), 'alpha:tok')).toBe(true);
     expect(read.accept(first, ok(['old']), 'alpha:tok')).toBe(false);
-    expect(read.state.value?.rows).toEqual(['new']);
+    expect(inHand(read.state)?.rows).toEqual(['new']);
   });
 
   it('drops an answer minted under a different grant', () => {
@@ -73,7 +78,7 @@ describe('denial invalidates', () => {
     read.accept(read.begin(), ok(['a']), 'alpha:tok');
     read.accept(read.begin(), denied, 'alpha:tok');
     expect(read.state.outcome).toBe('denied');
-    expect(read.state.value).toBeNull();
+    expect(inHand(read.state)).toBeNull();
     expect(read.state.refusal?.code).toBe('SCOPE_NOT_GRANTED');
   });
 
@@ -89,7 +94,7 @@ describe('denial invalidates', () => {
     // Now the delayed authorised response lands. It must not restore content.
     expect(read.accept(inFlight, ok(['secret']), 'alpha:tok')).toBe(false);
     expect(read.state.outcome).toBe('denied');
-    expect(read.state.value).toBeNull();
+    expect(inHand(read.state)).toBeNull();
   });
 
   it('lets a fresh read after the denial succeed, so denial is not permanent', () => {
@@ -108,7 +113,7 @@ describe('unavailable is not denial', () => {
     read.accept(read.begin(), down, 'alpha:tok');
     expect(read.state.outcome).toBe('unavailable');
     // No stand-in rows, and no refusal invented to explain the absence.
-    expect(read.state.value).toBeNull();
+    expect(inHand(read.state)).toBeNull();
     expect(read.state.refusal).toBeNull();
     expect(read.state.because).toBe('The API did not answer.');
   });
@@ -129,11 +134,11 @@ describe('the state is a union on its outcome', () => {
     read.accept(read.begin(), ok(['a']), 'alpha:tok');
     read.begin();
     expect(read.state.outcome).toBe('loading');
-    expect(read.state.value?.rows).toEqual(['a']);
+    expect(inHand(read.state)?.rows).toEqual(['a']);
     read.accept(read.begin(), denied, 'alpha:tok');
     read.begin();
     expect(read.state.outcome).toBe('loading');
-    expect(read.state.value).toBeNull();
+    expect(inHand(read.state)).toBeNull();
     expect(read.state.refusal).toBeNull();
   });
 
