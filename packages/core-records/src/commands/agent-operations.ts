@@ -52,6 +52,9 @@ export interface AgentCall {
 export interface AgentOperands {
   readonly leaseSeconds?: number;
   readonly report?: Readonly<Record<string, unknown>>;
+  readonly reservationId?: string;
+  readonly fence?: number;
+  readonly outcome?: string;
 }
 
 export interface AgentOperation {
@@ -128,14 +131,57 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => AgentO
   };
 }
 
+/**
+ * The reservation a pickup names, as the string it was sent as. Anything else
+ * is the person entry's refusal in its words (`pickupAsPerson`): `String(...)`
+ * would have turned `[id]` into the id and claimed it (Sol 6 AUTHORITY-2).
+ * Whether the string names a claimable reservation is the handler's.
+ */
+function pickupOperands(request: AgentRequest): AgentOperands | Refused {
+  const reservationId = request['reservationId'];
+  if (typeof reservationId !== 'string') {
+    return refused(
+      refuseCommand(
+        'COMMAND_BODY_INVALID',
+        ['reservationId'],
+        ['Name a reservation from task.queue.'],
+      ),
+      { reservationId },
+    );
+  }
+  const lease = leaseSecondsOperand(MAXIMUM_LEASE_SECONDS)(request);
+  if ('refusal' in lease) return lease;
+  return { ...lease, reservationId };
+}
+
 function handbackOperands(request: AgentRequest): AgentOperands | Refused {
-  let operands: AgentOperands = {};
+  // The outcome and the fence by their JSON type, in the order and words the
+  // person handler asks them (`tasks-handback.ts`), and passed on as sent:
+  // `String(["completed"])` is `"completed"` and `Number("1")` is `1`, which
+  // settled a lease and, past a lapsed grant, kept a report the restricted
+  // intake keeps only when otherwise valid (Sol 6 AUTHORITY-2). Whether the
+  // string is an outcome and the number a fence is the handler's.
+  const outcome = request['outcome'];
+  if (typeof outcome !== 'string') {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
+      { outcome },
+    );
+  }
+  const fence = request['fence'];
+  if (typeof fence !== 'number') {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed you.']),
+      { fence },
+    );
+  }
+  let operands: AgentOperands = { outcome, fence };
   if ('report' in request) {
     const report = request['report'];
     if (typeof report !== 'object' || report === null || Array.isArray(report)) {
       return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
     }
-    operands = { report: report as Readonly<Record<string, unknown>> };
+    operands = { ...operands, report: report as Readonly<Record<string, unknown>> };
   }
   // Any non-null actual is refused here, before authority is read, and not
   // only by the runtime past it. A handback refused on authority reaches the
@@ -306,14 +352,14 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'beforePickup',
       subjectTask: 'record',
       replay: 'pickup',
-      operands: leaseSecondsOperand(MAXIMUM_LEASE_SECONDS),
-      serve: async (tx, { session, request }, operands) =>
+      operands: pickupOperands,
+      serve: async (tx, { session }, operands) =>
         await pickupReservation(
           tx,
           declarationOf('task.pickup')?.collection ?? 'task',
           session.actorId,
           {
-            reservationId: String(request['reservationId'] ?? ''),
+            reservationId: operands.reservationId ?? '',
             ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
           },
         ),
@@ -331,9 +377,11 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         await handbackLease(
           tx,
           {
-            leaseId: String(request['leaseId'] ?? ''),
-            fence: Number(request['fence']),
-            outcome: String(request['outcome'] ?? ''),
+            // A lease id that is not a string names no lease, and the handler
+            // answers it as one that does not exist.
+            leaseId: typeof request['leaseId'] === 'string' ? request['leaseId'] : '',
+            fence: operands.fence ?? Number.NaN,
+            outcome: operands.outcome ?? '',
             // Carried through rather than dropped here, so that sending a number
             // is the refusal `handbackLease` spells out instead of a silence.
             ...('actualMinor' in request

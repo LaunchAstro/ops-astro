@@ -67,8 +67,10 @@ export async function retainLateHandback(
     leaseId,
     delegationId: historical.id,
     holderActorId: session.actorId,
-    fence: typeof request['fence'] === 'number' ? request['fence'] : Number.NaN,
-    outcome: String(request['outcome'] ?? ''),
+    // As `handbackOperands` read them: a fence that is not a number or an
+    // outcome that is not a string was refused there and never reaches here.
+    fence: operands.fence ?? Number.NaN,
+    outcome: operands.outcome ?? '',
     report: operands.report ?? {},
     refusalCode: refusal.code,
   });
