@@ -191,7 +191,7 @@ describe.skipIf(serverUrl === undefined)('M01/M02: every migration prefix', () =
     });
 
     it('catches BYPASSRLS set on the application login', async () => {
-      // The attribute that makes every row policy in the installation stop
+      // The attribute that makes every row policy in the deployment stop
       // applying. It is a property of the role that connects, and a group the
       // login inherits from does not carry it.
       await whenSchemaIs(

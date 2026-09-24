@@ -4,8 +4,8 @@
 // `restricted-calls.test.ts`, made after each migration rather than only after
 // the last.
 //
-// Every prefix is chosen, not a sample of them. Each is a state an
-// installation can stop in between two migrations, a prefix is cheap here, and
+// Every prefix is chosen, not a sample of them. Each is a state a
+// deployment can stop in between two migrations, a prefix is cheap here, and
 // choosing a subset would mean deciding in advance which migration cannot have
 // opened anything, which is the question this suite exists to ask.
 //
