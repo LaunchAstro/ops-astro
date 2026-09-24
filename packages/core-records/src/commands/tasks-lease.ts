@@ -4,7 +4,7 @@
 // The person's renewal and the agent's (`heartbeatLease`, which the agent path
 // reaches with the actor and delegation its credential resolved to) share
 // `renewLease`. Split out when the one task-runtime module was divided
-// (thermo review b282216, H2).
+// (thermo review b483399, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';

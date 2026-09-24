@@ -2,7 +2,7 @@
 //
 // `task.decide`: a person's decision on a gate. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
@@ -97,7 +97,7 @@ export async function decideOnGate(
     // A gate this business cannot see is `NOT_FOUND`, whether it is another
     // business's or no gate at all, and the answer is the same bytes for both:
     // no presented id, no reason fragment (minimum contract 8.2 cases 1-2,
-    // root ruling 2 of 906613f). The refused audit row is still this
+    // root ruling 2 of dd30aa8). The refused audit row is still this
     // business's, written by the envelope.
     if (result.refusal.code === 'GATE_NOT_FOUND') return refused(GATE_NOT_VISIBLE);
     // The runtime refuses a note it cannot sign and store (final review R1

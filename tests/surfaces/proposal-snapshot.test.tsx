@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The decision controls follow the one state a proposal read answers (P2 at
-// 3eddfbe).
+// 610983f).
 //
 // The page offers approve and reject from the gate state `task.read` returns.
 // A read that answered `pending` beside an already verified `approve` drew

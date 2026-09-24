@@ -11,7 +11,7 @@
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's
 // own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf` (architecture review bbdf2b2, candidate 2).
+// status column through `statusOf` (architecture review d8746a2, candidate 2).
 //
 // **Why a table rather than a union alone.** A union stops a typo. It cannot
 // say that `WRONG_BUSINESS` is never returned to a caller, and that rule is

@@ -8,7 +8,7 @@
 // the purge took `olderThanDays` from the caller and `retention_window_days`
 // sat in `business_settings` read by nothing (root ruling 2, L3-RETENTION).
 //
-// Red at d38d649: a body with no `olderThanDays` was refused
+// Red at 14a2b27: a body with no `olderThanDays` was refused
 // `FIELD_VALUE_INVALID`, so no case below reached the setting, and a body that
 // carried one was obeyed.
 //

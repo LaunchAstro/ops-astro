@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A denied `settings.read` ends the session's fallback, not just the render
-// (Sol 6 recheck, SURFACE-2 at 0395827).
+// (Sol 6 recheck, SURFACE-2 at 056aa7c).
 //
 // The fallback is the last write this session saw confirmed, drawn only while
 // `settings.read` is not answering. Reads use current authority

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The gate negatives the L6 packet found missing at 74d583c (section 8):
+// The gate negatives the L6 packet found missing at 4757d72 (section 8):
 //
 //   G01  a gate carrying a null, foreign-business or mismatched run, step or
 //        evidence reference is refused, by the schema or before a decision;

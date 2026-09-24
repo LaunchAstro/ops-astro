@@ -281,7 +281,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     // answers `FIELD_VALUE_INVALID` 422 for exactly this, so the pattern is in
     // the tree; these five do not reach it.
     //
-    // On 2241725 five answered a fault here: `task.create`, `task.restore`,
+    // On 069bf6e five answered a fault here: `task.create`, `task.restore`,
     // `task.purge`, `task.read` and `preset.plan`, each for an absent operand
     // reaching a bound parameter or an `in` operator. L3-FAULTS answers each
     // with `FIELD_VALUE_INVALID` 422 by name (`commands/operands.ts`), and this

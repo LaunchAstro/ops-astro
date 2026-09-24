@@ -265,7 +265,7 @@ const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #31b71195';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**
- * Taken at 61a3d27, before the move, and unchanged by it. One change since, and
+ * Taken at 21c99a0, before the move, and unchanged by it. One change since, and
  * on purpose: thermo O3's fix rechecks propose's held set under the locks as
  * well as its live work, so its window ends with that read.
  */

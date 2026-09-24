@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A stray identifier on the five untargeted writes the envelope never checked
-// (architecture review bbdf2b2, observation 2).
+// (architecture review d8746a2, observation 2).
 //
 // `refuseIrrelevantTarget` refuses an identifier field an untargeted command
 // does not take, `COMMAND_BODY_INVALID` naming it, so a body whose identifier

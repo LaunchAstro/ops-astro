@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Who takes, renews or hands back a lease: one model of the caller for pickup,
-// renewal and handback (thermo review b282216, M6). Each operation builds the
+// renewal and handback (thermo review b483399, M6). Each operation builds the
 // runtime's own input from it, so what reaches `core-runtime` is unchanged.
 
 import { subjectsOf, type Subject } from '../authority/grants.ts';

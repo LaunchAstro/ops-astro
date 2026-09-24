@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A settings write answered after sign-out leaves nothing in the tab (Sol 6
-// recheck, AUTHORITY at 0395827).
+// recheck, AUTHORITY at 056aa7c).
 //
 // Sign-out removes the session's cached settings value (`SessionStore.clear`).
 // A save pressed before it can still be answered after it: the request left

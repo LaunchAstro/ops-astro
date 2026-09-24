@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `settings.read` reads `business_settings` once (thermo review b282216, L3).
+// `settings.read` reads `business_settings` once (thermo review b483399, L3).
 // With a second statement for the author, joined by key, read committed could
 // hand back a value from one commit and its author from the next. The stub
 // below answers every statement with the same row and records what was sent.

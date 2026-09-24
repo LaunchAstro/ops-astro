@@ -377,7 +377,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     );
     expect(twice.status, 'the second handback').toBe(401);
     expect(twice.code, 'the second handback').toBe('DELEGATION_NOT_LIVE');
-    // AGENT-BOUNDARY's late intake (merged at e4cb2ae) keeps the refused second
+    // AGENT-BOUNDARY's late intake (merged at 2f766d3) keeps the refused second
     // report as a `retained` row naming its refusal; only the first settled.
     expect((await identities(world))['receipts']?.length ?? 0).toBe(receipts + 2);
     const dispositions = await world.db.admin.execute<{ readonly v: string }>(
@@ -553,7 +553,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   // way a person cancels one. Ledger lines 37-38 make run cancellation and
   // authorised restart required capabilities through owning production
   // interfaces; L3-CONTROLS declared both as `task.cancel` and `task.restart`
-  // (merged at 9bf4c69), so both run here over the socket to the new process.
+  // (merged at d41c842), so both run here over the socket to the new process.
   it('cancels an approved lineage through task.cancel over HTTP, once', async () => {
     const lineageId = await scalar(
       world,
@@ -706,7 +706,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       narrowedBefore,
     );
     answers.push(`heartbeat ${String(heartbeat.status)} ${heartbeat.code}`);
-    // AGENT-BOUNDARY-2 (merged at 9e2192e): a narrowed agent's report is kept
+    // AGENT-BOUNDARY-2 (merged at 9f61aa6): a narrowed agent's report is kept
     // as one `retained` row naming the refusal, append-only per operation id.
     // A retry of the same operation is answered from its register row and
     // keeps nothing more (`agent-envelope.ts` `retainLateHandback`); a new

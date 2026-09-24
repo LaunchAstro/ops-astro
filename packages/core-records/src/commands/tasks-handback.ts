@@ -2,7 +2,7 @@
 //
 // `task.handback`: a lease settled, with its report and any successor. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';

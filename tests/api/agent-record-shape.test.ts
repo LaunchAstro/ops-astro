@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The task an agent is authorised on is the task it is served (THERMO-RECHECK-2
-// NNA1). At 9d2dbde the delegation check took `recordId` only when it was a
+// NNA1). At e84add2 the delegation check took `recordId` only when it was a
 // string and otherwise checked the agent's own task, while `task.comment` and
 // `task.read` then served `String(recordId)`: `recordId: ["<sibling>"]` was
 // authorised on the agent's own task and wrote a comment on, or read, a sibling

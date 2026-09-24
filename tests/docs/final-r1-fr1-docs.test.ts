@@ -138,14 +138,31 @@ const shallow = (() => {
   }
 })();
 
-describe.skipIf(shallow)('commit hashes cited in docs (#41)', () => {
+/** Every hash-shaped token in `text`, except one inside a path or file name. */
+const hashTokens = (text: string): string[] =>
+  [...text.matchAll(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-])/gu)].map((match) => match[0]);
+
+/** A whole comment line in a script or test: `//`, `/*` or a block's ` * `. */
+const isCommentLine = (line: string): boolean => /^\s*(?:\/\/|\/\*|\*)/u.test(line);
+
+describe.skipIf(shallow)('commit hashes cited in docs and code comments (#41)', () => {
   it('resolve in the history of this head', () => {
     const cited: { readonly file: string; readonly hash: string }[] = [];
+    // A hash inside a path names an evidence directory outside the
+    // repository, filed under the head's name when it was recorded.
     for (const file of git(['ls-files', 'docs/*.md']).split('\n').filter(Boolean)) {
-      // A hash inside a path names an evidence directory outside the
-      // repository, filed under the head's name when it was recorded.
-      for (const match of read(file).matchAll(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-])/gu)) {
-        cited.push({ file, hash: match[0] });
+      for (const hash of hashTokens(read(file))) cited.push({ file, hash });
+    }
+    // Comments in code and tests. Migrations are protected and keep the
+    // hashes they were written with.
+    const scripts = git(['ls-files', '*.ts', '*.tsx', '*.mjs', '*.js'])
+      .split('\n')
+      .filter((file) => file !== '' && !file.startsWith('migrations/'));
+    for (const file of scripts) {
+      for (const line of read(file)
+        .split('\n')
+        .filter((text) => isCommentLine(text))) {
+        for (const hash of hashTokens(line)) cited.push({ file, hash });
       }
     }
     const hashes = [...new Set(cited.map((entry) => entry.hash))];
@@ -162,6 +179,7 @@ describe.skipIf(shallow)('commit hashes cited in docs (#41)', () => {
       .filter(({ hash }) => commits.has(hash) && !history.has(commits.get(hash) ?? ''))
       .map(({ file, hash }) => `${file}: ${hash}`);
     expect(commits.size).toBeGreaterThan(0);
+    expect(cited.some(({ file }) => !file.startsWith('docs/'))).toBe(true);
     expect(unreachable).toEqual([]);
   });
 });

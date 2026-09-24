@@ -5,7 +5,7 @@
 // Cancellation discovers its lineage's held reservations and live leases
 // before any lock. If a handback commits between that discovery and the
 // locks, the rediscovery under the locks finds fewer rows: the reservation is
-// no longer held and the lease is no longer live. At 74d583c that raised a
+// no longer held and the lease is no longer live. At 4757d72 that raised a
 // raw "affected set changed" fault, which reached the caller as a 500. The
 // smaller set needs no lock the transaction does not already hold, so the
 // cancellation continues with it; only a set that needs a new lock rolls back.

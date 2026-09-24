@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Thermo NB1 at 9d2dbde, through the command entry.
+// Thermo NB1 at e84add2, through the command entry.
 //
 // `withinBounds` reads the cap through the one cap-sum source decide shares
 // and tests the room with the one `exceeds`. Its edges: with 2 units left, a

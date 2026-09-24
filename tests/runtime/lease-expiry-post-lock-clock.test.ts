@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Sol 6 RUNTIME-1 at 158d6de, through the command entry.
+// Sol 6 RUNTIME-1 at 9ddfa09, through the command entry.
 //
 // `now()` is the transaction's start. A handback or a pickup that began before
 // a lease's expiry and waited on the cap lock until after it must judge the

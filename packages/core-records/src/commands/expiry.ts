@@ -2,7 +2,7 @@
 //
 // The expiry window every gate this surface opens is read through. Split out
 // unchanged when the one task-runtime module was divided (thermo review
-// b282216, H2).
+// b483399, H2).
 
 /**
  * The longest a gate may stay open, and the window it stays open for when the

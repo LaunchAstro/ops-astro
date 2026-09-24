@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// F3 (runtime review at 74d583c): work on a superseded version cannot settle,
+// F3 (runtime review at 4757d72): work on a superseded version cannot settle,
 // and cannot supersede the newer proposal.
 //
 // T4, TRANSACTION-CONTRACT line 72: handback re-reads "every parent link,
@@ -102,7 +102,7 @@ describe.skipIf(serverUrl === undefined)('handback against a superseded version'
       },
       String(work.picked['credential']),
     );
-    // At 74d583c this answered 500: the stale successor reached the writer.
+    // At 4757d72 this answered 500: the stale successor reached the writer.
     expect(['LEASE_NOT_OWNED', 'LEASE_EXPIRED', 'DELEGATION_NOT_LIVE']).toContain(
       answer.body['code'],
     );

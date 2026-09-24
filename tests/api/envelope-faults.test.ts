@@ -78,7 +78,7 @@ describe('an envelope with no operation identity', () => {
 // `proposal_versions_purpose_shape` and with a `step` that is not
 // `{ kind, payload }`, and the constraint violation arrived at the caller as
 // `SERVICE_UNAVAILABLE` 503 -- a malformed request shown as a broken server
-// (WEB-PROPOSALS handback, "f31a73d" and "Interface gaps for L3" 4). The
+// (WEB-PROPOSALS handback, "8e95e7d" and "Interface gaps for L3" 4). The
 // register has `FIELD_VALUE_INVALID` 422 for exactly this and `API.md`
 // already lists it on the `task.propose` row, so the answer is owed at the
 // handler, before the write.

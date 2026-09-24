@@ -31,7 +31,7 @@ import { taskOfLease } from './prepare.ts';
  * A narrowed delegation need not have been revoked. When the person's write
  * grant reaches its own expiry the delegation stays live, the authority check
  * answers `DELEGATION_NARROWED`, and no durable cause is ever written
- * (REVIEW-AGENT-BOUNDARY 62307d5 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). That
+ * (REVIEW-AGENT-BOUNDARY d58b869 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). That
  * case is resolved again here, not inferred from the code: the credential must
  * still resolve live for this business and this agent, and the check on the
  * presented lease's own task must refuse it as narrowed (`narrowedOnLease`).

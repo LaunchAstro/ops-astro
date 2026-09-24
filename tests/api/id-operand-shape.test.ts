@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A malformed identifier names nothing, so it answers exactly as a fabricated
-// one does. At 6f15252 the agent's `task.pickup` with `reservationId: ""` went
+// one does. At d62f1bc the agent's `task.pickup` with `reservationId: ""` went
 // on to a uuid parameter and came back 503 SERVICE_UNAVAILABLE (the live
 // `invalid input syntax for type uuid: ""`): a caller's input answered as an
 // infrastructure fault, which TRANSACTION-CONTRACT TC:11 reserves for real
@@ -326,7 +326,7 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
   }, 300_000);
 
   it('refuses a malformed operand on the agent prefix as a fabricated one', async () => {
-    // The live 503 at 6f15252: the envelope passed `String(reservationId ?? '')`
+    // The live 503 at d62f1bc: the envelope passed `String(reservationId ?? '')`
     // and nothing shaped it before SQL. `pickupOperands` (`commands/agent-operations.ts`)
     // now reads it by type.
     const bare: Presenter = { kind: 'agent', identity: w.h.world.agent };

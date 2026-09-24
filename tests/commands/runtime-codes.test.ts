@@ -8,7 +8,7 @@
 // each row carries its status, so a runtime code cannot be unregistered or
 // carry a second status the way it could when `core-runtime` spelled its own
 // union and `SUGGESTED_STATUS` beside the API's own status map (architecture review
-// bbdf2b2, candidate 2). What was a four-way parity check is now a derivation
+// d8746a2, candidate 2). What was a four-way parity check is now a derivation
 // check: `SUGGESTED_STATUS` and `statusOf` are two views of one column and
 // the cases below hold them to it. The statuses themselves are pinned by
 // value in `tests/commands/refusal-catalogue.test.ts`.

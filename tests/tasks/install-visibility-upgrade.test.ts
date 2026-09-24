@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SURFACE-R-1: a business installed before 77bcc54 acquires the I09 shared title and state.
+// SURFACE-R-1: a business installed before 035967b acquires the I09 shared title and state.
 //
-// Before 77bcc54 no spine field declared a visibility class, so every task
+// Before 035967b no spine field declared a visibility class, so every task
 // field installed `internal`, and the installer returned early on an existing
 // task type without reading its fields. A business seeded then kept title and
 // state internal through every later reseed, and its client's read of a shared
@@ -10,7 +10,7 @@
 //
 // The earlier shape is built the way install-upgrade.test.ts builds Base: run
 // the current installer, then put back the one thing the old one wrote
-// differently. 77bcc54 changed spine.ts by two `visibilityClass: 'shared'`
+// differently. 035967b changed spine.ts by two `visibilityClass: 'shared'`
 // lines and nothing else, so resetting those two rows to `internal` is that
 // shape exactly.
 //

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A decision committed while a proposal read is under way is a valid decision,
-// and the read must say so (C1 at 6f15252).
+// and the read must say so (C1 at d62f1bc).
 //
 // The read runs in an ordinary read-committed transaction, where each
 // statement sees what was committed when it started. The integrity check

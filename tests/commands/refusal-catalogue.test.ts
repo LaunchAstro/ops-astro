@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The refusal catalogue, pinned as it stood at b282216.
+// The refusal catalogue, pinned as it stood at b483399.
 //
 // Written before the catalogue was folded into one table (architecture review
-// bbdf2b2, candidate 2), and green before and after. Two things are pinned:
+// d8746a2, candidate 2), and green before and after. Two things are pinned:
 // every registered code with its status and visibility, in register order,
 // plus the twenty the runtime calls its own; and the exact bytes of one
 // refusal from each road a refusal takes to a caller. A refactor that moved a

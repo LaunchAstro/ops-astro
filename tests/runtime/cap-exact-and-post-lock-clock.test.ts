@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Sol 6's three runtime findings at b282216, each through the command entry.
+// Sol 6's three runtime findings at b483399, each through the command entry.
 //
 // RUNTIME-1: the first approval on a task opens its envelope, and the cap
 // behind it is the money ceiling in one currency. A version in another

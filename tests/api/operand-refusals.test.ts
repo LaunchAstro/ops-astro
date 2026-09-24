@@ -3,7 +3,7 @@
 // Five declarations that answered an outage where a decision was owed.
 //
 // `tests/acceptance/surface-inventory.test.ts` posts a well-formed envelope
-// with no operation fields to every declaration, and on 2241725 five of them
+// with no operation fields to every declaration, and on 069bf6e five of them
 // answered a plain-text 500: `task.create`, `task.restore`, `task.purge`,
 // `task.read` and `preset.plan`. The mounted app's client draws a non-2xx with
 // no refusal body as *unavailable*, so a malformed request was shown as a

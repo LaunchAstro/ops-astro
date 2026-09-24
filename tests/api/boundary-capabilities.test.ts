@@ -256,7 +256,7 @@ describe.skipIf(serverUrl === undefined)(
         expect(read.body['task']).toBeUndefined();
       });
 
-      // RED at 221be7c, and outside this lane's files. `agent-envelope.ts`
+      // RED at 1e8d5d4, and outside this lane's files. `agent-envelope.ts`
       // `authorise` returns before `checkDelegatedAuthority` for
       // `session.capabilities` once the credential resolves, and `serve` answers
       // the delegation's `purposeScope` whatever the delegating person now

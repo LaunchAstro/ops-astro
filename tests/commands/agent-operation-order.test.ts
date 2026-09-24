@@ -67,7 +67,7 @@ const COMMANDS = [
 
 type Row = readonly [code: string, audit: string];
 
-/** The table as the envelope answered it at faf3285, before the split. */
+/** The table as the envelope answered it at 06ab232, before the split. */
 const EXPECTED: Record<string, Record<string, Row>> = {
   'task.queue': {
     'operation id absent': ['OPERATION_ID_REQUIRED', ''],

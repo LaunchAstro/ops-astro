@@ -28,7 +28,7 @@
 // retained row rolls the row, the receipt and the audit back together.
 //
 // The third path is the narrowed agent nobody revoked (REVIEW-AGENT-BOUNDARY
-// 62307d5 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). The person's write grant is
+// d58b869 N1, ROOT-GRANT-EXPIRY-INTAKE-RULING). The person's write grant is
 // issued with an expiry shorter than the lease, the delegation is minted
 // against it at pickup, and the grant's deadline then passes: no `revoked_at`,
 // no `authority_lost`, a delegation still live and unexpired. The handback

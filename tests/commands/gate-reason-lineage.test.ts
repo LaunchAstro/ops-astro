@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A foreign lineage and a fabricated one answer byte-identically on every
-// route that takes a caller-presented lineage id (root ruling 2 of 906613f,
+// route that takes a caller-presented lineage id (root ruling 2 of dd30aa8,
 // applied beyond `task.decide`; minimum contract 8.2 cases 1 and 2).
 //
 // `task.propose` takes `lineageId` to add a version to an existing lineage,

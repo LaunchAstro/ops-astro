@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What a handback may move, read back as exact text, shared by the Sol 6
-// runtime suites at 158d6de (lease expiry after the lock wait, exact successor
+// runtime suites at 9ddfa09 (lease expiry after the lock wait, exact successor
 // bounds). A refused handback is proved by this footprint not moving.
 
 import { freshPurpose, rows, type Body, type Schedules } from './schedules-harness.ts';

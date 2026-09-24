@@ -16,7 +16,7 @@
 // rather than inventing a pass or quietly skipping.
 //
 // **The seed grants its admin `settings:manage`** (`scripts/local-seed.mjs`,
-// since `1148a07`), so ada can write as seeded. The group still issues the
+// since `11465c4`), so ada can write as seeded. The group still issues the
 // grant itself through `issueGrant` -- the authority path, the same one
 // `n6-revocation.mjs` uses to revoke one -- and takes it back in a `finally`,
 // so a row does not pass or fail on what the seed happens to hold that day,

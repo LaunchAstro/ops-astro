@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One wording per refusal for both entries (thermo review b282216, O4).
+// One wording per refusal for both entries (thermo review b483399, O4).
 //
 // An agent and a person who send the same wrong operand, or name the same
 // missing task, are told the same thing in the same bytes, and the text is the

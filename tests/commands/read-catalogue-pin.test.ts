@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The per-read facts, pinned as they stood at faf3285.
+// The per-read facts, pinned as they stood at 06ab232.
 //
 // Written before the read facts were folded into one typed catalogue (thermo
-// review b282216, H3), and green before and after. Each read's identifiers and
+// review b483399, H3), and green before and after. Each read's identifiers and
 // whether an outsider is told NOT_FOUND are pinned by literal, and its operand
 // check by the exact refusal it gives each of a set of bodies, so a
 // refactor that moved a check, loosened one or changed its words fails here

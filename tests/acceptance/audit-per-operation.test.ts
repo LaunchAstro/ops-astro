@@ -343,7 +343,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }, 120_000);
 
   it('audits the person-path refusal of the three lease operations', async () => {
-    // PERSON-WORK serves these to a person (8c08ccb). A handback carries the
+    // PERSON-WORK serves these to a person (4f93f9a). A handback carries the
     // outcome it validates first (`tasks-handback.ts` `settle`), so the refusal
     // is the lease's. Whatever it answers, I13 wants the attempt recorded.
     const problems: string[] = [];
@@ -454,7 +454,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           expect(revoked.code, 'grant.revoke').toBe('ok');
         }
 
-        // Green since 0d552f0: authority loss revokes the delegation with
+        // Green since 3b8daf3: authority loss revokes the delegation with
         // `revocation_cause` authority_lost (0023), and `resolveDelegation`
         // answers that cause DELEGATION_NARROWED, case 6's code, for every
         // route here, heartbeat and handback included. Only the handback's

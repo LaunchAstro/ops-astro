@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Who a successor is proposed by, in words that fit whoever asked (thermo
-// review b282216, O5).
+// review b483399, O5).
 //
 // A person hands a lease back on `/api/p` through the same successor reader
 // the agent entry uses, so a body naming its own proposer is refused to both

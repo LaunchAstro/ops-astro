@@ -2,7 +2,7 @@
 //
 // The storage backstop behind the cap: migrations 0024 and 0025.
 //
-// Sol 6 RUNTIME P2 at 0395827: `task_envelopes` named its cap by business and
+// Sol 6 RUNTIME P2 at 056aa7c: `task_envelopes` named its cap by business and
 // id only, so the application role could insert a USD envelope under an AUD
 // cap, or change a cap's currency beneath envelopes that already draw on it.
 // The command refuses both (`CAP_BINDING_MISMATCH`, `budget.ts`), but a stored
@@ -423,7 +423,7 @@ describe.skipIf(serverUrl === undefined).each([
       expect(await capState(cap)).toBe('AUD 1000 600');
     });
 
-    // Sol 6 SURFACE-R-2 at 9d2dbde: a row lock does not refresh a repeatable
+    // Sol 6 SURFACE-R-2 at e84add2: a row lock does not refresh a repeatable
     // read snapshot, so a second transaction that waited for the cap lock
     // summed from before the first committed, and both committed past the
     // ceiling. The trigger now claims the cap with a real row version, so a
