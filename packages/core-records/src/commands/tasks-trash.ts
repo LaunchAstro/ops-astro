@@ -106,9 +106,12 @@ export async function restoreTasks(
   if (operands !== undefined) return refused(operands);
   const restored = await restoreBatch(tx, { batchId });
   if (isRecordsRefusal(restored)) return refused(fromRecords(restored));
+  // The ids go in the stored result: the event this command writes has one
+  // subject column and a restore has no single subject (R2-RUNTIME-55).
   return applied(null, null, {
     batchId,
     restored: restored.recordIds.length,
+    restoredIds: restored.recordIds,
   });
 }
 
@@ -137,16 +140,26 @@ export async function purgeTasks(
   if (operands !== undefined) return refused(operands);
   const window = await retentionWindowDays(tx);
   if (typeof window !== 'number') return refused(window);
-  const purged = await purgeTrashedRecords(tx, {
-    recordTypeId: context.spine.taskTypeId,
-    trashedBefore: await cutoff(tx, window),
-  });
+  const trashedBefore = await cutoff(tx, window);
+  const purged =
+    trashedBefore === undefined
+      ? { recordIds: [], retainedIds: [], commentIds: [], grantsRevoked: 0 }
+      : await purgeTrashedRecords(tx, {
+          recordTypeId: context.spine.taskTypeId,
+          trashedBefore,
+          commentTypeId: context.spine.taskCommentTypeId,
+        });
   if (isRecordsRefusal(purged)) return refused(fromRecords(purged));
   // `retained` names the aged trash the runtime still holds, so the stored
-  // result says what the purge kept as well as how much it removed.
+  // result says what the purge kept as well as how much it removed. The
+  // destroyed ids are named too: after the purge, this result is the only
+  // place that says they existed (R2-RUNTIME-55).
   return applied(null, null, {
     purged: purged.recordIds.length,
+    purgedIds: purged.recordIds,
     retained: purged.retainedIds,
+    commentsPurged: purged.commentIds.length,
+    grantsRevoked: purged.grantsRevoked,
   });
 }
 
@@ -181,13 +194,24 @@ async function retentionWindowDays(tx: TenantQuery): Promise<number | CommandRef
 }
 
 /**
+ * A window this long reaches back past 3400 BC, well inside the database's
+ * calendar (which starts at 4713 BC) and far before any `deleted_at` it holds.
+ */
+const LONGEST_COMPUTED_WINDOW_DAYS = 2_000_000;
+
+/**
  * The moment trash has to be older than, on the database's clock.
  *
  * `now()` is the transaction's start, so a row trashed by any earlier
  * transaction is before it even at a window of zero, and the cutoff and the
  * `deleted_at` it is compared with come from one clock.
+ *
+ * The window has no ceiling, so a longer one than the calendar holds is
+ * answered as what it means, nothing is old enough, rather than handed to
+ * date arithmetic that overflows and faults the purge (R2-SURFACE-66).
  */
-async function cutoff(tx: TenantQuery, days: number): Promise<Date> {
+async function cutoff(tx: TenantQuery, days: number): Promise<Date | undefined> {
+  if (days > LONGEST_COMPUTED_WINDOW_DAYS) return undefined;
   const rows = await tx.query<{ readonly cutoff: Date }>(
     `select now() - make_interval(days => $1::int) as cutoff`,
     [days],
