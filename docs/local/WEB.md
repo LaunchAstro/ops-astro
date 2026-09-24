@@ -480,7 +480,9 @@ read answers 403 `AUTH_NO_MEMBERSHIP`, because with its only share gone the
 party has no standing left to resolve (`resolveLogin` and `standsOnShares` in
 `packages/core-records/src/identity/login-resolution.ts`). An unshared sibling
 task or the board answers `NOT_FOUND` while the share is live
-(`OUTSIDER_NOT_FOUND` in `packages/core-records/src/reads/dispatch.ts`). Neither
+(the row's `outsiderNotFound` in `READ_CATALOGUE`,
+`packages/core-records/src/reads/catalogue.ts`, checked by `serveRead` in
+`reads/dispatch.ts`). Neither
 leaks content.
 
 `surface-final.mjs` runs after R4 (`slice-acceptance.mjs:100`). D03:

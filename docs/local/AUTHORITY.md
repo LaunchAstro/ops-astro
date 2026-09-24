@@ -251,9 +251,10 @@ when it was revoked for `authority_lost` (`resolveDelegation`).
 
 The same holds on replay. A bare agent replay of a handback, with no credential,
 answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
-credential that is not live stays `DELEGATION_NOT_LIVE` (`authoriseReplay`). A
-capabilities replay is authorised as a fresh call and projected again for the
-credential presented now (`replayCapabilities`), so a replay under another
+credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
+reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
+replay is authorised as a fresh call and projected again for the credential
+presented now (`replayCapabilities`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).

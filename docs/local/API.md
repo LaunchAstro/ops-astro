@@ -100,11 +100,13 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.create`  | `fields`                                 | an object of field keys to values, not an array                          | `refuseCreateOperands`, from `createTask` (`tasks-write.ts`)    |
 | `task.restore` | `batchId`                                | a non-empty string, the one `task.trash` answered                        | `refuseRestoreOperands`, from `restoreTasks` (`tasks-trash.ts`) |
 | `task.purge`   | none                                     | no window operand: see below                                             | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)     |
-| `task.read`    | `recordId`                               | a string                                                                 | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
-| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | `refuseReadOperands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `task.read`    | `recordId`                               | a string                                                                 | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `task.board`   | `board`                                  | a board task's id, or `null` for tasks on no board                       | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
+| `preset.plan`  | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty | the row's `operands`, from `serveRead` (`reads/dispatch.ts`)    |
 
-The `refuse…Operands` functions are in `commands/operands.ts`.
+The three `refuse…Operands` functions are in `commands/operands.ts`. A read's
+operand check is the `operands` column of its `READ_CATALOGUE` row
+(`reads/catalogue.ts`).
 
 **`task.purge` takes no window.** It reads the business's own
 `retention_window_days` setting inside the transaction the command is served in
@@ -120,7 +122,7 @@ floor or ceiling is applied. `tests/commands/purge-retention.test.ts` holds it.
 
 The three command checks run in their handlers, so the refusal is registered and
 audited like any other command refusal. The read checks run inside the audited
-read (`refuseReadOperands`, called from `serveRead` in `reads/dispatch.ts`),
+read (the row's `operands`, called from `serveRead` in `reads/dispatch.ts`),
 after the system-field and identifier checks and before the grant check, so a
 refused read writes its audit row like any other.
 `tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
@@ -130,8 +132,9 @@ list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. The
 agent envelope reads `recordId` itself, and under a live delegation an absent
-one is `NOT_FOUND` 404 (`subjectTaskId` and the `task.read` case of `serve`,
-`commands/agent-envelope.ts`).
+one is `NOT_FOUND` 404 (`subjectTaskId` in `commands/agent-authority.ts`, and
+the `serve` of the `task.read` row of `AGENT_OPERATIONS` in
+`commands/agent-operations.ts`).
 
 ## Who is calling
 
@@ -877,11 +880,14 @@ register branch of `runAgentCommand`). A stored refusal replays as stored. A
 stored success is checked again first. A read, comment or heartbeat replay
 answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
-expiry has changed (`authoriseReplay`). A capabilities replay is projected
-again for the credential presented now (`replayCapabilities`). A pickup replay
-is checked against the delegation it minted (`replayPickup`). A handback
-settles its own delegation, so its receipt is returned only to the credential
-that settled it. The register row is left as it was.
+expiry has changed: those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
+and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
+capabilities replay is projected again for the credential presented now
+(`replayCapabilities`). A pickup replay is checked against the delegation it
+minted (`replayPickup`). A handback settles its own delegation, so its receipt
+is returned only to the credential that settled it (`replaySettledHandback`).
+All three are in `commands/agent-replay.ts`. The register row is left as it
+was.
 
 **A replayed pickup derives its credential again.** The register keeps the
 pickup's answer with a null credential (`storable`). A replay of a lost pickup
@@ -955,8 +961,9 @@ A reader who is not internal on the person prefix gets a different key:
 `task.read` case of `serveRead`, `reads/dispatch.ts`). `fields` holds the task fields the
 catalogue marks `shared`, and as shipped none are, so R4 sees the id and the
 client comments. For an external party, a `task.read` of a record its shares do
-not cover and any `task.board` answer `NOT_FOUND` 404 (`OUTSIDER_NOT_FOUND`,
-checked in `serveRead` when the grant check refuses, `reads/dispatch.ts`;
+not cover and any `task.board` answer `NOT_FOUND` 404 (the row's
+`outsiderNotFound` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
+`serveRead` when the grant check refuses, `reads/dispatch.ts`;
 minimum contract 8.2 case 7). Once `grant.revoke` removes an external party's
 last live share, their next read is refused earlier, at login resolution:
 `AUTH_NO_MEMBERSHIP` 403, since they now hold neither a membership nor a share
@@ -1061,8 +1068,8 @@ the audit row's `attempted` column and never to the response.
 `settings.read` and `session.capabilities` take none. Any other identifier
 field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
-(`READ_IDENTIFIERS`, checked in `serveRead` after the system fields,
-`reads/dispatch.ts`). `tests/api/boundary-read-targets.test.ts` holds it.
+(the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
+`serveRead` after the system fields, `reads/dispatch.ts`). `tests/api/boundary-read-targets.test.ts` holds it.
 
 **Every read writes an audit event**, of the same shape the commands write,
 successful and refused alike (I13). Its `operation_id` is null: a read has
