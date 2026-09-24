@@ -23,8 +23,10 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
+import { COMMENT_SPINE } from './comments.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
+const COMMENT_TASK = slotOf(COMMENT_SPINE, 'task');
 
 export type RetentionClass = 'work' | 'evidence' | 'runtime';
 
@@ -189,8 +191,12 @@ export interface RestoreResult {
 interface BatchRow {
   readonly id: string;
   readonly parent_id: string | null;
-  readonly parent_deleted: boolean | null;
-  readonly parent_batch: string | null;
+}
+
+interface ParentRow {
+  readonly id: string;
+  readonly deleted: boolean;
+  readonly trash_batch_id: string | null;
 }
 
 /**
@@ -208,6 +214,15 @@ interface BatchRow {
  * prove abandonment (case L10), and the restore leaves a record whose parent
  * slot points at nothing rather than refusing a row nobody can ever recover.
  *
+ * The parents outside the batch are read `for share`, in a statement of their
+ * own because a lock cannot sit on the nullable side of a left join. Without
+ * it a trash of the parent committing between this check and the write below
+ * leaves the restored child live under a trashed parent and outside the
+ * parent's batch (R2-RUNTIME-15). With it, a trash that got there first makes
+ * this read wait and then see the parent trashed, and a trash that comes
+ * second waits for this restore and its walk takes the restored child in:
+ * the same pair of orders `readParent` gives create and reparent.
+ *
  * The second is the one T1d's trigger creates: a trashed record releases its
  * unique claims, so restoring re-takes them, and if somebody took the value
  * meanwhile the re-claim would fail. It is refused by name here instead.
@@ -217,14 +232,8 @@ export async function restoreBatch(
   options: { readonly batchId: string },
 ): Promise<RestoreResult | RecordsRefusal> {
   const rows = await tx.query<BatchRow>(
-    `select r.id,
-            r.${PARENT} as parent_id,
-            (parent.deleted_at is not null) as parent_deleted,
-            parent.trash_batch_id as parent_batch
-       from records r
-       left join records parent
-         on parent.business_id = r.business_id and parent.id = r.${PARENT}
-      where r.business_id = $1 and r.trash_batch_id = $2`,
+    `select id, ${PARENT} as parent_id from records
+      where business_id = $1 and trash_batch_id = $2`,
     [tx.businessId, options.batchId],
   );
   if (rows.length === 0) {
@@ -239,17 +248,33 @@ export async function restoreBatch(
   }
 
   const inThisBatch = new Set(rows.map((row) => row.id));
-  const blocked = rows.find(
-    (row) =>
-      row.parent_id !== null &&
-      row.parent_deleted === true &&
-      !inThisBatch.has(row.parent_id) &&
-      row.parent_batch !== options.batchId,
+  const outside = [
+    ...new Set(
+      rows.flatMap((row) =>
+        row.parent_id !== null && !inThisBatch.has(row.parent_id) ? [row.parent_id] : [],
+      ),
+    ),
+  ];
+  const parents =
+    outside.length === 0
+      ? []
+      : await tx.query<ParentRow>(
+          `select id, (deleted_at is not null) as deleted, trash_batch_id from records
+            where business_id = $1 and id = any ($2::uuid[])
+            order by id
+            for share`,
+          [tx.businessId, outside],
+        );
+  const trashedParent = new Map(
+    parents
+      .filter((parent) => parent.deleted && parent.trash_batch_id !== options.batchId)
+      .map((parent) => [parent.id, parent.trash_batch_id]),
   );
+  const blocked = rows.find((row) => row.parent_id !== null && trashedParent.has(row.parent_id));
   if (blocked !== undefined) {
     return refuse(
       'PARENT_TRASHED',
-      [blocked.id, blocked.parent_batch ?? ''],
+      [blocked.id, trashedParent.get(blocked.parent_id ?? '') ?? ''],
       [
         'This record’s parent is still in the trash, in the batch named here.',
         'Restore that batch first, then this one.',
@@ -322,6 +347,10 @@ export interface PurgeResult {
    * named, rather than faulted on.
    */
   readonly retainedIds: readonly string[];
+  /** The comments of the purged records, removed with them. */
+  readonly commentIds: readonly string[];
+  /** How many grants scoped to a purged record or comment were revoked. */
+  readonly grantsRevoked: number;
 }
 
 /**
@@ -336,7 +365,12 @@ export interface PurgeResult {
  */
 export async function purgeTrashedRecords(
   tx: TenantQuery,
-  options: { readonly recordTypeId: string; readonly trashedBefore: Date },
+  options: {
+    readonly recordTypeId: string;
+    readonly trashedBefore: Date;
+    /** The comment type whose records hang off these, when the business has one. */
+    readonly commentTypeId?: string | undefined;
+  },
 ): Promise<PurgeResult | RecordsRefusal> {
   const types = await tx.query<{ readonly key: string; readonly retention_class: RetentionClass }>(
     `select key, retention_class from record_types where business_id = $1 and id = $2`,
@@ -357,6 +391,21 @@ export async function purgeTrashedRecords(
     );
   }
 
+  // The candidates are locked, so a restore either commits first and the row
+  // drops out here (read committed re-checks the predicate on the new row), or
+  // waits for the purge. Without the lock a restore committing between this
+  // read and the delete turned the purge into a key fault (R2-RUNTIME-53).
+  const aged = await tx.query<{ readonly id: string }>(
+    `select id from records
+      where business_id = $1 and record_type_id = $2
+        and deleted_at is not null and deleted_at < $3
+      order by id
+      for update`,
+    [tx.businessId, options.recordTypeId, options.trashedBefore],
+  );
+  if (aged.length === 0)
+    return { recordIds: [], retainedIds: [], commentIds: [], grantsRevoked: 0 };
+
   // A task a proposal ever named is pointed at by the runtime tables, each
   // through a composite key to `records` that does not cascade (0010's
   // lineages and planned runs, 0013's envelopes and leases). Those rows are the
@@ -365,8 +414,10 @@ export async function purgeTrashedRecords(
   // for every trashed task in the business (0007 names this failure). So the
   // purge keeps such a task, says so, and purges the rest. Restoring the
   // task, or a runtime retention rule this slice does not build, is what
-  // would ever release it.
-  const aged = await tx.query<{ readonly id: string; readonly held: boolean }>(
+  // would ever release it. Asked after the lock, in a statement of its own,
+  // so a row that took a key share on the task before the lock is seen, and
+  // none can take one after it.
+  const holding = await tx.query<{ readonly id: string; readonly held: boolean }>(
     `select r.id,
             (exists (select 1 from public.proposal_lineages l
                       where l.business_id = r.business_id and l.task_id = r.id)
@@ -377,25 +428,67 @@ export async function purgeTrashedRecords(
              or exists (select 1 from public.leases s
                          where s.business_id = r.business_id and s.task_id = r.id)) as held
        from records r
-      where r.business_id = $1 and r.record_type_id = $2
-        and r.deleted_at is not null and r.deleted_at < $3
+      where r.business_id = $1 and r.id = any ($2::uuid[])
       order by r.id`,
-    [tx.businessId, options.recordTypeId, options.trashedBefore],
+    [tx.businessId, aged.map((each) => each.id)],
   );
-  const retainedIds = aged.filter((each) => each.held).map((each) => each.id);
-  const ids = aged.filter((each) => !each.held).map((each) => each.id);
-  if (ids.length === 0) return { recordIds: [], retainedIds };
+  const retainedIds = holding.filter((each) => each.held).map((each) => each.id);
+  const ids = holding.filter((each) => !each.held).map((each) => each.id);
+  if (ids.length === 0) return { recordIds: [], retainedIds, commentIds: [], grantsRevoked: 0 };
+
+  // A purged task's comments are in the work class with it (14.3: "records
+  // and their bodies, comments, views"), and nothing reaches them once the
+  // task is gone, so they go in the same act, explicitly (R2-RUNTIME-16).
+  const commentIds =
+    options.commentTypeId === undefined
+      ? []
+      : (
+          await tx.query<{ readonly id: string }>(
+            `select id from records
+              where business_id = $1 and record_type_id = $2 and ${COMMENT_TASK} = any ($3::uuid[])
+              order by id
+              for update`,
+            [tx.businessId, options.commentTypeId, ids],
+          )
+        ).map((each) => each.id);
+  const gone = [...ids, ...commentIds];
 
   // Links first: both ends carry a composite foreign key to `records`, so a
   // link outliving its record is refused by the server rather than dangling.
   await tx.query(
     `delete from record_links
       where business_id = $1 and (from_record_id = any ($2::uuid[]) or to_record_id = any ($2::uuid[]))`,
-    [tx.businessId, ids],
+    [tx.businessId, gone],
   );
-  await tx.query(`delete from records where business_id = $1 and id = any ($2::uuid[])`, [
-    tx.businessId,
-    ids,
-  ]);
-  return { recordIds: ids, retainedIds };
+  // A grant's scope carries no foreign key, and 0003 leaves revocation on a
+  // deleted record to the operation that deletes it. A grant naming a record
+  // that no longer exists would keep its holder's standing (R2-AUTHORITY-60).
+  const revoked = await tx.query<{ readonly id: string }>(
+    `update public.grants set revoked_at = now()
+      where business_id = $1 and scope_kind = 'record' and scope_id = any ($2::uuid[])
+        and revoked_at is null
+      returning id`,
+    [tx.businessId, gone],
+  );
+  if (commentIds.length > 0) {
+    await tx.query(`delete from records where business_id = $1 and id = any ($2::uuid[])`, [
+      tx.businessId,
+      commentIds,
+    ]);
+  }
+  // The trash predicate again, so the delete's own statement says what it may
+  // remove rather than leaning on the lock above.
+  const purged = await tx.query<{ readonly id: string }>(
+    `delete from records
+      where business_id = $1 and id = any ($2::uuid[])
+        and deleted_at is not null and deleted_at < $3
+      returning id`,
+    [tx.businessId, ids, options.trashedBefore],
+  );
+  return {
+    recordIds: purged.map((each) => each.id).toSorted(),
+    retainedIds,
+    commentIds,
+    grantsRevoked: revoked.length,
+  };
 }
