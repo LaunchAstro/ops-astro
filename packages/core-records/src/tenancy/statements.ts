@@ -96,6 +96,11 @@ const SESSION_VERBS: ReadonlySet<string> = new Set([
 // dolq_cont). The scanner takes the longest match, so `$$` straight after an
 // identifier continues the identifier and opens nothing: a dollar quote starts
 // only where a token does (syntax.sgml, "Dollar-Quoted String Constants").
+// A plain '' string is read as standard_conforming_strings = on reads it, the
+// default since PostgreSQL 9.1: a backslash in it is a plain character. A
+// session that turns the setting off makes it escape a quote, which this
+// reading cannot know. The migration runner is covered by its backstop, one
+// command to each send; the statement log assumes the setting stays on.
 const IDENTIFIER = /[A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9$\u{80}-\u{10FFFF}]*/uy;
 const DECIMAL_DIGITS = /[0-9][0-9_]*/uy;
 const DOLLAR_TAG = /\$([A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9\u{80}-\u{10FFFF}]*)?\$/uy;
@@ -110,9 +115,17 @@ function lengthAt(pattern: RegExp, sql: string, at: number): number {
 // one DDL statement whose leading verb reads as a read.
 const SELECT_INTO = /^SELECT\b[\s\S]*?\bINTO\b/iu;
 
+// scan.l's whitespace is space [ \t\n\r\f\v] and newline [\n\r]. Nothing
+// else is: a character past ASCII starts an identifier (ident_start), so a
+// no-break space or a byte-order mark is part of a word, not a gap.
+const SPACE: ReadonlySet<string> = new Set([' ', '\t', '\n', '\r', '\f', '\v']);
+const NEWLINE = /[\n\r]/gu;
+
+/** A line comment, which ends at the first CR or LF (non_newline [^\n\r]), newline included. */
 function skipLineComment(sql: string, from: number): number {
-  const newline = sql.indexOf('\n', from);
-  return newline < 0 ? sql.length : newline + 1;
+  NEWLINE.lastIndex = from;
+  const newline = NEWLINE.exec(sql);
+  return newline === null ? sql.length : newline.index + 1;
 }
 
 // Block comments nest in PostgreSQL, so a depth counter is the only correct
@@ -158,6 +171,43 @@ function skipQuoted(sql: string, from: number, quote: string, backslashEscapes: 
   return sql.length;
 }
 
+/**
+ * Where a string that closed at `from` goes on, or -1. A closing quote, then
+ * whitespace holding at least one newline, with line comments allowed and
+ * block comments not, then a quote, continue the string in the state it was
+ * in (scan.l: quotecontinue, and <xqs>{quotecontinue} going back to
+ * state_before_str_stop). So an E string stays an E string, escapes and all.
+ */
+function continuationAt(sql: string, from: number): number {
+  let at = from;
+  let newline = false;
+  while (at < sql.length) {
+    const ch = sql[at] ?? '';
+    if (ch === "'") return newline ? at : -1;
+    if (sql.startsWith('--', at)) {
+      at = skipLineComment(sql, at);
+      // A comment that reaches the end of the text has no newline after it.
+      if (sql[at - 1] !== '\n' && sql[at - 1] !== '\r') return -1;
+      newline = true;
+    } else if (SPACE.has(ch)) {
+      newline ||= ch === '\n' || ch === '\r';
+      at += 1;
+    } else {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+/** A '' string from its opening quote, through every continuation of it. */
+function skipString(sql: string, from: number, backslashEscapes: boolean): number {
+  let end = skipQuoted(sql, from, "'", backslashEscapes);
+  for (let quote = continuationAt(sql, end); quote >= 0; quote = continuationAt(sql, end)) {
+    end = skipQuoted(sql, quote, "'", backslashEscapes);
+  }
+  return end;
+}
+
 function skipDollarQuoted(sql: string, from: number): number {
   const length = lengthAt(DOLLAR_TAG, sql, from);
   if (length === 0) return from;
@@ -190,9 +240,12 @@ export function scanToken(sql: string, from: number): Token {
   // Only a lone E opens an escape string (xestart). The e that ends a longer
   // word is part of the word, and the quote after it opens a plain string.
   if (rest === "e'" || rest === "E'") {
-    return { kind: 'quoted', end: skipQuoted(sql, from + 1, "'", true) };
+    return { kind: 'quoted', end: skipString(sql, from + 1, true) };
   }
-  if (ch === "'" || ch === '"') return { kind: 'quoted', end: skipQuoted(sql, from, ch, false) };
+  // A plain string, and the quote after B, X, N or U&, none of which takes a
+  // backslash escape. A quoted identifier never continues.
+  if (ch === "'") return { kind: 'quoted', end: skipString(sql, from, false) };
+  if (ch === '"') return { kind: 'quoted', end: skipQuoted(sql, from, ch, false) };
   if (ch === '$') {
     const after = skipDollarQuoted(sql, from);
     return after === from ? { kind: 'other', end: from + 1 } : { kind: 'quoted', end: after };
@@ -218,12 +271,14 @@ export function splitStatements(sql: string): readonly string[] {
   let at = 0;
   // The text kept is what was sent, comments and all, because this is an
   // evidence log and a scrubbed copy is not what the server saw. A piece with
-  // no verb in it is not a statement, though: a trailing `;` after a comment
-  // would otherwise be recorded as one, and a log full of those is a log
-  // nobody reads.
+  // that is only comments and whitespace is not a statement, though: a
+  // trailing `;` after a comment would otherwise be recorded as one, and a log
+  // full of those is a log nobody reads. PostgreSQL's grammar drops the same
+  // empty statement (gram.y, stmtmulti) and no other, so anything else is
+  // kept and sent, and the server refuses what it cannot read.
   const take = (end: number): void => {
-    const piece = sql.slice(start, end).trim();
-    if (piece !== '' && leadingVerb(piece) !== '') found.push(piece);
+    const piece = trimSpace(sql.slice(start, end));
+    if (!onlyCommentsAndSpace(piece)) found.push(piece);
   };
   while (at < sql.length) {
     const token = scanToken(sql, at);
@@ -237,22 +292,40 @@ export function splitStatements(sql: string): readonly string[] {
   return found;
 }
 
-/** The leading word of a statement, with comments and leading noise removed. */
+function trimSpace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && SPACE.has(text[start] ?? '')) start += 1;
+  while (end > start && SPACE.has(text[end - 1] ?? '')) end -= 1;
+  return text.slice(start, end);
+}
+
+function onlyCommentsAndSpace(piece: string): boolean {
+  for (let at = 0; at < piece.length;) {
+    const token = scanToken(piece, at);
+    if (token.kind !== 'comment' && !SPACE.has(piece[at] ?? '')) return false;
+    at = token.end;
+  }
+  return true;
+}
+
+/**
+ * The leading word of a statement, read with `scanToken` past comments,
+ * whitespace and opening parentheses. Only its leading ASCII letters count,
+ * so `commit$x` reads as COMMIT, which fails closed.
+ */
 export function leadingVerb(statement: string): string {
   let at = 0;
   while (at < statement.length) {
-    if (statement.startsWith('--', at)) {
-      at = skipLineComment(statement, at);
-    } else if (statement.startsWith('/*', at)) {
-      at = skipBlockComment(statement, at);
-    } else if (/\s/u.test(statement[at] ?? '') || statement[at] === '(') {
-      at += 1;
-    } else {
-      break;
+    const token = scanToken(statement, at);
+    const ch = statement[at] ?? '';
+    if (token.kind === 'word') {
+      return /^[A-Za-z_]+/u.exec(statement.slice(at, token.end))?.[0].toUpperCase() ?? '';
     }
+    if (token.kind !== 'comment' && !SPACE.has(ch) && ch !== '(') return '';
+    at = token.end;
   }
-  const word = /^[A-Za-z_]+/u.exec(statement.slice(at));
-  return word === null ? '' : word[0].toUpperCase();
+  return '';
 }
 
 export function classifyStatement(statement: string): StatementKind {
