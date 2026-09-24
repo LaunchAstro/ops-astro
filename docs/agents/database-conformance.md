@@ -10,8 +10,9 @@ failure the ticket names.
 ## Proving the gate
 
 `database conformance gate` runs `pnpm run db:cases`. Those probes start a
-throwaway Postgres of their own, run controlled fixture suites through
-`scripts/db-conformance.mjs`, and assert what the runner refuses:
+throwaway Postgres of their own, or use the database named by
+`DB_CONFORMANCE_CASES_URL` when it is set, run controlled fixture suites
+through `scripts/db-conformance.mjs`, and assert what the runner refuses:
 
 - a fixture suite that reaches the database passes;
 - a fixture suite with one `test.skip` fails, and the skipped test is named;
@@ -21,6 +22,10 @@ throwaway Postgres of their own, run controlled fixture suites through
 - a named suite vitest never discovered fails, and the path is named;
 - a run vitest itself reported as failed fails, with every counted test passing;
 - a suite that reaches the database does not cover a sibling that does not;
+- a named suite runs alone: vitest reads a path as a substring, so
+  `invariant.test.ts` would also run `invariant.test.ts.db.test.ts`; every
+  other file the path selects is excluded, and a report holding any other
+  file fails;
 - an empty manifest fails;
 - a missing `DATABASE_URL` is refused rather than skipped.
 

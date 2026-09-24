@@ -74,6 +74,14 @@ request body. It proves that the answer is bound to this exact head, and
 nothing further: it reads no reviewer identity, so a green `review evidence
 for this revision` does not establish that any reviewer read anything.
 
+It reads each code-review and security-review line as one outcome. A line
+holding `not`, `never`, `no`, `cannot`, `isn't`, `wasn't` or `aren't`
+anywhere is a rejection, unless the `no` belongs to `no findings` (or no
+issues, problems, blockers or concerns). A line that counts findings fails
+when any count closed is lower than a count raised, across sentences too:
+`2 findings. 1 closed` fails and `2 findings. 2 closed` passes. Reword
+a clean outcome rather than negate part of it.
+
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. Because
 `strict_required_status_checks_policy` is on, a branch must be up to date
