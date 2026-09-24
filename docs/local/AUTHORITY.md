@@ -42,48 +42,48 @@ rotation and the pickup replay it makes possible are in
 
 ## What the agent may do: the intersection, per call
 
-`checkDelegatedAuthority(tx, delegation, request)` is the whole mechanism, and
-what it does not do is the design. It stores no permission, caches nothing, and
-copies nothing at mint time. On every call it asks `effectiveGrants` what the
-**delegating person** holds right now, and the purpose only ever narrows that.
+`checkDelegatedAuthority(tx, delegation, request)` is the whole mechanism. It
+stores no permission, caches nothing, and copies nothing at mint time. On every
+call it asks `effectiveGrants` what the delegating person holds right now, and
+the purpose only ever narrows that.
 
-So the order of its checks is load-bearing:
+The order of its checks matters:
 
 1. `DELEGATION_EXCLUDES_DECISION`, first, so a decision is never reported as
-   something else. **I07.**
+   something else (I07).
 2. `DELEGATION_OUT_OF_PURPOSE`, before any grant is read, so an agent probing
-   outside its purpose learns nothing about what its person holds. Three ways
-   to be outside it: a collection the purpose does not reach, an action it does
-   not carry, and a **scope that is not exactly the one task it was minted
-   for**. The last is the one-task ceiling: R5 is "R1's delegated agent,
+   outside its purpose learns nothing about what its person holds. A call is
+   outside it three ways: a collection the purpose does not reach, an action it
+   does not carry, or a scope that is not exactly the one task it was minted
+   for. The last is the one-task ceiling. R5 is "R1's delegated agent,
    purpose-scoped to one task", and R1's own grant is business-wide, so without
    the stored scope a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
    request under a delegation is refused here too.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
-   on `(business_id, agent_actor_id, purpose)` where `revoked_at is null and
-settled_at is null`, so the key is the purpose _word_, not the purpose
-   scope: a second mint for a sibling task under the same purpose is the same
-   duplicate, and another agent minting for the same work is not one. Expiry is
-   not in the predicate, so a delegation nobody settled goes on holding the
-   slot after it stops permitting anything; `mintDelegation` settles a spent
-   row in the serving transaction rather than refusing on it, which is what
-   makes RUNTIME.md's R5 recovery reachable. A mint that meets the agent's
-   unsettled delegation for the same purpose judges that row's expiry after
-   locking it, on `clock_timestamp()`: an expired one is settled and replaced,
-   so an agent can replace its own claim after waiting past the expiry. The
-   refusal exists because the index alone delivered the decision as a 23505: a 500 in process, a 503
-   `SERVICE_UNAVAILABLE` from the deployment, and no audit row for the attempt,
-   because the serving transaction had aborted.
-
+   on `(business_id, agent_actor_id, purpose)` where
+   `revoked_at is null and settled_at is null`. The key is the purpose _word_,
+   not the purpose scope. A second mint for a sibling task under the same
+   purpose is the same duplicate, and another agent minting for the same work
+   is not one. Expiry is not in the predicate, so a delegation nobody settled
+   goes on holding the slot after it stops permitting anything.
+   `mintDelegation` settles a spent row in the serving transaction rather than
+   refusing on it, which is what makes RUNTIME.md's R5 recovery reachable. A
+   mint that meets the agent's unsettled delegation for the same purpose locks
+   that row, then judges its expiry on `clock_timestamp()`. An expired one is
+   settled and replaced, so an agent can replace its own claim after waiting
+   past the expiry. The refusal exists because the index alone delivered the
+   decision as a 23505: a 500 in process, a 503 `SERVICE_UNAVAILABLE` from the
+   deployment, and no audit row for the attempt, because the serving
+   transaction had aborted.
 4. `DELEGATION_NARROWED`: the purpose reaches the call and the person's live
-   grants no longer cover it. **I08**, and by name: substituting
-   `SCOPE_NOT_GRANTED` would say the agent was never authorised, when what
-   happened is the authority it drew on was taken away.
+   grants no longer cover it. This is I08, and it keeps its own name.
+   Substituting `SCOPE_NOT_GRANTED` would say the agent was never authorised,
+   when in fact the authority it drew on was taken away.
 
-Revoking the person's grant therefore collapses the agent on its next call,
-and so does the grant reaching its own expiry. A delegation's expiry is the
+Revoking the person's grant therefore refuses the agent's next call, and so
+does the grant reaching its own expiry. A delegation's expiry is the
 lease's, not clamped to the person's earliest grant expiry (`task.pickup`
 mints it with the lease's `expiresAt`; `mintDelegation` stores it as given).
 Between the two the agent is narrowed, not ended. There is no path that widens
@@ -197,13 +197,13 @@ interface SettingRevisionStale {
 
 ### Refusal codes, as L3 registered them
 
-These are **not** in `IdentityRefusalCode` or `RecordsRefusalCode`, deliberately:
+These are not in `IdentityRefusalCode` or `RecordsRefusalCode`, on purpose.
 `commands/register.ts` derives its `RefusalCode` from those unions and the
 register is L3's file. A model module reaching into the command surface to add a
 code is the coupling the register exists to prevent. L3 has registered every one
 of them, with the HTTP status in the register's own column (`statusOf`,
-`commands/register.ts`). The last column says
-whether a caller can meet the code on this head, and where that is shown.
+`commands/register.ts`). The last column says whether a caller can meet the
+code on this head, and where that is shown.
 
 | Code                                                                         | Status | Reachable on this head                                                                                                 |
 | ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -267,8 +267,9 @@ is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
 
 **An agent's comment on its own task** now succeeds (SPEC-ADJUDICATE (a)).
-`task.comment` has an agent row (the `task.comment` row of `AGENT_OPERATIONS`), and
-the matrix's case (i) asserts the saved comment identity. The agent may write
+`task.comment` has an agent row (the `task.comment` row of
+`AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
+identity. The agent may write
 in the `internal` audience only (`AGENT_AUDIENCES`). A `client` comment is
 `AUDIENCE_NOT_PERMITTED` 403, which the same case asserts. Internal-only is
 lane L3-CONTROLS's choice and awaits root or owner confirmation.
@@ -282,9 +283,9 @@ audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
 (`commands/register.ts`). `tests/commands/runtime-codes.test.ts` asserts that
 it stays off ("has come off the unproduced list"), that it is registered at 409
 and caller-visible ("registers it, gives it 409"), and that it is not one of the
-twenty runtime codes ("is not one of the runtime codes"). The
-runtime passes it through from the authority layer, as `DELEGATION_NOT_LIVE`
-and `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
+twenty runtime codes ("is not one of the runtime codes"). The runtime passes
+it through from the authority layer, as `DELEGATION_NOT_LIVE` and
+`DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
 ## The expired session
 
@@ -292,24 +293,24 @@ and `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 token has expired: a typed `AUTH_SESSION_EXPIRED` refusal a client can turn into
 a re-login path. Its fixes are `EXPIRED_FIXES`, exported beside it, and the HTTP
 door answers an expired bearer with the same fixes before any envelope runs
-(`apps/api/app.ts`). Never an empty result, never a 500, never a silent failure. A
+(`apps/api/app.ts`). It is never an empty result, a 500 or a silent failure. A
 person has to be able to tell "sign in again" from "you may not see this" from
-"the server is broken", and only one of those is a door they can open. The
+"the server is broken", and only the first is something they can fix. The
 browser half (holding the draft, re-authenticating, resuming) is L5's.
 
 ## The external party (R4)
 
-A person of the business with a login, an acting identity and **no
-membership** is refused `AUTH_NO_MEMBERSHIP` 403 until somebody shares a record
+A person of the business with a login, an acting identity and no
+membership is refused `AUTH_NO_MEMBERSHIP` 403 until somebody shares a record
 with them. With a live share and no business grant, the same login resolves as
 an external party, whose session `roleKey` is null (`resolveLogin` in
 `identity/login-resolution.ts`). Minimum contract 8.1 R4: "that task's shared
 fields and client-audience comments only".
 
 - **The share is a record-scoped grant.** `shareRecord`
-  (`authority/shares.ts:74`) issues a root `read` grant at `scope_kind =
-'record'`, under the sharer's own live `share` grant; a member without one is
-  `SCOPE_NOT_GRANTED`. `revokeShare` (`:98`) takes it back.
+  (`authority/shares.ts`) issues a root `read` grant at
+  `scope_kind = 'record'`, under the sharer's own live `share` grant. A member
+  without one is `SCOPE_NOT_GRANTED`. `revokeShare` (same file) takes it back.
 - **Standing is a live scoped `read` grant.** `STANDING` in
   `identity/login-resolution.ts` counts unrevoked, unexpired grants below
   business scope whose action is `read`, held by the person or their acting
@@ -326,16 +327,15 @@ fields and client-audience comments only".
   `SCOPE_NOT_GRANTED`, so a read share alone writes nothing.
   `tests/authority/non-member-grants.test.ts` proves each case.
 - **The client comment is the lead's ruling, not an owner decision.**
-  Coordinator 25 ruled
-  on 24 Sep 2026, reading contract 8.1 R4, that an external party holding an
-  explicitly provisioned comment grant may write a client-audience comment
-  and nothing else, and that a read share alone writes nothing. Nathan may
-  overturn it. Doing so is one line, an empty `EXTERNAL_WRITES`.
+  Coordinator 25 ruled on 24 Sep 2026, reading contract 8.1 R4, that an
+  external party holding an explicitly provisioned comment grant may write a
+  client-audience comment and nothing else, and that a read share alone writes
+  nothing. Nathan may overturn it with one line, an empty `EXTERNAL_WRITES`.
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
-  the state's label, plus client-audience comments (I09 ruling). A sibling record and the board
-  are `NOT_FOUND`.
+  the state's label, plus client-audience comments (I09 ruling). A sibling
+  record and the board are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts` and as
   rows in the matrix's case (g). `tests/acceptance/i10-inflight.test.ts` holds
@@ -355,21 +355,21 @@ fields and client-audience comments only".
 
 ## Every attempt at the door
 
-`authentication_attempts` (0008) is I13's **separate authentication-attempt
-owner**. The domain audit records what a command did; this records who got
+`authentication_attempts` (0008) is I13's separate authentication-attempt
+owner. The domain audit records what a command did; this records who got
 through and who did not, which is a different question with a different reader,
 and on the refusals it is the only record there is. A refused attempt never
 becomes an operation, so it has no audit event to hang off.
 
 - Written by both login paths, inside the caller's own transaction, so a
   refusal and its record commit together.
-- The presented subject is stored as a **sha256 digest, never whole.** A refused
+- The presented subject is stored as a sha256 digest, never whole. A refused
   attempt carries a subject this business has no relationship with, and storing
   it raw would park an identifier in a tenant that never agreed to hold it.
 - On success the verified subject is this business's own `login_id`, `actor_id`
   and `person_id`, which is what "the verified subject" means in product terms.
-- The application role has `select, insert` and no `update` or `delete`. A trail
-  that can be amended is not a trail.
+- The application role has `select, insert` and no `update` or `delete`, so
+  the application cannot amend the trail.
 
 The domain audit differs between the two entries in two places (root N2). An
 agent attempt whose fault survives the one retry writes no `failed` audit
@@ -393,8 +393,8 @@ Both come from the same array and cannot disagree. New readers take the array.
 `tests/tasks/task-spine-unit.test.ts`, against `PROTECTED_TASK_FIELDS`, and the
 comment type's classifications are asserted in `tests/tasks/comments.test.ts`.
 
-**The free slots are indexed** (0009). `planSlotAssignment` refuses an unindexed
-slot, correctly, since the whole point of a slot is a value that can be
+**The free slots are indexed** (0009). `planSlotAssignment` refuses an
+unindexed slot, correctly, because a slot exists to hold a value that can be
 filtered, and 0005 indexed only the sixteen the spine reserves. So every one of
 the twenty free columns was unusable and `preset.plan`'s only possible answer
 was `SLOT_INDEX_ABSENT`. All 38 slots are now indexed; 18 are still reserved,
@@ -414,19 +414,19 @@ them makes "who sees this" a property of "what this is", which is how a leak
 arrives with the next kind of comment.
 
 `externalCommentProjection` is an allowlist in both directions (I09). The
-comments are the ones addressed to the client. An internal note is **absent**
+comments are the ones addressed to the client. An internal note is absent
 from the body, not hidden in it. The fields are the ones the catalogue marks
 `shared`, read from the definitions passed in rather than a list held in the
 module, so classifying a field is the only way to expose it. The test takes
 `body`'s classification away and watches the value leave with it.
 
-Comments are **stored and projected through the API**: `task.read` carries them,
-in full for an internal reader and through `externalCommentProjection` for every
-other role. See [API.md, "Reads"](API.md#reads).
+Comments are stored and projected through the API. `task.read` carries them
+in full for an internal reader and through `externalCommentProjection` for
+every other role. See [API.md, "Reads"](API.md#reads).
 
 Both entries lock the task for `task.comment` through `lockTask`
-(`commands/prepare.ts`), which selects by tenant, task type and id `for update`. Neither entry
-filters out a trashed task.
+(`commands/prepare.ts`), which selects by tenant, task type and id
+`for update`. Neither entry filters out a trashed task.
 
 ## preset.plan
 
@@ -463,10 +463,10 @@ modes the model has. A preset shipping `write_mode: 'sometimes'` has not been
 decided about either, and defaulting it to `generic` opens a field nobody
 opened.
 
-The database's own refusal is **not** the mechanism. `field_defs.write_mode` is
+The database's own refusal is not the mechanism. `field_defs.write_mode` is
 `not null` with no default, so an unclassified field is already impossible to
 insert, but that refusal arrives mid-apply and as a constraint violation rather
-than as an answer about the preset. D05 says so explicitly, and the test counts
+than as an answer about the preset. D05 says so, and the test counts
 `field_defs` before and after to prove the plan touched nothing.
 
 ## Business settings
@@ -482,12 +482,11 @@ the named rows:
 | `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
 | `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
 
-The classification is the point, not the values. A setting that decides whether
-a second approver is needed is an authority change wearing configuration's
-clothes, the same category the task spine protects. Installing is additive: a
-second install adds what a later release named and resets nothing, because the
-alternative is an upgrade that quietly returns a business's retention window to
-the shipped default.
+The classification matters here, not the values. A setting that decides
+whether a second approver is needed changes authority, the same category the
+task spine protects. Installing is additive: a second install adds what a later
+release named and resets nothing, because the alternative is an upgrade that
+resets a business's retention window to the shipped default.
 
 **`task.purge` reads `retention_window_days`** (`commands/tasks-trash.ts`,
 through `readBusinessSetting`) inside the serving transaction, so the window is
@@ -507,8 +506,8 @@ silently replaced a value chosen before the first existed. The column starts at
 [DATA.md](DATA.md#a-setting-is-checked-against-its-revision) has the column and
 how a write moves it.
 
-`writeBusinessSetting` (`records/business-settings.ts:345`) is the one writer.
-It locks the row (`:353`), compares the `expectedRevision` the caller read, and
+`writeBusinessSetting` (`records/business-settings.ts`) is the one writer. It
+locks the row (`for update`), compares the `expectedRevision` the caller read, and
 answers a mismatch with `SettingRevisionStale`: the code `VERSION_STALE`,
 `names` of `revision=<the one the row is at>`, returned and never thrown. It
 never tells the caller the value it tried to write. An absent `expectedRevision`
@@ -516,10 +515,12 @@ writes anyway, which is what a caller that has not learnt to send one does. An
 unknown key and an `operation` row the named operation does not own are one
 answer, `undefined`, which the command turns into its own `NOT_FOUND`.
 
-The two settings commands write through it (`setBusinessSetting`, `commands/settings-write.ts`),
-so `settings.set_four_eyes_threshold` and `settings.set_client_sign_off` both
-move the revision and both answer `VERSION_STALE` 409 to a stale one;
-`settings.read` projects the revision on every row (`reads/settings.ts:76`).
+The two settings commands write through it (`setBusinessSetting`,
+`commands/settings-write.ts`), so `settings.set_four_eyes_threshold` and
+`settings.set_client_sign_off` both move the revision and both answer
+`VERSION_STALE` 409 to a stale one. `settings.read` projects the revision on
+every row (`SettingView.revision`, filled by `readSettings` in
+`reads/settings.ts`).
 `tests/records/business-settings.test.ts` holds the writer, including two
 administrators writing at once (its `describe` at `:287`), and
 `tests/commands/settings-revision.test.ts` holds the command path.
@@ -532,14 +533,13 @@ grant/delegation revocation controls" as declared operations
 is the grant manager's, within its own ceiling, and no actor gains a power:
 
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
-  grant's scope, or the delegation's purpose scope
-  (the `grant.revoke` and `delegation.revoke` declarations in `commands/surface.ts`,
-  `authorisedOn: 'target'`; `SCOPE_OF.target`,
-  `commands/prepare.ts`). A manager whose `manage` covers exactly that
-  scope reaches the handler. A body naming no such row is asked at business
-  scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
-  the handler runs. So is a manager whose `manage` does not cover the revoked
-  row's scope (`tests/commands/control-scope.test.ts`).
+  grant's scope, or the delegation's purpose scope (the `grant.revoke` and
+  `delegation.revoke` declarations in `commands/surface.ts`,
+  `authorisedOn: 'target'`; `SCOPE_OF.target`, `commands/prepare.ts`). A manager
+  whose `manage` covers exactly that scope reaches the handler. A body naming
+  no such row is asked at business scope, so a caller who manages nothing is
+  still `SCOPE_NOT_GRANTED` before the handler runs. So is a manager whose
+  `manage` does not cover the revoked row's scope (`tests/commands/control-scope.test.ts`).
 - `commands/authority-controls.ts` then asks the manager's own ceiling. For a
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
@@ -552,8 +552,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   delegation. A settled delegation is not revoked a second way.
 - Nothing is cached. The next call, including a replay of the same operation,
   re-evaluates through `effectiveGrants` or `resolveDelegation` on both entries
-  and is refused. A call already admitted finishes in its
-  own transaction (I10). `tests/api/controls-revoke.test.ts` and matrix case
+  and is refused. A call already admitted finishes in its own transaction
+  (I10). `tests/api/controls-revoke.test.ts` and matrix case
   (f) show this before and after. `tests/acceptance/i10-inflight.test.ts` holds
   a read open in its transaction, after `effectiveGrants` admitted it, while
   `grant.revoke` commits over HTTP. The read finishes with its content, and the
@@ -569,8 +569,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   it issued, was the holder's `write` on the task collection, through their
   person or actor subject, and no other live `write` covers the task, the same
   transaction releases the lease and classifies its hold `authority_revoked`,
-  with the grant id as the recorded cause
-  (`dependents` and `revokeGrantAsManager`, `commands/authority-controls.ts`). A holder whose
+  with the grant id as the recorded cause (`dependents` and
+  `revokeGrantAsManager`, `commands/authority-controls.ts`). A holder whose
   business-wide `write` is revoked while a record-scoped `write` on the task
   remains keeps the lease, and can renew and hand it back (`stillAuthorised`).
 - After authority loss the run returns to `planned`. The abandoned hold is
@@ -621,17 +621,18 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   revoked before 0023 keep a null cause.
 - `task.propose` with a `lineageId` that is not in the caller's business
   answers `GATE_NOT_FOUND` with a constant reason, so a foreign id and a
-  fabricated id get identical bytes (`proposeUnderLocks`, `core-runtime/src/propose.ts`).
+  fabricated id get identical bytes (`proposeUnderLocks`,
+  `core-runtime/src/propose.ts`).
 
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 `task.cancel` and `task.restart` are authorised on the task named in
-`recordId`, so a record-scoped `write` grant is enough
-(their declarations in `commands/surface.ts`). `task.pickup`, `task.heartbeat` and
-`task.handback` are authorised as `write` on the task their reservation or
-lease belongs to (`authorisedOn: 'claim'` in the same declarations), the scope the
-runtime and `grant.revoke` ask. A record-scoped writer works their own lease
+`recordId`, so a record-scoped `write` grant is enough (their declarations in
+`commands/surface.ts`). `task.pickup`, `task.heartbeat` and `task.handback` are
+authorised as `write` on the task their reservation or lease belongs to
+(`authorisedOn: 'claim'` in the same declarations), the scope the runtime and
+`grant.revoke` ask. A record-scoped writer works their own lease
 on that task. An id that resolves to nothing is asked at business scope, so a
 foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
@@ -640,8 +641,8 @@ grant revocation answers.
 
 ## The restricted worker role
 
-`ops_astro_worker` (0008) exists at the database level with **no privilege
-anywhere** (no schema, no table, no function), and the revokes are written out
+`ops_astro_worker` (0008) exists at the database level with no privilege
+anywhere (no schema, no table, no function), and the revokes are written out
 rather than left implied, because a privilege nobody granted and one somebody
 revoked read the same in the catalogue and only one of them was decided (I01
 R6). Work reaches the database through an authorised delegation and the
@@ -671,9 +672,9 @@ all four callers this section used to list as missing are built:
   API.md). A real external party is enrolled and read over HTTP
   ([The external party](#the-external-party-r4)). The seed enrols one and
   shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK`. The web
-  has no shared view yet, so an external party's task page is blank and no
-  browser case reads a task as an external person
-  ([WEB.md](WEB.md#known-gaps-against-the-pinned-mockup)).
+  draws an external party's task page as `SharedTaskDetail`, and the browser
+  case `casesR4SharedPage` reads a task as an external person
+  ([WEB.md](WEB.md)).
 - **The settings commands.** `settings.set_four_eyes_threshold`,
   `settings.set_client_sign_off` and `settings.read` are built and write by
   revision, as [Business settings](#business-settings) says.
@@ -691,7 +692,8 @@ What is still absent:
   task. A share issues `read` alone and no route issues a `comment` grant, so
   a shared party writes nothing until someone provisions one through
   `issueGrant` ([The external party](#the-external-party-r4)).
-- **Which task fields are `shared`** is an owner decision. As shipped none
-  are.
+- **Which task fields are `shared`** is an owner decision. Nathan's I09
+  ruling shares the task's `title` and `state` label; every other field is
+  `internal`.
 - **No acceptance.** Every mechanism here is implemented and tested; none is
   accepted on the integrated head.

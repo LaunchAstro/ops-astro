@@ -27,14 +27,14 @@ throwaway Postgres of their own, run controlled fixture suites through
 These probes need Docker. When it is not there they used to skip, and
 `pnpm run db:cases` exited 0 with eight probes unrun. That happened in CI
 too, where it made `database conformance gate` green over a job that had
-proved nothing. A skip is what this file exists to refuse, and skipping the whole
-file is the largest skip available. So the probes now read `CI`: with it set
-and no database reachable they fail, naming the reason, and the job goes red.
+proved nothing. This file exists to refuse a skip, and skipping the whole file
+is the largest skip available. So the probes now read `CI`: with it set and no
+database reachable they fail, naming the reason, and the job goes red.
 Locally, with `CI` unset, the skip and its message stay, because a developer
 without Docker is not a broken hosted job.
 
-When this job is green, what it proves is that the enforcement works. It
-proves nothing about the product, and it must not be read as if it did.
+A green on this job proves the enforcement works. It proves nothing about the
+product.
 
 ## Claiming product conformance
 
@@ -62,10 +62,10 @@ manifest's comment names the suites this applies to.
 **A suite that needs more than a database is not named either.**
 `tests/api/server-onerror.test.ts` and `tests/cli/mounted-cli.test.ts` each
 spawn the real `apps/api/server.ts` on the loopback port `SURFACE_API_PORT`
-names, and without it every case is skipped
-(`server-onerror.test.ts:23-25`, `mounted-cli.test.ts:31`, `:77`). The runner
-passes its environment through and does not set that port
-(`scripts/db-conformance.mjs:178`), so naming them would fail the job on a
+names, and without it every case that spawns it is skipped (`server-onerror.test.ts`'s 'U1:
+the real server answers a tampered decision with the named fault',
+`mounted-cli.test.ts:31`, `:77`). The runner passes its environment through
+and does not set that port (`scripts/db-conformance.mjs:178`), so naming them would fail the job on a
 skip. `tests/acceptance/restart-and-expiry.test.ts` stays out for the same
 reason: its container-restart case skips unless `L5_RESTART_CONTAINER_NAME`
 names the container (`restart-and-expiry.test.ts:135-139`), which
@@ -74,9 +74,9 @@ names the container (`restart-and-expiry.test.ts:135-139`), which
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
 child vitest process. The named suites then build their own throwaway
-databases through
-`databaseUrlFromEnvironment` in
-`packages/core-records/src/tenancy/testing/fresh-database.ts`, which takes `DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`: creating a
+databases through `databaseUrlFromEnvironment` in
+`packages/core-records/src/tenancy/testing/fresh-database.ts`, which takes
+`DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`. Creating a
 database and a login role is the owner's work, and the local contract gives
 `DATABASE_URL` to the runtime role `app`, which owns nothing and may create
 nothing. So **export `DATABASE_ADMIN_URL` as well as `DATABASE_URL` when you
@@ -189,8 +189,7 @@ how the run ended. Both were observed, not theorised: the runner returned exit
 Rule 8 is the named-but-undiscovered suite. A manifest can name a file that
 exists on disk and sits outside vitest's discovery. The runner's disk check
 passes, vitest never loads the file, the other named suites supply the counts,
-and the summary reads "2 named suite(s),
-1 test(s): 1 passed". So every manifest path must now be bound to an entry in
+and the summary reads "2 named suite(s), 1 test(s): 1 passed". So every manifest path must now be bound to an entry in
 `testResults`, and a suite absent from the report is a failure naming the path.
 Aggregate counts never satisfy this on their own.
 
@@ -205,6 +204,6 @@ the counts say.
 
 There are none. The service container is given a throwaway password in the
 workflow file, it is thrown away with the container, and it reaches nothing
-else. No repository secret is used by either job, and none should be: a check
+else. Neither job uses a repository secret, and neither should: a check
 that needs a real credential to prove a database was reached is proving
 something other than what it claims.

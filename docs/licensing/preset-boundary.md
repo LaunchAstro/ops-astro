@@ -44,7 +44,7 @@ Outside the boundary, and not allowed in a preset at all:
   formats.
 
 This is a product rule before it is a licence rule. A preset that can run
-code or change the schema is a security surface and a support burden. When a
+code or change the schema is a security risk and a support burden. When a
 preset exists, a check in continuous integration is meant to enforce the
 rule. No preset exists, so no check does.
 

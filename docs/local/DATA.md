@@ -3,8 +3,8 @@
 # The local slice's data layer
 
 The real Postgres the working slice runs on, the schema it carries, and how to
-start, migrate, seed and prove it. Local only: nothing here is a deployment, and
-nothing here is the Hub's `supabase_*` database or the draft's.
+start, migrate, seed and prove it. It is local only. Nothing here is a
+deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
@@ -16,9 +16,9 @@ nothing here is the Hub's `supabase_*` database or the draft's.
 | Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
 | Database  | `ops_astro_local`                                                                                     |
 
-The mount path matters. Postgres 18 keeps its cluster in a subdirectory of
-`/var/lib/postgresql`; a volume mounted at `/var/lib/postgresql/data` makes the
-server find a cluster in a directory it does not use and refuse to start.
+Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
+the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
+in a directory it does not use, and refuses to start.
 
 ## Roles, and the two URLs
 
@@ -30,9 +30,9 @@ server find a cluster in a directory it does not use and refuse to start.
   `ops_astro_app` that the migrations grant to. It owns nothing, may create
   nothing, and cannot bypass row security.
 
-With two roles, the server refuses runtime DDL instead of a convention
-forbidding it, and `force row level security` is the barrier rather than the
-last line of one.
+With two roles, the server refuses runtime DDL, so no convention has to forbid
+it. `force row level security` is then the barrier itself, not the last line of
+one.
 
 ## Commands
 
@@ -49,26 +49,26 @@ set -a; . ./.local/db.env; set +a
 pnpm exec vitest run             # the whole suite, against this server
 ```
 
-`db-down.sh` never removes the volume. Taking the data is a separate, deliberate
-act: `docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`db-down.sh` never removes the volume. To delete the data, run
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
 
 ## What the schema is
 
-**`migrations/` is the authority.** The directory holds every migration from
-`0001_tenancy` onward, `db-migrate.mjs` applies whatever is in it in order, and
-the prefix harness below reads the same directory. No number here or in any
-suite says which migration is the last one, because a number written down is a
-number the next migration makes wrong.
+`migrations/` is the authority. It holds every migration from `0001_tenancy`
+onward, `db-migrate.mjs` applies whatever is in it in order, and the prefix
+harness below reads the same directory. No number here or in any suite says
+which migration is the last one, because the next migration would make it
+wrong.
 
 The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
 identity, grant, record and command-envelope spine ported from
-`ops-astro-t1-draft@60f2009`. What was added after them belongs to two
-companions rather than to this file: the agent-authority, settings and
-delegation migrations are described in [AUTHORITY.md](AUTHORITY.md), and the
-proposal, gate, decision, budget, lease and attempt migrations in
-[RUNTIME.md](RUNTIME.md). Read `ls migrations/` for the current set.
+`ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
+[AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
+delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
+decision, budget, lease and attempt migrations. Read `ls migrations/` for the
+current set.
 
-There is **no `tasks` table**. A task is a record of the built-in `task` record
+There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
 table exactly:
 
@@ -84,18 +84,18 @@ table exactly:
 | `stage`         | `txt_5`              | `task.set_stage`                             |
 | `key`, `source` | `txt_1`, `txt_2`     | system                                       |
 
-There is no `status` column and no second coarse field: "is this done" is the
-machine category of the state record the task points at.
+There is no `status` column and no second coarse field. Whether a task is done
+is the machine category of the state record the task points at.
 
-Every field carries a write mode, slotted or not. A null write mode is named per
-field (`every field has a non-null write mode`,
+Every field carries a write mode, slotted or not. The conformance check names
+each field with a null write mode (`every field has a non-null write mode`,
 `packages/core-records/src/records/conformance.ts`).
 
 ## What the tenancy proofs are
 
 The suites under `tests/tenancy/` each run against a database of their own,
-migrated from empty. `DATABASE_URL` unset means they print that nothing ran
-rather than showing a green tick, and `scripts/db-conformance.mjs` fails a run
+migrated from empty. With `DATABASE_URL` unset they print that nothing ran
+instead of showing a green tick, and `scripts/db-conformance.mjs` fails any run
 in which a named suite skipped.
 
 | Suite                               | What it holds                                                                                        |
@@ -121,8 +121,8 @@ work savepoint released on success or rolled back on refusal
 connection sends one statement outside a transaction: the `postgres` driver's
 per-connection lookup of array types in `pg_type` (`fetch_types`), which the
 suite asserts exactly (`DRIVER_TYPE_LOOKUP` in `statement-capture-cases.ts`).
-Turning `fetch_types` off in `tenancy/database.ts` would remove it. Nobody has
-made that product decision.
+Turning `fetch_types` off in `tenancy/database.ts` would remove it, but nobody
+has made that product decision.
 
 The restricted-calls suites call as the application login (inside and outside
 the wrapper, own and other tenant), the application group, an outsider,
@@ -142,11 +142,14 @@ whom it refuses.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
-(`restricted-calls-prefixes.test.ts:18-25`, `:336`). At the full schema,
-`person_identifiers`, `person_merges` and `record_links` are seeded by the suite.
-The own-tenant insert positive control (TC:108) is counted per table: one insert
-through the production wrapper on each tenant table the application may insert
-into, each `rows 1`, and each rolled back (`restricted-calls.test.ts:250-306`).
+(the header of `restricted-calls-prefixes.test.ts`, and its
+`answers every caller as the contract says after <version>`). At the full
+schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
+itself. The suite counts the own-tenant insert positive control (TC:108) per
+table: one insert through the production wrapper on each tenant table the
+application may insert into, each `rows 1`, and each rolled back
+(`restricted-calls.test.ts`,
+`admits an own-business insert on every table the application inserts into`).
 
 I14's predicate-removed runs load `lockTask` and the command path from a
 disposable copy of `packages/core-records/src` and `packages/core-runtime/src`
@@ -156,30 +159,30 @@ and the replacement must match exactly once or the load fails.
 
 ### The pooled crossover
 
-The wrapper suite drives a handle itself; that is not the pooled failure. The
-pooled one is that A's operation finishes, the pool hands the same backend to
+The wrapper suite drives a handle itself, which is not the pooled failure. In
+the pooled failure, A's operation finishes, the pool hands the same backend to
 B, and something A left on the session is still there. Asking inside B's
 transaction cannot answer it, because B's own `SET LOCAL` overwrites whatever
 was left before B can read it.
 
 So `pooled-crossover.test.ts` runs two real `task.create` commands over one
 pool of size 1, records `pg_backend_pid()` at every step and asserts a single
-backend, and reads the connection **between** the transactions through
-`connectObserved`. That factory is the only supported door onto a pooled
+backend, and reads the connection between the transactions through
+`connectObserved`. That factory is the only supported way onto a pooled
 connection outside the wrapper, and it exists for this proof. `connect`, which
-is what the application gets, has no such door.
+the application gets, has no such way in.
 
-What the mutation showed, with the wrapper's `set_config` `is_local` argument
-temporarily `false`: the setting survives A's commit, a no-setting read on the
-reused backend returns A's rows, and the setting is still A's after a rollback.
-What it did **not** show is B reading A's row, because B's own setup overwrites
-the session-wide value first. That case passes under the leak, so it is not
-what the proof rests on.
+With the wrapper's `set_config` `is_local` argument temporarily `false`, the
+mutation showed three things. The setting survives A's commit, a no-setting read
+on the reused backend returns A's rows, and the setting is still A's after a
+rollback. It did not show B reading A's row, because B's own setup overwrites
+the session-wide value first. That case passes under the leak, so the proof
+does not rest on it.
 
 ### The migration prefixes
 
-A conformance set run against the end state answers a question nobody asked.
-An installation is really in the state after `0001`, and a deploy that stops
+Running the conformance set only against the end state misses real states. An
+installation is really in the state after `0001`, and a deploy that stops
 between two migrations leaves it in one of them. So
 `packages/core-records/src/tenancy/testing/prefix-harness.ts` applies the
 migrations one at a time and, after each, runs the tenancy catalogue, the
@@ -196,17 +199,17 @@ outside the group, no `CREATE` on any schema, no `TRUNCATE` for the application
 role, and no superuser or `bypassrls`. `TRUNCATE` is on the list because row
 security does not filter it: a role holding it empties every tenant's rows
 without consulting a policy. The harness also names the schemas it found, so
-"storage is denied" is answered with a catalogue: this tree has `ops` and
-`public` and no `storage` schema, which is an absence rather than a denial.
+"is storage denied?" gets a catalogue answer. This tree has `ops` and `public`
+and no `storage` schema, which is an absence, not a denial.
 
-**A new migration extends the proof by itself.** The prefixes are read from
-`migrations/`; there is no list here, in the suite or in a manifest. Add the
+A new migration extends the proof by itself. The harness reads the prefixes
+from `migrations/`, with no list here, in the suite or in a manifest. Add the
 next `migrations/NNNN_*.sql` and it is covered.
 
 ## What a write is checked against
 
-Two rules, both in `packages/core-records/src/commands/prepare.ts`, because a
-rule held in one handler is a rule the next handler forgets.
+Two rules, both in `packages/core-records/src/commands/prepare.ts`. A rule held
+in one handler is a rule the next handler forgets.
 
 **The target is locked before its revision is compared.** A targeted write reads
 its record `for update` and only then compares `expectedRevision`. Without the
@@ -214,8 +217,7 @@ lock, two writes presenting the same revision each read the record as it stood
 before the other's uncommitted write, and both passed the comparison. The second
 then restored what the first had replaced and still told its caller `applied`.
 With the lock, the second waits, re-reads the committed revision and is refused
-`VERSION_STALE`. Optimistic concurrency is only as good as the row the
-comparison reads. A declaration with `targetLock: 'runtime'` (`task.propose`) is
+`VERSION_STALE`. A declaration with `targetLock: 'runtime'` (`task.propose`) is
 the one exception: `prepareCommand` only reads that task, because the runtime
 takes its own locks in its own order, and the handler compares the revision once
 it holds them.
@@ -232,18 +234,18 @@ is checked against the task that the body's reservation or lease belongs to
 command is checked against the business, whatever identifiers its body carries.
 Deriving the scope from `request.recordId` instead let a record-scoped grant
 turn a refused `task.create` into an accepted one by naming the record it did
-hold. An identifier an untargeted command has no use for is now refused
-`COMMAND_BODY_INVALID` naming the field, rather than ignored
-(`refuseIrrelevantTarget`): a body whose identifier the server quietly drops is
-a body the caller believes was honoured.
+hold. An untargeted command that carries an identifier it has no use for is
+now refused `COMMAND_BODY_INVALID` naming the field (`refuseIrrelevantTarget`).
+If the server silently dropped the identifier, the caller would believe it had
+been honoured.
 
 ### A setting is checked against its revision
 
 `business_settings` is not a record, so `prepare.ts` does not reach it, but the
-rule is the same one. Migration `0020_business_settings_revision.sql` gives the
+same rule applies. Migration `0020_business_settings_revision.sql` gives the
 table `revision integer not null default 1` with a check that it is at least 1.
-The default is what upgrades an installation that already had settings: every
-existing row starts at 1, so no reader ever meets a null revision.
+The default upgrades an installation that already had settings. Every existing
+row starts at 1, so no reader ever meets a null revision.
 
 The revision moves in one place. `writeBusinessSetting`
 (`packages/core-records/src/records/business-settings.ts`) reads the row
@@ -255,7 +257,7 @@ Both settings commands write through it (`commands/settings-write.ts`), so
 every command write moves the revision by exactly one, and `settings.read`
 hands the current number back.
 
-There is **no trigger**, unlike `records.revision`. The migration's header says
+There is no trigger, unlike `records.revision`. The migration's header says
 why: a trigger would bump the revision for every writer of the table, fixtures
 and migrations included. So a statement that updates `business_settings`
 without going through `writeBusinessSetting` leaves the revision where it was.
@@ -302,12 +304,12 @@ business settings, enrols one agent login per business with a budget cap
 `.local/delegation.env` once, reading them back on every later run. It is
 idempotent by lookup: a second run finds every row and inserts none.
 
-**It never seeds a task.** A seeded task is a task nobody created, and it would
+It never seeds a task. Nobody would have created a seeded task, and it would
 make every acceptance case pass without the product working.
 
 Two identities carry negative cases:
 
-- `noah@alpha.local` is a real member of A with **no grants**, for "an
+- `noah@alpha.local` is a real member of A with no grants, for "an
   authenticated member without task collection scope" (N2).
 - `orphan@alpha.local` is a verified login with no mapping and no membership,
   for `AUTH_NO_MEMBERSHIP` (N2's second half).
@@ -318,7 +320,7 @@ and gives it a login and an acting identity with no membership and no business
 grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedExternalUser`).
 It shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK` naming a
 task by key or id, through `shareRecord` under the admin's own `share` grant
-(`shareWithExternal`). The tests make their own with
+(`shareWithExternal`). The tests make their own external party with
 `tests/acceptance/world.ts`'s `enrolExternal`.
 
 **Carry the existing external entry before seeding against a shared GoTrue.**

@@ -50,9 +50,9 @@ prove, and it gives them the re-login door.
 
 Both codes mean the same thing to the screen: the session has ended. The client
 (`operations/client.ts`) is the one place that recognises them, for a read and a
-mutation alike. It raises `onSessionEnded` with the refusal the server
-sent, and on that signal the application drops the session, remembers the address
-the person was on, and goes to `/sign-in`, where a notice (`role="status"`,
+mutation alike. It raises `onSessionEnded` with the refusal the server sent. On
+that signal the application drops the session, remembers the address the person
+was on, and goes to `/sign-in`, where a notice (`role="status"`,
 `data-reason="session-ended"`) says the session has ended, quotes the server's
 own code so the person can repeat it, and says that anything unsaved was not
 saved. Signing in again returns to the remembered address, so a task page stays
@@ -156,22 +156,22 @@ confirmed write is in `confirmed.ts`.
 
 `task.read` has carried the task's comments since L3 (`docs/local/API.md`);
 `/task/:key` draws them through `Comments` (`screens/task/Comments.tsx`). Each
-one is an `article[data-comment-id]` carrying
-`data-audience`, and the audience is printed in words above the body, because
-"who may read this" is the one thing the person writing the next comment needs
-to know and the one thing a colour cannot say.
+one is an `article[data-comment-id]` carrying `data-audience`, and the audience
+is printed in words above the body, because "who may read this" is the one thing
+the person writing the next comment needs to know and the one thing a colour
+cannot say.
 
 The form is `form#task-comment`: a required `textarea#comment-body`, a
 `select#comment-audience` (internal or client) and a `select#comment-kind`, with
 `button[data-comment="post"]`. Posting goes through `task.comment` with the
-revision the page holds; that command writes a record beside the task and
-**leaves the task's own revision alone**, so nothing else on the page goes stale
+revision the page holds. That command writes a record beside the task and
+leaves the task's own revision alone, so nothing else on the page goes stale
 because somebody said something.
 
 **The list is the server's.** After a post the screen rereads `task.read`; it
 never appends the comment it just sent. A screen that appended would be drawing
-a row that may never have been stored, which is B7's failure in friendlier
-clothes.
+a row that may never have been stored, which is B7's failure in another
+form.
 
 **A refusal is quoted and the box is closed.** There is no grant read anywhere
 in this build, so the screen cannot know whether a person holds `comment` before
@@ -186,15 +186,16 @@ Keyboard: the textarea, the two selects and the button are ordinary controls in
 document order after the details form, each with a `label` bound by `htmlFor`.
 Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
 -> post` and nothing is reachable only by mouse. Photographed at 1480, 900 and
-390 on 2026-09-23 with no horizontal overflow at any of the three; the
-captures are held with the build run's evidence, not in the tree. The dark-theme gap
-recorded below is this page's too: there is no dark build to photograph.
+390 on 2026-09-23 with no horizontal overflow at any of the three. The
+captures are held with the build run's evidence, not in the tree. The
+dark-theme gap recorded below is this page's too: there is no dark build to
+photograph.
 
 ## Proposals on a task
 
 The task page draws every proposal on the task under the comments, out of the
 `proposals` projection `task.read` already carries (`docs/local/API.md`,
-"Proposal projection"). There is no separate read, and that is the point: the
+"Proposal projection"). There is no separate read, on purpose. The
 `versionId` an approve control sends is the version whose evidence and digest are
 drawn beside it, from one answer, so the page cannot offer a decision on
 something it never displayed.
@@ -216,7 +217,7 @@ tampered link look sound. And whether a gate has expired is the server's
 few minutes out cannot offer a decision the server is certain to refuse or hide
 one it would have accepted.
 
-Three honest states, and no fourth. An empty projection says nobody has proposed
+There are three states and no fourth. An empty projection says nobody has proposed
 anything (`[data-proposals="none"]`). A task read that carried no `proposals` key
 at all says so instead (`[data-proposals="not-carried"]`), because an absent
 projection and an empty one are different facts and defaulting one to the other
@@ -252,14 +253,13 @@ What this screen does not read back, and cannot:
   whether a person may decide before they ask. `session.capabilities` exists
   ([API.md](API.md#reads)), but only `/settings` reads it. A member without
   `task:decide` presses Approve once, reads the server's `SCOPE_NOT_GRANTED`,
-  and the controls close. That is honest but it means the first press of a
+  and the controls close. The answer is honest, but the first press of a
   control a person may not use is always a refused request. The same gap
   applies to comments.
 - **Only the seeded admin holds `task:decide`.** `scripts/local-seed.mjs` gives
   its admin `task:decide` beside six other `task` actions, `person:read`,
   `settings:manage` and `settings:read` (`GRANTS_BY_ROLE` in
-  `scripts/local-seed.mjs`); a
-  member holds neither `decide` nor `manage`. So the admin in each business can
+  `scripts/local-seed.mjs`). A member holds neither `decide` nor `manage`. So the admin in each business can
   approve through the product and a member cannot. The browser case still
   issues its own `task:decide` grant through the authority path and revokes it
   afterwards, so its result does not depend on the seed.
@@ -496,24 +496,25 @@ running API while a member's `/task/` page is open, and the member's only
 authority is one record grant. It records three rows: the next fetch is denied,
 an authorised response held back from before the revocation does not restore
 the task, and a later read is still denied. It runs after P and before B6/B7
-(`slice-acceptance.mjs:97-98`), because P issues and revokes a grant and B6/B7
-stop the API. The last recorded `pnpm verify:browser` run with these rows in it
+(`casesI10OpenPage` follows `casesProposals` in `slice-acceptance.mjs`),
+because P issues and revokes a grant and B6/B7 stop the API. The last recorded `pnpm verify:browser` run with these rows in it
 was at `6f15252`. None is recorded at this head.
 
 The R4 rows (`r4-shared-page.mjs`) follow I10's order on an external party's
 shared page: the shared view opens, the next fetch after `grant.revoke` is
 denied, an authorised response held from before cannot restore it, and a later
-read stays denied. They run after I10 (`slice-acceptance.mjs:99`). The revoked
+read stays denied. They run after I10 (`casesR4SharedPage` in
+`slice-acceptance.mjs`). The revoked
 read answers 403 `AUTH_NO_MEMBERSHIP`, because with its only share gone the
 party has no standing left to resolve (`resolveLogin` and `standsOnShares` in
 `packages/core-records/src/identity/login-resolution.ts`). An unshared sibling
-task or the board answers `NOT_FOUND` while the share is live
-(the row's `outsiderNotFound` in `READ_CATALOGUE`,
+task or the board answers `NOT_FOUND` while the share is live (the row's
+`outsiderNotFound` in `READ_CATALOGUE`,
 `packages/core-records/src/reads/catalogue.ts`, checked by `serveRead` in
-`reads/dispatch.ts`). Neither
-leaks content.
+`reads/dispatch.ts`). Neither leaks content.
 
-`surface-final.mjs` runs after R4 (`slice-acceptance.mjs:100`). D03:
+`surface-final.mjs` runs after R4 (`casesSurfaceFinal` in
+`slice-acceptance.mjs`). D03:
 `task.update` naming `client`, `client_visible` or `delegate` is refused
 `TRANSITION_PROTECTED` and the stored row is unchanged. D05: a classified
 `preset.plan` is accepted and one with an unclassified field is refused
@@ -522,7 +523,7 @@ external party reads its shared task, is refused the sibling task and the
 board, and is refused the shared task after `grant.revoke`. Every call is
 `operations/client.ts` inside the page. Both files also run on their own.
 
-`pnpm verify:browser` exits zero only when **every** row passed. `writeResults`
+`pnpm verify:browser` exits zero only when every row passed. `writeResults`
 returns the rows that did not pass, whether failed, pending or unrun, so a run
 that stopped early, or that recorded a required case as pending a sibling lane,
 cannot leave the command looking like an accepted one. The `pending` and `unrun`
@@ -577,8 +578,8 @@ places this build does not yet reach it.
   row (`readSettings` in `packages/core-records/src/reads/settings.ts`). A
   running API built from an older head does not send it. Where it does not, the
   path and its `VERSION_STALE` conflict are held by mounted cases alone, and
-  browser row S5 records `pending` with the reason. Where it does, S5 runs with no edit. Which of the
-  two happened is in S5's own row, not in this document.
+  browser row S5 records `pending` with the reason. Where it does, S5 runs with
+  no edit. Which of the two happened is in S5's own row, not in this document.
 - An unsaved edit does not survive re-login. When the session ends the draft
   goes with the screen, and the notice on `/sign-in` says so rather than
   implying it was kept. Preserving a draft across a sign-in would mean holding
