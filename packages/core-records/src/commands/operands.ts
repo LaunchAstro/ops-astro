@@ -36,6 +36,30 @@ export function refuseCreateOperands(fields: unknown): CommandRefusal | undefine
   return invalid('fields', 'Send fields as an object of field keys to values, such as { title }.');
 }
 
+/**
+ * `task.update` writes the fields it is sent as `task.create` does, so it needs
+ * the same map. The five owning operations (`task.assign` and the rest, in
+ * `tasks-state.ts`) read `fields` the same way and want the same check.
+ */
+export function refuseUpdateOperands(fields: unknown): CommandRefusal | undefined {
+  return refuseCreateOperands(fields);
+}
+
+/**
+ * `task.reparent` takes the new parent, or `null` for the top level. An absent
+ * `parentId` is not a request for the top level: taking it as one would detach
+ * the task and take it off its board, an access change the caller never asked
+ * for. A string that is not an identifier is the envelope's (`prepare.ts`,
+ * `refuseMalformedIdentifier`), answered as one that names nothing.
+ */
+export function refuseReparentOperands(parentId: unknown): CommandRefusal | undefined {
+  if (parentId === null || typeof parentId === 'string') return undefined;
+  return invalid(
+    'parentId',
+    'Send the parent task’s id, or null to move the task to the top level.',
+  );
+}
+
 /** `task.restore` restores one batch, which `task.trash` named. */
 export function refuseRestoreOperands(batchId: unknown): CommandRefusal | undefined {
   if (typeof batchId === 'string' && batchId !== '') return undefined;

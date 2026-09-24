@@ -33,14 +33,15 @@ import { readFieldDefinitions } from '../records/field-store.ts';
 import { refuseGenericWrite } from '../records/fields.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import {
+  DERIVED_ON_CREATE,
   deriveSource,
   mergeFieldValues,
   nextTaskKey,
   planTaskPlacement,
 } from '../tasks/placement.ts';
-import { fromRecords, refuseCommand } from './refusal.ts';
+import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
-import { refuseCreateOperands } from './operands.ts';
+import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { TaskStateRow } from '../tasks/state.ts';
@@ -185,6 +186,9 @@ export async function updateTask(
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
 
+  // First, because every check below reads `fields` as a map.
+  const operands = refuseUpdateOperands(request.fields);
+  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_UPDATE);
   if (spoofed !== undefined) return spoofed;
 
@@ -196,6 +200,9 @@ export async function updateTask(
 
   const mistyped = refuseWrongValueType(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
+
+  const placed = refusePlacement(request.fields, target.data);
+  if (placed !== undefined) return refused(placed);
 
   const escalated = escalations(definitions, request.fields, target.data);
   if (escalated.length > 0) {
@@ -241,6 +248,38 @@ function escalations(
     .filter((field) => field.key === 'board' && field.key in fields)
     .filter((field) => (fields[field.key] ?? null) !== (existing[field.key] ?? null))
     .map((field) => `${field.key}=${field.escalatingOperation ?? ''}`);
+}
+
+/**
+ * The two placement answers an edit cannot give, refused by name before the
+ * database would be asked.
+ *
+ * `board_rank` is generic by classification and still not a number a caller
+ * sends: a rank is placed between neighbours by `task.rank` (API.md, "A rank is
+ * always placed between neighbours and never sent as a number"), because two
+ * clients each writing rank 5 would collide. And a subtask sits under its
+ * parent rather than in a section, so a section on one is refused here, as
+ * `task.create` and `task.move` refuse it, rather than reaching
+ * `records_subtask_has_no_board_section` and coming back a fault.
+ */
+function refusePlacement(
+  fields: FieldValues,
+  existing: Readonly<Record<string, unknown>>,
+): CommandRefusal | undefined {
+  const derived = DERIVED_ON_CREATE.filter((key) => key in fields);
+  if (derived.length > 0) {
+    return refuseCommand('PLACEMENT_IS_DERIVED', derived, [
+      'A rank is the server’s. Call task.rank with the neighbours to move a task.',
+    ]);
+  }
+  if ((existing['parent'] ?? null) !== null && (fields['board_section'] ?? null) !== null) {
+    return refuseCommand(
+      'PLACEMENT_IS_DERIVED',
+      ['board_section'],
+      ['A subtask sits under its parent, not in a board section.'],
+    );
+  }
+  return undefined;
 }
 
 /** Only the offending keys, and only for the audit. */

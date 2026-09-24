@@ -13,10 +13,17 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
-import { RANK_GAP, mergeFieldValues, planTaskPlacement } from '../tasks/placement.ts';
+import {
+  RANK_GAP,
+  mergeFieldValues,
+  planTaskPlacement,
+  wouldCloseParentLoop,
+} from '../tasks/placement.ts';
 import { readFieldDefinitions } from '../records/field-store.ts';
-import { fromRecords, refuseCommand } from './refusal.ts';
+import { checkAuthority, subjectsOf } from '../authority/grants.ts';
+import { fromReasoned, fromRecords, refuseCommand } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { refuseReparentOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
@@ -55,9 +62,24 @@ export async function reparentTask(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('reparentTask: the envelope read no target');
+  // First: an absent `parentId` would otherwise read as the top level below.
+  const operands = refuseReparentOperands(parentId);
+  if (operands !== undefined) return refused(operands);
   if (parentId === target.id) {
     return refused(
       refuseCommand('PLACEMENT_IS_DERIVED', ['parent'], ['A task cannot be its own parent.']),
+    );
+  }
+  if (
+    parentId !== null &&
+    (await wouldCloseParentLoop(tx, context.spine.taskTypeId, target.id, parentId))
+  ) {
+    return refused(
+      refuseCommand(
+        'PLACEMENT_IS_DERIVED',
+        ['parent'],
+        ['A task cannot be put under one of its own subtasks, at any depth.'],
+      ),
     );
   }
 
@@ -87,7 +109,13 @@ export async function reparentTask(
  *
  * The authority check the envelope already ran was for the record. Reaching
  * the destination board is a second question, and it is asked here rather than
- * assumed: a caller who may write this task but not that board is refused.
+ * assumed: a caller who may write this task but not that board is refused. It
+ * is the envelope's question, `write` on `task`, put to the board's own record,
+ * so a business grant covers every board and a record grant covers the one it
+ * names. It is asked before the board is looked up, so a caller refused it
+ * gets one answer for an unreached board, a foreign one and a fabricated one.
+ * Moving a task off every board (`board: null`) reaches no container and asks
+ * nothing further.
  */
 export async function moveTask(
   tx: TenantQuery,
@@ -111,6 +139,13 @@ export async function moveTask(
   if (mistyped !== undefined) return refused(mistyped);
 
   if (board !== null) {
+    const reached = await checkAuthority(tx, subjectsOf(context.session), {
+      collection: 'task',
+      action: 'write',
+      scope: { kind: 'record', id: board },
+    });
+    if (!reached.ok) return refused(fromReasoned(reached.refusal));
+
     const found = await tx.query<{ readonly id: string }>(
       `select id from records
         where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,

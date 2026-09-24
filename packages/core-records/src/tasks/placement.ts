@@ -124,6 +124,11 @@ export async function planTaskPlacement(
   };
 }
 
+/**
+ * Locked `for share` (a trash updates non-key columns, so not `for key share`):
+ * a trash of the parent then waits and takes the new child into its batch, or
+ * the child waits for the trash and is refused `PARENT_TRASHED`.
+ */
 async function readParent(
   tx: TenantQuery,
   taskTypeId: string,
@@ -131,10 +136,40 @@ async function readParent(
 ): Promise<ParentRow | undefined> {
   const rows = await tx.query<ParentRow>(
     `select ${BOARD} as board, deleted_at, trash_batch_id from records
-      where business_id = $1 and record_type_id = $2 and id = $3`,
+      where business_id = $1 and record_type_id = $2 and id = $3
+        for share`,
     [tx.businessId, taskTypeId, parentId],
   );
   return rows[0];
+}
+
+/**
+ * Would putting `taskId` under `parentId` close a loop, at any depth? Only a
+ * reparent writes `parent` on an existing task, so reparents are serialised per
+ * business by the advisory lock, and the walk, a later statement, sees what the
+ * other committed under read committed. A row seen before ends the walk.
+ */
+export async function wouldCloseParentLoop(
+  tx: TenantQuery,
+  taskTypeId: string,
+  taskId: string,
+  parentId: string,
+): Promise<boolean> {
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `task.reparent:${tx.businessId}`,
+  ]);
+  const rows = await tx.query<{ readonly reaches: boolean }>(
+    `with recursive up (id, parent) as (
+       select id, ${PARENT} from records
+        where business_id = $1 and record_type_id = $2 and id = $3
+       union all
+       select r.id, r.${PARENT} from records r join up on r.id = up.parent
+        where r.business_id = $1 and r.record_type_id = $2
+     ) cycle id set looped using path
+     select exists (select 1 from up where id = $4) as reaches`,
+    [tx.businessId, taskTypeId, parentId, taskId],
+  );
+  return rows[0]?.reaches === true;
 }
 
 /**
