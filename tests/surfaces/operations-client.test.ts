@@ -9,7 +9,7 @@
 // wrong. Here the request itself is the assertion.
 
 import { describe, expect, it } from 'vitest';
-import { OperationsClient, operationPath } from '../../apps/web/src/operations/client.ts';
+import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
 
 interface Captured {
@@ -56,13 +56,21 @@ describe('route derivation', () => {
     expect(calls[0]?.url).toBe('/api/b/alpha/task/create');
   });
 
-  it('derives every operation through the surface, including the three reads', () => {
+  it('derives every operation through the surface, including the three reads', async () => {
     // The mutations must agree with `pathOf` exactly; the reads follow the same
     // rule, which is what keeps one surface rather than two.
-    expect(operationPath('task.assign')).toBe(pathOf('task.assign'));
-    expect(operationPath('task.read')).toBe('/task/read');
-    expect(operationPath('task.board')).toBe('/task/board');
-    expect(operationPath('person.list')).toBe('/person/list');
+    const { fetch, calls } = stub({ ok: true });
+    const client = make(fetch);
+    await client.mutate('task.assign', {});
+    await client.read('task.read', {});
+    await client.read('task.board', {});
+    await client.read('person.list', {});
+    expect(calls.map((one) => one.url)).toStrictEqual([
+      `/api/b/alpha${pathOf('task.assign')}`,
+      '/api/b/alpha/task/read',
+      '/api/b/alpha/task/board',
+      '/api/b/alpha/person/list',
+    ]);
   });
 
   it('escapes the business key rather than pasting it into the path', async () => {

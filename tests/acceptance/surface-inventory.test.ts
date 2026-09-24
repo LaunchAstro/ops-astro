@@ -33,11 +33,7 @@ import {
   type CommandName,
 } from '../../packages/core-records/src/commands/surface.ts';
 import { accepts, createCli, usage } from '../../apps/cli/client.ts';
-import {
-  operationPath,
-  READ_NAMES,
-  type OperationName,
-} from '../../apps/web/src/operations/client.ts';
+import { OperationsClient, READ_NAMES } from '../../apps/web/src/operations/client.ts';
 import {
   agentPath,
   bearer,
@@ -215,16 +211,29 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     expect((invented.body as Record<string, unknown>)['code']).toBe('COMMAND_UNKNOWN');
   }, 30_000);
 
-  it('spells every declaration the same way on all four surfaces', () => {
-    const disagreements: string[] = [];
-    for (const declaration of COMMAND_SURFACE) {
-      const server = pathOf(declaration.name);
-      // The web client derives its own path from its own name type. If the two
-      // derivations disagree, a caller reaches a route the server does not have.
-      const web = operationPath(declaration.name as OperationName);
-      if (server !== web) disagreements.push(`${declaration.name}: ${server} vs ${web}`);
-    }
-    expect(disagreements).toStrictEqual([]);
+  it('has the web client post every declaration to the route the server mounts', async () => {
+    // The URL the client actually requests, not a path function compared with
+    // itself: a read through `read()`, anything else through `mutate()`. If
+    // the two disagree, a caller reaches a route the server does not have.
+    const requested: string[] = [];
+    const client = new OperationsClient({
+      base: '/api',
+      businessKey: 'alpha',
+      token: null,
+      fetch: ((url: string | URL | Request) => {
+        requested.push(String(url));
+        return Promise.resolve(Response.json({ ok: true }));
+      }) as typeof globalThis.fetch,
+      newOperationId: randomUUID,
+    });
+    await Promise.all(
+      COMMAND_SURFACE.map(({ name }) => {
+        const read = READ_NAMES.find((one) => one === name);
+        return read === undefined ? client.mutate(name, {}) : client.read(read, {});
+      }),
+    );
+    const server = COMMAND_SURFACE.map(({ name }) => `/api/b/alpha${pathOf(name)}`);
+    expect(requested.toSorted()).toStrictEqual(server.toSorted());
   });
 
   it('reaches every declared read as a read on the mounted app, with none left over', () => {
