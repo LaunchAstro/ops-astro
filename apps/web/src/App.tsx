@@ -14,7 +14,7 @@ import { Shell, type RailEntry } from '@launchastro/ui';
 import { ROUTES, matchRoute, pathTo } from './routes.ts';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, tabStorage, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { SCREENS } from './screen-registry.tsx';
 
@@ -174,7 +174,7 @@ export function App(props: AppProps): ReactElement {
         grantKey,
         params: match?.params ?? {},
         notice,
-        storage: typeof sessionStorage === 'undefined' ? null : sessionStorage,
+        storage: tabStorage(),
       })
     );
 

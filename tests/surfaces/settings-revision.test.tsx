@@ -192,4 +192,43 @@ describe('the settings screen writes by exact revision', () => {
     expect(page.find('[data-settings="four-eyes-value"]')?.textContent).toContain('1200');
     await page.unmount();
   });
+
+  it('a press made before the reread lands writes nothing, then writes against the reread (O7)', async () => {
+    const api = server({ revision: 7, stale: true });
+    // Every read after the first write is held until the test lets it through.
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let wrote = false;
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      const at = String(url);
+      if (at.includes('/settings/set_')) wrote = true;
+      if (wrote && at.endsWith('/settings/read')) await held;
+      return api.fetch(url, init);
+    }) as unknown as typeof globalThis.fetch;
+    const page = await mount(screen(fetch));
+    await tick();
+
+    await page.type('#settings-four-eyes', '1200');
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+    expect(page.find('[data-settings="conflict"]')).not.toBeNull();
+
+    // The reread is still in flight: the row on screen is the one that lost.
+    await page.click('[data-settings="confirm-four-eyes"]');
+    await tick();
+    expect(writesOf(api)).toHaveLength(1);
+
+    release?.();
+    await tick();
+    expect(page.find('[data-settings="conflict-server"]')?.textContent).toContain('999');
+    await page.click('[data-settings="confirm-four-eyes"]');
+    await tick();
+
+    const again = writesOf(api);
+    expect(again).toHaveLength(2);
+    expect(again[1]?.body['expectedRevision']).toBe(8);
+    await page.unmount();
+  });
 });

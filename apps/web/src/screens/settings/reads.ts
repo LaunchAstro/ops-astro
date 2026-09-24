@@ -7,6 +7,7 @@
 // surface's reads. What stays here is what is particular to this screen: which
 // two keys it draws, which grant its commands take, and how a row is read.
 
+import type { ReadState } from '../../data/authorised-read.ts';
 import type { ReadName } from '../../operations/client.ts';
 import type { Grant, SettingRow, SettingsReadResult } from '../../operations/shapes.ts';
 
@@ -24,6 +25,22 @@ export const SETTINGS_MANAGE = { collection: 'settings', action: 'manage' } as c
 
 export const FOUR_EYES = 'four_eyes_threshold';
 export const SIGN_OFF = 'client_sign_off_required';
+
+/**
+ * The rows in hand: the answer, or while a reread is in flight the previous
+ * answer, which `loading` keeps as its `value`. A denial or an outage has none.
+ */
+export function rowsInHand(state: ReadState<SettingsReadResult>): SettingsReadResult | null {
+  switch (state.outcome) {
+    case 'ready':
+    case 'empty':
+      return state.value;
+    case 'loading':
+      return state.value;
+    default:
+      return null;
+  }
+}
 
 /** The row for a key, or nothing when the read has not answered or does not carry it. */
 export function settingOf(result: SettingsReadResult | null, key: string): SettingRow | null {

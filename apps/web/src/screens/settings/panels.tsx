@@ -65,8 +65,8 @@ export function CapabilityBanner(props: {
   readonly state: ReadState<CapabilitiesResult>;
 }): ReactElement {
   const state = props.state;
-  const answered = state.outcome === 'ready' || state.outcome === 'empty';
-  const short = answered && !holdsManage(state.value?.grants ?? []);
+  const short =
+    (state.outcome === 'ready' || state.outcome === 'empty') && !holdsManage(state.value.grants);
   return (
     <div className="readstate" data-settings="capabilities" data-outcome={state.outcome}>
       {state.outcome === 'denied' && state.refusal !== null ? (
