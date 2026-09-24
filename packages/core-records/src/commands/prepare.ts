@@ -584,6 +584,10 @@ export async function prepareCommand(
     refuseMistypedIdentifier(request, declaration) ?? refuseUnstorableOperands(request);
   if (mistyped !== undefined) return mistyped;
 
+  // Before any task row: a command that rewrites a subtree's links takes its
+  // per-business lock first, so it never holds a row while waiting for it.
+  if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
+
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
     // F1. A target the runtime locks in its own order is only read here. The
@@ -642,6 +646,13 @@ const TENANT_PREDICATE = 'business_id = $1';
  * nothing, and the second caller gets `NOT_FOUND` — which is the same answer
  * it would have got a moment later anyway.
  */
+/** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
+export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `${key}:${tx.businessId}`,
+  ]);
+}
+
 export async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,

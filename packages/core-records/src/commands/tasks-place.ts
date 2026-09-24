@@ -18,6 +18,7 @@ import {
   lockSiblings,
   mergeFieldValues,
   planTaskPlacement,
+  rankAfterSiblings,
   siblingRanks,
   wouldCloseParentLoop,
 } from '../tasks/placement.ts';
@@ -277,13 +278,19 @@ export async function moveTask(
     }
   }
 
+  // Onto another board, the task ranks after that board's last task, as a new
+  // one would: the rank it had was among the old board's tasks and can equal
+  // one already here. A section change within the board keeps it.
+  let boardRank: number | undefined;
   if (board !== ((target.data['board'] as string | undefined) ?? null)) {
     const carried = await carryBoardToDescendants(tx, context, target.id, board);
     if (carried !== undefined) return refused(carried);
+    boardRank = await rankAfterSiblings(tx, context.spine.taskTypeId, null, board);
   }
 
-  const data = mergeFieldValues(target.data, { board, board_section: boardSection });
-  return await writeData(tx, context, data, { board, board_section: boardSection });
+  const placed = boardRank === undefined ? {} : { board_rank: boardRank };
+  const data = mergeFieldValues(target.data, { board, board_section: boardSection, ...placed });
+  return await writeData(tx, context, data, { board, board_section: boardSection, ...placed });
 }
 
 const NEIGHBOUR_NOT_ADJACENT = [
@@ -313,9 +320,14 @@ const NEIGHBOUR_NOT_ADJACENT = [
 export async function rankTask(
   tx: TenantQuery,
   context: CommandContext,
-  afterId: string | null,
-  beforeId: string | null,
+  sentAfterId: string | null,
+  sentBeforeId: string | null,
 ): Promise<HandlerOutcome> {
+  // A uuid names one task in either case. Lower-cased once here, so the
+  // comparisons below (with the target, with each other, with the rows read)
+  // agree with Postgres, which reads both forms as the same id.
+  const afterId = sentAfterId?.toLowerCase() ?? null;
+  const beforeId = sentBeforeId?.toLowerCase() ?? null;
   const target = context.target;
   if (target === undefined) throw new Error('rankTask: the envelope read no target');
   if (afterId === null && beforeId === null) {

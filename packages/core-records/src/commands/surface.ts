@@ -164,6 +164,16 @@ export interface CommandDeclaration {
    * it, and the handler compares the revision once those locks are held (F1).
    */
   readonly targetLock: 'command' | 'runtime';
+  /**
+   * A per-business advisory lock the envelope takes before it locks the
+   * target, for commands that rewrite a subtree's parent links or boards
+   * (`task.reparent`, `task.move`). The widest lock goes first
+   * (TRANSACTION-CONTRACT lock order; core-runtime `locks.ts`, the chain
+   * class), so no two of them ever hold a task row while waiting for it: the
+   * order is this lock, then the target, then the parent and the subtree.
+   * Absent on every other command.
+   */
+  readonly serialise?: string;
   /** The grant action the domain operation checks before it does anything. */
   readonly action: Action;
   /** One of the nine the contract names, as opposed to one the model requires. */
@@ -197,6 +207,13 @@ export interface CommandDeclaration {
   readonly agent: 'never' | 'delegated' | 'before-pickup';
 }
 
+/**
+ * The key `task.reparent` and `task.move` serialise on. One key for both: a
+ * move carries its subtree's board and a reparent reads its parent, so either
+ * can wait on a row the other holds.
+ */
+const TASK_PLACEMENT_LOCK = 'task.placement';
+
 function declare(
   name: CommandName,
   action: Action,
@@ -205,6 +222,7 @@ function declare(
     readonly targetsExistingRecord?: boolean;
     readonly authorisedOn?: CommandDeclaration['authorisedOn'];
     readonly targetLock?: CommandDeclaration['targetLock'];
+    readonly serialise?: string;
     readonly contractNine?: boolean;
     readonly waitingOn?: string;
     readonly untargetedIdentifiers?: readonly string[];
@@ -219,6 +237,7 @@ function declare(
       ? {}
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
     ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
+    ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -316,8 +335,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share'),
   declare('task.set_audience', 'share'),
-  declare('task.reparent', 'write'),
-  declare('task.move', 'write'),
+  declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
+  declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),

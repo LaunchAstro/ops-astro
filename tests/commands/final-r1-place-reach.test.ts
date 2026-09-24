@@ -25,6 +25,8 @@ import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
 import { readTaskSpine } from '../../packages/core-records/src/commands/context.ts';
+import { serialiseOn } from '../../packages/core-records/src/commands/prepare.ts';
+import { declarationOf } from '../../packages/core-records/src/commands/surface.ts';
 import {
   planTaskPlacement,
   wouldCloseParentLoop,
@@ -181,7 +183,10 @@ describe.skipIf(serverUrl === undefined)('final review round 1: placement reach'
 
       await db.app.withBusiness(business, async (tx) => {
         const spine = await readTaskSpine(tx);
-        // A under B: the walk from B does not reach A, and the write is held open.
+        // A under B, as the envelope runs it: the per-business lock first
+        // (R2-THERMO-46 moved it there), then the walk from B, which does not
+        // reach A, and the write is held open.
+        await serialiseOn(tx, declarationOf('task.reparent').serialise ?? '');
         expect(await wouldCloseParentLoop(tx, spine.taskTypeId, a, b)).toBe(false);
         await tx.query(
           `update records set data = data || jsonb_build_object('parent', $3::text)
