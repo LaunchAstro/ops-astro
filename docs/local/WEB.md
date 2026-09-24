@@ -109,6 +109,12 @@ browser.
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
+The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
+goes to `/settings`. An open dock tab is announced as "Close Settings"
+(`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
+leaves its address for the board when pressed (`onDockTab` in
+`apps/web/src/App.tsx`).
+
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
 authenticated route added to `apps/web/src/routes.ts` without a screen fails
@@ -158,6 +164,17 @@ the draft conflict (`[data-conflict="version"]`). A stale lifecycle or assignee
 press had nothing unsaved in it. It is quoted in `[data-conflict="moved"]`, held
 above the read, and the task is read again (`Loaded` in `TaskDetail.tsx`).
 
+The propose form and the comment box keep their attempt after an answer that
+never arrived: an unchanged retry carries the same `operationId`, so the
+server's register replays the original result; any edit, or any answer from the
+server, starts a new attempt. While that attempt is held they say so
+(`[data-propose="unresolved"]`, `[data-comment="unresolved"]`). A save of the
+title and due date whose answer never arrived is retried under the same
+`operationId` while the draft is unchanged, so a save that did commit is
+replayed as the success it was ([API.md](API.md), "A replay of a stored
+success") instead of being drawn as somebody else's change; any keystroke starts
+a new attempt (`saveFields` in `TaskDetail.tsx`).
+
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
 confirmed write is in `confirmed.ts`.
@@ -195,6 +212,12 @@ something the person can fix. The refusal and the closure are held above the
 read (`useHeld` in `TaskDetail.tsx`), so the reread after an unrelated write, or
 Refresh, does not reopen the box. The propose form's authority refusal is held
 the same way.
+
+An unsent comment or proposal is held above the task read, per task and grant
+(`useHeld` in `TaskDetail.tsx`), so a reread keeps it. A comment or proposal
+refused `VERSION_STALE` rereads the task, keeps the text, quotes the refusal in
+`[data-comment="stale"]` or `[data-propose="stale"]` and says to send it again;
+the next press carries the new revision.
 
 Keyboard: the textarea, the two selects and the button are ordinary controls in
 document order after the details form, each with a `label` bound by `htmlFor`.
@@ -259,8 +282,10 @@ when the server says it has expired, after a refusal about the reader's own
 authority, and when the lineage is not `live` (cancelled, for example, which
 `task.decide` refuses with `LINEAGE_TERMINAL`). That last reason names the
 lineage state and says an authorised restart opens a new lineage. The screen
-quotes a refused decision verbatim in `[data-decide="refusal"]` under the gate
-it was about, and only there, and follows it with a fresh `task.read`. A
+quotes a refused decision verbatim in `[data-decide="refusal"]` under the
+version whose gate it named, whether or not that version is still the head, and
+follows it with a fresh `task.read`. When a reread no longer lists the gate, the
+quote is drawn under its lineage, and failing that above the list. A
 refusal about the reader's authority closes every gate on the task, and the
 other gates say so for the task rather than for this gate. A refusal like `VERSION_SUPERSEDED` or
 `GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the

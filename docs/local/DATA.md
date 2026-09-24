@@ -28,7 +28,8 @@ in a directory it does not use, and refuses to start.
   harness use it, and the harness creates a throwaway database per run.
 - `DATABASE_URL` is the runtime role `app`, a member of the group role
   `ops_astro_app` that the migrations grant to. It owns nothing, may create
-  nothing, and cannot bypass row security.
+  nothing, not even a temporary table in `pg_temp`, and cannot bypass row
+  security.
 
 With two roles, the server refuses runtime DDL, so no convention has to forbid
 it. `force row level security` is then the barrier itself, not the last line of
@@ -89,6 +90,12 @@ table exactly:
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
+
+A new task ranks after the last of its siblings: the tasks under its parent,
+or for a top-level task the tasks on its board with no parent. Trashed siblings
+count, because a trashed task keeps its rank and a restore brings it back, so a
+restore does not tie with a task made while it was away (`rankAfterSiblings`,
+`packages/core-records/src/tasks/placement.ts`).
 
 Every field carries a write mode, slotted or not. The conformance check names
 each field with a null write mode (`every field has a non-null write mode`,
@@ -201,7 +208,15 @@ Default deny is nothing granted to `PUBLIC`, nothing reachable by a role
 outside the group, no `CREATE` on any schema, no `TRUNCATE` for the application
 role, and no superuser or `bypassrls`. `TRUNCATE` is on the list because row
 security does not filter it: a role holding it empties every tenant's rows
-without consulting a policy. The harness also names the schemas it found, so
+without consulting a policy. There is also no `TEMPORARY` on the database for
+`PUBLIC`, the group or any login (`defaultDenyConformance`). PostgreSQL grants
+it to `PUBLIC` on every new database, and a temporary table outlives the
+transaction on a pooled backend, where the next tenant's unqualified `records`
+finds it before `public.records`, with no row security. So
+`createEmptyDatabase` (`tenancy/testing/fresh-database.ts`), which makes each
+test database, and `scripts/local/db-up.sh` revoke it where they make the
+database (`tests/tenancy/final-r2-fr2-api-temporary.test.ts`). The harness also
+names the schemas it found, so
 "is storage denied?" gets a catalogue answer. This tree has `ops` and `public`
 and no `storage` schema, which is an absence, not a denial.
 

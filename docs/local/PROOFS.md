@@ -1129,6 +1129,10 @@ approved them on 24 September 2026, and they are written as 0026 (no `actual`
 reservation in this head, and no zero or negative actual), 0027 (a business key
 unique across businesses) and 0028 (no `delete` on `person_logins` or
 `person_merges`), proved by `tests/runtime/final-r1-fr1-migrations.test.ts`.
+Nathan approved 0029 (the cap ceiling fails closed when the cap cannot be read
+at commit) as well, proved by
+`tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`
+([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing
