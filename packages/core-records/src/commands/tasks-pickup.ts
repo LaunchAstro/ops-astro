@@ -151,6 +151,7 @@ async function claim(
         })
       : await pickup(tx, {
           ...common,
+          claimant: 'agent',
           agentActorId: claimant.actorId,
           mintedByActorId: approver.actorId,
         });

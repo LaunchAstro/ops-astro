@@ -40,8 +40,7 @@ export const MAXIMUM_RENEWAL_SECONDS: number = 60 * 60;
 export const MAXIMUM_LEASE_LIFETIME_SECONDS: number = 8 * 60 * 60;
 
 export interface HeartbeatRequest {
-  /** Optional so existing agent callers stay unchanged; a person is always named. */
-  readonly claimant?: 'agent';
+  readonly claimant: 'agent';
   readonly leaseId: string;
   readonly fence: number;
   /** The agent actor the session resolved, never a body field. */

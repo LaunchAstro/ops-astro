@@ -699,7 +699,7 @@ export type RevocationWrite<T> =
       /** The delegations that lost their work authority. */
       readonly lost: readonly string[];
       /** EX-01: the person's own leases, which carry no delegation, that lost it. */
-      readonly lostLeases?: readonly string[];
+      readonly lostLeases: readonly string[];
     };
 
 /** The two columns a lost unit is matched on, which live work and held rows share. */

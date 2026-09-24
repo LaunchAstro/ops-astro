@@ -325,7 +325,7 @@ export async function revokeDelegationAsManager(
           : null;
       return revokedAt === null
         ? { applied: false, value: null }
-        : { applied: true, value: revokedAt, lost: [delegationId] };
+        : { applied: true, value: revokedAt, lost: [delegationId], lostLeases: [] };
     },
   });
   const revokedAt = loss.value;

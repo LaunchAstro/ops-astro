@@ -15,7 +15,7 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
-import { decide } from '../../packages/core-runtime/src/decide.ts';
+import { decide, type Decided } from '../../packages/core-runtime/src/decide.ts';
 import { handback } from '../../packages/core-runtime/src/handback.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
@@ -111,6 +111,14 @@ async function decideOn(
   );
 }
 
+/** An approval, and only an approval, carries the envelope, reservation and attempt. */
+function assertApproved<R extends { readonly value: Decided }>(
+  decided: R,
+): asserts decided is R & { readonly value: Extract<Decided, { readonly decision: 'approve' }> } {
+  if (decided.value.decision !== 'approve')
+    throw new Error(`expected an approval, got ${decided.value.decision}`);
+}
+
 /** The bounded successor the R4 cases ask for. Inside the cap and in its currency. */
 function successorFor(fixture: RuntimeFixture) {
   return {
@@ -132,6 +140,7 @@ async function claim(
 ): Promise<{ readonly leaseId: string; readonly fence: number }> {
   const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
     pickup(tx, {
+      claimant: 'agent',
       reservationId,
       agentActorId: fixture.agentActorId,
       authorisedByPersonId: fixture.decider.personId,
@@ -190,9 +199,11 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
 
     const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId: decided.value.reservationId as string,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -251,9 +262,11 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
 
     const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId: decided.value.reservationId as string,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -416,6 +429,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
     const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
@@ -512,6 +526,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
     // The arranged failure. It raises on the successor's version insert, which
@@ -612,6 +627,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
     const refusedFor = async (successor: {
@@ -684,6 +700,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     }
     const approved = await decideOn(database, fixture, round);
     if (!approved.ok) throw new Error(`decide refused ${approved.refusal.code}`);
+    assertApproved(approved);
     const heldThird = await claim(database, fixture, approved.value.reservationId as string);
     const third = await database.app.withBusiness(fixture.businessId, async (tx) =>
       handback(tx, {
@@ -709,6 +726,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
     const stale = await database.app.withBusiness(fixture.businessId, async (tx) =>
@@ -847,6 +865,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const envelopeId = decided.value.envelopeId as string;
     const before = await database.app.withBusiness(fixture.businessId, async (tx) =>
       envelopeTotals(tx, envelopeId),
@@ -854,6 +873,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
 
     const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId: decided.value.reservationId as string,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -964,6 +984,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const first = await proposeOn(database, fixture, { taskId: task, maximumMinor: 5_000 });
     const decided = await decideOn(database, fixture, first);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const envelopeId = decided.value.envelopeId as string;
 
     await proposeOn(database, fixture, {
@@ -995,6 +1016,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const first = await proposeOn(database, fixture, { taskId: task, maximumMinor: 5_000 });
     const decided = await decideOn(database, fixture, first);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const envelopeId = decided.value.envelopeId as string;
 
     const second = await proposeOn(database, fixture, {
@@ -1018,11 +1040,13 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const envelopeId = decided.value.envelopeId as string;
     const first = decided.value.reservationId as string;
 
     const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId: first,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -1044,6 +1068,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
 
     const again = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId: first,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -1098,10 +1123,12 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
     const reservationId = decided.value.reservationId as string;
 
     const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
       pickup(tx, {
+        claimant: 'agent',
         reservationId,
         agentActorId: fixture.agentActorId,
         authorisedByPersonId: fixture.decider.personId,
@@ -1133,6 +1160,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const proposed = await proposeOn(database, fixture, { taskId: task });
     const decided = await decideOn(database, fixture, proposed);
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+    assertApproved(decided);
 
     await expect(
       database.app.withBusiness(fixture.businessId, async (tx) => {

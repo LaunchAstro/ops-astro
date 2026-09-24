@@ -75,9 +75,8 @@ interface DecidedCommon {
 
 /**
  * An approval reserves, and only an approval: the envelope, reservation,
- * attempt and held total exist on that branch and nowhere else. The other
- * branch spells them `never`, so a reader that has not narrowed still reads
- * `undefined` and a writer cannot put one there.
+ * attempt and held total exist on that branch and nowhere else, so a reader
+ * narrows on `decision` before it reads one.
  */
 export type Decided =
   | (DecidedCommon & {
@@ -89,10 +88,6 @@ export type Decided =
     })
   | (DecidedCommon & {
       readonly decision: 'reject' | 'request_changes';
-      readonly envelopeId?: never;
-      readonly reservationId?: never;
-      readonly attemptId?: never;
-      readonly heldMinor?: never;
     });
 
 interface GateRow {

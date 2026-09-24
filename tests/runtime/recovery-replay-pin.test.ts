@@ -102,6 +102,8 @@ describe.skipIf(serverUrl === undefined)('restart replay: the discovered set', (
         capId: fixture.capId,
       });
       if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
+      if (decided.value.decision !== 'approve')
+        throw new Error(`expected an approval, got ${decided.value.decision}`);
       return {
         reservationId: decided.value.reservationId as string,
         lineageId: proposed.value.lineageId,
@@ -116,6 +118,7 @@ describe.skipIf(serverUrl === undefined)('restart replay: the discovered set', (
       fixture.businessId,
       async (tx) =>
         await pickup(tx, {
+          claimant: 'agent',
           reservationId: approved.reservationId,
           agentActorId: fixture.agentActorId,
           authorisedByPersonId: fixture.decider.personId,
