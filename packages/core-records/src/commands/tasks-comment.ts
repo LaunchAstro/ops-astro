@@ -33,6 +33,7 @@ import type { EntryPoint } from '../tasks/placement.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
+import { refuseUnstorable, storableText } from './values.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
@@ -122,6 +123,11 @@ export async function writeTaskComment(
   if (typeof body !== 'string' || body.trim() === '') {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
   }
+  // The person path refuses this at the door (`prepare.ts`); the agent entry
+  // does not pass that door, and reaches here. A NUL raised at the insert and
+  // an unpaired surrogate was written as U+FFFD (final review round 2,
+  // R2-SURFACE-9).
+  if (!storableText(body)) return refused(refuseUnstorable(['body']));
   if (typeof audience !== 'string' || !AUDIENCES.has(audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], AUDIENCE_FIXES));
   }

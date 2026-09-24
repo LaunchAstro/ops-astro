@@ -47,6 +47,7 @@ import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
 import type { CommandRequest } from './requests.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export const REVISION_FIXES: readonly string[] = [
   'Read the record and send the revision you are writing against as expected_revision.',
@@ -252,6 +253,92 @@ function refuseMalformedIdentifier(
   return refused(refuseNotFound());
 }
 
+/**
+ * The operands a command writes to a text or jsonb column as the caller sent
+ * them: a comment's body, a cancel's reason, a decision's note, a proposal's
+ * purpose, currency, payload and step, a handback's report and successor.
+ *
+ * Final review round 2 (R2-SURFACE-9, R2-THERMO-11, R2-RUNTIME-63) found each
+ * of them reaching its insert holding a NUL or an unpaired surrogate, which the
+ * column refuses with a raise: the owed refusal became a 503, the audit read
+ * `failed`, and a retry of the same body could never succeed. The rule is
+ * `values.ts`'s; this is the one place the person path applies it, so an
+ * operand added to a command is covered by adding its name here.
+ *
+ * `fields` is not listed. The field engine refuses a field value with the
+ * field's own name and type (`values.ts`, `refuseWrongValueType`), and a
+ * field key it does not know is `FIELD_UNKNOWN`, as before.
+ */
+const FREE_OPERANDS: readonly string[] = [
+  'body',
+  'currency',
+  'note',
+  'payload',
+  'purpose',
+  'reason',
+  'report',
+  'step',
+  'successor',
+];
+
+/**
+ * An operand the stores cannot hold, refused by name once the caller is
+ * authorised and before the target is read, so the handler never reaches the
+ * insert that would raise on it.
+ */
+function refuseUnstorableOperands(request: CommandRequest): Refused | undefined {
+  const unstorable = unstorableOperands(
+    request as unknown as Record<string, unknown>,
+    FREE_OPERANDS,
+  );
+  if (unstorable.length === 0) return undefined;
+  return refused(refuseUnstorable(unstorable));
+}
+
+/**
+ * The identifier operands a handler binds to a uuid parameter without typing
+ * them first, by command: optional ones, which may be absent or `null`, and
+ * required ones, which must be there.
+ *
+ * `refuseMalformedIdentifier` answers a *string* that is not a uuid, and it
+ * lets any other type through, because `task.move` and `task.reparent` answer
+ * a non-string `board` or `parentId` by name in their own handlers. These
+ * three did not, and final review round 2 (R2-SURFACE-8) found `afterId: 5`,
+ * `lineageId: 5` and a `gateId` of 5 or none each reaching the bind and
+ * answering 503. They are refused by name, as API.md says of every absent or
+ * mistyped operand. `task.cancel` and `task.restart` type their `lineageId`
+ * themselves and are not listed.
+ */
+const TYPED_IDENTIFIERS: Readonly<
+  Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
+> = {
+  'task.rank': { optional: ['afterId', 'beforeId'] },
+  'task.propose': { optional: ['lineageId'] },
+  'task.decide': { required: ['gateId'] },
+};
+
+const TYPED_IDENTIFIER_FIXES: readonly string[] = [
+  'Send each name above as the identifier string you were given.',
+];
+
+function refuseMistypedIdentifier(
+  request: CommandRequest,
+  declaration: CommandDeclaration,
+): Refused | undefined {
+  const typed = TYPED_IDENTIFIERS[declaration.name];
+  if (typed === undefined) return undefined;
+  const named = request as unknown as Record<string, unknown>;
+  const mistyped = [
+    ...(typed.optional ?? []).filter(
+      (field) =>
+        named[field] !== undefined && named[field] !== null && typeof named[field] !== 'string',
+    ),
+    ...(typed.required ?? []).filter((field) => typeof named[field] !== 'string'),
+  ];
+  if (mistyped.length === 0) return undefined;
+  return refused(refuseCommand('FIELD_VALUE_INVALID', mistyped.toSorted(), TYPED_IDENTIFIER_FIXES));
+}
+
 const BODY_FIXES: readonly string[] = [
   'Send only the fields this command declares.',
   'A command that targets no existing record takes no record identifier.',
@@ -327,7 +414,7 @@ async function firstScope(
   for (const [field, find] of lookups) {
     const id = named[field];
     if (!isUuid(id)) continue;
-    // eslint-disable-next-line no-await-in-loop -- at most one of the two is named
+    // eslint-disable-next-line no-await-in-loop -- the claim lookups: at most one of the two is named
     const scope = await find(tx, id);
     if (scope !== undefined) return scope;
   }
@@ -341,9 +428,19 @@ async function firstRow(tx: TenantQuery, sql: string, id: string): Promise<Scope
 
 const BUSINESS: Scope = { kind: 'business', id: null };
 
-/** A grant at the scope it was issued on, a delegation at its purpose scope. */
-const TARGET_LOOKUPS: readonly ScopeLookup[] = [
-  [
+/**
+ * A grant at the scope it was issued on, a delegation at its purpose scope,
+ * each read only for the command that revokes it.
+ *
+ * One list tried both fields for either command, so a `delegation.revoke`
+ * that also carried a `grantId` was asked at that grant's scope, and a
+ * record-scoped manager could tell a same-business delegation outside their
+ * scope from a fabricated one by the answer (final review round 2,
+ * R2-AUTHORITY-30). Each command now reads its own field, and the other's is
+ * refused (`refuseOtherTarget`).
+ */
+const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
+  'grant.revoke': [
     'grantId',
     (tx, id) =>
       firstRow(
@@ -352,7 +449,7 @@ const TARGET_LOOKUPS: readonly ScopeLookup[] = [
         id,
       ),
   ],
-  [
+  'delegation.revoke': [
     'delegationId',
     (tx, id) =>
       firstRow(
@@ -361,7 +458,26 @@ const TARGET_LOOKUPS: readonly ScopeLookup[] = [
         id,
       ),
   ],
-];
+};
+
+/**
+ * The target field of another revoke, on a `target` command. Refused and not
+ * ignored, for the reason `refuseIrrelevantTarget` gives: a field the server
+ * drops is a field the caller believes was honoured.
+ */
+function refuseOtherTarget(
+  request: CommandRequest,
+  declaration: CommandDeclaration,
+): Refused | undefined {
+  if (declaration.authorisedOn !== 'target') return undefined;
+  const named = request as unknown as Record<string, unknown>;
+  const own = TARGET_LOOKUPS[declaration.name]?.[0];
+  const other = Object.values(TARGET_LOOKUPS)
+    .map(([field]) => field)
+    .filter((field) => field !== own && named[field] !== undefined);
+  if (other.length === 0) return undefined;
+  return refused(refuseCommand('COMMAND_BODY_INVALID', other, BODY_FIXES));
+}
 
 /** The task a reservation's run or a lease belongs to, at record scope. */
 const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
@@ -404,7 +520,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
 const SCOPE_OF: Readonly<
   Record<
     CommandDeclaration['authorisedOn'],
-    (tx: TenantQuery, request: CommandRequest) => Promise<Scope>
+    (tx: TenantQuery, request: CommandRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
   record: (_tx, request) =>
@@ -414,7 +530,10 @@ const SCOPE_OF: Readonly<
         : BUSINESS,
     ),
   business: () => Promise.resolve(BUSINESS),
-  target: (tx, request) => firstScope(tx, request, TARGET_LOOKUPS),
+  target: (tx, request, declaration) => {
+    const own = TARGET_LOOKUPS[declaration.name];
+    return firstScope(tx, request, own === undefined ? [] : [own]);
+  },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
 };
 
@@ -431,7 +550,8 @@ export async function prepareCommand(
   const malformed = refuseMalformedIdentifier(request, declaration);
   if (malformed !== undefined) return malformed;
 
-  const irrelevant = refuseIrrelevantTarget(request, declaration);
+  const irrelevant =
+    refuseIrrelevantTarget(request, declaration) ?? refuseOtherTarget(request, declaration);
   if (irrelevant !== undefined) return irrelevant;
 
   const spine = await readTaskSpine(tx);
@@ -454,9 +574,15 @@ export async function prepareCommand(
     // From the declaration, never written in here: see `CommandDeclaration`.
     collection: declaration.collection,
     action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request),
+    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
   });
   if (!authorised.ok) return refused(fromReasoned(authorised.refusal));
+  // The operands' own shape, after authority as every handler's operand
+  // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
+  // nothing about its body; before the target is read or locked.
+  const mistyped =
+    refuseMistypedIdentifier(request, declaration) ?? refuseUnstorableOperands(request);
+  if (mistyped !== undefined) return mistyped;
 
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
