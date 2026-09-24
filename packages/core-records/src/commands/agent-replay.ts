@@ -24,10 +24,11 @@ import {
 } from './refusal.ts';
 import type { CommandHandle, CommandResult, RegisteredAttempt } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import type { AgentOperation } from './agent-operations.ts';
+import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { settle, writeCallEvent } from './agent-settle.ts';
+import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './tasks-pickup.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /**
@@ -44,13 +45,14 @@ export async function releaseReplay(
     case 'pickup':
       return await replayPickup(tx, call, stored);
     case 'capabilities':
-      return await replayCapabilities(tx, call, operation);
+      return await operation.open(async (row) => await replayCapabilities(tx, call, row));
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
-    case 'reauthorise': {
-      const authorised = await authorise(tx, call, operation);
-      return 'refusal' in authorised ? authorised.refusal : undefined;
-    }
+    case 'reauthorise':
+      return await operation.open(async (row) => {
+        const authorised = await authorise(tx, call, row);
+        return 'refusal' in authorised ? authorised.refusal : undefined;
+      });
   }
 }
 
@@ -58,14 +60,18 @@ export async function releaseReplay(
  * A capabilities replay: the current rights checked the way a fresh call is,
  * then the row served again for them. The stored answer is never released.
  */
-async function replayCapabilities(
+async function replayCapabilities<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
-  operation: AgentOperation,
+  operation: TypedOperation<O>,
 ): Promise<CommandResult> {
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) return authorised.refusal;
-  const served = await authorised.run({});
+  // The row's own operands, read as a fresh call reads them: the capabilities
+  // row reads none, so this is its `{}`, typed as the row's own.
+  const operands = operation.operands(call.request);
+  if (isOperandRefusal(operands)) return operands.refusal;
+  const served = await authorised.run(operands);
   if (isRefused(served)) return served.refusal;
   return { command: call.request.command, ...served };
 }
@@ -76,19 +82,6 @@ async function replayCapabilities(
  * credential back.
  */
 export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
-
-const PICKUP_REPLAY_FIXES: readonly string[] = [
-  'The work this pickup claimed is no longer yours to resume.',
-  'Re-read the queue.',
-];
-
-interface PickupBindingRow {
-  readonly credential_scheme: string;
-  readonly credential_key_id: string | null;
-  readonly credential_hash: string;
-  readonly lease_live: boolean;
-  readonly approval_current: boolean;
-}
 
 /**
  * A pickup's replay, which is the case where the agent lost the answer that
@@ -118,13 +111,8 @@ async function replayPickup(
   stored: CommandHandle,
 ): Promise<CommandResult> {
   const detail = stored.detail;
-  const named = (key: string): string => {
-    const value = detail[key];
-    return isUuid(value) ? value : '';
-  };
-  const delegationId = named('delegationId');
-  const held =
-    delegationId === '' ? undefined : await resolveLiveById(tx, session.actorId, delegationId);
+  const named = detail['delegationId'];
+  const held = isUuid(named) ? await resolveLiveById(tx, session.actorId, named) : undefined;
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
 
   const decision = await checkDelegatedAuthority(tx, held, {
@@ -134,42 +122,13 @@ async function replayPickup(
   });
   if (!decision.ok) return fromReasoned(decision.refusal);
 
-  const rows = await tx.query<PickupBindingRow>(
-    `select d.credential_scheme, d.credential_key_id, d.credential_hash,
-            (l.state = 'live' and l.expires_at > now() and res.state = 'held') as lease_live,
-            (g.state = 'approved' and lin.state = 'live' and ver.superseded_at is null)
-              as approval_current
-       from public.leases l
-       join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
-       join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
-       join public.attempts att
-         on att.business_id = l.business_id and att.reservation_id = res.id and att.lease_id = l.id
-       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
-       join public.proposal_versions ver
-         on ver.business_id = res.business_id and ver.id = res.version_id
-       join public.proposal_lineages lin
-         on lin.business_id = res.business_id and lin.id = run.lineage_id
-       join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
-      where l.business_id = $1 and l.id = $2 and d.id = $3 and res.id = $4 and att.id = $5
-        and l.holder_actor_id = $6 and d.agent_actor_id = $6
-        and l.task_id = $7 and res.version_id = $8`,
-    [
-      tx.businessId,
-      named('leaseId'),
-      delegationId,
-      named('reservationId'),
-      named('attemptId'),
-      session.actorId,
-      named('taskId'),
-      named('versionId'),
-    ],
-  );
-  const bound = rows[0];
-  if (bound === undefined) return refuseCommand('LEASE_NOT_OWNED', [], PICKUP_REPLAY_FIXES);
-  if (!bound.lease_live) return refuseCommand('LEASE_EXPIRED', [], PICKUP_REPLAY_FIXES);
-  if (!bound.approval_current) {
-    return refuseCommand('RESERVATION_NOT_CLAIMABLE', [], PICKUP_REPLAY_FIXES);
-  }
+  const binding = await pickupReceiptBinding(tx, {
+    holderActorId: session.actorId,
+    delegationId: held.id,
+    receipt: detail,
+  });
+  if ('refusal' in binding) return binding.refusal;
+  const { bound } = binding;
 
   // `credential` is read by the spread below and then replaced; the note, if
   // an older row carries one, does not survive into a derived answer.
@@ -188,7 +147,7 @@ async function replayPickup(
       : keys.keys.derive(keyId, {
           businessId: tx.businessId,
           agentActorId: session.actorId,
-          delegationId,
+          delegationId: held.id,
         });
   if (credential === undefined) {
     return refuseCommand(

@@ -405,8 +405,16 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
 
-export function declarationOf(name: CommandName): CommandDeclaration | undefined {
-  return BY_NAME.get(name);
+/**
+ * The row a name declares. Total: every `CommandName` has a row, and
+ * `command-surface.test.ts` holds the table to the installed model, so no
+ * caller guards a miss (THERMO-RECHECK H4). A name with no row is this file's
+ * own defect, answered here once as the fault it is.
+ */
+export function declarationOf(name: CommandName): CommandDeclaration {
+  const declared = BY_NAME.get(name);
+  if (declared === undefined) throw new Error(`surface.ts: ${name} has no declaration row`);
+  return declared;
 }
 
 /**

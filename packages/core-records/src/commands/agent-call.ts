@@ -34,11 +34,27 @@ export interface AgentCall {
   readonly declaration: CommandDeclaration;
 }
 
-/** The operands an agent command takes beyond its identifiers, parsed rather than coerced. */
-export interface AgentOperands {
+/**
+ * The operands each agent row reads beyond its identifiers, parsed rather than
+ * coerced. Each row's parser returns its own type, so a field its parser
+ * guarantees is carried typed and nothing downstream invents a value for it
+ * (THERMO-RECHECK-2 NNA3).
+ */
+export type NoOperands = Readonly<Record<never, never>>;
+
+/** A lease length, when the caller sent one: `task.heartbeat`. */
+export interface LeaseOperands {
   readonly leaseSeconds?: number;
+}
+
+/** The reservation `task.pickup` claims, and the lease length it asks for. */
+export interface PickupOperands extends LeaseOperands {
+  readonly reservationId: string;
+}
+
+/** What `task.handback` reads by type before any authority. */
+export interface HandbackOperands {
+  readonly outcome: string;
+  readonly fence: number;
   readonly report?: Readonly<Record<string, unknown>>;
-  readonly reservationId?: string;
-  readonly fence?: number;
-  readonly outcome?: string;
 }

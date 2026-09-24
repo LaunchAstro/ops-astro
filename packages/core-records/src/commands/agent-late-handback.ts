@@ -13,7 +13,7 @@ import {
 import { retainHistoricalReport } from '../../../core-runtime/src/handback.ts';
 import type { CommandRefusal } from './refusal.ts';
 import type { CommandDeclaration } from './surface.ts';
-import type { AgentCall, AgentOperands } from './agent-call.ts';
+import type { AgentCall, HandbackOperands } from './agent-call.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { taskOfLease } from './prepare.ts';
 
@@ -46,13 +46,13 @@ import { taskOfLease } from './prepare.ts';
  *
  * The code alone authorises nothing. Every other refusal, and any binding that
  * does not hold, retains nothing. A replay never reaches here: a refused
- * handback's replay is answered from its register row (`agent-envelope.ts`), and only a new
- * operation id is a new late report.
+ * handback's replay is answered from its register row (`answerReplay`,
+ * `agent-replay.ts`), and only a new operation id is a new late report.
  */
 export async function retainLateHandback(
   tx: TenantQuery,
   { session, credential, request, declaration }: AgentCall,
-  operands: AgentOperands,
+  operands: HandbackOperands,
   refusal: CommandRefusal,
 ): Promise<void> {
   if (refusal.code !== 'DELEGATION_NOT_LIVE' && refusal.code !== 'DELEGATION_NARROWED') return;
@@ -71,8 +71,9 @@ export async function retainLateHandback(
     holderActorId: session.actorId,
     // As `handbackOperands` read them: a fence that is not a number or an
     // outcome that is not a string was refused there and never reaches here.
-    fence: operands.fence ?? Number.NaN,
-    outcome: operands.outcome ?? '',
+    // An absent report is an empty one, as the person handler reads it.
+    fence: operands.fence,
+    outcome: operands.outcome,
     report: operands.report ?? {},
     refusalCode: refusal.code,
   });

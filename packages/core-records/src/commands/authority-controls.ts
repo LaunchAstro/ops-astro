@@ -105,9 +105,7 @@ async function withinCeiling(
  * this and pickup cannot come to disagree about which grant a claim rests on.
  */
 function claimCollection(): string {
-  const declared = declarationOf('task.pickup');
-  if (declared === undefined) throw new Error('grant.revoke: task.pickup is not declared');
-  return declared.collection;
+  return declarationOf('task.pickup').collection;
 }
 
 /** A live attempt drawing on a person the revoked grant may have covered. */

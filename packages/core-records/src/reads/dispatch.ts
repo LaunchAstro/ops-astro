@@ -12,6 +12,7 @@ import type { Session } from '../identity/login-resolution.ts';
 import { checkAuthority, subjectsOf } from '../authority/grants.ts';
 import {
   fromReasoned,
+  isCommandRefusal,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
@@ -67,7 +68,7 @@ export async function runRead(
     throw cause;
   }
   const outcome = served.outcome;
-  const refusal = 'refused' in outcome ? outcome : undefined;
+  const refusal = isCommandRefusal(outcome) ? outcome : undefined;
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.read,
@@ -156,9 +157,6 @@ async function serveRead<K extends ReadName>(
   request: ReadOf<K>,
 ): Promise<ServedRead> {
   const declaration = declarationOf(request.read);
-  if (declaration === undefined) {
-    throw new Error(`runRead: ${request.read} is not in the command surface`);
-  }
   const row: ReadRow<K> = READ_CATALOGUE[request.read];
   const body: Readonly<Record<string, unknown>> = request;
 

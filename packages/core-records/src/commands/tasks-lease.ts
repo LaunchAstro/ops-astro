@@ -58,8 +58,8 @@ export interface RenewalFields {
 /**
  * One renewal for both claimants: the operands read and refused here, the
  * lease renewed by `renew` under the claimant's own authority. The agent's
- * is `heartbeatLease` in `tasks-controls.ts`, with the delegation its
- * credential resolved to; the person's is `heartbeatOwnLease` below.
+ * is `heartbeatLease` below, with the delegation its credential resolved
+ * to; the person's is `heartbeatOwnLease`, also below.
  */
 export async function renewLease(
   fields: RenewalFields,
@@ -118,7 +118,8 @@ export async function heartbeatOwnLease(
 
 // A malformed lease id is answered in the bytes the runtime gives a well-formed
 // one that names nothing (root ruling 2), before it reaches a uuid parameter:
-// `core-runtime/src/handback.ts:145-150` and `core-runtime/src/heartbeat.ts:82-87`.
+// the refusal `handback` gives a lease it cannot find (`core-runtime/src/handback.ts`),
+// and `heartbeat`'s own (`core-runtime/src/heartbeat.ts`).
 export const NO_SUCH_LEASE: readonly string[] = [
   'no such lease in this business',
   'Hand back the lease this claim was issued.',

@@ -8,9 +8,15 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import type { HandbackHolder } from '../../../core-runtime/src/handback.ts';
 import type { CommandContext } from './context.ts';
-import { isIdentifier } from './operands.ts';
+import { isFieldMap, isIdentifier } from './operands.ts';
 import { fromReasoned, refuseCommand } from './refusal.ts';
-import { applied, refused, refusedRetaining, type HandlerOutcome } from './outcome.ts';
+import {
+  applied,
+  refused,
+  refusedRetaining,
+  type HandlerOutcome,
+  type Refused,
+} from './outcome.ts';
 import { readSuccessor } from './successor.ts';
 import { NO_SUCH_LEASE } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
@@ -38,8 +44,8 @@ export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
 /**
  * The handback refusals that have already written a report row L4 keeps.
  *
- * `core-runtime/src/handback.ts` calls its `retain` helper on exactly these
- * two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
+ * `core-runtime/src/handback.ts` calls its `refuseRetained` helper on exactly
+ * these two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
  * not among them: R6 refuses that one before the first write, so there is
  * nothing to keep.
  */
@@ -89,57 +95,75 @@ function holderOf(claimant: Claimant): HandbackHolder {
       };
 }
 
+/*
+ * The handback operands' refusals, one source for both entries
+ * (THERMO-RECHECK-2 NNA4). The person handler asks them of the value; the
+ * agent entry asks the JSON type first, before any authority
+ * (`handbackOperands`), and answers in these same bytes.
+ */
+
+/** An outcome that is not one. */
+export function refuseOutcome(outcome: unknown): Refused {
+  return refused(
+    refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
+    { outcome },
+  );
+}
+
+/** A fence that is not the one a pickup hands out. */
+export function refuseFence(fence: unknown): Refused {
+  return refused(
+    refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed you.']),
+    { fence },
+  );
+}
+
+/** A present report that is not an object of named values. */
+export function refuseReport(report: unknown): Refused {
+  return refused(
+    refuseCommand(
+      'FIELD_VALUE_INVALID',
+      ['report'],
+      ['Send report as an object of named values, or leave it out.'],
+    ),
+    { report },
+  );
+}
+
+/** Any non-null actual: nothing in this head dispatches, so nothing can have cost that. */
+export function refuseActualMinor(actualMinor: unknown): Refused {
+  return refused(
+    refuseCommand(
+      'ACTUAL_EXPENDITURE_UNSUPPORTED',
+      ['actualMinor'],
+      [
+        'Leave actualMinor out, or send null: nothing in this head dispatches.',
+        'A number here would claim the work ran and cost that much.',
+      ],
+    ),
+    { actualMinor },
+  );
+}
+
 async function settle(
   tx: TenantQuery,
   fields: HandbackFields,
   claimant: Claimant,
 ): Promise<HandlerOutcome> {
-  if (!OUTCOMES.has(fields.outcome)) {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
-      { outcome: fields.outcome },
-    );
-  }
-  if (!Number.isSafeInteger(fields.fence) || fields.fence < 0) {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed you.']),
-      { fence: fields.fence },
-    );
-  }
+  if (!OUTCOMES.has(fields.outcome)) return refuseOutcome(fields.outcome);
+  if (!Number.isSafeInteger(fields.fence) || fields.fence < 0) return refuseFence(fields.fence);
   // Root ruling 2 (ROOT-01a437a): a present report is an object of named
   // values. Null, an array or a string is refused by name, never spread into
   // an object with numeric keys; absent is an empty report.
   const report: unknown = fields.report;
-  if (
-    report !== undefined &&
-    (typeof report !== 'object' || report === null || Array.isArray(report))
-  ) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['report'],
-        ['Send report as an object of named values, or leave it out.'],
-      ),
-      { report },
-    );
-  }
+  if (report !== undefined && !isFieldMap(report)) return refuseReport(report);
   // L4's `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any non-null
   // `actualMinor`, and the command says so here rather than discarding the
   // key. Dropping it quietly is the failure D06 exists to stop from the other
   // direction: the caller is left believing a spend figure was recorded when
   // nothing read it. `null` and absent are the same answer and both are fine.
   if (fields.actualMinor !== undefined && fields.actualMinor !== null) {
-    return refused(
-      refuseCommand(
-        'ACTUAL_EXPENDITURE_UNSUPPORTED',
-        ['actualMinor'],
-        [
-          'Leave actualMinor out, or send null: nothing in this head dispatches.',
-          'A number here would claim the work ran and cost that much.',
-        ],
-      ),
-      { actualMinor: fields.actualMinor },
-    );
+    return refuseActualMinor(fields.actualMinor);
   }
 
   // The successor, read before the runtime is reached. Every refusal below is

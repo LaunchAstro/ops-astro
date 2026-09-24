@@ -113,8 +113,8 @@ export interface ReasonedRefusal {
  * The runtime and delegation unions are taken from the register
  * (`RuntimeRefusalCode` from its rows marked `runtime`, and every delegation
  * code is a row), so there is no spelling here the register has never heard
- * of. One function under one name: it used to be two, `fromReasoned` and a
- * `fromReasoned` that only called it (THERMO-RECHECK NB6).
+ * of. One function under one name: it used to be two, `fromAuthority` and a
+ * `fromRuntime` that only called it (THERMO-RECHECK NB6).
  */
 export function fromReasoned(refusal: ReasonedRefusal): CommandRefusal {
   // The reason is a sentence about the rule, not about the caller's data, so

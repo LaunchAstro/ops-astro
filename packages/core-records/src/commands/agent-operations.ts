@@ -18,8 +18,14 @@ import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isFieldMap } from './operands.ts';
 import type { CommandName } from './surface.ts';
-import { handbackLease } from './tasks-handback.ts';
-import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
+import {
+  handbackLease,
+  refuseActualMinor,
+  refuseFence,
+  refuseOutcome,
+  refuseReport,
+} from './tasks-handback.ts';
+import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from './tasks-pickup.ts';
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import { agentClaimant } from './tasks-claimant.ts';
@@ -32,10 +38,17 @@ import {
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
-import type { AgentCall, AgentOperands, AgentRequest } from './agent-call.ts';
+import type {
+  AgentCall,
+  AgentRequest,
+  HandbackOperands,
+  LeaseOperands,
+  NoOperands,
+  PickupOperands,
+} from './agent-call.ts';
 
-/** What every kind of agent operation carries. */
-interface AgentOperationRow {
+/** What every kind of agent operation carries, over its own operands `O`. */
+interface AgentOperationRow<O extends object> {
   /**
    * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
    * so the two entries refuse the same stray field in the same words. Any
@@ -44,68 +57,100 @@ interface AgentOperationRow {
    */
   readonly identifiers?: readonly string[];
   /** The operands read before any authority, after the system-owned fields. */
-  readonly operands?: (request: AgentRequest) => AgentOperands | Refused;
+  readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay: 'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
     call: AgentCall,
-    operands: AgentOperands,
+    operands: O,
     refusal: CommandRefusal,
   ) => Promise<void>;
 }
 
-/** What a delegated operation does, under the delegation `authorise` resolved. */
-type DelegatedServe = (
-  tx: TenantQuery,
-  call: AgentCall,
-  operands: AgentOperands,
-  delegation: Delegation,
-) => Promise<HandlerOutcome>;
-
 /**
- * One agent operation, by the check `authorise` (`agent-authority.ts`) asks,
- * so a row says whether it runs under a delegation and nothing has to find
- * out again (THERMO-RECHECK NA1):
+ * One agent operation over its own operands `O`, by the check `authorise`
+ * (`agent-authority.ts`) asks, so a row says whether it runs under a
+ * delegation and nothing has to find out again (THERMO-RECHECK NA1):
  *
  * - `beforePickup`, the pair an agent login reaches holding nothing, served
  *   under no delegation;
  * - `purpose`, `read` on the delegation's own purpose record;
  * - `record`, the operation's own collection and action on the task the call
- *   is about, found where `subjectTask` says;
+ *   is about, found where `subjectTask` says, and served on that task;
  * - `decision`, L4's `decideAsAgent`, which always refuses, so it has no
  *   `serve` at all.
  */
-export type AgentOperation =
-  | (AgentOperationRow & {
+export type TypedOperation<O extends object> =
+  | (AgentOperationRow<O> & {
       readonly authority: 'beforePickup';
+      readonly serve: (tx: TenantQuery, call: AgentCall, operands: O) => Promise<HandlerOutcome>;
+    })
+  | (AgentOperationRow<O> & {
+      readonly authority: 'purpose';
       readonly serve: (
         tx: TenantQuery,
         call: AgentCall,
-        operands: AgentOperands,
+        operands: O,
+        delegation: Delegation,
       ) => Promise<HandlerOutcome>;
     })
-  | (AgentOperationRow & { readonly authority: 'purpose'; readonly serve: DelegatedServe })
-  | (AgentOperationRow & {
+  | (AgentOperationRow<O> & {
       readonly authority: 'record';
       /** Where the check finds its task: the lease the body names, or the record. */
       readonly subjectTask: 'lease' | 'record';
-      readonly serve: DelegatedServe;
+      /**
+       * Under the delegation, on the task the check was made on, or
+       * `undefined` when the call named none and the check fell back to the
+       * delegation's own scope. Never the body read again (THERMO-RECHECK-2
+       * NNA1).
+       */
+      readonly serve: (
+        tx: TenantQuery,
+        call: AgentCall,
+        operands: O,
+        delegation: Delegation,
+        taskId: string | undefined,
+      ) => Promise<HandlerOutcome>;
     })
-  | (AgentOperationRow & { readonly authority: 'decision' });
+  | (AgentOperationRow<O> & { readonly authority: 'decision' });
+
+/**
+ * A row, with its operands type closed over (THERMO-RECHECK-2 NNA3).
+ *
+ * The table holds rows of different operand types, so what it keeps is the
+ * row behind `open`: a step that takes the row runs generic over its `O`,
+ * and the operands a row's parser returned reach that row's `serve` and
+ * `onRefused` typed, with nothing invented for a field the parser already
+ * guaranteed. The same closure trick `authorise` uses for `run`.
+ */
+export interface AgentOperation {
+  readonly authority: TypedOperation<object>['authority'];
+  readonly replay: AgentOperationRow<object>['replay'];
+  readonly identifiers?: readonly string[];
+  open<R>(use: <O extends object>(row: TypedOperation<O>) => R): R;
+}
+
+function row<O extends object>(typed: TypedOperation<O>): AgentOperation {
+  return {
+    authority: typed.authority,
+    replay: typed.replay,
+    ...(typed.identifiers === undefined ? {} : { identifiers: typed.identifiers }),
+    open: (use) => use(typed),
+  };
+}
+
+/** Whether a row's parser refused: parsed operands never carry a `refusal`. */
+export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed is Refused {
+  return 'refusal' in parsed;
+}
+
+/** The operands of a row that reads none beyond its identifiers. */
+const NONE = (): NoOperands => ({});
 
 /** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
 const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
-
-const REPORT_FIXES: readonly string[] = [
-  'Send report as an object of named values, or leave it out.',
-];
-
-const ACTUAL_MINOR_FIXES: readonly string[] = [
-  'Leave actualMinor out, or send null: nothing in this head dispatches.',
-  'A number here would claim the work ran and cost that much.',
-];
 
 /**
  * The operands' shape rules. A present operand of the wrong shape is refused
@@ -116,7 +161,7 @@ const ACTUAL_MINOR_FIXES: readonly string[] = [
  * (`pickupReservation`, `heartbeatLease`), which already refuses an
  * out-of-range lease in the same code.
  */
-function leaseSecondsOperand(maximum: number): (request: AgentRequest) => AgentOperands | Refused {
+function leaseSecondsOperand(maximum: number): (request: AgentRequest) => LeaseOperands | Refused {
   return (request) => {
     if (!('leaseSeconds' in request)) return {};
     const seconds = request['leaseSeconds'];
@@ -140,25 +185,15 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => AgentO
  * would have turned `[id]` into the id and claimed it (Sol 6 AUTHORITY-2).
  * Whether the string names a claimable reservation is the handler's.
  */
-function pickupOperands(request: AgentRequest): AgentOperands | Refused {
+function pickupOperands(request: AgentRequest): PickupOperands | Refused {
   const reservationId = request['reservationId'];
-  if (typeof reservationId !== 'string') {
-    // No attempted value, as the person entry records none for it: the two
-    // audit rows are the same row (`tests/api/id-operand-shape.test.ts`).
-    return refused(
-      refuseCommand(
-        'COMMAND_BODY_INVALID',
-        ['reservationId'],
-        ['Name a reservation from task.queue.'],
-      ),
-    );
-  }
+  if (typeof reservationId !== 'string') return refuseReservationBody();
   const lease = leaseSecondsOperand(MAXIMUM_LEASE_SECONDS)(request);
   if ('refusal' in lease) return lease;
   return { ...lease, reservationId };
 }
 
-function handbackOperands(request: AgentRequest): AgentOperands | Refused {
+function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   // The outcome and the fence by their JSON type, in the order and words the
   // person handler asks them (`tasks-handback.ts`), and passed on as sent:
   // `String(["completed"])` is `"completed"` and `Number("1")` is `1`, which
@@ -166,25 +201,13 @@ function handbackOperands(request: AgentRequest): AgentOperands | Refused {
   // intake keeps only when otherwise valid (Sol 6 AUTHORITY-2). Whether the
   // string is an outcome and the number a fence is the handler's.
   const outcome = request['outcome'];
-  if (typeof outcome !== 'string') {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
-      { outcome },
-    );
-  }
+  if (typeof outcome !== 'string') return refuseOutcome(outcome);
   const fence = request['fence'];
-  if (typeof fence !== 'number') {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed you.']),
-      { fence },
-    );
-  }
-  let operands: AgentOperands = { outcome, fence };
+  if (typeof fence !== 'number') return refuseFence(fence);
+  let operands: HandbackOperands = { outcome, fence };
   if ('report' in request) {
     const report = request['report'];
-    if (!isFieldMap(report)) {
-      return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
-    }
+    if (!isFieldMap(report)) return refuseReport(report);
     operands = { ...operands, report };
   }
   // Any non-null actual is refused here, before authority is read, and not
@@ -195,14 +218,28 @@ function handbackOperands(request: AgentRequest): AgentOperands | Refused {
   // absent are the same request.
   if ('actualMinor' in request) {
     const actualMinor = request['actualMinor'];
-    if (actualMinor !== null && actualMinor !== undefined) {
-      return refused(
-        refuseCommand('ACTUAL_EXPENDITURE_UNSUPPORTED', ['actualMinor'], ACTUAL_MINOR_FIXES),
-        { actualMinor },
-      );
-    }
+    if (actualMinor !== null && actualMinor !== undefined) return refuseActualMinor(actualMinor);
   }
   return operands;
+}
+
+/**
+ * A `recordId` that is present and not a string, refused before any authority
+ * in the words the person prefix answers the same body with (`refusal`).
+ *
+ * `String(["<sibling>"])` is the sibling's id: the check used to take the
+ * agent's own task for a non-string and `serve` then acted on the id the value
+ * printed as, so an agent commented on and read a sibling task
+ * (THERMO-RECHECK-2 NNA1). Absent stays absent: it is checked on the
+ * delegation's own task and names nothing to serve.
+ */
+function recordIdOperand(
+  refusal: (request: AgentRequest) => CommandRefusal | undefined,
+): (request: AgentRequest) => NoOperands | Refused {
+  return (request) => {
+    if (!('recordId' in request) || typeof request['recordId'] === 'string') return {};
+    return refused(refusal(request) ?? refuseNotFound());
+  };
 }
 
 /**
@@ -211,11 +248,11 @@ function handbackOperands(request: AgentRequest): AgentOperands | Refused {
  * Neither tells the caller anything about the business, so both come before
  * any authority is read.
  */
-export async function parseOperands(
+export async function parseOperands<O extends object>(
   tx: TenantQuery,
   request: AgentRequest,
-  operation: AgentOperation,
-): Promise<AgentOperands | Refused> {
+  operation: TypedOperation<O>,
+): Promise<O | Refused> {
   // The envelope's own list and every installed `write_mode = 'system'` field
   // key, read from `field_defs`, the same classifier the person and read
   // routes use (root ruling 1).
@@ -236,7 +273,7 @@ export async function parseOperands(
   if (irrelevant.length > 0) {
     return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, READ_BODY_FIXES));
   }
-  return operation.operands?.(request) ?? {};
+  return operation.operands(request);
 }
 
 /**
@@ -281,22 +318,29 @@ export async function capabilitiesOf(
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
-async function serveComment(tx: TenantQuery, { session, request, declaration }: AgentCall) {
+async function serveComment(
+  tx: TenantQuery,
+  { session, request, declaration }: AgentCall,
+  _operands: NoOperands,
+  _delegation: Delegation,
+  taskId: string | undefined,
+) {
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
   // the delegating person's live grant. The task is locked by the person
   // path's own `lockTask`, the same statement and filter (thermo O8), and the
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
+  if (taskId === undefined) return NOT_FOUND();
   const spine = await readTaskSpine(tx);
-  const task = await lockTask(tx, spine.taskTypeId, String(request['recordId'] ?? ''));
+  const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
   return await writeTaskComment(
     tx,
     {
       commentTypeId: spine.taskCommentTypeId,
       declaration,
-      target: { id: task.id, revision: task.revision },
+      target: task,
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,
@@ -310,7 +354,7 @@ async function serveComment(tx: TenantQuery, { session, request, declaration }: 
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
-  operands: AgentOperands,
+  operands: LeaseOperands,
   delegation: Delegation,
 ) {
   // The delegation `authorise` resolved for this call. The runtime locks it
@@ -337,33 +381,31 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
 >([
   [
     'task.queue',
-    {
+    row({
       authority: 'beforePickup',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.queue'].identifiers,
+      operands: NONE,
       serve: async (tx) => ({
         recordId: null,
         revision: null,
         detail: { queue: await readQueue(tx) },
       }),
-    },
+    }),
   ],
   [
     'task.pickup',
-    {
+    row({
       authority: 'beforePickup',
       replay: 'pickup',
       operands: pickupOperands,
       serve: async (tx, { session, declaration }, operands) =>
-        await pickupReservation(tx, declaration.collection, session.actorId, {
-          reservationId: operands.reservationId ?? '',
-          ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
-        }),
-    },
+        await pickupReservation(tx, declaration.collection, session.actorId, operands),
+    }),
   ],
   [
     'task.handback',
-    {
+    row({
       authority: 'record',
       subjectTask: 'lease',
       replay: 'settledHandback',
@@ -376,8 +418,8 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             // A lease id that is not a string names no lease, and the handler
             // answers it as one that does not exist.
             leaseId: typeof request['leaseId'] === 'string' ? request['leaseId'] : '',
-            fence: operands.fence ?? Number.NaN,
-            outcome: operands.outcome ?? '',
+            fence: operands.fence,
+            outcome: operands.outcome,
             // Carried through rather than dropped here, so that sending a number
             // is the refusal `handbackLease` spells out instead of a silence.
             ...('actualMinor' in request
@@ -393,28 +435,35 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           },
           session.actorId,
         ),
-    },
+    }),
   ],
   [
     'task.heartbeat',
-    {
+    row({
       authority: 'record',
       subjectTask: 'lease',
       replay: 'reauthorise',
       operands: leaseSecondsOperand(MAXIMUM_RENEWAL_SECONDS),
       serve: serveHeartbeat,
-    },
+    }),
   ],
   [
     'task.read',
-    {
+    row({
       authority: 'record',
       subjectTask: 'record',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.read'].identifiers,
-      serve: async (tx, { request }) => {
+      // The person read's own operand rule, so the two prefixes refuse a
+      // non-string id in one body.
+      operands: recordIdOperand((request) => {
+        const read = READ_CATALOGUE['task.read'].parse(request);
+        return read.ok ? undefined : read.refusal;
+      }),
+      serve: async (tx, _call, _operands, _delegation, taskId) => {
+        if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
-        const task = await readTaskDetail(tx, spine.taskTypeId, String(request['recordId'] ?? ''), {
+        const task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
           commentTypeId: spine.taskCommentTypeId,
           // An agent is never an internal reader. It is a delegate working one
           // task, not a member of the business, so it is shown what an external
@@ -427,25 +476,35 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           ? NOT_FOUND()
           : { recordId: task.id, revision: task.revision, detail: { task } };
       },
-    },
+    }),
   ],
   [
     'task.comment',
-    { authority: 'record', subjectTask: 'record', replay: 'reauthorise', serve: serveComment },
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      // The person command path answers a non-string record id as a missing
+      // record (`prepare.ts`, `lockTask`), so this one does too.
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveComment,
+    }),
   ],
   [
     'task.decide',
-    {
+    row({
       authority: 'decision',
       replay: 'reauthorise',
-    },
+      operands: NONE,
+    }),
   ],
   [
     'session.capabilities',
-    {
+    row({
       authority: 'purpose',
       replay: 'capabilities',
       identifiers: READ_CATALOGUE['session.capabilities'].identifiers,
+      operands: NONE,
       // An agent holds no grants of its own -- `identity/agent-login.ts`
       // confers nothing at all -- so this is not the person answer with a
       // different subject in it. What the agent has is a purpose, and the
@@ -456,6 +515,6 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         revision: null,
         detail: { ...(await capabilitiesOf(tx, session, delegation)) },
       }),
-    },
+    }),
   ],
 ]);

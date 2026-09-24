@@ -7,6 +7,7 @@
 import { type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
+import { isFieldMap } from './operands.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
 /**
@@ -30,10 +31,6 @@ function invalidSuccessor(name: string, fix: string, attempted: unknown): Refuse
   return refused(refuseCommand('FIELD_VALUE_INVALID', [name], [fix]), { [name]: attempted });
 }
 
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * The caller's half of a successor, checked key by key.
  *
@@ -50,7 +47,7 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
  * three here would be a second answer to one question.
  */
 export function readSuccessor(raw: unknown, proposer: string): ReadSuccessor {
-  if (!isObject(raw)) {
+  if (!isFieldMap(raw)) {
     return invalidSuccessor(
       'successor',
       'A successor is an object with a purpose, a maximum, a currency, a payload and a step.',
@@ -91,11 +88,11 @@ export function readSuccessor(raw: unknown, proposer: string): ReadSuccessor {
     );
   }
   const payload = raw['payload'];
-  if (!isObject(payload)) {
+  if (!isFieldMap(payload)) {
     return invalidSuccessor('successor.payload', 'The payload is an object.', payload);
   }
   const step = raw['step'];
-  if (!isObject(step) || typeof step['kind'] !== 'string' || !isObject(step['payload'])) {
+  if (!isFieldMap(step) || typeof step['kind'] !== 'string' || !isFieldMap(step['payload'])) {
     return invalidSuccessor(
       'successor.step',
       'A step is an object with a kind and a payload object.',

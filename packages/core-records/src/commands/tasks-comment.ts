@@ -27,7 +27,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { writeComment, type CommentAudience, type CommentType } from '../tasks/comments.ts';
-import type { CommandContext } from './context.ts';
+import type { CommandContext, TaskRow } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
@@ -83,14 +83,16 @@ export async function commentOnTask(
 export interface CommentTarget {
   readonly commentTypeId: string | undefined;
   readonly declaration: CommandDeclaration;
-  readonly target: { readonly id: string; readonly revision: number };
+  /** The task, as its envelope locked it: `deleted_at` is read with the row. */
+  readonly target: TaskRow;
   readonly authorActorId: string;
   readonly entryPoint: EntryPoint;
   /**
    * The audiences this caller may write in. A member holding `comment` writes
-   * in either; an external party and a delegated agent are narrower (`agent-envelope.ts`), and an
-   * audience outside this set is `AUDIENCE_NOT_PERMITTED` rather than the
-   * shape refusal an unknown audience gets.
+   * in either; an external party (`EXTERNAL_AUDIENCES`) and a delegated agent
+   * (`AGENT_AUDIENCES`, `agent-operations.ts`) are narrower, and an audience
+   * outside this set is `AUDIENCE_NOT_PERMITTED` rather than the shape
+   * refusal an unknown audience gets.
    */
   readonly audiences: ReadonlySet<string>;
 }
@@ -113,7 +115,7 @@ export async function writeTaskComment(
   audience: unknown,
   commentType: unknown,
 ): Promise<HandlerOutcome> {
-  if (!(await isLive(tx, on.target.id))) return refused(refuseNotFound());
+  if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
   if (commentTypeId === undefined) return refuseUnlanded(on.declaration);
 
@@ -146,12 +148,4 @@ export async function writeTaskComment(
   });
 
   return applied(on.target.id, on.target.revision, { commentId });
-}
-
-async function isLive(tx: TenantQuery, taskId: string): Promise<boolean> {
-  const rows = await tx.query(
-    `select 1 from records where business_id = $1 and id = $2 and deleted_at is null`,
-    [tx.businessId, taskId],
-  );
-  return rows.length > 0;
 }
