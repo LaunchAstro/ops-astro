@@ -50,6 +50,9 @@ import type { FieldValues } from './requests.ts';
  */
 const PERSON_LINK_FIELDS: readonly string[] = ['assignee', 'delegate'];
 
+/** task.reopen's reason, held to the rule task.cancel applies to its own. */
+const REASON_LIMIT = 500;
+
 /**
  * Refuse a person link that names nobody here.
  *
@@ -78,7 +81,9 @@ async function refusePersonNotHere(
   );
   if (named.length === 0) return undefined;
 
-  const wanted = named.map((key) => fields[key] as string);
+  // Lower-case, as the uuid cast answers (final review R2-AUTHORITY-33): an
+  // upper-case id of a member here is that member.
+  const wanted = named.map((key) => (fields[key] as string).toLowerCase());
   const found = await tx.query<{ readonly id: string }>(
     `select p.id
        from public.people p
@@ -88,12 +93,24 @@ async function refusePersonNotHere(
     [tx.businessId, wanted],
   );
   const here = new Set(found.map((row) => row.id));
-  const missing = named.filter((key) => !here.has(fields[key] as string)).toSorted();
+  const missing = named
+    .filter((key) => !here.has((fields[key] as string).toLowerCase()))
+    .toSorted();
   if (missing.length === 0) return undefined;
   return refuseCommand('NOT_FOUND', missing, [
     'No person of this business with an active membership carries that identifier.',
     'Read person.list for the people this business can be assigned work.',
   ]);
+}
+
+/** Person links lower-cased; `refusePersonNotHere` has already said each is a member here. */
+function canonicalPersonLinks(fields: FieldValues): FieldValues {
+  const out: Record<string, unknown> = { ...fields };
+  for (const key of PERSON_LINK_FIELDS) {
+    const value = out[key];
+    if (typeof value === 'string') out[key] = value.toLowerCase();
+  }
+  return out as FieldValues;
 }
 
 /** The one command that may write a field, from the field's own row. */
@@ -116,10 +133,26 @@ export async function setState(
   tx: TenantQuery,
   context: CommandContext,
   category: MachineCategory,
-  reason?: string,
+  reason?: unknown,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('setState: the envelope read no target');
+
+  // Final review R2-RUNTIME-51. `reason` is a required field of task.reopen
+  // (API.md), recorded in the applied detail as why the task was reopened, so
+  // it is held to task.cancel's rule before anything is written.
+  if (
+    category === 'unstarted' &&
+    (typeof reason !== 'string' || reason.trim() === '' || reason.length > REASON_LIMIT)
+  ) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['reason'],
+        [`Say why the task is reopened, in 1 to ${String(REASON_LIMIT)} characters.`],
+      ),
+    );
+  }
 
   const current = context.spine.states.find((state) => state.id === target.data['state']);
   if (current?.machineCategory === category) {
@@ -131,6 +164,18 @@ export async function setState(
           `This task is already ${category}. There is nothing for this command to change.`,
           'A repeat with the same operation_id replays; a new identity is a new request.',
         ],
+      ),
+    );
+  }
+  // Final review R2-RUNTIME-14. Only task.reopen clears the completion stamp
+  // (SPEC 14.1, DATA.md), and it takes a reason; start on a completed task
+  // would clear it with neither.
+  if (category === 'started' && current?.machineCategory === 'completed') {
+    return refused(
+      refuseCommand(
+        'TRANSITION_NOT_PERMITTED',
+        [current.key],
+        ['A completed task is reopened first.', 'Call task.reopen with a reason.'],
       ),
     );
   }
@@ -246,7 +291,9 @@ export async function writeOwnedFields(
   const absent = await refusePersonNotHere(tx, fields);
   if (absent !== undefined) return refused(absent);
 
-  const merged = mergeFieldValues(target.data, fields);
+  // Stored in the spelling the uuid cast answers, so the task names the
+  // person in the one form every read and join compares against.
+  const merged = mergeFieldValues(target.data, canonicalPersonLinks(fields));
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
      returning revision::text as revision`,

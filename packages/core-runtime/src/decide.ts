@@ -31,7 +31,12 @@ import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
-import { affectedByVersions, classifyVersions, holdCoveringGrants } from './recovery.ts';
+import {
+  affectedByVersions,
+  checkAuthorityAt,
+  classifyVersions,
+  holdCoveringGrants,
+} from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
@@ -159,7 +164,25 @@ export async function decideAsAgent(
   return { ok: false, refusal: decision.refusal };
 }
 
-export async function decide(tx: TenantQuery, request: DecideRequest): Promise<DecideResult> {
+/** A gate this business cannot decide: none by that id, or one on a trashed task. */
+function gateNotFound(): RuntimeResult<never> {
+  return refuse(
+    'GATE_NOT_FOUND',
+    'no such gate in this business',
+    'Name a gate raised by a proposal on a task the caller can see.',
+  );
+}
+
+export async function decide(tx: TenantQuery, presented: DecideRequest): Promise<DecideResult> {
+  // Final review R2-AUTHORITY-33. The ids reach the database through a uuid
+  // cast, which accepts any case, and come back lower-case; the version is
+  // then compared with a string. One spelling from here on, so an upper-case
+  // id of the gate's own version is that version and not a superseded one.
+  const request: DecideRequest = {
+    ...presented,
+    gateId: presented.gateId.toLowerCase(),
+    versionId: presented.versionId.toLowerCase(),
+  };
   const fault = noteFault(request.note);
   if (fault !== null) {
     return {
@@ -185,17 +208,13 @@ export async function decide(tx: TenantQuery, request: DecideRequest): Promise<D
        from public.gates g
        join public.planned_runs r on r.business_id = g.business_id and r.id = g.run_id
        join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+       join public.records t
+         on t.business_id = r.business_id and t.id = r.task_id and t.deleted_at is null
       where g.business_id = $1 and g.id = $2`,
     [tx.businessId, request.gateId],
   );
   const found = discovered[0];
-  if (found === undefined) {
-    return refuse(
-      'GATE_NOT_FOUND',
-      'no such gate in this business',
-      'Name a gate raised by a proposal on a task the caller can see.',
-    );
-  }
+  if (found === undefined) return gateNotFound();
 
   const decisionDecision = await checkAuthority(tx, request.subjects, {
     collection: request.collection,
@@ -290,11 +309,18 @@ export async function decide(tx: TenantQuery, request: DecideRequest): Promise<D
 
   // "Check current decide grant" (T2), under the locks and before the first
   // write, now that no revocation of a covering grant can commit around it.
-  const current = await checkAuthority(tx, request.subjects, {
-    collection: request.collection,
-    action: 'decide',
-    scope: { kind: 'record', id: found.task_id },
-  });
+  // Final review R2-RUNTIME-4: and at the locked instant, so a grant that
+  // lapsed while this waited on the chain or the cap no longer counts.
+  const current = await checkAuthorityAt(
+    tx,
+    request.subjects,
+    {
+      collection: request.collection,
+      action: 'decide',
+      scope: { kind: 'record', id: found.task_id },
+    },
+    lockedAt,
+  );
   if (!current.ok) {
     return refuse(
       'SCOPE_NOT_GRANTED',
@@ -381,6 +407,16 @@ export async function decide(tx: TenantQuery, request: DecideRequest): Promise<D
       'Re-render the pack for this version before deciding it.',
     );
   }
+
+  // Final review R2-RUNTIME-7. A trash that committed while this waited is
+  // read here, under the task lock: a trashed task is gone to the work
+  // surface, and an approval would hold budget for work never handed out. The
+  // answer is discovery's, so a trashed task's gate reads as no gate at all.
+  const live = await tx.query<{ readonly id: string }>(
+    `select id from public.records where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, found.task_id],
+  );
+  if (live[0] === undefined) return gateNotFound();
 
   const lineages = await tx.query<{ readonly state: string }>(
     `select state from public.proposal_lineages where business_id = $1 and id = $2`,
