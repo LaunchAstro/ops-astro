@@ -150,12 +150,12 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     await world?.close();
   });
 
-  it('reads twenty-four migrations, and a table set the contract names exactly', async () => {
+  it('reads twenty-five migrations, and a table set the contract names exactly', async () => {
     const applied = await world.db.admin.execute<{ version: string }>(
       'select version from ops.schema_migrations order by version',
     );
     expect(applied.map((row) => row.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: 24 }, (_, i) => String(i + 1).padStart(4, '0')),
+      Array.from({ length: 25 }, (_, i) => String(i + 1).padStart(4, '0')),
     );
     expect(tables.map((table) => table.qualified)).toStrictEqual(
       Object.keys(APPLICATION_GRANTS).toSorted(),
