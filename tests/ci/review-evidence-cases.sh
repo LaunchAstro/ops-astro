@@ -162,8 +162,8 @@ Code review:" "README.md"
 # Citing the procedure by path is legitimate and must not read as a field.
 run_case "a body citing security-review.md by path passes" 0 "$GOOD_BLOCK
 
-Security review: run against $HEAD, no findings. Procedure:
-.claude/skills/_shared/security-review.md" "packages/core-custody/broker.ts"
+Security review: run against $HEAD, no findings.
+Procedure: .claude/skills/_shared/security-review.md" "packages/core-custody/broker.ts"
 run_case "the procedure path alone is not a security review" 1 "$GOOD_BLOCK
 
 See .claude/skills/_shared/security-review.md for the procedure." \
@@ -199,7 +199,7 @@ run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
 run_case "a code review that is not approved fails" 1 "$BARE_BLOCK
 
 Code review: not approved" "README.md"
-run_case "a code review that is approved passes" 0 "$BARE_BLOCK
+run_case 'free-text "approved, no findings" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: approved, no findings" "README.md"
 
@@ -212,9 +212,9 @@ Security review: run against $HEAD, no findings.
 Security review: run against $OTHER, no findings." "packages/core-custody/broker.ts"
 run_case "two security reviews, both for this head, pass" 0 "$GOOD_BLOCK
 
-Security review: first pass against $HEAD, no findings.
+Security review: run against $HEAD, no findings.
 
-Security review: second pass against $HEAD, 1 finding, all closed." "packages/core-custody/broker.ts"
+Security review: run against $HEAD, 1 finding, all closed." "packages/core-custody/broker.ts"
 
 # 3. The security placeholder was read only where the surface required a
 # review, so an untouched line passed on an ordinary change. The template asks
@@ -224,7 +224,7 @@ run_case "an unreplaced security placeholder fails a non-sensitive change too" 1
 Security review: REPLACE-WITH-OUTCOME" "README.md"
 run_case "a non-sensitive change saying no review was called for passes" 0 "$GOOD_BLOCK
 
-Security review: the surface did not call for one; this change touches docs only." "README.md"
+Security review: not required: this change touches docs only" "README.md"
 
 # 4. The template advertises `the review found nothing` as passing wording and
 # the parser refused it, so the two disagreed about a valid outcome.
@@ -242,14 +242,14 @@ Code review: the review is still pending, so it found nothing to report yet" "RE
 run_case "a code review that is not all closed fails" 1 "$BARE_BLOCK
 
 Code review: not all findings are closed" "README.md"
-run_case "a code review that is all closed passes" 0 "$BARE_BLOCK
+run_case 'free-text "all findings are closed" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: all findings are closed" "README.md"
 
 run_case "a code review that is not fully approved fails" 1 "$BARE_BLOCK
 
 Code review: not fully approved" "README.md"
-run_case "a code review that is fully approved passes" 0 "$BARE_BLOCK
+run_case 'free-text "fully approved" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: fully approved" "README.md"
 
@@ -263,7 +263,7 @@ Code review: 2 findings, 2 closed" "README.md"
 run_case "a security review closing one of three findings fails" 1 "$GOOD_BLOCK
 
 Security review: run against $HEAD, 1 of 3 findings closed" "packages/core-custody/broker.ts"
-run_case "a security review closing all three passes" 0 "$GOOD_BLOCK
+run_case 'free-text "3 of 3 findings closed" is outside the grammar and fails' 1 "$GOOD_BLOCK
 
 Security review: run against $HEAD, 3 of 3 findings closed" "packages/core-custody/broker.ts"
 
@@ -284,7 +284,7 @@ run_case "a negator in an earlier clause fails" 1 "$BARE_BLOCK
 Code review: not, in any way, approved
 
 $SEC_ONLY" "packages/core-custody/broker.ts"
-run_case "the same approval with no negator passes" 0 "$BARE_BLOCK
+run_case 'free-text "approved in every way" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: approved in every way
 
@@ -298,7 +298,7 @@ $SEC_ONLY" "packages/core-custody/broker.ts"
 run_case "a partial security closure across a full stop fails" 1 "$GOOD_BLOCK
 
 Security review: run against $HEAD, 3 findings. 1 of them closed" "packages/core-custody/broker.ts"
-run_case "a complete closure across a full stop passes" 0 "$BARE_BLOCK
+run_case 'free-text "2 findings. 2 closed" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: 2 findings. 2 closed
 
@@ -327,20 +327,69 @@ Code review: $line
 
 $SEC_ONLY" "packages/core-custody/broker.ts"
 done
-run_case "every issue counted and resolved passes" 0 "$BARE_BLOCK
+run_case 'free-text "approved with 2 issues; 2 resolved" is outside the grammar and fails' 1 "$BARE_BLOCK
 
 Code review: approved with 2 issues; 2 resolved
 
 $SEC_ONLY" "packages/core-custody/broker.ts"
-run_case "two concerns, both addressed, passes" 0 "$GOOD_BLOCK
+run_case 'free-text "2 concerns, both addressed" is outside the grammar and fails' 1 "$GOOD_BLOCK
 
 Security review: run against $HEAD, 2 concerns, both addressed" "packages/core-custody/broker.ts"
+
+# Round twelve, 24 September. Three rounds of phrase rules each moved the
+# hole, so the outcome is no longer read as free text: the whole text after
+# the field name must be one form of a closed grammar (CONTRIBUTING.md).
+# Every one of these read as positive to some round of phrase rules.
+for line in "changes requested; all tests passed" "can't approve; all tests passed" \
+  "no findings, but changes requested" "2 findings; all addressed except one" \
+  "approved; 2 findings, 2 resolved; 1 issue remains" "approved" \
+  "approved with 2 findings; 2 resolved" "no findings after recheck" \
+  "3 findings, 2 closed" "1 findings, all closed" "2 finding, 2 closed" "0 findings, all closed"; do
+  run_case "code-review outcome '$line' is outside the grammar and fails" 1 "$BARE_BLOCK
+
+Code review: $line
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+  run_case "security-review outcome 'run against <head>, $line' fails" 1 "$GOOD_BLOCK
+
+Security review: run against $HEAD, $line" "packages/core-custody/broker.ts"
+done
+for line in "no findings" "the review found nothing" "every finding it raised is closed" \
+  "1 finding, all closed" "1 finding, 1 closed" "3 findings, all closed" "3 findings, 3 closed" \
+  "No findings."; do
+  run_case "code-review form '$line' passes" 0 "$BARE_BLOCK
+
+Code review: $line
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+done
+for line in "no findings" "1 finding, all closed" "1 finding, 1 closed" "2 findings, all closed" \
+  "2 findings, 2 closed"; do
+  run_case "security-review form 'run against <head>, $line' passes" 0 "$GOOD_BLOCK
+
+Security review: run against $HEAD, $line." "packages/core-custody/broker.ts"
+done
+run_case "security review 'not required: <reason>' passes a non-sensitive change" 0 "$GOOD_BLOCK
+
+Security review: not required: this change touches docs only" "README.md"
+run_case "security review 'not required' with no reason fails" 1 "$GOOD_BLOCK
+
+Security review: not required:" "README.md"
+run_case "security review 'not required' fails a sensitive change" 1 "$GOOD_BLOCK
+
+Security review: not required: the reviewer judged it low risk" "packages/core-custody/broker.ts"
+run_case "an explanation on the following line is not read" 0 "$BARE_BLOCK
+
+Code review: 2 findings, all closed
+Both were naming nits in the tests; neither needed a second pass.
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
 
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then
   case "$(cat "$TEMPLATE")" in
-    *"the review found nothing, or every finding it raised is closed"*)
+    *"every finding it raised is closed"*"<N> findings, <N> closed"*"not required: <reason>"*)
       pass "the template still advertises the wording these cases assert" ;;
     *) fail "the template still advertises the wording these cases assert" \
       "the template's passing wording moved; the cases above now prove nothing about it" ;;

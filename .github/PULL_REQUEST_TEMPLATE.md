@@ -18,18 +18,32 @@ See docs/agents/review-checkpoint.md.
 ## Review outcomes
 
 <!--
-Replace REPLACE-WITH-OUTCOME on both lines below. The review-evidence check
-reads each line from its first word, so write the outcome on the line itself
-and keep any explanation after it.
+Replace REPLACE-WITH-OUTCOME on both lines below with one of these forms,
+exactly. The review-evidence check reads the whole text after the colon on
+that line, ignoring case and one trailing full stop. Anything that is not one
+of these forms fails. Put any explanation on the next line; the check does
+not read it.
 
-It requires an outcome, not a mention. A line that is still the placeholder,
-or that is empty, or that says the review was not run, was pending, was
-skipped, failed, or left findings open, fails the check. Wording that passes:
-the review found nothing, or every finding it raised is closed.
+Code review, one of:
+  no findings
+  the review found nothing
+  every finding it raised is closed
+  <N> findings, all closed
+  <N> findings, <N> closed
 
-For the security line, record the revision it ran against, and say so plainly
-if the surface did not call for one. Cite the procedure file by path if you
-want to; the check reads fields, not filenames.
+Security review, one of:
+  run against <sha>, no findings
+  run against <sha>, <N> findings, all closed
+  run against <sha>, <N> findings, <N> closed
+  not required: <reason>
+
+N is the same number on both sides, at least 1, with `finding` for 1.
+<sha> is the revision the security review ran against; on a sensitive
+change the check requires it to be this pull request's head.
+`not required: <reason>` passes only when the change
+touches no sensitive path, for example
+`Security review: not required: this change touches docs only`. Cite the
+procedure file by path on a following line if you want to.
 
 What a green check proves: the evidence is bound to this exact head. It reads
 no reviewer identity, so it does not prove that any reviewer read anything.
