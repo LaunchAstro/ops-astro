@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
-import { statusFor } from '../../apps/api/status.ts';
+import { statusOf } from '../../packages/core-records/src/commands/register.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import { PROPOSAL } from '../acceptance/role-case-bodies.ts';
 import { bearer, call, createWorld, personPath, serverUrl } from '../acceptance/world.ts';
@@ -110,7 +110,7 @@ describe.skipIf(serverUrl === undefined)('a foreign or fabricated gate is NOT_FO
 
     // The whole answer, as sent. No id or reason fragment is stripped first.
     expect(toForeign).toStrictEqual(toFabricated);
-    expect(toForeign.status).toBe(statusFor('NOT_FOUND'));
+    expect(toForeign.status).toBe(statusOf('NOT_FOUND'));
     const body = JSON.parse(toForeign.text) as Record<string, unknown>;
     expect(body['code']).toBe('NOT_FOUND');
     expect(body['refused']).toBe(true);

@@ -18,8 +18,7 @@
 // this kind cannot afford.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import type { RefusalCode } from '../../packages/core-records/src/commands/register.ts';
-import { statusFor } from '../../apps/api/status.ts';
+import { statusOf, type RefusalCode } from '../../packages/core-records/src/commands/register.ts';
 import type { Answer } from './world.ts';
 
 /** One observation. The run writes every one of these out, pass or fail. */
@@ -46,7 +45,7 @@ const matrix: Row[] = [];
 export const SUCCESS: Expected = { code: 'ok', status: 200 };
 
 /** A refusal, with its status taken from the product's own table. */
-export const refusal = (code: RefusalCode): Expected => ({ code, status: statusFor(code) });
+export const refusal = (code: RefusalCode): Expected => ({ code, status: statusOf(code) });
 
 export function observe(
   role: string,

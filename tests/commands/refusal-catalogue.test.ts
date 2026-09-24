@@ -19,12 +19,11 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import { createApi } from '../../apps/api/app.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { statusFor } from '../../apps/api/status.ts';
 import {
   refuse as refuseRuntime,
   SUGGESTED_STATUS,
 } from '../../packages/core-runtime/src/refusals.ts';
-import { REFUSAL_REGISTER } from '../../packages/core-records/src/commands/register.ts';
+import { REFUSAL_REGISTER, statusOf } from '../../packages/core-records/src/commands/register.ts';
 import {
   asCallerVisible,
   fromAgentIdentity,
@@ -151,7 +150,7 @@ const RUNTIME = [
 describe('the refusal catalogue', () => {
   it('registers the same codes, in the same order, under the same status and visibility', () => {
     expect(
-      REFUSAL_REGISTER.map((row) => [row.code, statusFor(row.code), row.visibility]),
+      REFUSAL_REGISTER.map((row) => [row.code, statusOf(row.code), row.visibility]),
     ).toStrictEqual(CATALOGUE);
   });
 
@@ -165,7 +164,7 @@ describe('the refusal catalogue', () => {
 
 /** What `apps/api/app.ts` puts on the wire for a command refusal. */
 const wire = (refusal: CommandRefusal): readonly [number, string] => [
-  statusFor(refusal.code),
+  statusOf(refusal.code),
   JSON.stringify({
     refused: true,
     code: refusal.code,

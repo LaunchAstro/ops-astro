@@ -58,7 +58,7 @@ import type { CommandRequest } from '../../packages/core-records/src/commands/re
 import type { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import type { ReadRequest } from '../../packages/core-records/src/reads/requests.ts';
 import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
-import { statusFor } from './status.ts';
+import { statusOf } from '../../packages/core-records/src/commands/register.ts';
 
 /**
  * The surface declaration as this boundary reads it.
@@ -327,7 +327,7 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   // boundary returns arrived there as an outage.
   return context.json(
     { refused: true, code: refusal.code, names: refusal.names, fixes: refusal.fixes },
-    statusFor(refusal.code),
+    statusOf(refusal.code),
   );
 }
 

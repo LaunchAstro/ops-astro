@@ -49,11 +49,10 @@ import {
   slotOf,
   type SpineField,
 } from '../../packages/core-records/src/tasks/spine.ts';
-import { statusFor } from '../../apps/api/status.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { isRefusal, OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { submitEdit } from '../../apps/web/src/records/submit.ts';
-import type { RefusalCode } from '../../packages/core-records/src/commands/register.ts';
+import { statusOf, type RefusalCode } from '../../packages/core-records/src/commands/register.ts';
 import { bearer, call, createWorld, personPath, serverUrl } from './world.ts';
 import type { Answer, World } from './world.ts';
 
@@ -170,8 +169,8 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
   /**
    * One `task.update` against the subject, through the named surface. The API
    * and the CLI carry a status, and it must be the register's own rather than a
-   * number this boundary chose: `statusFor` is the table `apps/api/status.ts`
-   * keeps, and asking it proves the boundary used it.
+   * number this boundary chose: `statusOf` reads the register's status column,
+   * and asking it proves the boundary used it.
    */
   async function attemptUpdate(
     surface: string,
@@ -279,7 +278,7 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
         fields,
         before.revision,
       );
-      if (status !== undefined) expect(status).toBe(statusFor(expectedCode(field)));
+      if (status !== undefined) expect(status).toBe(statusOf(expectedCode(field)));
       expect(code).toBe(expectedCode(field));
       expect(names).toStrictEqual(expectedNames(field));
       // The attempted value goes to the audit, never to the response. A refusal
@@ -348,7 +347,7 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
           { intake_state: value },
           before.revision,
         );
-        if (status !== undefined) expect(status).toBe(statusFor('TRANSITION_PROTECTED'));
+        if (status !== undefined) expect(status).toBe(statusOf('TRANSITION_PROTECTED'));
         expect(code).toBe('TRANSITION_PROTECTED');
         expect(names).toStrictEqual(['intake_state=task.triage']);
         expect(Object.keys(body as object).toSorted()).toStrictEqual([
@@ -419,7 +418,7 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
           body = refusal;
           status = answer.status;
         }
-        expect(status).toBe(statusFor('SOURCE_SPOOFED'));
+        expect(status).toBe(statusOf('SOURCE_SPOOFED'));
         expect(code).toBe('SOURCE_SPOOFED');
         expect(names).toStrictEqual([key]);
         if (typeof value === 'string' && value !== '') {
