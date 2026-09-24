@@ -253,8 +253,14 @@ export async function mintDelegation(
   // hold — the recovery's whole point is that it does not. A new row also
   // leaves the abandoned authority legible afterwards instead of overwriting
   // it, which is what `task.read`'s projection shows beside the new hold.
-  const blocking = await tx.query<{ readonly id: string; readonly expired: boolean }>(
-    `select id, (expires_at <= now()) as expired from public.delegations
+  //
+  // Expiry is judged after the row lock, on `clock_timestamp()`, not `now()`.
+  // `now()` is when the transaction began, and a pickup that waited on its
+  // locks past the expiry of the lease this delegation was minted with would
+  // still see the delegation live and refuse the agent's own replacement
+  // (Sol 6 RUNTIME-1 at 158d6de, the delegation half).
+  const blocking = await tx.query<{ readonly id: string }>(
+    `select id from public.delegations
       where business_id = $1 and agent_actor_id = $2 and purpose = $3
         and revoked_at is null and settled_at is null
       for update`,
@@ -262,7 +268,12 @@ export async function mintDelegation(
   );
   const held = blocking[0];
   if (held !== undefined) {
-    if (!held.expired) {
+    const judged = await tx.query<{ readonly expired: boolean }>(
+      `select (expires_at <= clock_timestamp()) as expired from public.delegations
+        where business_id = $1 and id = $2`,
+      [tx.businessId, held.id],
+    );
+    if (judged[0]?.expired !== true) {
       return refuse(
         'DELEGATION_ALREADY_LIVE',
         `this agent already holds a live delegation for the purpose ${request.purpose}`,
