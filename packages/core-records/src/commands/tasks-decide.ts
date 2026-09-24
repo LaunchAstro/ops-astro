@@ -20,7 +20,11 @@ export interface DecideFields {
   readonly note: string;
 }
 
-const DECISIONS: ReadonlySet<string> = new Set(['approve', 'reject', 'request_changes']);
+const DECISIONS: readonly DecisionKind[] = ['approve', 'reject', 'request_changes'];
+
+function isDecisionKind(decision: string): decision is DecisionKind {
+  return (DECISIONS as readonly string[]).includes(decision);
+}
 
 /** `task.decide`'s answer for a gate not visible here. Constant, so nothing presented rides out. */
 const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
@@ -34,14 +38,15 @@ export async function decideOnGate(
   context: CommandContext,
   fields: DecideFields,
 ): Promise<HandlerOutcome> {
-  if (!DECISIONS.has(fields.decision)) {
+  const decision = fields.decision;
+  if (!isDecisionKind(decision)) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',
         ['decision'],
         ['A decision is approve, reject or request_changes.'],
       ),
-      { decision: fields.decision },
+      { decision },
     );
   }
 
@@ -83,7 +88,7 @@ export async function decideOnGate(
     decidedByActorId: context.session.actorId,
     subjects: subjectsOf(context.session),
     collection: context.declaration.collection,
-    decision: fields.decision as DecisionKind,
+    decision,
     note: fields.note,
     signingKey,
     capId,
@@ -105,9 +110,13 @@ export async function decideOnGate(
     versionId: decided.versionId,
     decision: decided.decision,
     hash: decided.hash,
-    ...(decided.envelopeId === undefined ? {} : { envelopeId: decided.envelopeId }),
-    ...(decided.reservationId === undefined ? {} : { reservationId: decided.reservationId }),
-    ...(decided.attemptId === undefined ? {} : { attemptId: decided.attemptId }),
-    ...(decided.heldMinor === undefined ? {} : { heldMinor: decided.heldMinor }),
+    ...(decided.decision === 'approve'
+      ? {
+          envelopeId: decided.envelopeId,
+          reservationId: decided.reservationId,
+          attemptId: decided.attemptId,
+          heldMinor: decided.heldMinor,
+        }
+      : {}),
   });
 }
