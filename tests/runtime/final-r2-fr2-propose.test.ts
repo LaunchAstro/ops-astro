@@ -183,13 +183,17 @@ describe.skipIf(serverUrl === undefined)('task.propose, final review round 2', (
     {
       label: 'lineageId 5',
       changes: { lineageId: 5 },
-      code: 'COMMAND_BODY_INVALID',
+      // Lead ruling (coordinator 33, line 5): the typed-identifier door in
+      // `prepare.ts` answers a mistyped operand by name, as API.md says.
+      code: 'FIELD_VALUE_INVALID',
       names: ['lineageId'],
     },
     {
       label: 'lineageId true',
       changes: { lineageId: true },
-      code: 'COMMAND_BODY_INVALID',
+      // Lead ruling (coordinator 33, line 5): the typed-identifier door in
+      // `prepare.ts` answers a mistyped operand by name, as API.md says.
+      code: 'FIELD_VALUE_INVALID',
       names: ['lineageId'],
     },
     {
