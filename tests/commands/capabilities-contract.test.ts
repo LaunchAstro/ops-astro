@@ -113,7 +113,13 @@ describe('an agent login before any pickup (contract case 9, I12)', () => {
       // eslint-disable-next-line no-await-in-loop
       const answer = await asAgent(declaration.name, {
         operationId: randomUUID(),
-        recordId: randomUUID(),
+        // Each operand the agent entry reads before the delegation (Sol 6
+        // AUTHORITY-2 and -3) is well formed, so the answer is the exclusion:
+        // no stray recordId on the capabilities read, and a typed handback.
+        ...(declaration.name === 'session.capabilities' ? {} : { recordId: randomUUID() }),
+        ...(declaration.name === 'task.handback'
+          ? { leaseId: randomUUID(), fence: 1, outcome: 'completed' }
+          : {}),
       });
       answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });
     }
