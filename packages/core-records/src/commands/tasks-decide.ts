@@ -100,6 +100,14 @@ export async function decideOnGate(
     // root ruling 2 of 906613f). The refused audit row is still this
     // business's, written by the envelope.
     if (result.refusal.code === 'GATE_NOT_FOUND') return refused(GATE_NOT_VISIBLE);
+    // The runtime refuses a note it cannot sign and store (final review R1
+    // #53). The field is named here, as every other `FIELD_VALUE_INVALID`
+    // names its field; the value itself is not echoed.
+    if (result.refusal.code === 'FIELD_VALUE_INVALID') {
+      return refused(
+        refuseCommand('FIELD_VALUE_INVALID', ['note'], [result.refusal.reason, result.refusal.fix]),
+      );
+    }
     return refused(fromReasoned(result.refusal));
   }
 

@@ -78,6 +78,9 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
        join public.proposal_lineages lin on lin.business_id = res.business_id and lin.id = run.lineage_id
        join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+       -- Final review R1 #10: a trashed task's work is not handed out.
+       join public.records task on task.business_id = run.business_id and task.id = run.task_id
+                               and task.deleted_at is null
       where res.business_id = $1
         and res.state = 'held'
         and res.lease_id is null
@@ -251,18 +254,19 @@ export async function pickup(
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.planned_steps step on step.business_id = res.business_id and step.run_id = run.id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
+       join public.records task on task.business_id = run.business_id and task.id = run.task_id
+                               and task.deleted_at is null
       where res.business_id = $1 and res.id = $2
       order by step.ordinal limit 1`,
     [tx.businessId, request.reservationId],
   );
   const found = discovered[0];
-  if (found === undefined) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      `no reservation ${request.reservationId} in this business`,
-      'Read the queue and pick up something on it.',
-    );
-  }
+  // Final review R1 #10. A reservation on a trashed task is answered exactly
+  // as one that does not exist, as a trashed task is to its readers: the same
+  // two sentences the command layer gives for an unknown reservation, so the
+  // answer says nothing about what was there. Restore brings the work back.
+  if (found === undefined)
+    return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
 
   await holdCoveringGrants(tx, authoritySubjects(request), request.collection);
 
@@ -339,17 +343,16 @@ export async function pickup(
        join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        left join public.leases bound on bound.business_id = res.business_id and bound.id = res.lease_id
+       join public.records task on task.business_id = run.business_id and task.id = run.task_id
+                               and task.deleted_at is null
       where res.business_id = $1 and res.id = $2`,
     [tx.businessId, request.reservationId, lockedAt],
   );
   const state = claimable[0];
-  if (state === undefined) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      'the reservation vanished under the lock',
-      'Re-read the queue.',
-    );
-  }
+  // Gone, or its task trashed while this waited on the task lock: the same
+  // answer as a reservation that never existed (#10).
+  if (state === undefined)
+    return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
   const plan = planClaim(state, request.reservationId);
   if (plan.kind === 'refuse') return plan.refusal;
   const expiredLeaseId = plan.kind === 'replace' ? plan.fence : null;
