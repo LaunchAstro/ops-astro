@@ -249,8 +249,12 @@ what the token says, never what the body claims. [AUTHORITY.md](AUTHORITY.md)
 has the three credentials and what each confers. The route itself is derived
 from `COMMAND_SURFACE` in `packages/core-records/src/commands/surface.ts`, so a
 command with no declaration has no route, and a read is a declaration with
-`kind: 'read'` that carries no `operationId` and no `expectedRevision`
-([API.md](API.md)). The handler prepares and applies the write against the
+`kind: 'read'`. On the person prefix a read carries no `operationId` and no
+`expectedRevision` ([API.md](API.md)). On the agent prefix every call, reads
+included, carries an `operationId`, because the agent envelope refuses one
+without it (`executeAgentCommand` in
+`packages/core-records/src/commands/agent-envelope.ts`). The handler prepares
+and applies the write against the
 fixed-slot records in `packages/core-records/src/records/`, or, for the
 proposal and decision path, against `packages/core-runtime/`
 ([DATA.md](DATA.md), [RUNTIME.md](RUNTIME.md)). All of it commits inside one

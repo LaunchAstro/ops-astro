@@ -21,25 +21,38 @@ is `6f15252`: checks, a reseed at migration 0023, `verify:slice` 48 of 48,
 `verify:browser` 88 of 88 and the restart proof 25 of 25. Its evidence is kept
 with the build run under `runs/6f15252`, outside this repository. Heads merged
 since have merge-trial evidence only: each lane was merged with the commands
-below run on the integration trial, and nothing more. The latest head with
-recorded green gates is `bbdf2b2`. The integration head is `b282216`, the
-joint merge of GRANT-EXPIRY-INTAKE (`fc49c35`), PROJECTION-SNAPSHOT (`b7afcf8`)
-and RETRY-BOUNDS (`b282216`). Its joint gates are recorded only as running,
-with no result, so at `b282216` they are unrun. The final live verification at
-the final head is owed and has not been run.
+below run on the integration trial, and nothing more. The joint gates at
+`b282216`, the merge of GRANT-EXPIRY-INTAKE (`fc49c35`), PROJECTION-SNAPSHOT
+(`b7afcf8`) and RETRY-BOUNDS (`b282216`), passed: `pnpm test` 5,210 passed and
+24 skipped, `tests/acceptance` 3,850 and 16, `db:conformance` 107 named suites,
+4,713 of 4,713. SOL-RUNTIME-FIX, SOL-AUTHORITY-FIX and DOCS-4 merged next, and
+the joint gates at `faf3285` passed with the counts in the table. `faf3285` is
+the latest head with recorded green gates. The integration head, and the head
+these docs describe, is `0395827`: the batch merge of RETRY-GAPS,
+REFACTOR-DEAD, REFACTOR-REFUSALS, SOL-SURFACE-FIX, THERMO-WEB and SWEEP-API,
+which carries REFACTOR-API-ROOT. Its joint gates are red on `typecheck` and
+`pnpm test` for one file, `tests/commands/refusal-catalogue.test.ts`, new in
+REFACTOR-REFUSALS (events log, 2026-09-24T00:49:54Z, corrected at 00:50:28Z).
+The file met two changes merged beside it. It pinned the unknown-business
+bytes from before REFACTOR-API-ROOT's single admission door, and it builds
+`createApi` without the `executeCommand` that SWEEP-API made required. The
+integration writer fixed it forward at `3881a9d`, a test-only commit whose file
+passes 10 of 10 alone. The full joint gates rerun on the next batch head, so
+apart from that red they are unrun at `0395827`.
+The final live verification at the final head is owed and has not been run.
 
-| What                                                                                                                                                                           | Count                                                                              | Label                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `typecheck`, `lint`, `format:check`, `spdx`                                                                                                                                    | green                                                                              | tested (merge trial, `bbdf2b2`); not run at `b282216`                       |
-| `pnpm test`                                                                                                                                                                    | 5,199 passed, 24 skipped                                                           | tested (merge trial, `bbdf2b2`); not run at `b282216`                       |
-| `tests/acceptance`                                                                                                                                                             | 3,850 passed, 16 skipped                                                           | tested (merge trial, `bbdf2b2`); not run at `b282216`                       |
-| `db:conformance`                                                                                                                                                               | 104 named suites (100 invariant, 4 conformance), 4,702 of 4,702                    | tested (merge trial, `bbdf2b2`); not run at `b282216`, which names 107      |
-| `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                     | tested (lane run on `a3d0afe`)                                              |
-| `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                     | tested (lane run on `209eb29`)                                              |
-| `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 13, 4 and 1 tests                                                               | tested (lane runs on `85bf346`, `20c57b0`, `aed9384`); not run at `b282216` |
-| `verify:browser`, including the in-flight, R4 and surface-final rows                                                                                                           | 88 of 88 at `6f15252`                                                              | tested (live run, `6f15252`); not run since                                 |
-| `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11))                                                               | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved              | tested (lane run on `20363eb`)                                              |
-| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                                                                                   | 30 of 30, twice, on the RESTART-LEGS lane's own stack; skipped in the counts above | tested (lane run on `90ec7c6`); not run at `bbdf2b2` or `b282216`           |
+| What                                                                                                                                                                           | Count                                                                                                | Label                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `typecheck`, `lint`, `format:check`, `spdx`                                                                                                                                    | green                                                                                                | tested (merge trial, `faf3285`); `typecheck` red at `0395827` on `refusal-catalogue.test.ts` |
+| `pnpm test`                                                                                                                                                                    | 5,225 passed, 24 skipped                                                                             | tested (merge trial, `faf3285`); red at `0395827` on `refusal-catalogue.test.ts`             |
+| `tests/acceptance`                                                                                                                                                             | 3,850 passed, 16 skipped                                                                             | tested (merge trial, `faf3285`); not run at `0395827`                                        |
+| `db:conformance`                                                                                                                                                               | 110 named suites (106 invariant, 4 conformance), 4,728 of 4,728                                      | tested (merge trial, `faf3285`); not run at `0395827`, which names 111                       |
+| `d06-generated.test.ts`, `d06-agent.test.ts`                                                                                                                                   | 3,706 of 3,706: 2,901 for `d06-generated`, 805 for `d06-agent`                                       | tested (lane run on `a3d0afe`)                                                               |
+| `role-case-matrix.test.ts` (item 2)                                                                                                                                            | 384 rows: 338 pass, 46 named exceptions, none missing coverage                                       | tested (lane run on `209eb29`)                                                               |
+| `retry-bounds`, `historical-handback-intake`, `projection-snapshot`, `proposal-snapshot` ([the last three lanes](#retry-bounds-grant-expiry-intake-and-the-proposal-snapshot)) | 3, 16, 4 and 1 tests; `historical-handback-intake` had 13 at `20c57b0` and SOL-AUTHORITY-FIX added 3 | tested (lane runs on `85bf346`, `20c57b0`, `aed9384`; merge trial, `faf3285`)                |
+| `verify:browser`, including the in-flight, R4 and surface-final rows                                                                                                           | 88 of 88 at `6f15252`                                                                                | tested (live run, `6f15252`); not run since                                                  |
+| `verify:d06-mounted` ([D06 and D03 on the mounted browser](#d06-and-d03-on-the-mounted-browser-d06-d03-i02-i11))                                                               | 939 of 966 cells, D03 11 of 11; 27 `delegation.revoke` cells unproved                                | tested (lane run on `20363eb`)                                                               |
+| The restart proof ([item 5](#item-5-the-restart-proof-w06-as-one-named-run))                                                                                                   | 30 of 30, twice, on the RESTART-LEGS lane's own stack; skipped in the counts above                   | tested (lane run on `90ec7c6`); not run at a merge trial since                               |
 
 The 24 skipped in `pnpm test` include the suites that spawn the real
 `server.ts` and skip without `SURFACE_API_PORT`
@@ -404,8 +417,9 @@ the engine classifies. On `task.update` it refuses only `source`
 nothing. An update that carries both `source` and `intake_state` is answered
 `SOURCE_SPOOFED`, because `source` is checked first. The same codes are
 asserted by name in `tests/commands/task-fields.test.ts:103-115`. Every status
-is read through `statusFor`, so the boundary is proved to use the register's
-own table rather than a number it chose.
+is read through `statusFor`, which reads the status column of the register
+itself, so the boundary is proved to use the register rather than a number it
+chose.
 
 **The positive controls are beside them**, because a server that refused
 everything would pass the refusal half: `task.assign` for `assignee`,
@@ -888,8 +902,9 @@ Tested in the lane run on `209eb29`.
 
 RETRY-BOUNDS, GRANT-EXPIRY-INTAKE and PROJECTION-SNAPSHOT merged jointly at
 `b282216`. Every count here comes from the lane's own run on its own Postgres.
-The joint gates at `b282216` have no recorded result, so none of these suites
-has a merge-trial run. `retry-bounds`, `projection-snapshot` and
+The joint gates at `b282216` then passed, with `pnpm test` at 5,210 passed and
+24 skipped and `db:conformance` at 107 named suites, 4,713 of 4,713. That run
+includes every case below. `retry-bounds`, `projection-snapshot` and
 `proposal-snapshot` are newly named in `tests/db/named-suites.json`;
 `historical-handback-intake` was already named.
 
@@ -956,6 +971,52 @@ has a merge-trial run. `retry-bounds`, `projection-snapshot` and
   enabled. `tests/reads/decision-snapshot.test.ts` now pauses only after
   statement 0, a declared one-line edit the lead accepted.
 
+## The Sol 6 fixes and the API root
+
+SOL-RUNTIME-FIX and SOL-AUTHORITY-FIX merged with DOCS-4 at `faf3285`, and the
+joint gates there passed. REFACTOR-API-ROOT reached the branch inside
+SWEEP-API, which merged at `0395827`. The joint gates there are red on
+`refusal-catalogue.test.ts` and otherwise unrun
+([Current counts](#current-counts-and-what-they-are)).
+Each test count below is the `it(` calls in the file, with parametrised tables
+expanded, read from the file rather than from a run.
+
+- **Cap and clock, SOL-RUNTIME-FIX.**
+  `tests/runtime/cap-exact-and-post-lock-clock.test.ts`, 4 tests, through the
+  command entry. A USD version under an AUD cap is `CAP_BINDING_MISMATCH` and
+  nothing moves. A cap of 2^53 + 1 fills to the exact minor unit, and one unit
+  more is `BUDGET_EXHAUSTED`; the test reads every total from SQL as text. A
+  decide parked on its gate and a heartbeat parked on its lease until the
+  database clock passes the deadline answer `GATE_EXPIRED` and
+  `LEASE_EXPIRED`, because each reads the clock after its locks are held.
+  Tested (merge trial, `faf3285`).
+- **R4, spend and the agent's operation id, SOL-AUTHORITY-FIX.**
+  `tests/authority/non-member-grants.test.ts`, 3 tests. Record-scoped
+  `comment` and `write` grants alone give no standing, so every call is
+  `AUTH_NO_MEMBERSHIP`. Beside a read share they write no internal comment
+  (`AUDIENCE_NOT_PERMITTED` 422) and no update (`SCOPE_NOT_GRANTED` 403). A
+  read share alone writes no comment, and a held `comment` grant writes a
+  client one. `tests/runtime/historical-handback-intake.test.ts` sends
+  `actualMinor: 1` on its narrowed, retired and grant-expired paths: each is
+  `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 with nothing retained, and a `null`
+  actual is still retained. `tests/commands/agent-operation-id.test.ts`, 5
+  tests: a number, an array, `null` or an absent agent `operationId` is
+  `OPERATION_ID_REQUIRED` with no register row, and the string registers.
+  Tested (merge trial, `faf3285`).
+- **Admission and the operation id at the boundary, REFACTOR-API-ROOT and
+  SWEEP-API.** `tests/api/admission-enumeration.test.ts`, 17 tests through
+  `composeApi`. On both prefixes, for a valid and a malformed body, a foreign
+  business key and a fabricated one answer the same raw bytes, and an expired
+  bearer is `AUTH_SESSION_EXPIRED` 401 for any key. A malformed-body attempt
+  is recorded only in the business that resolved. A non-string agent
+  `operationId` is `OPERATION_ID_REQUIRED` 422 with no operation row, and a
+  string one reaches the queue. `tests/api/agent-operation-id.test.ts`, 6
+  tests: the agent boundary hands the envelope `operationId` exactly as the
+  JSON carried it, and a number, an array, `null` or an absent field is
+  `OPERATION_ID_REQUIRED` 422 with nothing registered. Tested (SWEEP-API lane
+  run on `491fbf6`, which includes REFACTOR-API-ROOT); no joint green run at
+  `0395827`.
+
 ## Engineering rulings, and how far each is proved
 
 The build's root ruled on contract questions the lanes raised at `906613f`,
@@ -1003,6 +1064,26 @@ None is a waiver.
   middle, not the tail; the gate and lineage cross-checks are the only defence
   there.
 
+## Open for the owner
+
+These three are open for Nathan. Nobody has decided them.
+
+- **Two protected storage migrations.** SOL-RUNTIME-FIX proposed a trigger
+  holding a cap and its envelope to one currency, and an aggregate cap-ceiling
+  constraint trigger. Neither is written. Both are protected migrations and
+  wait on Nathan's acceptance.
+- **The R4 client-comment ruling.** An external party holding an explicitly
+  provisioned comment grant may write a client-audience comment and nothing
+  else, and a read share alone writes nothing. That is the lead's ruling, not
+  Nathan's, and he may overturn it with an empty `EXTERNAL_WRITES` in
+  `commands/prepare.ts`
+  ([AUTHORITY.md, "The external party (R4)"](AUTHORITY.md#the-external-party-r4)).
+- **U7 T10, stopping without confirmation.** Either a one-click "Stop the work
+  here" with no in-chat confirmation stands, or AW-05 draws a confirm
+  dialogue. The U7 score (events log, 2026-09-23T23:19:45Z) left U7
+  undischarged and named this as Nathan's item. Either answer clears it
+  without re-scoring.
+
 ## What is not here
 
 Each is named so the unfinished work stays countable.
@@ -1016,8 +1097,14 @@ Each is named so the unfinished work stays countable.
   remove it. That is a product decision nobody has made yet.
 - **The heartbeat's bounds are unconfirmed.** `schedules-heartbeat.test.ts` now
   tests the 8-hour lifetime total at the boundary and just past it. The bounds
-  themselves, like the agent's internal-only comment audience, are lane choices
-  that still need root or owner confirmation ([RUNTIME.md](RUNTIME.md#the-work-controls)).
+  themselves are 1 hour a beat (`MAXIMUM_RENEWAL_SECONDS`) and 8 hours in all
+  (`MAXIMUM_LEASE_LIFETIME_SECONDS`), both in
+  `packages/core-runtime/src/heartbeat.ts`. They are lane choices still
+  awaiting root or owner confirmation
+  ([RUNTIME.md](RUNTIME.md#the-work-controls)). Root ruling 6 at `906613f`
+  does not cover them. It settles bare agent calls and replay codes only, and
+  the same rulings file leaves the agent's comment audience preference
+  "pending separately".
 - **Reports are stored.** They are in `public.handback_reports`
   (`migrations/0018_runtime_handback_reports.sql:24`). Which report identities
   the restart proof compares is the restart section's to say, above.

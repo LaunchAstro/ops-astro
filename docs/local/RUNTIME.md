@@ -14,9 +14,14 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-cases added by the grant-expiry-intake, projection-snapshot and retry-bounds
-lanes passed on their lane branches. The joint gates on the head that merged
-them, b282216, have not been run.
+joint gates were green at b282216 and again at faf3285 (`pnpm test` 5,225
+passed and 24 skipped, `tests/acceptance` 3,850 and 16, `db:conformance` 110
+named suites, 4,728 of 4,728). The joint gates at 0395827, the batch merge of
+retry-gaps, refactor-dead, refactor-refusals, sol-surface-fix, thermo-web and
+sweep-api, were red on `typecheck` and `pnpm test` for one test file,
+`tests/commands/refusal-catalogue.test.ts`, fixed forward in the test at
+3881a9d. The full joint gates rerun on the next batch head, so the rest are
+unrun here. [PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
 
@@ -73,7 +78,7 @@ holds, live lease and delegation, in one ordered call (`lockProposal`,
 (`COMMAND_SURFACE`, `commands/surface.ts`), so the command envelope only reads
 the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
-(`commands/tasks-runtime.ts`).
+(`commands/tasks-propose.ts`).
 
 Grants stay outside that order. `task.pickup` share-locks the grant chain behind
 the claim's authority before it acquires the runtime set: the claimant's own
@@ -223,23 +228,25 @@ interface HandedBack {
 for a person and an agent alike, a present `leaseSeconds` must be a whole number
 of seconds from 1 to 3600. `null`, a fraction or anything else is
 `FIELD_VALUE_INVALID` 422. Leaving it out gives 15 minutes, for a pickup and a
-renewal alike (`readLeaseSeconds`, with `DEFAULT_LEASE_SECONDS` and
-`DEFAULT_RENEWAL_SECONDS`, in `commands/tasks-runtime.ts`). A present handback
-`report` must be an object: `null`, an array or a string is
-`FIELD_VALUE_INVALID` on both prefixes (the report check in that file's
-handback `settle`). The pickup's brief lists `excludedOperations` as
-`{ operation, reason }` pairs (`exclusionsFor`).
+renewal alike (`readLeaseSeconds` and `DEFAULT_RENEWAL_SECONDS` in
+`commands/tasks-lease.ts`, `DEFAULT_LEASE_SECONDS` in
+`commands/tasks-pickup.ts`). A present handback `report` must be an object:
+`null`, an array or a string is `FIELD_VALUE_INVALID` on both prefixes (the
+report check in `settle`, `commands/tasks-handback.ts`). The pickup's brief
+lists `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
+`commands/tasks-pickup.ts`), and its `handbackShape` names the operands
+`task.handback` reads (`handbackShapeFor`, `commands/pickup-handback-shape.ts`).
 
 ### Refusal codes, as L3 registered them
 
-`RuntimeRefusalCode` is exported as this package's own type and is deliberately
-not added to `commands/register.ts`, which is L3's file, for the reason
-AUTHORITY.md gives: a module reaching into the command surface to add its own
-codes is the coupling the register exists to prevent. `SUGGESTED_STATUS` in
-`refusals.ts` carries the same table in code. L3 has registered every code below
-at the status suggested here (`apps/api/status.ts`), and `fromRuntime`
-(`commands/tasks-runtime.ts`) carries a runtime refusal onto the command surface
-unchanged. Each operation's refusals, with their routes, are in
+`RuntimeRefusalCode` is read off the refusal register's rows marked `runtime`
+(`packages/core-records/src/commands/register.ts`). Each row carries its HTTP
+status, and `apps/api/status.ts` reads that column, so a runtime code is
+declared once. `SUGGESTED_STATUS` (`core-runtime/src/refusals.ts`) is a view
+derived from those rows. Nothing in production reads it, and the tests that
+census the runtime's codes keep it exported. `fromRuntime` is in
+`commands/refusal.ts` and gives a runtime refusal `fromAuthority`'s shape,
+reason then fix. Each operation's refusals, with their routes, are in
 [API.md](API.md#the-operations-l4s-runtime-made-possible).
 
 | Code                             | Status | Caller-visible                                                 |
@@ -255,7 +262,7 @@ unchanged. Each operation's refusals, with their routes, are in
 | `BUDGET_EXHAUSTED`               | 402    | yes, the cap behind it has none                                |
 | `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                            |
 | `LINEAGE_NOT_ON_TASK`            | 409    | yes, the lineage is another task's                             |
-| `CAP_BINDING_MISMATCH`           | 409    | yes, the envelope's cap is the cap                             |
+| `CAP_BINDING_MISMATCH`           | 409    | yes, the envelope's cap, and its currency, is the cap          |
 | `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes, this head observed no spending                            |
 | `SUCCESSOR_OUT_OF_BOUNDS`        | 409    | yes, cap, currency or rounds                                   |
 | `RESERVATION_NOT_CLAIMABLE`      | 409    | yes, one answer for none, unapproved and already picked up     |
@@ -271,7 +278,7 @@ from AUTHORITY.md's table. It is not re-derived here.
 `RESERVATION_NOT_CLAIMABLE` gives the same two sentences whether the reservation
 does not exist, has no approval behind it, or is already picked up by another
 live lease (`NOT_CLAIMABLE_REASON` and `NOT_CLAIMABLE_FIX`, `pickup.ts`;
-`claim`, `commands/tasks-runtime.ts`). The holding lease is never named.
+`claim`, `commands/tasks-pickup.ts`). The holding lease is never named.
 
 `LEASE_HELD` is reachable. Two lineages approved on one task, under an envelope
 an earlier handback left open, give two held reservations, and the second pickup
@@ -300,6 +307,17 @@ number and being `actual` the same fact.
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
 second is the cap behind it.
 
+Both checks compare exact minor units. The totals and limits come from SQL as
+text and are compared as `bigint`, so a valid cap above 2^53 is never exceeded
+through rounding (`budgetRoom` and `exceeds`, `core-runtime/src/decide.ts`).
+The response converts fields such as `heldMinor` to numbers separately.
+
+The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
+version whose currency differs from the cap's, or from that of the task's open
+envelope, with `CAP_BINDING_MISMATCH` before the first write (`budgetRoom`).
+`openEnvelope` checks again at the write that binds them.
+`SUCCESSOR_OUT_OF_BOUNDS` is the same check for a handback's successor.
+
 ## Why a lapsed gate reads expired but stays pending
 
 Nathan decided this on 23 September 2026: show expired on read, and preserve
@@ -313,11 +331,14 @@ deadline undecided stays stored as `pending`.
   `expired: true` in the proposals read
   (`core-records/src/reads/proposals.ts`). The page therefore sees the same
   answer the refusal gives.
-- **Both use the database clock.** Each side reads `now()` inside its own
-  statement, never the application's clock.
-- **The boundary is inclusive.** `expires_at <= now()` is expired on both
-  sides, so at the deadline instant the read says expired and the decide
-  refuses.
+- **Both use the database clock.** `decide` reads `clock_timestamp()` once,
+  after it acquires its locks (`lockedInstant`, `core-runtime/src/clock.ts`),
+  so a decide that waited on a lock past the deadline is refused. The read
+  takes no lock, so it uses `now()` inside its own statement. Neither uses the
+  application's clock.
+- **The boundary is inclusive.** `expires_at` at or before the clock is
+  expired on both sides, so at the deadline instant the read says expired and
+  the decide refuses.
 - **Only an otherwise pending gate expires.** An approved, rejected,
   changes-requested or superseded gate reads its stored outcome after its
   deadline.
@@ -470,12 +491,18 @@ refusal is appended, beside the refused audit row. No lease, delegation, run,
 attempt, reservation, gate, envelope or successor is written, and nothing is
 read back to the caller. A wrong lease, fence or credential, another agent's
 credential, another business, a heartbeat, any other call and any other refusal
-retain nothing. A refused or settled handback's replay is answered from its
+retain nothing. The intake keeps only an otherwise valid report, and one that
+reports actual expenditure is not valid. The agent entry refuses a non-null
+`actualMinor` `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 among its operands, before
+it reads authority (`parseOperands`, `commands/agent-envelope.ts`), so that
+handback never reaches the intake. A null `actualMinor` is the same request as
+none and is kept. A refused or settled handback's replay is answered from its
 register row and retains no second row. The same identity with other operands is
 `OPERATION_ID_REUSED`, and only a new operation id is a new late report. A fault
 after the retained row rolls back the row, the register row and the audit row
 together. `tests/runtime/historical-handback-intake.test.ts` holds the retired,
-narrowed and grant-expired paths over HTTP.
+narrowed and grant-expired paths over HTTP, each with a handback carrying
+`actualMinor: 1` that retains nothing.
 
 **Both command entries retry once.** The agent entry (`executeAgentCommand`,
 `commands/agent-envelope.ts`) and the person entry (`executeCommand`,
@@ -487,11 +514,19 @@ is the one an agent reaches. A same-operationId retry in flight behind its
 original loses `operations_identity_key` to the original's commit, and its whole
 transaction rolls back. The second attempt reads the committed register row and
 replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
-The agent predicate admits `AffectedSetChanged`, but no agent command reaches a
-thrower of it today. `cancelAndClassify`, `classifyAuthorityLoss` and
-`replayRecordedTransitions` raise it, and only `task.cancel`, `grant.revoke`,
-`delegation.revoke` and startup recovery call them. None of those is on the
-agent's `AGENT_SURFACE`. Admitting it gives the agent no cancellation authority
+
+`cancelAndClassify`, `classifyAuthorityLoss` and `replayRecordedTransitions`
+raise `AffectedSetChanged`. So do `task.propose`'s live-work recheck
+(`lockProposal`, `propose.ts`), `task.handback`'s lease-binding recheck
+(`handback`, `handback.ts`) and `grant.revoke`'s dependent-attempt recheck
+(`revokeGrantAsManager`, `commands/authority-controls.ts`). A propose that
+meets a pickup of the superseded hold, or a revocation that meets a handback of
+a dependent lease, retries once at the person entry. The handback recheck is a
+consistency guard that no schedule reaches, because nothing in this head
+rewrites the lease's reservation, its version or that version's lineage. It
+costs at most one extra attempt, at either entry. `tests/runtime/retry-gaps.test.ts` holds
+the three rechecks. Of the agent's `AGENT_SURFACE`, only `task.handback`
+reaches a thrower. Admitting the type gives the agent no cancellation authority
 and adds no command retry at startup.
 
 A second loss reaches the caller as a fault. The person entry then writes one
@@ -557,7 +592,7 @@ paths retain their report and return. So a lease that cannot settle work cannot
 propose the next of it either.
 
 **On the command surface.** L3 carries the successor through `task.handback`
-(`readSuccessor`, `commands/tasks-runtime.ts`). The body's `successor` is read
+(`readSuccessor`, `commands/successor.ts`). The body's `successor` is read
 and checked before the runtime is reached, and `proposedByActorId` is not a body
 field: the agent actor of the session proposes it. A body that names it under
 either spelling is refused `FIELD_NOT_WRITABLE` (`SUCCESSOR_SERVER_OWNED`). The
@@ -687,7 +722,11 @@ partly covered rather than proved.
   over it.
 - **The cap's refusal is the cap's** (W05): an approval larger than the cap but
   smaller than its envelope is refused `BUDGET_EXHAUSTED`, not
-  `BUDGET_UNAVAILABLE`, and no total moves.
+  `BUDGET_UNAVAILABLE`, and no total moves. The comparison is exact at any
+  valid `bigint` limit: a cap above 2^53, filled to the unit, refuses one more
+  unit `BUDGET_EXHAUSTED` (`tests/runtime/cap-exact-and-post-lock-clock.test.ts`,
+  which also holds the currency refusal and the decide and heartbeat that
+  waited on a lock past their deadline).
 - **The interruption, both ways** (W01): the same production `propose` and
   `decide` calls followed by a throw at the transaction boundary leave a fresh
   connection zero decisions, envelopes, reservations and attempts; committed,
@@ -888,21 +927,25 @@ direct SQL.
   lease under their current `write` on the task (`checkAuthority` in
   `heartbeat`). A lease that is not live, is past its instant, or whose
   delegation is settled, revoked or expired is `LEASE_EXPIRED` and is not
-  revived. One renewal reaches at most `MAXIMUM_RENEWAL_SECONDS` (3600) past now
-  and never past `MAXIMUM_LEASE_LIFETIME_SECONDS` (8 hours) after the pickup.
-  The delegation's expiry is copied from the lease row. No timer grants
-  authority. Nothing runs on its own, a lease that stops beating expires, and
-  the next pickup fences it as before. Bounded unstarted recovery stays the
-  owning operations' classifier (W04), reached by pickup, cancellation and
-  restart replay, with no sweeper added.
+  revived. Expiry, the delegation's liveness and the renewal are all judged on
+  one `clock_timestamp()` read taken after the lease and delegation locks
+  (`lockedInstant`, `core-runtime/src/clock.ts`), so a heartbeat that waited
+  past the expiry is refused and revives nothing. One renewal reaches at most
+  `MAXIMUM_RENEWAL_SECONDS` (3600) past that instant and never past
+  `MAXIMUM_LEASE_LIFETIME_SECONDS` (8 hours) after the pickup's `acquired_at`.
+  It never shortens a lease. The delegation's expiry is copied from the lease
+  row. No timer grants authority. Nothing runs on its own, a lease that stops
+  beating expires, and the next pickup fences it as before. Bounded unstarted
+  recovery stays the owning operations' classifier (W04), reached by pickup,
+  cancellation and restart replay, with no sweeper added.
 - **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
   are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
   `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They
   are lane L3-CONTROLS's choice and await root or owner confirmation. The 8-hour
   total is enforced in SQL as
-  `greatest(expires_at, least(now() + renewal, acquired_at + 8 hours))` (the
-  renewal's `update` in `heartbeat`). So past it a beat keeps `expires_at` and
-  never extends it, and a renewal never shortens a lease.
+  `greatest(expires_at, least(instant + renewal, acquired_at + 8 hours))`,
+  where `instant` is the clock read after the locks (the renewal's `update` in
+  `heartbeat`). So past it a beat keeps `expires_at` and never extends it.
   `tests/runtime/schedules-heartbeat.test.ts` reaches the boundary by moving
   the lease's `acquired_at` back on the database clock, then beats through
   `task.heartbeat`.
@@ -942,7 +985,7 @@ under a dedicated delegation credential key
   stops the API at boot with the reason, never the bytes (the `credentialKeys`
   check in `main`, `apps/api/server.ts`). An agent `task.pickup` without a
   usable keyring refuses `DEPENDENCY_NOT_LANDED` before claiming anything
-  (`pickupReservation`, `commands/tasks-runtime.ts`). A replay whose delegation
+  (`pickupReservation`, `commands/tasks-pickup.ts`). A replay whose delegation
   names a key this process does not hold answers `DEPENDENCY_NOT_LANDED`
   `['task.pickup', 'delegation credential key <id>']`. A derived token whose
   digest does not match answers `DEPENDENCY_NOT_LANDED`

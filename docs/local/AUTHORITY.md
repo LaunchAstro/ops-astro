@@ -139,8 +139,9 @@ interface Delegation { /* ...as before... */ readonly purposeScope: PurposeScope
 ```ts
 // identity/agent-login.ts
 resolveAgentLogin(tx, presented: VerifiedSubject): Promise<AgentSession | AgentRefusal>
-withAgentSession<T>(database, businessId, presented, run): Promise<T | AgentRefusal>
 refuseExpiredSession(): AgentRefusal            // AUTH_SESSION_EXPIRED
+// The agent entry is executeAgentCommand (commands/agent-envelope.ts). It opens
+// withBusiness and calls resolveAgentLogin itself; no session wrapper is exported.
 
 // identity/authentication-attempts.ts
 recordAuthenticationAttempt(tx, AuthenticationAttempt): Promise<void>
@@ -270,9 +271,10 @@ mints racing) and reaches a caller as 409 through `task.pickup`.
 `tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
 `tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
 audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
-(`commands/register.ts`). `tests/commands/runtime-codes.test.ts:121-123`
-asserts that it stays off, and `:111-115` that it is registered at 409 and
-caller-visible. It is not one of the twenty runtime codes (`:117-119`). The
+(`commands/register.ts`). `tests/commands/runtime-codes.test.ts` asserts that
+it stays off ("has come off the unproduced list"), that it is registered at 409
+and caller-visible ("registers it, gives it 409"), and that it is not one of the
+twenty runtime codes ("is not one of the runtime codes"). The
 runtime passes it through from the authority layer, as `DELEGATION_NOT_LIVE`
 and `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
@@ -290,15 +292,35 @@ browser half (holding the draft, re-authenticating, resuming) is L5's.
 A person of the business with a login, an acting identity and **no
 membership** is refused `AUTH_NO_MEMBERSHIP` 403 until somebody shares a record
 with them. With a live share and no business grant, the same login resolves as
-an external party, whose session `roleKey` is null
-(`identity/login-resolution.ts:97-120`, standing at `:138-161`). Minimum
-contract 8.1 R4: "that task's shared fields and client-audience comments
-only".
+an external party, whose session `roleKey` is null (`resolveLogin` in
+`identity/login-resolution.ts`). Minimum contract 8.1 R4: "that task's shared
+fields and client-audience comments only".
 
 - **The share is a record-scoped grant.** `shareRecord`
   (`authority/shares.ts:74`) issues a root `read` grant at `scope_kind =
 'record'`, under the sharer's own live `share` grant; a member without one is
   `SCOPE_NOT_GRANTED`. `revokeShare` (`:98`) takes it back.
+- **Standing is a live scoped `read` grant.** `STANDING` in
+  `identity/login-resolution.ts` counts unrevoked, unexpired grants below
+  business scope whose action is `read`, held by the person or their acting
+  identity. Any live business grant disqualifies. A scoped `comment` or
+  `write` row alone is no standing, and the login answers
+  `AUTH_NO_MEMBERSHIP`.
+- **The one write is a client comment.** A session with no membership
+  reaches no write except `task.comment` (`EXTERNAL_WRITES` in
+  `commands/prepare.ts`, checked before the authority check), and then only
+  in the `client` audience (`commentOnTask` in `commands/tasks-comment.ts`).
+  Any other write is `SCOPE_NOT_GRANTED` 403, whatever other grant rows exist.
+  With a `comment` grant on the task, an internal comment is
+  `AUDIENCE_NOT_PERMITTED` 422. Without one, a comment in either audience is
+  `SCOPE_NOT_GRANTED`, so a read share alone writes nothing.
+  `tests/authority/non-member-grants.test.ts` proves each case.
+- **The client comment is the lead's ruling, not an owner decision.**
+  Coordinator 25 ruled
+  on 24 Sep 2026, reading contract 8.1 R4, that an external party holding an
+  explicitly provisioned comment grant may write a client-audience comment
+  and nothing else, and that a read share alone writes nothing. Nathan may
+  overturn it. Doing so is one line, an empty `EXTERNAL_WRITES`.
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). A sibling record and the board
@@ -447,7 +469,7 @@ second install adds what a later release named and resets nothing, because the
 alternative is an upgrade that quietly returns a business's retention window to
 the shipped default.
 
-**`task.purge` reads `retention_window_days`** (`commands/tasks-trash.ts:111`,
+**`task.purge` reads `retention_window_days`** (`commands/tasks-trash.ts`,
 through `readBusinessSetting`) inside the serving transaction, so the window is
 always the caller's business's row. The request body no longer carries one: a
 body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
@@ -475,7 +497,7 @@ writes anyway, which is what a caller that has not learnt to send one does. An
 unknown key and an `operation` row the named operation does not own are one
 answer, `undefined`, which the command turns into its own `NOT_FOUND`.
 
-The two settings commands write through it (`commands/settings-write.ts:114`),
+The two settings commands write through it (`setBusinessSetting`, `commands/settings-write.ts`),
 so `settings.set_four_eyes_threshold` and `settings.set_client_sign_off` both
 move the revision and both answer `VERSION_STALE` 409 to a stale one;
 `settings.read` projects the revision on every row (`reads/settings.ts:76`).
@@ -492,7 +514,8 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
   grant's scope, or the delegation's purpose scope
-  (`commands/surface.ts:295-299`, `authorisedOn: 'target'`; `targetScopeOf`,
+  (the `grant.revoke` and `delegation.revoke` declarations in `commands/surface.ts`,
+  `authorisedOn: 'target'`; `targetScopeOf`,
   `commands/prepare.ts`). A manager whose `manage` covers exactly that
   scope reaches the handler. A body naming no such row is asked at business
   scope, so a caller who manages nothing is still `SCOPE_NOT_GRANTED` before
@@ -527,9 +550,9 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   person or actor subject, and no other live `write` covers the task, the same
   transaction releases the lease and classifies its hold `authority_revoked`,
   with the grant id as the recorded cause
-  (`commands/authority-controls.ts:140-174`, `:241-275`). A holder whose
+  (`dependents` and `revokeGrantAsManager`, `commands/authority-controls.ts`). A holder whose
   business-wide `write` is revoked while a record-scoped `write` on the task
-  remains keeps the lease, and can renew and hand it back (`:176-192`).
+  remains keeps the lease, and can renew and hand it back (`stillAuthorised`).
 - After authority loss the run returns to `planned`. The abandoned hold is
   never revived; a claimant with current authority gets a fresh hold and
   attempt.
@@ -562,25 +585,31 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   row naming `DELEGATION_NARROWED` and changes nothing else
   ([RUNTIME.md, "Why the lease is fenced"](RUNTIME.md#why-the-lease-is-fenced)).
   Another agent, another business, a forged credential, another task's lease,
-  an unknown lease and a wrong fence retain nothing.
+  an unknown lease and a wrong fence retain nothing. Only an otherwise valid
+  report is kept, and a report claiming actual expenditure is not one. The
+  agent entry refuses a non-null `actualMinor` among its operands
+  (`parseOperands` in `commands/agent-envelope.ts`) before authority is read,
+  as `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, so no path retains it. `null` and
+  absent are the same request.
   `tests/runtime/historical-handback-intake.test.ts` holds both paths,
-  including the grant-expired cases.
+  including the grant-expired cases, and sends `actualMinor: 1` on the
+  narrowed, retired and grant-expired paths.
 - `delegations.revocation_cause` (migration 0023) is one of `authority_lost`,
   `delegation_revoked` or `work_retired`. It is written once with
   `revoked_at` and a trigger fixes it; the first terminal write wins. Rows
   revoked before 0023 keep a null cause.
 - `task.propose` with a `lineageId` that is not in the caller's business
   answers `GATE_NOT_FOUND` with a constant reason, so a foreign id and a
-  fabricated id get identical bytes (`core-runtime/src/propose.ts:224-232`).
+  fabricated id get identical bytes (`proposeUnderLocks`, `core-runtime/src/propose.ts`).
 
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 `task.cancel` and `task.restart` are authorised on the task named in
 `recordId`, so a record-scoped `write` grant is enough
-(`commands/surface.ts:305-306`). `task.pickup`, `task.heartbeat` and
+(their declarations in `commands/surface.ts`). `task.pickup`, `task.heartbeat` and
 `task.handback` are authorised as `write` on the task their reservation or
-lease belongs to (`authorisedOn: 'claim'`, `:229-241`, `:309`), the scope the
+lease belongs to (`authorisedOn: 'claim'` in the same declarations), the scope the
 runtime and `grant.revoke` ask. A record-scoped writer works their own lease
 on that task. An id that resolves to nothing is asked at business scope, so a
 foreign and a fabricated id get the same answer (`claimScopeOf`,
@@ -614,7 +643,7 @@ all four callers this section used to list as missing are built:
   ([PROOFS.md](PROOFS.md)). The command line reaches the same routes
   ([CLI.md](CLI.md)).
 - **The delegation caller.** `task.pickup` mints the delegation through
-  `mintDelegation` (`packages/core-runtime/src/pickup.ts:184`), and
+  `mintDelegation` (`packages/core-runtime/src/pickup.ts`), and
   `task.handback` settles it ([RUNTIME.md](RUNTIME.md)).
 - **The external comment read.** `task.read` serves the shared view to an
   external party and `externalCommentProjection` to every agent ("Reads" in
@@ -636,8 +665,11 @@ What is still absent:
 - **No exported share operation.** `shareRecord` is reached from the seed and
   the tests only. A `task.share` command, or the gated external assignment of
   minimum contract 3.5, belongs to the commands, surface and apps owners.
-- **No external comment.** Shares stay read-only until `task.comment` forces
-  `audience: client` for a non-member.
+- **No external comment in practice.** `task.comment` already holds a
+  non-member to `audience: client`, but only on a `comment` grant for the
+  task. A share issues `read` alone and no route issues a `comment` grant, so
+  a shared party writes nothing until someone provisions one through
+  `issueGrant` ([The external party](#the-external-party-r4)).
 - **Which task fields are `shared`** is an owner decision. As shipped none
   are.
 - **No acceptance.** Every mechanism here is implemented and tested; none is

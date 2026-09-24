@@ -52,10 +52,14 @@ The bearer and the delegation credential are never taken as flags, so they do
 not appear in a process listing or shell history, and the command line never
 prints either of them.
 
-A write needs an `operationId`. When the body has none, the command line adds a
-fresh one. To retry a write safely, put your own `operationId` in the body and
-send the same body again: the API replays the first answer instead of writing
-twice.
+A write needs an `operationId`; when the body has none, the command line adds a
+fresh one. A read on the person prefix is sent with exactly the body given and
+no `operationId`. Every call on the agent prefix (`--agent`) gets one, reads
+included, because the agent envelope refuses any call without it
+(`OPERATION_ID_REQUIRED` in `executeAgentCommand`,
+`packages/core-records/src/commands/agent-envelope.ts`). To retry a write
+safely, put your own `operationId` in the body and send the same body again:
+the API replays the first answer instead of writing twice.
 
 ## Person and agent use
 
@@ -88,15 +92,19 @@ pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":
 
 ## Output and exit codes
 
-On an answer, stdout holds the API's JSON body, one line. A refusal is printed
-exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
+Whatever the API answers, stdout holds its body as received. A JSON body is
+re-serialised on one line, and any other body is printed verbatim. A refusal is
+printed exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
+The one exception is a successful agent `task.pickup`, whose credential is
+replaced by where it was saved.
 
-| Exit | Meaning                                                                                                      |
-| ---- | ------------------------------------------------------------------------------------------------------------ |
-| 0    | The API answered with success.                                                                               |
-| 1    | The API refused, or `login` was refused by the identity provider.                                            |
-| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body, or no bearer or business. Nothing sent. |
-| 3    | Transport: the API did not answer, or answered something that is not JSON.                                   |
+| Exit | Meaning                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                     |
+| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer. |
+| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body, or no bearer or business. No request sent.                                |
+| 3    | Transport: no answer arrived.                                                                                                                  |
+| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON.                                      |
 
 ## What it does not do
 

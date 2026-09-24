@@ -277,8 +277,12 @@ The other four, `task.queue`, `preset.plan`, `settings.read` and
 `session.capabilities`, are listed with their answers under "Reads" in
 [API.md](API.md#reads).
 
-A read carries no `operation_id` and no `expected_revision`: there is nothing to
-replay and nothing to be stale against. It runs through `withSession` and the
+On the person prefix a read carries no `operation_id` and no
+`expected_revision`: there is nothing to replay and nothing to be stale
+against. On the agent prefix every call, reads included, carries an
+`operation_id`, because the agent envelope refuses a call without one
+(`executeAgentCommand` in `packages/core-records/src/commands/agent-envelope.ts`).
+A person's read runs through `withSession` and the
 same `checkAuthority` the commands use, in the same transaction, so a revoked
 grant bites on the next read. A denied read is `SCOPE_NOT_GRANTED` and never an
 empty list.
