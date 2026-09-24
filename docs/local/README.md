@@ -47,10 +47,11 @@ If you are new to this checkout, read this section first.
 - **Stop only what you started.** Record the PIDs you start and kill only those
   PIDs. Never kill by pattern ([Stopping what you started](#stopping-what-you-started)).
 - **The delegation credential key.** Agent pickup credentials are derived
-  under a local key kept outside the database and outside tracked files: the
-  environment (`DELEGATION_CREDENTIAL_KEY_ID` and `DELEGATION_CREDENTIAL_KEYS`)
-  or the ignored `.local/delegation.env`. `db:seed` creates that file once, or
-  the API creates it on first use, and neither rewrites it. Back it up with the
+  under a local key kept outside the database and outside tracked files. The
+  key comes from the environment (`DELEGATION_CREDENTIAL_KEY_ID` and
+  `DELEGATION_CREDENTIAL_KEYS`) or from the ignored `.local/delegation.env`.
+  `db:seed` creates that file once, or the API creates it on first use, and
+  neither rewrites it. Back it up with the
   database; a database restored without it cannot replay a lost pickup
   response ([RUNTIME.md](RUNTIME.md#the-delegation-credential-key)).
 - **The seed can change the external party's password.** See
@@ -58,8 +59,8 @@ If you are new to this checkout, read this section first.
   `db:seed` against an identity service someone else uses.
 
 Everything here is local. Every container and every process listens on a
-loopback address of this machine. Nothing is deployed, nothing is published,
-and no hosted service is involved at any point.
+loopback address of this machine. Nothing is deployed or published, and no
+hosted service is involved.
 
 ## Prerequisites
 
@@ -155,7 +156,7 @@ These are addresses, not contact details. RFC 6762 reserves `.local` for
 multicast DNS and it cannot be delegated, so none of them reaches a mailbox.
 The public content check allows exactly these five by name
 (`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a sixth
-invented login until that login is added here and there.
+invented login until that login is added to this table and to that list.
 
 There are two businesses, keys `alpha` and `bravo`. The business selector on
 the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a
@@ -202,15 +203,15 @@ SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" \
 defaults to `.local/evidence/browser` inside this checkout, and the harness
 creates the directory (`SHOTS` in `tests/browser/harness.mjs`). `DOCKER_BIN`
 defaults to `/usr/local/bin/docker`, which is not where every installation puts
-it.
-`WEB_URL` and `API_URL` override the two addresses if you moved them. The same
-four apply to `node tests/browser/keyboard-and-widths.mjs`.
+it. `WEB_URL` and `API_URL` override the two addresses if you moved them.
+`node tests/browser/keyboard-and-widths.mjs` reads only `SHOT_DIR` and
+`WEB_URL` of the four.
 
 The command drives the browser acceptance cases through Playwright against the
 running application, so start the database, the identity service, the API and
 the web server first. The N6 revocation cases (a grant revoked underneath a live
 session, and an older in-flight response that cannot restore it) are part of
-that command: `tests/browser/slice-acceptance.mjs` runs them through
+that command. `tests/browser/slice-acceptance.mjs` runs them through
 `cases-n6-n7.mjs`, which imports `n6-revocation.mjs`. One further harness runs
 on its own, outside that command: `node tests/browser/keyboard-and-widths.mjs`
 (keyboard paths, and the width captures the gaps below are recorded from).
@@ -232,8 +233,8 @@ corepack pnpm check
 ```
 
 This is the whole blocking gate, tests included. The test suite needs
-`DATABASE_URL` and `DATABASE_ADMIN_URL` exported, and the public-content step
-reads the staged tree, so stage your changes before running it.
+`DATABASE_URL` and `DATABASE_ADMIN_URL` exported. The public-content step reads
+the staged tree, so stage your changes before running it.
 
 ## Pickup and debugging
 
@@ -258,8 +259,8 @@ included, carries an `operationId`, because the agent envelope refuses one
 without it (`runAgentCommand` in
 `packages/core-records/src/commands/agent-envelope.ts`). The handler prepares
 and applies the write against the fixed-slot records in
-`packages/core-records/src/records/`, or, for the proposal and decision path,
-against `packages/core-runtime/`
+`packages/core-records/src/records/`. On the proposal and decision path it
+writes against `packages/core-runtime/` instead
 ([DATA.md](DATA.md), [RUNTIME.md](RUNTIME.md)). All of it commits inside one
 tenancy transaction opened by `withSession`. It sets the business on the
 connection and checks the grant in the same transaction as the write, so a
@@ -344,9 +345,9 @@ API and Postgres restart on a lane's own stack. It needs
 `DATABASE_ADMIN_URL` exported for that container. It refuses to start unless
 both database URLs are set, avoid 54390 to 54392, and use the port the named
 container publishes. Evidence goes to `.local/restart-legs-browser/<stamp>/`,
-or `SHOT_DIR`: `restart-legs-cases.jsonl` (one row per line as recorded),
-`MANIFEST.json` (rows and exit status) and screenshots. It exits 0 only when
-RL0 and RL-a to RL-d all pass.
+or to `SHOT_DIR` when set. It holds `restart-legs-cases.jsonl` (one row per
+line as recorded), `MANIFEST.json` (rows and exit status) and screenshots. It
+exits 0 only when RL0 and RL-a to RL-d all pass.
 
 `corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
 tooling checks and the test suite together, needs `DATABASE_URL` and
@@ -368,9 +369,9 @@ holds pointers and nothing else:
 
 It points to a coordinator's live state held outside this repository, and it
 carries no status, no results and no credentials. If it is absent, there is no
-local-run metadata here. That does not mean the work is finished, and its
-presence or absence says nothing about completion. If the file is present and
-the directory it names is not, the pointer is stale. Say so in your report
+local-run metadata here. Its presence or absence says nothing about
+completion. If the file is present and the directory it names is not, the
+pointer is stale. Say so in your report
 instead of guessing what it meant.
 
 ### Reporting a bug or handing back evidence
@@ -410,8 +411,8 @@ source import such as `/@fs/<worktree>/apps/web/src/main.tsx` still answers
 
 This has two limits. A dev server is for one person's machine on loopback, so
 do not put one on an address other people can reach, whatever it denies. It
-also constrains this server only. The API on its
-own port and anything else the start sequence runs are outside it.
+also constrains this server only. The API on its own port and anything else
+the start sequence runs are outside it.
 
 ## Limitations
 
@@ -420,13 +421,13 @@ own port and anything else the start sequence runs are outside it.
 - **There is no dark theme.** The application does not answer
   `prefers-color-scheme`, so a person who has chosen dark gets the light build.
   This is the largest visual gap and the one a person would call a defect.
-- **Three smaller width gaps.** They are recorded, not closed, with the board
-  columns, facets, agent surfaces and subtasks that this build does not store
-  or draw, in [WEB.md, "Known gaps against the pinned
-  mockup"](WEB.md#known-gaps-against-the-pinned-mockup). Comments are stored
-  and drawn. What is missing there is the mockup's tabbed Internal / Client /
-  All activity conversation, which this build draws as one list with each
-  row's audience on it.
+- **Three smaller width gaps.** They are recorded, not closed, in [WEB.md,
+  "Known gaps against the pinned
+  mockup"](WEB.md#known-gaps-against-the-pinned-mockup). That section also
+  lists the board columns, facets, agent surfaces and subtasks that this build
+  does not store or draw. Comments are stored and drawn. What is missing there
+  is the mockup's tabbed Internal / Client / All activity conversation, which
+  this build draws as one list with each row's audience on it.
 - **An external party cannot be invited from the app.** The product reads a
   real external party's shared record ([AUTHORITY.md, "The external
   party"](AUTHORITY.md#the-external-party-r4)), but no route issues a share.
