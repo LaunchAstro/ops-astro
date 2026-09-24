@@ -32,7 +32,11 @@ import {
   migrate,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
-import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connectAsAdmin,
+  type AdminConnection,
+  type BusinessId,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -77,6 +81,39 @@ async function appHoldsTemporary(db: EmptyDatabase, business: string): Promise<b
   });
 }
 
+/** 0031's loop query, word for word. */
+const LOOP_MEMBERS = `select r.rolname
+      from pg_auth_members m
+      join pg_roles g on g.oid = m.roleid
+      join pg_roles r on r.oid = m.member
+     where g.rolname = 'ops_astro_app'`;
+
+function latch(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  const box: { resolve?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    box.resolve = resolve;
+  });
+  return { promise, resolve: () => box.resolve?.() };
+}
+
+/** Whether a backend on the named database is waiting on a lock, polled from outside it. */
+async function waitsOnALock(watch: AdminConnection, name: string): Promise<boolean> {
+  for (let i = 0; i < 200; i += 1) {
+    // oxlint-disable-next-line no-await-in-loop
+    const [row] = await watch.execute<{ readonly n: number }>(
+      `select count(*)::int as n from pg_stat_activity
+        where datname = $1 and wait_event_type = 'Lock'`,
+      [name],
+    );
+    if ((row?.n ?? 0) > 0) return true;
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+  return false;
+}
+
 describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade from 0028', () => {
   let db: EmptyDatabase | undefined;
 
@@ -115,6 +152,79 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
     },
     120_000,
   );
+
+  // FR8-0031: 0031's loop reads every member of the group, then revokes from
+  // each by name, so a member dropped between the read and its revoke used to
+  // fail the migration, and with it the whole run. The schedule is fixed, not
+  // raced: a second session drops the member and row-locks the pg_shdepend row
+  // of an earlier member's TEMPORARY grant, the loop reads both members and
+  // blocks on that row, and only then does the drop commit.
+  it('migrates when a member login is dropped between the loop reading it and revoking from it', async () => {
+    db = await at0028('guardgone');
+    const on = db;
+    const first = `${on.name}_first`;
+    const gone = `${on.name}_gone`;
+    const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
+    const dropper = connectAsAdmin(serverUrl ?? '', { source: 'dropper' });
+    const release = latch();
+    try {
+      await server.execute(`create role "${first}" login in role ${APPLICATION_ROLE}`);
+      await server.execute(`create role "${gone}" login in role ${APPLICATION_ROLE}`);
+      await on.admin.execute(`grant temporary on database "${on.name}" to "${first}"`);
+      // The loop's own query, so the order it meets the two members in is known.
+      const members = (await on.admin.execute<{ readonly rolname: string }>(LOOP_MEMBERS)).map(
+        (row) => row.rolname,
+      );
+      expect(members.indexOf(first)).toBeGreaterThanOrEqual(0);
+      expect(members.indexOf(first)).toBeLessThan(members.indexOf(gone));
+
+      const locked = latch();
+      const dropping = dropper.transaction(async (execute) => {
+        await execute(`drop role "${gone}"`);
+        await execute(
+          `select 1 from pg_shdepend
+            where classid = 'pg_database'::regclass
+              and objid = (select oid from pg_database where datname = $1)
+              and refobjid = (select oid from pg_roles where rolname = $2)
+              for update`,
+          [on.name, first],
+        );
+        locked.resolve();
+        await release.promise;
+      });
+      await locked.promise;
+
+      const upgrading = migrate(on.admin, 'migrations').then(
+        () => 'migrated',
+        (error: unknown) => String((error as { cause?: unknown }).cause ?? error),
+      );
+      expect(await waitsOnALock(server, on.name)).toBe(true);
+      release.resolve();
+      await dropping;
+
+      expect(await upgrading).toBe('migrated');
+      expect(await lastApplied(on)).toBe('0031');
+      const [held] = await on.admin.execute<{
+        readonly first: boolean;
+        readonly login: boolean;
+        readonly gone: boolean;
+      }>(
+        `select has_database_privilege($1, current_database(), 'TEMPORARY') as first,
+                has_database_privilege($2, current_database(), 'TEMPORARY') as login,
+                exists (select 1 from pg_roles where rolname = $3) as gone`,
+        [first, on.loginRole, gone],
+      );
+      expect(held).toStrictEqual({ first: false, login: false, gone: false });
+    } finally {
+      release.resolve();
+      await dropper.close();
+      await on.drop();
+      db = undefined;
+      await server.execute(`drop role if exists "${first}"`);
+      await server.execute(`drop role if exists "${gone}"`);
+      await server.close();
+    }
+  }, 120_000);
 
   it('migrates a fresh database with TEMPORARY refused, as before', async () => {
     db = await createEmptyDatabase({ part: 'guardtempfresh' });

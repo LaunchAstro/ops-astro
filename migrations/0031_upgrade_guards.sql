@@ -65,7 +65,12 @@ begin
       join pg_roles r on r.oid = m.member
      where g.rolname = 'ops_astro_app'
   loop
-    execute format('revoke temporary on database %I from %I', current_database(), login.rolname);
+    -- A login dropped after this loop read it has nothing left to revoke (FR8-0031).
+    begin
+      execute format('revoke temporary on database %I from %I', current_database(), login.rolname);
+    exception when undefined_object then
+      null;
+    end;
   end loop;
 end;
 $$;

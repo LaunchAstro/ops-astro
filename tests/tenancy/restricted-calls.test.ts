@@ -152,7 +152,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   });
 
   // Every migration on disk, read from the directory rather than counted here,
-  // so the next migration needs no edit to this suite (docs/local/DATA.md:58-61).
+  // so the next migration needs no edit to this suite (docs/local/DATA.md, "What the schema is").
   it('reads every migration on disk, and a table set the contract names exactly', async () => {
     const applied = await world.db.admin.execute<{ version: string }>(
       'select version from ops.schema_migrations order by version',
