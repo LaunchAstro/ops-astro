@@ -55,8 +55,8 @@ export {
   type HandedBack,
   type SuccessorRequest,
 } from './handback.ts';
+export { AffectedSetChanged } from './rediscovery.ts';
 export {
-  AffectedSetChanged,
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,

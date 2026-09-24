@@ -29,10 +29,10 @@ import {
 } from '../../core-records/src/authority/delegations.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
-import { acquire } from './locks.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
 import { affectedByVersions, classifyVersions } from './recovery.ts';
+import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
   LINK_VERSION,
@@ -215,16 +215,29 @@ export async function decide(
   // listing order here is documentation and the statement order is the law.
   // The chain lock is R10: the sequence below is business-wide and two
   // decisions sharing no other row must still be ordered.
-  const locks = await acquire(tx, [
-    { lockClass: 'chain', id: 'gate_decisions' },
-    { lockClass: 'cap', id: capId },
-    ...(existing === undefined ? [] : [{ lockClass: 'envelope' as const, id: existing.id }]),
-    { lockClass: 'task', id: found.task_id },
-    { lockClass: 'run', id: found.run_id },
-    { lockClass: 'lineage', id: found.lineage_id },
-    { lockClass: 'gate', id: request.gateId },
-    ...(await affectedByVersions(tx, lineageVersions)),
-  ]);
+  //
+  // Thermo O3: a rejection's holds are rediscovered under the locks, before the
+  // first write. A hold that appeared in between is one these locks miss, and
+  // the classifier would meet it as a lock-order fault; it rolls back as
+  // `AffectedSetChanged` instead, retried once. A set that only shrank is
+  // covered by the locks held (N1). An approval discovers no holds and reads
+  // nothing here.
+  const { locks } = await lockRediscovered(tx, {
+    discover: async () => await affectedByVersions(tx, lineageVersions),
+    locks: (held) => [
+      { lockClass: 'chain', id: 'gate_decisions' },
+      { lockClass: 'cap', id: capId },
+      ...(existing === undefined ? [] : [{ lockClass: 'envelope' as const, id: existing.id }]),
+      { lockClass: 'task', id: found.task_id },
+      { lockClass: 'run', id: found.run_id },
+      { lockClass: 'lineage', id: found.lineage_id },
+      { lockClass: 'gate', id: request.gateId },
+      ...held,
+    ],
+    rule: 'covered',
+    changed:
+      'decide: the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set',
+  });
 
   // G06 and Sol 6 RUNTIME-3: the deadline is judged on the database clock read
   // after the locks, not on `now()`, which is when this transaction began. A

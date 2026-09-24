@@ -37,12 +37,8 @@ import { checkAuthority, type Subject } from '../../core-records/src/authority/g
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
-import {
-  AffectedSetChanged,
-  classifyUnderLocks,
-  endLease,
-  type Classification,
-} from './recovery.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
+import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 

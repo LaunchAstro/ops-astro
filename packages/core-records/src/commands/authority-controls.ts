@@ -44,11 +44,8 @@ import {
   type Scope,
 } from '../authority/grants.ts';
 import { revokeDelegation } from '../authority/delegations.ts';
-import {
-  AffectedSetChanged,
-  classifyAuthorityLoss,
-  type Classification,
-} from '../../../core-runtime/src/recovery.ts';
+import { classifyAuthorityLoss, type Classification } from '../../../core-runtime/src/recovery.ts';
+import { requireUnchanged } from '../../../core-runtime/src/rediscovery.ts';
 import type { CommandContext } from './context.ts';
 import { declarationOf } from './surface.ts';
 import { refuseCommand } from './refusal.ts';
@@ -255,11 +252,11 @@ export async function revokeGrantAsManager(
       // the rest of it: a pickup that committed in between is a lease these
       // locks do not cover.
       const current = await dependents(tx, grantId);
-      if (JSON.stringify(current) !== JSON.stringify(candidates)) {
-        throw new AffectedSetChanged(
-          'grant.revoke: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
-        );
-      }
+      requireUnchanged(
+        candidates,
+        current,
+        'grant.revoke: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
+      );
       const revokedAt = await revokeGrant(tx, grantId);
       if (revokedAt === null) return { applied: false, value: null };
       // Re-evaluated after the revocation and under the locks: only an

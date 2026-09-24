@@ -24,20 +24,9 @@
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { revokeDelegation } from '../../core-records/src/authority/delegations.ts';
-import { acquire, type LockRequest, type LockSet } from './locks.ts';
+import type { LockRequest, LockSet } from './locks.ts';
+import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
-
-/**
- * The affected set changed between the unlocked discovery and the locks, so
- * this transaction holds the wrong lock set and rolls back rather than extend
- * it. Nothing was written. It is a schedule, not a fault: the person command
- * entry retries it once in a fresh transaction, which discovers again
- * (`isRetryableViolation`). Startup recovery does not retry, and fails
- * visibly with the message.
- */
-export class AffectedSetChanged extends Error {
-  override readonly name = 'AffectedSetChanged';
-}
 
 /** The durable causes that make an exact attempt nonclaimable. Nothing else is one. */
 export type NonclaimableCause =
@@ -326,24 +315,6 @@ function locksFor(affected: readonly Affected[]): readonly LockRequest[] {
   return requests;
 }
 
-/**
- * R1. The same set means the same parents, not only the same reservation ids:
- * a reservation whose lease, run or envelope changed between discovery and the
- * locks is a reservation this transaction locked the wrong rows for.
- */
-const SAME_SET = <T>(left: readonly T[], right: readonly T[]): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
-
-/**
- * N1. Whether a rediscovered set needs only locks this transaction already
- * holds. A concurrent handback or classification that committed between
- * discovery and the locks can only shrink a set (a hold is no longer held, a
- * lease no longer live), and proceeding with the smaller set extends nothing.
- * A set that needs a lock not held is the case the contract rolls back.
- */
-const COVERED = (locks: LockSet, requests: readonly LockRequest[]): boolean =>
-  requests.every((request) => locks.has(request.lockClass, request.id));
-
 /** A live lease on the work being closed, and the delegation it was issued under. */
 interface LiveWork {
   readonly lease_id: string;
@@ -510,14 +481,13 @@ async function lockAndClassify(
   discover: () => Promise<readonly Affected[]>,
   extraLocks: readonly LockRequest[] = [],
 ): Promise<readonly Classification[]> {
-  const before = await discover();
-  const locks = await acquire(tx, [...locksFor(before), ...extraLocks]);
-  const after = await discover();
-  if (!SAME_SET(before, after)) {
-    throw new AffectedSetChanged(
+  const { locks, found: after } = await lockRediscovered(tx, {
+    discover,
+    locks: (rows) => [...locksFor(rows), ...extraLocks],
+    rule: 'exact',
+    changed:
       'recovery: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
-    );
-  }
+  });
 
   return await classifyAll(
     tx,
@@ -684,28 +654,25 @@ export async function cancelAndClassify(
     return rows;
   };
 
-  const before = await discover();
-  const workBefore = await discoverLiveWork(tx, { lineageId: request.lineageId });
-  const locks = await acquire(tx, [
-    ...locksFor(before),
-    ...liveWorkLocks(workBefore),
-    { lockClass: 'lineage', id: request.lineageId },
-  ]);
-
   // Rechecked under the locks and before the first write. A set that grew
   // means this transaction holds the wrong rows, and it rolls back rather
   // than extending its locks backwards; a set that only shrank (a handback
   // committed in between, N1) is covered by the locks held and goes on.
-  const after = await discover();
-  const workAfter = await discoverLiveWork(tx, { lineageId: request.lineageId });
-  if (
-    (!SAME_SET(before, after) || !SAME_SET(workBefore, workAfter)) &&
-    !COVERED(locks, [...locksFor(after), ...liveWorkLocks(workAfter)])
-  ) {
-    throw new AffectedSetChanged(
+  const {
+    locks,
+    found: [after, workAfter],
+  } = await lockRediscovered(tx, {
+    discover: async () =>
+      [await discover(), await discoverLiveWork(tx, { lineageId: request.lineageId })] as const,
+    locks: ([held, work]) => [
+      ...locksFor(held),
+      ...liveWorkLocks(work),
+      { lockClass: 'lineage', id: request.lineageId },
+    ],
+    rule: 'covered',
+    changed:
       'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
-    );
-  }
+  });
 
   const updated = await tx.query<{ readonly id: string }>(
     `update public.proposal_lineages
@@ -808,21 +775,21 @@ export async function classifyAuthorityLoss<T>(
       [tx.businessId, ids, leaseIds, request.personLeases?.causeId ?? null],
     );
 
-  const workBefore = await discoverWork();
-  const heldBefore = await discoverHeld();
-  const locks = await acquire(tx, [
-    ...locksFor(heldBefore),
-    ...liveWorkLocks(workBefore),
-    // A delegation with no live lease is still the row being revoked.
-    ...ids.map((id) => ({ lockClass: 'delegation' as const, id })),
-  ]);
-  const workAfter = await discoverWork();
-  const heldAfter = await discoverHeld();
-  if (!SAME_SET(workBefore, workAfter) || !SAME_SET(heldBefore, heldAfter)) {
-    throw new AffectedSetChanged(
+  const {
+    locks,
+    found: [workAfter, heldAfter],
+  } = await lockRediscovered(tx, {
+    discover: async () => [await discoverWork(), await discoverHeld()] as const,
+    locks: ([work, held]) => [
+      ...locksFor(held),
+      ...liveWorkLocks(work),
+      // A delegation with no live lease is still the row being revoked.
+      ...ids.map((id) => ({ lockClass: 'delegation' as const, id })),
+    ],
+    rule: 'exact',
+    changed:
       'authority loss: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
-    );
-  }
+  });
 
   const written = await request.revoke(locks);
   if (!written.applied) return { value: written.value, applied: false, classified: [] };
