@@ -18,7 +18,7 @@ import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 const SUCCESSOR_SERVER_OWNED: readonly string[] = ['proposedByActorId', 'proposed_by_actor_id'];
 
 const SUCCESSOR_ACTOR_FIXES: readonly string[] = [
-  'The successor is recorded as proposed by the agent actor of your session, and that is not a field a body may send: remove it and send the request again.',
+  'The successor is recorded as proposed by the actor of your session, and that is not a field a body may send: remove it and send the request again.',
   'A body that could name the proposing actor could record a proposal as somebody else’s, which is the claim this boundary exists to refuse.',
 ];
 
