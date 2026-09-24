@@ -58,6 +58,19 @@
 // by every link version; the lineage column, which is what this read filters
 // on, is covered only by v2.
 //
+// **The evidence a decision signed is the version and pack the read shows.**
+// The signed evidence digest is the only signed carrier of the ceiling and
+// currency a decision approved (`evidence.ts`, `bound`), and neither the
+// version, the pack nor the gate's binding is append-only. So beside the
+// lineage check each returned row's gate must still be bound to the row's own
+// version and pack; that version's pack must hold the digest the decision
+// signed, and its stored body must still hash to that digest; and the body's
+// version number, lineage, ceiling and currency must be the version row's.
+// A gate moved onto another version, a pack body rewritten under its old
+// digest or a version's ceiling rewritten fails as a broken link does. A
+// gate is per version (`gates_version_idx`) and so is a pack, so a decision
+// on a version later superseded stays bound to that version.
+//
 // **A chain cannot see what was never in it.** Removing the newest decisions
 // in a business leaves a shorter chain that verifies from genesis to its new
 // head. So the read also checks the decisions against what the gates and
@@ -85,6 +98,7 @@ import {
   type SigningKey,
   decidedAtText,
   decisionLink,
+  digestOf,
   linkVersionOf,
   verifyChain,
 } from '../../../core-runtime/src/signing.ts';
@@ -120,6 +134,25 @@ export interface VerifiedDecisionRow {
   readonly signature: string;
   readonly prev_hash: string;
   readonly hash: string;
+}
+
+/**
+ * What the read shows beside a decision: its gate's binding, and its own
+ * version and that version's evidence pack. Null where a join found nothing.
+ * The version and pack are joined only for rows on the scope's lineages, the
+ * rows `verified` returns and checks, so a long business chain does not carry
+ * every pack body the business ever rendered.
+ */
+interface BoundEvidence {
+  readonly gate_version_id: string | null;
+  readonly gate_evidence_pack_id: string | null;
+  readonly dv_version: number | null;
+  readonly dv_lineage_id: string | null;
+  readonly dv_maximum_minor: string | null;
+  readonly dv_currency: string | null;
+  readonly dp_id: string | null;
+  readonly dp_rendered: Record<string, unknown> | null;
+  readonly dp_rendered_digest: string | null;
 }
 
 /** A verified row and the link version it verified under. */
@@ -196,7 +229,7 @@ export async function readVerifiedProjection(
 
 /** The chain walked under each row's own link version and key, then filtered to the lineages. */
 function verified(
-  chain: readonly VerifiedDecisionRow[],
+  chain: readonly ChainRow[],
   lineageIds: readonly string[],
   keys: KeyResolver | SigningKey | null,
 ): readonly VerifiedDecision[] {
@@ -206,12 +239,14 @@ function verified(
     );
   }
   const versioned: VerifiedDecision[] = [];
-  for (const row of chain) {
+  const bound = new Map<string, BoundEvidence>();
+  for (const [row, shown] of chain.map((stored) => splitShown(stored))) {
     const version = linkVersionOf(row.payload);
     if (version === undefined) {
       throw new DecisionIntegrityError(`seq ${row.seq}: the payload names an unknown link version`);
     }
     versioned.push(Object.assign({}, row, { link_version: version }));
+    bound.set(row.id, shown);
   }
   const broken = verifyChain(
     keys,
@@ -236,8 +271,63 @@ function verified(
         `seq ${row.seq}: lineage ${row.lineage_id} is not the lineage of gate ${row.gate_id}`,
       );
     }
+    const unbound = unboundEvidence(row, bound.get(row.id));
+    if (unbound !== null) throw new DecisionIntegrityError(`seq ${row.seq}: ${unbound}`);
   }
   return returned;
+}
+
+/** A chain row's decision columns, and apart from them what the read shows beside it. */
+function splitShown({
+  gate_version_id,
+  gate_evidence_pack_id,
+  dv_version,
+  dv_lineage_id,
+  dv_maximum_minor,
+  dv_currency,
+  dp_id,
+  dp_rendered,
+  dp_rendered_digest,
+  ...row
+}: ChainRow): readonly [VerifiedDecisionRow, BoundEvidence] {
+  const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id };
+  return [row, { ...shown, dv_maximum_minor, dv_currency, dp_id, dp_rendered, dp_rendered_digest }];
+}
+
+/**
+ * Where the gate, version and pack the read shows stop being what the
+ * decision signed, or `null` when they are. The signed evidence digest is
+ * compared with the pack's, the pack's body is hashed again as `evidence.ts`
+ * hashed it, and the body's fields are compared with the version row.
+ */
+function unboundEvidence(row: VerifiedDecision, shown: BoundEvidence | undefined): string | null {
+  if (shown === undefined || shown.gate_version_id !== row.version_id) {
+    return `gate ${row.gate_id} is bound to version ${shown?.gate_version_id ?? 'none'}, not the decision's version ${row.version_id}`;
+  }
+  if (shown.dp_id === null || shown.dp_rendered === null) {
+    return `version ${row.version_id} has no evidence pack`;
+  }
+  if (shown.gate_evidence_pack_id !== shown.dp_id) {
+    return `gate ${row.gate_id} is bound to another evidence pack than version ${row.version_id}'s`;
+  }
+  if (shown.dp_rendered_digest !== row.evidence_digest) {
+    return `evidence pack ${shown.dp_id} is not the evidence the decision signed`;
+  }
+  if (digestOf(shown.dp_rendered) !== shown.dp_rendered_digest) {
+    return `evidence pack ${shown.dp_id} does not match its own digest`;
+  }
+  const rendered = shown.dp_rendered;
+  const signed = rendered['bound'] as Record<string, unknown> | null | undefined;
+  const fields = [
+    ['version', shown.dv_version, rendered['version']],
+    ['lineage_id', shown.dv_lineage_id, rendered['lineage']],
+    ['maximum_minor', Number(shown.dv_maximum_minor), signed?.['maximumMinor']],
+    ['currency', shown.dv_currency, signed?.['currency']],
+  ] as const;
+  const differs = fields.find(([, column, evidence]) => column !== evidence);
+  return differs === undefined
+    ? null
+    : `version ${row.version_id}'s ${differs[0]} is not what the signed evidence bound`;
 }
 
 /**
@@ -351,8 +441,11 @@ function lineageWithoutItsDecisions(
 /** True on the statement's first row: the oldest chain row, or the only row of an empty chain. */
 const FIRST_ROW = 'lag(chain.chain_position) over (order by chain.chain_position) is null';
 
+/** A chain row as the snapshot reads it: the decision and what the read shows beside it. */
+type ChainRow = VerifiedDecisionRow & BoundEvidence;
+
 /** A chain row with the snapshot's facts beside it; `id` is null when the chain is empty. */
-interface SnapshotRow extends Omit<VerifiedDecisionRow, 'id'> {
+interface SnapshotRow extends Omit<ChainRow, 'id'> {
   readonly id: string | null;
   readonly chain_position: string | null;
   readonly snapshot_gates: readonly GateFact[];
@@ -377,7 +470,7 @@ async function readSnapshot(
   tx: TenantQuery,
   scope: ProjectionScope,
 ): Promise<{
-  readonly chain: readonly VerifiedDecisionRow[];
+  readonly chain: readonly ChainRow[];
   readonly gates: readonly GateFact[];
   readonly lineageIds: readonly string[];
   readonly rows: Readonly<Record<string, readonly unknown[]>>;
@@ -423,13 +516,23 @@ async function readSnapshot(
                 d.id, d.seq::text as seq, d.seq as chain_position, d.gate_id, d.version_id,
                 d.decision, d.round, d.decided_by_person_id, d.decided_by_actor_id, d.decided_at,
                 ${decidedAtText('d.decided_at')} as decided_at_text, d.evidence_digest,
-                d.payload, d.payload_digest, d.signing_key_id, d.signature, d.prev_hash, d.hash
+                d.payload, d.payload_digest, d.signing_key_id, d.signature, d.prev_hash, d.hash,
+                g.version_id as gate_version_id, g.evidence_pack_id as gate_evidence_pack_id,
+                dv.version as dv_version, dv.lineage_id as dv_lineage_id,
+                dv.maximum_minor::text as dv_maximum_minor, dv.currency as dv_currency,
+                dp.id as dp_id, dp.rendered as dp_rendered, dp.rendered_digest as dp_rendered_digest
            from public.gate_decisions d
            cross join wanted
            left join public.gates g
              on g.business_id = d.business_id and g.id = d.gate_id
            left join public.proposal_versions ver
              on ver.business_id = g.business_id and ver.id = g.version_id
+           left join public.proposal_versions dv
+             on dv.business_id = d.business_id and dv.id = d.version_id
+            and d.lineage_id in (select lineage_id from lineages)
+           left join public.evidence_packs dp
+             on dp.business_id = d.business_id and dp.version_id = d.version_id
+            and d.lineage_id in (select lineage_id from lineages)
           where d.business_id = $1 and d.seq <= wanted.last
        ) chain on true
       order by chain.chain_position`,

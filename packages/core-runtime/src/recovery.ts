@@ -23,9 +23,16 @@
 // never erase a real liability.
 
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
+import {
+  checkAuthority,
+  type Decision,
+  type EffectiveGrant,
+  type ScopeRequest,
+  type Subject,
+} from '../../core-records/src/authority/grants.ts';
 import { revokeDelegation } from '../../core-records/src/authority/delegations.ts';
 import type { LockRequest, LockSet } from './locks.ts';
+import { lockedInstant } from './clock.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -617,7 +624,20 @@ export async function affectedByVersions(
  */
 export async function cancelAndClassify(
   tx: TenantQuery,
-  request: { readonly lineageId: string; readonly reason: string },
+  request: {
+    readonly lineageId: string;
+    readonly reason: string;
+    /**
+     * The person's write on the task (T5), held and re-read under the locks
+     * (final review R2-RUNTIME-5). A recovery caller acting for no person
+     * passes none, and keeps the path it had.
+     */
+    readonly authority?: {
+      readonly subjects: readonly Subject[];
+      readonly collection: string;
+      readonly taskId: string;
+    };
+  },
 ): Promise<RuntimeResult<readonly Classification[]>> {
   const terminal = refuse(
     'LINEAGE_TERMINAL',
@@ -666,6 +686,15 @@ export async function cancelAndClassify(
       )
     ).map((row) => row.id);
 
+  // Final review R2-RUNTIME-5. The envelope checked write before any lock.
+  // Held for share before the runtime set, as decide and pickup hold theirs:
+  // a revocation that locked first is seen by the re-check below, and one
+  // that comes second waits for this cancellation to commit.
+  const authority = request.authority;
+  if (authority !== undefined) {
+    await holdCoveringGrants(tx, authority.subjects, authority.collection);
+  }
+
   const {
     locks,
     found: [after, workAfter, runsAfter],
@@ -686,6 +715,26 @@ export async function cancelAndClassify(
     changed:
       'cancellation: the affected set changed under discovery; roll back and rediscover rather than extending the lock set',
   });
+
+  if (authority !== undefined) {
+    const current = await checkAuthorityAt(
+      tx,
+      authority.subjects,
+      {
+        collection: authority.collection,
+        action: 'write',
+        scope: { kind: 'record', id: authority.taskId },
+      },
+      await lockedInstant(tx),
+    );
+    if (!current.ok) {
+      return refuse(
+        'SCOPE_NOT_GRANTED',
+        'the write grant this cancellation rested on ended before it could be recorded',
+        'A person with write authority on this task cancels its work.',
+      );
+    }
+  }
 
   const updated = await tx.query<{ readonly id: string }>(
     `update public.proposal_lineages
@@ -758,6 +807,48 @@ export async function holdCoveringGrants(
       subjects.map((subject) => subject.id),
     ],
   );
+}
+
+/**
+ * `checkAuthority` judged at `at`, the instant read once the locks are held
+ * (`clock.ts`), rather than at `now()`, the transaction's start. A grant that
+ * lapsed while the caller waited on its locks no longer counts (final review
+ * R2-RUNTIME-4).
+ *
+ * The effective set already applies every ancestor's revocation and expiry as
+ * of `now()`, and a child never outlives its parent (`grants.ts`, EFFECTIVE),
+ * so a returned grant's own `expires_at` bounds its whole chain: dropping the
+ * ones that end at or before `at` is the chain judged at `at`. The compare is
+ * the database's, because a `Date` keeps milliseconds and the column keeps
+ * microseconds.
+ */
+export async function checkAuthorityAt(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  request: ScopeRequest,
+  at: string,
+): Promise<Decision<readonly EffectiveGrant[]>> {
+  const decision = await checkAuthority(tx, subjects, request);
+  if (!decision.ok) return decision;
+  const live = await tx.query<{ readonly id: string }>(
+    `select id from public.grants
+      where business_id = $1 and id = any($2::uuid[])
+        and (expires_at is null or expires_at > $3::timestamptz)`,
+    [tx.businessId, decision.value.map((grant) => grant.id), at],
+  );
+  const ids = new Set(live.map((row) => row.id));
+  const value = decision.value.filter((grant) => ids.has(grant.id));
+  if (value.length === 0) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'SCOPE_NOT_GRANTED',
+        reason: 'no live grant covers it',
+        fix: 'ask a holder who may delegate',
+      },
+    };
+  }
+  return { ok: true, value };
 }
 
 /** What a revocation wrote under the locks, and whose work authority it cost. */

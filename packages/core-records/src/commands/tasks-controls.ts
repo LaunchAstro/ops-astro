@@ -52,11 +52,15 @@ async function lineageOnTask(
   if (!isUuid(recordId)) {
     return refused(refuseNotFound());
   }
+  // Final review R2-AUTHORITY-33. The queries cast to uuid, which accepts any
+  // case and answers lower-case; the lineage's task is then compared as a
+  // string. One spelling from here, so an upper-case id is the same task.
+  const taskId = recordId.toLowerCase();
   const tasks = await tx.query<{ readonly id: string }>(
     `select id from public.records
       where business_id = $1 and record_type_id = $2 and id = $3
         and ($4 or deleted_at is null)`,
-    [tx.businessId, context.spine.taskTypeId, recordId, trashed === 'reachable'],
+    [tx.businessId, context.spine.taskTypeId, taskId, trashed === 'reachable'],
   );
   if (tasks[0] === undefined) return refused(refuseNotFound());
   if (!isUuid(lineageId)) {
@@ -70,7 +74,7 @@ async function lineageOnTask(
   if (lineage === undefined) {
     return refused({ ...refuseNotFound(), names: ['lineageId'] });
   }
-  if (lineage.task_id !== recordId) {
+  if (lineage.task_id !== taskId) {
     return refused(
       refuseCommand(
         'LINEAGE_NOT_ON_TASK',
@@ -79,7 +83,7 @@ async function lineageOnTask(
       ),
     );
   }
-  return { taskId: recordId, lineageId };
+  return { taskId, lineageId: lineageId.toLowerCase() };
 }
 
 const isOutcome = (value: object): value is HandlerOutcome => !('taskId' in value);
@@ -104,7 +108,17 @@ export async function cancelOnTask(
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'reachable');
   if (isOutcome(found)) return found;
 
-  const result = await cancelAndClassify(tx, { lineageId: found.lineageId, reason });
+  // Final review R2-RUNTIME-5: the envelope's write check ran before any
+  // lock, so the runtime holds the grant and reads it again under its locks.
+  const result = await cancelAndClassify(tx, {
+    lineageId: found.lineageId,
+    reason,
+    authority: {
+      subjects: subjectsOf(context.session),
+      collection: context.declaration.collection,
+      taskId: found.taskId,
+    },
+  });
   if (!result.ok) return refused(fromReasoned(result.refusal));
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
