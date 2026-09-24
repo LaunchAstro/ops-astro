@@ -30,7 +30,7 @@ import { writeComment, type CommentAudience, type CommentType } from '../tasks/c
 import type { CommandContext } from './context.ts';
 import type { CommandDeclaration } from './surface.ts';
 import type { EntryPoint } from '../tasks/placement.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
 
@@ -99,6 +99,12 @@ export interface CommentTarget {
  * The comment itself, shared by the person path above and the agent path. It
  * validates the body, the audience and the type, and commits the comment with
  * its own identity, which is the answer's `commentId`.
+ *
+ * A trashed task is answered as a missing one, `NOT_FOUND` in the same bytes,
+ * on both entries (Nathan's ruling, OWNER-CARD section 6). Both reach here
+ * through `lockTask`, which holds a trashed row as well as a live one because
+ * trash and restore need it, so the check is here rather than in the lock.
+ * The row is already held, so it cannot be trashed between this and the write.
  */
 export async function writeTaskComment(
   tx: TenantQuery,
@@ -107,6 +113,7 @@ export async function writeTaskComment(
   audience: unknown,
   commentType: unknown,
 ): Promise<HandlerOutcome> {
+  if (!(await isLive(tx, on.target.id))) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
   if (commentTypeId === undefined) return refuseUnlanded(on.declaration);
 
@@ -139,4 +146,12 @@ export async function writeTaskComment(
   });
 
   return applied(on.target.id, on.target.revision, { commentId });
+}
+
+async function isLive(tx: TenantQuery, taskId: string): Promise<boolean> {
+  const rows = await tx.query(
+    `select 1 from records where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, taskId],
+  );
+  return rows.length > 0;
 }

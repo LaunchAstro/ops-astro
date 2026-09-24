@@ -7,17 +7,27 @@
 // on its own task, and a client-audience comment from its credential is
 // refused `AUDIENCE_NOT_PERMITTED` on the agent prefix and refused on the
 // person prefix, with no comment written by either.
+//
+// **Commenting on a trashed task is refused for both entries.** `lockTask`
+// holds a trashed row as well as a live one, because trash and restore need
+// it, so both comment paths reached a trashed task and wrote to it. Each entry
+// now answers a trashed task the way it answers a missing one: `NOT_FOUND`,
+// the same status and bytes as an identifier nothing carries (API.md, the
+// trashed-board rule), and nothing is written.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
 import { DELEGATION_HEADER } from '../../apps/api/app.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
-import { bearer, call, personPath, serverUrl } from './world.ts';
+import { bearer, call, personPath, serverUrl, type Answer } from './world.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/comment-rulings: DATABASE_URL is unset, so nothing below ran.');
 }
+
+/** A refusal's status and body, which is everything a caller can compare. */
+const bytesOf = (answer: Answer) => ({ status: answer.status, body: answer.body });
 
 describe.skipIf(serverUrl === undefined)('task.comment: the owner rulings over HTTP', () => {
   let harness: Harness;
@@ -46,6 +56,14 @@ describe.skipIf(serverUrl === undefined)('task.comment: the owner rulings over H
     // An identifier nothing carries is sent at revision 1, a valid revision.
     return Number(rows[0]?.revision ?? 1);
   };
+
+  const asPersonOn = async (recordId: string, body: string): Promise<Answer> =>
+    await harness.asPerson('task.comment', {
+      recordId,
+      expectedRevision: await revisionOf(recordId),
+      body,
+      audience: 'internal',
+    });
 
   beforeAll(async () => {
     harness = await createHarness('comment_rulings');
@@ -101,5 +119,31 @@ describe.skipIf(serverUrl === undefined)('task.comment: the owner rulings over H
     expect(await commentsSaying('agent team note')).toBe(1);
     expect(await commentsSaying('agent to client, agent prefix')).toBe(0);
     expect(await commentsSaying('agent to client, person prefix')).toBe(0);
+  });
+
+  it('a trashed task is NOT_FOUND to a comment on both entries, and nothing is written', async () => {
+    const missing = await asPersonOn(randomUUID(), 'on nothing');
+    expect(missing.code).toBe('NOT_FOUND');
+
+    const trashed = await harness.asPerson('task.trash', {
+      recordId: taskId,
+      expectedRevision: await revisionOf(taskId),
+    });
+    expect(trashed.code, 'the trash').toBe('ok');
+
+    const person = await asPersonOn(taskId, 'person on trash');
+    const agent = await harness.asAgent(
+      'task.comment',
+      { recordId: taskId, body: 'agent on trash', audience: 'internal' },
+      credential,
+    );
+    console.log(
+      `trashed task comment: person ${person.status} ${person.code}; agent ${agent.status} ${agent.code}`,
+    );
+
+    expect(bytesOf(person)).toStrictEqual(bytesOf(missing));
+    expect(bytesOf(agent)).toStrictEqual(bytesOf(missing));
+    expect(await commentsSaying('person on trash')).toBe(0);
+    expect(await commentsSaying('agent on trash')).toBe(0);
   });
 });
