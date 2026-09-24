@@ -13,6 +13,11 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 
 const DEFAULT_RENEWAL_SECONDS = 15 * 60;
 
+/** What a caller sent as `leaseSeconds` is told, on either entry, for a route with this maximum. */
+export function leaseSecondsFixes(maximum: number): readonly string[] {
+  return [`Name a whole number of seconds from 1 to ${maximum}, or leave it out.`];
+}
+
 /**
  * A lease duration, read once for every route that takes one. Absent is the
  * route's documented default. Present is a whole number of seconds from 1 to
@@ -34,11 +39,7 @@ export function readLeaseSeconds(
     seconds > maximum
   ) {
     return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['leaseSeconds'],
-        [`Name a whole number of seconds from 1 to ${maximum}, or leave it out.`],
-      ),
+      refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], leaseSecondsFixes(maximum)),
       { leaseSeconds: seconds },
     );
   }

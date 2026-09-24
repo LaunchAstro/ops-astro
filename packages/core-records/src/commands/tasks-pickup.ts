@@ -21,7 +21,7 @@ import { readLeaseSeconds } from './tasks-lease.ts';
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
-const MAXIMUM_LEASE_SECONDS = 60 * 60;
+export const MAXIMUM_LEASE_SECONDS: number = 60 * 60;
 
 export interface PickupFields {
   readonly reservationId: string;
