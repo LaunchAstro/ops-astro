@@ -78,17 +78,6 @@ export interface DatabaseOptions {
 function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: StatementLog } {
   const log = options.log ?? createStatementLog();
   const source = options.source ?? 'runtime';
-  // postgres.js sends a URL's query parameters after `connection` below, so
-  // one naming the setting, in any case, would start the connection with its
-  // value instead (SOL-FR11B-1). An `options=-c ...` switch does not: the
-  // server applies the named startup parameter after it.
-  const urlQuery = new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '');
-  if ([...urlQuery.keys()].some((key) => key.toLowerCase() === 'standard_conforming_strings')) {
-    throw new Error(
-      'database: the URL sets standard_conforming_strings, which every connection sets on ' +
-        'itself so that the statement log reads strings as the server does. Remove it from the URL.',
-    );
-  }
   const sql = postgres(url, {
     max: options.max ?? 1,
     prepare: false,
@@ -109,6 +98,23 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
       }
     },
   });
+  // postgres.js puts a URL's query parameters into the startup packet after
+  // `connection` above, so one naming the setting, in any case, would start
+  // the connection with its value instead (SOL-FR11B-1). What it will send is
+  // `sql.options.connection`, so that is what is read: a form it ignores, such
+  // as a fragment, is ignored here too (SOL-FR11C-1). An `options=-c ...`
+  // switch is no conflict: the server applies the named parameter after it.
+  // Nothing has connected yet; postgres.js connects on the first query.
+  const named = Object.entries(sql.options.connection).filter(
+    ([key]) => key.toLowerCase() === 'standard_conforming_strings',
+  );
+  if (named.length !== 1 || named[0]?.[1] !== 'on') {
+    void sql.end();
+    throw new Error(
+      'database: the URL sets standard_conforming_strings, which every connection sets on ' +
+        'itself so that the statement log reads strings as the server does. Remove it from the URL.',
+    );
+  }
   return { sql, log };
 }
 
