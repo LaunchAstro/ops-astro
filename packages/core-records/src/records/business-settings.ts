@@ -138,6 +138,8 @@ export interface BusinessSetting {
   readonly owningOperations: readonly string[];
   readonly visibilityClass: VisibilityClass;
   readonly updatedAt: Date;
+  /** Null until a command has written it. Nobody owns a shipped default. */
+  readonly updatedByActorId: string | null;
   /** What a write names to say which value it is replacing. Starts at 1 (0020). */
   readonly revision: number;
 }
@@ -152,6 +154,7 @@ interface SettingRow {
   readonly owning_operation: readonly string[] | null;
   readonly visibility_class: VisibilityClass;
   readonly updated_at: Date;
+  readonly updated_by_actor_id: string | null;
   readonly revision: number;
 }
 
@@ -166,6 +169,7 @@ function settingFrom(row: SettingRow): BusinessSetting {
     owningOperations: row.owning_operation ?? [],
     visibilityClass: row.visibility_class,
     updatedAt: row.updated_at,
+    updatedByActorId: row.updated_by_actor_id,
     revision: row.revision,
   };
 }
@@ -219,7 +223,7 @@ export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
 export async function readBusinessSettings(tx: TenantQuery): Promise<readonly BusinessSetting[]> {
   const rows = await tx.query<SettingRow>(
     `select id, key, label, value_type, value, write_mode, owning_operation,
-            visibility_class, updated_at, revision
+            visibility_class, updated_at, updated_by_actor_id, revision
        from business_settings
       where business_id = $1
       order by key`,
@@ -235,7 +239,7 @@ export async function readBusinessSetting(
 ): Promise<BusinessSetting | undefined> {
   const rows = await tx.query<SettingRow>(
     `select id, key, label, value_type, value, write_mode, owning_operation,
-            visibility_class, updated_at, revision
+            visibility_class, updated_at, updated_by_actor_id, revision
        from business_settings
       where business_id = $1 and key = $2`,
     [tx.businessId, key],
