@@ -20,6 +20,7 @@ import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import type { AgentClaimant } from './tasks-claimant.ts';
 import {
   EXPIRY_FIX,
   expiryFrom,
@@ -156,11 +157,11 @@ export async function restartOnTask(
 export async function heartbeatLease(
   tx: TenantQuery,
   fields: RenewalFields,
-  holderActorId: string,
+  agent: AgentClaimant,
   delegationId: string,
 ): Promise<HandlerOutcome> {
   return await renewLease(
     fields,
-    async (lease) => await heartbeat(tx, { ...lease, holderActorId, delegationId }),
+    async (lease) => await heartbeat(tx, { ...lease, holderActorId: agent.actorId, delegationId }),
   );
 }

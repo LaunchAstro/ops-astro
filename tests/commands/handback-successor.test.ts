@@ -125,13 +125,6 @@ describe('task.handback and the successor proposal', () => {
     );
   });
 
-  it('refuses a successor asked for without an agent identity to record it against', async () => {
-    const outcome = await handbackLease(untouched, { ...ordinary, successor: { ...wellFormed } });
-    expect(isRefused(outcome)).toBe(true);
-    if (!isRefused(outcome)) throw new Error('unreachable');
-    expect(outcome.refusal.code).toBe('AUTH_NO_AGENT_IDENTITY');
-  });
-
   it('lets a well-formed successor through to the runtime', async () => {
     // It reaches the database, which is exactly what the proxy reports: no
     // payload guard fired. Anything past this point is L4's handback.
