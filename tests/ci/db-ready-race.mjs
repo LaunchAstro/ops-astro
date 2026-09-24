@@ -80,6 +80,7 @@ async function attempt() {
     let ready = false;
     for (; polls < 60 && !ready; polls += 1) {
       ready = docker('exec', name, ...check).status === 0;
+      // oxlint-disable-next-line no-await-in-loop -- polls are sequential by design
       if (!ready) await pause(interval);
     }
     if (!ready) return { outcome: 'never-ready', polls };
@@ -102,6 +103,7 @@ async function attempt() {
 
 const tally = {};
 for (let run = 1; run <= runs; run += 1) {
+  // oxlint-disable-next-line no-await-in-loop -- one container at a time, as withDatabase runs
   const { outcome, polls } = await attempt();
   tally[outcome] = (tally[outcome] ?? 0) + 1;
   console.log(`run ${run}/${runs} check=${values.check} polls=${polls} ${outcome}`);
