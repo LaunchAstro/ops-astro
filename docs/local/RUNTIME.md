@@ -94,14 +94,22 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
 (`commands/tasks-propose.ts`).
 
-Under those locks and before the first write, `task.propose` checks the cap's
-currency and room, T1's "existing budget authority", as the handback's
-successor bound does (`refuseBeyondBudget`, `propose.ts`). The cap is the open
-envelope's, else the business cap (`readBusinessCapId`). A version in another
-currency, or a ceiling past the cap's room less the hold the superseded version
-releases, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written
-(`tests/runtime/final-r2-fr2-propose.test.ts`). With no envelope and no cap
-there is no ceiling to check, and the decision answers `BUDGET_UNAVAILABLE`.
+Under those locks, `task.propose` checks the cap's currency and room and the
+open envelope's, T1's "existing budget authority", as the handback's successor
+bound does (`refuseBeyondBudget`, `propose.ts`). The envelope is asked first
+(`refuseBeyondEnvelope`), and each room is less the hold the superseded version
+releases. The cap is the open envelope's, else the one the caller passed, else
+the business cap: with no `capId` passed, which is `task.restart`,
+`lockProposal` reads the business cap (`readBusinessCapId`) and locks it with
+the rest of the set. The check runs
+after a named lineage is found, on this task and live, and before the first
+write, a new lineage's row included, so a lineage on another task is
+`LINEAGE_NOT_ON_TASK` whatever its ceiling. A version in another currency, or a
+ceiling past either room, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written.
+Caller lineage ids are lower-cased in `lockProposal`
+(`tests/runtime/final-r2-fr2-propose.test.ts`,
+`tests/runtime/final-r3-propose.test.ts`). With no envelope and no cap there is
+no ceiling to check, and the decision answers `BUDGET_UNAVAILABLE`.
 
 Grants stay outside that order. `task.pickup` share-locks the grant chain behind
 the claim's authority before it acquires the runtime set: the claimant's own
@@ -373,7 +381,10 @@ on an `abandoned` row. Since migration 0026, Nathan's approved backstop,
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
-second is the cap behind it.
+second is the cap behind it. Since the propose-time check above, a proposal
+reaches decide already inside both rooms, so at decide these arise only when the
+envelope's or the cap's room shrank after the proposal, or, for
+`BUDGET_UNAVAILABLE`, when there is no cap to judge against.
 
 `core-runtime/src/budget.ts` is the one cap-sum source: decide's preflight,
 `reserve`, and handback's successor bound (`withinBounds`,
@@ -414,6 +425,15 @@ read is not room, the same rule as `BUDGET_UNAVAILABLE` above
 (`budget_caps_ceiling_holds`, `migrations/0029_cap_ceiling_fails_closed.sql`;
 `tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`). A transaction that
 keeps its setting, as every command path does, is judged as before.
+
+Migration 0031 checks the rule once against rows already written. A database
+carrying a cap committed past its limit through the hole 0029 closed refuses the
+upgrade `budget_caps_ceiling`, naming one such cap and its business, changes no
+row, and
+does not record 0031, because a file and its ledger row commit together
+(`scripts/db-migrate.mjs`). The owner resolves the total and migrates again
+(`migrations/0031_upgrade_guards.sql`;
+`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`).
 
 The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
 version whose currency differs from the cap's, or from that of the task's open
@@ -946,7 +966,8 @@ partly covered rather than proved.
   which also holds the currency refusal and the decide and heartbeat that
   waited on a lock past their deadline). Storage refuses the same over-ceiling
   commit on any path (`budget_caps_ceiling`, migrations 0025 and 0029,
-  including when the cap is hidden at commit).
+  including when the cap is hidden at commit), and 0031 refuses to upgrade a
+  database already holding such a total.
 - **The interruption, both ways** (W01): the same production `propose` and
   `decide` calls followed by a throw at the transaction boundary leave a fresh
   connection zero decisions, envelopes, reservations and attempts; committed,

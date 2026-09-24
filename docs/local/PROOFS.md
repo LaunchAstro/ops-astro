@@ -1135,7 +1135,10 @@ at commit) as well, proved by
 ([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
 Nathan approved 0030 (a gate's evidence pack is its version's, and a decided
 gate keeps its version; FR2-P2) as well, proved by
-`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`.
+`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`. Nathan approved 0031
+(`TEMPORARY` revoked on upgrade, and an over-ceiling cap refuses the upgrade;
+FR2-P3, SOL-R3-2 and SOL-R3-1) as well, proved by
+`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`.
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing

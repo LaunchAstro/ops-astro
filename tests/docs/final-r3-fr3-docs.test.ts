@@ -4,7 +4,7 @@
 // the header of migration 0019 (R1-RUNTIME-67). The migration cannot be edited,
 // since its applied checksum must not change, so the note is held against the
 // file it corrects: a quote that stops matching, or a cite that stops framing,
-// fails here.
+// fails here. Pass 2 adds migration 0031's doc lines, held against 0031.
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -63,5 +63,34 @@ describe('the 0019 header correction (R1-RUNTIME-67)', () => {
     expect(refusal).toBeGreaterThan(0);
     expect(note).toBeGreaterThan(refusal);
     expect(runtime.slice(refusal, note)).not.toContain('\n#');
+  });
+});
+
+describe('migration 0031 in the docs (FR2-P3, SOL-R3-1, SOL-R3-2)', () => {
+  const migration = read('migrations/0031_upgrade_guards.sql');
+
+  it('DATA.md says the migrations revoke TEMPORARY, as 0031 does', () => {
+    for (const from of ['from public', 'from ops_astro_app', 'from %I'])
+      expect(migration).toContain(`revoke temporary on database %I ${from}`);
+    const data = folded(read('docs/local/DATA.md'));
+    expect(data).toContain(
+      'Since migration 0031 the migrations revoke it too, on the current database, from `PUBLIC`, the group and every login in it',
+    );
+    expect(data).toContain('restart the API after migrating');
+  });
+
+  it('RUNTIME.md says an over-ceiling database refuses the upgrade budget_caps_ceiling', () => {
+    expect(migration).toContain("constraint = 'budget_caps_ceiling'");
+    expect(migration).toContain('limit 1;');
+    const runtime = folded(read('docs/local/RUNTIME.md'));
+    expect(runtime).toContain(
+      'refuses the upgrade `budget_caps_ceiling`, naming one such cap and its business, changes no row, and does not record 0031',
+    );
+  });
+
+  it('PROOFS.md lists 0031 among the approved migrations, with its proof', () => {
+    expect(folded(read('docs/local/PROOFS.md'))).toMatch(
+      /Nathan approved 0031 \([^)]*FR2-P3, SOL-R3-2 and SOL-R3-1\) as well, proved by `tests\/runtime\/final-r2-dbtest-upgrade-guards\.test\.ts`/u,
+    );
   });
 });

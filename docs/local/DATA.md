@@ -215,7 +215,13 @@ transaction on a pooled backend, where the next tenant's unqualified `records`
 finds it before `public.records`, with no row security. So
 `createEmptyDatabase` (`tenancy/testing/fresh-database.ts`), which makes each
 test database, and `scripts/local/db-up.sh` revoke it where they make the
-database (`tests/tenancy/final-r2-fr2-api-temporary.test.ts`). The harness also
+database (`tests/tenancy/final-r2-fr2-api-temporary.test.ts`). Since migration
+0031 the migrations revoke it too, on the current database, from `PUBLIC`, the
+group and every login in it, so a database made before that revoke loses it
+when it is migrated (`migrations/0031_upgrade_guards.sql`;
+`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`). A backend that had
+already made a temporary table keeps it until it disconnects, so restart the
+API after migrating. The harness also
 names the schemas it found, so
 "is storage denied?" gets a catalogue answer. This tree has `ops` and `public`
 and no `storage` schema, which is an absence, not a denial.
