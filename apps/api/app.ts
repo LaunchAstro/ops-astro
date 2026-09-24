@@ -66,6 +66,7 @@ import type { ReadRequest } from '../../packages/core-records/src/reads/requests
 import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import type { Verifier } from './auth/supabase.ts';
 import { statusOf } from '../../packages/core-records/src/commands/register.ts';
+import { canonicalPayload } from '../../packages/core-records/src/commands/digest.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -303,13 +304,21 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
-/** A body that is not an object is refused rather than coerced into one. */
+/**
+ * A body that is not an object is refused rather than coerced into one.
+ *
+ * So is one with no canonical form. `JSON.parse` reads a number too large for
+ * a double, 1e400, as Infinity, and every entry takes the payload digest
+ * before anything else, so that body faulted with nothing recorded (final
+ * review round 1, #11). Here it is a malformed body like any other.
+ */
 async function readObject(
   context: Context,
 ): Promise<Readonly<Record<string, unknown>> | undefined> {
   try {
     const parsed: unknown = await context.req.json();
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    canonicalPayload(parsed);
     return parsed as Readonly<Record<string, unknown>>;
   } catch {
     return undefined;
