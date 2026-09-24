@@ -54,6 +54,11 @@
 // opening a second lineage with its own gate. Changing the form is a different
 // proposal and gets a new one.
 //
+// **What the person typed is held above the read** (`TaskDetail.tsx`), with
+// the attempt, because every reread remounts this form. A proposal refused
+// `VERSION_STALE` rereads the task, keeps the fields and quotes the refusal, so
+// the next press goes out against the revision the page now shows.
+//
 // **A reader without the grant is refused once.** There is no capability read in
 // this build, so this screen cannot know whether a person may decide before it
 // asks. It asks once, quotes the server's own code, and then stops offering a
@@ -66,7 +71,7 @@
 // on it with `LINEAGE_TERMINAL`. The lineage state is in the same answer as the
 // gate, so the controls close on it rather than inviting that refusal.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -112,6 +117,9 @@ export interface ProposalsProps {
   /** The server's refusal of a proposal on this reader's authority, held above the read. */
   readonly proposeRefusal: string | null;
   readonly onProposeRefused: (because: string) => void;
+  /** The unsent proposal, held above the read so a reread keeps it. */
+  readonly proposeDraft: ProposeDraft | null;
+  readonly onProposeDraft: (next: ProposeDraft | null) => void;
   readonly onChanged: () => void;
 }
 
@@ -162,7 +170,9 @@ export function Proposals(props: ProposalsProps): ReactElement {
 
       <Propose
         client={props.client}
+        draft={props.proposeDraft}
         onChanged={props.onChanged}
+        onDraft={props.onProposeDraft}
         onRefused={props.onProposeRefused}
         recordId={props.recordId}
         refusal={props.proposeRefusal}
@@ -540,11 +550,31 @@ interface ProposeProps {
   /** An earlier refusal on this reader's authority, which outlives the reread. */
   readonly refusal: string | null;
   readonly onRefused: (because: string) => void;
+  readonly draft: ProposeDraft | null;
+  readonly onDraft: (next: ProposeDraft | null) => void;
   readonly onChanged: () => void;
 }
 
+/** An unsent proposal: the fields, the attempt whose outcome is unknown, and a stale refusal. */
+export interface ProposeDraft {
+  readonly purpose: string;
+  readonly maximum: string;
+  readonly currency: string;
+  readonly pending: PendingProposal | null;
+  /** The server's `VERSION_STALE`, quoted across the reread it caused. */
+  readonly stale: string | null;
+}
+
+const EMPTY_PROPOSAL: ProposeDraft = {
+  purpose: '',
+  maximum: '',
+  currency: 'AUD',
+  pending: null,
+  stale: null,
+};
+
 /** A proposal whose outcome is not known, held so the retry is the same attempt. */
-interface PendingProposal {
+export interface PendingProposal {
   readonly operationId: string;
   readonly purpose: string;
   readonly maximum: string;
@@ -552,13 +582,15 @@ interface PendingProposal {
 }
 
 function Propose(props: ProposeProps): ReactElement {
-  const [purpose, setPurpose] = useState('');
-  const [maximum, setMaximum] = useState('');
-  const [currency, setCurrency] = useState('AUD');
-  // The attempt nobody knows the outcome of, as the board's create keeps one
-  // (`Projects.tsx`). `task.propose` leaves the task's revision alone, so the
-  // revision check cannot catch a retry; only the `operationId` can.
-  const [pending, setPending] = useState<PendingProposal | null>(null);
+  const current = props.draft ?? EMPTY_PROPOSAL;
+  // `pending` is the attempt nobody knows the outcome of, as the board's create
+  // keeps one (`Projects.tsx`). `task.propose` leaves the task's revision
+  // alone, so the revision check cannot catch a retry; only the `operationId`
+  // can.
+  const { purpose, maximum, currency, pending } = current;
+  const put = (next: Partial<ProposeDraft>): void => {
+    props.onDraft({ ...current, ...next });
+  };
   const command = useCommand();
   const busy = command.busy;
   // The refusal is also held above the read, because a reread remounts this
@@ -580,7 +612,7 @@ function Propose(props: ProposeProps): ReactElement {
     const attempt = same(pending)
       ? pending
       : { operationId: props.client.newOperationId(), purpose, maximum, currency };
-    setPending(attempt);
+    put({ pending: attempt, stale: null });
     run(
       () =>
         props.client.mutate(
@@ -624,11 +656,18 @@ function Propose(props: ProposeProps): ReactElement {
   function settledProposal(settlement: Settlement): void {
     // An unknown outcome keeps the attempt; any answer from the server ends it.
     if (settlement.kind === 'unknown') return;
-    setPending(null);
     if (settlement.kind === 'closed') props.onRefused(settlement.because);
-    if (settlement.kind !== 'ok') return;
-    setPurpose('');
-    setMaximum('');
+    if (settlement.kind === 'stale') {
+      // The task moved on. Keep the fields, read the task again, and say why.
+      props.onDraft({ ...current, pending: null, stale: settlement.because });
+      props.onChanged();
+      return;
+    }
+    if (settlement.kind !== 'ok') {
+      props.onDraft({ ...current, pending: null, stale: null });
+      return;
+    }
+    props.onDraft(null);
     props.onChanged();
   }
 
@@ -641,6 +680,16 @@ function Propose(props: ProposeProps): ReactElement {
         <p className="field__error" role="alert" data-propose="refusal">
           {because}
         </p>
+      )}
+      {current.stale === null ? null : (
+        <div role="alert" data-propose="stale">
+          <p className="field__error">{current.stale}</p>
+          <p className="card__sub">
+            Somebody else moved this task on before your proposal was stored, so it was not. The
+            task has been read again and your proposal is still here: propose it again if it still
+            applies.
+          </p>
+        </div>
       )}
       <div className="field">
         <label className="tf__k" htmlFor="propose-purpose">
@@ -660,7 +709,7 @@ function Propose(props: ProposeProps): ReactElement {
           disabled={locked}
           id="propose-purpose"
           onChange={(event) => {
-            setPurpose(event.target.value);
+            put({ purpose: event.target.value });
           }}
           pattern="[a-z][a-z0-9_]{0,62}"
           required
@@ -682,7 +731,7 @@ function Propose(props: ProposeProps): ReactElement {
           id="propose-maximum"
           min="0"
           onChange={(event) => {
-            setMaximum(event.target.value);
+            put({ maximum: event.target.value });
           }}
           required
           step="0.01"
@@ -699,7 +748,7 @@ function Propose(props: ProposeProps): ReactElement {
           disabled={locked}
           id="propose-currency"
           onChange={(event) => {
-            setCurrency(event.target.value);
+            put({ currency: event.target.value });
           }}
           value={currency}
         >
@@ -713,7 +762,7 @@ function Propose(props: ProposeProps): ReactElement {
       <button className="btn btn--primary" data-propose="submit" disabled={locked} type="submit">
         {busy ? 'Proposing…' : 'Propose'}
       </button>
-      {because === null || !same(pending) ? null : (
+      {busy || !same(pending) ? null : (
         <p className="card__sub" data-propose="unresolved">
           This may already have been proposed. Proposing again sends the same attempt, so the server
           answers with the original result rather than opening a second proposal.
