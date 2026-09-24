@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.pickup`: an agent or a person claims an approved reservation. Moved out of
-// `tasks-runtime.ts` unchanged (thermo review b282216, H2).
+// `task.pickup`: an agent or a person claims an approved reservation. Split out
+// unchanged when the one task-runtime module was divided (thermo review
+// b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { pickup } from '../../../core-runtime/src/index.ts';
