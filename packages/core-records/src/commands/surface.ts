@@ -177,12 +177,11 @@ export interface CommandDeclaration {
    * (`prepare.ts`, `refuseIrrelevantTarget`), so a request type that grows an
    * identifier has to be named here rather than being silently covered.
    *
-   * `unchecked` is a gap written down, not a rule: the body's identifiers are
-   * not checked against a list at all. Absent on a targeted write, whose
+   * Absent on a targeted write, whose
    * `recordId` *is* its target and is checked by reading it, and on a read,
    * which `reads/dispatch.ts` checks against its own list.
    */
-  readonly untargetedIdentifiers?: readonly string[] | 'unchecked';
+  readonly untargetedIdentifiers?: readonly string[];
   /**
    * The identifier the runtime handler shapes itself (`isIdentifier`) and
    * answers in its own code, RESERVATION_NOT_CLAIMABLE or LEASE_NOT_OWNED, byte
@@ -207,7 +206,7 @@ function declare(
     readonly targetLock?: CommandDeclaration['targetLock'];
     readonly contractNine?: boolean;
     readonly waitingOn?: string;
-    readonly untargetedIdentifiers?: readonly string[] | 'unchecked';
+    readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
   } = {},
@@ -370,12 +369,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('grant.revoke', 'manage', {
     targetsExistingRecord: false,
     authorisedOn: 'target',
-    untargetedIdentifiers: 'unchecked',
+    untargetedIdentifiers: [],
   }),
   declare('delegation.revoke', 'manage', {
     targetsExistingRecord: false,
     authorisedOn: 'target',
-    untargetedIdentifiers: 'unchecked',
+    untargetedIdentifiers: [],
   }),
   // Work control is `write` on the task, the authority `task.propose` asks,
   // and it is asked of that task: a record-scoped writer controls its own
@@ -385,19 +384,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.cancel', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
-    untargetedIdentifiers: 'unchecked',
+    untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
   declare('task.restart', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
-    untargetedIdentifiers: 'unchecked',
+    untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
   // The lease owner's, asked of the lease's task like pickup and handback; the
   // agent path checks the delegation, then the lease.
   declare('task.heartbeat', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
-    untargetedIdentifiers: 'unchecked',
+    untargetedIdentifiers: ['leaseId'],
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),

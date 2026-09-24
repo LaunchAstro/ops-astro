@@ -286,10 +286,9 @@ function refuseIrrelevantTarget(
   request: CommandRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
-  // `untargetedIdentifiers` is absent exactly on a targeted row, and
-  // `unchecked` is a gap the row writes down (`surface.ts`).
+  // `untargetedIdentifiers` is absent exactly on a targeted row (`surface.ts`).
   const allowed = declaration.untargetedIdentifiers;
-  if (allowed === undefined || allowed === 'unchecked') return undefined;
+  if (allowed === undefined) return undefined;
   const irrelevant = irrelevantIdentifiers(request as unknown as Record<string, unknown>, allowed);
   if (irrelevant.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));

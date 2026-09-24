@@ -14,9 +14,11 @@
 // so a derivation that sent a command to a different handler, or dropped an
 // operand on the way, fails here.
 //
-// The five untargeted commands that `refuseIrrelevantTarget` never checked are
-// written as `unchecked`, not left out. Each is a gap the catalogue shows
-// rather than hides; architecture observation 2 is the lane that flips them.
+// The five untargeted commands that `refuseIrrelevantTarget` never checked
+// were pinned as `unchecked` at faf3285. Architecture observation 2 flipped
+// them, red first (`stray-identifiers.test.ts`): each now names the
+// identifiers its request type declares, and that change is the one
+// deliberate edit to this pin.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -114,18 +116,18 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
-  'delegation.revoke': 'unchecked',
-  'grant.revoke': 'unchecked',
+  'delegation.revoke': [],
+  'grant.revoke': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
-  'task.cancel': 'unchecked',
+  'task.cancel': ['recordId', 'lineageId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
-  'task.heartbeat': 'unchecked',
+  'task.heartbeat': ['leaseId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
-  'task.restart': 'unchecked',
+  'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
 };
 
@@ -298,7 +300,7 @@ describe('the per-command tables at faf3285', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
-  it('checks the same identifiers on each untargeted write, and leaves the same five unchecked', () => {
+  it('checks the declared identifiers on every untargeted write', () => {
     const table: Readonly<Record<string, unknown>> = UNTARGETED_IDENTIFIERS;
     expect(
       Object.keys(table).filter((name) => !untargetedWrites.includes(name as CommandName)),
