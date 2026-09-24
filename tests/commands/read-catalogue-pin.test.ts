@@ -124,7 +124,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
   return { code: refusal.code, names: refusal.names, fixes: refusal.fixes };
 }
 
-describe('the per-read facts at faf3285', () => {
+describe('the per-read facts at 06ab232', () => {
   it('names the same seven reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });

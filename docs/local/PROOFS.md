@@ -1124,6 +1124,11 @@ storage migrations SOL-RUNTIME-FIX proposed are no longer on this list: Nathan
 approved both (OWNER-CARD section 6), and they are written as 0024 (a cap and
 its envelope in one currency) and 0025 (the aggregate cap ceiling at commit)
 ([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
+The three storage backstops the final review proposed are off it too: Nathan
+approved them on 24 September 2026, and they are written as 0026 (no `actual`
+reservation in this head, and no zero or negative actual), 0027 (a business key
+unique across businesses) and 0028 (no `delete` on `person_logins` or
+`person_merges`), proved by `tests/runtime/final-r1-fr1-migrations.test.ts`.
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing

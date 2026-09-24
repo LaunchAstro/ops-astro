@@ -195,11 +195,12 @@ the same with `AUTH_NO_AGENT_IDENTITY` 401 (step 4 of admission, above).
 
 A key that more than one business holds names none of them. It answers the same
 bytes as a key nobody holds, and the answer is not cached
-(`createBusinessResolver`, `apps/api/server.ts`). Storage does not stop two
-businesses sharing a key today: the only index on `businesses.key` is
-`businesses_key_idx`, unique on `(business_id, key)` within one business
-(`migrations/0001_tenancy.sql`). A global unique index on `businesses.key` is a
-protected migration proposed to Nathan and not written.
+(`createBusinessResolver`, `apps/api/server.ts`). Since migration 0027, Nathan's
+approved backstop, `businesses_key_global_idx` makes a business key unique across
+businesses, so storage refuses a second business under a held key with `23505`
+(`migrations/0027_business_key_global.sql`;
+`tests/runtime/final-r1-fr1-migrations.test.ts`). The resolver's refusal stays
+as the check at request time.
 
 `AUTH_NO_MEMBERSHIP` 403 also refuses a mapped person of the business who holds
 no membership and no live share. A non-member who does hold a live share, and
@@ -353,6 +354,11 @@ no route written by hand.
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422 |
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                                                       |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404                                                                                                                       |
+
+A settings `value` of any other type, including a string, an object or an
+array, is `FIELD_VALUE_INVALID` naming `value` before any write
+(`setBusinessSetting`, `commands/settings-write.ts`), so nothing a jsonb column
+cannot hold reaches `business_settings`.
 
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
@@ -648,10 +654,8 @@ JSON escape text (`\u0000`), because a jsonb string cannot hold it
 digest covers the value as received. On both prefixes, a refusal name that
 echoes a caller key holding such a code unit is registered as its JSON escape
 text (`storable`, called by `registerAttempt` in `commands/register-store.ts`).
-The person prefix answers and replays it in that form too (`settle`,
-`commands/envelope.ts`). The agent prefix answers the first call with the name
-as received (`settle`, `commands/agent-settle.ts`) and a replay with the
-registered form.
+Both prefixes answer it in that form the first time and on replay, so the bytes
+match (`settle` in `commands/envelope.ts` and in `commands/agent-settle.ts`).
 
 ## The support controls
 

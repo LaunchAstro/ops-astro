@@ -97,11 +97,6 @@ opens no database itself, so it is not named.
 `tests/cli/final-r1-cli.test.ts` is listed there as a pure unit suite: it runs
 the CLI against HTTP stand-ins, moves the counter by 0, and its terminal case
 skips without a terminal (`final-r1-cli.test.ts:186`).
-`tests/reads/final-r1-api-sign-read.test.ts` is listed as failing at the
-integration head, because its fixture decided with an object note that
-`task.decide` now refuses. The fixture now decides with a string note and
-writes the object note as a signed row (`storeNote`), so that reason no longer
-holds, and the suite stays unnamed until the manifest names it.
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each

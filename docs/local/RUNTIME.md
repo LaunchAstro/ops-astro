@@ -323,14 +323,16 @@ delegation's own scope and not the presented one (`checkDelegatedAuthority`,
 reservation's terminal state is `abandoned`, never a zero `actual`. A released
 hold that wrote `actual_minor = 0` would be a claim that the work ran and cost
 nothing. Nothing in this head runs, so that claim would be an invention. The
-handback is what refuses it: any `actualMinor` is
+handback refuses it first: any `actualMinor` is
 `ACTUAL_EXPENDITURE_UNSUPPORTED` 422 before the first write (`handback`,
-`handback.ts`). Storage does not. `reservations_actual_only_when_actual` makes
-carrying a number and being `actual` the same fact, so it refuses a number on
-an `abandoned` row. Nothing refuses an `actual` row, and `reservations.actual_minor`
-has no sign check, so an update by the application role to `actual` with 0, or
-with a negative number, commits (`migrations/0013_runtime_budget_and_leases.sql`).
-A storage backstop would be a protected migration, which only Nathan approves.
+`handback.ts`). Storage refuses it second. `reservations_actual_only_when_actual`
+makes carrying a number and being `actual` the same fact, so it refuses a number
+on an `abandoned` row. Since migration 0026, Nathan's approved backstop,
+`reservations_first_head_no_actual` (`check (state <> 'actual')`, like
+`planned_steps_undispatched`) refuses an `actual` row in this head, and
+`reservations_actual_positive` refuses a zero or negative actual in any head
+(`migrations/0026_reservation_first_head_no_actual.sql`;
+`tests/runtime/final-r1-fr1-migrations.test.ts`).
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the

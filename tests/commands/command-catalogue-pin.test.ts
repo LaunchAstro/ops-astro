@@ -295,7 +295,7 @@ const agentReach = (reach: readonly string[]) =>
     .map((row) => row.name)
     .toSorted();
 
-describe('the per-command tables at faf3285', () => {
+describe('the per-command tables at 06ab232', () => {
   it('shapes the same runtime identifier for the same three commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
