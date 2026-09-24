@@ -154,8 +154,12 @@ async function writeData(
 export async function reparentTask(
   tx: TenantQuery,
   context: CommandContext,
-  parentId: string | null,
+  sentParentId: string | null,
 ): Promise<HandlerOutcome> {
+  // A uuid names one task in either case. Lower-cased once, as `rankTask`
+  // does, so the comparisons below and the stored `parent` agree with the
+  // uuid-typed slot and the sibling lock (docs/local/API.md, identifiers).
+  const parentId = typeof sentParentId === 'string' ? sentParentId.toLowerCase() : sentParentId;
   const target = context.target;
   if (target === undefined) throw new Error('reparentTask: the envelope read no target');
   // First: an absent `parentId` would otherwise read as the top level below.
@@ -234,9 +238,12 @@ export async function reparentTask(
 export async function moveTask(
   tx: TenantQuery,
   context: CommandContext,
-  board: string | null,
+  sentBoard: string | null,
   boardSection: string | null,
 ): Promise<HandlerOutcome> {
+  // Lower-cased once, so the task's own board in upper case is the same board
+  // below: no re-rank, no carry and no second sibling-lock key (R3-SURFACE-22).
+  const board = typeof sentBoard === 'string' ? sentBoard.toLowerCase() : sentBoard;
   const target = context.target;
   if (target === undefined) throw new Error('moveTask: the envelope read no target');
   const isSubtask = (target.data['parent'] ?? null) !== null;

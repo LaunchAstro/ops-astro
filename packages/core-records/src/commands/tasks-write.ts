@@ -140,9 +140,17 @@ export async function createTask(
     );
   }
 
+  // A uuid names one task in either case. Lower-cased once, so the stored
+  // `parent` and `board` and the sibling lock agree with the uuid-typed slots
+  // (R2-RUNTIME-58, R3-SURFACE-22).
+  const parentId =
+    typeof request.parentId === 'string'
+      ? request.parentId.toLowerCase()
+      : (request.parentId ?? null);
   const placement = await planTaskPlacement(tx, context.spine.taskTypeId, {
-    parentId: request.parentId ?? null,
-    board: request.board ?? null,
+    parentId,
+    board:
+      typeof request.board === 'string' ? request.board.toLowerCase() : (request.board ?? null),
     boardSection: request.boardSection ?? null,
     suppliedKeys: Object.keys(request.fields),
   });
@@ -187,9 +195,7 @@ export async function createTask(
     // From the placement alone: `fields` cannot carry either (refused above).
     ...(placement.board === null ? {} : { board: placement.board }),
     ...(placement.boardSection === null ? {} : { board_section: placement.boardSection }),
-    ...(request.parentId === null || request.parentId === undefined
-      ? {}
-      : { parent: request.parentId }),
+    ...(parentId === null ? {} : { parent: parentId }),
   };
 
   const rows = await tx.query<{ readonly revision: string; readonly key: string }>(

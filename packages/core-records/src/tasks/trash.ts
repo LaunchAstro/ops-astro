@@ -26,6 +26,7 @@ import { slotOf, TASK_SPINE } from './spine.ts';
 import { COMMENT_SPINE } from './comments.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
+const BOARD = slotOf(TASK_SPINE, 'board');
 const COMMENT_TASK = slotOf(COMMENT_SPINE, 'task');
 
 export type RetentionClass = 'work' | 'evidence' | 'runtime';
@@ -101,6 +102,14 @@ interface RootRow {
  * keeps its own batch and stays out of this one, which is what makes a restore
  * of this batch mean something.
  *
+ * The walk's rows are locked `for update`, and the walk is read again until
+ * it finds nothing it has not locked. The envelope locks only the root, and a
+ * create or restore under a descendant holds that descendant `for share`
+ * while its child is not yet visible, so a walk read once could miss the
+ * child and stamp the parent after it commits: a live child under a trashed
+ * parent, outside the batch (R1-THERMO-16, R2-RUNTIME-15). Locking waits for
+ * that transaction, and the next walk sees what it committed.
+ *
  * The walk is read before anything is written, and `authorise` sees every
  * record it found. A grant on the root is not a grant on its descendants: a
  * record-scoped grant matches its own record only (`authority/grants.ts`), so
@@ -148,28 +157,44 @@ export async function trashSubtree<Denied>(
     );
   }
 
-  const walked = await tx.query<{ readonly id: string }>(
-    // `cycle` is not decoration. `parent` is an ordinary uuid slot with no
-    // foreign key to itself, so nothing in the schema stops `task.reparent`
-    // from producing a loop, and a recursive query over a loop does not
-    // return — it runs until the server runs out of something. The clause
-    // stops the walk at a record it has already seen. The record-type filter
-    // is the same argument: the walk should follow tasks, not whatever else
-    // happens to carry a value in that column.
-    `with recursive subtree as (
-        select id, record_type_id from records
-         where business_id = $1 and id = $2 and deleted_at is null
-        union all
-        select child.id, child.record_type_id from records child
-          join subtree on child.${PARENT} = subtree.id
-         where child.business_id = $1
-           and child.record_type_id = subtree.record_type_id
-           and child.deleted_at is null
-      ) cycle id set looped using path
-      select distinct id from subtree where not looped`,
-    [tx.businessId, options.rootId],
-  );
-  const ids = walked.map((each) => each.id);
+  const walk = async (): Promise<readonly string[]> =>
+    (
+      await tx.query<{ readonly id: string }>(
+        // `cycle` is not decoration. `parent` is an ordinary uuid slot with no
+        // foreign key to itself, so nothing in the schema stops `task.reparent`
+        // from producing a loop, and a recursive query over a loop does not
+        // return — it runs until the server runs out of something. The clause
+        // stops the walk at a record it has already seen. The record-type
+        // filter is the same argument: the walk should follow tasks, not
+        // whatever else happens to carry a value in that column.
+        `with recursive subtree as (
+            select id, record_type_id from records
+             where business_id = $1 and id = $2 and deleted_at is null
+            union all
+            select child.id, child.record_type_id from records child
+              join subtree on child.${PARENT} = subtree.id
+             where child.business_id = $1
+               and child.record_type_id = subtree.record_type_id
+               and child.deleted_at is null
+          ) cycle id set looped using path
+          select distinct id from subtree where not looped`,
+        [tx.businessId, options.rootId],
+      )
+    ).map((each) => each.id);
+  const locked = new Set<string>();
+  let ids = await walk();
+  while (ids.some((id) => !locked.has(id))) {
+    // In id order, so two walks over one subtree queue rather than deadlock.
+    // eslint-disable-next-line no-await-in-loop
+    await tx.query(
+      `select id from records where business_id = $1 and id = any ($2::uuid[])
+        order by id for update`,
+      [tx.businessId, ids],
+    );
+    for (const id of ids) locked.add(id);
+    // eslint-disable-next-line no-await-in-loop
+    ids = await walk();
+  }
   const denied = await options.authorise?.(ids);
   if (denied !== undefined) return { denied };
 
@@ -226,6 +251,16 @@ interface ParentRow {
  * The second is the one T1d's trigger creates: a trashed record releases its
  * unique claims, so restoring re-takes them, and if somebody took the value
  * meanwhile the re-claim would fail. It is refused by name here instead.
+ *
+ * A subtask's board is its parent's (specification 14.2 point 2), and a move
+ * or reparent carries the board to the live subtree only, so a row trashed
+ * before its root moved still holds the old board. The write therefore takes
+ * the board again from the live parent outside the batch, for that row and
+ * the batch rows below it (R3-RUNTIME-11). That parent is the row read `for
+ * share` above, so a move holding it waits for this restore, whose rows its
+ * rewrite then sees live, or this restore waits for the move and reads the
+ * board it wrote. A top-level row keeps its own board, and a row whose parent
+ * no longer exists (case L10) keeps the board it had.
  */
 export async function restoreBatch(
   tx: TenantQuery,
@@ -286,10 +321,28 @@ export async function restoreBatch(
   if (taken !== undefined) return taken;
 
   const restored = await tx.query<{ readonly id: string }>(
-    `update records
-        set deleted_at = null, deleted_by_actor_id = null, trash_batch_id = null
-      where business_id = $1 and trash_batch_id = $2
-      returning id`,
+    `with recursive carried (id, board) as (
+         select r.id, p.${BOARD}::text from records r
+           join records p on p.business_id = r.business_id and p.id = r.${PARENT}
+          where r.business_id = $1 and r.trash_batch_id = $2 and p.deleted_at is null
+         union all
+         select child.id, carried.board from records child
+           join carried on child.${PARENT} = carried.id
+          where child.business_id = $1 and child.trash_batch_id = $2
+       ) cycle id set looped using path,
+       placed as (
+         select b.id, carried.id is not null as derived, carried.board from records b
+           left join carried on carried.id = b.id and not carried.looped
+          where b.business_id = $1 and b.trash_batch_id = $2
+       )
+     update records r
+        set deleted_at = null, deleted_by_actor_id = null, trash_batch_id = null,
+            data = case when not placed.derived then r.data
+                        when placed.board is null then r.data - 'board'
+                        else jsonb_set(r.data, '{board}', to_jsonb(placed.board)) end
+       from placed
+      where r.business_id = $1 and r.id = placed.id and r.trash_batch_id = $2
+      returning r.id`,
     [tx.businessId, options.batchId],
   );
   return { batchId: options.batchId, recordIds: restored.map((each) => each.id) };
