@@ -109,6 +109,8 @@ describe.skipIf(serverUrl === undefined)('the command line as a separate process
   it('the package script runs the same entry: `pnpm cli person.list` answers from the API', async () => {
     const run = await runCli(['person.list'], as(world.ada.token), '', 'pnpm');
     expect(run.code, run.stderr).toBe(0);
+    // One JSON value and nothing else, so `pnpm cli ... | jq` parses (CLI.md).
+    expect(run.json, run.stdout).toBeDefined();
     expect(run.json?.['refused']).toBeUndefined();
     expect(run.stdout).toContain(String(world.mia.personId));
     expectNoCredential(run);
