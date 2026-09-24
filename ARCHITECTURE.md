@@ -53,6 +53,16 @@ All four hold in the tree: [the data layer](docs/local/DATA.md) has the slots,
 the migrations and the tenancy suites, and
 [authority](docs/local/AUTHORITY.md) has the credential, membership and grant
 model the API resolves against.
+
+A command's facts are one `COMMAND_SURFACE` row
+(`packages/core-records/src/commands/surface.ts`): its authority target,
+expected-revision rule, `untargetedIdentifiers`, `runtimeShaped` and `agent`
+reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
+same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the
+web client imports the surface. A read's facts are one `READ_CATALOGUE` row
+(`reads/catalogue.ts`): identifiers, operand check, spine, subject, authority
+mode, outsider-not-found and serve. `reads/dispatch.ts` runs one pipeline over
+the row.
 See the [stack](docs/adr/0019-app-layer-vite-react-hono.md),
 [records](docs/adr/0030-fixed-typed-slots-no-runtime-ddl.md), and
 [identity and permissions](docs/adr/0014-business-id-on-every-table-and-key.md)

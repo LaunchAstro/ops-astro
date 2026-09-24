@@ -106,6 +106,15 @@ sequentially, they pass. Vitest's file parallelism is set in
 `vitest.config.ts`, which this lane does not own, so the run passes the flag
 rather than changing that config from outside its owner.
 
+`pnpm test` runs `tests/support/global-setup.ts` once first. On a cluster
+without `ops_astro_app` and `ops_astro_worker` it migrates and drops one
+throwaway database, so parallel files never race on creating those roles.
+
+Hooks have a 60 s timeout (`hookTimeout` in `vitest.config.ts`), because every
+database-bound file migrates and drops its own database in `beforeAll` and
+`afterAll`. Tests keep Vitest's 5 s default. A case that is legitimately slow
+names its own timeout, with a comment saying why.
+
 `.local/db.env` points at a disposable Postgres of the lane's own. With
 `DATABASE_URL` unset every file in the directory skips itself and says so on
 the console rather than passing empty, because a proof that quietly ran nothing
@@ -368,7 +377,7 @@ Case (k) drives the three operations the old rows only described:
   the sibling and for another purpose. Under the first credential it hands
   back the sibling's lease at that lease's own fence. The answer is
   `DELEGATION_OUT_OF_PURPOSE` 403, because `subjectTaskId` in
-  `agent-envelope.ts` reads the task from the lease. The sibling lease has no
+  `agent-authority.ts` reads the task from the lease. The sibling lease has no
   `handback_reports` row afterwards. This is the (i) `task.handback` row. The
   old text expected `LEASE_NOT_OWNED`, which is the answer for a stale fence
   on a lease in the same purpose.
@@ -586,8 +595,8 @@ as observed. Four are fixed on this head, and the cases now assert the fix.
    `restart-and-expiry.test.ts:362` asserts the hook fires once, carrying the
    expired code.
 4. **Fixed: an agent could reach `task.comment` by the surface and not by the
-   server.** `serve` has a `task.comment` branch
-   (`commands/agent-envelope.ts`). The matrix's case (i) asserts the saved
+   server.** `AGENT_OPERATIONS` has a `task.comment` row
+   (`commands/agent-operations.ts`). The matrix's case (i) asserts the saved
    comment on the agent's own task, and `AUDIENCE_NOT_PERMITTED` for a
    `client` comment.
 5. **Open: the command line cannot report a fault.** `apps/cli/client.ts:117`
@@ -955,7 +964,7 @@ includes every case below. `retry-bounds`, `projection-snapshot` and
   another task's lease and a wrong fence each retain nothing. A fault after
   retention rolls back, and the retry retains one. The resolver is
   `resolveNarrowedDelegation` in `delegations.ts`, reached from
-  `retainLateHandback` in `agent-envelope.ts`.
+  `retainLateHandback` in `agent-late-handback.ts`.
 - **Proposal snapshot:** `tests/reads/projection-snapshot.test.ts`, 4 tests,
   and `tests/surfaces/proposal-snapshot.test.tsx`, 1 test, both green at
   `aed9384`. At `9e2192e` 3 of the 4 and the surface test were red.

@@ -81,6 +81,11 @@ The address and its business are kept in `sessionStorage` under
 out clears it too, so an ordinary sign-in is never redirected by an interruption
 somebody already answered.
 
+All browser storage is read and written through `jsonSlot` in
+`apps/web/src/session/token.ts`. The screens get their storage from
+`tabStorage()` in the same file. A tab with blocked site data draws the screens
+with nothing remembered rather than failing.
+
 No refresh-token call, no token inspection and no decoding anywhere in the web:
 the hour is the server's to decide and the browser only ever finds out by being
 refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
@@ -310,7 +315,10 @@ server's value beside the person's draft in `div[data-settings="conflict"]`
 with `conflict-server` and `conflict-draft`, quotes the refusal, and waits.
 The overwrite takes a second explicit press on
 `button[data-settings="confirm-four-eyes"]` and goes out against the reread
-revision. The screen never retries by itself.
+revision. Until the reread has answered, the controls are closed. The second
+press writes over only what the reread showed. If the reread is refused or
+unavailable, the press writes nothing (`writeOver`,
+`screens/settings/use-settings.ts`). The screen never retries by itself.
 
 Keyboard path: `settings-four-eyes -> settings-four-eyes-off ->
 save-four-eyes -> settings-sign-off -> save-sign-off`. Measured at 1480, 900
