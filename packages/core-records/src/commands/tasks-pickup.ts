@@ -15,7 +15,7 @@ import {
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { fromReasoned, refuseCommand } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
@@ -70,6 +70,21 @@ export async function pickupReservation(
 }
 
 /**
+ * A `reservationId` that is not a string, in one body for both entries
+ * (THERMO-RECHECK-2 NNA4; the agent's `pickupOperands`). No attempted value:
+ * the two audit rows are the same row (`tests/api/id-operand-shape.test.ts`).
+ */
+export function refuseReservationBody(): Refused {
+  return refused(
+    refuseCommand(
+      'COMMAND_BODY_INVALID',
+      ['reservationId'],
+      ['Name a reservation from task.queue.'],
+    ),
+  );
+}
+
+/**
  * The verified person picks the reservation up as themselves (EX-01, T3 line
  * 66). The holder is the session's own actor and the authority is the
  * session's own live grants, re-read under the claim's locks; the approving
@@ -85,15 +100,7 @@ export async function pickupAsPerson(
   // An HTTP body is untyped. Absent is the body's shape; present and not an
   // identifier names nothing, and answers exactly as a fabricated one does.
   const named: unknown = fields.reservationId;
-  if (typeof named !== 'string') {
-    return refused(
-      refuseCommand(
-        'COMMAND_BODY_INVALID',
-        ['reservationId'],
-        ['Name a reservation from task.queue.'],
-      ),
-    );
-  }
+  if (typeof named !== 'string') return refuseReservationBody();
   return await claim(tx, context.declaration.collection, fields, personClaimant(context));
 }
 

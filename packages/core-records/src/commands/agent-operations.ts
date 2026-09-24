@@ -18,8 +18,14 @@ import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isFieldMap } from './operands.ts';
 import type { CommandName } from './surface.ts';
-import { handbackLease } from './tasks-handback.ts';
-import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
+import {
+  handbackLease,
+  refuseActualMinor,
+  refuseFence,
+  refuseOutcome,
+  refuseReport,
+} from './tasks-handback.ts';
+import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from './tasks-pickup.ts';
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
 import { agentClaimant } from './tasks-claimant.ts';
@@ -146,15 +152,6 @@ const NONE = (): NoOperands => ({});
 /** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
 const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
-const REPORT_FIXES: readonly string[] = [
-  'Send report as an object of named values, or leave it out.',
-];
-
-const ACTUAL_MINOR_FIXES: readonly string[] = [
-  'Leave actualMinor out, or send null: nothing in this head dispatches.',
-  'A number here would claim the work ran and cost that much.',
-];
-
 /**
  * The operands' shape rules. A present operand of the wrong shape is refused
  * by name. It is never the default in disguise, and a report is never dropped
@@ -190,17 +187,7 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => LeaseO
  */
 function pickupOperands(request: AgentRequest): PickupOperands | Refused {
   const reservationId = request['reservationId'];
-  if (typeof reservationId !== 'string') {
-    // No attempted value, as the person entry records none for it: the two
-    // audit rows are the same row (`tests/api/id-operand-shape.test.ts`).
-    return refused(
-      refuseCommand(
-        'COMMAND_BODY_INVALID',
-        ['reservationId'],
-        ['Name a reservation from task.queue.'],
-      ),
-    );
-  }
+  if (typeof reservationId !== 'string') return refuseReservationBody();
   const lease = leaseSecondsOperand(MAXIMUM_LEASE_SECONDS)(request);
   if ('refusal' in lease) return lease;
   return { ...lease, reservationId };
@@ -214,25 +201,13 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   // intake keeps only when otherwise valid (Sol 6 AUTHORITY-2). Whether the
   // string is an outcome and the number a fence is the handler's.
   const outcome = request['outcome'];
-  if (typeof outcome !== 'string') {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
-      { outcome },
-    );
-  }
+  if (typeof outcome !== 'string') return refuseOutcome(outcome);
   const fence = request['fence'];
-  if (typeof fence !== 'number') {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed you.']),
-      { fence },
-    );
-  }
+  if (typeof fence !== 'number') return refuseFence(fence);
   let operands: HandbackOperands = { outcome, fence };
   if ('report' in request) {
     const report = request['report'];
-    if (!isFieldMap(report)) {
-      return refused(refuseCommand('FIELD_VALUE_INVALID', ['report'], REPORT_FIXES), { report });
-    }
+    if (!isFieldMap(report)) return refuseReport(report);
     operands = { ...operands, report };
   }
   // Any non-null actual is refused here, before authority is read, and not
@@ -243,12 +218,7 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   // absent are the same request.
   if ('actualMinor' in request) {
     const actualMinor = request['actualMinor'];
-    if (actualMinor !== null && actualMinor !== undefined) {
-      return refused(
-        refuseCommand('ACTUAL_EXPENDITURE_UNSUPPORTED', ['actualMinor'], ACTUAL_MINOR_FIXES),
-        { actualMinor },
-      );
-    }
+    if (actualMinor !== null && actualMinor !== undefined) return refuseActualMinor(actualMinor);
   }
   return operands;
 }
