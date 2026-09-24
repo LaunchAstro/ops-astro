@@ -111,7 +111,8 @@ created=yes
 
 ready=no
 for _ in $(seq 1 60); do
-  if "$DOCKER" exec "$NAME" pg_isready -q -U postgres -d "$DATABASE" 2>/dev/null; then
+  # Over TCP: a fresh volume's init server answers the socket before TCP is up.
+  if "$DOCKER" exec "$NAME" pg_isready -q -h 127.0.0.1 -U postgres -d "$DATABASE" 2>/dev/null; then
     ready=yes
     break
   fi
