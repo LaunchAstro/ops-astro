@@ -72,6 +72,12 @@ past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the
 trigger's creation (`tests/runtime/final-r3r-0030-upgrade-race.test.ts`).
+Before that it takes SHARE on `proposal_versions`. A proposal writes
+`evidence_packs` and `gates` in either order (a first version writes its pack
+and then its gate; a successor supersedes the old gate first), but always
+writes `proposal_versions` first (`proposal-writer.ts`). So an upgrade
+overlapping a proposal waits for it, or makes it wait, instead of deadlocking
+(SOL-R3R2-1, the same test).
 
 ## The one rule the whole thing rests on
 
@@ -443,6 +449,17 @@ does not record 0031, because a file and its ledger row commit together
 (`scripts/db-migrate.mjs`). The owner resolves the total and migrates again
 (`migrations/0031_upgrade_guards.sql`;
 `tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`).
+
+**Upgrading a running install.** The migration runner refuses to apply a
+pending migration while any other client session is connected to the database
+(the API, GoTrue, a `psql`), names each by pid, login, application, address and
+start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
+`tests/tenancy/final-r6-runner-guard.test.ts`). Stop the API and GoTrue, run
+`pnpm db:migrate`, and start them again. With nothing pending the check does not
+run. An idle API or GoTrue may hold no connection between requests, so the check
+cannot tell a stopped application from an idle one: the stop is the operator's
+step, and a script that upgrades must do it itself. See
+[DATA.md, "Upgrade"](DATA.md#upgrade).
 
 The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
 version whose currency differs from the cap's, or from that of the task's open

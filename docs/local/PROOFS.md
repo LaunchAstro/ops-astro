@@ -1095,6 +1095,18 @@ trial ran the named suite green, nothing more.
 | `task.purge` reads the caller's business's `retention_window_days` inside the serving transaction and purges trash older than that window by the database clock; a body `olderThanDays`, any value, is `COMMAND_BODY_INVALID` 400 with no mutation and one refused audit row. No default, floor or ceiling is applied. Source interpretation, recorded as root ruling 2's: consuming the stored setting completes the L3 retention contract for this retained operation. It is not a claim that Nathan moved Q46 forward, and it does not discharge the other G5 completion rows. | SPEC 14.3, SPEC:319, C12-5 Q46, ledger L3 retention row | tested (merge trial since `6e5a139`; a `db:conformance` named suite): `purge-retention` |
 | A read whose decisions fail to verify is a fault (`DECISION_INTEGRITY`, 500) that rolls back, not a committed refusal, so no tamper audit row is kept.                                                                                                                                                                                                                                                                                                                                                                                                                            | TC11                                                    | tested (merge trial); the live `onError` probe is owed at the final restart             |
 
+## The migration runner's connection guard (FR6-RUNNER)
+
+`tests/tenancy/final-r6-runner-guard.test.ts` (invariant, named in
+`tests/db/named-suites.json`) holds real sessions open against databases at
+0023 and at the head. A pending migration is refused with an application-login
+session held, and with another client backend held, with the ledger and a
+schema fingerprint unchanged. The run applies once they close. An up-to-date
+database with the application connected passes. A session that connects inside
+a migration is caught by the in-transaction check before commit. `db-migrate.mjs`
+refuses and exits 2 with only `DATABASE_ADMIN_URL` in its environment. What it
+cannot prove is under "Deferred limits": the guard sees only open sessions.
+
 ## Deferred limits
 
 These are limits of the first slice, recorded so nobody reads them as done.
@@ -1116,6 +1128,10 @@ None is a waiver.
   leaves a shorter chain that verifies. v3's signed previous link protects the
   middle, not the tail; the gate and lineage cross-checks are the only defence
   there.
+- **An idle application passes the upgrade guard.** The runner counts open
+  sessions, and an idle API or GoTrue may hold none between requests, so a
+  stopped application and an idle one look the same to it. Stopping them before
+  `db:migrate` stays the operator's step ([DATA.md, "Upgrade"](DATA.md#upgrade)).
 
 ## Open for the owner
 

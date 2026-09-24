@@ -134,4 +134,31 @@ describe('RUNTIME.md on the 0030 trigger (R4-SURFACE-2)', () => {
     expect(text).toContain('takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows');
     expect(text).toContain('`tests/runtime/final-r3r-0030-upgrade-race.test.ts`');
   });
+
+  it('names the proposal_versions lock, taken first (SOL-R3R2-1)', () => {
+    const versions = migration.indexOf('lock table public.proposal_versions in share mode;');
+    expect(versions).toBeGreaterThan(0);
+    expect(versions).toBeLessThan(
+      migration.indexOf('lock table public.gates in share row exclusive mode;'),
+    );
+    const text = paragraph();
+    expect(text).toContain('Before that it takes SHARE on `proposal_versions`');
+    expect(text).toContain('always writes `proposal_versions` first');
+  });
+});
+
+describe('the upgrade guard and its limit (FR6-RUNNER)', () => {
+  it('names the predicate DATA.md states, and says an idle application passes', () => {
+    const migrate = read('packages/core-records/src/tenancy/migrate.ts');
+    expect(migrate).toContain("and backend_type = 'client backend'");
+    expect(migrate).toContain('and pid <> pg_backend_pid()');
+    const data = folded(read('docs/local/DATA.md'));
+    expect(data).toContain('The check cannot tell a stopped application from an idle one.');
+    expect(data).not.toContain('the runner enforces the rule');
+    const readme = folded(read('docs/local/README.md'));
+    expect(readme).not.toContain('The runner enforces it');
+    expect(folded(read('docs/local/RUNTIME.md'))).toContain(
+      'the check cannot tell a stopped application from an idle one',
+    );
+  });
 });
