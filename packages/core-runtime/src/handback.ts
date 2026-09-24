@@ -34,6 +34,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
+import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
 import {
@@ -257,6 +258,12 @@ export async function handback(
     { lockClass: 'reservation', id: found.reservation_id },
   ]);
 
+  // Sol 6 RUNTIME-1 (158d6de): `now()` is when this transaction began, and a
+  // handback that waited on these locks past the lease's expiry would still
+  // see the lease live and settle work an expired lease cannot settle. The
+  // expiry is judged on the clock read here, after the locks.
+  const lockedAt = await lockedInstant(tx);
+
   const leases = await tx.query<{
     readonly state: string;
     readonly fence: string;
@@ -264,11 +271,12 @@ export async function handback(
     readonly current_fence: string;
     readonly holder_actor_id: string;
   }>(
-    `select l.state, l.fence::text as fence, (l.expires_at <= now()) as expired, l.holder_actor_id,
+    `select l.state, l.fence::text as fence, (l.expires_at <= $3::timestamptz) as expired,
+            l.holder_actor_id,
             (select max(fence) from public.leases
               where business_id = l.business_id and task_id = l.task_id)::text as current_fence
        from public.leases l where l.business_id = $1 and l.id = $2`,
-    [tx.businessId, request.leaseId],
+    [tx.businessId, request.leaseId, lockedAt],
   );
   const lease = only(leases, 'handback: the lease locked above');
 
