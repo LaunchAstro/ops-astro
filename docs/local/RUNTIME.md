@@ -743,7 +743,8 @@ replay runs at the API's next start, and nothing polls.
   application role, with the tenant set by `set_config(..., true)` inside that
   transaction, one business after another.
 - **Failure.** A failed replay, including `AffectedSetChanged` when discovery
-  changed under the classifier's locks (`lockAndClassify`, `recovery.ts`), rolls
+  changed under the classifier's locks (`replayRecordedTransitions`,
+  `recovery.ts`), rolls
   that business back. The process exits 1 with
   `restart recovery for business "<key>" rolled back: <reason>`. There is no
   automatic retry: the next normal start runs the replay again in a fresh

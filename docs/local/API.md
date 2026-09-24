@@ -230,7 +230,7 @@ pickup replay is also released only while its lease is live and the caller's
 The register row is unchanged and the audit row is `refused` (`replayOrRefuse`
 and `withheldNow`, `commands/envelope.ts`). The lease check is
 `pickupReceiptBinding` (`commands/tasks-pickup.ts`), the one statement the agent
-pickup replay also uses (`replayPickup`).
+pickup replay also uses (`replayPickup`, `commands/agent-replay.ts`).
 `tests/runtime/person-replay-current-rights.test.ts` holds it.
 
 An identifier field an untargeted write does not take is refused
