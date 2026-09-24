@@ -56,7 +56,7 @@ if (serverUrl === undefined) {
 
 const LIMIT = 1000;
 const THROUGH_0023 = (version: string): boolean => version.slice(0, 4) <= '0023';
-/** The two this suite is about, and the last two on disk. */
+/** The two this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0024', '0025'];
 
 interface World {
@@ -178,6 +178,7 @@ function barrier(): { readonly held: Promise<void>; readonly release: () => void
 
 const CURRENCY_BINDING = { code: '23503', constraint_name: 'task_envelopes_cap_currency_fkey' };
 const CEILING = { code: '23514', constraint_name: 'budget_caps_ceiling' };
+const SERIALIZATION = { code: '40001' };
 
 interface Built {
   readonly db: EmptyDatabase;
@@ -239,22 +240,28 @@ describe.skipIf(serverUrl === undefined).each([
     await built?.db.drop();
   });
 
-  it('applies 0024 and 0025 last, once each', () => {
-    const newest = onDisk.slice(-2).map((m) => m.version);
-    expect(newest.map((v) => v.slice(0, 4))).toStrictEqual(NEW);
-    if (label === 'fresh') {
-      expect(built.migration.applied).toStrictEqual(onDisk.map((m) => m.version));
-    } else {
-      expect(built.migration.applied).toStrictEqual(newest);
-      expect(built.migration.alreadyApplied).toHaveLength(onDisk.length - 2);
-    }
+  it('applies 0024 and 0025 after 0023, and every migration once', () => {
+    const through = onDisk.filter((m) => THROUGH_0023(m.version)).map((m) => m.version);
+    const after = onDisk.filter((m) => !THROUGH_0023(m.version)).map((m) => m.version);
+    expect(after.slice(0, 2).map((v) => v.slice(0, 4))).toStrictEqual(NEW);
+    const expected =
+      label === 'fresh'
+        ? { applied: [...through, ...after], alreadyApplied: [] }
+        : { applied: after, alreadyApplied: through };
+    expect({
+      applied: built.migration.applied,
+      alreadyApplied: built.migration.alreadyApplied,
+    }).toStrictEqual(expected);
   });
 
-  it('keeps every seeded row as it was (upgraded only)', () => {
-    if (label === 'fresh') return;
-    expect(built.seeded).toMatch(/AUD.*#/u);
-    expect(built.seededAfter).toBe(built.seeded);
-  });
+  // Only the upgraded leg has seeded rows, so only it registers the case; a
+  // skipped or empty case would prove nothing on the fresh leg.
+  if (label !== 'fresh') {
+    it('keeps every seeded row as it was', () => {
+      expect(built.seeded).toMatch(/AUD.*#/u);
+      expect(built.seededAfter).toBe(built.seeded);
+    });
+  }
 
   describe('an envelope is in its cap currency', () => {
     it('refuses a USD envelope under the AUD cap', async () => {
@@ -415,6 +422,83 @@ describe.skipIf(serverUrl === undefined).each([
       }
       expect(await capState(cap)).toBe('AUD 1000 600');
     });
+
+    // Sol 6 SURFACE-R-2 at 9d2dbde: a row lock does not refresh a repeatable
+    // read snapshot, so a second transaction that waited for the cap lock
+    // summed from before the first committed, and both committed past the
+    // ceiling. The trigger now claims the cap with a real row version, so a
+    // stale snapshot cannot claim it: read committed re-sums and is refused
+    // `budget_caps_ceiling`; repeatable read and serializable are refused
+    // `serialization_failure` (40001), which a caller retries in a fresh
+    // snapshot that sees the first commit.
+    it.each([
+      ['read committed', CEILING],
+      ['repeatable read', SERIALIZATION],
+      ['serializable', SERIALIZATION],
+    ] as const)(
+      'refuses the second of two %s transactions whose snapshots both saw room',
+      async (level, refusal) => {
+        const cap = await ownCap();
+        const a = await envelope(cap);
+        const b = await envelope(cap);
+        const url = new URL(cap.db.appUrl);
+        url.searchParams.set('default_transaction_isolation', level);
+        const first = connect(url.toString(), { source: 'racer' });
+        const second = connect(url.toString(), { source: 'racer' });
+        try {
+          const snapped = { a: barrier(), b: barrier() };
+          const gateA = barrier();
+          const gateB = barrier();
+          const wrote = barrier();
+          let seenB = '';
+          const raise = async (
+            tx: TenantQuery,
+            id: string,
+            to: number,
+            mine: { readonly release: () => void },
+          ): Promise<string> => {
+            // The first statement takes the snapshot: the cap is empty in both.
+            const [row] = await tx.query<{ readonly level: string; readonly total: string }>(
+              `select current_setting('transaction_isolation') as level,
+                      coalesce(sum(held_minor + actual_minor), 0)::text as total
+                 from public.task_envelopes where business_id = $1 and cap_id = $2`,
+              [cap.business, cap.capId],
+            );
+            mine.release();
+            await tx.query(
+              `update public.task_envelopes set held_minor = $3 where business_id = $1 and id = $2`,
+              [cap.business, id, to],
+            );
+            return `${row?.level} ${row?.total}`;
+          };
+          const txA = first.withBusiness(cap.business, async (tx) => {
+            const seen = await raise(tx, a, 600, snapped.a);
+            await snapped.b.held;
+            await gateA.held;
+            return seen;
+          });
+          const txB = second.withBusiness(cap.business, async (tx) => {
+            await snapped.a.held;
+            seenB = await raise(tx, b, 500, snapped.b);
+            wrote.release();
+            await gateB.held;
+            return seenB;
+          });
+          // Both snapshots are taken before either commits, both saw an empty
+          // cap, and each raise fits the cap alone.
+          await wrote.held;
+          expect(seenB).toBe(`${level} 0`);
+          gateA.release();
+          expect(await txA).toBe(`${level} 0`);
+          gateB.release();
+          await expect(txB).rejects.toMatchObject(refusal);
+        } finally {
+          await first.close();
+          await second.close();
+        }
+        expect(await capState(cap)).toBe('AUD 1000 600');
+      },
+    );
   });
 });
 
