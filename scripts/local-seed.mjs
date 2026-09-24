@@ -374,13 +374,19 @@ async function seedGrants(tx, member, person) {
   // Business grants only. A record share is not the role's to take back: it is
   // `shareRecord`'s, and a seed rerun that revoked the external party's share
   // would undo the demo it was run to set up.
-  const live = await tx.query(
+  //
+  // Held before the leases are counted, in id order, as `grant.revoke` holds
+  // its grant before it looks for dependents: a pickup in flight holds its
+  // grants `for share`, so this waits for it and then counts its lease
+  // (final review R1-AUTHORITY-60, round 3).
+  const dropped = await tx.query(
     `select id, collection, action from public.grants
       where subject_kind = 'person' and subject_id = $1 and revoked_at is null
-        and scope_kind = 'business'`,
-    [person.personId],
+        and scope_kind = 'business' and not (collection || ':' || action = any($2::text[]))
+      order by id
+        for update`,
+    [person.personId, [...keep]],
   );
-  const dropped = live.filter((grant) => !keep.has(`${grant.collection}:${grant.action}`));
   for (const grant of dropped) {
     // oxlint-disable-next-line no-await-in-loop
     const leases = await leasesResting(tx, grant.id);
