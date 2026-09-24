@@ -93,7 +93,10 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
 
 - `db:up` starts the Postgres container on `127.0.0.1:54390` against a named
   volume, creates the migration and runtime roles, and writes `DATABASE_URL`
-  and `DATABASE_ADMIN_URL` to `.local/db.env`.
+  and `DATABASE_ADMIN_URL` to `.local/db.env`. It waits for
+  `pg_isready -h 127.0.0.1` over TCP, because a fresh volume's init server
+  answers the Unix socket before TCP is up. `auth-up.sh` and
+  `pnpm verify:restart` wait the same way.
 - `db:migrate` applies the migrations and records them in the ledger.
 - `auth:up` starts GoTrue on `127.0.0.1:54391` and writes `.local/auth.env`.
 - `auth:seed` mints the synthetic logins and writes `.local/synthetic-users.json`.

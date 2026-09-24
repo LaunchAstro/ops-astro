@@ -14,10 +14,11 @@ independent review of the runtime left findings that are still open, and the
 review record lives with the build run's evidence rather than in this
 repository. Until those findings are closed and the integrated head is reviewed
 and accepted, read "proved" below as "a test asserts it", not as "done". The
-joint gates were green at 158d6de, at d6787c5, at c53aa25, at 9d2dbde and
-again at efd5009 (`pnpm test` 5,491 passed and 24 skipped, `tests/acceptance`
-3,852 and 16, `db:conformance` 129 named suites, 4,800 of 4,800). The head these
-docs describe, 1ddb286, is efd5009 plus PR A's gate tooling (`135dd75`).
+joint gates were green at 158d6de, at d6787c5, at c53aa25, at 9d2dbde, at
+efd5009 and again at the integrated head, 5dd08fa, which these docs describe
+(`pnpm test` 5,506 passed and 24 skipped, `tests/acceptance` 3,852 and 16,
+`db:conformance` 129 named suites, 4,800 of 4,800, `db:cases` 15 of 15 and
+`pnpm check` green).
 [PROOFS.md](PROOFS.md) holds the full count table.
 
 ## The shape of it
