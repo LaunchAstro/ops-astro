@@ -317,10 +317,24 @@ through rounding (`budgetRoom` in `core-runtime/src/decide.ts`, `exceeds` in
 `core-runtime/src/budget.ts`).
 The response converts fields such as `heldMinor` to numbers separately.
 
+Storage holds the cap ceiling as well, since migration 0025. Deferred
+constraint triggers on `task_envelopes` and `budget_caps` lock the cap row at
+commit. They refuse any transaction that leaves `sum(held_minor +
+actual_minor)` under the cap above `limit_minor` (`check_violation`,
+`budget_caps_ceiling`), whichever path wrote the rows. Only a write that can
+raise the total is checked: a nonzero insert, a growing total, a move to
+another cap, or a falling limit. The command refuses first with a reason, and
+storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
+
 The cap is a ceiling in one currency. When `task.decide` approves, it refuses a
 version whose currency differs from the cap's, or from that of the task's open
 envelope, with `CAP_BINDING_MISMATCH` before the first write (`budgetRoom`).
-`openEnvelope` checks again at the write that binds them.
+`openEnvelope` checks again at the write that binds them. Storage holds the
+binding too, since migration 0024. The envelope's `(business_id, cap_id,
+currency)` references the cap's `(business_id, id, currency)`
+(`task_envelopes_cap_currency_fkey`). So an envelope in another currency cannot
+be written, and a cap's currency is fixed once any envelope draws on it
+(`migrations/0024_cap_envelope_currency_binding.sql`).
 `SUCCESSOR_OUT_OF_BOUNDS` is the same check for a handback's successor.
 
 ## Why a lapsed gate reads expired but stays pending
@@ -757,7 +771,8 @@ partly covered rather than proved.
   valid `bigint` limit: a cap above 2^53, filled to the unit, refuses one more
   unit `BUDGET_EXHAUSTED` (`tests/runtime/cap-exact-and-post-lock-clock.test.ts`,
   which also holds the currency refusal and the decide and heartbeat that
-  waited on a lock past their deadline).
+  waited on a lock past their deadline). Storage refuses the same over-ceiling
+  commit on any path (`budget_caps_ceiling`, migration 0025).
 - **The interruption, both ways** (W01): the same production `propose` and
   `decide` calls followed by a throw at the transaction boundary leave a fresh
   connection zero decisions, envelopes, reservations and attempts; committed,
