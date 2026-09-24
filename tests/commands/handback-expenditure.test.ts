@@ -20,7 +20,7 @@
 // `runtime-codes.test.ts` is not.
 
 import { describe, expect, it } from 'vitest';
-import { handbackLease } from '../../packages/core-records/src/commands/tasks-runtime.ts';
+import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
 import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
@@ -44,9 +44,11 @@ const ordinary = {
   outcome: 'completed',
 };
 
+const AGENT = '3f1d2f3a-0000-4000-8000-0000000000a9';
+
 describe('task.handback and actualMinor', () => {
   it.each([0, 1, 2_500, -1])('refuses %i, which is a claim the work ran', async (value) => {
-    const outcome = await handbackLease(untouched, { ...ordinary, actualMinor: value });
+    const outcome = await handbackLease(untouched, { ...ordinary, actualMinor: value }, AGENT);
     expect(isRefused(outcome)).toBe(true);
     if (!isRefused(outcome)) throw new Error('unreachable');
     expect(outcome.refusal.code).toBe('ACTUAL_EXPENDITURE_UNSUPPORTED');
@@ -56,7 +58,7 @@ describe('task.handback and actualMinor', () => {
   });
 
   it('names the key rather than calling the whole body invalid', async () => {
-    const outcome = await handbackLease(untouched, { ...ordinary, actualMinor: 0 });
+    const outcome = await handbackLease(untouched, { ...ordinary, actualMinor: 0 }, AGENT);
     if (!isRefused(outcome)) throw new Error('unreachable');
     expect(outcome.refusal.code).not.toBe('COMMAND_BODY_INVALID');
     expect(outcome.refusal.fixes.join(' ')).toContain('actualMinor');
@@ -65,11 +67,11 @@ describe('task.handback and actualMinor', () => {
   it('refuses before the outcome and fence guards have anything to say', async () => {
     // A body that is wrong in two ways is told about the one it was refused
     // for. What matters here is only that the database is still untouched.
-    const outcome = await handbackLease(untouched, {
-      ...ordinary,
-      outcome: 'nonsense',
-      actualMinor: 5,
-    });
+    const outcome = await handbackLease(
+      untouched,
+      { ...ordinary, outcome: 'nonsense', actualMinor: 5 },
+      AGENT,
+    );
     expect(isRefused(outcome)).toBe(true);
   });
 
@@ -79,10 +81,11 @@ describe('task.handback and actualMinor', () => {
       // It reaches the database, which is exactly what the proxy reports: the
       // guard did not fire. Anything else here would be testing L4's handback.
       await expect(
-        handbackLease(untouched, {
-          ...ordinary,
-          ...(value === undefined ? {} : { actualMinor: value }),
-        }),
+        handbackLease(
+          untouched,
+          { ...ordinary, ...(value === undefined ? {} : { actualMinor: value }) },
+          AGENT,
+        ),
       ).rejects.toThrow(/reached the database/u);
     },
   );

@@ -18,10 +18,8 @@
 // `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import {
-  handbackLease,
-  readSuccessor,
-} from '../../packages/core-records/src/commands/tasks-runtime.ts';
+import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
+import { readSuccessor } from '../../packages/core-records/src/commands/successor.ts';
 import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
@@ -123,13 +121,6 @@ describe('task.handback and the successor proposal', () => {
     expect(read.successor.expiresAt.getTime()).toBeGreaterThanOrEqual(
       before + 7 * 24 * 60 * 60 * 1000,
     );
-  });
-
-  it('refuses a successor asked for without an agent identity to record it against', async () => {
-    const outcome = await handbackLease(untouched, { ...ordinary, successor: { ...wellFormed } });
-    expect(isRefused(outcome)).toBe(true);
-    if (!isRefused(outcome)) throw new Error('unreachable');
-    expect(outcome.refusal.code).toBe('AUTH_NO_AGENT_IDENTITY');
   });
 
   it('lets a well-formed successor through to the runtime', async () => {

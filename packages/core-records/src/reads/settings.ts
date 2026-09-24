@@ -51,28 +51,19 @@ export interface SettingView {
 /**
  * Every setting this business holds, ordered by key.
  *
- * The values, types and times come from `records/business-settings.ts`
- * unchanged; the author does not, because `BusinessSetting` does not carry it
- * and that module belongs to L2 rather than to this lane. So the author is
- * read in one extra projection and joined by key, which is the narrow half of
- * the row and nothing else. Widening `readBusinessSettings` to carry it is the
- * better fix and it is a change to somebody else's file.
+ * One statement: the values, types, times and authors all come from
+ * `readBusinessSettings`, so a value and the actor shown as its author are
+ * from the same commit. A second read for the author, joined by key, could
+ * pair them across two (thermo review b282216, L3).
  */
 export async function readSettings(tx: TenantQuery): Promise<readonly SettingView[]> {
   const settings = await readBusinessSettings(tx);
-  const authors = await tx.query<{
-    readonly key: string;
-    readonly updated_by_actor_id: string | null;
-  }>(`select key, updated_by_actor_id from business_settings where business_id = $1`, [
-    tx.businessId,
-  ]);
-  const authorOf = new Map(authors.map((row) => [row.key, row.updated_by_actor_id]));
   return settings.map((setting) => ({
     key: setting.key,
     value: setting.value,
     valueType: setting.valueType,
     updatedAt: setting.updatedAt.toISOString(),
-    updatedByActorId: authorOf.get(setting.key) ?? null,
+    updatedByActorId: setting.updatedByActorId,
     revision: setting.revision,
   }));
 }

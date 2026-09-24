@@ -18,15 +18,11 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
 import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { refuseCommand } from './refusal.ts';
+import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import {
-  EXPIRY_FIX,
-  expiryFrom,
-  fromRuntime,
-  renewLease,
-  type RenewalFields,
-} from './tasks-runtime.ts';
+import type { AgentClaimant } from './tasks-claimant.ts';
+import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
+import { renewLease, type RenewalFields } from './tasks-lease.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
@@ -156,11 +152,11 @@ export async function restartOnTask(
 export async function heartbeatLease(
   tx: TenantQuery,
   fields: RenewalFields,
-  holderActorId: string,
+  agent: AgentClaimant,
   delegationId: string,
 ): Promise<HandlerOutcome> {
   return await renewLease(
     fields,
-    async (lease) => await heartbeat(tx, { ...lease, holderActorId, delegationId }),
+    async (lease) => await heartbeat(tx, { ...lease, holderActorId: agent.actorId, delegationId }),
   );
 }

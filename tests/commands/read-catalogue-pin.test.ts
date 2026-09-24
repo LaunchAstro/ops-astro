@@ -118,8 +118,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
 
 /** The refusal without its `refused` flag, or null. */
 function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unknown {
-  const refusal = READ_CATALOGUE[read].operands(body);
-  if (refusal === undefined) return null;
+  const parsed = READ_CATALOGUE[read].parse(body);
+  if (parsed.ok) return null;
+  const { refusal } = parsed;
   return { code: refusal.code, names: refusal.names, fixes: refusal.fixes };
 }
 

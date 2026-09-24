@@ -183,7 +183,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
       // surfacing here rather than a routing failure — and catching it is what
       // keeps this case measuring what it claims to measure. That the command
       // line cannot report a fault at all is reported as a defect
-      // (`apps/cli/client.ts:88`), not repaired here.
+      // (`apps/cli/client.ts` `createCli`), not repaired here.
       let status: number;
       try {
         // eslint-disable-next-line no-await-in-loop

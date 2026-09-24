@@ -36,9 +36,11 @@ import {
 /**
  * What a read is, before anything draws it: one member per outcome.
  *
- * Every member carries `value`, `refusal` and `because`, narrowed to what that
- * outcome can hold, so a reader that has not narrowed on `outcome` still
- * compiles and a reader that has gets the non-null field for free.
+ * Every member carries `refusal` and `because`, narrowed to what that outcome
+ * can hold, and every member but `loading` carries `value`. `loading` holds
+ * `previous` instead, the last answer rather than this one, so a reader has to
+ * narrow on `outcome` before it can draw either, and one that has gets the
+ * non-null field for free.
  */
 export type ReadState<T> =
   | {
@@ -46,9 +48,10 @@ export type ReadState<T> =
       /**
        * The previous answer, kept on screen while the next read is in flight.
        * Null on the first read, and null after a denial or an outage, because
-       * those already dropped it.
+       * those already dropped it. Named for what it is (thermo review
+       * b282216, M13): it is never this read's answer.
        */
-      readonly value: T | null;
+      readonly previous: T | null;
       readonly refusal: null;
       readonly because: null;
       /** The grant this projection belongs to. A change discards it. */
@@ -84,7 +87,7 @@ export type ReadState<T> =
 export type ReadOutcome = ReadState<unknown>['outcome'];
 
 export function initialState<T>(grantKey: string): ReadState<T> {
-  return { outcome: 'loading', value: null, refusal: null, because: null, grantKey };
+  return { outcome: 'loading', previous: null, refusal: null, because: null, grantKey };
 }
 
 /** How the caller decides whether a successful read is `ready` or `empty`. */
@@ -145,7 +148,7 @@ export class AuthorisedRead<T> {
       // an outage has already dropped it, so from those this is null.
       this.#publish({
         outcome: 'loading',
-        value: this.#state.value,
+        previous: this.#state.value,
         refusal: null,
         because: null,
         grantKey: this.#state.grantKey,

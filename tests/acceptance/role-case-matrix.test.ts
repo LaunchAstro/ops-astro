@@ -466,7 +466,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       }
       if (declaration.name === 'task.handback') {
         // A handback names a lease, not a record, and `subjectTaskId` resolves
-        // its task through that lease (`agent-envelope.ts:363-378`) so an agent
+        // its task through that lease (`agent-authority.ts` `subjectTaskId`) so an agent
         // cannot name its own task while settling somebody else's. So the
         // sibling is reached the only way a handback can reach it: by naming
         // the lease the *other* delegation holds on it, at that lease's own

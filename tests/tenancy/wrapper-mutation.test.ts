@@ -10,7 +10,7 @@
 // (`tests/support/source-mutant.ts`), and drives real production operations
 // through it:
 //
-// - **T04 (a)** `set_config(..., true)` at `tenancy/database.ts:105` becomes
+// - **T04 (a)** `set_config(..., true)` in `tenancy/database.ts` `withBusinessOn` becomes
 //   `false`, a setting that outlives its transaction;
 // - **T04 (b)** the same setting is moved in front of `begin`;
 // - each mutant turns the capture's shape check red on the same operations
@@ -44,7 +44,7 @@ import {
   type RecordedStatement,
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
-import { createApi, type AgentExecutor, type ReadExecutor } from '../../apps/api/app.ts';
+import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   ACCEPTANCE_SECRET,
@@ -109,8 +109,8 @@ function observeOn(wrapper: Wrapper, world: World) {
     verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
     resolveBusiness: async (key: string) => byKey[key],
     executeCommand,
-    executeRead: executeRead as unknown as ReadExecutor,
-    executeAgentCommand: executeAgentCommand as unknown as AgentExecutor,
+    executeRead,
+    executeAgentCommand,
   });
   return {
     log,

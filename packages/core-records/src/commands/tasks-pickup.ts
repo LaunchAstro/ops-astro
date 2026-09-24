@@ -18,10 +18,11 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
+import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
-const MAXIMUM_LEASE_SECONDS = 60 * 60;
+export const MAXIMUM_LEASE_SECONDS: number = 60 * 60;
 
 export interface PickupFields {
   readonly reservationId: string;
@@ -64,7 +65,7 @@ export async function pickupReservation(
       ),
     );
   }
-  return await claim(tx, collection, fields, { claimant: 'agent', agentActorId });
+  return await claim(tx, collection, fields, agentClaimant(agentActorId));
 }
 
 /**
@@ -92,16 +93,8 @@ export async function pickupAsPerson(
       ),
     );
   }
-  return await claim(tx, context.declaration.collection, fields, {
-    claimant: 'person',
-    personId: context.session.personId,
-    actorId: context.session.actorId,
-  });
+  return await claim(tx, context.declaration.collection, fields, personClaimant(context));
 }
-
-type Claimant =
-  | { readonly claimant: 'agent'; readonly agentActorId: string }
-  | { readonly claimant: 'person'; readonly personId: string; readonly actorId: string };
 
 async function claim(
   tx: TenantQuery,
@@ -139,10 +132,15 @@ async function claim(
   };
   const result =
     claimant.claimant === 'person'
-      ? await pickup(tx, { ...common, ...claimant })
+      ? await pickup(tx, {
+          ...common,
+          claimant: 'person',
+          personId: claimant.personId,
+          actorId: claimant.actorId,
+        })
       : await pickup(tx, {
           ...common,
-          agentActorId: claimant.agentActorId,
+          agentActorId: claimant.actorId,
           mintedByActorId: approver.actorId,
         });
   if (!result.ok) return refused(fromRuntime(result.refusal));

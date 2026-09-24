@@ -902,13 +902,20 @@ cases. The key, and what happens when it is missing, are in
 in a fresh transaction when the shared `isRetryableViolation` predicate
 (`commands/register-store.ts`) admits the failure: a lost identity claim, a lost
 unique-value claim or `AffectedSetChanged`. That is the same predicate and the
-same bound as the person entry (`executeCommand`, `commands/envelope.ts`). No
-agent command reaches a thrower of `AffectedSetChanged` today. The throwers are
-`grant.revoke`, `delegation.revoke`, `task.cancel` and startup replay, none of
-which an agent is served. A second loss reaches the caller as a fault. The
-person entry then writes one `failed` audit event in a transaction of its own,
-which is not a command attempt. The agent entry writes none. The retry adds no
-agent cancellation authority and no startup command retry.
+same bound as the person entry (`executeCommand`, `commands/envelope.ts`). One
+agent command reaches a thrower of `AffectedSetChanged`: `task.handback`, whose
+lease-binding recheck under the locks (`core-runtime/src/handback.ts`) throws it
+when the binding differs from what discovery read. The other throwers are
+`grant.revoke`, `delegation.revoke`, `task.propose`, `task.cancel` and startup
+replay, none of which an agent is served. `tests/runtime/retry-gaps.test.ts`
+holds the handback case with a limit: no statement on this head changes the
+binding's columns, so the test simulates a changed binding by rewriting that
+read's result. It proves the thrown type and the one retry, two attempts with
+nothing written, and not a race that can happen. A second loss reaches the
+caller as a fault. The person entry then writes one `failed` audit event in a
+transaction of its own, which is not a command attempt. The agent entry writes
+none. The retry adds no agent cancellation authority and no startup command
+retry.
 
 Which of these a caller can meet on this head, where each is raised and which
 tests hold it are in [AUTHORITY.md, "Refusal codes, as L3 registered

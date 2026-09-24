@@ -55,6 +55,8 @@ import {
 } from '../../packages/core-records/src/commands/refusal.ts';
 import {
   COMMAND_SURFACE,
+  DELEGATION_HEADER,
+  PREFIX,
   pathOf,
   type CommandDeclaration,
 } from '../../packages/core-records/src/commands/surface.ts';
@@ -128,16 +130,8 @@ export type CommandExecutor = typeof executeCommand;
  */
 export type AgentExecutor = typeof executeAgentCommand;
 
-/**
- * The header an agent presents its delegation credential in.
- *
- * A header rather than a body field for the same reason the bearer token is
- * one: it is a credential, and a credential in a body is a credential that
- * gets logged with the payload, stored in the register row and compared by a
- * digest. The register compares what the request *is*; the authority it was
- * made under is not part of that.
- */
-export const DELEGATION_HEADER = 'x-agent-delegation';
+/** Where it always was for the tests that import it; the one copy is in `commands/surface.ts`. */
+export { DELEGATION_HEADER };
 
 /**
  * What one prefix does differently at the door: whose login table it records
@@ -231,7 +225,7 @@ export function createApi(options: ApiOptions): Hono {
     api.route(prefix, routes);
   }
 
-  mountSurface('/api/b/:businessKey', PERSON, async (context, declaration, admitted) => {
+  mountSurface(`${PREFIX.person}:businessKey`, PERSON, async (context, declaration, admitted) => {
     const { presented, businessId, body } = admitted;
     // The command comes from the route, never from the body, so a caller
     // cannot post to one endpoint and have another operation run.
@@ -267,7 +261,7 @@ export function createApi(options: ApiOptions): Hono {
   // mistaken for the other by a proxy, a log reader or the server.
   const agentExecutor = options.executeAgentCommand;
   if (agentExecutor !== undefined) {
-    mountSurface('/api/a/b/:businessKey', AGENT, async (context, declaration, admitted) => {
+    mountSurface(`${PREFIX.agent}:businessKey`, AGENT, async (context, declaration, admitted) => {
       const { presented, businessId, body } = admitted;
       // From the route, never from the body, exactly as on the person path: a
       // caller must not be able to post to one endpoint and have another

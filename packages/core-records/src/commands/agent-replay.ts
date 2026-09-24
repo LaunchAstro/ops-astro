@@ -15,10 +15,9 @@ import {
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
-import { fromRuntime } from './tasks-runtime.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import { capabilitiesOf, UUID, type AgentCall, type AgentOperation } from './agent-operations.ts';
 
