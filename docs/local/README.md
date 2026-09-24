@@ -115,7 +115,7 @@ replays each named business's recorded, unclassified transitions in its own
 transaction before it binds the port ([RUNTIME.md, "Restart recovery at API
 startup"](RUNTIME.md#restart-recovery-at-api-startup)). `RECOVERY_BUSINESS_KEYS=none`
 is the only way to say there are none, and the server then logs `restart
-recovery: explicitly no installation businesses`. A blank or missing value is a
+recovery: explicitly no deployment businesses`. A blank or missing value is a
 failed start, never an empty scope, and so is a key that resolves to no
 business (`parseRecoveryScope` and `recoverDeployment` in
 `apps/api/recovery-entry.ts`). `scripts/local/api-up.sh` needs no argument for

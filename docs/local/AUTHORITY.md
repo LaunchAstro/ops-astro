@@ -229,11 +229,11 @@ name.
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
 (`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`, for an
 operation an agent may not call whatever it holds: anything outside
-`AGENT_SURFACE`, which `runAgentCommand` refuses first. `AGENT_SURFACE` is the
-keys of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), so every name in it
-has a row with its own `serve`, and adding an agent operation means adding one
-row. It is 403
-and not `DELEGATION_NOT_LIVE` 401 because a live credential would not change
+`AGENT_SURFACE`, which `runAgentCommand` refuses first. `AGENT_SURFACE` is read
+off the surface rows' own `agent` field (`COMMAND_SURFACE`), and every name in
+it has a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`) with its
+own `serve` (`tests/commands/agent-surface-derivation.test.ts`). It is 403 and
+not `DELEGATION_NOT_LIVE` 401 because a live credential would not change
 the answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
 over every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts`).
 

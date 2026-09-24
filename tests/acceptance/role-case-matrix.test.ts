@@ -19,8 +19,9 @@
 // left here is the cases and what each one claims.
 //
 // **The expected answers come from the product.** `refusal()` reads each
-// status from `apps/api/status.ts`, and what an agent may reach is read from
-// `AGENT_SURFACE` and `BEFORE_PICKUP` in `commands/agent-envelope.ts`. Nothing
+// status from the register's own column (`statusOf`, `commands/register.ts`),
+// and what an agent may reach is read from `AGENT_SURFACE` and `BEFORE_PICKUP`
+// in `commands/agent-envelope.ts`, which read the surface rows. Nothing
 // here writes a status literal beside a code: remembering the pairing is how a
 // proof starts asserting the tester's belief rather than the product's.
 //

@@ -159,7 +159,9 @@ confirmed write is in `confirmed.ts`.
 one is an `article[data-comment-id]` carrying `data-audience`, and the audience
 is printed in words above the body, because "who may read this" is the one thing
 the person writing the next comment needs to know and the one thing a colour
-cannot say.
+cannot say. `InternalTaskComment` (`operations/shapes.ts`) is the internal
+reader's comment, with every field present. `TaskComment` is optional past `id`,
+because the shared projection sends only the fields the catalogue marks shared.
 
 The form is `form#task-comment`: a required `textarea#comment-body`, a
 `select#comment-audience` (internal or client) and a `select#comment-kind`, with

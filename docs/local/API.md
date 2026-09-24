@@ -675,19 +675,21 @@ case calls.
 
 The five support controls, with their owning functions:
 
-| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                                                  | Owning function                                                                                             |
-| ------------------- | --------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                                | `revokeGrant` (`authority/grants.ts`)                                                                       |
-| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                           | `revokeDelegation` (`authority/delegations.ts`)                                                             |
-| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                            | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
-| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                           | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
-| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-controls.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                                               | Owning function                                                                                             |
+| ------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                             | `revokeGrant` (`authority/grants.ts`)                                                                       |
+| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                        | `revokeDelegation` (`authority/delegations.ts`)                                                             |
+| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
+| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
+| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
 
 The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
 is served is a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), and
-its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are derived
-from those rows, so adding an agent operation means adding one row.
+its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are read off
+the surface rows' own `agent` field (`COMMAND_SURFACE`), so the surface table
+says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
+`tests/commands/agent-surface-derivation.test.ts` holds the two to one list.
 
 | Operation                          | Person prefix: owning function                                                            | Agent prefix                                                                                    |
 | ---------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -869,8 +871,8 @@ payload, stored in the register row and compared by a digest.
 
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
-`commands/agent-envelope.ts`, derived from the `beforePickup` rows of
-`AGENT_OPERATIONS`) and nothing else. `task.decide` answers
+`commands/agent-envelope.ts`, read off the surface rows whose `agent` is
+`before-pickup`) and nothing else. `task.decide` answers
 `DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
 `session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
 (`authorise`; minimum contract 8.2 case 9). A credential that is presented and
@@ -931,7 +933,10 @@ capabilities replay is projected again for the credential presented now
 minted (`replayPickup`). A handback settles its own delegation, so its receipt
 is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
-was.
+was. A request the register already holds is answered by `answerReplay` in the
+same file, which releases a stored success through `releaseReplay`. An agent
+call that does not apply ends in `settle` (register row and audit row) or
+`writeCallEvent` (audit row only), both in `commands/agent-settle.ts`.
 
 **A replayed pickup derives its credential again.** The register keeps the
 pickup's answer with a null credential (`storable`). A replay of a lost pickup

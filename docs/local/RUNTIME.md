@@ -241,9 +241,9 @@ lists `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
 status, and `statusOf` in the same file reads that column, so a runtime code is
 declared once. `SUGGESTED_STATUS` (`core-runtime/src/refusals.ts`) is a view
 derived from those rows. Nothing in production reads it, and the tests that
-census the runtime's codes keep it exported. `fromRuntime` is in
-`commands/refusal.ts` and gives a runtime refusal `fromAuthority`'s shape,
-reason then fix. Each operation's refusals, with their routes, are in
+census the runtime's codes keep it exported. `fromReasoned`
+(`commands/refusal.ts`) gives a runtime refusal the shape of authority's and a
+delegation's, reason then fix. Each operation's refusals, with their routes, are in
 [API.md](API.md#the-operations-l4s-runtime-made-possible).
 
 | Code                             | Status | Caller-visible                                                 |
@@ -585,9 +585,9 @@ consistency guard, since no command opens a hold on a lineage whose gate is
 pending. A rejection racing an approval of the same gate therefore costs one
 bounded retry before the same `GATE_ALREADY_DECIDED` answer (F-A4-1, accepted
 as is); the recheck right after the locks stays the rule.
-`tests/runtime/o3-held-recheck.test.ts` holds both. Of the agent's `AGENT_SURFACE`, only `task.handback`
-reaches a thrower. Admitting the type gives the agent no cancellation authority
-and adds no command retry at startup.
+`tests/runtime/o3-held-recheck.test.ts` holds both. Of the agent's
+`AGENT_SURFACE`, only `task.handback` reaches a thrower. Admitting the type
+gives the agent no cancellation authority and adds no command retry at startup.
 
 A second loss reaches the caller as a fault. The person entry then writes one
 `failed` audit event in a transaction of its own, which is not a command
@@ -726,7 +726,7 @@ replay runs at the API's next start, and nothing polls.
   Unset, blank, an empty entry, an entry holding whitespace, `none` beside a
   key, or a key that resolves to no business stops the start with exit 1 and
   names the setting, before any replay (`parseRecoveryScope`,
-  `recoverDeployment`). The literal `none` logs that there are no installation
+  `recoverDeployment`). The literal `none` logs that there are no deployment
   businesses and serves. No request, seed, fixture or scan of
   `public.businesses` supplies the set. The administrative connection runs only
   the key lookups.
