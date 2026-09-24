@@ -19,7 +19,8 @@ import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import { capabilitiesOf, UUID, type AgentCall, type AgentOperation } from './agent-operations.ts';
+import { capabilitiesOf, type AgentCall, type AgentOperation } from './agent-operations.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -114,7 +115,7 @@ async function replayPickup(
   const detail = stored.detail;
   const named = (key: string): string => {
     const value = detail[key];
-    return typeof value === 'string' && UUID.test(value) ? value : '';
+    return isUuid(value) ? value : '';
   };
   const delegationId = named('delegationId');
   const held =
@@ -229,8 +230,8 @@ async function replaySettledHandback(
   if (credential === undefined || credential === '') {
     return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
   }
-  const leaseId = String(stored.detail['leaseId'] ?? '');
-  const held = UUID.test(leaseId)
+  const leaseId = stored.detail['leaseId'];
+  const held = isUuid(leaseId)
     ? await resolveSettledByLease(tx, session.actorId, leaseId, credential)
     : undefined;
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);

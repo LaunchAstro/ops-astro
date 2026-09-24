@@ -18,13 +18,13 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { subjectsOf } from '../authority/grants.ts';
 import { cancelAndClassify, heartbeat, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { isUuid } from '../tenancy/ids.ts';
 import { fromRuntime, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { AgentClaimant } from './tasks-claimant.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { renewLease, type RenewalFields } from './tasks-lease.ts';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const NOT_FOUND_FIXES: readonly string[] = ['Check the identifier against the one you were given.'];
 const REASON_LIMIT = 500;
 
@@ -46,7 +46,7 @@ async function lineageOnTask(
       refuseCommand('COMMAND_BODY_INVALID', absent, ['Name the task and the lineage on it.']),
     );
   }
-  if (typeof recordId !== 'string' || !UUID.test(recordId)) {
+  if (!isUuid(recordId)) {
     return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
   }
   const tasks = await tx.query<{ readonly id: string }>(
@@ -55,7 +55,7 @@ async function lineageOnTask(
     [tx.businessId, context.spine.taskTypeId, recordId],
   );
   if (tasks[0] === undefined) return refused(refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES));
-  if (typeof lineageId !== 'string' || !UUID.test(lineageId)) {
+  if (!isUuid(lineageId)) {
     return refused(refuseCommand('NOT_FOUND', ['lineageId'], NOT_FOUND_FIXES));
   }
   const lineages = await tx.query<{ readonly task_id: string }>(

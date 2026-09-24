@@ -12,12 +12,8 @@ import {
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { declarationOf } from './surface.ts';
-import {
-  UUID,
-  type AgentCall,
-  type AgentOperation,
-  type AgentRequest,
-} from './agent-operations.ts';
+import type { AgentCall, AgentOperation, AgentRequest } from './agent-operations.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 export const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
@@ -139,7 +135,7 @@ async function subjectTaskId(
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter (Sol 6 AUTHORITY-2).
   const leaseId = request['leaseId'];
-  if (operation.subjectTask === 'lease' && typeof leaseId === 'string' && UUID.test(leaseId)) {
+  if (operation.subjectTask === 'lease' && isUuid(leaseId)) {
     const rows = await tx.query<{ readonly task_id: string }>(
       `select task_id from public.leases where business_id = $1 and id = $2`,
       [tx.businessId, leaseId],
