@@ -53,7 +53,7 @@
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import type { VerifiedSubject } from '../identity/verified-subject.ts';
-import { refuseExpiredSession, resolveAgentLogin } from '../identity/agent-login.ts';
+import { resolveAgentLogin } from '../identity/agent-login.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
 import { writeAuditEvent } from './audit.ts';
 import { payloadDigest } from './digest.ts';
@@ -97,16 +97,12 @@ export const AGENT_SURFACE: ReadonlySet<CommandName> = new Set(AGENT_OPERATIONS.
 export async function executeAgentCommand(
   database: Database,
   businessId: BusinessId,
-  presented: VerifiedSubject | 'expired',
+  // Verified, never `'expired'`: the one door answers an expired bearer
+  // before any executor is reached (`apps/api/app.ts`, THERMO-RECHECK NC2).
+  presented: VerifiedSubject,
   credential: string | undefined,
   request: AgentRequest,
 ): Promise<CommandResult> {
-  // An expired bearer is answered before the database is opened. It is its own
-  // code rather than `AUTH_NO_AGENT_IDENTITY` because it is the re-login path:
-  // a caller that cannot tell "your session ended" from "you are not an agent
-  // here" cannot tell a door it can open from one it cannot.
-  if (presented === 'expired') return asCallerVisible(fromAgentIdentity(refuseExpiredSession()));
-
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
   // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
   // identity claim: a same-operationId retry in flight behind its original

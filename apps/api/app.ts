@@ -141,7 +141,7 @@ export type CommandExecutor = typeof executeCommand;
 export type AgentExecutor = (
   database: Database,
   businessId: string,
-  presented: VerifiedSubject | 'expired',
+  presented: VerifiedSubject,
   credential: string | undefined,
   request: AgentRequest,
 ) => Promise<unknown>;
