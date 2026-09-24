@@ -92,11 +92,10 @@ export interface CliAnswer {
 /**
  * The verbs this client accepts, built from the declared surface.
  *
- * Built rather than written out: a hand-kept verb list is the drift the parity
- * test exists to catch, and it would put the drift in the place least likely
- * to be read. The parity test does not compare this against `COMMAND_SURFACE`
- * — that comparison could not fail — it compares what `accepts` really answers
- * against the operation surface read out of the dispatch.
+ * Built rather than written out: a hand-kept verb list is drift, and it would
+ * put the drift in the place least likely to be read.
+ * `tests/acceptance/surface-inventory.test.ts` asks this client, not
+ * `COMMAND_SURFACE`, whether each declaration is reachable.
  */
 const VERBS: ReadonlySet<string> = new Set(COMMAND_SURFACE.map((command) => command.name));
 
