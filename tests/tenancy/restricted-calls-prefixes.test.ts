@@ -278,7 +278,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
             // oxlint-disable-next-line no-await-in-loop
             const after = await fingerprint(db.admin, table.qualified);
             calls += 1;
-            const expected = expectedOutcome(caller, table, operation, own);
+            const expected = expectedOutcome(caller, table, operation, own, migration.version);
             const line = `${table.qualified} ${operation} ${caller}: ${describeOutcome(outcome)}`;
             if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
             if (before !== after) wrong.push(`${line}, the table changed`);
@@ -295,7 +295,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           // oxlint-disable-next-line no-await-in-loop
           const after = await fingerprint(db.admin, table.qualified);
           calls += 1;
-          const expected = expectedOutcome(caller, table, 'insert', 0);
+          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version);
           const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
           if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
           if (before !== after) wrong.push(`${line}, the table changed`);

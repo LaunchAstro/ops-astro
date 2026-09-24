@@ -40,7 +40,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
-  ['siud', 'person_logins person_merges record_links record_types record_unique_values'],
+  // 0028 revokes delete on these two: identity history is kept (0002).
+  ['siu', 'person_logins person_merges'],
+  ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
 ];
 
@@ -49,6 +51,27 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
     names.split(' ').map((name) => [name.includes('.') ? name : `public.${name}`, granted]),
   ),
 );
+
+/**
+ * Grants a later migration took back, so a prefix before it still holds them.
+ * Keyed by table; the version is the first migration that no longer grants the
+ * letters. 0028 revokes delete on identity history (R1-AUTHORITY-55).
+ */
+const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
+  'public.person_logins': { from: '0028', letters: 'd' },
+  'public.person_merges': { from: '0028', letters: 'd' },
+};
+
+/**
+ * What the application group holds on a table after the migration `at` (its
+ * version, `0001_tenancy` and so on), or at the full schema when `at` is absent.
+ */
+export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
+  const granted = APPLICATION_GRANTS[qualified];
+  const revoked = REVOKED[qualified];
+  if (granted === undefined || revoked === undefined || at === undefined) return granted;
+  return at.slice(0, 4) < revoked.from ? granted + revoked.letters : granted;
+}
 
 /** The functions the application group may execute. Every other one is refused to it. */
 export const APPLICATION_EXECUTES: readonly string[] = [
@@ -343,9 +366,10 @@ export function expectedOutcome(
   table: CatalogueTable,
   operation: Operation,
   own: number,
+  at?: string,
 ): string {
   if (!APPLICATION_CALLERS.has(caller)) return 'denied';
-  const granted = APPLICATION_GRANTS[table.qualified];
+  const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
   if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'no case';
