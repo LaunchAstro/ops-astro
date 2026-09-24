@@ -174,6 +174,19 @@ const NEGATOR = String.raw`(?:not|never|no|isn['\u2019]?t|wasn['\u2019]?t|aren['
 const GAP = String.raw`[ \t-]{1,3}(?:\w+[ \t-]{1,3}){0,3}`;
 
 const NEGATED = new RegExp(String.raw`\b${NEGATOR}${GAP}(?:${POSITIVE_WORDS})\b`, 'iu');
+
+// Round ten, 24 September, found that bound was itself the way through: `not
+// in any way fully approved` puts four words between the negator and the
+// approval, and `not, in any way, approved` puts commas there. Any reach is a
+// number an author can exceed. So a line holding a negator anywhere reads as a
+// rejection, once the positive phrases that carry their own `no` are taken
+// out. `approved, no findings` still passes; `approved; not blocking` now
+// fails, and the author says it without the negator. A false refusal costs a
+// rewording, a false approval costs a merge.
+const SELF_NEGATING = /\bno\s+(?:open\s+)?(?:findings?|issues?|problems?|blockers?|concerns?)\b/giu;
+const BARE_NEGATOR = new RegExp(String.raw`\b${NEGATOR}\b`, 'iu');
+const negated = (value) =>
+  NEGATED.test(value) || BARE_NEGATOR.test(value.replace(SELF_NEGATING, ' '));
 const POSITIVE = new RegExp(
   String.raw`(?<!\b${NEGATOR}[ \t-]{1,3})\b(?:${POSITIVE_WORDS})\b`,
   'iu',
@@ -196,31 +209,33 @@ const count = (token) => {
   return /^\d+$/u.test(text) ? Number(text) : (WORD_NUMBERS.get(text) ?? Number.NaN);
 };
 
-// `1 of 3 closed`, and `2 findings ... 1 closed`. The gap between them stops
-// at a sentence boundary so two unrelated sentences are not read as one sum.
+// `1 of 3 closed`, and `2 findings ... 1 closed`. Round ten, 24 September,
+// found the gap between them stopping at a sentence boundary, so `2 findings.
+// 1 closed` was read as two sentences and passed on `closed`. A line is one
+// disposition, so every count raised and every count closed on it is
+// compared, wherever it stands: any closed count short of any raised count is
+// partial. `1 of them closed` states a closed count against the raised one.
 const CLOSED_OF = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT})\b[^.;\n]{0,40}?\bclosed\b`,
-  'iu',
+  String.raw`\b(${COUNT})\s+(?:of|out\s+of)\s+(?:the\s+)?(${COUNT}|them|these|those)\b[\s\S]*?\bclosed\b`,
+  'giu',
 );
-const RAISED_AND_CLOSED = new RegExp(
-  String.raw`\b(${COUNT})\s+(?:open\s+)?findings?\b[^.;\n]{0,60}?` +
-    String.raw`\b(${COUNT})\s+(?:of\s+\S+\s+)?(?:findings?\s+)?(?:(?:is|are|were)\s+)?closed\b`,
-  'iu',
+const RAISED = new RegExp(String.raw`\b(${COUNT})\s+(?:open\s+)?findings?\b`, 'giu');
+const CLOSED_COUNT = new RegExp(
+  String.raw`\b(${COUNT})\s+(?:findings?\s+)?(?:(?:is|are|were)\s+)?closed\b`,
+  'giu',
 );
 // A disposition that says in words that it is incomplete.
 const SOME_CLOSED =
-  /\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[^.;\n]{0,40}?\bclosed\b/iu;
+  /\b(?:some|most|partly|partially|a\s+few|several|the\s+rest|the\s+remainder|remaining)\b[\s\S]*?\bclosed\b/iu;
+
+const counts = (pattern, value, group) =>
+  [...value.matchAll(pattern)].map((m) => count(m[group])).filter((n) => !Number.isNaN(n));
 
 const partial = (value) => {
   if (SOME_CLOSED.test(value)) return true;
-  for (const pattern of [CLOSED_OF, RAISED_AND_CLOSED]) {
-    const m = pattern.exec(value);
-    if (m === null) continue;
-    const raised = count(pattern === CLOSED_OF ? m[2] : m[1]);
-    const closed = count(pattern === CLOSED_OF ? m[1] : m[2]);
-    if (!Number.isNaN(raised) && !Number.isNaN(closed) && closed < raised) return true;
-  }
-  return false;
+  const raised = [...counts(RAISED, value, 1), ...counts(CLOSED_OF, value, 2)];
+  const closed = [...counts(CLOSED_COUNT, value, 1), ...counts(CLOSED_OF, value, 1)];
+  return closed.some((c) => raised.some((r) => c < r));
 };
 
 /**
@@ -232,7 +247,7 @@ const outcome = (value) => {
   if (value === '') return 'empty';
   if (ABSENT.test(value)) return 'absent';
   if (NEGATIVE.test(value)) return 'negative';
-  if (NEGATED.test(value)) return 'negative';
+  if (negated(value)) return 'negative';
   if (partial(value)) return 'partial';
   if (POSITIVE.test(value)) return 'positive';
   return 'unstated';

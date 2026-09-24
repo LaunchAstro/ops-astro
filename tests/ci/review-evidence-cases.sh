@@ -267,6 +267,43 @@ run_case "a security review closing all three passes" 0 "$GOOD_BLOCK
 
 Security review: run against $HEAD, 3 of 3 findings closed" "packages/core-custody/broker.ts"
 
+# Round ten, 24 September. Both round-nine fixes were bounded, and the bounds
+# were the way through: four words between a negator and the approval, or a
+# full stop between the count raised and the count closed. The inputs are the
+# review's own, with this head's checkpoint and a valid sensitive security
+# review beside them.
+SEC_ONLY="Security review: run against $HEAD, no findings."
+
+run_case "a negator four words from the approval fails" 1 "$BARE_BLOCK
+
+Code review: not in any way fully approved
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+run_case "a negator in an earlier clause fails" 1 "$BARE_BLOCK
+
+Code review: not, in any way, approved
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+run_case "the same approval with no negator passes" 0 "$BARE_BLOCK
+
+Code review: approved in every way
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+
+run_case "a partial closure across a full stop fails" 1 "$BARE_BLOCK
+
+Code review: 2 findings. 1 closed
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+run_case "a partial security closure across a full stop fails" 1 "$GOOD_BLOCK
+
+Security review: run against $HEAD, 3 findings. 1 of them closed" "packages/core-custody/broker.ts"
+run_case "a complete closure across a full stop passes" 0 "$BARE_BLOCK
+
+Code review: 2 findings. 2 closed
+
+$SEC_ONLY" "packages/core-custody/broker.ts"
+
 # The template's other advertised wording, read off the file itself so the two
 # cannot drift apart again without this case saying so.
 if [ -f "$TEMPLATE" ]; then
