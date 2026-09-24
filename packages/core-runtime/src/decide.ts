@@ -31,7 +31,7 @@ import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
-import { affectedByVersions, classifyVersions } from './recovery.ts';
+import { affectedByVersions, classifyVersions, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
@@ -45,6 +45,38 @@ import {
   type SigningKey,
 } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+
+/**
+ * Final review R1 #53. A note that cannot be stored. `FIELD_VALUE_INVALID` is
+ * the request layer's code, not one of the runtime's own register rows, so it
+ * is typed here beside `decide` rather than widened into `RuntimeRefusalCode`.
+ */
+export interface NoteRefusal {
+  readonly code: 'FIELD_VALUE_INVALID';
+  readonly reason: string;
+  readonly fix: string;
+}
+
+export type DecideResult =
+  RuntimeResult<Decided> | { readonly ok: false; readonly refusal: NoteRefusal };
+
+const NUL = String.fromCodePoint(0);
+// With the `u` flag a paired surrogate reads as one code point, so this
+// matches only an unpaired one (`isWellFormed` is past this tree's ES2023 lib).
+const LONE_SURROGATE = /\p{Surrogate}/u;
+
+/**
+ * The note is signed and stored inside a jsonb payload, and jsonb refuses a
+ * NUL and a lone surrogate. Left to the insert, either raised after the gate
+ * was locked and the envelope recorded a fault; a retry of the same body could
+ * never succeed. The same rule `commands/values.ts` applies to text fields.
+ */
+function noteFault(note: unknown): string | null {
+  if (typeof note !== 'string') return 'the note is not a string';
+  if (note.includes(NUL)) return 'the note contains a NUL character';
+  if (LONE_SURROGATE.test(note)) return 'the note contains a lone surrogate';
+  return null;
+}
 
 /** The pinned synthetic estimator. Not a provider, not a production price. */
 export const SYNTHETIC_PRICE_BOOK = 'synthetic/bounded-attempt@1';
@@ -127,10 +159,19 @@ export async function decideAsAgent(
   return { ok: false, refusal: decision.refusal };
 }
 
-export async function decide(
-  tx: TenantQuery,
-  request: DecideRequest,
-): Promise<RuntimeResult<Decided>> {
+export async function decide(tx: TenantQuery, request: DecideRequest): Promise<DecideResult> {
+  const fault = noteFault(request.note);
+  if (fault !== null) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'FIELD_VALUE_INVALID',
+        reason: `note: ${fault}, so it cannot be signed and stored`,
+        fix: 'Send the note as text without NUL characters or unpaired surrogates.',
+      },
+    };
+  }
+
   // Discovery, acquiring no authority. Everything read here is re-read under
   // the locks below; this pass exists only to learn which rows to lock.
   const discovered = await tx.query<{
@@ -168,6 +209,14 @@ export async function decide(
       'A person with decide authority on this task decides it.',
     );
   }
+
+  // Final review R1 #4. The check above ran before any lock, so a revocation
+  // could commit while this waited on the chain or the cap and the decision
+  // still commit after it. The decide grants are held for share here, before
+  // the runtime set, as pickup holds its own: a revocation that locked first is
+  // seen by the re-check under the locks, and one that comes second waits for
+  // this decision to commit.
+  await holdCoveringGrants(tx, request.subjects, request.collection);
 
   // Discovery only. Opening the envelope is a *write*, and a write before the
   // lock set is the thing the contract's ordering exists to prevent: two
@@ -238,6 +287,21 @@ export async function decide(
   // after the locks, not on `now()`, which is when this transaction began. A
   // decide that waited on its locks past the deadline is refused.
   const lockedAt = await lockedInstant(tx);
+
+  // "Check current decide grant" (T2), under the locks and before the first
+  // write, now that no revocation of a covering grant can commit around it.
+  const current = await checkAuthority(tx, request.subjects, {
+    collection: request.collection,
+    action: 'decide',
+    scope: { kind: 'record', id: found.task_id },
+  });
+  if (!current.ok) {
+    return refuse(
+      'SCOPE_NOT_GRANTED',
+      'the decide grant this decision rested on ended before it could be recorded',
+      'A person with decide authority on this task decides it.',
+    );
+  }
 
   // Re-read everything under the locks. Between discovery and here another
   // transaction could have decided this gate, superseded this version or
