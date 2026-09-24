@@ -217,7 +217,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     // the two disagree, a caller reaches a route the server does not have.
     const requested: string[] = [];
     const client = new OperationsClient({
-      base: '/api',
+      origin: '',
       businessKey: 'alpha',
       token: null,
       fetch: ((url: string | URL | Request) => {

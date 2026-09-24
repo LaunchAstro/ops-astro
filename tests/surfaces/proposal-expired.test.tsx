@@ -89,7 +89,7 @@ function server(gate: { readonly state: string; readonly expired: boolean }) {
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'a-token',
     fetch,

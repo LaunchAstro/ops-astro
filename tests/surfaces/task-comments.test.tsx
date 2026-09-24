@@ -129,7 +129,7 @@ function server(options: { readonly refuseComment?: boolean } = {}) {
 }
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ base: '/api', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <TaskDetailScreen client={client(fetch)} grantKey="alpha:ada" taskKey={TASK_ID} />

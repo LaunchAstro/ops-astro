@@ -128,7 +128,7 @@ function taskServer(
     return refused('NOT_FOUND', 404);
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'a-token',
     fetch,
@@ -242,7 +242,7 @@ describe('the board, pinned whole', () => {
         ? json({ ok: true, tasks })
         : refused('NOT_FOUND', 404)) as unknown as typeof globalThis.fetch;
     const client = new OperationsClient({
-      base: '/api',
+      origin: '',
       businessKey: 'alpha',
       token: 'a-token',
       fetch,

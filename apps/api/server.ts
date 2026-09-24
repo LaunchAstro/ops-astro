@@ -52,7 +52,7 @@ import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
-  recoverInstallation,
+  recoverDeployment,
   RECOVERY_SCOPE_SETTING,
 } from './recovery-entry.ts';
 
@@ -90,7 +90,7 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // The delegation credential keyring, in a gitignored file of its own for
     // the same reason, and never the gate key or the JWT secret.
     ...readEnvFile(join(ROOT, '.local', 'delegation.env')),
-    // The installation's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
+    // The deployment's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
     // Deployment configuration rather than a secret, in a file of its own so the
     // database script that rewrites `db.env` cannot drop it.
     ...readEnvFile(join(ROOT, '.local', 'recovery.env')),
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
   if (scope.keys.length === 0) {
     console.log('restart recovery: explicitly no installation businesses');
   }
-  const recovered = await recoverInstallation(database, resolveBusiness, scope.keys);
+  const recovered = await recoverDeployment(database, resolveBusiness, scope.keys);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
     await Promise.allSettled([database.close(), admin.close()]);

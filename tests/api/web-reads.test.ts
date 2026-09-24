@@ -45,7 +45,7 @@ describe.skipIf(serverUrl === undefined)('the web client reads task.queue and pr
   async function clientFor(member: Member): Promise<OperationsClient> {
     const token = await tokenFor(member.presented.subject);
     return new OperationsClient({
-      base: 'http://api.test/api',
+      origin: 'http://api.test',
       businessKey: 'alpha',
       token,
       fetch: (async (url: string | URL, init?: RequestInit) =>

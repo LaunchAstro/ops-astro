@@ -93,19 +93,15 @@ export async function recordAuthenticationAttempt(
  * body and the bearer are stored nowhere: the row has no column for either.
  *
  * Its own transaction under the tenancy wrapper, because no operation is going
- * to open one: the request ends here.
- *
- * An expired bearer is no verified subject. The agent prefix hands one on to
- * its executor and so reaches the body check with it; it is refused exactly
- * as before and nothing is written, because there is nobody to write it for.
+ * to open one: the request ends here. An expired bearer never reaches it: the
+ * door answers `AUTH_SESSION_EXPIRED` before the body is read.
  */
 export async function recordBodyRefusal(
   database: Database,
   businessId: BusinessId,
   owner: Exclude<AttemptOwner, 'delegation'>,
-  presented: VerifiedSubject | 'expired',
+  presented: VerifiedSubject,
 ): Promise<void> {
-  if (presented === 'expired') return;
   await database.withBusiness(businessId, async (tx) => {
     await recordAuthenticationAttempt(tx, {
       owner,

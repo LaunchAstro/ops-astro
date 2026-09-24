@@ -90,7 +90,7 @@ async function open(fetch: typeof globalThis.fetch, path = '/projects/') {
       }}
       sessions={signedIn()}
       gotrueUrl="http://identity.invalid"
-      apiBase="/api"
+      apiOrigin=""
       fetch={fetch}
       storage={tabStorage()}
     />,
@@ -223,7 +223,7 @@ describe('the address decides the screen', () => {
         }}
         sessions={new SessionStore(storage())}
         gotrueUrl="http://identity.invalid"
-        apiBase="/api"
+        apiOrigin=""
         fetch={fetch}
         storage={tabStorage()}
       />,

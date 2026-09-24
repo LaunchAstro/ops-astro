@@ -42,7 +42,7 @@ function stub(
 
 const make = (fetch: typeof globalThis.fetch, token: string | null = 'tok'): OperationsClient =>
   new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token,
     fetch,
@@ -76,7 +76,7 @@ describe('route derivation', () => {
   it('escapes the business key rather than pasting it into the path', async () => {
     const { fetch, calls } = stub({ ok: true, tasks: [] });
     const client = new OperationsClient({
-      base: '/api',
+      origin: '',
       businessKey: 'a/../b',
       token: 't',
       fetch,
@@ -192,7 +192,7 @@ describe('what comes back', () => {
       const ended: string[] = [];
       const { fetch } = stub({ refused: true, code, names: [], fixes: [] }, 401);
       const result = await new OperationsClient({
-        base: '/api',
+        origin: '',
         businessKey: 'alpha',
         token: 'tok',
         fetch,
@@ -215,7 +215,7 @@ describe('what comes back', () => {
       401,
     );
     await new OperationsClient({
-      base: '/api',
+      origin: '',
       businessKey: 'alpha',
       token: null,
       fetch,

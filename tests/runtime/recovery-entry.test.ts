@@ -28,7 +28,7 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
-import { NO_INSTALLATION_BUSINESSES, parseRecoveryScope } from '../../apps/api/recovery-entry.ts';
+import { NO_DEPLOYMENT_BUSINESSES, parseRecoveryScope } from '../../apps/api/recovery-entry.ts';
 import {
   buildFixture,
   envelopeTotals,
@@ -272,7 +272,7 @@ async function startServer(db: FreshDatabase, scope: string | undefined): Promis
 
 describe('the recovery scope setting', () => {
   it('names businesses or says none, and nothing else passes', () => {
-    expect(parseRecoveryScope(NO_INSTALLATION_BUSINESSES)).toStrictEqual({ ok: true, keys: [] });
+    expect(parseRecoveryScope(NO_DEPLOYMENT_BUSINESSES)).toStrictEqual({ ok: true, keys: [] });
     expect(parseRecoveryScope(' alpha , bravo,alpha ')).toStrictEqual({
       ok: true,
       keys: ['alpha', 'bravo'],
@@ -479,7 +479,7 @@ describe.skipIf(serverUrl === undefined)('restart recovery at API startup', () =
     }
     expect(await reservation(db.app, fixture.businessId, work)).toStrictEqual(before);
 
-    const none = await startServer(db, NO_INSTALLATION_BUSINESSES);
+    const none = await startServer(db, NO_DEPLOYMENT_BUSINESSES);
     await none.stop();
     expect(none.ready, none.output).toBe(true);
     expect(none.output).toContain('restart recovery: explicitly no installation businesses');

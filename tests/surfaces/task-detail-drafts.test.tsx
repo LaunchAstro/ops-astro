@@ -210,7 +210,7 @@ function server(options: { readonly denyReads?: boolean } = {}) {
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'tok',
     fetch,

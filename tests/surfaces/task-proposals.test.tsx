@@ -271,7 +271,7 @@ function server(options: ServerOptions = {}) {
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'a-token',
     fetch,

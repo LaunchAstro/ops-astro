@@ -343,7 +343,7 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     const expired = await tokenFor(world.ada.subject, { expiresIn: -60 });
     const ended: string[] = [];
     const client = new OperationsClient({
-      base: 'http://api.test/api',
+      origin: 'http://api.test',
       businessKey: 'alpha',
       token: expired,
       // Typed as the client's own `fetch` shape rather than the DOM's, because

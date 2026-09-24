@@ -41,7 +41,7 @@ function open(path: string, signedIn: boolean) {
       }}
       sessions={new SessionStore(storage(seed))}
       gotrueUrl="http://identity.invalid"
-      apiBase="/api"
+      apiOrigin=""
       fetch={fetch}
       storage={tabStorage()}
     />,

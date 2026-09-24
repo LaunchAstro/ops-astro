@@ -54,7 +54,7 @@ describe('a tab whose sessionStorage throws', () => {
         }}
         sessions={new SessionStore(memory())}
         gotrueUrl="http://identity.invalid"
-        apiBase="/api"
+        apiOrigin=""
         fetch={fetch}
         storage={tabStorage()}
       />,

@@ -39,8 +39,11 @@ export function Projects(props: ProjectsProps): ReactElement {
   // the input, the submit and `Start a different task` are all disabled. A
   // person who can type a second title during the first create is a person
   // whose second title a delayed success will wipe.
-  const { busy: creating, failure, run, reset } = useCommand();
-  const because = failure?.because ?? null;
+  //
+  // `locked` adds `closed`: `task.create` is this form's one command, so a
+  // refusal about this reader's authority closes the form rather than letting
+  // it ask again, as the comment box and the propose form do.
+  const { busy: creating, because, locked, run, reset } = useCommand();
   const [title, setTitle] = useState('');
   // The attempt whose outcome nobody knows. A create that ended `unavailable`
   // may well have committed on the server, so its identity and its exact
@@ -68,7 +71,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   const onCreate = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const asked = title.trim();
-    if (asked === '') return;
+    if (locked || asked === '') return;
     const attempt = attemptFor(asked);
     setPending(attempt);
     run(
@@ -121,7 +124,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             type="text"
             required
             placeholder="What needs doing"
-            disabled={creating}
+            disabled={locked}
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
@@ -132,7 +135,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           className="btn btn--primary"
           type="submit"
           data-attempt={retrying ? 'retry' : 'new'}
-          disabled={creating || title.trim() === ''}
+          disabled={locked || title.trim() === ''}
         >
           {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
         </button>

@@ -159,7 +159,7 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
     );
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
-    base: '/api',
+    origin: '',
     businessKey: 'alpha',
     token: 'a-token',
     fetch,

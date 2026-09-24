@@ -10,7 +10,7 @@
 //
 // Three decisions worth seeing.
 //
-// **The scope is installation configuration, never discovered.** The
+// **The scope is deployment configuration, never discovered.** The
 // deployment names its businesses in `RECOVERY_BUSINESS_KEYS`, each key is
 // resolved on its own through the server's one key-to-id lookup, and the ids
 // are de-duplicated before any replay. Nothing here lists every business, and
@@ -38,8 +38,8 @@ import {
 /** The setting's name, in the environment or `.local/recovery.env`. */
 export const RECOVERY_SCOPE_SETTING = 'RECOVERY_BUSINESS_KEYS';
 
-/** The literal that declares an installation with no businesses to recover. */
-export const NO_INSTALLATION_BUSINESSES = 'none';
+/** The literal that declares a deployment with no businesses to recover. */
+export const NO_DEPLOYMENT_BUSINESSES = 'none';
 
 /**
  * A key has no format of its own in `0001_tenancy.sql`, so this refuses only
@@ -60,18 +60,18 @@ export function parseRecoveryScope(raw: string | undefined): RecoveryScope {
   if (raw === undefined || raw.trim() === '') {
     return {
       ok: false,
-      problem: `${RECOVERY_SCOPE_SETTING} is not set. Name the installation's business keys, comma separated, or ${NO_INSTALLATION_BUSINESSES}.`,
+      problem: `${RECOVERY_SCOPE_SETTING} is not set. Name the deployment's business keys, comma separated, or ${NO_DEPLOYMENT_BUSINESSES}.`,
     };
   }
-  if (raw.trim() === NO_INSTALLATION_BUSINESSES) return { ok: true, keys: [] };
+  if (raw.trim() === NO_DEPLOYMENT_BUSINESSES) return { ok: true, keys: [] };
 
   const keys: string[] = [];
   for (const entry of raw.split(',')) {
     const key = entry.trim();
-    if (key === NO_INSTALLATION_BUSINESSES) {
+    if (key === NO_DEPLOYMENT_BUSINESSES) {
       return {
         ok: false,
-        problem: `${RECOVERY_SCOPE_SETTING}: ${NO_INSTALLATION_BUSINESSES} cannot be combined with business keys.`,
+        problem: `${RECOVERY_SCOPE_SETTING}: ${NO_DEPLOYMENT_BUSINESSES} cannot be combined with business keys.`,
       };
     }
     if (!KEY.test(key)) {
@@ -102,7 +102,7 @@ export type RecoveryOutcome =
  * start with nothing written. Two keys that resolve to one business replay it
  * once.
  */
-export async function recoverInstallation(
+export async function recoverDeployment(
   database: Database,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],

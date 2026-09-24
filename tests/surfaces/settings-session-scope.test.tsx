@@ -94,7 +94,7 @@ const open = async (session: Session, read: ReadAnswer): Promise<Mounted> => {
     <SettingsScreen
       client={
         new OperationsClient({
-          base: '/api',
+          origin: '',
           businessKey: session.businessKey,
           token: session.token,
           fetch: api(read),

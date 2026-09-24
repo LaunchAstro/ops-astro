@@ -237,7 +237,7 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
         ),
     });
     web = new OperationsClient({
-      base: 'http://api.test/api',
+      origin: 'http://api.test',
       businessKey: 'alpha',
       token: world.ada.token,
       fetch: async (url, init) => await world.api.fetch(new Request(url as string, init)),

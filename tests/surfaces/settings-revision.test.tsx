@@ -111,7 +111,7 @@ function server(
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ base: '/api', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />

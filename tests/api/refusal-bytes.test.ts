@@ -75,7 +75,7 @@ const transport = (async (url: string | URL, init?: RequestInit) =>
 
 const client = (token: string | null): OperationsClient =>
   new OperationsClient({
-    base: 'http://api.test/api',
+    origin: 'http://api.test',
     businessKey: 'alpha',
     token,
     fetch: transport,
@@ -118,7 +118,7 @@ describe('a refusal crossing the boundary into the browser client', () => {
 
   it('carries the names and fixes of a business the caller cannot reach', async () => {
     const stranger = new OperationsClient({
-      base: 'http://api.test/api',
+      origin: 'http://api.test',
       businessKey: 'bravo',
       token: await tokenFor(MIA),
       fetch: transport,
