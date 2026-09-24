@@ -16,6 +16,16 @@
 // duplicated here: a role a later migration adds is made by the same call.
 // With no database configured it does nothing, and the database-bound files
 // report their own missing URL as before.
+//
+// It does all of this through a database beside the configured one, never the
+// configured one itself. `scripts/db-conformance.mjs` proves a named suite
+// reached the database by reading `pg_stat_database` for the configured
+// database either side of the suite's own vitest run, and this setup runs
+// inside that run. Worked through the configured database, the warm-up moved
+// that counter by 15 and even the roles check alone by more than a read costs,
+// so a suite that never touched the database looked as if it had. Roles and
+// `pg_roles` are cluster-wide, so the database this connects to changes
+// nothing about what it creates.
 
 import {
   APPLICATION_ROLE,
@@ -26,9 +36,24 @@ import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database
 
 const SHARED_ROLES = [APPLICATION_ROLE, 'ops_astro_worker'] as const;
 
+/**
+ * The same server, connected to a database other than the configured one:
+ * `postgres`, or `template1` when the configured database is `postgres`.
+ * Both exist on every cluster `initdb` makes. With no database in the URL,
+ * the configured one is the user's name, as it is for libpq.
+ */
+export function besideUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
+  const configured =
+    decodeURIComponent(url.pathname.replace(/^\//u, '')) || decodeURIComponent(url.username);
+  url.pathname = configured === 'postgres' ? '/template1' : '/postgres';
+  return url.toString();
+}
+
 export default async function setup(): Promise<void> {
-  const serverUrl = databaseUrlFromEnvironment();
-  if (serverUrl === undefined) return;
+  const configuredUrl = databaseUrlFromEnvironment();
+  if (configuredUrl === undefined) return;
+  const serverUrl = besideUrl(configuredUrl);
 
   const server = connectAsAdmin(serverUrl);
   let present: number;
