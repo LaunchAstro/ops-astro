@@ -25,7 +25,7 @@ import {
 } from '../commands/prepare.ts';
 import { writeAuditEvent } from '../commands/audit.ts';
 import { payloadDigest } from '../commands/digest.ts';
-import type { ReadRequest, ReadResult } from './requests.ts';
+import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './catalogue.ts';
 import { DecisionIntegrityError } from './verified-decisions.ts';
 
@@ -197,11 +197,7 @@ async function serveRead<K extends ReadName>(
   const parsed = row.parse(body);
   if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
   const { operands } = parsed;
-  const spine = row.spine ? await readTaskSpine(tx) : undefined;
-  const recordId =
-    row.subject !== undefined && spine !== undefined
-      ? await row.subject(tx, spine, operands)
-      : undefined;
+  const { recordId, serve } = await ready(tx, session, row, operands);
 
   const served = (outcome: ReadResult | CommandRefusal): ServedRead => ({
     outcome,
@@ -227,5 +223,35 @@ async function serveRead<K extends ReadName>(
     }
   }
 
-  return served(await row.serve(tx, session, operands, { spine, recordId }));
+  return served(await serve());
+}
+
+/** What a row has found before the grant check, and how it is served after it. */
+interface Readied {
+  readonly recordId: string | undefined;
+  readonly serve: () => Promise<ReadResult | CommandRefusal>;
+}
+
+/**
+ * The spine and the subject, read before authority for a row that asks for
+ * them, in the order they always were. A business read reads neither.
+ */
+async function ready<K extends ReadName>(
+  tx: TenantQuery,
+  session: Session,
+  row: ReadRow<K>,
+  operands: ReadOperands[K],
+): Promise<Readied> {
+  if (!row.spine) {
+    const business = row;
+    return { recordId: undefined, serve: async () => await business.serve(tx, session, operands) };
+  }
+  const spineRow = row;
+  const spine = await readTaskSpine(tx);
+  const recordId =
+    spineRow.subject === undefined ? undefined : await spineRow.subject(tx, spine, operands);
+  return {
+    recordId,
+    serve: async () => await spineRow.serve(tx, session, operands, { spine, recordId }),
+  };
 }

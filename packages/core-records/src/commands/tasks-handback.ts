@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.handback`: a lease settled, with its report and any successor. Moved out of
-// `tasks-runtime.ts` unchanged (thermo review b282216, H2).
+// `task.handback`: a lease settled, with its report and any successor. Split out
+// unchanged when the one task-runtime module was divided (thermo review
+// b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';

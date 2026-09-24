@@ -178,7 +178,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   }, 300_000);
 
   it('refuses rhea alike on a foreign, a fabricated and an unreached alpha record', async () => {
-    // The scope check (`prepare.ts:291-300`) answers before any lookup could
+    // The scope check (`prepare.ts` `prepareCommand`'s `checkAuthority`) answers before any lookup could
     // tell the three apart. Her own record is the control, afterwards.
     const rhea: Presenter = { kind: 'person', caller: w.rhea };
     const unreached = await w.h.freshTask('an alpha task outside her grant');

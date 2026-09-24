@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The `task.handback` operand shape a pickup hands its claimant. Moved out of
-// `tasks-runtime.ts` unchanged (thermo review b282216, H2).
+// The `task.handback` operand shape a pickup hands its claimant. Split out
+// unchanged when the one task-runtime module was divided (thermo review
+// b282216, H2).
 
 import { type PickedUp, type PickedUpByPerson } from '../../../core-runtime/src/pickup.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';
+import { DELEGATION_HEADER } from './surface.ts';
 
 /**
  * Whether an operand of the owning `task.handback` contract must be sent,
@@ -92,7 +94,7 @@ export function handbackShapeFor(picked: PickedUp | PickedUpByPerson): Record<st
       picked.claimant === 'agent'
         ? {
             transport: 'header',
-            header: 'x-agent-delegation',
+            header: DELEGATION_HEADER,
             value: 'the credential this pickup returned, beside the agent login bearer',
           }
         : {

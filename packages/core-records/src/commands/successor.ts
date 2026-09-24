@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The successor a handback may ask for, read from the caller's body. Moved out of
-// `tasks-runtime.ts` unchanged (thermo review b282216, H2).
+// The successor a handback may ask for, read from the caller's body. Split out
+// unchanged when the one task-runtime module was divided (thermo review
+// b282216, H2).
 
 import { type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import { refuseCommand } from './refusal.ts';

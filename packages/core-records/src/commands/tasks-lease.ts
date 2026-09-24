@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Lease renewal on the person path, and the lease-seconds reader pickup shares. Moved out of
-// `tasks-runtime.ts` unchanged (thermo review b282216, H2).
+// Lease renewal on the person path, and the lease-seconds reader pickup shares. Split out
+// unchanged when the one task-runtime module was divided (thermo review
+// b282216, H2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
