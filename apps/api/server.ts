@@ -116,12 +116,12 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
  * restart, and a wrong key cannot be turned into a cheap probe for one that
  * is.
  *
- * **A key two businesses hold names neither.** The schema does not make the
- * key unique across businesses (`businesses_key_idx` is on `(business_id,
- * key)`, and `business_id` is the row's own id), so the lookup reads up to
- * two rows and answers the unresolved refusal for more than one, rather than
- * serving and caching whichever row came back first. It is not cached, so the
- * key resolves again once only one business holds it.
+ * **A key two businesses hold names neither.** Since 0027
+ * (`businesses_key_global_idx`) storage refuses a second business under a
+ * held key. The lookup still reads up to two rows and answers the unresolved
+ * refusal for more than one, rather than serving and caching whichever row
+ * came back first, as the backstop for a database below 0027. That refusal is
+ * not cached, so the key resolves again once only one business holds it.
  */
 export function createBusinessResolver(
   admin: AdminConnection,
