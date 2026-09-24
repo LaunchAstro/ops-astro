@@ -143,24 +143,6 @@ export type GatePresentation = 'armed' | 'stale';
 export const GATE_PRESENTATIONS: readonly GatePresentation[] = ['armed', 'stale'];
 
 /**
- * Six read outcomes. **This is the one place the slice is more explicit than
- * either source** (specification 13.2): the legacy converges failed, denied
- * and no-run reads onto one empty not-reporting record, and the pinned mockup
- * has no read at all — every accessor is a synchronous filter over seeded
- * arrays, so it has no `loading` and no `denied`.
- */
-export type ReadOutcome = 'loading' | 'no-run' | 'denied' | 'unavailable' | 'stale' | 'ready';
-
-export const READ_OUTCOMES: readonly ReadOutcome[] = [
-  'loading',
-  'no-run',
-  'denied',
-  'unavailable',
-  'stale',
-  'ready',
-];
-
-/**
  * Three absence voices, and they must stay distinct.
  *
  * `no-rows` says there is nothing here; `input-wrong` says this input is
