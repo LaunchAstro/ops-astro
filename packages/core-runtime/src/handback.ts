@@ -35,8 +35,9 @@ import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
 import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
 import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
 import { lockedInstant } from './clock.ts';
+import { capCommitted, exceeds } from './budget.ts';
 import { acquire } from './locks.ts';
-import { only } from './only.ts';
+import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
@@ -635,7 +636,7 @@ async function insertReport(
 async function withinBounds(
   tx: TenantQuery,
   successor: SuccessorRequest,
-  found: { readonly envelope_id: string; readonly cap_id: string; readonly lineage_id: string },
+  found: { readonly cap_id: string; readonly lineage_id: string },
 ): Promise<RuntimeResult<never> | null> {
   if (!Number.isSafeInteger(successor.maximumMinor) || successor.maximumMinor <= 0) {
     return refuse(
@@ -645,33 +646,21 @@ async function withinBounds(
     );
   }
 
-  const rows = await tx.query<{
-    readonly currency: string;
-    readonly limit_minor: string;
-    readonly committed: string;
-  }>(
-    `select env.currency, cap.limit_minor::text as limit_minor,
-            coalesce((select sum(e.held_minor + e.actual_minor) from public.task_envelopes e
-                       where e.business_id = cap.business_id and e.cap_id = cap.id), 0)::text
-              as committed
-       from public.task_envelopes env
-       join public.budget_caps cap on cap.business_id = env.business_id and cap.id = env.cap_id
-      where env.business_id = $1 and env.id = $2`,
-    [tx.businessId, found.envelope_id],
-  );
-  const bounds = rows[0];
-  if (bounds === undefined) {
-    return refuse(
-      'SUCCESSOR_OUT_OF_BOUNDS',
-      `the envelope ${found.envelope_id} this handback settles has no readable cap to bound a successor by`,
-      'Hand back without a successor and propose through the ordinary authorised path.',
+  // The one cap-sum read decide's preflight and reserve share (thermo NB1).
+  // The cap is always there: the envelope was found by the discovery join and
+  // `task_envelopes_cap_fkey` (0013) keeps its cap from being deleted. 0024's
+  // `task_envelopes_cap_currency_fkey` makes the cap's currency the envelope's.
+  const cap = await capCommitted(tx, found.cap_id);
+  if (cap === undefined) {
+    throw new RuntimeInvariantError(
+      `withinBounds: no cap ${found.cap_id} behind a locked envelope`,
     );
   }
 
-  if (successor.currency !== bounds.currency) {
+  if (successor.currency !== cap.currency) {
     return refuse(
       'SUCCESSOR_OUT_OF_BOUNDS',
-      `this task's envelope is in ${bounds.currency} and the successor is in ${successor.currency}`,
+      `this task's envelope is in ${cap.currency} and the successor is in ${successor.currency}`,
       'Propose the successor in the currency the envelope holds.',
     );
   }
@@ -679,11 +668,12 @@ async function withinBounds(
   // Sol 6 RUNTIME-2 (158d6de): exact, as approval is. A cap above 2^53 is
   // valid, and as numbers its limit and committed total round, so a successor
   // could be admitted beyond the room that is really left.
-  const room = BigInt(bounds.limit_minor) - BigInt(bounds.committed);
-  if (BigInt(successor.maximumMinor) > room) {
+  const wanted = BigInt(successor.maximumMinor);
+  if (exceeds(cap.committed, wanted, cap.limitMinor)) {
+    const room = BigInt(cap.limitMinor) - BigInt(cap.committed);
     return refuse(
       'SUCCESSOR_OUT_OF_BOUNDS',
-      `the cap behind this envelope has ${bounds.committed} of ${bounds.limit_minor} committed, so a successor asking ${successor.maximumMinor} does not fit its remaining ${String(room)}`,
+      `the cap behind this envelope has ${cap.committed} of ${cap.limitMinor} committed, so a successor asking ${successor.maximumMinor} does not fit its remaining ${String(room)}`,
       'Propose a successor within the cap, or raise the cap through its own authorised decision.',
     );
   }
