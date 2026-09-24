@@ -24,7 +24,7 @@
 // accepted ledger rules out: a client that believed it had set `actor_id` got
 // a `200` and no correction, so the bug lived in the client.
 
-import type { PresetPlan } from '../records/preset-plan.ts';
+import type { PresetField, PresetPlan } from '../records/preset-plan.ts';
 import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
 import type { SettingView } from './settings.ts';
@@ -113,18 +113,6 @@ export interface SharedTaskView {
   readonly comments: readonly CommentView[];
 }
 
-/** One field as a preset ships it, on the wire. Validated by L2's planner. */
-export interface PresetFieldRequest {
-  readonly key: string;
-  readonly label: string;
-  readonly valueType: string;
-  readonly writeMode?: string;
-  readonly owningOperations?: readonly string[];
-  readonly visibilityClass?: string;
-  readonly searchable?: boolean;
-  readonly uniqueValue?: boolean;
-}
-
 /**
  * What each read takes, once its catalogue row has checked the body
  * (`ReadRow.parse` in `reads/catalogue.ts`). A row's lookups, authority and
@@ -148,8 +136,11 @@ export interface ReadOperands {
   readonly 'preset.plan': {
     readonly recordTypeKey: string;
     readonly presetKey: string;
-    /** Each one an object, which is all the read checks; the planner refuses bad keys. */
-    readonly fields: readonly PresetFieldRequest[];
+    /**
+     * The planner's own field type, so the read hands it on without a cast.
+     * Each one is checked only as an object; the planner refuses bad keys.
+     */
+    readonly fields: readonly PresetField[];
   };
   /**
    * The business's own settings. It takes `read` on `settings` while the two
