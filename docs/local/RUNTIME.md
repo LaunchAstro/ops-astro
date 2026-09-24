@@ -549,17 +549,41 @@ original loses `operations_identity_key` to the original's commit, and its whole
 transaction rolls back. The second attempt reads the committed register row and
 replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
-`cancelAndClassify`, `classifyAuthorityLoss` and `replayRecordedTransitions`
-raise `AffectedSetChanged`. So do `task.propose`'s live-work recheck
-(`lockProposal`, `propose.ts`), `task.handback`'s lease-binding recheck
-(`handback`, `handback.ts`) and `grant.revoke`'s dependent-attempt recheck
-(`revokeGrantAsManager`, `commands/authority-controls.ts`). A propose that
+Discover, lock and recheck is one module, `core-runtime/src/rediscovery.ts`.
+`lockRediscovered` discovers without locks, takes the complete set in
+`LOCK_ORDER`, discovers again and judges the two by the site's rule
+(`RecheckRule`): `exact`, or `covered`, where a set that only shrank goes on
+(N1). It returns the locks or throws `AffectedSetChanged`, the one type the
+person entry retries once. Replay, cancellation (`covered`), authority loss,
+`task.propose` and a rejecting `task.decide` (`covered`) use it, and
+`grant.revoke` uses its `requireUnchanged` for the dependents it reads inside
+the authority-loss classifier. The thermo H6 recheck-rule parameter, deferred
+with ARCH candidate 4, is `RecheckRule`; `classifyAll` was already shared.
+`tests/runtime/rediscovery-pin.test.ts` pins the statement order at each site.
+
+So `cancelAndClassify`, `classifyAuthorityLoss` and `replayRecordedTransitions`
+raise `AffectedSetChanged`, and so do `task.propose`'s live-work recheck
+(`lockProposal`, `propose.ts`), a rejecting `task.decide`'s held-set recheck
+(`decide.ts`) and `grant.revoke`'s dependent-attempt recheck
+(`revokeGrantAsManager`, `commands/authority-controls.ts`). `task.handback`'s
+lease-binding recheck (`handback`, `handback.ts`) throws the same type but is
+not this pattern: it compares a different read, after the fence verdict. A propose that
 meets a pickup of the superseded hold, or a revocation that meets a handback of
 a dependent lease, retries once at the person entry. The handback recheck is a
 consistency guard that no schedule reaches, because nothing in this head
 rewrites the lease's reservation, its version or that version's lineage. It
-costs at most one extra attempt, at either entry. `tests/runtime/retry-gaps.test.ts` holds
-the three rechecks. Of the agent's `AGENT_SURFACE`, only `task.handback`
+costs at most one extra attempt, at either entry.
+`tests/runtime/retry-gaps.test.ts` holds the three rechecks.
+
+`task.propose` and a rejecting `task.decide` recheck the holds their versions
+own under the locks (thermo O3). An approval of the superseded version that
+commits between a proposal's discovery and its locks costs one retry, where
+before it was an unretried lock-order fault. A rejection's recheck is a
+consistency guard, since no command opens a hold on a lineage whose gate is
+pending. A rejection racing an approval of the same gate therefore costs one
+bounded retry before the same `GATE_ALREADY_DECIDED` answer (F-A4-1, accepted
+as is); the recheck right after the locks stays the rule.
+`tests/runtime/o3-held-recheck.test.ts` holds both. Of the agent's `AGENT_SURFACE`, only `task.handback`
 reaches a thrower. Admitting the type gives the agent no cancellation authority
 and adds no command retry at startup.
 
