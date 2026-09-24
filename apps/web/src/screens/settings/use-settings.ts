@@ -30,7 +30,9 @@
 //    authorised read answers, the session's confirmed writes are not kept
 //    either, so the refusal holds across a remount. The memory is tagged with the session that wrote it and removed at
 //    sign-out (`session/token.ts`), because the tab outlives the session and
-//    the next person to sign in to it is a different reader.
+//    the next person to sign in to it is a different reader. A write answered
+//    after that sign-out keeps nothing: the session generation it was pressed
+//    in has moved on.
 
 import { useEffect, useState } from 'react';
 import {
@@ -45,6 +47,7 @@ import type { ReadState } from '../../data/authorised-read.ts';
 import {
   isRecord,
   jsonSlot,
+  sessionGeneration,
   settingsCacheKey,
   type JsonSlot,
   type StorageLike,
@@ -284,8 +287,16 @@ export function useSettings(
     }
   }, [readOutcome, storage, businessKey, grantKey]);
 
-  const settle = (which: Which, value: Draft, result: CallResult<CommandOutcome>): void => {
+  const settle = (
+    which: Which,
+    value: Draft,
+    result: CallResult<CommandOutcome>,
+    pressedIn: number,
+  ): void => {
     setBusy(null);
+    // Answered after the session that pressed Save ended: the sign-out has
+    // removed what the tab held, and this answer must not put it back.
+    if (sessionGeneration() !== pressedIn) return;
     if (isRefusal(result)) {
       if (result.code === 'VERSION_STALE') {
         // Reread, so the conflict shows what the row holds *now* rather than
@@ -320,8 +331,9 @@ export function useSettings(
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
     setBusy(which);
     setBecause(null);
+    const pressedIn = sessionGeneration();
     void (async () => {
-      settle(which, value, await client.mutate(COMMAND[which], { value }, options));
+      settle(which, value, await client.mutate(COMMAND[which], { value }, options), pressedIn);
     })();
   };
 

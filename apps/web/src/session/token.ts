@@ -110,6 +110,19 @@ const KEY = 'ops-astro.session';
  */
 export const settingsCacheKey = (businessKey: string): string =>
   `ops-astro.settings.${businessKey}`;
+
+/**
+ * How many times a session has ended in this tab: the session generation.
+ *
+ * A request can be answered after the session that sent it has gone. What it
+ * would leave in the tab must then be left out, or it outlives the sign-out
+ * that removed it. A caller notes the generation before the request and writes
+ * only if it has not moved. It is the tab's, not one store's, because the tab
+ * is what the leftover would outlive.
+ */
+let endings = 0;
+export const sessionGeneration = (): number => endings;
+
 /** Where to go back to once the person has signed in again. */
 const RETURN_KEY = 'ops-astro.return-to';
 
@@ -202,6 +215,7 @@ export class SessionStore {
 
   clear(): void {
     const ending = this.#session;
+    endings += 1;
     this.#session = null;
     this.#forgetInterruption();
     this.#kept.remove();
