@@ -23,6 +23,7 @@ import { checkAuthority } from '../../core-records/src/authority/grants.ts';
 import type { Subject } from '../../core-records/src/authority/grants.ts';
 import { acquire, type LockSet } from './locks.ts';
 import {
+  AffectedSetChanged,
   affectedByVersions,
   classifyVersions,
   discoverLiveWork,
@@ -168,7 +169,7 @@ export async function lockProposal(
   // released in between is a set this transaction did not lock for.
   const liveNow = await discoverLiveWork(tx, { versionIds: liveVersions });
   if (JSON.stringify(liveNow) !== JSON.stringify(liveWork)) {
-    throw new Error(
+    throw new AffectedSetChanged(
       'propose: the live work on the superseded version changed under discovery; roll back and rediscover',
     );
   }
