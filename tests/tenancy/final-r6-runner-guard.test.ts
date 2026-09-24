@@ -30,6 +30,7 @@ import {
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
+  connect,
   connectAsAdmin,
   connectObserved,
   type AdminConnection,
@@ -845,6 +846,46 @@ describe.skipIf(serverUrl === undefined)('the log and standard_conforming_string
     });
     expect(unreadable(admin)).toContain('opaque');
   }, 60_000);
+
+  // SOL-FR11B-1: postgres.js puts a URL's query parameters into the startup
+  // packet after the wrapper's own, so a URL naming the setting, in any case,
+  // would start the connection off. The wrapper refuses such a URL before it
+  // connects. An `options` switch does not win: PostgreSQL applies the named
+  // startup parameter after it, so those forms start on and need nothing.
+  it.each([
+    ['connectObserved', 'standard_conforming_strings=off'],
+    ['connectObserved', 'Standard_Conforming_Strings=off'],
+    ['connect', 'STANDARD_CONFORMING_STRINGS=off'],
+    ['connectAsAdmin', 'standard_conforming_strings=on'],
+  ])('%s refuses a URL whose query sets %s', (how, query) => {
+    const url = `${serverUrl ?? ''}?${query}`;
+    const open = { connectObserved, connect, connectAsAdmin }[how];
+    expect(() => open?.(url)).toThrow(
+      /^database: the URL sets standard_conforming_strings, which every connection sets on itself/u,
+    );
+  });
+
+  it.each([
+    ['-c standard_conforming_strings=off'],
+    ['-c standard-conforming-strings=off'],
+    ['--standard_conforming_strings=off'],
+  ])(
+    'starts on when the URL options say %s',
+    async (switches) => {
+      const { url } = await database('fr11scsoptions');
+      const pool = connectObserved(`${url}?options=${encodeURIComponent(switches)}`, {
+        source: 'runtime',
+      });
+      opened.push(pool);
+      const [row] = await pool.betweenTransactions<{ readonly on: string }>(
+        'select current_setting($1) as on',
+        ['standard_conforming_strings'],
+      );
+      expect(row?.on).toBe('on');
+      expect(unreadable(pool)).toStrictEqual([]);
+    },
+    60_000,
+  );
 
   it('starts on, and RESET keeps it on, whatever the database default says', async () => {
     const { built, url } = await database('fr11scsreset');
