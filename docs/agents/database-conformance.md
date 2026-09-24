@@ -30,6 +30,11 @@ through `scripts/db-conformance.mjs`, and assert what the runner refuses:
 - a missing `DATABASE_URL` is refused rather than skipped.
 
 These probes need Docker, or a database named by `DB_CONFORMANCE_CASES_URL`.
+Each throwaway container is ready when `pg_isready -h 127.0.0.1` succeeds
+inside it. On a fresh volume the image's init server listens on the Unix socket
+only, so a socket check can pass before TCP is up. `tests/ci/db-ready-race.mjs`
+reproduces that race (26 of 30 at a 100 ms poll with the socket check, 0 of 30
+with TCP).
 When neither was there they used to skip, and `pnpm run db:cases` exited 0
 with eight probes unrun. That happened in CI too, where it made
 `database conformance gate` green over a job that had proved nothing. This
