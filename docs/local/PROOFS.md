@@ -1104,7 +1104,15 @@ session held, and with another client backend held, with the ledger and a
 schema fingerprint unchanged. The run applies once they close. An up-to-date
 database with the application connected passes. A session that connects inside
 a migration is caught by the in-transaction check before commit. `db-migrate.mjs`
-refuses and exits 2 with only `DATABASE_ADMIN_URL` in its environment. What it
+refuses and exits 2 with only `DATABASE_ADMIN_URL` in its environment.
+
+It also proves the run is all or nothing (FR7-RUNNER, SOL-FR6-2). A session
+arriving during the second of two pending migrations, and a failure in the
+second, each leave neither migration nor ledger row; at 600c300 the first was
+kept. A role that cannot read every session is refused rather than seeing
+nobody. A file holding a statement PostgreSQL will not run in a transaction
+block, or transaction control, is refused before the runner touches the
+database, and no file on disk, 0001 to the last, is refused. What the suite
 cannot prove is under "Deferred limits": the guard sees only open sessions.
 
 ## Deferred limits

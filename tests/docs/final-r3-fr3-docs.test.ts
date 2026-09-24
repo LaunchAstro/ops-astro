@@ -152,11 +152,24 @@ describe('the upgrade guard and its limit (FR6-RUNNER)', () => {
     const migrate = read('packages/core-records/src/tenancy/migrate.ts');
     expect(migrate).toContain("and backend_type = 'client backend'");
     expect(migrate).toContain('and pid <> pg_backend_pid()');
+    expect(migrate).toContain('where datname = current_database()');
     const data = folded(read('docs/local/DATA.md'));
+    // Both sides: the predicate DATA.md states is the one migrate.ts runs
+    // (R6-THERMO-9 (a)).
+    expect(data).toContain(
+      "(`datname = current_database()`, `backend_type = 'client backend'`, `pid <> pg_backend_pid()`)",
+    );
     expect(data).toContain('The check cannot tell a stopped application from an idle one.');
     expect(data).not.toContain('the runner enforces the rule');
     const readme = folded(read('docs/local/README.md'));
     expect(readme).not.toContain('The runner enforces it');
+    // The runner and its suite say "checks" too, so the wording cannot drift
+    // back in the code's own account of itself (R6-THERMO-8).
+    for (const file of [
+      'packages/core-records/src/tenancy/migrate.ts',
+      'tests/tenancy/final-r6-runner-guard.test.ts',
+    ])
+      expect(read(file), file).not.toMatch(/enforc/iu);
     expect(folded(read('docs/local/RUNTIME.md'))).toContain(
       'the check cannot tell a stopped application from an idle one',
     );
