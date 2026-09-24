@@ -53,9 +53,9 @@
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import type { VerifiedSubject } from '../identity/verified-subject.ts';
-import { refuseExpiredSession, resolveAgentLogin } from '../identity/agent-login.ts';
+import { resolveAgentLogin } from '../identity/agent-login.ts';
 import type { AgentSession } from '../identity/agent-login.ts';
-import { writeAuditEvent } from './audit.ts';
+import { writeAuditEvent, type AuditEvent } from './audit.ts';
 import { payloadDigest } from './digest.ts';
 import {
   asCallerVisible,
@@ -64,10 +64,16 @@ import {
   refuseCommand,
   type CommandRefusal,
 } from './refusal.ts';
-import { declarationOf, type CommandName } from './surface.ts';
+import {
+  COMMAND_SURFACE,
+  declarationOf,
+  type CommandDeclaration,
+  type CommandName,
+} from './surface.ts';
 import {
   OPERATION_ID,
   lookupAttempt,
+  type RegisteredAttempt,
   registerAttempt,
   type CommandHandle,
   type CommandResult,
@@ -76,15 +82,8 @@ import { retryOnce } from './envelope.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
-import {
-  AGENT_OPERATIONS,
-  parseOperands,
-  type AgentCall,
-  type AgentRequest,
-} from './agent-operations.ts';
-
-export type { AgentRequest } from './agent-operations.ts';
-export { CREDENTIAL_NOT_REPLAYED } from './agent-replay.ts';
+import { AGENT_OPERATIONS, parseOperands, type AgentOperation } from './agent-operations.ts';
+import type { AgentCall, AgentRequest } from './agent-call.ts';
 
 /**
  * The two operations an agent may reach before it holds anything.
@@ -94,26 +93,29 @@ export { CREDENTIAL_NOT_REPLAYED } from './agent-replay.ts';
  * (minimum contract 8.2 case 9). Under a live delegation it answers the
  * delegation's purpose.
  */
-export const BEFORE_PICKUP: ReadonlySet<CommandName> = new Set(
-  [...AGENT_OPERATIONS].filter(([, row]) => row.authority === 'beforePickup').map(([name]) => name),
-);
+export const BEFORE_PICKUP: ReadonlySet<CommandName> = agentReach(['before-pickup']);
 
-/** What an agent may reach at all, delegation or not: the rows of `AGENT_OPERATIONS`. */
-export const AGENT_SURFACE: ReadonlySet<CommandName> = new Set(AGENT_OPERATIONS.keys());
+/**
+ * What an agent may reach at all, delegation or not. Both sets are read off the
+ * surface rows' own `agent` field, so the surface table is the one place that
+ * says what an agent reaches; `AGENT_OPERATIONS` says how each is served, and
+ * `tests/commands/agent-surface-derivation.test.ts` holds the two to one list.
+ */
+export const AGENT_SURFACE: ReadonlySet<CommandName> = agentReach(['before-pickup', 'delegated']);
+
+function agentReach(reach: readonly CommandDeclaration['agent'][]): ReadonlySet<CommandName> {
+  return new Set(COMMAND_SURFACE.filter((row) => reach.includes(row.agent)).map((row) => row.name));
+}
 
 export async function executeAgentCommand(
   database: Database,
   businessId: BusinessId,
-  presented: VerifiedSubject | 'expired',
+  // Verified, never `'expired'`: the one door answers an expired bearer
+  // before any executor is reached (`apps/api/app.ts`, THERMO-RECHECK NC2).
+  presented: VerifiedSubject,
   credential: string | undefined,
   request: AgentRequest,
 ): Promise<CommandResult> {
-  // An expired bearer is answered before the database is opened. It is its own
-  // code rather than `AUTH_NO_AGENT_IDENTITY` because it is the re-login path:
-  // a caller that cannot tell "your session ended" from "you are not an agent
-  // here" cannot tell a door it can open from one it cannot.
-  if (presented === 'expired') return asCallerVisible(fromAgentIdentity(refuseExpiredSession()));
-
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
   // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
   // identity claim: a same-operationId retry in flight behind its original
@@ -159,11 +161,15 @@ export function agentAnswer(command: string, result: unknown): unknown {
   return typeof detail === 'object' && detail !== null ? { ok: true, ...detail } : result;
 }
 
-async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<CommandResult> {
-  const { session, request } = call;
+async function runAgentCommand(
+  tx: TenantQuery,
+  presented: Omit<AgentCall, 'declaration'>,
+): Promise<CommandResult> {
+  const { session, request } = presented;
   const digest = payloadDigest(comparable(request));
   const operation = AGENT_OPERATIONS.get(request.command);
-  if (declarationOf(request.command) === undefined || operation === undefined) {
+  const declaration = declarationOf(request.command);
+  if (declaration === undefined || operation === undefined) {
     return await settle(
       tx,
       session,
@@ -180,6 +186,7 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
       true,
     );
   }
+  const call: AgentCall = { ...presented, declaration };
 
   // `typeof` first, as the person envelope asks it (`envelope.ts`). The pattern
   // coerces what it is given, so a number or a one-element array would pass as
@@ -209,66 +216,7 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
   // a pickup retried after a lost response replays the lease it already holds
   // instead of claiming a second one.
   const seen = await lookupAttempt(tx, session.actorId, request.operationId);
-  if (seen !== undefined) {
-    if (seen.payload_digest !== digest) {
-      return await settle(
-        tx,
-        session,
-        request,
-        digest,
-        refuseCommand(
-          'OPERATION_ID_REUSED',
-          [seen.command],
-          ['This identity already carries a different request. Use a new operation_id.'],
-        ),
-        true,
-      );
-    }
-    const replayed = seen.result as unknown as CommandResult;
-    // A stored refusal carries nothing protected. A stored success is released
-    // only to the rights held now (TRANSACTION-CONTRACT: "Authorise the
-    // replay's read under current rights before returning protected
-    // content"), so a read repeated after its grant or delegation went answers
-    // today's refusal rather than yesterday's task. The register row stays as
-    // it was: the operation happened, and nothing here repeats it.
-    //
-    // A pickup is the one replay that hands something back beyond the receipt:
-    // the credential the lost response carried, derived again once the
-    // current rights and the receipt's own lease have been checked.
-    //
-    // A capabilities replay is a read with nothing to repeat and no handle of
-    // its own, and the scope it stored is the delegation's that asked. The
-    // register compares the body, not the credential, so a replay under
-    // another delegation would otherwise be handed the first one's scope. It
-    // is projected again for the credential presented now, which is the same
-    // answer when nothing changed (CA2).
-    const released: CommandResult | undefined = isCommandRefusal(replayed)
-      ? undefined
-      : await releaseReplay(tx, call, operation, replayed);
-    if (released !== undefined && isCommandRefusal(released)) {
-      const visible = asCallerVisible(released);
-      await writeAuditEvent(tx, {
-        actorId: session.actorId,
-        command: request.command,
-        operationId: request.operationId,
-        outcome: 'refused',
-        refusalCode: visible.code,
-        subjectRecordId: null,
-        payloadDigest: digest,
-      });
-      return visible;
-    }
-    await writeAuditEvent(tx, {
-      actorId: session.actorId,
-      command: request.command,
-      operationId: request.operationId,
-      outcome: 'replayed',
-      refusalCode: isCommandRefusal(replayed) ? replayed.code : null,
-      subjectRecordId: isCommandRefusal(replayed) ? null : replayed.recordId,
-      payloadDigest: digest,
-    });
-    return released ?? replayed;
-  }
+  if (seen !== undefined) return await answerReplay(tx, call, operation, seen, digest);
 
   // The request's own shape, before any authority is read: a system-owned
   // field (D06, the person path's own classifier) and then each operand the
@@ -285,7 +233,7 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
   }
 
   await tx.query('savepoint agent_work');
-  const outcome = await operation.serve(tx, call, operands, authorised.delegation);
+  const outcome = await authorised.run(operands);
   // A refusal rolls back whatever reached the database on the way to it, for
   // the same reason and by the same mechanism as the person envelope's.
   await tx.query(
@@ -314,13 +262,9 @@ async function runAgentCommand(tx: TenantQuery, call: AgentCall): Promise<Comman
     result: storable(handle),
     recordId: outcome.recordId,
   });
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: request.command,
-    operationId: request.operationId,
+  await writeCallEvent(tx, session, request, digest, {
     outcome: 'applied',
     subjectRecordId: outcome.recordId,
-    payloadDigest: digest,
   });
   return handle;
 }
@@ -346,17 +290,100 @@ async function settle(
       recordId: null,
     });
   }
+  await writeCallEvent(
+    tx,
+    session,
+    request,
+    digest,
+    { outcome: 'refused', refusalCode: refusal.code, attempted: attempted ?? null },
+    withoutIdentity,
+  );
+  return visible;
+}
+
+/**
+ * This call's one audit row, every write of it in this file: the actor, the
+ * command, the identity (none when the request carried no usable one) and the
+ * digest, with what happened. An absent field is stored as null.
+ */
+async function writeCallEvent(
+  tx: TenantQuery,
+  session: AgentSession,
+  request: AgentRequest,
+  digest: string,
+  event: Pick<AuditEvent, 'outcome' | 'refusalCode' | 'subjectRecordId' | 'attempted'>,
+  withoutIdentity = false,
+): Promise<void> {
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.command,
     operationId: withoutIdentity ? null : request.operationId,
-    outcome: 'refused',
-    refusalCode: refusal.code,
-    subjectRecordId: null,
     payloadDigest: digest,
-    attempted: attempted ?? null,
+    ...event,
   });
-  return visible;
+}
+/**
+ * A request the register already holds: refused when the body differs, else
+ * the stored answer as the rights held now release it. The register row
+ * stays as it was.
+ */
+async function answerReplay(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: AgentOperation,
+  seen: RegisteredAttempt,
+  digest: string,
+): Promise<CommandResult> {
+  const { session, request } = call;
+  if (seen.payload_digest !== digest) {
+    return await settle(
+      tx,
+      session,
+      request,
+      digest,
+      refuseCommand(
+        'OPERATION_ID_REUSED',
+        [seen.command],
+        ['This identity already carries a different request. Use a new operation_id.'],
+      ),
+      true,
+    );
+  }
+  const replayed = seen.result as unknown as CommandResult;
+  // A stored refusal carries nothing protected. A stored success is released
+  // only to the rights held now (TRANSACTION-CONTRACT: "Authorise the
+  // replay's read under current rights before returning protected
+  // content"), so a read repeated after its grant or delegation went answers
+  // today's refusal rather than yesterday's task. The register row stays as
+  // it was: the operation happened, and nothing here repeats it.
+  //
+  // A pickup is the one replay that hands something back beyond the receipt:
+  // the credential the lost response carried, derived again once the
+  // current rights and the receipt's own lease have been checked.
+  //
+  // A capabilities replay is a read with nothing to repeat and no handle of
+  // its own, and the scope it stored is the delegation's that asked. The
+  // register compares the body, not the credential, so a replay under
+  // another delegation would otherwise be handed the first one's scope. It
+  // is projected again for the credential presented now, which is the same
+  // answer when nothing changed (CA2).
+  const released: CommandResult | undefined = isCommandRefusal(replayed)
+    ? undefined
+    : await releaseReplay(tx, call, operation, replayed);
+  if (released !== undefined && isCommandRefusal(released)) {
+    const visible = asCallerVisible(released);
+    await writeCallEvent(tx, session, request, digest, {
+      outcome: 'refused',
+      refusalCode: visible.code,
+    });
+    return visible;
+  }
+  await writeCallEvent(tx, session, request, digest, {
+    outcome: 'replayed',
+    refusalCode: isCommandRefusal(replayed) ? replayed.code : null,
+    subjectRecordId: isCommandRefusal(replayed) ? null : replayed.recordId,
+  });
+  return released ?? replayed;
 }
 
 /** Everything the register compares, which is the request without its identity. */

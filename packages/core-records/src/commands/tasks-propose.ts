@@ -9,7 +9,7 @@ import { subjectsOf } from '../authority/grants.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { fromRuntime, refuseCommand } from './refusal.ts';
+import { fromReasoned, refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
@@ -122,7 +122,7 @@ export async function proposeOnTask(
     );
   }
   const result = await proposeUnderLocks(tx, proposal, held);
-  if (!result.ok) return refused(fromRuntime(result.refusal));
+  if (!result.ok) return refused(fromReasoned(result.refusal));
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

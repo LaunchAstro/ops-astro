@@ -16,10 +16,8 @@ import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import {
-  executeAgentCommand,
-  type AgentRequest,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { createApi } from '../../apps/api/app.ts';

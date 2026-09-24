@@ -93,7 +93,7 @@ describe('the runtime refusal codes L3 registers', () => {
 // `authority/delegations.ts` raises it for a second live delegation under a
 // purpose the agent already holds; `task.pickup` in `core-runtime` mints
 // through that function and hands the refusal back as an `AnyRefusal`, and
-// `fromRuntime` (`commands/refusal.ts`) registers it like any runtime
+// `fromReasoned` (`commands/refusal.ts`) registers it like any runtime
 // code. That is the same road `DELEGATION_NOT_LIVE` and
 // `DELEGATION_OUT_OF_PURPOSE` already travel, and neither is counted in the
 // twenty either: the census above is `SUGGESTED_STATUS`, the runtime's own

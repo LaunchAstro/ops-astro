@@ -16,12 +16,11 @@ import { readTaskDetail } from '../reads/tasks.ts';
 import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { declarationOf, type CommandName } from './surface.ts';
+import type { CommandName } from './surface.ts';
 import { handbackLease } from './tasks-handback.ts';
 import { MAXIMUM_LEASE_SECONDS, pickupReservation } from './tasks-pickup.ts';
-import { leaseSecondsFixes } from './tasks-lease.ts';
+import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/heartbeat.ts';
-import { heartbeatLease } from './tasks-controls.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
@@ -32,51 +31,10 @@ import {
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
+import type { AgentCall, AgentOperands, AgentRequest } from './agent-call.ts';
 
-/**
- * What an agent sends.
- *
- * The credential is **not** in it. It arrives beside the request the way the
- * bearer token does, because it is a credential rather than a field: a payload
- * field is something the command is about, and a body that carried its own
- * authority would be a body that could be logged, replayed into a register row
- * and compared by a digest.
- */
-export interface AgentRequest {
-  readonly command: CommandName;
-  readonly operationId: string;
-  readonly [field: string]: unknown;
-}
-
-/** One agent call: who is calling, under what credential, asking what. */
-export interface AgentCall {
-  readonly session: AgentSession;
-  readonly credential: string | undefined;
-  readonly request: AgentRequest;
-}
-
-/** The operands an agent command takes beyond its identifiers, parsed rather than coerced. */
-export interface AgentOperands {
-  readonly leaseSeconds?: number;
-  readonly report?: Readonly<Record<string, unknown>>;
-  readonly reservationId?: string;
-  readonly fence?: number;
-  readonly outcome?: string;
-}
-
-export interface AgentOperation {
-  /**
-   * The check `authorise` (`agent-authority.ts`) asks.
-   *
-   * `beforePickup` is the pair an agent login reaches holding nothing;
-   * `purpose` is `read` on the delegation's own purpose record; `decision` is
-   * L4's `decideAsAgent`, and a decision named as one when no credential is
-   * presented; `record` is the operation's own collection and action on the
-   * task the call is about.
-   */
-  readonly authority: 'beforePickup' | 'purpose' | 'decision' | 'record';
-  /** Where a `record` or `decision` check finds its task: the lease the body names, or the record. */
-  readonly subjectTask: 'lease' | 'record';
+/** What every kind of agent operation carries. */
+interface AgentOperationRow {
   /**
    * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
    * so the two entries refuse the same stray field in the same words. Any
@@ -86,13 +44,6 @@ export interface AgentOperation {
   readonly identifiers?: readonly string[];
   /** The operands read before any authority, after the system-owned fields. */
   readonly operands?: (request: AgentRequest) => AgentOperands | Refused;
-  /** What it does, under the delegation `authorise` resolved (none before a pickup). */
-  readonly serve: (
-    tx: TenantQuery,
-    call: AgentCall,
-    operands: AgentOperands,
-    delegation: Delegation | undefined,
-  ) => Promise<HandlerOutcome>;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay: 'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
@@ -104,7 +55,44 @@ export interface AgentOperation {
   ) => Promise<void>;
 }
 
-export const UUID: RegExp = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+/** What a delegated operation does, under the delegation `authorise` resolved. */
+type DelegatedServe = (
+  tx: TenantQuery,
+  call: AgentCall,
+  operands: AgentOperands,
+  delegation: Delegation,
+) => Promise<HandlerOutcome>;
+
+/**
+ * One agent operation, by the check `authorise` (`agent-authority.ts`) asks,
+ * so a row says whether it runs under a delegation and nothing has to find
+ * out again (THERMO-RECHECK NA1):
+ *
+ * - `beforePickup`, the pair an agent login reaches holding nothing, served
+ *   under no delegation;
+ * - `purpose`, `read` on the delegation's own purpose record;
+ * - `record`, the operation's own collection and action on the task the call
+ *   is about, found where `subjectTask` says;
+ * - `decision`, L4's `decideAsAgent`, which always refuses, so it has no
+ *   `serve` at all.
+ */
+export type AgentOperation =
+  | (AgentOperationRow & {
+      readonly authority: 'beforePickup';
+      readonly serve: (
+        tx: TenantQuery,
+        call: AgentCall,
+        operands: AgentOperands,
+      ) => Promise<HandlerOutcome>;
+    })
+  | (AgentOperationRow & { readonly authority: 'purpose'; readonly serve: DelegatedServe })
+  | (AgentOperationRow & {
+      readonly authority: 'record';
+      /** Where the check finds its task: the lease the body names, or the record. */
+      readonly subjectTask: 'lease' | 'record';
+      readonly serve: DelegatedServe;
+    })
+  | (AgentOperationRow & { readonly authority: 'decision' });
 
 /** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
 const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
@@ -266,9 +254,8 @@ export async function parseOperands(
 export async function capabilitiesOf(
   tx: TenantQuery,
   session: AgentSession,
-  delegation: Delegation | undefined,
+  held: Delegation,
 ): Promise<AgentCapabilities> {
-  const held = heldBy(delegation, 'session.capabilities');
   const grants: Capability[] = [];
   for (const collection of held.collections) {
     for (const action of held.actions) {
@@ -290,21 +277,10 @@ export async function capabilitiesOf(
   };
 }
 
-/**
- * The delegation an operation past the pre-pickup pair runs under. `authorise`
- * refuses every such call that resolves none, so its absence here is a fault.
- */
-function heldBy(delegation: Delegation | undefined, command: CommandName): Delegation {
-  if (delegation === undefined) {
-    throw new Error(`agent-operations: ${command} was served without a delegation`);
-  }
-  return delegation;
-}
-
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
-async function serveComment(tx: TenantQuery, { session, request }: AgentCall) {
+async function serveComment(tx: TenantQuery, { session, request, declaration }: AgentCall) {
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
   // the delegating person's live grant. The task is locked by the person
@@ -318,7 +294,7 @@ async function serveComment(tx: TenantQuery, { session, request }: AgentCall) {
     tx,
     {
       commentTypeId: spine.taskCommentTypeId,
-      declaration: declarationOf('task.comment') as NonNullable<ReturnType<typeof declarationOf>>,
+      declaration,
       target: { id: task.id, revision: task.revision },
       authorActorId: session.actorId,
       entryPoint: 'api',
@@ -334,7 +310,7 @@ async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
   operands: AgentOperands,
-  delegation: Delegation | undefined,
+  delegation: Delegation,
 ) {
   // The delegation `authorise` resolved for this call. The runtime locks it
   // and asks again whether it is live before renewing (`heartbeat`).
@@ -346,7 +322,7 @@ async function serveHeartbeat(
       ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
     },
     agentClaimant(session.actorId),
-    heldBy(delegation, 'task.heartbeat').id,
+    delegation.id,
   );
 }
 
@@ -362,7 +338,6 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.queue',
     {
       authority: 'beforePickup',
-      subjectTask: 'record',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.queue'].identifiers,
       serve: async (tx) => ({
@@ -376,19 +351,13 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.pickup',
     {
       authority: 'beforePickup',
-      subjectTask: 'record',
       replay: 'pickup',
       operands: pickupOperands,
-      serve: async (tx, { session }, operands) =>
-        await pickupReservation(
-          tx,
-          declarationOf('task.pickup')?.collection ?? 'task',
-          session.actorId,
-          {
-            reservationId: operands.reservationId ?? '',
-            ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
-          },
-        ),
+      serve: async (tx, { session, declaration }, operands) =>
+        await pickupReservation(tx, declaration.collection, session.actorId, {
+          reservationId: operands.reservationId ?? '',
+          ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
+        }),
     },
   ],
   [
@@ -467,25 +436,13 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.decide',
     {
       authority: 'decision',
-      subjectTask: 'record',
       replay: 'reauthorise',
-      // `authorise` always refuses a decision, so this is never reached; it is
-      // the refusal the old `serve` switch gave an operation it did not serve.
-      serve: async (_tx, { request }) =>
-        await Promise.resolve({
-          refusal: refuseCommand(
-            'DELEGATION_EXCLUDES_OPERATION',
-            [request.command],
-            ['Every other operation belongs to a person.'],
-          ),
-        }),
     },
   ],
   [
     'session.capabilities',
     {
       authority: 'purpose',
-      subjectTask: 'record',
       replay: 'capabilities',
       identifiers: READ_CATALOGUE['session.capabilities'].identifiers,
       // An agent holds no grants of its own -- `identity/agent-login.ts`

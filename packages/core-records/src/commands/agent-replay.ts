@@ -6,7 +6,6 @@
 // not the stored detail, when the rights are gone.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { AgentSession } from '../identity/agent-login.ts';
 import {
   checkDelegatedAuthority,
   digestOf,
@@ -15,11 +14,13 @@ import {
 } from '../authority/delegations.ts';
 import { DERIVED_SCHEME, LEGACY_SCHEME } from '../authority/credential-keys.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
-import { fromRuntime, refuseCommand, type CommandRefusal } from './refusal.ts';
-import { declarationOf } from './surface.ts';
+import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
-import { capabilitiesOf, UUID, type AgentCall, type AgentOperation } from './agent-operations.ts';
+import type { AgentOperation } from './agent-operations.ts';
+import { isRefused } from './outcome.ts';
+import type { AgentCall } from './agent-call.ts';
+import { isUuid } from '../tenancy/ids.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -33,7 +34,7 @@ export async function releaseReplay(
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
     case 'pickup':
-      return await replayPickup(tx, call.session, stored);
+      return await replayPickup(tx, call, stored);
     case 'capabilities':
       return await replayCapabilities(tx, call, operation);
     case 'settledHandback':
@@ -47,7 +48,7 @@ export async function releaseReplay(
 
 /**
  * A capabilities replay: the current rights checked the way a fresh call is,
- * then the answer projected for them. The stored answer is never released.
+ * then the row served again for them. The stored answer is never released.
  */
 async function replayCapabilities(
   tx: TenantQuery,
@@ -56,12 +57,9 @@ async function replayCapabilities(
 ): Promise<CommandResult> {
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) return authorised.refusal;
-  return {
-    command: call.request.command,
-    recordId: null,
-    revision: null,
-    detail: { ...(await capabilitiesOf(tx, call.session, authorised.delegation)) },
-  };
+  const served = await authorised.run({});
+  if (isRefused(served)) return served.refusal;
+  return { command: call.request.command, ...served };
 }
 
 /**
@@ -108,26 +106,25 @@ interface PickupBindingRow {
  */
 async function replayPickup(
   tx: TenantQuery,
-  session: AgentSession,
+  { session, declaration }: AgentCall,
   stored: CommandHandle,
 ): Promise<CommandResult> {
   const detail = stored.detail;
   const named = (key: string): string => {
     const value = detail[key];
-    return typeof value === 'string' && UUID.test(value) ? value : '';
+    return isUuid(value) ? value : '';
   };
   const delegationId = named('delegationId');
   const held =
     delegationId === '' ? undefined : await resolveLiveById(tx, session.actorId, delegationId);
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
 
-  const declaration = declarationOf('task.pickup');
   const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: held.purposeScope,
   });
-  if (!decision.ok) return fromRuntime(decision.refusal);
+  if (!decision.ok) return fromReasoned(decision.refusal);
 
   const rows = await tx.query<PickupBindingRow>(
     `select d.credential_scheme, d.credential_key_id, d.credential_hash,
@@ -223,22 +220,21 @@ async function replayPickup(
  */
 async function replaySettledHandback(
   tx: TenantQuery,
-  { session, credential, request }: AgentCall,
+  { session, credential, request, declaration }: AgentCall,
   stored: CommandHandle,
 ): Promise<CommandRefusal | undefined> {
   if (credential === undefined || credential === '') {
     return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
   }
-  const leaseId = String(stored.detail['leaseId'] ?? '');
-  const held = UUID.test(leaseId)
+  const leaseId = stored.detail['leaseId'];
+  const held = isUuid(leaseId)
     ? await resolveSettledByLease(tx, session.actorId, leaseId, credential)
     : undefined;
   if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
-  const declaration = declarationOf(request.command);
   const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration?.collection ?? 'task',
-    action: declaration?.action ?? 'write',
+    collection: declaration.collection,
+    action: declaration.action,
     scope: held.purposeScope,
   });
-  return decision.ok ? undefined : fromRuntime(decision.refusal);
+  return decision.ok ? undefined : fromReasoned(decision.refusal);
 }

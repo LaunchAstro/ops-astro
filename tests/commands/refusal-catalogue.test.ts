@@ -28,10 +28,9 @@ import { REFUSAL_REGISTER, statusOf } from '../../packages/core-records/src/comm
 import {
   asCallerVisible,
   fromAgentIdentity,
-  fromAuthority,
+  fromReasoned,
   fromIdentity,
   fromRecords,
-  fromRuntime,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
@@ -188,7 +187,7 @@ describe('one refusal from each road, byte for byte', () => {
   it('a runtime refusal: reason then fix, into fixes', () => {
     const result = refuseRuntime('LEASE_EXPIRED', 'The lease ended.', 'Pick the work up again.');
     if (result.ok) throw new Error('unreachable');
-    const shaped = fromRuntime(result.refusal);
+    const shaped = fromReasoned(result.refusal);
     expect(keys(shaped)).toBe(
       '{"refused":true,"code":"LEASE_EXPIRED","names":[],"fixes":["The lease ended.","Pick the work up again."]}',
     );
@@ -199,7 +198,7 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('a delegation refusal the runtime passes through', () => {
-    const shaped = fromRuntime({
+    const shaped = fromReasoned({
       code: 'DELEGATION_NOT_LIVE',
       reason: 'The delegation is over.',
       fix: 'Ask again.',
@@ -211,7 +210,7 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('an authority refusal', () => {
-    const shaped = fromAuthority({
+    const shaped = fromReasoned({
       code: 'SCOPE_NOT_GRANTED',
       reason: 'No grant covers this.',
       fix: 'Ask for one.',

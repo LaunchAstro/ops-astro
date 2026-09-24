@@ -18,15 +18,18 @@ import type { AgentSession } from '../../packages/core-records/src/identity/agen
 import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
 import {
   AGENT_OPERATIONS,
-  type AgentOperands,
   type AgentOperation,
-  type AgentRequest,
 } from '../../packages/core-records/src/commands/agent-operations.ts';
+import type {
+  AgentOperands,
+  AgentRequest,
+} from '../../packages/core-records/src/commands/agent-call.ts';
 import { pickupAsPerson } from '../../packages/core-records/src/commands/tasks-pickup.ts';
 import { heartbeatOwnLease } from '../../packages/core-records/src/commands/tasks-lease.ts';
 import { handbackOwnLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
 import { refuseNotFound } from '../../packages/core-records/src/commands/refusal.ts';
 import { refused } from '../../packages/core-records/src/commands/outcome.ts';
+import { declarationOf } from '../../packages/core-records/src/commands/surface.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK_TYPE = '22222222-2222-4222-8222-222222222222';
@@ -69,15 +72,23 @@ function agentOperands(command: string, fields: Record<string, unknown>): AgentO
 }
 
 async function agentServes(command: string, fields: Record<string, unknown>): Promise<unknown> {
-  return await row(command).serve(
+  const operation = row(command);
+  const declaration = declarationOf(command as AgentRequest['command']);
+  if (operation.authority !== 'record' || declaration === undefined) {
+    throw new Error(`${command} is not a record row`);
+  }
+  // Neither row reads the delegation; the one `authorise` would resolve is
+  // not what this compares.
+  return await operation.serve(
     tx,
     {
       session,
       credential: undefined,
       request: { command, operationId: randomUUID(), ...fields } as AgentRequest,
+      declaration,
     },
     {},
-    undefined,
+    undefined as never,
   );
 }
 
