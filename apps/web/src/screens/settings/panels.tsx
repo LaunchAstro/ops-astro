@@ -35,7 +35,7 @@ export function ReadBanner(props: { readonly state: ReadState<unknown> }): React
           Reading what this business holds…
         </p>
       ) : null}
-      {state.outcome === 'denied' && state.refusal !== null ? (
+      {state.outcome === 'denied' ? (
         <Empty
           title="These values were not read."
           description={describeRefusal(state.refusal)}
@@ -45,7 +45,7 @@ export function ReadBanner(props: { readonly state: ReadState<unknown> }): React
       {state.outcome === 'unavailable' ? (
         <Empty
           title="These values could not be read."
-          description={state.because ?? 'The read did not arrive.'}
+          description={state.because}
           hint="Nobody refused anything — the answer did not come back. Nothing below is the business's value."
         />
       ) : null}
@@ -69,7 +69,7 @@ export function CapabilityBanner(props: {
     (state.outcome === 'ready' || state.outcome === 'empty') && !holdsManage(state.value.grants);
   return (
     <div className="readstate" data-settings="capabilities" data-outcome={state.outcome}>
-      {state.outcome === 'denied' && state.refusal !== null ? (
+      {state.outcome === 'denied' ? (
         <p className="field__error" role="alert" data-settings="capabilities-because">
           {describeRefusal(state.refusal)}{' '}
           {state.refusal.code === 'SCOPE_NOT_GRANTED'

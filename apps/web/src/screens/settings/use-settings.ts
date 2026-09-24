@@ -23,42 +23,31 @@
 //    capability read said, because a grant can be revoked between the read and
 //    the press and the write is the newer fact.
 //  - **The browser's memory of its last confirmed write is the session's, and
-//    only for an unavailable read.** A refused `settings.read` is the server
-//    declining to tell this reader the value, so nothing is drawn in its place,
-//    and the memory is dropped rather than hidden: reads use current authority,
-//    and an outage after the refusal must not draw the copy back. Until an
-//    authorised read answers, the session's confirmed writes are not kept
-//    either, so the refusal holds across a remount. The memory is tagged with the session that wrote it and removed at
-//    sign-out (`session/token.ts`), because the tab outlives the session and
-//    the next person to sign in to it is a different reader. A write answered
-//    after that sign-out keeps nothing: the session generation it was pressed
-//    in has moved on.
+//    only for an unavailable read.** A refused `settings.read` drops it and
+//    holds until an authorised read answers (`confirmed.ts`), and a write
+//    answered after sign-out keeps nothing: the session generation it was
+//    pressed in has moved on.
+//
+// The write itself goes through `useCommand`, which classifies the answer; this
+// file keeps only what settings does with each kind.
 
 import { useEffect, useState } from 'react';
-import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type CommandOutcome,
-  type MutationOptions,
-  type OperationsClient,
+import type {
+  CallResult,
+  CommandOutcome,
+  MutationOptions,
+  OperationsClient,
 } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
-import {
-  isRecord,
-  jsonSlot,
-  sessionGeneration,
-  settingsCacheKey,
-  type JsonSlot,
-  type StorageLike,
-} from '../../session/token.ts';
+import { sessionGeneration, type StorageLike } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
-import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import { useCommand, type Settlement } from '../../records/use-command.ts';
 import type {
   CapabilitiesResult,
   SettingRow,
   SettingsReadResult,
 } from '../../operations/shapes.ts';
+import { sessionMemory, type Confirmed } from './confirmed.ts';
 import {
   FOUR_EYES,
   SESSION_CAPABILITIES,
@@ -70,6 +59,7 @@ import {
 } from './reads.ts';
 
 export type { StorageLike } from '../../session/token.ts';
+export type { Confirmed } from './confirmed.ts';
 
 /** Which of the two settings a press is about. */
 export type Which = 'four-eyes' | 'sign-off';
@@ -84,21 +74,6 @@ const COMMAND = {
 
 const KEY = { 'four-eyes': FOUR_EYES, 'sign-off': SIGN_OFF } as const;
 
-/** What the last confirmed write left behind, per business. The fallback only. */
-export interface Confirmed {
-  readonly fourEyes?: number | null;
-  readonly signOff?: boolean;
-}
-
-/**
- * As stored: the values and the session they belong to, or for a session
- * refused `settings.read`, no values and the mark that it was.
- */
-interface Stored extends Confirmed {
-  readonly session: string;
-  readonly denied?: true;
-}
-
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
   readonly which: Which;
@@ -107,89 +82,23 @@ export interface Conflict {
   readonly because: string;
 }
 
-/**
- * Which session a stored value belongs to, without storing the bearer again.
- *
- * The grant key is business and token together; FNV-1a over it tells one
- * session from another in the same tab, which is all the tag is for.
- */
-function sessionTag(grantKey: string): string {
-  let hash = 0x811c9dc5;
-  for (let at = 0; at < grantKey.length; at += 1) {
-    hash = Math.imul(hash ^ (grantKey.codePointAt(at) ?? 0), 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, '0');
-}
-
-/** Any object passes; `readConfirmed` then checks whose session it was. */
-function isStored(value: unknown): value is Partial<Stored> {
-  return isRecord(value);
-}
-
-/** This business's slot. A storage that throws leaves "not known" drawn. */
-function confirmedSlot(
-  storage: StorageLike | null,
-  businessKey: string,
-): JsonSlot<Partial<Stored>> {
-  return jsonSlot(storage, settingsCacheKey(businessKey), isStored);
-}
-
-function readConfirmed(
-  storage: StorageLike | null,
-  businessKey: string,
-  grantKey: string,
-): Confirmed {
-  const stored = confirmedSlot(storage, businessKey).read();
-  if (stored === null) return {};
-  // Another session's value, or one stored before values carried a session,
-  // is not this reader's to see.
-  const { session, denied, ...values } = stored;
-  return session === sessionTag(grantKey) && denied !== true ? values : {};
-}
-
-/** Whether this session was refused `settings.read` and no read has answered since. */
-function wasDenied(storage: StorageLike | null, businessKey: string, grantKey: string): boolean {
-  const stored = confirmedSlot(storage, businessKey).read();
-  return stored?.session === sessionTag(grantKey) && stored.denied === true;
-}
-
-function writeConfirmed(
-  storage: StorageLike | null,
-  businessKey: string,
-  grantKey: string,
-  next: Confirmed,
-): void {
-  // A refused write leaves the screen drawing what it has in hand this render.
-  const stored: Stored = { ...next, session: sessionTag(grantKey) };
-  confirmedSlot(storage, businessKey).write(stored);
-}
-
-/**
- * The server refused this session the read: drop its values and mark it.
- *
- * The mark is what outlasts a remount. Without it, a write confirmed before
- * the next authorised read would put a copy back for an outage to draw. A
- * storage that refuses the mark leaves memory as the only copy, and memory is
- * already clear.
- */
-function holdDenied(storage: StorageLike | null, businessKey: string, grantKey: string): void {
-  const stored: Stored = { session: sessionTag(grantKey), denied: true };
-  confirmedSlot(storage, businessKey).write(stored);
-}
-
 /** The server's own echo of the row it wrote, or nothing when it said nothing. */
 function echoed(result: CallResult<CommandOutcome>): unknown {
   if (!('ok' in result)) return undefined;
   return result.value.detail?.['value'];
 }
 
+const isThreshold = (value: unknown): value is number | null =>
+  value === null || typeof value === 'number';
+
+/** The server's echo when it gave one of the right kind, else what was sent. */
 function remember(which: Which, echo: unknown, value: Draft): Confirmed {
   if (which === 'four-eyes') {
-    const number =
-      echo === null ? null : typeof echo === 'number' ? echo : (value as number | null);
-    return { fourEyes: number };
+    const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
+    return fourEyes === undefined ? {} : { fourEyes };
   }
-  return { signOff: typeof echo === 'boolean' ? echo : (value as boolean) };
+  const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
+  return signOff === undefined ? {} : { signOff };
 }
 
 export interface SettingsModel {
@@ -238,21 +147,27 @@ export function useSettings(
   });
 
   // Keyed by the grant: a new session in a still-mounted screen reads afresh
-  // rather than keeping what the previous session had confirmed.
-  // The refusal's hold is kept in memory as well as in storage, so a storage
-  // that refuses writes does not lift it.
+  // rather than keeping what the previous session had confirmed. The refusal's
+  // hold is kept in memory as well as in storage, so a storage that refuses
+  // writes does not lift it.
+  const memory = sessionMemory(storage, businessKey, grantKey);
   const [held, setHeld] = useState(() => ({
     grantKey,
-    confirmed: readConfirmed(storage, businessKey, grantKey),
-    denied: wasDenied(storage, businessKey, grantKey),
+    confirmed: memory.confirmed(),
+    denied: memory.denied(),
   }));
   const current = held.grantKey === grantKey;
-  const confirmed = current ? held.confirmed : readConfirmed(storage, businessKey, grantKey);
-  const denied = current ? held.denied : wasDenied(storage, businessKey, grantKey);
-  const [because, setBecause] = useState<string | null>(null);
+  const confirmed = current ? held.confirmed : memory.confirmed();
+  const denied = current ? held.denied : memory.denied();
+  const command = useCommand();
+  const [pressed, setPressed] = useState<Which>('four-eyes');
+  const [complaint, setComplaint] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [closed, setClosed] = useState(false);
-  const [busy, setBusy] = useState<Which | null>(null);
+  const busy = command.busy ? pressed : null;
+  // A stale write is the conflict, drawn with its draft, not a reason line.
+  const failure = command.failure?.kind === 'stale' ? null : command.failure;
+  const because = complaint ?? failure?.because ?? null;
 
   const read = settings.state;
   const caps = capabilities.state;
@@ -278,11 +193,12 @@ export function useSettings(
   // are then what is drawn.
   const readOutcome = read.grantKey === grantKey ? read.outcome : 'loading';
   useEffect(() => {
+    const memoryNow = sessionMemory(storage, businessKey, grantKey);
     if (readOutcome === 'denied') {
-      holdDenied(storage, businessKey, grantKey);
+      memoryNow.deny();
       setHeld({ grantKey, confirmed: {}, denied: true });
     } else if (readOutcome === 'ready' || readOutcome === 'empty') {
-      if (wasDenied(storage, businessKey, grantKey)) confirmedSlot(storage, businessKey).remove();
+      memoryNow.lift();
       setHeld((was) => (was.grantKey === grantKey && was.denied ? { ...was, denied: false } : was));
     }
   }, [readOutcome, storage, businessKey, grantKey]);
@@ -290,51 +206,48 @@ export function useSettings(
   const settle = (
     which: Which,
     value: Draft,
-    result: CallResult<CommandOutcome>,
+    settlement: Settlement,
+    answer: CallResult<CommandOutcome> | undefined,
     pressedIn: number,
   ): void => {
-    setBusy(null);
     // Answered after the session that pressed Save ended: the sign-out has
     // removed what the tab held, and this answer must not put it back.
     if (sessionGeneration() !== pressedIn) return;
-    if (isRefusal(result)) {
-      if (result.code === 'VERSION_STALE') {
-        // Reread, so the conflict shows what the row holds *now* rather than
-        // the value this attempt was made against.
-        setConflict({ which, draft: value, because: describeRefusal(result) });
-        settings.reload();
-        return;
-      }
-      if (result.code === 'SCOPE_NOT_GRANTED') setClosed(true);
-      setBecause(describeRefusal(result));
+    if (settlement.kind === 'stale') {
+      // Reread, so the conflict shows what the row holds *now* rather than the
+      // value this attempt was made against.
+      setConflict({ which, draft: value, because: settlement.because });
+      settings.reload();
       return;
     }
-    if (isUnavailable(result)) {
-      setBecause(describeFailure(result));
-      return;
-    }
-    setBecause(null);
+    if (settlement.kind === 'closed') setClosed(true);
+    if (settlement.kind !== 'ok') return;
     setConflict(null);
     // A session refused the read keeps nothing until a read answers it.
-    if (!denied && !wasDenied(storage, businessKey, grantKey)) {
-      const merged = { ...confirmed, ...remember(which, echoed(result), value) };
+    if (!denied && !memory.denied()) {
+      const echo = answer === undefined ? undefined : echoed(answer);
+      const merged = { ...confirmed, ...remember(which, echo, value) };
       setHeld({ grantKey, confirmed: merged, denied: false });
-      writeConfirmed(storage, businessKey, grantKey, merged);
+      memory.keep(merged);
     }
     // The row as the server holds it, not the echo and not what was typed.
     settings.reload();
   };
 
   const save = (which: Which, value: Draft): void => {
-    if (busy !== null || shut) return;
+    if (command.busy || shut) return;
     const revision = rowFor(which)?.revision;
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
-    setBusy(which);
-    setBecause(null);
+    setPressed(which);
+    setComplaint(null);
     const pressedIn = sessionGeneration();
-    void (async () => {
-      settle(which, value, await client.mutate(COMMAND[which], { value }, options), pressedIn);
-    })();
+    let answer: CallResult<CommandOutcome> | undefined;
+    command.run(
+      async () => (answer = await client.mutate(COMMAND[which], { value }, options)),
+      (settlement) => {
+        settle(which, value, settlement, answer, pressedIn);
+      },
+    );
   };
 
   return {
@@ -357,6 +270,6 @@ export function useSettings(
       setConflict(null);
       save(conflict.which, conflict.draft);
     },
-    complain: setBecause,
+    complain: setComplaint,
   };
 }

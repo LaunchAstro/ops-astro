@@ -182,6 +182,19 @@ describe('a denied settings.read ends the fallback for the session', () => {
     await again.unmount();
   });
 
+  it('a stored value of the wrong shape, even under this session, is not drawn', async () => {
+    const server = api();
+    await (await adaWrites(server)).unmount();
+    const key = 'ops-astro.settings.alpha';
+    const stored = JSON.parse(window.sessionStorage.getItem(key) ?? '{}') as object;
+    window.sessionStorage.setItem(key, JSON.stringify({ ...stored, fourEyes: '7777 dollars' }));
+
+    const page = await open(server);
+    expect(page.text()).not.toContain('7777');
+    expect(known(page)).toContain('not known');
+    await page.unmount();
+  });
+
   it('an authorised read lifts the hold, so the next confirmed write is the fallback again', async () => {
     const server = api();
     await (await adaWrites(server)).unmount();
