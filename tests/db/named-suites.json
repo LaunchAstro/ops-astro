@@ -47,7 +47,8 @@
     "SOL6-RUNTIME-FIX-2 adds lease-expiry-post-lock-clock (Sol 6 RUNTIME-1 at 158d6de through the command entry: a handback parked on the cap past its lease expiry refused LEASE_EXPIRED, its report retained, lease, hold, envelope, gates and versions unchanged; a person pickup parked on the cap past the bound lease's expiry fences it, classifies the old hold lease_expired_and_fenced and opens exactly one fresh hold, its lease running from the post-lock instant; the same agent's replacement parked the same way settles its expired delegation instead of refusing DELEGATION_ALREADY_LIVE); and successor-bounds-exact (Sol 6 RUNTIME-2: a cap of 2^54 + 3 with 2^54 + 1 committed through valid holds, a successor ceiling of 4 refused SUCCESSOR_OUT_OF_BOUNDS with no report, no successor and nothing moved, and a ceiling of 2 accepted with a pending successor gate); its continuation adds handback-envelope-totals (thermo NB5: a marked attempt's handback answers the quarantined 1500 held from the envelope row, not a 0 fallback).",
     "SOL6-AUTHORITY-FIX-2 adds person-replay-current-rights (a person replay of a stored success answers current authority: pickup after the only covering write grant is revoked is SCOPE_NOT_GRANTED with no receipt, no second lease and the register row unchanged; a pickup whose lease was handed back is LEASE_EXPIRED; task.create after revocation is refused; live rights replay as stored; Sol 6 AUTHORITY-1).",
     "SOL6-AUTHORITY-FIX-2 adds agent-operand-types (on the agent prefix an array reservationId is COMMAND_BODY_INVALID with no lease, a string fence or array outcome is FIELD_VALUE_INVALID with the lease live and no report, and after the person's write grant lapses an array outcome retains nothing; string ids, numeric fences and string outcomes still claim, settle and retain; Sol 6 AUTHORITY-2), and sends agent-person-wording's pickup and handback rows the same full body on both entries.",
-    "SOL6-AUTHORITY-FIX-2 adds agent-read-targets (on the agent prefix a stray recordId on task.queue or session.capabilities and a stray board on task.read is COMMAND_BODY_INVALID naming the field, one body for own, foreign and fabricated ids, one refused audit event per call, before the delegation is read and in the person prefix bytes; the reads without it answer 200; Sol 6 AUTHORITY-3)."
+    "SOL6-AUTHORITY-FIX-2 adds agent-read-targets (on the agent prefix a stray recordId on task.queue or session.capabilities and a stray board on task.read is COMMAND_BODY_INVALID naming the field, one body for own, foreign and fabricated ids, one refused audit event per call, before the delegation is read and in the person prefix bytes; the reads without it answer 200; Sol 6 AUTHORITY-3).",
+    "ARCH-4 adds rediscovery-pin (the statement sequence from the first unlocked discovery to the end of the recheck at propose, cancel, delegation.revoke, grant.revoke and the startup replay, taken before those sites moved onto one rediscovery module)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -171,6 +172,7 @@
     "tests/tenancy/runtime-statements.test.ts",
     "tests/tenancy/statement-capture-full.test.ts",
     "tests/runtime/recovery-replay-pin.test.ts",
-    "tests/runtime/pickup-refusal-order.test.ts"
+    "tests/runtime/pickup-refusal-order.test.ts",
+    "tests/runtime/rediscovery-pin.test.ts"
   ]
 }
