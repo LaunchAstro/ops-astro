@@ -135,6 +135,25 @@ describe('splitStatements against scan.l', () => {
     ['create table a (id int); 1', ['create table a (id int)', '1']],
     ['select 1; "x"', ['select 1', '"x"']],
     ['-- c\n; /* d */ ;\t\f\v\r\n;', []],
+    // SOL-FR11-1 (red): text that ends inside a block comment is scan.l's
+    // lexical error (<xc><<EOF>>), so the piece is kept for the server to
+    // refuse. Every other state the text can end inside is kept already: a
+    // string of any form, a quoted identifier, a dollar quote. A line comment
+    // may end the text; that is no error, and the piece is dropped.
+    [
+      'create table ops.fr11_a (id int); /* unfinished',
+      ['create table ops.fr11_a (id int)', '/* unfinished'],
+    ],
+    ['select 1; /* a /* b */', ['select 1', '/* a /* b */']],
+    ["select 1; 'x", ['select 1', "'x"]],
+    ["select 1; E'x\\'", ['select 1', "E'x\\'"]],
+    ["select 1; B'1", ['select 1', "B'1"]],
+    ["select 1; X'1", ['select 1', "X'1"]],
+    ["select 1; U&'x", ['select 1', "U&'x"]],
+    ['select 1; "x', ['select 1', '"x']],
+    ['select 1; U&"x', ['select 1', 'U&"x']],
+    ['select 1; $a$x', ['select 1', '$a$x']],
+    ['select 1; -- fine', ['select 1']],
     // Numbers: a real ends before `$$` only with a signed exponent; 1e3$$ and
     // 0x1F$$ are trailing junk that PostgreSQL refuses, one token here too.
     ['select 1e-3$$;$$; commit', ['select 1e-3$$;$$', 'commit']],

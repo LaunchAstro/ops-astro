@@ -34,6 +34,11 @@ export interface StatementLog {
   /** Record one string as sent to the server. It may hold several statements. */
   record(source: string, sql: string): void;
   readonly entries: readonly RecordedStatement[];
+  /**
+   * Record that the server has stopped reading SQL the way this log does, so
+   * nothing recorded after it can be cleared.
+   */
+  unreadable(source: string, reason: string): void;
   /** Everything this log cannot clear of changing the schema. */
   schemaChanging(): readonly RecordedStatement[];
 }
@@ -99,8 +104,8 @@ const SESSION_VERBS: ReadonlySet<string> = new Set([
 // A plain '' string is read as standard_conforming_strings = on reads it, the
 // default since PostgreSQL 9.1: a backslash in it is a plain character. A
 // session that turns the setting off makes it escape a quote, which this
-// reading cannot know. The migration runner is covered by its backstop, one
-// command to each send; the statement log assumes the setting stays on.
+// reading cannot know. So every logged connection starts with it on, and a
+// change the server reports is recorded as `unreadable` (tenancy/database.ts).
 const IDENTIFIER = /[A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9$\u{80}-\u{10FFFF}]*/uy;
 const DECIMAL_DIGITS = /[0-9][0-9_]*/uy;
 const DOLLAR_TAG = /\$([A-Za-z_\u{80}-\u{10FFFF}][A-Za-z_0-9\u{80}-\u{10FFFF}]*)?\$/uy;
@@ -129,7 +134,8 @@ function skipLineComment(sql: string, from: number): number {
 }
 
 // Block comments nest in PostgreSQL, so a depth counter is the only correct
-// reading. `/* /* */ */` closes once, not twice.
+// reading. `/* /* */ */` closes once, not twice. -1 when the text ends inside
+// one, which PostgreSQL refuses (<xc><<EOF>>, "unterminated /* comment").
 function skipBlockComment(sql: string, from: number): number {
   let depth = 0;
   let at = from;
@@ -145,7 +151,7 @@ function skipBlockComment(sql: string, from: number): number {
       at += 1;
     }
   }
-  return sql.length;
+  return -1;
 }
 
 // A quote doubled inside a quoted run is a literal quote, not the end of it.
@@ -225,6 +231,8 @@ export interface Token {
    */
   readonly kind: 'comment' | 'quoted' | 'word' | 'other';
   readonly end: number;
+  /** A block comment the text ends inside: an error, not a gap. */
+  readonly unterminated?: true;
 }
 
 /**
@@ -235,7 +243,12 @@ export interface Token {
 export function scanToken(sql: string, from: number): Token {
   const rest = sql.slice(from, from + 2);
   if (rest === '--') return { kind: 'comment', end: skipLineComment(sql, from) };
-  if (rest === '/*') return { kind: 'comment', end: skipBlockComment(sql, from) };
+  if (rest === '/*') {
+    const end = skipBlockComment(sql, from);
+    return end < 0
+      ? { kind: 'comment', end: sql.length, unterminated: true }
+      : { kind: 'comment', end };
+  }
   const ch = sql[from] ?? '';
   // Only a lone E opens an escape string (xestart). The e that ends a longer
   // word is part of the word, and the quote after it opens a plain string.
@@ -303,6 +316,7 @@ function trimSpace(text: string): string {
 function onlyCommentsAndSpace(piece: string): boolean {
   for (let at = 0; at < piece.length;) {
     const token = scanToken(piece, at);
+    if (token.unterminated === true) return false;
     if (token.kind !== 'comment' && !SPACE.has(piece[at] ?? '')) return false;
     at = token.end;
   }
@@ -350,6 +364,9 @@ export function createStatementLog(): StatementLog {
     record(source: string, sql: string): void {
       const at = Date.now();
       for (const statement of classify(sql)) entries.push({ ...statement, source, at });
+    },
+    unreadable(source: string, reason: string): void {
+      entries.push({ text: reason, kind: 'opaque', source, at: Date.now() });
     },
     entries,
     schemaChanging(): readonly RecordedStatement[] {

@@ -111,8 +111,8 @@ does. So a nested block comment cannot hide a `COMMIT` (SOL-FR7-1), nor can
 prefix (SOL-FR9-1), nor a line comment that a lone carriage return ends, nor
 an `E''` string continued on the next line (FR11-SCANNER). A word inside a
 comment or a quoted string is not read as part of the statement. A piece that
-is more than comments and whitespace is sent, never dropped, so PostgreSQL
-refuses what it cannot read. None of the files on disk holds one of these.
+is more than comments and whitespace is sent, never dropped, and so is one that
+ends inside a block comment, so PostgreSQL refuses what it cannot read. None of the files on disk holds one of these.
 Behind the guard, the runner sends each statement over the extended query
 protocol, so if a statement the scanner read as one still holds two commands,
 PostgreSQL refuses it ("cannot insert multiple commands into a prepared

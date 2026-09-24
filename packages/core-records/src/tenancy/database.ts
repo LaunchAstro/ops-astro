@@ -85,6 +85,18 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
     debug: (_connection: number, query: string) => {
       log.record(source, query);
     },
+    // The log reads a plain string as standard_conforming_strings = on does.
+    // Every connection starts with it on, so a database or role default of
+    // off does not apply, and RESET comes back to on. The server reports each
+    // change of it however it was made (SET, SET LOCAL, set_config, a function
+    // body), and a change away from on is recorded as a point the log cannot
+    // read past (SOL-FR11-2).
+    connection: { standard_conforming_strings: 'on' },
+    onparameter: (key: string, value: unknown) => {
+      if (key === 'standard_conforming_strings' && value !== 'on') {
+        log.unreadable(source, `standard_conforming_strings = ${String(value)}`);
+      }
+    },
   });
   return { sql, log };
 }
