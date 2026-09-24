@@ -746,11 +746,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     observe('external-party', 'g-external-projection', 'task.read', externalRead, SUCCESS);
     const sharedTask = externalRead.body['sharedTask'] as Record<string, unknown>;
     expect(externalRead.body['task']).toBeUndefined();
-    // Absent, not hidden: no field is classified `shared` as shipped, and the
-    // one comment is the client's.
-    expect(sharedTask['fields']).toStrictEqual({});
+    // The shared fields are the title and the state's label (Nathan's I09
+    // ruling); everything else is absent, not hidden, and the one comment is
+    // the client's.
+    expect(sharedTask['fields']).toStrictEqual({
+      title: 'the one task this delegation is for',
+      state: expect.any(String),
+    });
     expect(JSON.stringify(externalRead.body)).not.toContain('must never see');
-    expect(JSON.stringify(externalRead.body)).not.toContain('the one task this delegation is for');
     expect(sharedTask['comments']).toHaveLength(1);
     // The rest of case 7: a sibling task and the board are `NOT_FOUND`.
     const externalSibling = await harness.asPerson(

@@ -30,7 +30,7 @@ import {
   type World,
 } from './world.ts';
 
-const TITLE = 'Quarterly retainer: internal margin 41 percent';
+const TITLE = 'Quarterly retainer: draft for review';
 const DESCRIPTION = 'internal: client is behind on two invoices';
 const TEAM_NOTE = 'team only: do not tell the client about the margin';
 const CLIENT_NOTE = 'Hello, the draft is ready for your review.';
@@ -135,13 +135,21 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
 
     const task = read.body['sharedTask'] as Record<string, unknown>;
     expect(read.body['task']).toBeUndefined();
-    // As shipped, no task field is classified `shared`, so none is shown.
+    // Nathan's I09 ruling (OWNER-CARD section 6): a shared task shows the
+    // client its title and its status. The status is the state's label, the
+    // word the admin's own read shows, not the identifier of a state record
+    // the client cannot read.
+    const admin = (await as(world.ada, 'task.read', { recordId: shared })).body['task'] as {
+      readonly state: { readonly id: string; readonly label: string };
+    };
+    expect(admin.state.label).not.toBe('');
     expect(task).toStrictEqual({
       id: shared,
-      fields: {},
+      fields: { title: TITLE, state: admin.state.label },
       comments: [expect.objectContaining({ audience: 'client', body: CLIENT_NOTE })],
     });
-    for (const secret of [TITLE, DESCRIPTION, TEAM_NOTE, SIBLING_TITLE]) {
+    expect(text).not.toContain(admin.state.id);
+    for (const secret of [DESCRIPTION, TEAM_NOTE, SIBLING_TITLE]) {
       expect(text).not.toContain(secret);
     }
 
@@ -155,22 +163,37 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
   it('item 2: the task fields come from the catalogue, so classifying one shows exactly it', async () => {
     // Catalogue data, not the share: no owning operation reclassifies a spine
     // field yet, so the classification is set directly and put back after.
-    const classify = async (visibility: 'shared' | 'internal') =>
+    const classify = async (key: string, visibility: 'shared' | 'internal') =>
       await world.db.app.withBusiness(world.alpha, (tx) =>
         tx.query(
           `update field_defs set visibility_class = $1
-            where record_type_id = $2 and key = 'title'`,
-          [visibility, world.spineAlpha.taskTypeId],
+            where record_type_id = $2 and key = $3`,
+          [visibility, world.spineAlpha.taskTypeId, key],
         ),
       );
-    await classify('shared');
+    const fieldsRead = async () =>
+      (
+        (await as(ext, 'task.read', { recordId: shared })).body['sharedTask'] as {
+          readonly fields: Readonly<Record<string, unknown>>;
+        }
+      ).fields;
+    await classify('description', 'shared');
     try {
-      const read = await as(ext, 'task.read', { recordId: shared });
-      const task = read.body['sharedTask'] as Record<string, unknown>;
-      expect(task['fields']).toStrictEqual({ title: TITLE });
-      expect(JSON.stringify(read.body)).not.toContain(DESCRIPTION);
+      expect(Object.keys(await fieldsRead()).toSorted()).toStrictEqual([
+        'description',
+        'state',
+        'title',
+      ]);
     } finally {
-      await classify('internal');
+      await classify('description', 'internal');
+    }
+    await classify('title', 'internal');
+    try {
+      const fields = await fieldsRead();
+      expect(Object.keys(fields)).toStrictEqual(['state']);
+      expect(JSON.stringify(fields)).not.toContain(TITLE);
+    } finally {
+      await classify('title', 'shared');
     }
   });
 

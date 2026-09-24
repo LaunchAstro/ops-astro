@@ -255,7 +255,9 @@ export async function readSharedTask(
 ): Promise<SharedTaskView | undefined> {
   if (!isUuid(recordId)) return undefined;
   const rows = await tx.query<Readonly<Record<string, unknown>>>(
-    `select r.* from public.records r
+    `select r.*, s.data ->> 'label' as shared_state_label from public.records r
+       left join public.records s
+         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
         and r.deleted_at is null`,
     [tx.businessId, taskTypeId, recordId],
@@ -266,7 +268,14 @@ export async function readSharedTask(
   const fields: Record<string, unknown> = {};
   for (const field of await readFieldDefinitions(tx, taskTypeId)) {
     if (!isLive(field) || field.visibilityClass !== 'shared') continue;
-    fields[field.key] = field.slot === null ? (data[field.key] ?? null) : (row[field.slot] ?? null);
+    // A shared state is its label, the word the member's read shows: the state
+    // record's identifier tells a reader who cannot read state records nothing (I09).
+    fields[field.key] =
+      field.key === 'state'
+        ? (row['shared_state_label'] ?? null)
+        : field.slot === null
+          ? (data[field.key] ?? null)
+          : (row[field.slot] ?? null);
   }
   return {
     id: recordId,
