@@ -13,16 +13,13 @@ The Matt Pocock loop routes the work. No other routing block applies.
 
 `/grill-with-docs`, `/to-spec`, `/to-tickets`, `/implement`, `/code-review`.
 Confirm unresolved seams and the ticket breakdown with the human. Small work
-starts at `/implement`. Pstack supplies standards within this loop.
+starts at `/implement`. Pstack supplies standards here.
 
 Read [current decisions](docs/current-decisions.md) and the ticket before
 work. Read [model roles](docs/agents/model-roles.md) for fresh context,
 independent review, and written handoffs. Run the
-[session check](docs/agents/session-check.md) before implementation.
-
-Implementing against what is already built? Start at
-[the local slice](docs/local/README.md): it has the start sequence, how a
-request travels, which command proves what, and the limits.
+[session check](docs/agents/session-check.md) before implementation. For
+built code, start at [the local slice](docs/local/README.md).
 
 ## Build and review
 
@@ -30,7 +27,7 @@ One owner, ticket branch, and isolated worktree per ticket. Normal ticket
 review reads the complete committed change. When commits are held during
 local foundation preparation, review the actual files and diff against an
 identified manifest, as [review checkpoints](docs/agents/review-checkpoint.md)
-requires. Do not create a commit to make that local review possible.
+requires. Commit nothing only to enable that review.
 
 The final ticket verifies the integrated feature. Done is a checked artefact.
 A frontier model from a different company than the builder's reviews that
