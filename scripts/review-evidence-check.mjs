@@ -98,38 +98,92 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
 
+// What GitHub shows, read in one pass over the lines, because comments and
+// fences each decide what the other is.
+//
 // An HTML comment is instruction to the author, never evidence. Removing it
-// first is what stops the template's own prose from answering for the author.
-// An unclosed comment runs to the end of the body, as GitHub renders it: the
+// is what stops the template's own prose from answering for the author. An
+// unclosed comment runs to the end of the body, as GitHub renders it: the
 // security review of d77b375, finding 2, found a line the merger never sees
 // read as the only outcome. Everything after an unclosed `<!--` is hidden.
-const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, ' ');
-
+//
 // Fenced code is shown as code, not as a field. Copilot on PR A: a body whose
-// only outcome sat inside a fenced sample passed, because fields were read on
-// every line. Lines from an opening fence to its closing fence are blanked
-// before fields are read, and an unclosed fence runs to the end of the body,
-// as GitHub renders it. The checkpoint block, which the template ships inside
-// a fence, is still read from the whole body. A fence may follow the same
-// quote and list markers a field may.
-const FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})(.*)$/u;
-const stripFences = (text) => {
-  let open = '';
-  return text
-    .split('\n')
-    .map((line) => {
-      const m = FENCE.exec(line);
-      if (open === '') {
-        if (m !== null) open = m[1] ?? '';
-        return open === '' ? line : '';
+// only outcome sat inside a fenced sample passed. Lines from an opening fence
+// to its closing fence are code, and an unclosed fence runs to the end of the
+// body. The checkpoint block, which the template ships inside a fence, is
+// read with fenced lines kept; the outcome fields are read with them blanked.
+//
+// Sol's recheck of 8eb0983 found two misreadings, both fixed here. A fence is
+// indented 0 to 3 spaces, as CommonMark has it: four spaces or a tab make an
+// indented code line, and the outcomes after it are visible. And comments
+// were removed before fences were found, so `<!--` inside a fenced sample ate
+// the closing fence; inside a fence it is literal code now, and a fence line
+// inside a comment is hidden with the comment. A fence may follow the same
+// quote and list markers a field may, and a backtick fence's info string has
+// no backtick in it.
+const FENCE = /^ {0,3}(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})(.*)$/u;
+const fenceRun = (line) => {
+  const m = FENCE.exec(line);
+  if (m === null) return null;
+  const run = m[1] ?? '';
+  const info = m[2] ?? '';
+  return run[0] === '`' && info.includes('`') ? null : { run, info };
+};
+// Drop each comment on one line of text outside a fence. One left open
+// hides everything after it, and text on either side of a comment that spans
+// lines joins into one line, as it does when GitHub renders it.
+const dropComments = (line) => {
+  let kept = '';
+  let rest = line;
+  for (;;) {
+    const open = rest.indexOf('<!--');
+    if (open === -1) return { kept: kept + rest, open: false };
+    kept += `${rest.slice(0, open)} `;
+    const close = rest.indexOf('-->', open + 4);
+    if (close === -1) return { kept, open: true };
+    rest = rest.slice(close + 3);
+  }
+};
+const visible = (text, { keepFences }) => {
+  const out = [];
+  let fence = '';
+  let comment = false;
+  let pending = '';
+  for (const line of text.split('\n')) {
+    let rest = line;
+    if (comment) {
+      const end = rest.indexOf('-->');
+      if (end === -1) continue;
+      comment = false;
+      rest = rest.slice(end + 3);
+    } else if (fence === '') {
+      const f = fenceRun(rest);
+      if (f !== null) {
+        fence = f.run;
+        out.push(keepFences ? rest : '');
+        continue;
       }
-      const run = m?.[1] ?? '';
-      if (run[0] === open[0] && run.length >= open.length && (m?.[2] ?? '').trim() === '') {
-        open = '';
+    } else {
+      const f = fenceRun(rest);
+      if (
+        f !== null &&
+        f.run[0] === fence[0] &&
+        f.run.length >= fence.length &&
+        f.info.trim() === ''
+      ) {
+        fence = '';
       }
-      return '';
-    })
-    .join('\n');
+      out.push(keepFences ? rest : '');
+      continue;
+    }
+    let kept;
+    ({ kept, open: comment } = dropComments(pending + rest));
+    pending = '';
+    if (comment) pending = kept;
+    else out.push(kept);
+  }
+  if (comment) out.push(pending);
+  return out.join('\n');
 };
 
 // The literal strings the template ships with. An unreplaced one is named in
@@ -268,8 +322,8 @@ const failures = [];
 
 // --- rule 1: a checkpoint for this head ------------------------------------
 
-const prose = stripComments(body);
-const stated = fields(stripFences(prose));
+const prose = visible(body, { keepFences: true });
+const stated = fields(visible(body, { keepFences: false }));
 
 const checkpoint = /Review checkpoint[\s\S]{0,600}?head:\s*([0-9a-f]{7,40})/iu.exec(prose);
 

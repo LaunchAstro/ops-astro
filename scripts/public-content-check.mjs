@@ -104,28 +104,37 @@ export function addressRules(text, scope) {
   return [...found];
 }
 
+// The trailers that carry an identity, and so may carry a GitHub no-reply
+// address as provenance. `Signed-off-by` is the human certification
+// CONTRIBUTING.md and AI_POLICY.md describe; `Co-authored-by` is GitHub's
+// co-author trailer, allowed in tests/ci/public-history-cases.mjs since the
+// address policy was scoped. No other key is an identity: the repository's
+// own trailers (`Assisted-by`, `Agent-model`, `Agent-tool`, .gitmessage)
+// name a model and a tool, not a person.
+const identityTrailer = /^(?:Co-authored-by|Signed-off-by): /iu;
+
 // A raw commit object is headers, a blank line, then the message. Only the
-// author and committer headers and the trailer block that closes the message
-// are provenance. The subject, the body and every other header are published
-// text, so a no-reply address written into a message body is a finding. A
-// closing paragraph counts as trailers only when every line is `Key: value`;
-// anything else leaves it in the body, which fails closed.
+// author and committer headers, and identity trailers in the paragraph that
+// closes the message, are provenance, each judged as one line. Every other
+// line is published text, the closing paragraph's included, so a no-reply
+// address in the subject, the body or a `Note:` line is a finding. Sol's
+// recheck of 8eb0983 found the earlier rule, which exempted any closing
+// paragraph of `Key: value` lines, passing `Note: Contact <address>`.
 export function commitAddressRules(raw) {
   const split = raw.indexOf('\n\n');
   const headers = (split === -1 ? raw : raw.slice(0, split)).split('\n');
   const message = split === -1 ? '' : raw.slice(split + 2);
   const paragraphs = message.replace(/\n+$/u, '').split(/\n{2,}/u);
-  const closing = paragraphs.length > 1 ? paragraphs.at(-1) : '';
-  const trailers =
-    closing !== '' && closing.split('\n').every((line) => /^[A-Za-z0-9-]+: \S/u.test(line));
+  const closing = paragraphs.length > 1 ? (paragraphs.pop() ?? '').split('\n') : [];
   const identity = /^(?:author|committer) /u;
   const provenance = [
     ...headers.filter((line) => identity.test(line)),
-    ...(trailers ? [closing] : []),
+    ...closing.filter((line) => identityTrailer.test(line)),
   ].join('\n');
   const published = [
     ...headers.filter((line) => !identity.test(line)),
-    ...(trailers ? paragraphs.slice(0, -1) : paragraphs),
+    ...paragraphs,
+    ...closing.filter((line) => !identityTrailer.test(line)),
   ].join('\n');
   return [
     ...new Set([...addressRules(provenance, 'commit'), ...addressRules(published, 'content')]),

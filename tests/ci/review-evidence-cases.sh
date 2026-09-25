@@ -554,6 +554,27 @@ $FENCE
 Code review: no findings
 Security review: run against $HEAD, no findings" "$CUSTODY"
 
+# Sol's recheck of 8eb0983 (C4, P2). A line indented four spaces is an
+# indented code line, not a fence opener (CommonMark allows 0 to 3), so the
+# outcome lines after it are visible fields. And a comment opener inside a
+# fenced sample is literal code, so it cannot swallow the closing fence.
+run_case "a four-space-indented backtick line opens no fence" 0 "$BARE_BLOCK$P2    $FENCE
+Code review: no findings
+Security review: not required: no sensitive paths changed" "README.md"
+run_case "a comment opener inside a fence does not hide what follows the fence" 0 "$BARE_BLOCK$P2~~~
+<!-- example
+~~~
+-->
+Code review: no findings
+Security review: not required: no sensitive paths changed" "README.md"
+# And the other way round: a fence line inside a comment is hidden with it,
+# so it opens nothing and the outcomes after the comment stay visible.
+run_case "a fence line inside a comment opens no fence" 0 "$BARE_BLOCK$P2<!--
+$FENCE
+-->
+Code review: no findings
+Security review: not required: no sensitive paths changed" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
