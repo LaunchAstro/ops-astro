@@ -51,6 +51,16 @@ if (check === undefined) {
 }
 const runs = Number(values.runs);
 const interval = Number(values.interval);
+// A run count that starts no container would report "failed=0" having
+// proved nothing, so anything but a positive whole number is refused.
+if (!Number.isInteger(runs) || runs < 1) {
+  console.error('db-ready-race: --runs must be a whole number of at least 1');
+  process.exit(2);
+}
+if (!Number.isInteger(interval) || interval < 0) {
+  console.error('db-ready-race: --interval must be a whole number of milliseconds, 0 or more');
+  process.exit(2);
+}
 
 const docker = (...args) => spawnSync('docker', args, { encoding: 'utf8' });
 
