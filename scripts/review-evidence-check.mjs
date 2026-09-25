@@ -344,6 +344,16 @@ if (sensitive.length > 0) {
     }
   }
 } else {
+  // Copilot on PR A, C10: a body with no security line at all passed here,
+  // so deleting the line was less strict than leaving its placeholder.
+  if (securityFields.length === 0) {
+    failures.push(
+      'the pull request states no security-review outcome.\n' +
+        '        The template asks for both outcome lines to be replaced. This\n' +
+        `        change touches no sensitive path, so write\n` +
+        `        \`Security review: ${NOT_REQUIRED_HELP}\`.`,
+    );
+  }
   // The template ships both outcome lines as the same placeholder and asks
   // for both to be replaced. Round eight found an unreplaced security
   // placeholder passing on a change that touched no sensitive path, because
