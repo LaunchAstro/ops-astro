@@ -17,24 +17,29 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { Hono } from 'hono';
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
 
+// Like the other database files, these cases skip without a database
+// rather than fail in beforeAll (the CI local checks job has none).
+const serverUrl = databaseUrlFromEnvironment();
 let fixture: ApiFixture;
 let api: Hono;
 let token: string;
 
 beforeAll(async () => {
+  if (serverUrl === undefined) return;
   fixture = await createApiFixture('envelope_faults');
   api = fixture.compose();
   token = await tokenFor(fixture.member.presented.subject);
 }, 60_000);
 
 afterAll(async () => {
-  await fixture.drop();
+  if (serverUrl !== undefined) await fixture.drop();
 });
 
-describe('an envelope with no operation identity', () => {
+describe.skipIf(serverUrl === undefined)('an envelope with no operation identity', () => {
   it('refuses the omitted field with OPERATION_ID_REQUIRED, not a fault', async () => {
     const answer = await post(api, '/api/b/alpha/task/create', {}, authorised(token));
 
@@ -118,7 +123,7 @@ async function proposeWith(
   );
 }
 
-describe('a propose whose value the column would refuse', () => {
+describe.skipIf(serverUrl === undefined)('a propose whose value the column would refuse', () => {
   it('refuses a purpose outside the column shape with FIELD_VALUE_INVALID, not a 503', async () => {
     const task = await createTask('a purpose the column refuses');
     for (const purpose of ['Draft The Reply', 'draft-the-reply', '9_starts_with_a_digit', '']) {

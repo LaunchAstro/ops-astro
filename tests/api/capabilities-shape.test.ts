@@ -13,6 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { Hono } from 'hono';
 import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
 import {
@@ -24,6 +25,9 @@ import {
   type ApiFixture,
 } from './fixture.ts';
 
+// Like the other database files, these cases skip without a database
+// rather than fail in beforeAll (the CI local checks job has none).
+const serverUrl = databaseUrlFromEnvironment();
 let fixture: ApiFixture;
 let api: Hono;
 let personToken: string;
@@ -69,6 +73,7 @@ async function pickUp(): Promise<{ readonly credential: string; readonly taskId:
 }
 
 beforeAll(async () => {
+  if (serverUrl === undefined) return;
   fixture = await createApiFixture('capabilities_shape');
   api = fixture.compose();
   personToken = await tokenFor(fixture.member.presented.subject);
@@ -76,10 +81,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await fixture.drop();
+  if (serverUrl !== undefined) await fixture.drop();
 });
 
-describe('session.capabilities on the two prefixes', () => {
+describe.skipIf(serverUrl === undefined)('session.capabilities on the two prefixes', () => {
   it('answers flattened beside ok on both, and on a replay', async () => {
     const person = await post(
       api,
