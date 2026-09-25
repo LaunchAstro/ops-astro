@@ -203,8 +203,12 @@ jobs:
           POSTGRES_DB: conformance
         ports:
           - 5432:5432
+        # Ready over TCP, the way the runner connects, not over the socket:
+        # the image's init server listens on the socket only, so a socket
+        # check can pass before TCP is up. tests/ci/db-ready-race.mjs
+        # reproduces it, and withDatabase uses the same probe.
         options: >-
-          --health-cmd "pg_isready -U postgres -d conformance"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
