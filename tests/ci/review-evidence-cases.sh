@@ -534,6 +534,26 @@ if [ -f "$TEMPLATE" ]; then
 Code review: every finding it raised is closed$NOT_SENSITIVE" "README.md"
 fi
 
+# Copilot on PR A, C4: GitHub shows fenced code as code, not as a field, and
+# a body whose only outcomes sat inside a fence passed. Fields inside a fence
+# are not read. The checkpoint block, which the template ships inside a
+# fence, still is.
+FENCE='```'
+run_case "a code-review outcome only inside a fenced block fails" 1 "$BARE_BLOCK$P2$FENCE
+Code review: no findings
+$FENCE$NOT_SENSITIVE" "README.md"
+run_case "a security outcome only inside a tilde fence fails" 1 "$GOOD_BLOCK$P2~~~ text
+Security review: run against $HEAD, no findings
+~~~" "$CUSTODY"
+run_case "a security outcome inside an unclosed fence fails" 1 "$GOOD_BLOCK$P2$FENCE
+Security review: run against $HEAD, no findings" "$CUSTODY"
+run_case "a fenced checkpoint with its outcomes outside the fence passes" 0 "$FENCE
+Review checkpoint
+  head:        $HEAD
+$FENCE
+Code review: no findings
+Security review: run against $HEAD, no findings" "$CUSTODY"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
