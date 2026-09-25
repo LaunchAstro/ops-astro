@@ -1,7 +1,10 @@
 # Governance
 
-Nathan Mulligan is the maintainer. He decides product direction, merges,
-releases, and repository policy. Builders do not approve their own work.
+Nathan Mulligan is the maintainer. He decides product direction, releases,
+and repository policy. An agent invokes merges on his credential under a rule
+with no discretion, and the decisions that rule cannot reach stay his; see
+[who invokes the merge](CONTRIBUTING.md#who-invokes-the-merge). Builders do
+not approve their own work.
 [Contributing](CONTRIBUTING.md) defines the required model reviews, seven
 merge questions, and the conformance proof required for each of the eight
 protected components.
