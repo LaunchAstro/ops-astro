@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // One rule, checked: nothing merges itself.
 //
-// Finding 8 of the sweep of 6 September. CONTRIBUTING.md says checks never
-// merge anything by themselves and AGENTS.md says merge is a human decision,
-// while renovate.json enabled automatic merging of development dependency
-// patches. A build tool can change shipped output, so "only a dev dependency"
-// is not a reason to skip the person.
+// Finding 8 of the sweep of 6 September. CONTRIBUTING.md then said checks
+// never merge anything by themselves and AGENTS.md said merge was a human
+// decision, while renovate.json enabled automatic merging of development
+// dependency patches. A build tool can change shipped output, so "only a dev
+// dependency" is not a reason to skip the merge decision. ADR 0046, amended
+// 23 September, has an agent invoke the merge on a green head; automatic
+// merging stays disabled, so this rule stands.
 //
 // Documentation that contradicts configuration is worse than either alone: a
 // reader believes the documentation and the machine obeys the configuration.
@@ -37,9 +39,9 @@ const walk = (node, path) => {
     if ((key === 'automerge' || key === 'platformAutomerge') && value === true) {
       failures.push(
         `renovate.json: ${here} is true.\n` +
-          '        CONTRIBUTING.md says checks never merge anything by themselves\n' +
-          '        and AGENTS.md says merge is a human decision. Either turn this\n' +
-          '        off, or change both documents and say why in an ADR.',
+          '        ADR 0046 disables all automatic merging: a named actor invokes\n' +
+          '        each merge on a green head (CONTRIBUTING.md, who invokes the\n' +
+          '        merge). Either turn this off, or amend ADR 0046 and say why.',
       );
     }
     walk(value, here);

@@ -183,11 +183,16 @@ const runSuite = async (suite) => {
   // vitest's JSON reporter writes to a file, never to stdout, so the report
   // is collected from one and removed afterwards.
   const reportPath = join(mkdtempSync(join(tmpdir(), 'hub-db-conformance-')), 'report.json');
+  // A read that fails is not a measurement. Copilot on PR A: substituting
+  // zero for a failed pre-suite read turned the cumulative counter into a
+  // movement, and a suite that never touched the database passed rule 7.
+  // Either read failing leaves the suite unmeasured, and that fails the run.
   let before = 0;
+  let readError;
   try {
     before = await readCounter(client);
-  } catch {
-    before = 0;
+  } catch (error) {
+    readError = error;
   }
   const run = spawnSync(
     process.execPath,
@@ -207,10 +212,12 @@ const runSuite = async (suite) => {
     },
   );
   let after = before;
-  try {
-    after = await readCounter(client);
-  } catch {
-    after = before;
+  if (readError === undefined) {
+    try {
+      after = await readCounter(client);
+    } catch (error) {
+      readError = error;
+    }
   }
   let report;
   try {
@@ -220,7 +227,7 @@ const runSuite = async (suite) => {
   } finally {
     rmSync(join(reportPath, '..'), { recursive: true, force: true });
   }
-  return { suite, run, report, moved: after - before };
+  return { suite, run, report, moved: after - before, readError };
 };
 
 const results = [];
@@ -239,6 +246,15 @@ if (failures.length === 0) {
       'a suite produced no readable result, so nothing can be said about\n' +
         `        what ran in it:\n          ${suite}\n        Its output follows.\n\n` +
         `${(run.stdout ?? '') + (run.stderr ?? '')}`.split('\n').slice(0, 20).join('\n'),
+    );
+  }
+
+  for (const { suite, readError } of results) {
+    if (readError === undefined) continue;
+    failures.push(
+      'could not read the database counter either side of a suite, so rule 7\n' +
+        `        cannot say whether it reached the database:\n          ${suite}\n` +
+        `        ${firstLine(readError instanceof Error ? readError.message : readError)}`,
     );
   }
 
@@ -410,8 +426,12 @@ if (failures.length === 0 && beside.length > 0) {
   );
 }
 
-for (const { suite, moved } of results) {
-  console.log(`db-conformance: ${suite} moved the database counter by ${String(moved)}.`);
+for (const { suite, moved, readError } of results) {
+  console.log(
+    readError === undefined
+      ? `db-conformance: ${suite} moved the database counter by ${String(moved)}.`
+      : `db-conformance: ${suite} was not measured: a counter read failed.`,
+  );
 }
 
 console.log(

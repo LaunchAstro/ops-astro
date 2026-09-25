@@ -104,9 +104,37 @@ export function addressRules(text, scope) {
   return [...found];
 }
 
+// A raw commit object is headers, a blank line, then the message. Only the
+// author and committer headers and the trailer block that closes the message
+// are provenance. The subject, the body and every other header are published
+// text, so a no-reply address written into a message body is a finding. A
+// closing paragraph counts as trailers only when every line is `Key: value`;
+// anything else leaves it in the body, which fails closed.
+export function commitAddressRules(raw) {
+  const split = raw.indexOf('\n\n');
+  const headers = (split === -1 ? raw : raw.slice(0, split)).split('\n');
+  const message = split === -1 ? '' : raw.slice(split + 2);
+  const paragraphs = message.replace(/\n+$/u, '').split(/\n{2,}/u);
+  const closing = paragraphs.length > 1 ? paragraphs.at(-1) : '';
+  const trailers =
+    closing !== '' && closing.split('\n').every((line) => /^[A-Za-z0-9-]+: \S/u.test(line));
+  const identity = /^(?:author|committer) /u;
+  const provenance = [
+    ...headers.filter((line) => identity.test(line)),
+    ...(trailers ? [closing] : []),
+  ].join('\n');
+  const published = [
+    ...headers.filter((line) => !identity.test(line)),
+    ...(trailers ? paragraphs.slice(0, -1) : paragraphs),
+  ].join('\n');
+  return [
+    ...new Set([...addressRules(provenance, 'commit'), ...addressRules(published, 'content')]),
+  ];
+}
+
 export function contentRules(text, scope = 'content') {
   const found = rules.filter(([, pattern]) => pattern.test(text)).map(([id]) => id);
-  found.push(...addressRules(text, scope));
+  found.push(...(scope === 'commit' ? commitAddressRules(text) : addressRules(text, scope)));
   const words = text.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   if (
     words.some((word) => excludedTokenHashes.has(createHash('sha256').update(word).digest('hex')))

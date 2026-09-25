@@ -105,6 +105,33 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // read as the only outcome. Everything after an unclosed `<!--` is hidden.
 const stripComments = (text) => text.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, ' ');
 
+// Fenced code is shown as code, not as a field. Copilot on PR A: a body whose
+// only outcome sat inside a fenced sample passed, because fields were read on
+// every line. Lines from an opening fence to its closing fence are blanked
+// before fields are read, and an unclosed fence runs to the end of the body,
+// as GitHub renders it. The checkpoint block, which the template ships inside
+// a fence, is still read from the whole body. A fence may follow the same
+// quote and list markers a field may.
+const FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})(.*)$/u;
+const stripFences = (text) => {
+  let open = '';
+  return text
+    .split('\n')
+    .map((line) => {
+      const m = FENCE.exec(line);
+      if (open === '') {
+        if (m !== null) open = m[1] ?? '';
+        return open === '' ? line : '';
+      }
+      const run = m?.[1] ?? '';
+      if (run[0] === open[0] && run.length >= open.length && (m?.[2] ?? '').trim() === '') {
+        open = '';
+      }
+      return '';
+    })
+    .join('\n');
+};
+
 // The literal strings the template ships with. An unreplaced one is named in
 // the failure rather than reported as "no outcome stated", because the author
 // needs to know which line they missed.
@@ -242,7 +269,7 @@ const failures = [];
 // --- rule 1: a checkpoint for this head ------------------------------------
 
 const prose = stripComments(body);
-const stated = fields(prose);
+const stated = fields(stripFences(prose));
 
 const checkpoint = /Review checkpoint[\s\S]{0,600}?head:\s*([0-9a-f]{7,40})/iu.exec(prose);
 
@@ -344,6 +371,16 @@ if (sensitive.length > 0) {
     }
   }
 } else {
+  // Copilot on PR A, C10: a body with no security line at all passed here,
+  // so deleting the line was less strict than leaving its placeholder.
+  if (securityFields.length === 0) {
+    failures.push(
+      'the pull request states no security-review outcome.\n' +
+        '        The template asks for both outcome lines to be replaced. This\n' +
+        `        change touches no sensitive path, so write\n` +
+        `        \`Security review: ${NOT_REQUIRED_HELP}\`.`,
+    );
+  }
   // The template ships both outcome lines as the same placeholder and asks
   // for both to be replaced. Round eight found an unreplaced security
   // placeholder passing on a change that touched no sensitive path, because

@@ -54,10 +54,18 @@ const config = resolve(process.env['DEPS_CRUISE_CONFIG'] ?? join(root, '.depende
 const DEFAULT_TARGETS = ['scripts', 'tests', 'apps', 'packages'];
 
 const args = process.argv.slice(2);
-const targets = (args.length > 0 ? args : DEFAULT_TARGETS).filter((t) => existsSync(join(root, t)));
+const targets = args.length > 0 ? args : DEFAULT_TARGETS;
 
-if (targets.length === 0) {
+// Every configured target must exist. Filtering the missing ones out would
+// let `src typo` pass having cruised only `src`, and the summary would name a
+// scope that was never checked.
+const missing = targets.filter((t) => !existsSync(join(root, t)));
+if (missing.length === targets.length) {
   console.error(`deps-cruise: none of the configured targets exist under ${root}.`);
+  process.exit(2);
+}
+if (missing.length > 0) {
+  console.error(`deps-cruise: configured target(s) missing under ${root}: ${missing.join(', ')}.`);
   process.exit(2);
 }
 

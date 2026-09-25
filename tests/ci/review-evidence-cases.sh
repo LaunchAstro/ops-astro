@@ -58,7 +58,14 @@ GOOD_BLOCK="Review checkpoint
 
 Code review: no findings"
 
-run_case "a checkpoint for this head passes" 0 "$GOOD_BLOCK" "README.md"
+# The template asks for both outcome lines to be replaced, whatever the change
+# touches. A change on no sensitive path answers the security line with the
+# fixed text; deleting the line is not an answer (Copilot on PR A, C10).
+NOT_SENSITIVE="
+
+Security review: not required: no sensitive paths changed"
+
+run_case "a checkpoint for this head passes" 0 "$GOOD_BLOCK$NOT_SENSITIVE" "README.md"
 run_case "no body at all fails" 1 "" "README.md"
 run_case "a body with no checkpoint fails" 1 "I reviewed it, it is fine." "README.md"
 run_case "a checkpoint for another revision fails" 1 "Review checkpoint
@@ -80,7 +87,7 @@ run_case "a security review for another revision fails" 1 "$GOOD_BLOCK
 Security review: run against $OTHER, no findings." "packages/core-custody/broker.ts"
 run_case "the gate itself is a sensitive surface" 1 "$GOOD_BLOCK" "scripts/gate/sweep.py"
 run_case "a workflow change is a sensitive surface" 1 "$GOOD_BLOCK" ".github/workflows/ci.yml"
-run_case "an ordinary docs change needs no security review" 0 "$GOOD_BLOCK" "docs/plan/README.md"
+run_case "an ordinary docs change needs no security review, only the fixed line" 0 "$GOOD_BLOCK$NOT_SENSITIVE" "docs/plan/README.md"
 
 # Round five, 7 September. The check matched the words "security review" and
 # a hash, so a body saying the review was NOT RUN, with the current hash
@@ -121,10 +128,10 @@ run_case "one good line does not excuse a bad one" 1 "$GOOD_BLOCK
 Code review: not run on the second pass" "README.md"
 run_case "a code review with no findings passes" 0 "$GOOD_BLOCK
 
-Code review: no findings" "README.md"
+Code review: no findings$NOT_SENSITIVE" "README.md"
 run_case "a code review with findings closed passes" 0 "$GOOD_BLOCK
 
-Code review: 3 findings, all closed" "README.md"
+Code review: 3 findings, all closed$NOT_SENSITIVE" "README.md"
 
 # Round seven, 17 September. The template byte for byte, with only the
 # checkpoint filled, passed: the parser read the instructional words inside
@@ -173,7 +180,7 @@ run_case "prose mentioning a code review is not an outcome field" 1 "$BARE_BLOCK
 I asked for a code review and one is coming." "README.md"
 run_case "a docs change citing security-review.md still passes" 0 "$GOOD_BLOCK
 
-The procedure lives at .claude/skills/_shared/security-review.md." "docs/plan/README.md"
+The procedure lives at .claude/skills/_shared/security-review.md.$NOT_SENSITIVE" "docs/plan/README.md"
 
 # An outcome inside an HTML comment is instruction to the author, not evidence.
 run_case "an outcome hidden in an HTML comment fails" 1 "$BARE_BLOCK
@@ -187,7 +194,7 @@ Code review: no findings" "README.md"
 # Bullets and bold are ordinary Markdown and still read as fields.
 run_case "a bulleted code-review field passes" 0 "$BARE_BLOCK
 
-- **Code review**: no findings" "README.md"
+- **Code review**: no findings$NOT_SENSITIVE" "README.md"
 run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
 
 - **Code review**: not run" "README.md"
@@ -225,12 +232,15 @@ Security review: REPLACE-WITH-OUTCOME" "README.md"
 run_case "a non-sensitive change saying no review was called for passes" 0 "$GOOD_BLOCK
 
 Security review: not required: no sensitive paths changed" "README.md"
+# Copilot on PR A, C10: deleting the security line passed where leaving its
+# placeholder failed. A missing line is not an answer on any change.
+run_case "a non-sensitive change with no security line at all fails" 1 "$GOOD_BLOCK" "README.md"
 
 # 4. The template advertises `the review found nothing` as passing wording and
 # the parser refused it, so the two disagreed about a valid outcome.
 run_case "the template's advertised passing wording passes" 0 "$BARE_BLOCK
 
-Code review: the review found nothing" "README.md"
+Code review: the review found nothing$NOT_SENSITIVE" "README.md"
 run_case "the same wording does not rescue a review still pending" 1 "$BARE_BLOCK
 
 Code review: the review is still pending, so it found nothing to report yet" "README.md"
@@ -258,7 +268,7 @@ run_case "a code review closing some of its findings fails" 1 "$BARE_BLOCK
 Code review: 2 findings, 1 closed" "README.md"
 run_case "a code review closing every finding it counted passes" 0 "$BARE_BLOCK
 
-Code review: 2 findings, 2 closed" "README.md"
+Code review: 2 findings, 2 closed$NOT_SENSITIVE" "README.md"
 
 run_case "a security review closing one of three findings fails" 1 "$GOOD_BLOCK
 
@@ -464,7 +474,7 @@ run_case "an underscored bad code-review line fails" 1 "$GOOD_BLOCK${P2}__Code r
 run_case "a good security line written as a heading still passes" 0 "$GOOD_BLOCK$P2## Security review: run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon passes" 0 "$GOOD_BLOCK$P2**Security review:** run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon still reads a stale revision" 1 "$GOOD_BLOCK$P2**Security review:** run against $OTHER, no findings" "$CUSTODY"
-run_case "a bold whole line in a checklist passes" 0 "$BARE_BLOCK$P2- [x] **Code review: no findings.**" "README.md"
+run_case "a bold whole line in a checklist passes" 0 "$BARE_BLOCK$P2- [x] **Code review: no findings.**$NOT_SENSITIVE" "README.md"
 # An unclosed comment hides everything after it from the merger, and the check
 # read it anyway. Fail closed: an unclosed comment runs to the end of the body.
 run_case "the only security line inside an unclosed comment fails" 1 "$GOOD_BLOCK$P2<!--
@@ -480,9 +490,9 @@ HEAD=abcdef0123456789abcdef0123456789abcdef01
 UPPER_HEAD="$(printf '%s' "$HEAD" | tr a-f A-F)"
 CODE_OK="${P2}Code review: no findings"
 run_case "an uppercase checkpoint head passes" 0 "Review checkpoint
-  head:        $UPPER_HEAD$CODE_OK" "README.md"
+  head:        $UPPER_HEAD$CODE_OK$NOT_SENSITIVE" "README.md"
 run_case "an uppercase seven-character checkpoint prefix passes" 0 "Review checkpoint
-  head:        ${UPPER_HEAD:0:7}$CODE_OK" "README.md"
+  head:        ${UPPER_HEAD:0:7}$CODE_OK$NOT_SENSITIVE" "README.md"
 run_case "an uppercase stale checkpoint head still fails" 1 "Review checkpoint
   head:        FEDCBA9876543210FEDCBA9876543210FEDCBA98$CODE_OK" "README.md"
 HEAD="$SAVED_HEAD"
@@ -521,8 +531,28 @@ if [ -f "$TEMPLATE" ]; then
   esac
   run_case "the template's second advertised wording passes" 0 "$BARE_BLOCK
 
-Code review: every finding it raised is closed" "README.md"
+Code review: every finding it raised is closed$NOT_SENSITIVE" "README.md"
 fi
+
+# Copilot on PR A, C4: GitHub shows fenced code as code, not as a field, and
+# a body whose only outcomes sat inside a fence passed. Fields inside a fence
+# are not read. The checkpoint block, which the template ships inside a
+# fence, still is.
+FENCE='```'
+run_case "a code-review outcome only inside a fenced block fails" 1 "$BARE_BLOCK$P2$FENCE
+Code review: no findings
+$FENCE$NOT_SENSITIVE" "README.md"
+run_case "a security outcome only inside a tilde fence fails" 1 "$GOOD_BLOCK$P2~~~ text
+Security review: run against $HEAD, no findings
+~~~" "$CUSTODY"
+run_case "a security outcome inside an unclosed fence fails" 1 "$GOOD_BLOCK$P2$FENCE
+Security review: run against $HEAD, no findings" "$CUSTODY"
+run_case "a fenced checkpoint with its outcomes outside the fence passes" 0 "$FENCE
+Review checkpoint
+  head:        $HEAD
+$FENCE
+Code review: no findings
+Security review: run against $HEAD, no findings" "$CUSTODY"
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"

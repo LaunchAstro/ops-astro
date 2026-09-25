@@ -18,7 +18,7 @@
       "schedule": ["* 0-6 * * 1"]
     },
     {
-      "description": "Development dependency patches are grouped weekly and still merged by a human. Automerge was on here and contradicted the rule that checks never merge anything by themselves; a build tool can change shipped output.",
+      "description": "Development dependency patches are grouped weekly and never automerged: each merge is invoked on a green head, as ADR 0046 requires. Automerge was on here and contradicted that rule; a build tool can change shipped output.",
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["patch"],
       "automerge": false
@@ -29,7 +29,7 @@
       "automerge": false
     },
     {
-      "description": "Actions are pinned to a commit hash on purpose. Renovate keeps the hash current and the comment beside it accurate; a human merges it.",
+      "description": "Actions are pinned to a commit hash on purpose. Renovate keeps the hash current and the comment beside it accurate; its merge is invoked like any other, never automerged.",
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
       "automerge": false,

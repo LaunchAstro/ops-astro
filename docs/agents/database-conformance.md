@@ -227,12 +227,13 @@ path must now be bound to an entry in `testResults`, and a suite absent from the
 report is a failure naming the path. Aggregate counts never satisfy this on
 their own.
 
-Rule 9 is vitest's own verdict. An unhandled rejection fails the run and exits
-the process non-zero while every test vitest counted still passes, so
-`numFailedTests` stays 0 and rule 6 sees nothing: "2 passed, 0 failed", exit 0.
-The runner now reads the process status and signal as well as the report's own
-error fields, and any of them exits 1 naming what vitest reported, whatever
-the counts say.
+Rule 9 is vitest's own verdict. An unhandled rejection fails the run, and
+vitest exits with status 1, while every test it counted still passes. So
+`numFailedTests` stays 0 and rule 6 sees nothing: the runner, reading only the
+counts, printed "2 passed, 0 failed" and itself exited 0. It now reads
+vitest's exit status and signal as well as the report's own error fields, and
+any of them makes the runner exit 1 naming what vitest reported, whatever the
+counts say.
 
 ## Credentials
 
