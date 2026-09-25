@@ -43,6 +43,26 @@ jobs:
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
         run: python3 scripts/gate/sweep.py --self-test
+      - name: Install gitleaks for the secret-scan cases, verified before it is extracted
+        env:
+          # The same version and digest as the `gitleaks over the full history`
+          # job. tests/gate/gate-cases.sh runs tests/gate/secrets-scan-cases.sh,
+          # which needs gitleaks on PATH and refuses to run without it.
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          bin="${RUNNER_TEMP}/gitleaks-bin"
+          mkdir -p "$bin"
+          curl -sSL --fail -o "${RUNNER_TEMP}/${archive}" "${base}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum -c -
+          # Only now, with the bytes proved, is anything unpacked.
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "$bin" gitleaks
+          rm -f "${RUNNER_TEMP}/${archive}"
+          "$bin/gitleaks" version
+          echo "$bin" >> "$GITHUB_PATH"
       - name: The cases the gate once missed
         run: bash tests/gate/gate-cases.sh
       - name: The pre-push hook's exit-code policy, under Husky's shell
