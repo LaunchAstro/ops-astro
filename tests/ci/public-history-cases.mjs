@@ -337,3 +337,34 @@ test('the reserved documentation domains pass in a blob, so fixtures stay legibl
     const staged = scan();
     assert.equal(staged.status, 0, staged.stderr);
   }));
+
+// Copilot on PR A (C2): the whole raw commit object used to carry the commit
+// scope, so a no-reply address anywhere in a message body passed as
+// provenance. Only the author and committer headers and the closing trailer
+// block are provenance; the rest of the message is published text.
+test('a no-reply address in a commit message body is published content, not provenance', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', noReply);
+    const inBody = commit(
+      'chore: a message that publishes an address\n\n' +
+        `Write to ${otherNoReply} with questions.\n\n` +
+        'Assisted-by: LLM',
+    );
+    const body = scan('--range', `${root}..${inBody}`);
+    assert.equal(body.status, 1, body.stderr);
+    assert.match(body.stderr, /metadata \[contributor-address\]/u);
+    assert.ok(!body.stderr.includes(otherNoReply), 'the value is never echoed');
+
+    const inSubject = commit(`chore: thank ${otherNoReply}`);
+    const subject = scan('--range', `${inBody}..${inSubject}`);
+    assert.equal(subject.status, 1, subject.stderr);
+    assert.match(subject.stderr, /metadata \[contributor-address\]/u);
+
+    // The same address as a trailer, in the closing block, stays provenance.
+    const asTrailer = commit(
+      'chore: a clean message\n\nA neutral body.\n\n' +
+        `Co-authored-by: Example <${otherNoReply}>\nAssisted-by: LLM`,
+    );
+    const trailer = scan('--range', `${inSubject}..${asTrailer}`);
+    assert.equal(trailer.status, 0, trailer.stderr);
+  }));
