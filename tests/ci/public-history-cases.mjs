@@ -368,3 +368,51 @@ test('a no-reply address in a commit message body is published content, not prov
     const trailer = scan('--range', `${inSubject}..${asTrailer}`);
     assert.equal(trailer.status, 0, trailer.stderr);
   }));
+
+// Sol on 8eb0983 (C2, P1): any closing `Key: value` paragraph was treated as
+// trailers, so `Note: Contact <address>` passed as provenance. Only the
+// identity trailers are exempt, one line at a time; every other line of the
+// closing paragraph is published text.
+test('a closing Note: line carrying a no-reply address is content, not a trailer', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', noReply);
+    const head = commit(
+      `chore: a clean subject\n\nA neutral body.\n\nNote: Contact ${otherNoReply}`,
+    );
+    const result = scan('--range', `${root}..${head}`);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /metadata \[contributor-address\]/u);
+    assert.ok(!result.stderr.includes(otherNoReply), 'the value is never echoed');
+  }));
+
+test('Co-authored-by and Signed-off-by trailers with a no-reply address pass', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', noReply);
+    const head = commit(
+      'chore: a clean subject\n\nA neutral body.\n\n' +
+        `Co-authored-by: Example <${otherNoReply}>\nSigned-off-by: Example <${noReply}>`,
+    );
+    const result = scan('--range', `${root}..${head}`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+test('a mixed closing paragraph fails on its non-identity line alone', () =>
+  fixture(({ git, commit, root, scan }) => {
+    git('config', 'user.email', noReply);
+    const mixed = commit(
+      'chore: a clean subject\n\nA neutral body.\n\n' +
+        `Co-authored-by: Example <${otherNoReply}>\nReviewed-by: Example <${otherNoReply}>`,
+    );
+    const failed = scan('--range', `${root}..${mixed}`);
+    assert.equal(failed.status, 1, failed.stderr);
+    assert.match(failed.stderr, /metadata \[contributor-address\]/u);
+
+    // The same paragraph without the non-identity line passes, so the finding
+    // above came from that line and not from the Co-authored-by one.
+    const clean = commit(
+      'chore: a clean subject\n\nA neutral body.\n\n' +
+        `Co-authored-by: Example <${otherNoReply}>\nAssisted-by: LLM`,
+    );
+    const passed = scan('--range', `${mixed}..${clean}`);
+    assert.equal(passed.status, 0, passed.stderr);
+  }));
