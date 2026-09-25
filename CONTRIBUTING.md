@@ -43,6 +43,16 @@ required check green on the head being merged, or it does not merge. After
 merging it notifies Nathan, naming the pull request and the merged revision.
 That notification records what happened; it does not ask permission.
 
+Review is part of that rule because the rulesets hold it, not because the
+agent judges it. The review ruleset requests Copilot's review on every push.
+The primary ruleset requires every review conversation resolved, Copilot's
+included, before the merge button is enabled. `review evidence for this
+revision` is a required check, so the code-review and security-review
+outcomes must be stated for the exact head being merged. None of these
+reports that a review finished; [the ruleset procedure](docs/plan/ruleset.md)
+says why no required check can. Question four below is answered in the pull
+request body and bound to the head by that check, not by a further gate.
+
 These stay Nathan's own decision, and no green check releases any of them:
 
 - the production deploy;
