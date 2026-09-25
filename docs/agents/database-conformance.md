@@ -1,11 +1,11 @@
-# Database conformance, and why one of its jobs is red
+# Database conformance, and what each of its two jobs proves
 
 Item 6 of the PG0 product ticket asks for a hosted job that runs a part's
 named invariant suite and the affected conformance suites against a real
 database, and fails when any database test skips.
 
-Two things are kept apart here, deliberately, because collapsing them is the
-failure the ticket names.
+This file keeps two things apart, because collapsing them is the failure the
+ticket names.
 
 ## Proving the gate
 
@@ -30,31 +30,100 @@ through `scripts/db-conformance.mjs`, and assert what the runner refuses:
 - a missing `DATABASE_URL` is refused rather than skipped.
 
 These probes need Docker, or a database named by `DB_CONFORMANCE_CASES_URL`.
-When neither was there they used to skip, and
-`pnpm run db:cases` exited 0 with eight probes unrun — including in CI, where
-that made `database conformance gate` green over a job that had proved
-nothing. A skip is what this file exists to refuse, and skipping the whole
-file is the largest skip available. So the probes now read `CI`: with it set
-and no database reachable they fail, naming the reason, and the job goes red.
+Each throwaway container is ready when `pg_isready -h 127.0.0.1` succeeds
+inside it. On a fresh volume the image's init server listens on the Unix socket
+only, so a socket check can pass before TCP is up. `tests/ci/db-ready-race.mjs`
+reproduces that race (26 of 30 at a 100 ms poll with the socket check, 0 of 30
+with TCP).
+When neither was there they used to skip, and `pnpm run db:cases` exited 0
+with eight probes unrun. That happened in CI too, where it made
+`database conformance gate` green over a job that had proved nothing. This
+file exists to refuse a skip, and skipping the whole file is the largest skip
+available. So the probes now read `CI`: with it set and no database reachable
+they fail, naming the reason, and the job goes red.
 Locally, with `CI` unset, the skip and its message stay, because a developer
 without Docker is not a broken hosted job.
 
-This job is green, and what it proves is that the enforcement works. It
-proves nothing about the product, and it must not be read as if it did.
+A green on this job proves the enforcement works. It proves nothing about the
+product.
 
 ## Claiming product conformance
 
 `database conformance` runs `pnpm run db:conformance` against a Postgres
 service container, reading `tests/db/named-suites.json`.
 
-**On this head it fails, and that is the correct result.** There is no product
-invariant suite and no conformance suite in this repository yet, so the
-manifest names none, and an empty manifest is a failure. The alternative is a
-green tick beside the words "database conformance" that would mean only that
-nothing ran. A check that passes when it did nothing is worse than no check,
-because it is quoted later as evidence.
+**The manifest is the authority.** It holds two lists of paths from the
+repository root, and the runner runs every suite in both:
 
-## The sequencing, stated plainly
+- `invariant`: a part's own named invariant suite, the one that proves the
+  thing that part exists to hold.
+- `conformance`: the conformance suites a change to that part affects.
+
+A part that lands adds its suites to the manifest, and that is the whole
+registration. No count of them is written down here, in the runner or in any
+other document, because a number written down is a number the next part makes
+wrong: read the manifest for the current set. Its `comment` array records which
+part contributed which entries, and which suites are deliberately absent and why.
+
+**A pure unit suite must not be named.** The runner requires each named suite
+to move the database's transaction counter during its own run (rule 7 below),
+so naming a suite that touches no database fails the job, correctly. The
+manifest's comment names the suites this applies to.
+
+**A suite that needs more than a database is not named either.**
+`tests/api/server-onerror.test.ts` and `tests/cli/mounted-cli.test.ts` each
+spawn the real `apps/api/server.ts` on the loopback port `SURFACE_API_PORT`
+names, and without it every case that spawns it is skipped
+(`server-onerror.test.ts`'s 'U1: the real server answers a tampered decision
+with the named fault', `mounted-cli.test.ts:31`, `:77`). The runner passes its
+environment through and does not set that port
+(`scripts/db-conformance.mjs:178`), so naming them would fail the job on a skip.
+`tests/acceptance/restart-and-expiry.test.ts` stays out for the same reason: its
+container-restart case skips unless `L5_RESTART_CONTAINER_NAME` names the
+container (`restart-and-expiry.test.ts:135-139`), which `pnpm verify:restart`
+does. Each runs as its own step with its variable set.
+`tests/acceptance/restart-http.test.ts` is unnamed for the same reason: it skips
+unless `L5_RESTART_CONTAINER_NAME` and `L5_RESTART_API_PORT` are both set
+(`restart-http.test.ts:53-55`). `tests/runtime/pickup-replay-restart.test.ts`
+skips unless `PICKUP_REPLAY_API_PORT` names a port and
+`PICKUP_REPLAY_PG_CONTAINER` names its own container
+(`pickup-replay-restart.test.ts:27-35`).
+
+`tests/db/final-r1-dbtest-manifest.test.ts` fails when a suite that reaches
+`packages/core-records/src/tenancy/testing/fresh-database.ts` through its
+imports is neither named in the manifest nor listed there as unnamed with its
+reason (`NOT_NAMED`), or is listed but missing from the manifest's comment. It
+opens no database itself, so it is not named.
+`tests/cli/final-r1-cli.test.ts` is listed there as a pure unit suite: it runs
+the CLI against HTTP stand-ins, moves the counter by 0, and its terminal case
+skips without a terminal (`final-r1-cli.test.ts:186`).
+
+`pnpm db:conformance` needs a database. The runner itself refuses without
+`DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
+child vitest process. The named suites then build their own throwaway
+databases through `databaseUrlFromEnvironment` in
+`packages/core-records/src/tenancy/testing/fresh-database.ts`, which takes
+`DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`. Creating a
+database and a login role is the owner's work, and the local contract gives
+`DATABASE_URL` to the runtime role `app`, which owns nothing and may create
+nothing. So **export `DATABASE_ADMIN_URL` as well as `DATABASE_URL` when you
+run this locally**. In the hosted job one URL is enough, because the service
+container's URL is already the owner's.
+
+A green here means what the last line the runner prints says it means: the
+named suites ran against a real database and none of them skipped. It does not
+mean the product is correct, and it does not mean anything is accepted. It is
+the floor the other refusals stand on, not a verdict.
+
+## The sequencing: hosted publication and landing
+
+**Everything in this section is a publication and landing requirement for the
+hosted repository.** It describes what must be true before a port is dispatched
+there, and it is not a prerequisite for building locally: local construction is
+authorised while the public gates stay held, and
+[the local slice](../local/README.md) is the scope of what is being built. Read
+this section when landing a change publicly, not when starting the slice on
+your own machine. Nothing here records that any of it has happened.
 
 An earlier version of this file said that a job failing closed on a missing
 product suite cannot be bound as a required context before the first product
@@ -67,8 +136,8 @@ no new gate here for anyone to rule on.
 
 The ticket already settles the timing. Its acceptance criterion is that the
 hosted job "is bound as a required context before the first port dispatch"
-(`publication-v2/03-pg0-product.md:36`): before the first port is dispatched,
-not during or after the first port's pull request.
+(the PG0 product ticket, item 6, held outside this repository): before the
+first port is dispatched, not during or after the first port's pull request.
 
 The two context names are exactly:
 
@@ -86,16 +155,26 @@ The order:
    in `tests/db/named-suites.json`, and must pass `database conformance` on
    its own head.
 
-### The red on this head
+### What the job's result means now
 
-`database conformance` fails here, and that failure does not block PG0:
-neither context is bound on ruleset `23396133` today, so the result is visible
-without being merge-blocking. What the red shows is the runner refusing to
-pass vacuously over an empty manifest. It is not a broken job, and it is not a
-reason to soften either the missing-suite refusal or the empty-manifest
-refusal. Those two refusals are what make step 3 worth anything.
+The manifest is no longer empty. `tests/db/named-suites.json` names the suites
+the landed parts contributed, so a failure of `database conformance` is now a
+real one: a suite missing from disk, a skipped test, a run that executed
+nothing, a named suite the database never heard from, or vitest's own verdict.
+Read the failing line; the runner names the path it is talking about.
 
-No other sequencing conflict remains between this job and the ticket.
+Whether either context is bound as required on ruleset `23396133` is owner-only
+and is not recorded in this repository. Check the ruleset rather than inferring
+it from this page. Nothing here authorises binding it.
+
+The empty-manifest refusal stays in the runner even though the manifest is
+filled. It is what stops a later change emptying the list and collecting a
+green tick beside the words "database conformance" that would mean only that
+nothing ran. A check that passes when it did nothing is worse than no check,
+because it is quoted later as evidence. That refusal and the missing-suite one
+are what make step 3 worth anything.
+
+No sequencing conflict remains between this job and the ticket.
 
 ## What the runner enforces
 
@@ -125,9 +204,15 @@ belongs to no suite in particular. Two named suites, one reaching the database
 and one holding nothing but `expect(1 + 1).toBe(2)`, both passed: the first
 moved the counter and the second was carried by it. So the runner spawns
 vitest once per named suite and reads the counter either side of each, and a
-suite whose own run moved nothing is named on its own line. That is the cost
-of the rule — one vitest process per suite instead of one for the manifest —
-and it is what makes the number belong to a path rather than to a total.
+suite whose own run moved nothing is named on its own line. The rule costs
+one vitest process per suite instead of one for the manifest, and that cost is
+what makes the number belong to a path rather than to a total.
+
+Nothing vitest runs before a suite may use that database. The vitest global
+setup, `tests/support/global-setup.ts`, creates the cluster-wide roles through
+`postgres` for this reason. Run through the configured database, it moved the
+counter by 15 on a new cluster and by 3 on a warm one, so a suite that never
+touched the database looked as if it had.
 
 Rules 8 and 9 close two greens that rules 4 to 6 cannot see, because those
 three read aggregates and an aggregate has no idea which file it came from or
@@ -135,12 +220,12 @@ how the run ended. Both were observed, not theorised: the runner returned exit
 0 on each.
 
 Rule 8 is the named-but-undiscovered suite. A manifest can name a file that
-exists on disk and sits outside vitest's discovery — the runner's disk check
-passes, vitest never loads the file however loudly the manifest names it, the
-other named suites supply the counts, and the summary reads "2 named suite(s),
-1 test(s): 1 passed". So every manifest path must now be bound to an entry in
-`testResults`, and a suite absent from the report is a failure naming the path.
-Aggregate counts never satisfy this on their own.
+exists on disk and sits outside vitest's discovery. The runner's disk check
+passes, vitest never loads the file, the other named suites supply the counts,
+and the summary reads "2 named suite(s), 1 test(s): 1 passed". So every manifest
+path must now be bound to an entry in `testResults`, and a suite absent from the
+report is a failure naming the path. Aggregate counts never satisfy this on
+their own.
 
 Rule 9 is vitest's own verdict. An unhandled rejection fails the run, and
 vitest exits with status 1, while every test it counted still passes. So
@@ -154,6 +239,6 @@ counts say.
 
 There are none. The service container is given a throwaway password in the
 workflow file, it is thrown away with the container, and it reaches nothing
-else. No repository secret is used by either job, and none should be: a check
+else. Neither job uses a repository secret, and neither should: a check
 that needs a real credential to prove a database was reached is proving
 something other than what it claims.

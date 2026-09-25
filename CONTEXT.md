@@ -17,15 +17,15 @@ _Avoid_: user, profile, login.
 **Login**: A person's means of authenticating. A login's lifecycle is separate from the person's business history.
 _Avoid_: person, actor.
 
-**Actor**: A person or agent that can act within a business. Authentication identifies the caller; it does not define their authority.
+**Actor**: A person, agent or worker that can act within a business. Authentication identifies the caller. It does not define their authority.
 _Avoid_: user, profile.
 
-**Membership**: An actor's relationship and configured responsibilities within a business, party, or bounded collection of work.
+**Membership**: A person's relationship and configured responsibilities within a business, party, or bounded collection of work.
 _Avoid_: seat.
 
 ## Permission and review
 
-**Grant**: An actor's permission for named actions on bounded resources, with any applicable duration and limits.
+**Grant**: A permission, held by a person, group or actor, for named actions on bounded resources, with any applicable duration and limits.
 _Avoid_: clearance, login.
 
 **Clearance**: The autonomy category that governs the review required for an action. It does not replace resource access or create a route around permission checks.
@@ -62,7 +62,7 @@ _Avoid_: activity.
 
 ## Human work
 
-**Task**: A unit of human work with an assignee, stage, and due date. Its related machine work is represented by runs and steps.
+**Task**: A unit of human work with an assignee, stage, and due date. Runs and steps represent its related machine work.
 _Avoid_: job, execution.
 
 **Board**: An ordered container of tasks.
@@ -96,7 +96,7 @@ _Avoid_: connection.
 **Connection**: One scoped relationship to a connector, including its status and credential reference. It is not a credential value.
 _Avoid_: provider, account.
 
-**Provider**: The external service a connector uses and its authentication and pricing shape.
+**Provider**: The external service a connector uses, with its authentication and pricing shape.
 _Avoid_: connection.
 
 **Custody**: The controlled home and lifecycle of a credential, referenced without exposing its value.

@@ -2,8 +2,8 @@
 
 Accepted 6 September 2026; consolidated for the public foundation on
 8 September. **Amended 11 September 2026**: the independent reviewer must be
-a frontier model from a different company, stated here consistently with the
-other records that carry the rule.
+a frontier model from a different company, stated here to match the other
+records that carry the rule.
 
 The Matt Pocock specification, ticket, implementation, review, and verification
 workflow is the sole repository router. Pstack contributes selected standards
@@ -16,8 +16,8 @@ and repository standards. The independent reviewer must be a frontier model
 from a different company than the builder's, because same-vendor models share
 blind spots.
 Copilot reviews the hosted revision. An agent then invokes the merge on
-Nathan's credential once every required check is green, and notifies him;
-what stays his decision is listed in [Contributing](../../CONTRIBUTING.md).
+Nathan's credential once every required check is green, and notifies him.
+[Contributing](../../CONTRIBUTING.md) lists what stays his decision.
 
 Before product code begins, rehearse the complete loop on a throwaway feature,
 including security review, hosted checks, a human merge, and the verify ticket.

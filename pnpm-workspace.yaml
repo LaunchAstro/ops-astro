@@ -10,3 +10,6 @@ packages:
 # needs a reason, and this one has none.
 allowBuilds:
   '@swc/core': false
+# vite 8.3.0 is the draft's pinned build; excluded from the minimum release age so the lockfile can hold it.
+minimumReleaseAgeExclude:
+  - vite@8.3.0

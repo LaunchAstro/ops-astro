@@ -2,7 +2,7 @@
 
 Accepted 6 September 2026; final-version approval clarified 7 September. The
 approver changed on 10 September, when the planned senior-engineer engagement
-and its authority were withdrawn before anyone was engaged:
+and its authority were withdrawn before anyone was engaged.
 [ADR 0049](0049-senior-engineer-signed-engagement-stop-authority.md) records
 the supersession, and the hold is now Nathan's.
 

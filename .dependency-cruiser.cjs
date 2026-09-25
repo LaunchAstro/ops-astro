@@ -57,6 +57,11 @@ module.exports = {
   options: {
     parser: 'swc',
     doNotFollow: { path: 'node_modules' },
+    enhancedResolveOptions: {
+      exportsFields: ['exports'],
+      conditionNames: ['import', 'require', 'node', 'default'],
+      mainFields: ['module', 'main'],
+    },
     exclude: { path: '(^|/)node_modules/' },
     // The orphan rule needs the pnpm scripts' entry points to count as reachable.
     // They are, because every one of them is named in package.json and the

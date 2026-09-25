@@ -1,8 +1,10 @@
 # Product identity
 
 The `name` in [product.json](../product.json) is the current public product name.
-Use it for product titles, navigation and other branded output when the first
-application components are built. There is no application UI in this foundation.
+Use it for product titles, navigation and other branded output. The web
+application now writes the name as a literal in two places: the page title in
+`apps/web/index.html` and the rail label in
+`packages/ui/src/surfaces/Shell.tsx`. `brand:sync` does not update either.
 
 To rename the product, edit that value and run `corepack pnpm brand:sync`.
 The command updates the first lines of README.md and NOTICE. It preserves their

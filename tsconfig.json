@@ -8,6 +8,10 @@
     "moduleDetection": "force",
     "verbatimModuleSyntax": true,
 
+    /* Node 24 runs TypeScript directly, so a relative import names the file
+       that exists. Carried from the T1a draft with the core-records port. */
+    "allowImportingTsExtensions": true,
+
     /* The three flags plan section 4 pins, and the rest of strict. */
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -29,5 +33,5 @@
     "skipLibCheck": true
   },
   "include": ["tests/**/*.ts", "packages/**/*.ts", "apps/**/*.ts"],
-  "exclude": ["**/node_modules", "**/dist"]
+  "exclude": ["**/node_modules", "**/dist", "apps/web", "packages/ui", "tests/surfaces"]
 }

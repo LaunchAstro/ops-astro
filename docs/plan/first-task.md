@@ -10,6 +10,17 @@ rehearsal precedes product code. A green conformance proof is required before
 protected-component merges; the sandbox's final-contract hold applies before
 its implementation.
 
+**This is the 8 September proposal, and the slice that was built differs from
+it.** Read [the local slice](../local/README.md) for what exists. Two
+differences matter most. First, the worker in "problem and result" below,
+which proposes a change and performs one permitted local effect after
+approval, was not built. The runtime proposes, records a decision, leases work
+and settles it, and dispatches nothing to any provider. Second, the ticket
+withholding above has been overtaken. Local construction proceeded under a
+later instruction recorded outside this repository, so the absence of a
+released ticket here is not evidence that the slice is unauthorised. Every user story, boundary and
+verification row below remains the proposal's, not a record of what passed.
+
 ## Problem and result
 
 The foundation has no usable task flow. A person needs to create work, review
@@ -76,7 +87,7 @@ coverage where needed.
 | Create, assign, reload, and restart          | Task, proposal, pending decision, and history survive.                                                |
 | Wrong business or missing authority          | Refused through UI, API, and applicable database roles without leaking the record.                    |
 | Stale approval or revoked authority          | The effect refuses the old decision or grant.                                                         |
-| Request Changes                              | Valid completed work and prior evidence remain; changed effects receive renewed review.               |
+| Request changes                              | Valid completed work and prior evidence remain; changed effects receive renewed review.               |
 | Reject and retry                             | Work stays stopped until an authorised restart.                                                       |
 | Duplicate, concurrent, or interrupted passes | One permitted local effect; a stale pass cannot settle another pass's work.                           |
 | Concurrent reservations                      | The approved synthetic limit cannot be exceeded.                                                      |

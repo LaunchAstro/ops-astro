@@ -1,12 +1,12 @@
 # Shared design system
 
-This is the contract for the first UI transfer. No UI components, token files or font/icon assets ship in the empty foundation.
+This is the contract for the first UI transfer. It was written for the empty foundation. `packages/ui` now holds the transferred tokens, primitives, styles and surfaces. It ships no font files or icon assets. `packages/ui/src/styles/1-tokens.css` names the font families with system fallbacks. Controls that carry an icon in the mockup carry a word or an `aria-label` instead.
 
 ## One maintained design home
 
-The product uses one shared UI package for reusable tokens, primitives and interaction patterns. Features compose that package. A needed shared variation is added there, with a typed interface, rather than copied into a feature stylesheet.
+The product uses one shared UI package for reusable tokens, primitives and interaction patterns. Features compose that package. Add a needed shared variation there, with a typed interface; do not copy it into a feature stylesheet.
 
-Use the approved existing application and frozen visual reference to choose each transferred surface. Record an exact source revision, component/stylesheet scope and required states before transferring it. The maintained application includes later intentional changes; the frozen reference remains evidence of the earlier agreed appearance. Do not mix their values by convenience or undo an intentional update merely because the frozen snapshot differs.
+Use the approved existing application and frozen visual reference to choose each transferred surface. Record an exact source revision, component/stylesheet scope and required states before transferring it. The maintained application includes later intentional changes; the frozen reference remains evidence of the earlier agreed appearance. Do not mix their values for convenience, or undo an intentional update just because the frozen snapshot differs.
 
 The private source-reference report accompanies local preparation. Future public transfers need a neutral, redistributable source/attribution record and relevant synthetic visual evidence. Never publish private reference routes or real user data.
 
@@ -14,7 +14,7 @@ The private source-reference report accompanies local preparation. Future public
 
 Preserve typography, geometry, spacing, colours, navigation, keyboard operation, loading/empty/error states and responsive behaviour for the selected reference. A JavaScript-to-TypeScript conversion is not visual or behavioural proof.
 
-Keep design tokens, stored user-selected colours and document/identity palettes distinct. A colour stored as data must not change merely because the application theme changes. Also preserve intentional CSS cascade order. Two rules at different semantic layers are not automatically redundant.
+Keep design tokens, stored user-selected colours and document/identity palettes distinct. A colour stored as data must not change when the application theme changes. Also preserve intentional CSS cascade order. Two rules at different semantic layers are not automatically redundant.
 
 Print and email renderers may require output-specific adapters because they cannot consume the live application's CSS. They still need an explicit owner and a check against the shared values they represent. Do not create an untracked competing theme.
 

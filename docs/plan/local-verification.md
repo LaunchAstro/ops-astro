@@ -7,8 +7,8 @@ commit is signed or GitHub is enforcing its rules.
 ## Check the working copy
 
 Use the Node major in `.nvmrc`, the package manager version in `package.json`,
-Python 3.11 or newer, Git and Gitleaks. The Python minimum is required by the
-standard-library TOML parser used for project configuration.
+Python 3.11 or newer, Git and Gitleaks. Python 3.11 is the minimum because
+project configuration is read with the standard-library TOML parser.
 
 Run `corepack pnpm check` in the working checkout. Resolve failures. Stage
 only the intended candidate files, including removals, without committing.
@@ -37,8 +37,8 @@ the manifest invalidates the recorded review identity.
 The public-content guard supplements the existing contamination and secret
 scanners. It uses hashed named exclusions, contextual rules and an exact-byte
 exception for the inherited synthetic path canary. It does not recognise
-every possible private name or paraphrase. Independently read the public
-introduction, decisions and references before treating the content as cleared.
+every possible private name or paraphrase. Read the public introduction,
+decisions and references yourself before treating the content as cleared.
 
 Pre-push and CI also scan commit metadata and every selected historical
 blob/path pair, including removed files. A clean current tree cannot hide
@@ -51,10 +51,9 @@ are refused rather than presented as complete history proof.
 
 Review the actual candidate and its manifest with a frontier model from a
 different company than the builder's. Record the manifest identity, findings,
-corrections and recheck. A local file review
-does not substitute for the later Copilot, signing or hosted enforcement
-requirements. Do not certify inherited preparation history as the first
-public root.
+corrections and recheck. A local file review does not substitute for the
+later Copilot, signing or hosted enforcement requirements. Do not certify
+inherited preparation history as the first public root.
 
 After the owner separately authorises a signed first-root commit, the clean
 final repository can produce a commit-specific local receipt:

@@ -1,0 +1,19 @@
+{
+  "name": "@launchastro/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The staff web application: sign in, the projects board and the task page.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@launchastro/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.0"
+  }
+}

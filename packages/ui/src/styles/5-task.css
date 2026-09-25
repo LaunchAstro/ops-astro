@@ -1,0 +1,313 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 5 of 5: the task page and its tabs (S2, S3, S4), the run hero and the
+   gate.
+
+   Ported from the pinned mockup's `assets/app.css` at 7066bad, geometry exact.
+   ============================================================================ */
+
+/* -- The task page record header (S2) ------------------------------------ */
+.tpr {
+  display: grid;
+  gap: var(--s-2);
+}
+.tpr__crumb {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.tpr__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-h1);
+  line-height: var(--lh-title);
+}
+.tpr__facts {
+  display: grid;
+  gap: var(--s-3);
+}
+.taskform {
+  border: 1px solid var(--border);
+}
+.tf__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (width <= 1279px) {
+  .tf__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .tf__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.tf__row {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--s-3) var(--s-4);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.tf__k {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+}
+.sb__state {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+/* -- The sliding tab set (S3/S4 switch, and the panel's conversations) ---- */
+.cmtabs {
+  position: relative;
+  display: flex;
+  gap: var(--s-4);
+}
+.cmtab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.3rem 0 0.45rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cmtab:hover,
+.cmtab[aria-selected='true'] {
+  color: var(--text);
+}
+.cmtabs__mark {
+  position: absolute;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  transition:
+    left var(--dur-1) var(--ease),
+    width var(--dur-1) var(--ease);
+}
+.cmtabs.is-placing .cmtabs__mark {
+  transition: none;
+}
+.cmtabs--set {
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+/* -- The Agent tab's two columns (S4) ------------------------------------ */
+.tpg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+.tpg__main,
+.tpg__side {
+  display: grid;
+  gap: var(--s-5);
+  min-width: 0;
+}
+@media not all and (max-width: 1278px) {
+  .tpg {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+  }
+}
+.sb__sect {
+  display: grid;
+  gap: var(--s-2);
+}
+.sb__sh {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.sb__k,
+.sb__meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+.sb__k {
+  color: var(--text);
+}
+.sb__meta {
+  color: var(--ink-faint);
+}
+.sbact__row {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.sbact__meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+.sout__box {
+  display: grid;
+  border: 1px solid var(--border);
+}
+.sout__row {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.sout__row:last-child {
+  border-bottom: 0;
+}
+
+/* -- The run hero. Status is a border-left LINE plus a word. -------------- */
+.tph {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+}
+.tph[data-tone='gate'] {
+  border-left-color: var(--warning);
+}
+.tph[data-tone='run'] {
+  border-left-color: var(--accent);
+}
+.tph[data-tone='done'] {
+  border-left-color: var(--success);
+}
+.tph[data-tone='bad'] {
+  border-left-color: var(--danger);
+}
+.tph__lead {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+  min-width: 0;
+  padding: var(--s-4);
+}
+.tph__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.tph__head {
+  margin: 0;
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+/* The pinned sheet fixes two columns with nth-child border rules, so it assumes
+   two cells or four. The port keeps the geometry and lets the column count
+   follow the cells, because a three-cell hero is reachable here (the token
+   figure is absent until a run is priced) and the pinned rules land its borders
+   asymmetrically. Recorded in DECISIONS.tsv. */
+.tph__stats {
+  display: grid;
+  grid-template-columns: repeat(var(--tph-cols, 2), minmax(7.5rem, auto));
+  border-left: 1px solid var(--border);
+}
+.tph__stat {
+  display: grid;
+  gap: 0.2rem;
+  align-content: center;
+  padding: var(--s-3) var(--s-4);
+  border-right: 1px solid var(--border);
+}
+.tph__stat:last-child {
+  border-right: 0;
+}
+.tph__n {
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  line-height: 1;
+  color: var(--text);
+}
+.tph__of {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+@media (width <= 640px) {
+  .tph {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tph__stats {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* -- The gate. The mark is the ONE place a fill is allowed, and only when
+      armed. Everything else is a line. ------------------------------------ */
+.gate {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  background: var(--surface);
+}
+.gate--armed {
+  border-left-color: var(--warning);
+}
+.gate__mark {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.3rem;
+  border: 1px solid var(--text-muted);
+}
+.gate--armed .gate__mark {
+  border-color: var(--warning);
+  background: var(--warning);
+}
+.gate__word {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text);
+}
+.gate__say {
+  margin: 0.3rem 0 0;
+  max-width: 74ch;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.gatebox {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--warning);
+}
+.gatebox--stale {
+  border-color: var(--border-strong);
+}
+.gatebox__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.gatebox__note {
+  font-size: var(--text-overline);
+  color: var(--text-muted);
+}

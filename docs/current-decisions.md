@@ -2,10 +2,9 @@
 
 Public technical baseline, consolidated 8 September 2026 from Nathan's
 confirmed decisions of 6 and 7 September and the 8 September foundation
-specification, and amended since for later decisions, which carry their own
-dates where they appear. **Amended 10 September 2026**: engineer approval for
-the eight protected components was withdrawn and replaced by a green
-conformance proof per affected component, per
+specification. Later amendments carry their own dates. **Amended 10 September
+2026**: engineer approval for the eight protected components was withdrawn
+and replaced by a green conformance proof per affected component, per
 [ADR 0049](adr/0049-senior-engineer-signed-engagement-stop-authority.md).
 This document supersedes earlier public summaries where they differ. It does
 not approve implementation, publication, or service activation.
@@ -29,10 +28,24 @@ Private conversation history cannot be an implementation dependency.
 | Development            | Matt Pocock build loop; Pstack standards within it            | Complete hosted rehearsal before product code                    |
 | Shared UI and registry | One design system and typed capability contract               | Transfer and independent discovery checks from the first slice   |
 
-The detailed decisions are indexed in [ADRs](adr/README.md). All product
-components remain unbuilt in this foundation. Deep Agents, LangGraph,
+The detailed decisions are indexed in [ADRs](adr/README.md). As of 8 September
+2026, all product components remained unbuilt in this foundation; the dated
+paragraph below records the integrated head. Deep Agents, LangGraph,
 LangChain, and Langflow are unselected candidates. No new framework is required
 to publish the foundation or prove a deterministic local task flow.
+
+### State at the integrated head, 23 September 2026
+
+The paragraph above describes the foundation as it stood on 8 September. Since
+then a local task slice has been built against these decisions: records, the
+authority model, a bounded runtime, an HTTP API, a command line and a web
+application are in the tree with tests, and a person can sign in, create a
+task, assign it, change its state and reload it against a real local Postgres.
+[The local slice](local/README.md) describes what exists, what proves it
+and what it does not do. Read it before any statement here about what is
+built. This paragraph records state, not a new decision. Every decision above
+stands unchanged and the proof column is still owed. No review of the
+integrated head has been recorded, so nothing in the slice is accepted.
 
 ## Current domain and behaviour decisions
 
@@ -60,8 +73,9 @@ to publish the foundation or prove a deterministic local task flow.
 
 The proposed roadmap is foundation, tasks and basic approval, agent work,
 Docs, richer review, and CRM. No dates or fixed slice totals are established.
-The [first task specification](plan/first-task.md) is the next bounded product
-proposal and does not release its draft tickets.
+The [first task specification](plan/first-task.md) is the 8 September
+product proposal. The slice that was built differs from it, and the
+specification does not release its draft tickets.
 
 The full build-loop rehearsal precedes product code. A green conformance
 proof is required before merging changes to the eight protected components.

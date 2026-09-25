@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// What the signed-in person may do here, answered from the grant model.
+//
+// Every surface needs this and every surface was guessing at it. A screen that
+// draws a button from a role name draws it for a person whose grant was
+// revoked this morning, and a client that discovers the truth from a 403 has
+// already told the person they could do the thing. The answer is the same
+// `effectiveGrants` the authority check runs, in the caller's transaction, so
+// a grant revoked a moment ago is missing from this list rather than soon.
+//
+// **Three things this never returns.** Not a secret: a grant is a pair of
+// words, and nothing about a credential, a delegation's credential digest or a
+// signing key is reachable from here. Not another person's grants: the
+// subjects are `subjectsOf(session)` and nothing takes a person identifier
+// from a caller, so there is no parameter to point at somebody else. Not a
+// decision: it reports authority, it does not confer it, and every operation
+// still asks `checkAuthority` for itself.
+//
+// **It is answered to a caller who holds a grant.** A member holding none is
+// refused `SCOPE_NOT_GRANTED` by `reads/dispatch.ts` rather than shown an empty
+// list, because a denied read is never a success with nothing in it (minimum
+// contract 8.2 case 3, ledger I05). A login with no standing never reaches
+// here at all — that is `AUTH_NO_MEMBERSHIP` from the resolution, before any
+// read runs. Standing is a membership, or for an external party (R4) a live
+// share, whose pairs are what it is shown.
+
+import type { TenantQuery } from '../tenancy/database.ts';
+import type { Session } from '../identity/login-resolution.ts';
+import { effectiveGrants, subjectsOf, type Action, type ScopeKind } from '../authority/grants.ts';
+import { declarationOf, type CommandName } from '../commands/surface.ts';
+
+/** One thing the caller may do, as the grant model spells it. */
+export interface Capability {
+  readonly collection: string;
+  readonly action: Action;
+}
+
+/**
+ * The person answer, flattened onto the read result rather than nested.
+ *
+ * The three fields sit beside `ok` on the wire -- `{ ok: true, personId,
+ * businessKey, grants }` -- because that is the shape the surfaces are being
+ * written against, and a nested `capabilities` object would have made every
+ * client reach through one more level for three fields.
+ */
+export interface SessionCapabilities {
+  readonly personId: string;
+  /** The business's key, which is what a path and a screen both name it by. */
+  readonly businessKey: string;
+  /** Distinct pairs, sorted. A pair held at two scopes appears once. */
+  readonly grants: readonly Capability[];
+}
+
+/**
+ * The agent half of the same question.
+ *
+ * An agent holds no grants of its own — `identity/agent-login.ts` confers
+ * nothing at all — so the honest answer is its delegation's purpose and the
+ * two operations it may reach before it has one. Reporting the delegating
+ * person's grants here would be reporting somebody else's authority as the
+ * agent's, which is the collapse the identity model exists to prevent.
+ */
+export interface AgentCapabilities {
+  /** Its own acting identity. Never the delegating person's. */
+  readonly agentActorId: string;
+  readonly businessKey: string;
+  /** The picked-up task the delegation is bounded to, or null before a pickup. */
+  readonly purposeScope: { readonly kind: 'record'; readonly id: string } | null;
+  /**
+   * What the agent may do on its purpose record now, as the same
+   * `{ collection, action }` pairs the person answer uses, so one client can
+   * read `grants` the same way on both prefixes. Each pair is one the
+   * delegation's purpose carries that the delegating person's effective
+   * grants still cover there (root ruling 5, the intersection); a pair the
+   * person lost, by revocation or by expiry, is absent. The two operations an
+   * agent login reaches holding nothing (`BEFORE_PICKUP` in
+   * `agent-envelope.ts`) are not grants and are not here.
+   */
+  readonly grants: readonly Capability[];
+}
+
+// The agent's pairs are computed in `agent-envelope.ts` (`capabilitiesOf`),
+// which already holds the resolved delegation. The envelope already reads
+// `reads/queue.ts` and `reads/tasks.ts`, so a read module reaching back into it
+// would close an import cycle.
+
+/**
+ * The writes an external party (R4) may reach, as the pairs they ask for.
+ *
+ * The R4 gate in `commands/prepare.ts` (`EXTERNAL_WRITES`) refuses every other
+ * write before any grant row is read, so a scoped `write` or `assign` row a
+ * share would never carry is authority the party cannot use. Showing it would
+ * tell a client it could do the thing and let the 403 say otherwise, which is
+ * what this read exists to prevent. The gate's set is not exported, so the one
+ * name is repeated here, and `final-r2-fr2-api-capabilities.test.ts` holds the
+ * two together over HTTP.
+ */
+const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment'];
+
+const EXTERNAL_PAIRS: ReadonlySet<string> = new Set(
+  EXTERNAL_WRITES.map((name) => {
+    const declared = declarationOf(name);
+    return `${declared.collection}:${declared.action}`;
+  }),
+);
+
+/** Whether an external party can use a pair: a read, or an external write's pair. */
+function usableOutside(collection: string, action: Action): boolean {
+  return action === 'read' || EXTERNAL_PAIRS.has(`${collection}:${action}`);
+}
+
+interface CandidateRow {
+  readonly collection: string;
+  readonly action: Action;
+  readonly scope_kind: ScopeKind;
+  readonly scope_id: string | null;
+}
+
+/**
+ * The caller's live capabilities, in their own transaction.
+ *
+ * Two steps, and the first is deliberately not the authority. `public.grants`
+ * is asked which pairs are worth asking about — a cheap narrowing over rows
+ * that are not revoked and not expired — and then `effectiveGrants` decides
+ * each one, because it is the single expression of "live, and still covered by
+ * its granter" and a delegated grant whose parent was revoked is live in the
+ * table and dead in that query. Reproducing its recursive term here would put
+ * a second copy of the authority model in the read layer, which is exactly
+ * what a capability read must not be.
+ */
+export async function readCapabilities(
+  tx: TenantQuery,
+  session: Session,
+): Promise<SessionCapabilities> {
+  const subjects = subjectsOf(session);
+  const candidates = await tx.query<CandidateRow>(
+    `select distinct collection, action, scope_kind, scope_id
+       from public.grants
+      where business_id = $1
+        and revoked_at is null
+        and (expires_at is null or expires_at > now())
+        and exists (select 1 from unnest($2::text[], $3::uuid[]) as s (kind, id)
+                     where s.kind = subject_kind and s.id = subject_id)`,
+    [tx.businessId, subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+  );
+
+  const held = new Map<string, Capability>();
+  for (const candidate of candidates) {
+    // R4 is shown its shares' pairs and the one write it can reach, never a
+    // provisioned row the external gate refuses on every operation.
+    if (session.roleKey === null && !usableOutside(candidate.collection, candidate.action)) {
+      continue;
+    }
+    // Sequential: one transaction, one connection, and the candidate list is
+    // the pairs one person holds rather than the business's whole grant table.
+    // oxlint-disable-next-line no-await-in-loop
+    const live = await effectiveGrants(tx, subjects, {
+      collection: candidate.collection,
+      action: candidate.action,
+      scope: { kind: candidate.scope_kind, id: candidate.scope_id },
+    });
+    if (live.length === 0) continue;
+    held.set(`${candidate.collection}:${candidate.action}`, {
+      collection: candidate.collection,
+      action: candidate.action,
+    });
+  }
+
+  return {
+    personId: session.personId,
+    businessKey: await businessKeyOf(tx),
+    grants: [...held.keys()].toSorted().map((pair) => held.get(pair) as Capability),
+  };
+}
+
+/**
+ * The key, not the identifier.
+ *
+ * A caller already knows the key: it is in the path it just called. Handing
+ * back the uuid instead would give a client an identifier it has no other use
+ * for and would make the answer harder to check against the request.
+ */
+export async function businessKeyOf(tx: TenantQuery): Promise<string> {
+  const rows = await tx.query<{ readonly key: string }>(
+    `select key from public.businesses where business_id = $1 and id = $1`,
+    [tx.businessId],
+  );
+  const found = rows[0];
+  if (found === undefined) {
+    throw new Error('readCapabilities: the session’s business has no row of its own');
+  }
+  return found.key;
+}

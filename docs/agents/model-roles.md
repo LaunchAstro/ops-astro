@@ -32,6 +32,28 @@ revision or candidate manifest, verification commands and results, findings
 with file references, and their disposition. The receiver inspects the actual
 artefact. An earlier agent's assurance does not replace that inspection.
 
+A handback that reports a bug or hands over evidence carries seven things, and
+a report missing any of them costs the receiver the work of reconstructing it:
+
+1. **The exact head**, plus the dirty diff or a manifest of it. A tree nobody
+   can reconstruct is a report about nothing.
+2. **The command**, as run, including the environment it needed.
+3. **The failing case or refusal**, named: the case identifier, the refusal
+   code, or the assertion.
+4. **Expected against actual**, both stated, rather than one and an adjective.
+5. **The relevant logs, with secrets removed.** Generated passwords, service
+   secrets and signing keys never travel in a report.
+6. **Where the evidence is**, as a path the receiver can open.
+7. **What remains uncertain**, said plainly. An unresolved question stated is
+   worth more than a confident summary that hides it.
+
+Distinguish three claims throughout, because collapsing them is how a tree
+comes to look more finished than it is: **implemented** means the mechanism is
+in the tree; **tested** names the command that exercises it; **accepted** means
+a review record says so, and nothing else does.
+[The local slice](../local/README.md#reporting-a-bug-or-handing-back-evidence)
+points here rather than keeping a second copy of this list.
+
 Keep comments for non-obvious reasons and constraints. Keep intent and durable
 decisions in concise prose. The capability registry generates navigation when
 implemented; do not maintain a competing manual inventory.

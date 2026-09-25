@@ -1,0 +1,157 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 4 of 5: the board (S1).
+
+   Ported from the pinned mockup's `assets/app.css` at 7066bad, geometry exact.
+   ============================================================================ */
+
+/* -- The board (S1). It is a table, not a card board. -------------------- */
+.cbd {
+  border: 1px solid var(--border);
+  background: var(--paper);
+}
+.cbd__filters {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.cbd__flabel {
+  margin-right: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+}
+.cbd__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  font-size: var(--text-label);
+}
+.cbd__tagk {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+}
+.cbd__tagx {
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.cbd__wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.cbd__tbl {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.875rem;
+}
+.cbd__tbl th {
+  position: relative;
+  padding: 0;
+  text-align: left;
+  border-bottom: 1px solid var(--border-strong);
+}
+.cbd__th {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+}
+.cbd__thl {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+.cbd__tbl td {
+  padding: 0.5rem var(--s-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.cbd__tbl tbody tr:not(.cbd__grp):nth-child(even) {
+  background: color-mix(in oklch, var(--ink) 1.6%, var(--paper));
+}
+.cbd__tbl tbody tr:not(.cbd__grp):hover {
+  background: var(--surface-2);
+}
+/* The group banner is a plain heading: no colour, no count. A board where
+   every row shouts says nothing. */
+.cbd__grp td {
+  padding-top: var(--s-4);
+  border-bottom: 1px solid var(--border-strong);
+}
+.cbd__grpb {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text);
+}
+.cbd__grpr {
+  margin-left: 0.6rem;
+  color: var(--text-muted);
+  text-transform: none;
+}
+.cbd__name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.cbd__nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+.cbd__rank {
+  font-family: var(--font-mono);
+}
+.cbd__dim {
+  color: var(--text-dim);
+}
+.cbd__av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+.cbd__empty {
+  padding: var(--s-7) var(--s-5);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.tl__due {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.tl__due.is-now {
+  color: var(--warning);
+}
+.tl__due.is-bad {
+  color: var(--danger);
+}
