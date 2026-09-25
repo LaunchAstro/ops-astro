@@ -178,7 +178,9 @@ const detailOf = (result) => result.body?.detail ?? result.body ?? {};
 const codeOf = (result) => (typeof result.body?.code === 'string' ? result.body.code : undefined);
 
 async function main() {
-  console.log(`verify-slice: api=${API} gotrue=${GOTRUE}`);
+  // The addresses come from the same environment as the passwords, so they are
+  // named rather than printed; the defaults are 127.0.0.1:8790 and :54391.
+  console.log('verify-slice: against API_URL (or API_PORT) and GOTRUE_URL');
 
   const health = await fetch(`${API}/api/health`).then(
     async (response) => ({ status: response.status, body: await response.json() }),

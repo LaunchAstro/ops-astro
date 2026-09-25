@@ -383,7 +383,7 @@ export function writeResults(given) {
     '| --- | --- | --- | --- | --- |',
     ...results.map(
       (entry) =>
-        `| ${entry.case} | ${entry.action} | ${entry.observed.replaceAll(/\|/gu, '\\|')} | ${verdictOf(entry)} | ${entry.shot ? entry.shot.replace(`${SHOTS}/`, '') : '—'} |`,
+        `| ${entry.case} | ${entry.action} | ${entry.observed.replaceAll('\\', '\\\\').replaceAll('|', '\\|')} | ${verdictOf(entry)} | ${entry.shot ? entry.shot.replace(`${SHOTS}/`, '') : '—'} |`,
     ),
     '',
     `${ran.length - failed.length}/${ran.length} passed, ${failed.length} failed, ${unrun} unrun, ${pending.length} pending a sibling lane.`,
