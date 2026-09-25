@@ -82,10 +82,15 @@ function withDatabase(run) {
     const url = `postgres://postgres:${password}@127.0.0.1:${port}/conformance`;
 
     // Wait for it to accept connections rather than sleeping a fixed time.
+    // Ask over TCP, not the Unix socket: on a fresh volume the entrypoint
+    // first runs a socket-only server for initdb, then restarts, and a socket
+    // check passed during that phase handed the runner an ECONNRESET at
+    // 9da823a. tests/ci/db-ready-race.mjs reproduces it.
     let ready = false;
     for (let attempt = 0; attempt < 60 && !ready; attempt += 1) {
       ready =
-        docker('exec', name, 'pg_isready', '-U', 'postgres', '-d', 'conformance').status === 0;
+        docker('exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'conformance')
+          .status === 0;
       if (!ready) execFileSync('sleep', ['1']);
     }
     assert.ok(ready, 'Postgres never became ready');
