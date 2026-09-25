@@ -49,15 +49,17 @@ if (check === undefined) {
   console.error(`db-ready-race: --check must be one of ${Object.keys(CHECKS).join(', ')}`);
   process.exit(2);
 }
-const runs = Number(values.runs);
-const interval = Number(values.interval);
-// A run count that starts no container would report "failed=0" having
-// proved nothing, so anything but a positive whole number is refused.
-if (!Number.isInteger(runs) || runs < 1) {
+// Both values must be written as plain digits. Number() alone reads '' as 0
+// and '1e3' as 1000, and a run count that starts no container would report
+// "failed=0" having proved nothing.
+const WHOLE = /^[0-9]+$/u;
+const runs = WHOLE.test(values.runs) ? Number(values.runs) : Number.NaN;
+const interval = WHOLE.test(values.interval) ? Number(values.interval) : Number.NaN;
+if (!(runs >= 1)) {
   console.error('db-ready-race: --runs must be a whole number of at least 1');
   process.exit(2);
 }
-if (!Number.isInteger(interval) || interval < 0) {
+if (!(interval >= 0)) {
   console.error('db-ready-race: --interval must be a whole number of milliseconds, 0 or more');
   process.exit(2);
 }
