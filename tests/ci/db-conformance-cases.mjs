@@ -41,6 +41,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -488,4 +489,50 @@ test('no DATABASE_URL is a refusal, not a skip', () => {
   });
   assert.equal(run.status, 2, `expected exit 2, got ${String(run.status)}`);
   assert.match(run.stderr, /DATABASE_URL must be set/u);
+});
+
+// Copilot on PR A, C11: a pre-suite counter read that failed was replaced by
+// zero, so the cumulative counter read afterwards looked like a large
+// movement and a suite that never touched the database passed rule 7. A
+// real Postgres cannot be made to fail one read on cue, so this preload,
+// given to the runner alone, fails its third counter read: the first two
+// calibrate the read's own cost, the third is the first suite's pre-suite
+// read. Nothing in the runner knows it is there.
+const FAILS_THE_THIRD_COUNTER_READ = `// SPDX-License-Identifier: AGPL-3.0-only
+import pg from 'pg';
+
+const query = pg.Client.prototype.query;
+let reads = 0;
+pg.Client.prototype.query = function (...args) {
+  if (String(args[0]).includes('pg_stat_database')) {
+    reads += 1;
+    if (reads === 3) return Promise.reject(new Error('a transient counter read failure'));
+  }
+  return query.apply(this, args);
+};
+`;
+
+test('a counter read that fails is a failure, not a zero baseline', async (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites(
+      {
+        'beside.test.ts': NEVER_TOUCHES_THE_DATABASE,
+        'fails-third-read.mjs': FAILS_THE_THIRD_COUNTER_READ,
+      },
+      { invariant: ['beside.test.ts'] },
+      (m) => {
+        const preload = pathToFileURL(join(m, '..', 'fails-third-read.mjs')).href;
+        const run = spawnSync(process.execPath, ['--import', preload, runner, '--manifest', m], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: { ...process.env, DATABASE_URL: url },
+          maxBuffer: 32 * 1024 * 1024,
+        });
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        assert.match(run.stderr, /could not read the database counter/u);
+        assert.match(run.stderr, /a transient counter read failure/u);
+      },
+    ),
+  );
 });
