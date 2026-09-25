@@ -29,8 +29,12 @@ provenance checks.
 
 The builder cannot approve its own work. A frontier model from a different
 company than the builder's reviews the actual revision in a fresh context.
-Copilot reviews the hosted revision; a human makes the merge decision after
-the required checks and findings are resolved.
+Copilot reviews the hosted revision. An agent then invokes the merge on
+Nathan's credential once every required check is green on that revision and
+every finding is closed, and notifies him afterwards. The production deploy,
+the five protected parts, a coherence waiver, a tier reduction, and the
+sandbox contract stay his own decision, as
+[Contributing](CONTRIBUTING.md) sets out.
 The conformance proofs in [Contributing](CONTRIBUTING.md) remain separate.
 
 [Model roles](docs/agents/model-roles.md) defines the written handoff. Agents

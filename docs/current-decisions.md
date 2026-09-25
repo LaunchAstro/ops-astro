@@ -69,6 +69,16 @@ The sandbox's final contract must be approved after adversarial findings are
 resolved and before implementation. [Contributing](../CONTRIBUTING.md) is the
 canonical review and merge procedure.
 
+**Amended 23 September 2026**: from the first product pull request after the
+governance change that carries this amendment, an agent invokes each merge on
+Nathan's credential. Its rule has no discretion: every required check green on
+the head being merged. It notifies him after the merge, naming the pull
+request and the merged revision. The production deploy, the five protected
+parts (T1a, T1d1, T1d2, T1e and T1i), a coherence waiver on the size cap, a
+reduction of any check's tier and the sandbox's final contract stay his
+decision. Automatic merging stays disabled. Per
+[ADR 0046](adr/0046-merge-mode-machine-proven-merges.md).
+
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical
 evidence digest with adjudicated verdicts remains outstanding. The

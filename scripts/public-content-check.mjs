@@ -27,8 +27,111 @@ const rules = [
   ],
 ];
 
-export function contentRules(text) {
+// Contributor addresses, scoped by where the address sits.
+//
+// The naive rule is "no address anywhere", and it is the case this scope
+// exists to avoid: every commit in this repository is authored by a GitHub
+// no-reply identity, so a blanket rule fails the whole port range on its own
+// provenance and teaches everyone to pass `--no-verify`. The distinction is
+// real. An enumerated identity in a commit's author, committer or trailers is
+// provenance Git put there. The same string inside a file or a path is
+// published contact detail, which is what this policy is about.
+// The final label must be alphabetic. Without that, an npm specifier such as
+// a scoped package at a three-part version reads as an address and every
+// lockfile in the repository becomes a finding.
+const addressPattern = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+
+// Provenance only. Allowed as a commit identity; a finding inside a blob.
+const provenanceIdentities = [
+  /^(?:\d+\+)?[a-z0-9-]+@users\.noreply\.github\.com$/u,
+  /^noreply@github\.com$/u,
+];
+
+// Deliberately published, so allowed wherever they appear: the public
+// security address this project documents, and the reserved documentation
+// domains of RFC 2606 and RFC 6761, which can never reach a mailbox.
+const publishedAddresses = [
+  /^security@launchastro\.com$/u,
+  /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
+];
+
+// A raw commit object, as `git cat-file commit` prints it, is indexed under
+// this synthetic path by publicHistory.
+//
+// Round nine, 23 September, found the comment that used to sit here wrong. It
+// said nothing in a working tree can take that shape, and a tracked file
+// named `commit-<40 hex>-metadata` takes it exactly: the filename alone
+// bought the commit-provenance exemption, and a contributor address inside
+// that blob passed both the staged scan and the history scan. A filename is
+// not provenance. The scope now travels with the entry that publicHistory
+// built from a real commit object, and the shape is checked as well, so a
+// tracked path can no longer claim it however it is named.
+const commitMetadataPath = /^commit-[0-9a-f]{40}-metadata$/u;
+
+// A set, not one digest, and for the same reason the gate's exemption file
+// keeps one: a history scan reads every version of the fixture the outgoing
+// commits reach, not only the one checked out now.
+const approvedShapeDigests = new Set([
+  '991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18',
+  'b6b9ae5cdad61b3087e053e27f87fddb94f0ad205310a55544eca9a6517e5299',
+]);
+
+export function addressRules(text, scope) {
+  const found = new Set();
+  for (const [address] of text.matchAll(addressPattern)) {
+    const value = address.toLowerCase();
+    if (publishedAddresses.some((allowed) => allowed.test(value))) continue;
+    if (scope === 'commit') {
+      if (provenanceIdentities.some((allowed) => allowed.test(value))) continue;
+      found.add('unlisted-commit-identity');
+      continue;
+    }
+    found.add('contributor-address');
+  }
+  return [...found];
+}
+
+// The trailers that carry an identity, and so may carry a GitHub no-reply
+// address as provenance. `Signed-off-by` is the human certification
+// CONTRIBUTING.md and AI_POLICY.md describe; `Co-authored-by` is GitHub's
+// co-author trailer, allowed in tests/ci/public-history-cases.mjs since the
+// address policy was scoped. No other key is an identity: the repository's
+// own trailers (`Assisted-by`, `Agent-model`, `Agent-tool`, .gitmessage)
+// name a model and a tool, not a person.
+const identityTrailer = /^(?:Co-authored-by|Signed-off-by): /iu;
+
+// A raw commit object is headers, a blank line, then the message. Only the
+// author and committer headers, and identity trailers in the paragraph that
+// closes the message, are provenance, each judged as one line. Every other
+// line is published text, the closing paragraph's included, so a no-reply
+// address in the subject, the body or a `Note:` line is a finding. Sol's
+// recheck of 8eb0983 found the earlier rule, which exempted any closing
+// paragraph of `Key: value` lines, passing `Note: Contact <address>`.
+export function commitAddressRules(raw) {
+  const split = raw.indexOf('\n\n');
+  const headers = (split === -1 ? raw : raw.slice(0, split)).split('\n');
+  const message = split === -1 ? '' : raw.slice(split + 2);
+  const paragraphs = message.replace(/\n+$/u, '').split(/\n{2,}/u);
+  const closing = paragraphs.length > 1 ? (paragraphs.pop() ?? '').split('\n') : [];
+  const identity = /^(?:author|committer) /u;
+  const provenance = [
+    ...headers.filter((line) => identity.test(line)),
+    ...closing.filter((line) => identityTrailer.test(line)),
+  ].join('\n');
+  const published = [
+    ...headers.filter((line) => !identity.test(line)),
+    ...paragraphs,
+    ...closing.filter((line) => !identityTrailer.test(line)),
+  ].join('\n');
+  return [
+    ...new Set([...addressRules(provenance, 'commit'), ...addressRules(published, 'content')]),
+  ];
+}
+
+export function contentRules(text, scope = 'content') {
   const found = rules.filter(([, pattern]) => pattern.test(text)).map(([id]) => id);
+  found.push(...(scope === 'commit' ? commitAddressRules(text) : addressRules(text, scope)));
   const words = text.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   if (
     words.some((word) => excludedTokenHashes.has(createHash('sha256').update(word).digest('hex')))
@@ -40,7 +143,11 @@ export function contentRules(text) {
 export function scanPublicFiles(entries) {
   const findings = [];
   const decoder = new TextDecoder('utf-8', { fatal: true });
-  for (const { path, bytes } of entries) {
+  for (const { path, bytes, scope: declared } of entries) {
+    // Only publicHistory declares this, and only for the raw commit object it
+    // read itself. Everything else -- the index, a candidate directory, every
+    // blob in the history's trees -- is ordinary content.
+    const scope = declared === 'commit' && commitMetadataPath.test(path) ? 'commit' : 'content';
     const pathRules = contentRules(path);
     // A prohibited value can be in the filename itself. Withhold that path.
     const display = pathRules.length ? '<withheld-path>' : path;
@@ -60,10 +167,9 @@ export function scanPublicFiles(entries) {
     // exception covers its path shapes only; every other rule still scans it.
     const approvedShapes =
       path === 'tests/gate/shape-canary.txt' &&
-      createHash('sha256').update(bytes).digest('hex') ===
-        '991dcbfd7983836cd4b8070bc4db18e8aa2d41414a4db61c1dc53e9253e78b18';
-    for (const rule of contentRules(text)) {
-      if (rule === 'personal-path' && approvedShapes) continue;
+      approvedShapeDigests.has(createHash('sha256').update(bytes).digest('hex'));
+    for (const rule of contentRules(text, scope)) {
+      if ((rule === 'personal-path' || rule === 'contributor-address') && approvedShapes) continue;
       findings.push({ file: display, rule });
     }
   }
@@ -111,7 +217,11 @@ export function publicHistory(repository, range) {
   for (const sha of commits) {
     // Read the raw commit object, including author, committer and message.
     // Reporting uses the object ID only, never metadata or matched values.
-    files.push({ path: `commit-${sha}-metadata`, bytes: git(['cat-file', 'commit', sha]) });
+    files.push({
+      path: `commit-${sha}-metadata`,
+      bytes: git(['cat-file', 'commit', sha]),
+      scope: 'commit',
+    });
     const tree = decoder.decode(git(['ls-tree', '-rz', '--full-tree', sha]));
     for (const line of tree.split('\0').filter(Boolean)) {
       const split = line.indexOf('\t');

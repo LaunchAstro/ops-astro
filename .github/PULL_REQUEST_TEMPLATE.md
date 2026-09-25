@@ -18,16 +18,40 @@ See docs/agents/review-checkpoint.md.
 ## Review outcomes
 
 <!--
-Both lines are read by the review-evidence check. It requires an outcome, not
-a mention: "not run", "pending", "skipped", "failed" and open findings all
-fail, and so does a heading with nothing after it.
+Replace REPLACE-WITH-OUTCOME on both lines below with one of these forms,
+exactly. The review-evidence check reads the whole text after the colon on
+that line, ignoring case and one trailing full stop. Anything that is not one
+of these forms fails. Put any explanation on the next line; the check does
+not read it.
+
+Code review, one of:
+  no findings
+  the review found nothing
+  every finding it raised is closed
+  <N> findings, all closed
+  <N> findings, <N> closed
+
+Security review, one of:
+  run against <sha>, no findings
+  run against <sha>, <N> findings, all closed
+  run against <sha>, <N> findings, <N> closed
+  not required: no sensitive paths changed
+
+N is the same number on both sides, at least 1, with `finding` for 1.
+<sha> is the revision the security review ran against; on a sensitive
+change the check requires it to be this pull request's head.
+`not required: no sensitive paths changed` is fixed text, and passes only
+when the change touches no sensitive path; say why on the next line. Cite the
+procedure file by path on a following line if you want to.
+
+What a green check proves: the evidence is bound to this exact head. It reads
+no reviewer identity, so it does not prove that any reviewer read anything.
+That is the seven questions' job, in CONTRIBUTING.md.
 -->
 
-Code review: <!-- no findings | N findings, all closed -->
+Code review: REPLACE-WITH-OUTCOME
 
-Security review: <!-- run against <head sha>, no findings | not required: this
-diff does not touch auth, tenancy, tool execution, egress, custody or the
-audit chain -->
+Security review: REPLACE-WITH-OUTCOME
 
 ## How it was tested
 
@@ -94,7 +118,8 @@ is worth writing down when it is true.
 - [ ] Ticket and acceptance criterion met
 - [ ] Checks green
 - [ ] Evidence present
-- [ ] Review findings closed
+- [ ] The cross-vendor reviewer and Copilot each reviewed this revision, and
+      every finding from both is closed
 - [ ] Security pass, where the surface calls for one
 - [ ] Under the size cap
 - [ ] Which layer should have caught this, answered above, and the answer has

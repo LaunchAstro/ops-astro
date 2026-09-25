@@ -30,11 +30,12 @@ requires. Do not create a commit to make that local review possible.
 
 The final ticket verifies the integrated feature. Done is a checked artefact.
 A frontier model from a different company than the builder's reviews that
-work, and Copilot reviews the hosted revision. Merge is a human decision on
-the seven questions in [Contributing](CONTRIBUTING.md). A change to one of the
-eight protected components also needs that component's conformance test to be
-green. The sandbox's final reviewed contract requires Nathan's approval before
-implementation.
+work, and Copilot reviews the hosted revision. An agent invokes the merge on
+Nathan's credential once every required check is green;
+[Contributing](CONTRIBUTING.md) holds the seven questions and what stays his.
+A change to one of the eight protected components also needs that component's
+conformance test to be green. The sandbox's final reviewed contract requires
+Nathan's approval before implementation.
 
 Run `/security-review` before a pull request touching auth, tenancy, tool
 execution, egress, custody, or the audit chain.

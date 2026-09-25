@@ -2,17 +2,23 @@
 
 ## Report a vulnerability privately
 
-Email [security@launchastro.com](mailto:security@launchastro.com) with the
-reproduction steps, affected revision, and the access or effect an attacker
-obtains. Do not publish sensitive details in an issue or pull request.
-GitHub private vulnerability reporting is an intended second route once enabled
-and tested. Mailbox delivery has not been proven in this foundation.
+**No private reporting route is proven yet, so this policy names none.** A
+route is described here only once it has been used end to end and the
+delivery confirmed. Two are intended: a security mailbox, and GitHub private
+vulnerability reporting. Neither has been proved, and GitHub private
+vulnerability reporting is disabled on this repository today.
 
-Nathan Mulligan is the named recipient. The policy targets acknowledgement
+Until one of them is recorded here, do not publish reproduction steps,
+affected revisions, or attacker effect in an issue, a pull request, or any
+other public place. Open an issue saying only that you have a security report
+and no more, and wait for a private channel to be offered.
+
+Nathan Mulligan is the intended recipient. The policy targets acknowledgement
 within three business days in Australian eastern time, followed by an
 assessment and coordinated disclosure within 90 days of acknowledgement.
-Reporters may request credit. There is no bounty. These are policy targets;
-the repository contains no operational receipt establishing mailbox delivery.
+Reporters may request credit. There is no bounty. Those targets describe the
+intended handling of a report. They cannot begin before a proven route
+exists, and the repository holds no receipt establishing one.
 
 ## Supported versions
 

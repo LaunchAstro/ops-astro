@@ -48,6 +48,90 @@ The workflow downloads the archive to disk, checks it with `sha256sum -c`, and
 only then extracts it. It used to pipe the download straight into `tar`, which
 runs whatever arrives.
 
+## Container images
+
+A service container runs code inside the job exactly as an action does, so it
+is pinned the same way. `scripts/pins-check.mjs` refuses an `image:`, a
+`container:` or a `uses: docker://` step that is not a sha256 digest, refuses
+an image written as a `${{ }}` expression, since that picks the image at run
+time, and refuses a digest that is not recorded here. A bare `container:`
+opens a mapping, and its own `image:` line is held to the same rule.
+
+The check is not a YAML parser. It reads each workflow line by line, with LF,
+CRLF or CR line endings. It reads a `uses`, `image` or `container` key written
+plain or quoted, with or without space before its colon, and with its value
+on the same line or the next. It refuses a line where such a key follows a `{`
+or `[`, with or without a space after the bracket, and any line that begins
+with an explicit `? ` key, after an optional `- `. A bracket or a `#` inside a
+quoted scalar is text, and a `#` is a comment only after a space, so
+`name: "#"` or `name: step#1` before the key does not hide it; a doubled `''`
+inside single quotes is text too. A comment line is never refused.
+
+Other key forms are not guaranteed to be read: a tagged key (`!!str uses:`),
+an escaped quoted key, and a key inside a flow collection, or a quoted scalar,
+that spans lines. Write each of these keys in block style, one per line. The
+flow scan does not know block scalars either, so a `run: |` line holding an
+unquoted `{` or `[` followed by a `uses:`, `image:` or `container:` string can
+be refused. That is a false red, not a pin getting through: quote the shell
+text or move it to a script.
+Parsing the workflows as YAML is a recorded follow-up.
+`tests/ci/pins-check-cases.sh` holds the cases.
+
+| Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
+| ---------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres` | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'` |
+
+Reproduce it the same way when raising the pin:
+
+```sh
+docker pull postgres:<tag>
+docker image inspect postgres:<tag> --format '{{index .RepoDigests 0}}'
+```
+
+As with an action hash, this establishes which bytes run and nothing about
+whether those bytes are trustworthy. The database conformance job gives that
+container a throwaway password of its own and no repository secret.
+
+## npm pins that a check depends on
+
+Every npm dependency is pinned by `pnpm-lock.yaml`. These are recorded here as
+well, because a check's behaviour depends on the exact version and a reader
+comparing this page with the lockfile should find them agreeing.
+
+| Package              | Version | Why the version matters                                                                                                   |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `dependency-cruiser` | 18.4.0  | The structural dependency check. Its own TypeScript path supports `typescript >=2.0.0 <7.0.0`.                            |
+| `typescript`         | 7.0.2   | Ahead of that range, so dependency-cruiser cannot use the project compiler to read `.ts` sources.                         |
+| `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin. |
+
+**The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
+7.0.2 and **no alternative parser installed**, `depcruise` pointed at a tree of
+three TypeScript modules printed `no dependency violations found (0 modules, 0
+dependencies cruised)` and **exited 0**. Over a mixed tree it cruised the
+JavaScript, skipped the TypeScript, printed nothing on stderr and exited 0.
+This was measured against 18.4.0 rather than assumed fixed from the 18.3.0 the
+ticket named, and it is not fixed.
+
+With `@swc/core` installed, dependency-cruiser reads the whole tree, and a
+source it cannot parse stops the cruise: it exits 1 and writes no report at
+all. `@swc/core` is therefore load bearing, not a convenience, and
+`tests/ci/deps-cruise-cases.mjs` asserts the pin is present and exact.
+
+A green that means "read nothing" is worse than a red, so the check is
+`scripts/deps-cruise.mjs` and not `depcruise` directly. It fails when
+dependency-cruiser returned no readable report, when zero modules were
+cruised, when any source in scope was not cruised, or when any rule at
+severity `error` was violated. **There is no list of files exempt from being
+read, and one must not be added.** An earlier revision of the runner carried
+one, and a syntactically invalid file placed at a listed path was skipped
+while the runner reported that the tree had been read.
+
+Raising `dependency-cruiser` is an ordinary reviewed change, like any other
+dependency bump: it merges once every required check is green, and the
+notification rules above apply to it unchanged. When a release supports
+TypeScript 7, `@swc/core` may become removable; the cases above are what will
+tell whoever tries.
+
 ## Raising a pin
 
 1. Resolve the new tag to its commit with the commands above.
@@ -63,4 +147,12 @@ the point of it.
 
 The npm dependency tree is pinned by `pnpm-lock.yaml`, which is committed, and
 `pnpm install --frozen-lockfile` refuses to drift from it. Renovate proposes
-updates; a human merges them.
+updates; they merge like any other change, and never by Renovate itself. Like
+any other change, an agent invokes that merge on Nathan's credential, because
+his is the only account with push access, once every required check is green
+on the head being merged, and it notifies him afterwards naming the pull
+request and the merged revision. That notification records what happened; it
+does not ask permission. The decisions
+[Contributing](../CONTRIBUTING.md#who-invokes-the-merge) reserves to Nathan
+are not reachable by a green check, and a reduction of any check's tier is one
+of them, so no pin here is loosened by a dependency update merging.

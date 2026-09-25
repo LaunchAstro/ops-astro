@@ -30,7 +30,9 @@ not by itself prove it.
 
 Enable merge commits only. Disable squash merging, rebase merging, linear
 history, and automatic merging, including dependency updates. These settings
-preserve the signed commits and require a human merge decision.
+preserve the signed commits and keep the merge an invoked act with a named
+actor behind it. That actor is an agent on Nathan's credential once every
+required check is green; automatic merging would remove the actor entirely.
 
 ## Bind checks to real hosted results
 
@@ -72,5 +74,11 @@ result against the effective configuration:
 6. A correctly reviewed change with all required checks green merges by merge commit with a verified signature.
 7. Squash, rebase merge, and automatic merge are unavailable.
 
-The [seven-question checklist](../../CONTRIBUTING.md) remains the human merge
-decision. An applicable conformance proof remains a separate required condition.
+The [seven-question checklist](../../CONTRIBUTING.md) is answered by whoever
+invokes the merge, which from the first product pull request is an agent on
+Nathan's credential. After it merges, the agent notifies Nathan, naming the
+pull request and the merged revision; that notification records what happened
+and does not ask permission. An applicable conformance proof remains a
+separate required condition, and the decisions listed in
+[Contributing](../../CONTRIBUTING.md#who-invokes-the-merge) as Nathan's own
+are not reachable by a green check.

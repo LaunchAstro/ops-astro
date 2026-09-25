@@ -25,6 +25,10 @@ Machine and person shapes
   tailnet     examplehost.example-tailnet.ts.net
   launchd     com.example.exampleagent.plist
 
+Contributor address shapes
+  no-reply    1234567+exampleperson@users.noreply.github.com
+  outside     exampleperson@mail.example
+
 Infrastructure shapes
   supabase    abcdefghijklmnopqrst.supabase.co
   r2 public   pub-0123456789abcdef0123456789abcdef.r2.dev
