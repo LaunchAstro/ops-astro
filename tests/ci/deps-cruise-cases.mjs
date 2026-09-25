@@ -205,3 +205,15 @@ test('a target that does not exist is a configuration error, not a pass', () => 
     assert.match(run.stderr, /none of the configured targets exist/u);
   });
 });
+
+// Copilot on PR A (C3): filtering the targets before checking them dropped a
+// missing one whenever another existed, so `src typo` passed having cruised
+// only `src`. A missing target is refused even when others exist.
+test('one missing target among existing ones is a configuration error, not a pass', () => {
+  fixture(CLEAN, (root) => {
+    const run = cruise(root, 'src', 'typo');
+    assert.equal(run.status, 2, `expected exit 2, got ${String(run.status)}: ${run.stdout}`);
+    assert.match(run.stderr, /typo/u);
+    assert.doesNotMatch(run.stdout, /actually read/u);
+  });
+});
