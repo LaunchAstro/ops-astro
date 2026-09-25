@@ -49,8 +49,29 @@ if (check === undefined) {
   console.error(`db-ready-race: --check must be one of ${Object.keys(CHECKS).join(', ')}`);
   process.exit(2);
 }
-const runs = Number(values.runs);
-const interval = Number(values.interval);
+// Both values are plain digits inside a fixed range, or the run is refused.
+// Number() alone reads '' as 0 and '1e3' as 1000; a run count that starts no
+// container would report "failed=0" having proved nothing; and a count or
+// interval past these bounds would be rounded or wrapped by Node, not honoured.
+const MAX_RUNS = 1000;
+const MAX_INTERVAL_MS = 60_000;
+const wholeIn = (text, min, max) => {
+  if (!/^[0-9]{1,6}$/u.test(text)) return Number.NaN;
+  const value = Number(text);
+  return value >= min && value <= max ? value : Number.NaN;
+};
+const runs = wholeIn(values.runs, 1, MAX_RUNS);
+const interval = wholeIn(values.interval, 0, MAX_INTERVAL_MS);
+if (Number.isNaN(runs)) {
+  console.error(`db-ready-race: --runs must be a whole number from 1 to ${MAX_RUNS}`);
+  process.exit(2);
+}
+if (Number.isNaN(interval)) {
+  console.error(
+    `db-ready-race: --interval must be a whole number of milliseconds from 0 to ${MAX_INTERVAL_MS}`,
+  );
+  process.exit(2);
+}
 
 const docker = (...args) => spawnSync('docker', args, { encoding: 'utf8' });
 
