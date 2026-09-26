@@ -4,9 +4,9 @@
 
 Everything still open when slice one landed on `main` (#41 and #44, 25 September 2026), so it can be picked up later. Each line is a GitHub issue; the issue holds the detail. Severity: **P2** is a real defect or gap a person would notice, **P3** is minor. "Decision" marks an issue that waits on the maintainer before anyone builds.
 
-30 open: 3 at P2, 27 at P3. Nothing open is rated P1 (security, data loss, or the app not starting). Each issue is the record: when one changes or closes, update its row here.
+31 open: 4 at P2, 27 at P3. Nothing open is rated P1 (security, data loss, or the app not starting). Each issue is the record: when one changes or closes, update its row here.
 
-Where they came from: the independent reviews of the slice and its governance gates, Copilot and CodeQL on #41 and #44, the freeze and evidence review at the landing head, the gate runs (flaky tests), and the known gaps against the mockup in `docs/local/WEB.md`. Closed at landing: #45 and #46 (fixed in 9a8b84d).
+Where they came from: the independent reviews of the slice and its governance gates, Copilot and CodeQL on #41 and #44, the freeze and evidence review at the landing head, the gate runs (flaky tests), Dependabot, and the known gaps against the mockup in `docs/local/WEB.md`. Closed at landing: #45 and #46 (fixed in 9a8b84d).
 
 The mockup is the full specification. A page-by-page inventory of it is planned and will add parity tickets; the web gaps below are the ones already recorded. Slice two and the agent-work pack are tracked separately, as specs and tickets only (#10 to #40).
 
@@ -33,6 +33,7 @@ The mockup is the full specification. A page-by-page inventory of it is planned 
 
 | Issue                                                     | Severity | Title                                                                                                         | Source                                                    | Decision |
 | --------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
+| [#76](https://github.com/LaunchAstro/ops-astro/issues/76) | P2       | Upgrade hono: 35 open Dependabot alerts on the version the API runs                                           | Dependabot on main                                        |          |
 | [#55](https://github.com/LaunchAstro/ops-astro/issues/55) | P3       | Identifier resolution has no production caller, and capability-map discovery has no successor                 | Freeze packet at the landing head                         | yes      |
 | [#59](https://github.com/LaunchAstro/ops-astro/issues/59) | P3       | Code-quality clean-ups left for later by the code-quality review                                              | Code-quality review, rows ruled "later" during the build  |          |
 | [#60](https://github.com/LaunchAstro/ops-astro/issues/60) | P3       | Architecture candidates not yet run: agent envelope, one operation client, lease ownership, package interface | Architecture review during the build (candidates not run) |          |
