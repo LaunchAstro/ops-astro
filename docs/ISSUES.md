@@ -23,11 +23,11 @@ The mockup is the full specification. A page-by-page inventory of it is planned 
 
 ## Database and upgrades
 
-| Issue                                                     | Severity | Title                                                                                       | Source                                                 | Decision |
-| --------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------- |
-| [#52](https://github.com/LaunchAstro/ops-astro/issues/52) | P2       | Upgrade guard: the runner cannot tell a stopped app from an idle one (advisory lock option) | Independent final review of the migration runner guard | yes      |
-| [#53](https://github.com/LaunchAstro/ops-astro/issues/53) | P3       | Make the upgrade drill repeatable from the repository                                       | Landing notes (upgrade drill)                          |          |
-| [#54](https://github.com/LaunchAstro/ops-astro/issues/54) | P3       | No test names the two owning_operation constraints on field definitions                     | Freeze packet at the landing head                      |          |
+| Issue                                                     | Severity | Title                                                                   | Source                                                 | Decision |
+| --------------------------------------------------------- | -------- | ----------------------------------------------------------------------- | ------------------------------------------------------ | -------- |
+| [#52](https://github.com/LaunchAstro/ops-astro/issues/52) | P2       | Upgrade guard: the runner cannot tell a stopped app from an idle one    | Independent final review of the migration runner guard | yes      |
+| [#53](https://github.com/LaunchAstro/ops-astro/issues/53) | P3       | Make the upgrade drill repeatable from the repository                   | Landing notes (upgrade drill)                          |          |
+| [#54](https://github.com/LaunchAstro/ops-astro/issues/54) | P3       | No test names the two owning_operation constraints on field definitions | Freeze packet at the landing head                      |          |
 
 ## Runtime and code quality
 
