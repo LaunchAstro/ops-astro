@@ -32,7 +32,7 @@ import { lockedInstant } from './clock.ts';
 import {
   fenceCause,
   holdsLease,
-  NOT_OWNED_FIX,
+  LEASE_FIXES,
   personWriteLive,
   readLease,
   refuseLease,
@@ -83,12 +83,6 @@ export interface Renewed {
   readonly expiresAt: Date;
 }
 
-const HEARTBEAT_FIXES = {
-  notOwned: NOT_OWNED_FIX.heartbeat,
-  lost: 'A lease is renewed under current rights. Ask a manager for write on this task.',
-  expired: 'Pick the work up again if it is still claimable.',
-} as const;
-
 export async function heartbeat(
   tx: TenantQuery,
   request: HeartbeatRequest | PersonHeartbeatRequest,
@@ -100,7 +94,7 @@ export async function heartbeat(
     `select delegation_id from public.leases where business_id = $1 and id = $2`,
     [tx.businessId, request.leaseId],
   );
-  if (found[0] === undefined) return refuseLease('not_owned', HEARTBEAT_FIXES.notOwned);
+  if (found[0] === undefined) return refuseLease('not_owned', LEASE_FIXES.heartbeat.notOwned);
 
   await acquire(tx, [
     { lockClass: 'lease', id: request.leaseId },
@@ -137,11 +131,11 @@ async function recheckOwner(
       ? { claimant: 'person', actorId: request.holderActorId }
       : { claimant: 'agent', actorId: request.holderActorId, delegationId: request.delegationId };
   if (lease === undefined || !holdsLease(lease, caller)) {
-    return refuseLease('not_owned', HEARTBEAT_FIXES.notOwned);
+    return refuseLease('not_owned', LEASE_FIXES.heartbeat.notOwned);
   }
   const fenced = fenceCause(lease, request.fence);
   if (fenced === 'fence_presented' || fenced === 'fence_superseded') {
-    return refuseLease(fenced, HEARTBEAT_FIXES.notOwned);
+    return refuseLease(fenced, LEASE_FIXES.heartbeat.notOwned);
   }
   // A person's lease carries no delegation, so its liveness is the person's
   // own current authority instead, and losing it is the same answer.
@@ -150,10 +144,10 @@ async function recheckOwner(
       ? await personWriteLive(tx, request, lease.task_id, lockedAt)
       : lease.delegation_live;
   if (!authorityLive && request.claimant === 'person' && fenced === null) {
-    return refuseLease('authority_lost', HEARTBEAT_FIXES.lost);
+    return refuseLease('authority_lost', LEASE_FIXES.heartbeat.lost);
   }
-  if (fenced !== null) return refuseLease(fenced, HEARTBEAT_FIXES.expired);
-  if (!authorityLive) return refuseLease('not_live', HEARTBEAT_FIXES.expired);
+  if (fenced !== null) return refuseLease(fenced, LEASE_FIXES.heartbeat.expired);
+  if (!authorityLive) return refuseLease('not_live', LEASE_FIXES.heartbeat.expired);
   return { ok: true, value: lease.task_id };
 }
 

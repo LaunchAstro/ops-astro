@@ -28,6 +28,12 @@
 // commands that take them are ordinary record writes that never reach
 // `acquire`; the runtime's commands declare `targetLock: 'runtime'` or no
 // target, so the envelope locks nothing for them and this order starts clean.
+// The grant rows an operation's authority rests on are the other class outside
+// the list, also taken first: decide, pickup and cancellation hold theirs `for
+// share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
+// `acquire`. A handler that re-reads a row this set already holds, as
+// `task.propose` re-reads its task `for update` to compare the revision (F1),
+// takes no new lock.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements
