@@ -727,6 +727,15 @@ run_case "CQ-13 fail closed: a line naming the model and tool passes" 0 "$OK_BOD
 LONG="$(printf '[x] 1. %.0s' $(seq 1 4000))"
 run_case "CQ-13 fail closed: a long run of checkbox and number marks reads in time" 0 "$OK_BODY$P2$LONG" "README.md"
 
+RECORD=""
+run_case "Sol proof, criterion 6: a review record inside raw HTML code cannot satisfy the gate" 1 "$OK_BODY$P2<pre>
+Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+</pre>" "README.md"
+RECORD="$SAVED"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
