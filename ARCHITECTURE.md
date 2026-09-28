@@ -19,8 +19,8 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Payload digest              | `packages/core-digest`     | The canonical payload and its hash, shared by the server and the command line, with tests.                        |
 | Runtime and agent execution | `packages/core-runtime`    | Propose, decide, pick up, hand back and the recovery classifier, with tests. Nothing dispatches and nothing acts. |
 | Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, the task type and the refusal register, with tests.             |
-| Credential broker           | `packages/core-custody`    | Not built                                                                                                         |
-| Provider operations         | `packages/core-connectors` | Not built                                                                                                         |
+| Credential broker           | `packages/core-custody`    | Not built. The package is created by the ticket that builds it.                                                   |
+| Provider operations         | `packages/core-connectors` | Not built. The package is created by the ticket that builds it.                                                   |
 | Shared interface components | `packages/ui`              | Primitives, state, styles and the slice's surfaces, with tests.                                                   |
 | HTTP boundary               | `apps/api`                 | Hono, one route per declared command, with tests.                                                                 |
 | Command line                | `apps/cli`                 | A client of that same API, holding no privileged path.                                                            |
