@@ -30,6 +30,20 @@ export interface TenantQuery {
   query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]>;
 }
 
+/**
+ * The one advisory lock in the product: a transaction-scoped lock on `key`,
+ * released at commit or rollback like a row lock. Every caller builds a key
+ * that names its business, so two businesses never wait on each other.
+ *
+ * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
+ * class is `acquire`'s own first class, and the command layer's keys (the
+ * placement and sibling locks) come before anything `acquire` takes. Nothing
+ * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
+ */
+export async function advisoryLock(tx: TenantQuery, key: string): Promise<void> {
+  await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+}
+
 export interface Connection {
   /** Everything this connection has sent, for the no-runtime-DDL assertion. */
   readonly log: StatementLog;

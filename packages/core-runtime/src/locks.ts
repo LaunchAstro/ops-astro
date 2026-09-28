@@ -19,8 +19,21 @@
 // It also records what it took. `LockSet.holds` is what the helpers check
 // against, so the classifier calling in from `handback.ts` can assert it is
 // running inside the locks it needs instead of taking them again.
+//
+// The command-layer locks sit outside this list and always come first,
+// before any lock `acquire` takes. They are the envelope's: the `serialise` key a
+// placement command names (`prepare.ts`, `serialiseOn`), the target row it
+// locks for a revision check (`lockTask`), and the sibling-set key a rank
+// decision takes (`core-records/src/tasks/placement.ts`, `lockSiblings`). The
+// commands that take them are ordinary record writes that never reach
+// `acquire`; the runtime's commands declare `targetLock: 'runtime'` or no
+// target, so the envelope locks nothing for them and this order starts clean.
+// Every advisory lock, the chain class included, is taken through the one
+// helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
+// `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements
+// and fails if a command-layer lock follows one of these.
 
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import { advisoryLock, type TenantQuery } from '../../core-records/src/index.ts';
 
 /** The classes, in the contract's order. The number is the order. */
 export const LOCK_ORDER = [
@@ -104,9 +117,7 @@ export async function acquire(
   for (const request of ordered) {
     if (request.lockClass === 'chain') {
       // eslint-disable-next-line no-await-in-loop
-      await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${tx.businessId}:${request.id}`,
-      ]);
+      await advisoryLock(tx, `${tx.businessId}:${request.id}`);
       continue;
     }
     // Sequential on purpose, and `Promise.all` would defeat the whole module:

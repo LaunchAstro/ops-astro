@@ -42,6 +42,7 @@ import {
   classifyVersions,
   holdCoveringGrants,
 } from './recovery.ts';
+import type { LockSet } from './locks.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
@@ -197,16 +198,66 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       ),
     };
   }
+  const found = await findGate(tx, request);
+  if (!found.ok) return found;
+  const lockedResult = await lockDecision(tx, request, found.value);
+  if (!lockedResult.ok) return lockedResult;
+  const locked = lockedResult.value;
+  const rechecked = await recheckDecision(tx, request, found.value, locked);
+  if (!rechecked.ok) return rechecked;
+  const { gate, version, pack } = rechecked.value;
+  const written = await writeDecision(tx, request, gate, pack.rendered_digest);
+  if (request.decision === 'reject') {
+    // G05: terminal, and the unstarted holds this lineage owns are released by
+    // the classifier through the cause recorded here -- not by this statement
+    // quietly zeroing a number. R8: under the locks this transaction already
+    // took for them.
+    await tx.query(
+      `update public.proposal_lineages
+          set state = 'rejected', terminal_reason = 'gate_rejected', terminal_at = now()
+        where business_id = $1 and id = $2`,
+      [tx.businessId, gate.lineage_id],
+    );
+    await classifyVersions(
+      tx,
+      locked.lineageVersions,
+      'lineage_rejected',
+      gate.lineage_id,
+      locked.locks,
+    );
+  }
+  const common = { ...written, gateId: gate.id, versionId: gate.version_id };
+  if (request.decision !== 'approve') {
+    return { ok: true, value: { ...common, decision: request.decision } };
+  }
+  return await reserveApproval(tx, locked.capId, found.value.task_id, gate, version, common);
+}
 
-  // Discovery, acquiring no authority. Everything read here is re-read under
-  // the locks below; this pass exists only to learn which rows to lock.
-  const discovered = await tx.query<{
-    readonly lineage_id: string;
-    readonly version_id: string;
-    readonly run_id: string;
-    readonly task_id: string;
-    readonly state: string;
-  }>(
+interface FoundGate {
+  readonly lineage_id: string;
+  readonly version_id: string;
+  readonly run_id: string;
+  readonly task_id: string;
+  readonly state: string;
+}
+
+/**
+ * Find and authorise, before any lock. Discovery acquires no authority:
+ * everything read here is re-read under the locks, and this pass exists only
+ * to learn which rows to lock. A trashed task's gate reads as no gate at all.
+ *
+ * Final review R1 #4. The authority check here runs before any lock, so a
+ * revocation could commit while this waited on the chain or the cap and the
+ * decision still commit after it. The decide grants are held for share here,
+ * before the runtime set, as pickup holds its own: a revocation that locked
+ * first is seen by the re-check under the locks, and one that comes second
+ * waits for this decision to commit.
+ */
+async function findGate(
+  tx: TenantQuery,
+  request: DecideRequest,
+): Promise<RuntimeResult<FoundGate>> {
+  const discovered = await tx.query<FoundGate>(
     `select g.lineage_id, g.version_id, g.run_id, r.task_id, l.state
        from public.gates g
        join public.planned_runs r on r.business_id = g.business_id and r.id = g.run_id
@@ -231,30 +282,53 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'A person with decide authority on this task decides it.',
     );
   }
-
-  // Final review R1 #4. The check above ran before any lock, so a revocation
-  // could commit while this waited on the chain or the cap and the decision
-  // still commit after it. The decide grants are held for share here, before
-  // the runtime set, as pickup holds its own: a revocation that locked first is
-  // seen by the re-check under the locks, and one that comes second waits for
-  // this decision to commit.
   await holdCoveringGrants(tx, request.subjects, request.collection);
+  return { ok: true, value: found };
+}
 
-  // Discovery only. Opening the envelope is a *write*, and a write before the
-  // lock set is the thing the contract's ordering exists to prevent: two
-  // concurrent approvals on one task both found no envelope, both inserted,
-  // and the loser met a unique-index violation instead of the typed refusal it
-  // had earned. So this reads, and `openEnvelope` below writes under the locks.
+interface LockedDecision {
+  readonly locks: LockSet;
+  readonly capId: string;
+  readonly existing: Awaited<ReturnType<typeof openEnvelopeOf>>;
+  readonly lineageVersions: readonly string[];
+  readonly lockedAt: string;
+}
+
+/**
+ * Lock the complete set, in the contract's order. `acquire` sorts it, so the
+ * listing order here is documentation and the statement order is the law. The
+ * chain lock is R10: the sequence is business-wide and two decisions sharing
+ * no other row must still be ordered.
+ *
+ * Opening the envelope is a *write*, and a write before the lock set is the
+ * thing the contract's ordering exists to prevent: two concurrent approvals
+ * on one task both found no envelope, both inserted, and the loser met a
+ * unique-index violation instead of the typed refusal it had earned. So this
+ * only reads it, and `openEnvelope` writes under the locks.
+ *
+ * R8 and thermo O3: the holds a rejection makes nonclaimable are released in
+ * the same transaction, so their accounting parents are discovered before the
+ * locks and rediscovered under them. A hold that appeared in between rolls
+ * back as `AffectedSetChanged` rather than meeting the classifier as a
+ * lock-order fault; a set that only shrank is covered (N1). An approval
+ * discovers no holds.
+ *
+ * G06 and Sol 6 RUNTIME-3: the clock is read after the locks, not `now()`,
+ * which is when this transaction began, so a decide that waited on its locks
+ * past the deadline is refused.
+ */
+async function lockDecision(
+  tx: TenantQuery,
+  request: DecideRequest,
+  found: FoundGate,
+): Promise<RuntimeResult<LockedDecision>> {
   const existing = await openEnvelopeOf(tx, found.task_id);
-
   // R2. The envelope's own cap is the cap this approval draws on, and the
-  // request's is a claim about it. Discovery returned only an envelope id
-  // before, so preflight checked the requested cap while `reserve` checked the
-  // envelope's stored one: an existing envelope with room, a requested cap
-  // with room and an exhausted actual cap passed preflight, wrote the signed
-  // decision and the approved gate, and then refused on a cap nothing had
-  // locked. Refused here, before the first write, and the canonical cap is
-  // what everything below uses.
+  // request's is a claim about it. An existing envelope with room, a requested
+  // cap with room and an exhausted actual cap once passed preflight, wrote the
+  // signed decision and the approved gate, and then refused on a cap nothing
+  // had locked. Refused here, before the locks and the first write, and the
+  // canonical cap is what everything below uses.
   if (existing !== undefined && existing.capId !== request.capId) {
     return refuse(
       'CAP_BINDING_MISMATCH',
@@ -263,31 +337,15 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
     );
   }
   const capId = existing?.capId ?? request.capId;
-
-  // R8. The holds a rejection makes nonclaimable are released in the same
-  // transaction, so their accounting parents are discovered before the locks
-  // rather than reached through a helper afterwards.
-  const rejecting = request.decision === 'reject';
-  const lineageVersions = rejecting
-    ? (
-        await tx.query<{ readonly id: string }>(
-          `select id from public.proposal_versions where business_id = $1 and lineage_id = $2`,
-          [tx.businessId, found.lineage_id],
-        )
-      ).map((row) => row.id)
-    : [];
-
-  // The complete set, in the contract's order. `acquire` sorts it, so the
-  // listing order here is documentation and the statement order is the law.
-  // The chain lock is R10: the sequence below is business-wide and two
-  // decisions sharing no other row must still be ordered.
-  //
-  // Thermo O3: a rejection's holds are rediscovered under the locks, before the
-  // first write. A hold that appeared in between is one these locks miss, and
-  // the classifier would meet it as a lock-order fault; it rolls back as
-  // `AffectedSetChanged` instead, retried once. A set that only shrank is
-  // covered by the locks held (N1). An approval discovers no holds and reads
-  // nothing here.
+  const lineageVersions =
+    request.decision === 'reject'
+      ? (
+          await tx.query<{ readonly id: string }>(
+            `select id from public.proposal_versions where business_id = $1 and lineage_id = $2`,
+            [tx.businessId, found.lineage_id],
+          )
+        ).map((row) => row.id)
+      : [];
   const { locks } = await lockRediscovered(tx, {
     discover: async () => await affectedByVersions(tx, lineageVersions),
     locks: (held) => [
@@ -304,16 +362,36 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
     changed:
       'decide: the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set',
   });
+  return {
+    ok: true,
+    value: { locks, capId, existing, lineageVersions, lockedAt: await lockedInstant(tx) },
+  };
+}
 
-  // G06 and Sol 6 RUNTIME-3: the deadline is judged on the database clock read
-  // after the locks, not on `now()`, which is when this transaction began. A
-  // decide that waited on its locks past the deadline is refused.
-  const lockedAt = await lockedInstant(tx);
+interface Rechecked {
+  readonly gate: GateRow;
+  readonly version: {
+    readonly payload_digest: string;
+    readonly maximum_minor: string;
+    readonly currency: string;
+  };
+  readonly pack: { readonly rendered_digest: string };
+}
 
-  // "Check current decide grant" (T2), under the locks and before the first
-  // write, now that no revocation of a covering grant can commit around it.
-  // Final review R2-RUNTIME-4: and at the locked instant, so a grant that
-  // lapsed while this waited on the chain or the cap no longer counts.
+/**
+ * Re-check under the locks. Between discovery and here another transaction
+ * could have revoked the grant, decided this gate, superseded this version or
+ * rejected this lineage. "Check current decide grant" (T2) first, now that no
+ * revocation of a covering grant can commit around it, and at the locked
+ * instant (final review R2-RUNTIME-4), so a grant that lapsed while this
+ * waited on the chain or the cap no longer counts.
+ */
+async function recheckDecision(
+  tx: TenantQuery,
+  request: DecideRequest,
+  found: FoundGate,
+  locked: LockedDecision,
+): Promise<RuntimeResult<Rechecked>> {
   const current = await checkAuthorityAt(
     tx,
     request.subjects,
@@ -322,7 +400,7 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       action: 'decide',
       scope: { kind: 'record', id: found.task_id },
     },
-    lockedAt,
+    locked.lockedAt,
   );
   if (!current.ok) {
     return refuse(
@@ -331,10 +409,21 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'A person with decide authority on this task decides it.',
     );
   }
+  const gate = await recheckGate(tx, request, locked.lockedAt);
+  if (!gate.ok) return gate;
+  const evidence = await recheckEvidence(tx, gate.value);
+  if (!evidence.ok) return evidence;
+  const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);
+  if (!work.ok) return work;
+  return { ok: true, value: { gate: gate.value, ...evidence.value } };
+}
 
-  // Re-read everything under the locks. Between discovery and here another
-  // transaction could have decided this gate, superseded this version or
-  // rejected this lineage.
+/** The gate is still pending, on the presented version, and not past its deadline. */
+async function recheckGate(
+  tx: TenantQuery,
+  request: DecideRequest,
+  lockedAt: string,
+): Promise<RuntimeResult<GateRow>> {
   const gates = await tx.query<GateRow>(
     `select g.id, g.lineage_id, g.version_id, g.run_id, g.step_id, g.evidence_pack_id,
             g.payload_digest, g.state, g.round, (g.expires_at <= $3::timestamptz) as expired
@@ -342,7 +431,6 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
     [tx.businessId, request.gateId, lockedAt],
   );
   const gate = only(gates, 'decide: the gate locked above');
-
   if (gate.state !== 'pending') {
     // G03: the loser of the race lands here and its refusal is recorded by the
     // caller's own audit path, which is L3's envelope. The row is not written
@@ -367,7 +455,14 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'A new proposal version raises a new gate. Expiry never becomes approval.',
     );
   }
+  return { ok: true, value: gate };
+}
 
+/** The version is live, and the gate, the version and the pack agree on the payload (G07). */
+async function recheckEvidence(
+  tx: TenantQuery,
+  gate: GateRow,
+): Promise<RuntimeResult<Omit<Rechecked, 'gate'>>> {
   const versions = await tx.query<{
     readonly payload_digest: string;
     readonly superseded_at: Date | null;
@@ -386,7 +481,6 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'Decide the live version of this lineage.',
     );
   }
-  // G07: the approval binds the same hash the pack was rendered against.
   if (version.payload_digest !== gate.payload_digest) {
     return refuse(
       'EVIDENCE_MISMATCH',
@@ -410,17 +504,40 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'Re-render the pack for this version before deciding it.',
     );
   }
+  return { ok: true, value: { version, pack } };
+}
 
-  // Final review R2-RUNTIME-7. A trash that committed while this waited is
-  // read here, under the task lock: a trashed task is gone to the work
-  // surface, and an approval would hold budget for work never handed out. The
-  // answer is discovery's, so a trashed task's gate reads as no gate at all.
+/**
+ * The work is still decidable: the task is not in the trash, the lineage is
+ * live, a third round of changes is not on offer, and an approval's budget has
+ * room.
+ *
+ * Final review R2-RUNTIME-7. A trash that committed while this waited is read
+ * here, under the task lock: a trashed task is gone to the work surface, and
+ * an approval would hold budget for work never handed out.
+ *
+ * G08: two formal rounds, and the third is refused before anything is
+ * written. `roundsUsed` counts the round this decision would open, so two
+ * requested already is a third on offer.
+ *
+ * W01 and T2: "approval/reservation cannot half-commit". The budget check is
+ * the same arithmetic `reserve` does, read-only, under the locks already held,
+ * and before the first write; `reserve` keeps its own copy as the second
+ * barrier.
+ */
+async function recheckWork(
+  tx: TenantQuery,
+  request: DecideRequest,
+  found: FoundGate,
+  gate: GateRow,
+  version: Rechecked['version'],
+  locked: LockedDecision,
+): Promise<RuntimeResult<null>> {
   const live = await tx.query<{ readonly id: string }>(
     `select id from public.records where business_id = $1 and id = $2 and deleted_at is null`,
     [tx.businessId, found.task_id],
   );
   if (live[0] === undefined) return gateNotFound();
-
   const lineages = await tx.query<{ readonly state: string }>(
     `select state from public.proposal_lineages where business_id = $1 and id = $2`,
     [tx.businessId, gate.lineage_id],
@@ -432,10 +549,6 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'A terminal lineage is not decided again. An authorised restart opens a new one.',
     );
   }
-
-  // G08: two formal rounds, and the third is refused before anything is written.
-  // `roundsUsed` counts the round this decision would open, so two requested
-  // already is a third on offer. The count is read only from round two on.
   if (
     request.decision === 'request_changes' &&
     gate.round >= 2 &&
@@ -447,30 +560,42 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
     );
   }
-
-  // W01 and T2: "approval/reservation cannot half-commit". The decision below
-  // is a signed, append-only row and the gate's state moves with it, so a
-  // budget refusal discovered *after* them leaves a gate marked approved that
-  // reserved nothing — and `reserve` is reached only after both are written.
-  // This is the same arithmetic `reserve` does, read-only, under the locks
-  // already held, and it runs before the first write. `reserve` keeps its own
-  // copy as the second barrier; this one is what makes the refusal total.
   if (request.decision === 'approve') {
     const room = await budgetRoom(tx, {
-      capId,
+      capId: locked.capId,
       taskId: found.task_id,
       wantedMinor: BigInt(version.maximum_minor),
       currency: version.currency,
     });
     if (!room.ok) return room;
   }
+  return { ok: true, value: null };
+}
 
-  // R10, second half. `seq::text as seq` made `order by seq desc` resolve to
-  // the *output* column, so the chain head was chosen lexically: with ten
-  // decisions in a business, '9' sorted above '10' and the next decision
-  // allocated 10 again. The alias differs from the column now, so the ordering
-  // is the bigint's; the chain lock above is what makes the allocation safe,
-  // and this is what makes it correct.
+/**
+ * Write the signed decision, its chain link and the gate's new state.
+ *
+ * R10, second half. `seq::text as seq` made `order by seq desc` resolve to
+ * the *output* column, so the chain head was chosen lexically. The alias
+ * differs from the column now, so the ordering is the bigint's; the chain lock
+ * is what makes the allocation safe, and this is what makes it correct.
+ *
+ * The payload and the link cover `decided_at`, so the time is fixed before
+ * either and written as the value they saw, in the one spelling a read renders
+ * it back in: the database's clock, as text, because a `timestamptz`
+ * parameter goes through a JavaScript `Date` and loses the microseconds the
+ * signature and hash saw.
+ *
+ * v3 (`signing.ts`, `decisionPayload`): everything the row shows or links is
+ * inside what is signed, including its place in the chain, and `link: 3` is
+ * inside the payload, so a row cannot be relabelled to an older format.
+ */
+async function writeDecision(
+  tx: TenantQuery,
+  request: DecideRequest,
+  gate: GateRow,
+  evidence: string,
+): Promise<{ readonly decisionId: string; readonly hash: string }> {
   const previous = await tx.query<{ readonly hash: string; readonly at: string }>(
     `select hash, seq::text as at from public.gate_decisions
       where business_id = $1 order by seq desc limit 1`,
@@ -478,58 +603,38 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   );
   const prevHash = previous[0]?.hash ?? CHAIN_GENESIS;
   const seq = Number(previous[0]?.at ?? 0) + 1;
-
-  // The payload and the link cover `decided_at`, so the time is fixed before
-  // either and written as the value they saw, in the one spelling a read
-  // renders it back in. It is the database's clock, as the column default
-  // was. It goes in as text: a parameter typed `timestamptz` is serialised
-  // through a JavaScript `Date`, which keeps milliseconds and drops the
-  // microseconds the signature and hash saw.
   const clock = await tx.query<{ readonly at: string }>(`select ${decidedAtText('now()')} as at`);
   const decidedAt = only(clock, 'decide: the database clock').at;
 
-  // v3 (`signing.ts`, `decisionPayload`): everything the row shows or links
-  // is inside what is signed, including its place in the chain, so a writer
-  // who recomputes the unkeyed links still cannot change any of it. The
-  // version is `link: 3` inside the payload, so a row cannot be relabelled to
-  // an older format without breaking its signature.
   const decisionId = randomUUID();
-  const payload = decisionPayload({
+  const signed = {
     id: decisionId,
     seq,
-    prev: prevHash,
     gate: gate.id,
     version: gate.version_id,
     lineage: gate.lineage_id,
     round: gate.round,
     decision: request.decision,
-    by: request.decidedByPersonId,
     actor: request.decidedByActorId,
     decidedAt,
-    note: request.note,
-    evidence: pack.rendered_digest,
+    evidence,
     key: request.signingKey.id,
+  };
+  const payload = decisionPayload({
+    ...signed,
+    prev: prevHash,
+    by: request.decidedByPersonId,
+    note: request.note,
   });
   const payloadDigest = digestOf(payload);
   const signature = sign(request.signingKey, payloadDigest);
-
   const hash = chainHash(
     prevHash,
     decisionLink(LINK_VERSION, {
-      id: decisionId,
-      seq,
-      gate: gate.id,
-      version: gate.version_id,
-      decision: request.decision,
+      ...signed,
       person: request.decidedByPersonId,
       payloadDigest,
       signature,
-      round: gate.round,
-      decidedAt,
-      lineage: gate.lineage_id,
-      actor: request.decidedByActorId,
-      evidence: pack.rendered_digest,
-      key: request.signingKey.id,
     }),
   );
 
@@ -553,7 +658,7 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       request.decidedByActorId,
       JSON.stringify(payload),
       payloadDigest,
-      pack.rendered_digest,
+      evidence,
       request.signingKey.id,
       signature,
       prevHash,
@@ -561,53 +666,40 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
       decidedAt,
     ],
   );
-
-  const gateState =
-    request.decision === 'approve'
-      ? 'approved'
-      : request.decision === 'reject'
-        ? 'rejected'
-        : 'changes_requested';
+  const gateState = {
+    approve: 'approved',
+    reject: 'rejected',
+    request_changes: 'changes_requested',
+  }[request.decision];
   await tx.query(
     `update public.gates set state = $3, decided_at = now()
       where business_id = $1 and id = $2`,
     [tx.businessId, gate.id, gateState],
   );
+  return { decisionId, hash };
+}
 
-  if (request.decision === 'reject') {
-    // G05: terminal, and the unstarted holds this lineage owns are released by
-    // the classifier through the cause recorded here — not by this statement
-    // quietly zeroing a number.
-    await tx.query(
-      `update public.proposal_lineages
-          set state = 'rejected', terminal_reason = 'gate_rejected', terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [tx.businessId, gate.lineage_id],
-    );
-    // R8, and this is what "not by this statement quietly zeroing a number"
-    // means in practice: the classifier releases each eligible hold under the
-    // locks this transaction already took for them.
-    await classifyVersions(tx, lineageVersions, 'lineage_rejected', gate.lineage_id, locks);
-  }
-
-  if (request.decision !== 'approve') {
-    return {
-      ok: true,
-      value: {
-        decisionId,
-        gateId: gate.id,
-        versionId: gate.version_id,
-        decision: request.decision,
-        hash,
-      },
-    };
-  }
-
-  // Under the locks now: the gate lock has already refused the loser of a
-  // race, and the task lock serialises envelope creation for this task.
-  const envelope = await openEnvelope(tx, capId, found.task_id, version);
+/**
+ * An approval's envelope and hold, under the locks: the gate lock has already
+ * refused the loser of a race, and the task lock serialises envelope creation
+ * for this task.
+ *
+ * R2. The signed decision and the approved gate are already written. A
+ * refusal returned from here is a refusal a caller can commit, and committing
+ * it is the half-approval the preflight exists to prevent -- so a reservation
+ * refusal this late is not an answer, it is a contradiction between two checks
+ * that hold the same locks. It aborts the transaction instead.
+ */
+async function reserveApproval(
+  tx: TenantQuery,
+  capId: string,
+  taskId: string,
+  gate: GateRow,
+  version: Rechecked['version'],
+  common: DecidedCommon,
+): Promise<DecideResult> {
+  const envelope = await openEnvelope(tx, capId, taskId, version);
   if (!envelope.ok) return envelope;
-
   const reserved = await reserve(tx, {
     envelopeId: envelope.value.envelopeId,
     versionId: gate.version_id,
@@ -616,25 +708,15 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
     heldMinor: BigInt(version.maximum_minor),
   });
   if (!reserved.ok) {
-    // R2. The signed decision and the approved gate are already written. A
-    // refusal returned from here is a refusal a caller can commit, and
-    // committing it is the half-approval the preflight above exists to
-    // prevent — so a reservation refusal this late is not an answer, it is a
-    // contradiction between two checks that hold the same locks. It aborts
-    // the transaction instead.
     throw new Error(
       `decide: preflight passed and reserve refused ${reserved.refusal.code} after the decision was written (${reserved.refusal.fixes.join('; ')})`,
     );
   }
-
   return {
     ok: true,
     value: {
-      decisionId,
-      gateId: gate.id,
-      versionId: gate.version_id,
-      decision: request.decision,
-      hash,
+      ...common,
+      decision: 'approve',
       envelopeId: envelope.value.envelopeId,
       reservationId: reserved.value.reservationId,
       attemptId: reserved.value.attemptId,

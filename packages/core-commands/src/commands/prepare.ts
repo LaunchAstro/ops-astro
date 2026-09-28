@@ -37,7 +37,12 @@
 // targets no record is checked against the business, and a target field that
 // its declaration has no use for is refused rather than ignored.
 
-import { checkAuthority, subjectsOf, isUuid } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  checkAuthority,
+  subjectsOf,
+  isUuid,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
@@ -623,9 +628,7 @@ const TENANT_PREDICATE = 'business_id = $1';
 
 /** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
 export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
-  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `${key}:${tx.businessId}`,
-  ]);
+  await advisoryLock(tx, `${key}:${tx.businessId}`);
 }
 
 /**
