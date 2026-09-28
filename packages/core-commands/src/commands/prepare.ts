@@ -528,10 +528,6 @@ export async function prepareCommand(
   const irrelevant =
     refuseIrrelevantTarget(request, declaration) ?? refuseOtherTarget(request, declaration);
   if (irrelevant !== undefined) return irrelevant;
-  // Against the row itself: a replay prepares with the target left out, and
-  // the revision the first call sent is still a field this row takes.
-  const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
-  if (undescribed !== undefined) return refused(undescribed);
 
   const spine = await readTaskSpine(tx);
 
@@ -555,6 +551,12 @@ export async function prepareCommand(
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
   });
   if (!authorised.ok) return refused(authorised.refusal);
+  // A field the row does not describe, after authority as on the agent prefix:
+  // a caller without the right is told that first (R4, `external-party`).
+  // Against the row itself: a replay prepares with the target left out, and
+  // the revision the first call sent is still a field this row takes.
+  const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
+  if (undescribed !== undefined) return refused(undescribed);
   // The operands' own shape, after authority as every handler's operand
   // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
   // nothing about its body; before the target is read or locked.

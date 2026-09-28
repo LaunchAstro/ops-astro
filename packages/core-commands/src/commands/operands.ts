@@ -160,8 +160,8 @@ export const IDENTIFIER_FIELDS: readonly string[] = [
 
 /**
  * A body field the row does not describe is refused `COMMAND_BODY_INVALID`,
- * before any command code runs on both prefixes: before authority on the
- * person prefix, after the delegation's answers on the agent prefix. The fields the envelope reads
+ * before any command code runs, after authority on both prefixes: a caller
+ * without the right, a person or an agent, is told that first. The fields the envelope reads
  * itself are the identity, the command the route names and, on a command with
  * a target, its revision. An identifier field keeps the answer its own rule
  * gives it: the irrelevant-target refusal (`prepare.ts`) on the person
