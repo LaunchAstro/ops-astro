@@ -178,6 +178,18 @@ const visible = (text, { keepFences }) => {
   let afterBlank = true;
   let inCode = false;
   let listCol = 0;
+  // Sol on 1fb12f0: whether a line is code is decided before its comments
+  // are, so `<!--` inside indented code is code and hides nothing after it.
+  const isCode = (line) => {
+    if (line.trim() === '') return false;
+    const col = columns(line);
+    return col >= (afterBlank && col < listCol ? 0 : listCol) + 4 && (afterBlank || inCode);
+  };
+  // A fence inside a list item is indented from the item's content, not the margin.
+  const fenceAt = (line) => {
+    const col = columns(line);
+    return fenceRun(col < listCol ? line : ' '.repeat(col - listCol) + line.trimStart());
+  };
   const push = (kept) => {
     if (kept.trim() === '') {
       afterBlank = true;
@@ -185,8 +197,8 @@ const visible = (text, { keepFences }) => {
       return;
     }
     const col = columns(kept);
+    const code = isCode(kept);
     if (afterBlank && col < listCol) listCol = 0;
-    const code = col >= listCol + 4 && (afterBlank || inCode);
     const item = code ? null : LIST_ITEM.exec(kept.trimStart());
     if (item !== null && col < listCol + 4) listCol = col + item[0].length;
     afterBlank = false;
@@ -201,7 +213,11 @@ const visible = (text, { keepFences }) => {
       comment = false;
       rest = rest.slice(end + 3);
     } else if (fence === '') {
-      const f = fenceRun(rest);
+      const f = fenceAt(rest);
+      if (f === null && isCode(rest)) {
+        push(rest);
+        continue;
+      }
       if (f !== null) {
         fence = f.run;
         afterBlank = inCode = false;
@@ -209,7 +225,7 @@ const visible = (text, { keepFences }) => {
         continue;
       }
     } else {
-      const f = fenceRun(rest);
+      const f = fenceAt(rest);
       if (
         f !== null &&
         f.run[0] === fence[0] &&
@@ -508,13 +524,24 @@ if (sensitive.length > 0) {
 // record the cross-company reviewer posts, copied into the body, names the
 // head it read, its model and its verdict. Every record line is read, as every
 // security line is: a record for an older head is not evidence for this one.
+//
+// Sol on 1fb12f0: a model may name its company first, as in
+// `OpenAI/gpt-6-sol`; each part of the name is read. Every builder's company
+// is refused, and a builder model of no known company fails, because no
+// reviewer can then be shown to come from another company.
 const COMPANY = [
-  [/^(?:claude|opus|sonnet|haiku|fable)\b/u, 'Anthropic'],
-  [/^(?:gpt|o\d|codex)\b/u, 'OpenAI'],
-  [/^gemini\b/u, 'Google'],
+  [/^(?:anthropic|claude|opus|sonnet|haiku|fable)\b/u, 'Anthropic'],
+  [/^(?:openai|gpt|o\d|codex)\b/u, 'OpenAI'],
+  [/^(?:google|gemini)\b/u, 'Google'],
 ];
-const companyOf = (model) => COMPANY.find(([r]) => r.test(model.trim().toLowerCase()))?.[1] ?? '';
-const builtBy = new Set(builders.map(companyOf).filter(Boolean));
+const companiesOf = (model) =>
+  model
+    .trim()
+    .toLowerCase()
+    .split('/')
+    .flatMap((part) => COMPANY.filter(([r]) => r.test(part.trim())).map(([, c]) => c));
+const builtBy = new Set(builders.flatMap(companiesOf));
+const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 const RECORD =
   /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,3}(reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
 const record = { reviewer: [], model: [], 'head sha': [], verdict: [] };
@@ -523,7 +550,7 @@ for (const m of visible(body, { keepFences: false }).matchAll(RECORD)) {
 }
 const refused = {
   reviewer: () => false,
-  model: (v) => companyOf(v) === '' || builtBy.has(companyOf(v)),
+  model: (v) => companiesOf(v).length === 0 || companiesOf(v).some((c) => builtBy.has(c)),
   'head sha': (v) =>
     !head.toLowerCase().startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
   verdict: (v) => !/^approve\.?$/iu.test(v),
@@ -535,6 +562,7 @@ const recordProblems = Object.entries(record).flatMap(([name, values]) =>
         .filter((v) => outcome(v, [/./u]) !== 'accepted' || refused[name](v))
         .map((v) => `${name}: ${v}`),
 );
+recordProblems.push(...unknownBuilders.map((b) => `Agent-model: ${b.trim()} (no known company)`));
 if (recordProblems.length > 0) {
   failures.push(
     "the pull request carries no complete record of another company's review\n" +

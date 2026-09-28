@@ -21,12 +21,14 @@ merge be invoked, by a named actor, after every required check and review
 passes.
 
 **Who invokes it, and on what.** An agent invokes the merge on Nathan's
-credential, because his is the only account with push access. Its rule is
-every required check green on the head being merged, and it has no discretion
-beyond that rule. It notifies him after the merge, naming the pull request
-and the merged revision. Disabling automatic merging keeps this an invoked act
-with an actor who can be asked what they did. It does not mean a person
-presses the button.
+credential, because his is the only account with push access. It follows the
+merge rule above: every required check green on the head being merged and,
+for a change touching one of the eight protected components, that
+component's green conformance proof and Nathan's acceptance. It has no
+discretion beyond that. It notifies him after the merge, naming the pull
+request and the merged revision. Disabling automatic merging keeps this an
+invoked act with an actor who can be asked what they did. It does not mean a
+person presses the button.
 
 **What is not reachable by a green check**, and stays Nathan's own decision:
 the production deploy, the five protected parts (T1a, T1d1, T1d2, T1e, T1i),

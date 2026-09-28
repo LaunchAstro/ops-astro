@@ -1,0 +1,17 @@
+{
+  "ruleset": 23396133,
+  "strict_required_status_checks_policy": true,
+  "required_status_checks": [
+    { "context": "local checks", "integration_id": 15368 },
+    { "context": "contamination gate", "integration_id": 15368 },
+    { "context": "gitleaks over the full history", "integration_id": 15368 },
+    { "context": "OSI licence allowlist", "integration_id": 15368 },
+    { "context": "commit messages and provenance", "integration_id": 15368 },
+    { "context": "pull request size", "integration_id": 15368 },
+    { "context": "review evidence for this revision", "integration_id": 15368 },
+    { "context": "CodeQL", "integration_id": 57789 },
+    { "context": "DCO", "integration_id": 1861 },
+    { "context": "database conformance gate", "integration_id": 15368 },
+    { "context": "database conformance", "integration_id": 15368 }
+  ]
+}

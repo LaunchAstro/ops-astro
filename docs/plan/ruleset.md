@@ -41,6 +41,8 @@ Require the applicable CI, contamination, secret, licence, provenance,
 review-evidence, pull-request-size and DCO results, and, for a change to any
 of the eight protected components, each affected component's conformance
 proof. Check that each expected result exists for the final revision.
+`.github/required-checks.json` records the required list; a change that drops
+a check from it fails `CQ-13 no check dropped`.
 
 Do not require a Copilot check by name. Copilot's review runs from the
 separate review ruleset. The check run it produces does not count towards a
