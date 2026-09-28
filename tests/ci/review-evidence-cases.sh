@@ -690,6 +690,18 @@ run_case "Sol proof, criterion 10: an outdented equals line after a list keeps a
 ====
     Code review: changes requested" "README.md"
 
+# CQ-13 fix 3: an underline sits in its paragraph's own container. A lazy
+# line, outdented from a list item or unquoted after quoted text, is text.
+run_case "CQ-13 code hides no field: a lazy equals line after a quote keeps an indented outcome visible" 1 "$OK_BODY$P2> Quote
+====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: an equals line under a list item's text still underlines it" 0 "$OK_BODY$P2- Item
+  ====
+      Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a quoted equals line under quoted text is an underline" 0 "$OK_BODY$P2> Quote
+> ====
+    Code review: changes requested" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
