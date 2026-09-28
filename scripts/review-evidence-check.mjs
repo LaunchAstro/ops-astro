@@ -144,10 +144,8 @@ const fenceRun = (line) => {
 // hides everything after it, and text on either side of a comment that spans
 // lines joins into one line, as it does when GitHub renders it.
 //
-// An inline code span that starts first is code, as GitHub shows it: a
-// comment mark inside it opens nothing. An unclosed backtick run is literal.
-// The line is read by index, once: a run length found unclosed is not looked
-// for again, so a long line of backticks reads in linear time.
+// A code span that starts first is code: a comment mark in it opens nothing.
+// Read by index once; an unclosed run length is not looked for again.
 const TICKS = /`+/gu;
 const dropComments = (line) => {
   let kept = '';
@@ -179,11 +177,8 @@ const dropComments = (line) => {
     at = close + 3;
   }
 };
-// CQ-13, product issue 48: indented code is code too. A line indented four
-// columns past the open list item's content (a tab reaching the next multiple
-// of four) is code after a blank line or another code line; it cannot
-// interrupt a paragraph. A list item's indented continuation is the item's
-// own text, read as a field as before.
+// CQ-13, product issue 48: a line four columns past the open list item's
+// content is indented code, unless it continues a paragraph.
 const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
 // A heading or a thematic break ends a paragraph and, outdented, a list item.
 const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/u;
@@ -781,11 +776,23 @@ if (buried.length > 0) {
 // --- rule 6: no raw HTML -------------------------------------------------
 
 // CQ-13, Sol's sixth review: a body is Markdown only. Any raw tag fails; a
-// comment is allowed, and a fence or code span (read within one paragraph)
-// is literal. Indented code is not exempt.
+// comment, a fence and a code span are allowed.
 const RAW_HTML = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
-const PARAGRAPH_END =
-  /\n(?=[ \t]*\n| {0,3}(?:#{1,6}[ \t]|[-*+][ \t]|\d{1,9}[.)][ \t]|>|`{3}|~{3}|<))/u;
+// Sol's seventh review: a span pairs only within a run of plain paragraph
+// lines; every other line stands alone.
+const BLOCK_LINE =
+  /^(?:[ \t]*$| {0,3}(?:#{1,6}(?:[ \t]|$)|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|`{3}|~{3}|<|(?:[-*_=][ \t]*)+$)| {4}|\t)|\|/u;
+const blocks = (text) => {
+  const out = [];
+  let joinable = false;
+  for (const line of text.split('\n')) {
+    const plain = !BLOCK_LINE.test(line);
+    if (plain && joinable) out[out.length - 1] += `\n${line}`;
+    else out.push(line);
+    joinable = plain;
+  }
+  return out;
+};
 const dropSpans = (text) => {
   let kept = '';
   let at = 0;
@@ -810,8 +817,7 @@ const dropSpans = (text) => {
     at = end;
   }
 };
-const markup = visible(body, { keepFences: false, keepIndented: true })
-  .split(PARAGRAPH_END)
+const markup = blocks(visible(body, { keepFences: false, keepIndented: true }))
   .map(dropSpans)
   .join('\n');
 const tag = RAW_HTML.exec(markup);
