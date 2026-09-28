@@ -772,6 +772,15 @@ run_case "CQ-13 top level only: a record after a template comment passes" 0 "$OK
 $REC" "README.md"
 RECORD="$SAVED"
 
+RECORD=""
+run_case "Sol proof, criterion 6: a review record inside an inline HTML code tag cannot satisfy the gate" 1 "$OK_BODY${P2}Example <code>
+Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+</code>" "README.md"
+RECORD="$SAVED"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
