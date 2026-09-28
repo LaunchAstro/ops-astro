@@ -166,12 +166,19 @@ of them, so no pin here is loosened by a dependency update merging.
 
 ## How long a new package version waits
 
-A new version of any npm package waits 3 days after it is published before
-this project can install it. The registry lets a publisher withdraw a version
-for 72 hours, and a malicious release is often found and pulled inside that window, so waiting it out gives a bad version time to be withdrawn before it could arrive here. `pnpm-workspace.yaml` sets `minimumReleaseAge: 4320` (minutes),
-and `renovate.json` sets `"minimumReleaseAge": "3 days"` at the top level and
-on every package rule, so Renovate does not propose what pnpm would refuse.
-`vite@8.3.0` is the one exclusion, because the lockfile already holds it.
+A new version of any npm package waits 7 days after it is published before
+this project can install it. A malicious release is often found and pulled
+within days, so waiting a week gives a bad version time to be
+withdrawn before it could arrive here. `pnpm-workspace.yaml` sets
+`minimumReleaseAge: 10080` (minutes), and `renovate.json` sets
+`"minimumReleaseAge": "7 days"` at the top level and on every package rule, so
+Renovate does not propose what pnpm would refuse. 7 days is also the shortest
+wait Semgrep's `p/default` rules accept. An urgent security patch can still be
+taken sooner by hand: a reviewed change adds that exact version to
+`minimumReleaseAgeExclude`. `vite@8.3.0` is excluded because the lockfile
+holds it. Four more versions, hono 4.13.9 (CQ-1's security upgrade) among
+them, were locked before this rule and were under a week old when it arrived;
+each is listed with the date it turns a week old, and comes out after that.
 
 Two more settings sit beside it. `trustPolicy: no-downgrade` refuses a version
 published with weaker trust evidence than an earlier version of the same

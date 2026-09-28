@@ -25,7 +25,7 @@ import {
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const scratch = () => mkdtempSync(join(tmpdir(), 'cq3-'));
-const AGE = { pnpm: String(3 * 24 * 60), renovate: '3 days' };
+const AGE = { pnpm: String(7 * 24 * 60), renovate: '7 days' };
 const WANT = {
   minimumReleaseAge: AGE.pnpm,
   trustPolicy: 'no-downgrade',
@@ -61,7 +61,7 @@ function settingsProblems(workspace: string | undefined, renovate: string | unde
   for (const [i, rule] of [config, ...rules].entries()) {
     const where = i === 0 ? 'top level' : `package rule ${i}`;
     if (rule.minimumReleaseAge !== AGE.renovate)
-      problems.push(`renovate.json ${where}: not 3 days`);
+      problems.push(`renovate.json ${where}: not 7 days`);
   }
   return problems;
 }
@@ -141,7 +141,7 @@ describe('CQ-3 supply-chain settings', () => {
     ).toStrictEqual([]);
   });
 
-  it('CQ-3 release age: 3 days, 4320 minutes in pnpm and 3 days in every Renovate rule', () => {
+  it('CQ-3 release age: 7 days, 10080 minutes in pnpm and 7 days in every Renovate rule', () => {
     expect(settingsProblems(workspace, renovate)).toStrictEqual([]);
   });
 
@@ -202,7 +202,7 @@ describe('CQ-3 supply-chain settings', () => {
       );
     }
     expect(
-      settingsProblems(workspace, renovate.replace(/"minimumReleaseAge": "3 days",?/u, '')),
+      settingsProblems(workspace, renovate.replace(/"minimumReleaseAge": "7 days",?/u, '')),
     ).not.toStrictEqual([]);
     const refused = await exoticInstall(workspace);
     const allowed = await exoticInstall(
