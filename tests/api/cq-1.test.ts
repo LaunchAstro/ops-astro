@@ -150,17 +150,19 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     };
     const own = await Promise.all(both.map((p) => sees(p, p.client, p.read)));
     expect(own.flat()).not.toContain(false);
-    const before = await Promise.all(both.map((p) => counts(p.id)));
+    const watched = [bravo.id, charlie.id, fixture.business];
+    const before = await Promise.all(watched.map((id) => counts(id)));
     const tries = both.flatMap((theirs, i) => {
       const mine = both[1 - i] as Party;
       const bodies = [theirs.read, board, padded(MIB + 1, {}), '[]'];
       return [mine.member, mine.client].flatMap((who) => bodies.map((b) => sees(theirs, who, b)));
     });
     expect((await Promise.all(tries)).flat()).not.toContain(true);
-    // I13: login resolution records each caller's two well-formed attempts, by digest. Nothing else.
-    const delta = { authentication_attempts: 4, strangers: 4 };
-    const after = await Promise.all(both.map((p) => counts(p.id)));
-    expect(after).toStrictEqual(before.map((c) => plus(c, delta)));
+    // The target keeps its own door ledger, by digest (docs/local/API.md:70-76): I13's stranger
+    // refusal per well-formed attempt, one body refusal per bad body. Nothing else, anywhere.
+    const delta = { authentication_attempts: 8, strangers: 4, refused: 4 };
+    const after = await Promise.all(watched.map((id) => counts(id)));
+    expect(after).toStrictEqual(before.map((c, i) => (i < 2 ? plus(c, delta) : c)));
   });
 
   it('CQ-1 token canary: a planted token and secret reach no log, trace, refusal or stored row', async () => {
@@ -181,8 +183,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
       send(api, `/api/b/alpha${CREATE}`, secretish, token.member),
       send(faulty.app, `/api/b/alpha${BOARD}`, secretish, token.member),
     ]).finally(() => spies.forEach((spy) => spy.mockRestore()));
-    const dump = (table: string) =>
-      fixture.db.admin.execute(`select x::text from public.${table} x`);
+    const dump = (t: string) => fixture.db.admin.execute(`select x::text from public.${t} x`);
     const stored = await Promise.all(TABLES.map(dump));
     const seen = JSON.stringify([answers, lines.map(String), stored]);
     expect([answers[3]?.status, seen.includes('api: unhandled')]).toStrictEqual([503, true]);
@@ -200,12 +201,8 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
 
   it('CQ-1 audit clean: pnpm audit reports no moderate or high advisory on hono', () => {
     const run = spawnSync('pnpm', ['audit', '--json'], { cwd: ROOT, encoding: 'utf8' });
-    const { advisories } = JSON.parse(run.stdout) as {
-      advisories: Record<string, Record<string, string>>;
-    };
-    const found = Object.values(advisories).map((a) => `${a['module_name']} ${a['severity']}`);
-    expect(found.filter((line) => /hono.* (moderate|high|critical)$/u.test(line))).toStrictEqual(
-      [],
-    );
+    const advisories: Record<string, string>[] = Object.values(JSON.parse(run.stdout).advisories);
+    const found = advisories.map((a) => `${a['module_name']} ${a['severity']}`);
+    expect(found.filter((l) => /hono.* (moderate|high|critical)$/u.test(l))).toStrictEqual([]);
   }, 120_000);
 });
