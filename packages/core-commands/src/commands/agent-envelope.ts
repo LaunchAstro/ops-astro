@@ -222,9 +222,8 @@ async function runRow<O extends object>(
   // The body against its surface row, as the person prefix parses it and at
   // the same point: after authority, before the savepoint and any command
   // code. The row's own parser above has already read what it types.
-  // A field the row does not describe, with the same answer as the person
-  // prefix gives it, but after `authorise`: on this prefix the delegation's
-  // answers come before any question about the body beyond its shape
+  // A field the row does not describe, after `authorise` as on the person
+  // prefix: the delegation's answers come first
   // (`tests/commands/agent-operation-order.test.ts` pins that order).
   const undescribed = refuseUndescribed(request, call.declaration);
   if (undescribed !== undefined) return await settle(tx, session, request, digest, undescribed);
