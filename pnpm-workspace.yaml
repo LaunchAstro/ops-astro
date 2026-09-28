@@ -10,6 +10,17 @@ packages:
 # needs a reason, and this one has none.
 allowBuilds:
   '@swc/core': false
+# A new version waits 7 days (10080 minutes), as in renovate.json (CQ-3).
+minimumReleaseAge: 10080
 # vite 8.3.0 is the draft's pinned build; excluded from the minimum release age so the lockfile can hold it.
 minimumReleaseAgeExclude:
   - vite@8.3.0
+  # Locked before the 7-day rule; each comes out once a week old. hono is CQ-1's fix.
+  - hono@4.13.9 # published 24 Sep, a week old 1 Oct
+  - '@exodus/bytes@1.15.2' # published 21 Sep, a week old 28 Sep
+  - tldts@7.4.14 # published 21 Sep, a week old 29 Sep
+  - tldts-core@7.4.14 # published 21 Sep, a week old 29 Sep
+# Refuse a version published with weaker trust evidence than an earlier one.
+trustPolicy: no-downgrade
+# A dependency of a dependency comes from the registry, never a git URL or tarball.
+blockExoticSubdeps: true

@@ -29,6 +29,8 @@
 //      The rerun at 356dbe5 added `uses: docker://`, held to the same digest.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
+//   4. Every `*IMAGE=` line in scripts/local/*.sh is held to rules 2 and 3
+//      (CQ-3). An image named inline on a `docker run` line is not read.
 //
 // This is not a YAML parser. It reads the workflows line by line, with LF,
 // CRLF or CR endings. It reads a `uses`, `image` or `container` key written
@@ -200,9 +202,34 @@ for (const file of workflows) {
   }
 }
 
+const localDir = join(repoRoot, 'scripts', 'local');
+const IMAGE_LINE = /^\s*(?:export\s+)?(?<name>\w*IMAGE)=(?<value>.*)$/u;
+const workflowImages = images.size;
+let localImages = 0;
+const scripts = existsSync(localDir) ? readdirSync(localDir).filter((f) => f.endsWith('.sh')) : [];
+for (const file of scripts) {
+  // An unreadable script throws here and the check exits non-zero: never zero images.
+  const lines = readFileSync(join(localDir, file), 'utf8').split(/\r\n|\r|\n/u);
+  for (const [i, line] of lines.entries()) {
+    const match = IMAGE_LINE.exec(line);
+    if (match?.groups === undefined) continue;
+    const ref = clean(match.groups['value'] ?? '');
+    const where = `scripts/local/${file}:${i + 1}`;
+    if (DIGESTED.exec(ref)?.groups === undefined) {
+      failures.push(
+        `${where}: ${match.groups['name']}=${ref} is not pinned to a sha256 digest.\n` +
+          '        A tag can be moved by whoever owns it. Write `image:tag@sha256:<64 hex>`.',
+      );
+      continue;
+    }
+    images.set(ref, `scripts/local/${file}`);
+    localImages += 1;
+  }
+}
+
 console.log(
-  `pins: ${pins.size} pinned action reference(s) and ${images.size} pinned image(s) ` +
-    `across ${workflows.length} workflow(s)`,
+  `pins: ${pins.size} pinned action reference(s) and ${workflowImages} pinned image(s) ` +
+    `across ${workflows.length} workflow(s), and ${localImages} in local scripts`,
 );
 
 if (!existsSync(recordPath)) {

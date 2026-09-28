@@ -6,6 +6,7 @@
   "prConcurrentLimit": 3,
   "prHourlyLimit": 2,
   "rangeStrategy": "pin",
+  "minimumReleaseAge": "7 days",
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["* 0-6 * * 1"]
@@ -13,23 +14,27 @@
   "packageRules": [
     {
       "description": "One grouped pull request a week for development dependencies.",
+      "minimumReleaseAge": "7 days",
       "matchDepTypes": ["devDependencies"],
       "groupName": "development dependencies",
       "schedule": ["* 0-6 * * 1"]
     },
     {
       "description": "Development dependency patches are grouped weekly and never automerged: each merge is invoked on a green head, as ADR 0046 requires. Automerge was on here and contradicted that rule; a build tool can change shipped output.",
+      "minimumReleaseAge": "7 days",
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["patch"],
       "automerge": false
     },
     {
       "description": "Never automerge a runtime dependency, a major bump or a GitHub Action.",
+      "minimumReleaseAge": "7 days",
       "matchDepTypes": ["dependencies"],
       "automerge": false
     },
     {
       "description": "Actions are pinned to a commit hash on purpose. Renovate keeps the hash current and the comment beside it accurate; its merge is invoked like any other, never automerged.",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
       "automerge": false,
@@ -37,6 +42,7 @@
     },
     {
       "description": "TypeScript and Node move on the quarterly cadence plan section 4 sets, not whenever a release lands.",
+      "minimumReleaseAge": "7 days",
       "matchPackageNames": ["typescript", "@types/node"],
       "schedule": ["* 0-6 1 */3 *"],
       "automerge": false
