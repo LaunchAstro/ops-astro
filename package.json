@@ -73,7 +73,8 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "hono": "4.13.9"
+    "hono": "4.13.9",
+    "lodash": "4.17.20"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
