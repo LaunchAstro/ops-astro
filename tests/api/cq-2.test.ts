@@ -33,7 +33,7 @@ const TABLES = 'audit_events operations records grants authentication_attempts'.
 const NAMES = JSON.stringify(['GATE_SIGNING_', 'DELEGATION_CREDENTIAL_KEY']);
 const DEAD = 'postgres://cq2@127.0.0.1:1/cq2';
 const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[name] ?? DEAD);
-type Task = Record<'title' | 'recordId' | 'client' | 'person', string>;
+type Task = Record<'title' | 'recordId' | 'client', string> & { person?: string };
 type Party = { key: string; member: string; tasks: Task[]; add: (name: string) => Promise<Task> };
 const ghost = (t: Task): Task => ({ ...t, recordId: randomUUID() });
 const ids = (text: string) => [
