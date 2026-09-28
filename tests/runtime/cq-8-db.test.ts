@@ -31,14 +31,8 @@ import {
   revisionOf,
   type Schedules,
 } from './schedules-harness.ts';
-import {
-  classifyAll,
-  cq8World,
-  unsent,
-  type Cq8World,
-  type Party,
-  type Statement,
-} from './cq-8-support.ts';
+import { classifyAll, unsent, type Statement } from './cq-8-support.ts';
+import { cq8World, type Cq8World, type Party } from './cq-8-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
