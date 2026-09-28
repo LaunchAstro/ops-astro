@@ -203,7 +203,7 @@ const columns = (line) => {
   }
   return col;
 };
-const visible = (text, { keepFences }) => {
+const visible = (text, { keepFences, keepIndented = keepFences }) => {
   const out = [];
   let fence = '';
   let comment = false;
@@ -251,7 +251,7 @@ const visible = (text, { keepFences }) => {
     // starts an unquoted paragraph, or continues the open one lazily.
     if (quoted || !para) paraQuoted = quoted;
     para = !code && !brk;
-    out.push(code && !keepFences ? '' : kept);
+    out.push(code && !keepIndented ? '' : kept);
   };
   for (const line of text.split('\n')) {
     let rest = line;
@@ -622,14 +622,8 @@ if (recordProblems.length > 0) {
 
 // --- rule 4: no review field where it could be hidden --------------------
 
-// CQ-13 fix 4, the orchestrator's ruling on Sol's fourth, narrow CQ-13 review.
-// Four rounds found another Markdown context in which the reader and GitHub
-// disagree about whether a line shows. So the check fails closed: a raw line
-// that carries a review field after any run of indentation, quote, list,
-// comment, fence, code or emphasis marks is a field line, and every such
-// line must be one the reader counts as visible. Rules 1 to 3 then hold each
-// visible one to an accepted form. A field line the reader does not count,
-// however it is hidden, fails.
+// CQ-13, Sol's fourth review: fail closed. A raw line carrying a review field
+// after any run of marks must be one the reader counts as visible.
 const RAW_FIELD =
   /^(?:[^\p{L}\p{N}\n]|\[[xX]\]|\d{1,9}[.)])*(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict)[*_`~ \t]*:/gimu;
 const fieldKey = (name) =>
@@ -663,50 +657,20 @@ if (hidden.length > 0) {
 
 // --- rule 5: a review field counts only on a top-level plain line ---------
 
-// CQ-13 fix 5, the orchestrator's ruling on Sol's fifth review: a record in a
-// raw HTML pre block was read as visible. Rather than add one more context,
-// a field line is operative only as a plain line of a top-level paragraph, at
-// the margin. A field line anywhere else fails: in a fence, indented code, a
-// code span, an HTML block (open until its closing tag and a blank line), a
-// list, quote or footnote (with their lazy lines), a table, or a heading. The
-// tracker is conservative: where it cannot tell, the line is in a container,
-// and the author moves the field to a plain line.
+// CQ-13, Sol's fifth review: a field line counts only as a plain line of a
+// top-level paragraph, at the margin; in any container it fails. Where the
+// tracker cannot tell, the line is in a container.
 const PLAIN_FIELD =
   /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:/iu;
 const ANY_FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})/u;
 const NEST = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|\[\^[^\]]*\]:)/u;
 const HTML_OPEN = /^ {0,3}<(!--|\?|!\[CDATA\[|![A-Za-z]|\/?[A-Za-z][A-Za-z0-9-]*)/u;
-const INLINE_BLOCK =
-  /<(pre|details|summary|div|table|script|style|textarea|template|blockquote|ul|ol|dl|section|article|aside|noscript|iframe|object|svg|math)\b/iu;
-const RAW_TAGS = new Set(['pre', 'script', 'style', 'textarea']);
-const VOID_TAGS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'source',
-  'track',
-  'wbr',
-]);
 const UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/u;
 const DELIMITER = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/u;
-const htmlBlock = (opener, line) => {
-  const token = opener.toLowerCase();
-  const tag = token.replace(/^\//u, '');
-  if (token === '!--') return { until: '-->', blank: false };
-  if (token === '?') return { until: '?>', blank: false };
-  if (token === '![cdata[') return { until: ']]>', blank: false };
-  if (token.startsWith('!')) return { until: '>', blank: false };
-  if (RAW_TAGS.has(tag)) return { until: `</${tag}>`, blank: false };
-  const closed = token.startsWith('/') || VOID_TAGS.has(tag) || /\/>\s*$/u.test(line);
-  return { until: closed ? '' : `</${tag}`, blank: true };
-};
+// Rule 6 fails any raw tag, so an HTML block's extent matters only for a
+// comment: to its end token. Anything else runs to a blank line.
+const htmlBlock = (opener) =>
+  opener === '!--' ? { until: '-->', blank: false } : { until: '', blank: true };
 const topLevel = (text) => {
   const lines = text.split('\n').map((l) => l.replace(/\r$/u, ''));
   const plain = lines.map(() => false);
@@ -760,7 +724,7 @@ const topLevel = (text) => {
     if (table) continue;
     const h = HTML_OPEN.exec(line);
     if (h) {
-      html = htmlBlock(h[1], line);
+      html = htmlBlock(h[1]);
       htmlLine(i, h.index + h[0].length);
       para = -1;
       continue;
@@ -794,8 +758,6 @@ const topLevel = (text) => {
       if (tick === 0) tick = run.length;
       else if (run.length === tick) tick = 0;
     }
-    const inline = INLINE_BLOCK.exec(line);
-    if (inline) html = { until: `</${inline[1].toLowerCase()}`, blank: true };
   }
   return { lines, plain };
 };
@@ -813,6 +775,51 @@ if (buried.length > 0) {
       '\n        A review field counts only on a plain line of a top-level paragraph,\n' +
       '        at the margin: not in a list, quote, table, heading, HTML block,\n' +
       '        fence, code span or indented code. Move it to its own plain line.',
+  );
+}
+
+// --- rule 6: no raw HTML -------------------------------------------------
+
+// CQ-13, Sol's sixth review: a body is Markdown only. Any raw tag fails; a
+// comment is allowed, and a fence or code span (read within one paragraph)
+// is literal. Indented code is not exempt.
+const RAW_HTML = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
+const PARAGRAPH_END =
+  /\n(?=[ \t]*\n| {0,3}(?:#{1,6}[ \t]|[-*+][ \t]|\d{1,9}[.)][ \t]|>|`{3}|~{3}|<))/u;
+const dropSpans = (text) => {
+  let kept = '';
+  let at = 0;
+  const unclosed = new Set();
+  for (;;) {
+    TICKS.lastIndex = at;
+    const tick = TICKS.exec(text);
+    if (tick === null) return kept + text.slice(at);
+    const run = tick[0];
+    let end = tick.index + run.length;
+    let m = null;
+    if (!unclosed.has(run.length)) {
+      m = TICKS.exec(text);
+      while (m !== null && m[0].length !== run.length) m = TICKS.exec(text);
+      if (m === null) unclosed.add(run.length);
+    }
+    if (m === null) kept += text.slice(at, end);
+    else {
+      kept += `${text.slice(at, tick.index)} `;
+      end = m.index + run.length;
+    }
+    at = end;
+  }
+};
+const markup = visible(body, { keepFences: false, keepIndented: true })
+  .split(PARAGRAPH_END)
+  .map(dropSpans)
+  .join('\n');
+const tag = RAW_HTML.exec(markup);
+if (tag !== null) {
+  failures.push(
+    `the pull request body holds raw HTML (${tag[0]}):\n` +
+      '        A body is Markdown only; an HTML comment is the one exception.\n' +
+      '        Write the text in Markdown, or put a literal sample in a code span.',
   );
 }
 

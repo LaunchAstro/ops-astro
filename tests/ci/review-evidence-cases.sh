@@ -759,7 +759,7 @@ $REC" "README.md"
 run_case "CQ-13 top level only: a record inside a code span across lines fails" 1 "$OK_BODY$P2\`\`start
 $REC
 end\`\`" "README.md"
-run_case "CQ-13 top level only: a record after a closed details block passes" 0 "$OK_BODY$P2<details>
+run_case "CQ-13 top level only: a record after a closed details block fails: no raw HTML" 1 "$OK_BODY$P2<details>
 <summary>More</summary>
 
 Notes.
@@ -791,8 +791,10 @@ run_case "CQ-13 no raw HTML: a placeholder in plain text fails" 1 "$OK_BODY${P2}
 run_case "CQ-13 no raw HTML: a tag in indented code fails" 1 "$OK_BODY$P2    <kbd>x</kbd>" "README.md"
 run_case "CQ-13 no raw HTML: a tag after an unclosed backtick fails" 1 "$OK_BODY${P2}A \` then <b>bold</b>." "README.md"
 run_case "CQ-13 no raw HTML: a placeholder in a code span passes" 0 "$OK_BODY${P2}Replace \`<head sha>\` and \`<uuid>\` here." "README.md"
-run_case "CQ-13 no raw HTML: a tag in a code span across lines passes" 0 "$OK_BODY${P2}See \`\`start
+run_case "CQ-13 no raw HTML: a tag leading a line ends a code span and fails" 1 "$OK_BODY${P2}See \`\`start
 <div> end\`\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in a code span across lines passes" 0 "$OK_BODY${P2}See \`\`start
+then <b>x</b> end\`\` here." "README.md"
 run_case "CQ-13 no raw HTML: a tag in a fence passes" 0 "$OK_BODY$P2$FENCE
 <div>sample</div>
 $FENCE" "README.md"
