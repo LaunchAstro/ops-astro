@@ -17,14 +17,14 @@ import { describe, expect, it } from 'vitest';
 import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   refuse as refuseRuntime,
   SUGGESTED_STATUS,
 } from '../../packages/core-runtime/src/refusals.ts';
-import { REFUSAL_REGISTER, statusOf } from '../../packages/core-records/src/commands/register.ts';
+import { REFUSAL_REGISTER, statusOf } from '../../packages/core-records/src/register.ts';
 import {
   asCallerVisible,
   fromAgentIdentity,
@@ -34,9 +34,9 @@ import {
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
-} from '../../packages/core-records/src/commands/refusal.ts';
-import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
-import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
+} from '../../packages/core-commands/src/commands/refusal.ts';
+import { handbackLease } from '../../packages/core-commands/src/commands/tasks-handback.ts';
+import { isRefused } from '../../packages/core-commands/src/commands/outcome.ts';
 import { refuse as refuseRecords } from '../../packages/core-records/src/records/refusals.ts';
 import {
   refuse as refuseIdentity,

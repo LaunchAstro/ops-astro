@@ -346,7 +346,7 @@ next `migrations/NNNN_*.sql` and it is covered.
 
 ## What a write is checked against
 
-Two rules, both in `packages/core-records/src/commands/prepare.ts`. A rule held
+Two rules, both in `packages/core-commands/src/commands/prepare.ts`. A rule held
 in one handler is a rule the next handler forgets.
 
 **The target is locked before its revision is compared.** A targeted write reads
@@ -409,7 +409,7 @@ has the interface and the tests.
 ## The reads
 
 Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
-`packages/core-records/src/reads/`. Three of them are this file's:
+`packages/core-commands/src/reads/`. Three of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
 - `task.board { board }` → the tasks on a board; `null` is the unboarded ones,
@@ -425,7 +425,7 @@ On the person prefix a read carries no `operation_id` and no
 `expected_revision`: there is nothing to replay and nothing to be stale
 against. On the agent prefix every call, reads included, carries an
 `operation_id`, because the agent envelope refuses a call without one
-(`runAgentCommand` in `packages/core-records/src/commands/agent-envelope.ts`).
+(`runAgentCommand` in `packages/core-commands/src/commands/agent-envelope.ts`).
 A person's read runs through `withSession` and the
 same `checkAuthority` the commands use, in the same transaction, so a revoked
 grant bites on the next read. A denied read is `SCOPE_NOT_GRANTED` and never an

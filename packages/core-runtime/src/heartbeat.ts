@@ -27,8 +27,7 @@
 //   pickup, cancellation and restart replay; a lease that stops beating simply
 //   expires, and the next pickup fences it as it always did (W04).
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
+import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { checkAuthorityAt } from './recovery.ts';
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';

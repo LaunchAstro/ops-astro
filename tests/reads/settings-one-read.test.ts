@@ -6,7 +6,7 @@
 // below answers every statement with the same row and records what was sent.
 
 import { describe, expect, it } from 'vitest';
-import { readSettings } from '../../packages/core-records/src/reads/settings.ts';
+import { readSettings } from '../../packages/core-commands/src/reads/settings.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
 const ROW = {

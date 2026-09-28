@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { FieldDefinition } from '../../packages/core-records/src/records/fields.ts';
-import { refuseWrongValueType } from '../../packages/core-records/src/commands/values.ts';
+import { refuseWrongValueType } from '../../packages/core-commands/src/commands/values.ts';
 
 const DUE = {
   key: 'due',

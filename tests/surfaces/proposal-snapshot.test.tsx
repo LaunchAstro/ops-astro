@@ -26,7 +26,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import {
   type ProposalView,
   readTaskProposals,
-} from '../../packages/core-records/src/reads/proposals.ts';
+} from '../../packages/core-commands/src/reads/proposals.ts';
 import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   bearer,

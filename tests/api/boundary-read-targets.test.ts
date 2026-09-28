@@ -30,9 +30,9 @@ import {
 } from './fixture.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

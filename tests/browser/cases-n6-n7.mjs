@@ -7,7 +7,7 @@
 //
 // A body carrying one of the server's own fields -- `actorId`, `business_id`,
 // `person_id` and the rest of `SYSTEM_OWNED_FIELDS` in
-// `packages/core-records/src/commands/prepare.ts` -- is refused `422
+// `packages/core-commands/src/commands/prepare.ts` -- is refused `422
 // FIELD_NOT_WRITABLE`, the refusal names the offending keys, and nothing is
 // written. The boundary used to drop those fields and apply the write anyway,
 // so the caller got a `200` and no correction: a client that believed it had

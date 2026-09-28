@@ -52,7 +52,7 @@ import {
 import { createCli } from '../../apps/cli/client.ts';
 import { isRefusal, OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { submitEdit } from '../../apps/web/src/records/submit.ts';
-import { statusOf, type RefusalCode } from '../../packages/core-records/src/commands/register.ts';
+import { statusOf, type RefusalCode } from '../../packages/core-records/src/register.ts';
 import { bearer, call, createWorld, personPath, serverUrl } from './world.ts';
 import type { Answer, World } from './world.ts';
 

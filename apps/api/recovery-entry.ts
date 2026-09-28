@@ -29,11 +29,9 @@
 // which is the bound. A committed business stays committed, and the classifier
 // finds nothing left to do there next time.
 
-import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
-import {
-  replayRecordedTransitions,
-  type Classification,
-} from '../../packages/core-runtime/src/recovery.ts';
+import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
+import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
+import type { Classification } from '../../packages/core-runtime/src/index.ts';
 
 /** The setting's name, in the environment or `.local/recovery.env`. */
 export const RECOVERY_SCOPE_SETTING = 'RECOVERY_BUSINESS_KEYS';

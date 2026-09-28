@@ -71,7 +71,7 @@ export interface TaskComment {
 
 /**
  * One comment as an internal reader's `task.read` carries it: every field,
- * always (`commentsFor` in `packages/core-records/src/reads/tasks.ts`). Only
+ * always (`commentsFor` in `packages/core-commands/src/reads/tasks.ts`). Only
  * the shared projection leaves fields out, so only `TaskComment` keeps them
  * optional.
  */

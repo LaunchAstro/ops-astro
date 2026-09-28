@@ -11,8 +11,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { SYSTEM_OWNED_FIELDS } from '../../packages/core-records/src/commands/prepare.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { agentWorld, codeOf, type AgentWorld, type PickedUp } from './agent-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

@@ -11,14 +11,14 @@
 //
 // **Where an expected status comes from.** The code is the domain's and the
 // status is the transport's, and neither is derived from the other
-// (`statusOf`, `commands/register.ts`). So `refusal()` reads the status out of that table
+// (`statusOf`, `core-records/src/register.ts`). So `refusal()` reads the status out of that table
 // rather than out of anyone's memory, and no case in this suite writes a
 // status literal beside a code. A test that remembered the pairing would keep
 // passing after the product changed it, which is the one failure a matrix of
 // this kind cannot afford.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { statusOf, type RefusalCode } from '../../packages/core-records/src/commands/register.ts';
+import { statusOf, type RefusalCode } from '../../packages/core-records/src/register.ts';
 import type { Answer } from './world.ts';
 
 /** One observation. The run writes every one of these out, pass or fail. */

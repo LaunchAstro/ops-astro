@@ -39,7 +39,7 @@ const codesIn = (body: string): string[] => [
 
 describe('API.md task.comment row (R2-AUTHORITY-37)', () => {
   it('names every code writeTaskComment answers', () => {
-    const source = read('packages/core-records/src/commands/tasks-comment.ts');
+    const source = read('packages/core-commands/src/commands/tasks-comment.ts');
     const codes = codesIn(bodyOf(source, 'writeTaskComment'));
     expect(codes).toEqual(
       expect.arrayContaining(['AUDIENCE_NOT_PERMITTED', 'FIELD_VALUE_INVALID']),
@@ -159,13 +159,13 @@ describe('scripts/local-seed.mjs line cites (R2-SURFACE-44)', () => {
 describe('API.md task.create row (R2-THERMO-62)', () => {
   it('gives its body and every code createTask and its placement answer', () => {
     const row = apiRow('task.create', '/task/create');
-    const requests = read('packages/core-records/src/commands/requests.ts');
+    const requests = read('packages/core-commands/src/commands/requests.ts');
     const shape = requests.slice(requests.indexOf("command: 'task.create'"));
     for (const operand of ['fields', 'parentId', 'board', 'boardSection', 'stateKey']) {
       expect(shape.slice(0, shape.indexOf('} & Envelope'))).toContain(`readonly ${operand}`);
       expect(row, operand).toContain(`\`${operand}`);
     }
-    const write = read('packages/core-records/src/commands/tasks-write.ts');
+    const write = read('packages/core-commands/src/commands/tasks-write.ts');
     const codes = new Set([
       ...codesIn(bodyOf(write, 'createTask')),
       ...codesIn(bodyOf(write, 'refuseSpoof')),
@@ -197,7 +197,7 @@ describe('API.md task.create row (R2-THERMO-62)', () => {
 });
 
 describe('placement after FR2-PLACE-CONT (FR2-DOCS-3)', () => {
-  const place = read('packages/core-records/src/commands/tasks-place.ts');
+  const place = read('packages/core-commands/src/commands/tasks-place.ts');
 
   it('says a move to another board ranks after its last task, as moveTask does', () => {
     expect(bodyOf(place, 'moveTask')).toContain('rankAfterSiblings(');
@@ -210,14 +210,14 @@ describe('placement after FR2-PLACE-CONT (FR2-DOCS-3)', () => {
   });
 
   it('says reparent and move take task.placement before the target row lock', () => {
-    const surface = read('packages/core-records/src/commands/surface.ts');
+    const surface = read('packages/core-commands/src/commands/surface.ts');
     expect(surface).toContain("const TASK_PLACEMENT_LOCK = 'task.placement';");
     for (const command of ['task.reparent', 'task.move']) {
       expect(surface).toContain(
         `declare('${command}', 'write', { serialise: TASK_PLACEMENT_LOCK })`,
       );
     }
-    const prepare = read('packages/core-records/src/commands/prepare.ts');
+    const prepare = read('packages/core-commands/src/commands/prepare.ts');
     const serialised = prepare.indexOf('await serialiseOn(tx, declaration.serialise)');
     expect(serialised).toBeGreaterThan(0);
     expect(serialised).toBeLessThan(prepare.indexOf('lockTask(', serialised - 2000));

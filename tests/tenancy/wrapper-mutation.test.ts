@@ -29,11 +29,11 @@ import {
   pathOf,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import * as shipped from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createFreshDatabase,

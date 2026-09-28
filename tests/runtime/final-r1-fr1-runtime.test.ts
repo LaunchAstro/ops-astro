@@ -26,15 +26,12 @@ import { Hono } from 'hono';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
+import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import {
-  runtimeKeys,
-  withRuntimeKeys,
-} from '../../packages/core-records/src/commands/runtime-config.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {

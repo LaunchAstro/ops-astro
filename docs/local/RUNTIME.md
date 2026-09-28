@@ -68,7 +68,7 @@ gate, whatever the gate's state; the second rule covers a decided gate whose
 state was reset to `pending`. So a decided or superseded gate keeps its version.
 An expired gate is stored as `pending`: no runtime path writes the state
 `expired`, which the read derives from `expires_at`
-(`packages/core-records/src/reads/proposals.ts:248-249`). So an undecided gate
+(`packages/core-commands/src/reads/proposals.ts:248-249`). So an undecided gate
 past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the
@@ -314,7 +314,7 @@ lists `excludedOperations` as `{ operation, reason }` pairs (`exclusionsFor`,
 ### Refusal codes, as L3 registered them
 
 `RuntimeRefusalCode` is read off the refusal register's rows marked `runtime`
-(`packages/core-records/src/commands/register.ts`). Each row carries its HTTP
+(`packages/core-records/src/register.ts`). Each row carries its HTTP
 status, and `statusOf` in the same file reads that column, so a runtime code is
 declared once. `SUGGESTED_STATUS` (`core-runtime/src/refusals.ts`) is a view
 derived from those rows. Nothing in production reads it, and the tests that
@@ -365,7 +365,7 @@ the work back (`tests/runtime/final-r1-fr1-runtime-cont.test.ts`).
 `LEASE_HELD` is reachable. Two lineages approved on one task, under an envelope
 an earlier handback left open, give two held reservations, and the second pickup
 meets the first one's live lease (the note beside `UNPRODUCED_CODES` in
-`commands/register.ts`; `tests/commands/lease-held-reach.test.ts`). Its reason
+`core-records/src/register.ts`; `tests/commands/lease-held-reach.test.ts`). Its reason
 still names the task (the `LEASE_HELD` refusal in `pickup`, `pickup.ts`).
 
 `LEASE_NOT_OWNED` for a lease the caller does not hold, on heartbeat and
@@ -507,7 +507,7 @@ deadline undecided stays stored as `pending`.
   decision (G06, `core-runtime/src/decide.ts`).
 - **Reads project it.** `task.read` derives `state: 'expired'` and
   `expired: true` in the proposals read
-  (`core-records/src/reads/proposals.ts`). The page therefore sees the same
+  (`core-commands/src/reads/proposals.ts`). The page therefore sees the same
   answer the refusal gives.
 - **Both use the database clock.** `decide` reads `clock_timestamp()` once,
   after it acquires its locks (`lockedInstant`, `core-runtime/src/clock.ts`),
@@ -535,8 +535,8 @@ Over it is `FIELD_VALUE_INVALID` 422 and nothing is written
 ## A decision is verified before a read returns it
 
 `task.read` verifies every decision it returns before it answers.
-`readTaskProposals` (`core-records/src/reads/proposals.ts`) calls
-`readVerifiedProjection` (`core-records/src/reads/verified-decisions.ts`). The
+`readTaskProposals` (`core-commands/src/reads/proposals.ts`) calls
+`readVerifiedProjection` (`core-commands/src/reads/verified-decisions.ts`). The
 read walks the business's decision chain from genesis to the newest decision it
 returns. For each row it recomputes the payload digest from the stored JSON,
 then checks the signature and the link hash (`verifyChain`,
@@ -1355,7 +1355,7 @@ legacy row as derivable, and 0022's trigger forbids it.
   command surface: `task.propose`, `task.decide`, `task.pickup`,
   `task.handback`, `task.queue`, `task.cancel`, `task.restart` and
   `task.heartbeat` are routed there, and its codes are registered, with their
-  statuses, in `commands/register.ts`
+  statuses, in `core-records/src/register.ts`
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no
   `operationId`; replay is L3's envelope, which already owns that mechanism for

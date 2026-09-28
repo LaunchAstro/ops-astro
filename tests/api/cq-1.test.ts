@@ -15,9 +15,9 @@ import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertActor, insertBusiness, insertLogin, insertMapping } from '../identity/fixture.ts';
 import { insertPerson } from '../identity/fixture.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { runtimeKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
-import { DELEGATION_HEADER, pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
+import { DELEGATION_HEADER, pathOf } from '../../packages/core-commands/src/commands/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');

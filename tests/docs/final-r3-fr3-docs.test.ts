@@ -118,7 +118,7 @@ describe('RUNTIME.md on the 0030 trigger (R4-SURFACE-2)', () => {
   });
 
   it('does not claim an expired gate is covered: it is stored pending', () => {
-    const proposalsRead = read('packages/core-records/src/reads/proposals.ts');
+    const proposalsRead = read('packages/core-commands/src/reads/proposals.ts');
     expect(proposalsRead).toContain("case when g.state = 'pending' and g.expires_at <= now()");
     const text = paragraph();
     expect(text).not.toMatch(/covers[^.]*expired/u);

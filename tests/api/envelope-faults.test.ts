@@ -12,7 +12,7 @@
 // `null` and `''` are refused correctly -- it is the absent field that gets
 // through (L5-PROOFS handback, "Defects found in other lanes' files" 1).
 //
-// The register (`commands/register.ts`) promises `OPERATION_ID_REQUIRED` 422
+// The register (`core-records/src/register.ts`) promises `OPERATION_ID_REQUIRED` 422
 // for exactly this, so the case asks for the status the table already says.
 
 import { randomUUID } from 'node:crypto';

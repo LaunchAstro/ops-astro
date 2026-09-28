@@ -14,8 +14,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
-import { statusOf } from '../../packages/core-records/src/commands/register.ts';
+import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
+import { statusOf } from '../../packages/core-records/src/register.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import { PROPOSAL } from '../acceptance/role-case-bodies.ts';
 import { bearer, call, createWorld, personPath, serverUrl } from '../acceptance/world.ts';

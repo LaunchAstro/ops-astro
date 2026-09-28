@@ -12,14 +12,14 @@ import {
   refuseFence,
   refuseOutcome,
   refuseReport,
-} from '../../packages/core-records/src/commands/tasks-handback.ts';
-import { refuseReservationBody } from '../../packages/core-records/src/commands/tasks-pickup.ts';
+} from '../../packages/core-commands/src/commands/tasks-handback.ts';
+import { refuseReservationBody } from '../../packages/core-commands/src/commands/tasks-pickup.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
-} from '../../packages/core-records/src/commands/agent-operations.ts';
-import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/agent-operations.ts';
+import type { AgentRequest } from '../../packages/core-commands/src/commands/agent-call.ts';
+import type { CommandName } from '../../packages/core-commands/src/commands/surface.ts';
 
 const parse = (command: CommandName, fields: Record<string, unknown>): unknown => {
   const operation = AGENT_OPERATIONS.get(command);

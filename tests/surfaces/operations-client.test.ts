@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
 
 interface Captured {
   readonly url: string;

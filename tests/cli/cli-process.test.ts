@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE } from '../../packages/core-records/src/commands/surface.ts';
+import { COMMAND_SURFACE } from '../../packages/core-commands/src/commands/surface.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
 

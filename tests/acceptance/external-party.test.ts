@@ -15,7 +15,7 @@ import {
   COMMAND_SURFACE,
   pathOf,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { createPositiveBody } from './role-case-bodies.ts';
 import {

@@ -27,12 +27,12 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   readAuditEvents,
   type AuditEventRow,
-} from '../../packages/core-records/src/commands/audit.ts';
+} from '../../packages/core-commands/src/commands/audit.ts';
 import {
   installBusinessSettings,
   writeBusinessSetting,

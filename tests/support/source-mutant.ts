@@ -26,7 +26,11 @@ import { pathToFileURL } from 'node:url';
 const REPO = resolve(import.meta.dirname, '../..');
 
 /** The source trees a core-records module can reach through relative imports. */
-const DEFAULT_TREES: readonly string[] = ['packages/core-records/src', 'packages/core-runtime/src'];
+const DEFAULT_TREES: readonly string[] = [
+  'packages/core-records/src',
+  'packages/core-runtime/src',
+  'packages/core-commands/src',
+];
 
 export interface MutationSpec {
   /** Repository-relative file the mutation edits. */

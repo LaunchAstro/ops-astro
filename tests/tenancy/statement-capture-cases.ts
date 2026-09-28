@@ -25,11 +25,11 @@ import {
   pathOf,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createStatementLog,
@@ -37,7 +37,7 @@ import {
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { createApi } from '../../apps/api/app.ts';
-import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
+import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   ACCEPTANCE_ISSUER,

@@ -20,7 +20,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/recovery.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {

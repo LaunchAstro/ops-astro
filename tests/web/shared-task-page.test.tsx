@@ -3,7 +3,7 @@
 //
 // `/task/:key` for the external party (R4), against a stand-in that answers
 // `task.read` the way the API does for a reader outside the business: under
-// `sharedTask`, never `task` (`packages/core-records/src/reads/dispatch.ts`).
+// `sharedTask`, never `task` (`packages/core-commands/src/reads/dispatch.ts`).
 //
 // The page used to read `value.task` whatever arrived, threw on the shared
 // answer and drew nothing. These cases hold the three things that replaced it:

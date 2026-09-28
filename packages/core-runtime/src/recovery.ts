@@ -22,15 +22,14 @@
 // quarantined and named for a later reconciliation owner. Work refusal must
 // never erase a real liability.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import {
-  checkAuthority,
-  type Decision,
-  type EffectiveGrant,
-  type ScopeRequest,
-  type Subject,
-} from '../../core-records/src/authority/grants.ts';
-import { revokeDelegation } from '../../core-records/src/authority/delegations.ts';
+import { checkAuthority, revokeDelegation } from '../../core-records/src/index.ts';
+import type {
+  TenantQuery,
+  Decision,
+  EffectiveGrant,
+  ScopeRequest,
+  Subject,
+} from '../../core-records/src/index.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { lockedInstant } from './clock.ts';
 import { lockRediscovered } from './rediscovery.ts';

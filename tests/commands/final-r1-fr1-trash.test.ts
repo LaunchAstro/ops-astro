@@ -29,16 +29,16 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import {
   installBusinessSettings,
   writeBusinessSetting,
 } from '../../packages/core-records/src/records/business-settings.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

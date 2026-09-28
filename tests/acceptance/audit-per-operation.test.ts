@@ -23,7 +23,7 @@ import {
   READS,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { PROPOSAL } from './role-case-bodies.ts';

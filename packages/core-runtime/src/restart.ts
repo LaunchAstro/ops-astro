@@ -16,8 +16,7 @@
 // pending gate and no hold, so a person decides again (no auto approval), and
 // the old hold stays released by whatever made the lineage terminal.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
+import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { propose, type Proposal } from './propose.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 

@@ -11,7 +11,7 @@
 // before, during and after.
 //
 // Every task command reaches its record through one statement -- `lockTask` in
-// `packages/core-records/src/commands/prepare.ts`, which selects `from records
+// `packages/core-commands/src/commands/prepare.ts`, which selects `from records
 // where business_id = $1 and record_type_id = $2 and id = $3 for update`. Two
 // independent things stop it returning another business's row: the explicit
 // `business_id = $1` predicate the application writes, and the restrictive
@@ -64,8 +64,8 @@ import {
   describeFindings,
   type Finding,
 } from '../../packages/core-records/src/tenancy/conformance.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 

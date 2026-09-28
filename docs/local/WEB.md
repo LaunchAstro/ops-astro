@@ -581,7 +581,7 @@ party has no standing left to resolve (`resolveLogin` and `standsOnShares` in
 `packages/core-records/src/identity/login-resolution.ts`). An unshared sibling
 task or the board answers `NOT_FOUND` while the share is live (the row's
 `outsiderNotFound` in `READ_CATALOGUE`,
-`packages/core-records/src/reads/catalogue.ts`, checked by `serveRead` in
+`packages/core-commands/src/reads/catalogue.ts`, checked by `serveRead` in
 `reads/dispatch.ts`). Neither leaks content.
 
 `surface-final.mjs` runs after R4 (`casesSurfaceFinal` in
@@ -635,7 +635,7 @@ places this build does not yet reach it.
 - No Agent panel, gate or run surfaces, and no dock tab for them. The records
   behind them are stored and read: `task.read` carries every proposal on the
   task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
-  projection", served by `packages/core-records/src/reads/proposals.ts`). So this
+  projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
   the panel registry stays empty until there is a screen for a tab to open.
 - Subtasks are not built. Comments are, and the task page draws them. The
@@ -650,7 +650,7 @@ places this build does not yet reach it.
   The screen writes `expectedRevision` for a row whose `settings.read` answer
   carried `revision`, and not otherwise. `business_settings` has the column
   from migration `0020`, and on this head `settings.read` projects it on every
-  row (`readSettings` in `packages/core-records/src/reads/settings.ts`). A
+  row (`readSettings` in `packages/core-commands/src/reads/settings.ts`). A
   running API built from an older head does not send it. Where it does not, the
   path and its `VERSION_STALE` conflict are held by mounted cases alone, and
   browser row S5 records `pending` with the reason. Where it does, S5 runs with

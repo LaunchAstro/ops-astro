@@ -26,13 +26,13 @@ import {
   type Answer,
   type ApiFixture,
 } from '../api/fixture.ts';
-import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
+import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
 import { enrol, type Member } from './fixture.ts';
 import {
   COMMAND_SURFACE,
   READS,
   pathOf,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 
 // Like the other database files, these cases skip without a database
 // rather than fail in beforeAll (the CI local checks job has none).
