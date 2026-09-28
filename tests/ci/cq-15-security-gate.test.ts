@@ -27,10 +27,9 @@ const GHSA = 'GHSA-cq15-0000-0000';
 const MOD = { audit: [{ advisory: GHSA, ...HELD }] };
 /** a.ts: line 1 is the excepted code, line 2 other code, line 3 line 1's code moved. */
 const LINES = [`x('${TOKEN}');`, 'y(2);', `x('${TOKEN}');`];
-const sha = createHash('sha256')
-  .update(LINES[0] ?? '')
-  .digest('hex');
-const RULE = { rule: 'r.x', path: 'a.ts', matches: [sha.slice(0, 16)], ...HELD };
+const sha = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16);
+const [matches, file] = [[sha(LINES[0] ?? '')], sha(LINES.join('\n'))];
+const RULE = { rule: 'r.x', path: 'a.ts', matches, file, ...HELD };
 const GATE = 'scripts/security-gate.mjs';
 
 /** The gate's arguments on a report and an exceptions file, in a scratch directory with a.ts. */
