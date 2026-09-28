@@ -4,7 +4,8 @@
 // that shows what a restored production backup brings: a business the seed
 // does not make, or a sign-in address that is not a made-up one. The seed's
 // addresses all end `.local`, a name reserved for local networks, so no real
-// person's address can end that way.
+// person's address can end that way; a sign-in with no address (a phone one) is
+// not one the seed made either.
 //
 // It returns the signs it found as counts, never the rows: a business's name or
 // a person's address in a refusal would be record content in a log, the thing
@@ -35,7 +36,7 @@ export async function productionSigns(
   );
   if (auth?.present === true) {
     const [addresses] = await admin.execute<{ n: number }>(
-      'select count(*)::int as n from auth.users where email is not null and email not like $1',
+      'select count(*)::int as n from auth.users where email is null or email not like $1',
       [MADE_UP_ADDRESS],
     );
     const real = addresses?.n ?? 0;

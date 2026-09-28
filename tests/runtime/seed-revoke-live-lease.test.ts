@@ -126,6 +126,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
     mkdirSync(join(root, 'scripts'));
     mkdirSync(join(root, '.local'));
     copyFileSync(join(repo, 'scripts/local-seed.mjs'), join(root, 'scripts/local-seed.mjs'));
+    symlinkSync(join(repo, 'scripts/ops'), join(root, 'scripts/ops'));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
     symlinkSync(join(repo, 'node_modules'), join(root, 'node_modules'));
 
