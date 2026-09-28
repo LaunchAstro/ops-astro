@@ -12,8 +12,9 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
+import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -245,6 +246,7 @@ describe('CQ-3 supply-chain settings', () => {
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', () => {
   let db: FreshDatabase;
   const parties: string[] = [];
+  const clients: { businessId: string; member: Member }[] = [];
 
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'cq3' });
@@ -257,6 +259,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
         await grantTo(tx, member, 'write');
         await grantTo(tx, client, 'read');
       });
+      clients.push({ businessId: id, member: client });
       return id;
     };
     // One after the other: installSpine and the grants read the shared catalogue.
@@ -265,7 +268,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
 
   afterAll(async () => await db?.drop());
 
-  it('CQ-3 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
+  const checkIsolation = async () => {
     const check = await run('node', ['scripts/pins-check.mjs'], ROOT, { DATABASE_URL: db.appUrl });
     const named = parties.some((id) => check.out.includes(id));
     expect([check.status, named], check.out).toStrictEqual([0, false]);
@@ -288,6 +291,42 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
     expect(await reach(bravo, bravo, VERBS.slice(0, 1))).toBeGreaterThan(0);
     expect([await reach(bravo, charlie, VERBS), await reach(charlie, bravo, VERBS)]).toEqual([
       0, 0,
+    ]);
+  };
+
+  it(
+    'CQ-3 isolation: two businesses, two clients, one grant each; neither reaches the other',
+    checkIsolation,
+  );
+
+  it('Sol proof, criterion 4: both client bearers have an own task read and a foreign refusal', async () => {
+    await checkIsolation();
+    const reads = await db.admin.execute<{
+      business_id: string;
+      actor_id: string;
+    }>(
+      `select business_id::text, actor_id::text from public.audit_events
+        where command = 'task.read' and outcome = 'applied'`,
+    );
+    const refusals = await db.admin.execute<{
+      business_id: string;
+      subject_digest: string;
+    }>(
+      `select business_id::text, subject_digest from public.authentication_attempts
+        where refusal_code = 'AUTH_NO_MEMBERSHIP'`,
+    );
+    const observed = clients.map(({ businessId, member }) => ({
+      ownTaskRead: reads.some(
+        (row) => row.business_id === businessId && row.actor_id === member.actorId,
+      ),
+      foreignRefused: refusals.some(
+        (row) =>
+          row.business_id !== businessId && row.subject_digest === subjectDigest(member.presented),
+      ),
+    }));
+    expect(observed).toStrictEqual([
+      { ownTaskRead: true, foreignRefused: true },
+      { ownTaskRead: true, foreignRefused: true },
     ]);
   });
 });
