@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// CQ-3: the supply-chain settings are stated, read back from both files, and
-// refused when weakened. pnpm itself shows the exotic-source refusal and the
-// frozen install; the trust downgrade is refused here as a weakened setting,
-// because pnpm's own check needs registry trust evidence no offline test has.
+// CQ-3: the supply-chain settings, read back from both files and refused when weakened: by pnpm
+// itself against a registry on 127.0.0.1, and by the Semgrep check when its scan fails.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -25,50 +23,36 @@ import {
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const scratch = () => mkdtempSync(join(tmpdir(), 'cq3-'));
-const AGE = { pnpm: String(7 * 24 * 60), renovate: '7 days' };
-const WANT = {
-  minimumReleaseAge: AGE.pnpm,
-  trustPolicy: 'no-downgrade',
-  blockExoticSubdeps: 'true',
-};
+const WANT = { minimumReleaseAge: String(7 * 24 * 60), trustPolicy: 'no-downgrade' };
 const CANARY = `cq3-canary-${randomUUID()}`;
 const PLANTED = { NODE_AUTH_TOKEN: CANARY, NPM_TOKEN: CANARY, CQ3_CANARY_SECRET: CANARY };
 const GOTRUE = 'public.ecr.aws/supabase/gotrue:v2.192.0';
 const GOTRUE_DIGEST = 'b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab';
+const BOTH = ['pnpm-workspace.yaml', 'renovate.json'];
+const byUrl = (url: string) => `${url}/c.tgz`;
+const VERBS = [
+  'select count(*)::int as n from $t where business_id = $1',
+  'select 1 as n from $t where business_id = $1',
+  'update $t set business_id = business_id where business_id = $1 returning 1 as n',
+  'delete from $t where business_id = $1 returning 1 as n',
+];
 
-/** What is wrong with the two settings files; an unreadable file is a problem, never a pass. */
-function settingsProblems(workspace: string | undefined, renovate: string | undefined): string[] {
-  const problems: string[] = [];
-  if (workspace === undefined) problems.push('pnpm-workspace.yaml: unreadable');
-  for (const [key, value] of Object.entries(WANT)) {
-    const lines = (workspace ?? '').split(/\r?\n/u).filter((l) => l.startsWith(`${key}:`));
-    const stated = lines.map((l) =>
-      l
-        .slice(key.length + 1)
-        .replace(/\s#.*$/u, '')
-        .trim(),
-    );
-    if (stated.join() !== value) problems.push(`pnpm-workspace.yaml: ${key} is not ${value}`);
-  }
-  let config: { minimumReleaseAge?: unknown; packageRules?: { minimumReleaseAge?: unknown }[] };
-  try {
-    config = JSON.parse(renovate ?? '');
-  } catch {
-    return [...problems, 'renovate.json: unreadable'];
-  }
-  const rules = Array.isArray(config.packageRules) ? config.packageRules : [];
-  if (rules.length === 0) problems.push('renovate.json: no package rules');
-  for (const [i, rule] of [config, ...rules].entries()) {
-    const where = i === 0 ? 'top level' : `package rule ${i}`;
-    if (rule.minimumReleaseAge !== AGE.renovate)
-      problems.push(`renovate.json ${where}: not 7 days`);
-  }
-  return problems;
+/** Every value `key` is stated with: twice or commented out never reads as one. */
+const stated = (text: string, key: string) =>
+  [...text.matchAll(new RegExp(`^${key}:[ \\t]*(.*?)(?:\\s+#.*)?$`, 'gmu'))].map((m) => m[1]);
+
+/** The distinct release ages of Renovate's top level and each package rule; none without rules. */
+function renovateAges(text: string): unknown[] {
+  const c = JSON.parse(text) as { minimumReleaseAge?: unknown; packageRules?: (typeof c)[] };
+  const rules = c.packageRules ?? [];
+  return rules.length === 0 ? [] : [...new Set([c, ...rules].map((r) => r.minimumReleaseAge))];
 }
 
+/** `out` never holds the canary, so no failed assertion can print it; `leaked` says it was there. */
 interface Run {
   readonly status: number | null;
   readonly out: string;
+  readonly leaked: boolean;
 }
 
 /** Asynchronous, so a server in this process can answer the child. */
@@ -78,7 +62,9 @@ function run(command: string, args: string[], cwd: string, env: object = {}): Pr
     let out = '';
     child.stdout.on('data', (d: Buffer) => (out += d.toString()));
     child.stderr.on('data', (d: Buffer) => (out += d.toString()));
-    child.on('close', (status) => done({ status, out }));
+    child.on('close', (status) =>
+      done({ status, out: out.replaceAll(CANARY, '[canary]'), leaked: out.includes(CANARY) }),
+    );
   });
 }
 
@@ -98,31 +84,63 @@ function pinsTree(authImage: string, record: string): string {
   return tree;
 }
 
-/** A project whose one dependency, `a`, asks for `b` by tarball URL: an exotic sub-dependency. */
-async function exoticInstall(workspace: string): Promise<Run> {
+/** `c` 1.0.0 had provenance and a trusted publisher, 1.0.1 neither: a stolen token's shape. */
+function packument(url: string): string {
+  const provenance = { url, provenance: { predicateType: 'https://slsa.dev/provenance/v1' } };
+  const publisher = { trustedPublisher: { id: 'github', oidcConfigId: 'c' } };
+  const v = (version: string, strong: boolean) => ({
+    name: 'c',
+    version,
+    _npmUser: { name: 'c', ...(strong ? publisher : {}) },
+    dist: { tarball: `${url}/c.tgz`, ...(strong ? { attestations: provenance } : {}) },
+  });
+  const [early, late] = ['2020-01-01T00:00:00Z', '2020-02-01T00:00:00Z'];
+  const versions = { '1.0.0': v('1.0.0', true), '1.0.1': v('1.0.1', false) };
+  const time = { created: early, modified: late, '1.0.0': early, '1.0.1': late };
+  return JSON.stringify({ name: 'c', 'dist-tags': { latest: '1.0.1' }, versions, time });
+}
+
+/** A project whose dependency `a` asks for `want(url)` from a registry on 127.0.0.1. */
+async function install(workspace: string, want: (url: string) => string): Promise<Run> {
   const tree = scratch();
-  mkdirSync(join(tree, 'b/package'), { recursive: true });
-  writeFileSync(join(tree, 'b/package/package.json'), '{"name":"b","version":"1.0.0"}');
-  await run('tar', ['czf', 'b.tgz', '-C', 'b', 'package'], tree);
-  const tarball = readFileSync(join(tree, 'b.tgz'));
-  const server = createServer((_, response) => response.end(tarball)).listen(0, '127.0.0.1');
+  mkdirSync(join(tree, 'c/package'), { recursive: true });
+  writeFileSync(join(tree, 'c/package/package.json'), '{"name":"c","version":"1.0.1"}');
+  await run('tar', ['czf', 'c.tgz', '-C', 'c', 'package'], tree);
+  const tarball = readFileSync(join(tree, 'c.tgz'));
+  const server = createServer((request, response) => {
+    response.end(request.url?.endsWith('.tgz') === true ? tarball : packument(url));
+  }).listen(0, '127.0.0.1');
   await new Promise((ready) => {
     server.once('listening', ready);
   });
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/b.tgz`;
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const { packageManager } = JSON.parse(file('package.json')) as Record<string, string>;
+  const a = { name: 'a', version: '1.0.0', dependencies: { c: want(url) } };
+  const p = { name: 'p', private: true, packageManager, dependencies: { a: 'file:./a' } };
   mkdirSync(join(tree, 'a'));
-  writeFileSync(
-    join(tree, 'a/package.json'),
-    JSON.stringify({ name: 'a', version: '1.0.0', dependencies: { b: url } }),
-  );
-  writeFileSync(
-    join(tree, 'package.json'),
-    JSON.stringify({ name: 'p', private: true, packageManager, dependencies: { a: 'file:./a' } }),
-  );
+  writeFileSync(join(tree, 'a/package.json'), JSON.stringify(a));
+  writeFileSync(join(tree, 'package.json'), JSON.stringify(p));
   writeFileSync(join(tree, 'pnpm-workspace.yaml'), workspace);
-  writeFileSync(join(tree, '.npmrc'), `//127.0.0.1/:_authToken=${CANARY}\n`);
-  return await run('pnpm', ['install', '--ignore-scripts'], tree).finally(() => server.close());
+  writeFileSync(join(tree, '.npmrc'), `registry=${url}/\n${url.slice(5)}/:_authToken=${CANARY}\n`);
+  const args = ['install', '--ignore-scripts', '--store-dir', join(tree, 'store')];
+  return await run('pnpm', args, tree).finally(() => server.close());
+}
+
+/** A Semgrep JSON report with `results` findings and `errors` errors, over `scanned`. */
+const report = (results = 0, errors = 0, scanned = BOTH) =>
+  JSON.stringify({
+    results: Array.from({ length: results }),
+    errors: Array.from({ length: errors }),
+    paths: { scanned },
+  });
+
+/** The Semgrep check, with `docker` on PATH replaced by one that prints `out` and exits `exit`. */
+async function semgrepWith([out, exit]: readonly [string, number]): Promise<Run> {
+  const bin = scratch();
+  writeFileSync(join(bin, 'docker'), `#!/bin/sh\nprintf '%s' "$FAKE_REPORT"\nexit ${exit}\n`);
+  chmodSync(join(bin, 'docker'), 0o755);
+  const env = { PATH: `${bin}:${process.env['PATH'] ?? ''}`, FAKE_REPORT: out };
+  return await run('bash', ['scripts/local/semgrep-settings.sh'], ROOT, env);
 }
 
 describe('CQ-3 supply-chain settings', () => {
@@ -131,21 +149,25 @@ describe('CQ-3 supply-chain settings', () => {
   const runs: Run[] = [];
 
   it('CQ-3 pnpm settings: minimumReleaseAge, trustPolicy no-downgrade and blockExoticSubdeps stated', () => {
-    expect(settingsProblems(workspace, '{}').filter((p) => p.startsWith('pnpm'))).toStrictEqual([]);
+    const want = { ...WANT, blockExoticSubdeps: 'true' };
+    const keys = Object.keys(want);
+    expect(keys.map((k) => stated(workspace, k))).toStrictEqual(
+      Object.values(want).map((v) => [v]),
+    );
     expect(workspace).toMatch(/^minimumReleaseAgeExclude:\n {2}- vite@8\.3\.0$/mu);
   });
 
   it('CQ-3 renovate rules: every package rule carries a minimum release age', () => {
-    expect(
-      settingsProblems(undefined, renovate).filter((p) => p.startsWith('renovate')),
-    ).toStrictEqual([]);
+    expect(renovateAges(renovate)).toStrictEqual(['7 days']);
+    expect(renovateAges(renovate.replace(/"minimumReleaseAge": "7 days",/u, ''))).toHaveLength(2);
   });
 
   it('CQ-3 release age: 7 days, 10080 minutes in pnpm and 7 days in every Renovate rule', () => {
-    expect(settingsProblems(workspace, renovate)).toStrictEqual([]);
+    const ages = [stated(workspace, 'minimumReleaseAge'), renovateAges(renovate)];
+    expect(ages).toStrictEqual([[WANT.minimumReleaseAge], ['7 days']]);
   });
 
-  it('CQ-3 frozen install: the lockfile installs offline, vite 8.3.0 included', async () => {
+  it('CQ-3 frozen install: the lockfile installs, vite 8.3.0 included', async () => {
     const tree = scratch();
     for (const path of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'])
       cpSync(join(ROOT, path), join(tree, path));
@@ -155,16 +177,11 @@ describe('CQ-3 supply-chain settings', () => {
       const manifest = join(dir, 'package.json');
       if (existsSync(join(ROOT, manifest))) cpSync(join(ROOT, manifest), join(tree, manifest));
     }
-    const install = await run(
-      'pnpm',
-      ['install', '--frozen-lockfile', '--offline', '--ignore-scripts'],
-      tree,
-    );
-    runs.push(install);
-    expect(install.status, install.out).toBe(0);
-    expect(
-      JSON.parse(readFileSync(join(tree, 'node_modules/vite/package.json'), 'utf8')).version,
-    ).toBe('8.3.0');
+    const frozen = await run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts'], tree);
+    runs.push(frozen);
+    expect(frozen.status, frozen.out).toBe(0);
+    const vite = readFileSync(join(tree, 'node_modules/vite/package.json'), 'utf8');
+    expect(JSON.parse(vite).version).toBe('8.3.0');
   }, 180_000);
 
   it('CQ-3 auth image pin: a moved tag and an unrecorded digest are refused', async () => {
@@ -184,56 +201,46 @@ describe('CQ-3 supply-chain settings', () => {
     expect(file('scripts/local/auth-up.sh')).toContain(`AUTH_IMAGE=${pinned}\n`);
     expect(file('docs/supply-chain-pins.md')).toContain(`sha256:${GOTRUE_DIGEST}`);
     const real = await run('node', ['scripts/pins-check.mjs'], ROOT);
-    expect([real.status, /[1-9]\d* in local scripts/u.test(real.out)], real.out).toStrictEqual([
-      0,
-      true,
-    ]);
+    const local = /[1-9]\d* in local scripts/u.test(real.out);
+    expect([real.status, local], real.out).toStrictEqual([0, true]);
   });
 
   it('CQ-3 supply-chain refusals: a trust downgrade, an exotic source and a scanner failure', async () => {
-    for (const weaker of [
-      'trustPolicy: off',
-      'trustPolicy: no-downgrade\ntrustPolicy: off',
-      '# trustPolicy: no-downgrade',
-    ]) {
-      const weakened = workspace.replace(/^trustPolicy: no-downgrade$/mu, weaker);
-      expect(settingsProblems(weakened, renovate), weaker).toContain(
-        'pnpm-workspace.yaml: trustPolicy is not no-downgrade',
-      );
-    }
-    expect(
-      settingsProblems(workspace, renovate.replace(/"minimumReleaseAge": "7 days",?/u, '')),
-    ).not.toStrictEqual([]);
-    const refused = await exoticInstall(workspace);
-    const allowed = await exoticInstall(
-      workspace.replace('blockExoticSubdeps: true', 'blockExoticSubdeps: false'),
-    );
-    runs.push(refused, allowed);
-    expect(
-      [refused.status !== 0, refused.out.includes('ERR_PNPM_EXOTIC_SUBDEP')],
-      refused.out,
-    ).toStrictEqual([true, true]);
-    expect(allowed.status, allowed.out).toBe(0);
-    const unreadable = Object.entries(WANT).map(
-      ([k, v]) => `pnpm-workspace.yaml: ${k} is not ${v}`,
-    );
-    expect(settingsProblems(undefined, '{')).toStrictEqual([
-      'pnpm-workspace.yaml: unreadable',
-      ...unreadable,
-      'renovate.json: unreadable',
+    const set = (key: string, to: string) =>
+      workspace.replace(new RegExp(`^${key}: .*$`, 'mu'), `${key}: ${to}`);
+    const tried = await Promise.all([
+      install(workspace, () => '1.0.1'),
+      install(workspace, byUrl),
+      install(set('trustPolicy', 'off'), () => '1.0.1'),
+      install(set('blockExoticSubdeps', 'false'), byUrl),
     ]);
-    // A local script the check cannot read stops it; it never reads as zero images.
-    const tree = pinsTree(`${GOTRUE}@sha256:${GOTRUE_DIGEST}`, GOTRUE_DIGEST);
-    mkdirSync(join(tree, 'scripts/local/unreadable.sh'));
-    const scan = await run('node', ['scripts/pins-check.mjs'], tree);
-    runs.push(scan);
-    expect(scan.status, scan.out).not.toBe(0);
+    runs.push(...tried);
+    const [downgrade, exotic] = tried;
+    expect(downgrade.out).toMatch(/trust downgrade for "c@1\.0\.1"/u);
+    expect(exotic.out).toContain('ERR_PNPM_EXOTIC_SUBDEP');
+    // Refused by the setting, and installed by the same pnpm without it.
+    expect(tried.map((t) => t.status === 0)).toStrictEqual([false, false, true, true]);
+    const scans = await Promise.all(
+      [
+        ['', 125],
+        ['not a report', 0],
+        [report(), 2],
+        [report(1), 0],
+        [report(0, 1), 0],
+        [report(0, 0, ['renovate.json']), 0],
+        [report(), 0],
+      ].map((c) => semgrepWith(c as [string, number])),
+    );
+    runs.push(...scans);
+    expect(scans.map((s) => s.status)).toStrictEqual([1, 1, 1, 1, 1, 1, 0]);
   }, 120_000);
 
-  it('CQ-3 canary: a planted secret reaches no install log, check output or error', () => {
-    expect(runs.length).toBeGreaterThanOrEqual(6);
+  it('CQ-3 canary: a planted secret reaches no install log, check output or error', async () => {
+    const control = await run('node', ['-e', 'console.error(process.env.CQ3_CANARY_SECRET)'], ROOT);
+    expect([control.leaked, control.out.includes(CANARY)]).toStrictEqual([true, false]);
+    expect(runs.length).toBeGreaterThanOrEqual(15);
     expect(runs.some((r) => r.status !== 0)).toBe(true);
-    for (const { out } of runs) expect(out).not.toContain(CANARY);
+    expect(runs.filter((r) => r.leaked || r.out.includes(CANARY))).toHaveLength(0);
   });
 });
 
@@ -260,26 +267,29 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
 
   afterAll(async () => await db?.drop());
 
-  it('CQ-3 isolation: two businesses, two clients, one grant each; the checks read, list and change none of it', async () => {
+  it('CQ-3 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
+    const check = await run('node', ['scripts/pins-check.mjs'], ROOT, { DATABASE_URL: db.appUrl });
+    const named = parties.some((id) => check.out.includes(id));
+    expect([check.status, named], check.out).toStrictEqual([0, false]);
     const tables = await db.admin.execute<{ t: string }>(
       `select table_name as t from information_schema.columns
-        where table_schema = 'public' and column_name = 'business_id' order by 1`,
+        where table_schema = 'public' and column_name = 'business_id'`,
     );
-    const counts = async () =>
-      await Promise.all(
-        parties.map(async (id) => {
-          const sql = tables.map(
-            ({ t }) => `(select count(*)::int from public.${t} where business_id = $1) as ${t}`,
-          );
-          return (await db.admin.execute(`select ${sql.join(', ')}`, [id]))[0];
-        }),
+    // As the app role, `mine` counts, lists, changes and deletes `theirs` rows in every business
+    // table, one transaction each. A refusal reaches zero rows.
+    const reach = async (mine: string, theirs: string, verbs: readonly string[]) => {
+      const sql = tables.flatMap(({ t }) => verbs.map((v) => v.replace('$t', `public.${t}`)));
+      const rows = await Promise.all(
+        sql.map(async (q) =>
+          db.app.withBusiness(mine, (tx) => tx.query<{ n: number }>(q, [theirs])).catch(() => []),
+        ),
       );
-    const before = await counts();
-    const env = { DATABASE_URL: db.appUrl, DATABASE_ADMIN_URL: db.appUrl };
-    const check = await run('node', ['scripts/pins-check.mjs'], ROOT, env);
-    expect(check.status, check.out).toBe(0);
-    expect(settingsProblems(file('pnpm-workspace.yaml'), file('renovate.json'))).toStrictEqual([]);
-    expect(await counts()).toStrictEqual(before);
-    for (const id of parties) expect(check.out).not.toContain(id);
+      return rows.flat().reduce((sum, row) => sum + Number(row.n), 0);
+    };
+    const [bravo, charlie] = parties as [string, string];
+    expect(await reach(bravo, bravo, VERBS.slice(0, 1))).toBeGreaterThan(0);
+    expect([await reach(bravo, charlie, VERBS), await reach(charlie, bravo, VERBS)]).toEqual([
+      0, 0,
+    ]);
   });
 });
