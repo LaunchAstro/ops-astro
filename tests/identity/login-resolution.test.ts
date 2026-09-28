@@ -20,7 +20,10 @@ import {
   withSession,
   type Session,
 } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { isRefusal, type Refusal } from '../../packages/core-records/src/identity/refusals.ts';
+import {
+  isCommandRefusal as isRefusal,
+  type CommandRefusal as Refusal,
+} from '../../packages/core-records/src/register.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -133,6 +136,7 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the login', () => {
     const refusal = {
       refused: true,
       code: 'AUTH_NO_MEMBERSHIP',
+      names: [],
       fixes: [
         'ask an administrator of this business to link this login to a person',
         'check that the business named in the request is the intended one',
@@ -158,6 +162,7 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the login', () => {
       expect(await resolve(alpha, 'sub-di')).toStrictEqual({
         refused: true,
         code: 'ACTOR_INACTIVE',
+        names: [],
         fixes: ['ask an administrator of this business to reactivate this person'],
       });
     });

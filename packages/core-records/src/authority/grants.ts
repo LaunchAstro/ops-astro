@@ -11,6 +11,7 @@
 // effective and still covers it, up to a root grant. So the subset relation is
 // re-checked here at use time, not trusted from grant time.
 
+import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
 
@@ -37,15 +38,13 @@ export interface ScopeRequest {
 
 export type RefusalCode = 'SCOPE_NOT_GRANTED' | 'GRANT_WIDENS' | 'GRANT_DEEPENS';
 
-/** Returned, never thrown, and carrying no value the caller was not already shown. */
-export interface Refusal {
-  readonly code: RefusalCode;
-  readonly reason: string;
-  readonly fix: string;
-}
-
+/**
+ * Returned, never thrown, and carrying no value the caller was not already
+ * shown: the register's one refusal, its reason first in `fixes`.
+ */
 export type Decision<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refusal: Refusal };
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly refusal: CommandRefusal<RefusalCode> };
 
 export interface EffectiveGrant {
   readonly id: string;
@@ -250,5 +249,5 @@ export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Dat
 }
 
 function refuse(code: RefusalCode, reason: string, fix: string): Decision<never> {
-  return { ok: false, refusal: { code, reason, fix } };
+  return { ok: false, refusal: refuseCommand(code, [], [reason, fix]) };
 }

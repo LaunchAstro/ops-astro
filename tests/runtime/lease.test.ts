@@ -91,7 +91,9 @@ async function approvedWork(
       capId: fixture.capId,
     });
     if (!decided.ok)
-      throw new Error(`decide refused ${decided.refusal.code}: ${decided.refusal.reason}`);
+      throw new Error(
+        `decide refused ${decided.refusal.code}: ${decided.refusal.fixes.join('; ')}`,
+      );
     if (decided.value.decision !== 'approve')
       throw new Error(`expected an approval, got ${decided.value.decision}`);
 

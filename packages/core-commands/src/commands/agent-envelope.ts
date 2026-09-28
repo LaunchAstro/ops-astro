@@ -61,7 +61,7 @@ import type {
 import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
-import { asCallerVisible, fromAgentIdentity, refuseCommand } from './refusal.ts';
+import { asCallerVisible, refuseCommand } from './refusal.ts';
 import {
   OPERATION_ID,
   lookupAttempt,
@@ -132,7 +132,7 @@ export async function executeAgentCommand(
         // has already written the authentication attempt, which is the record
         // that exists for exactly this case (AUTHORITY.md, "every attempt at
         // the door").
-        if ('refused' in session) return asCallerVisible(fromAgentIdentity(session));
+        if ('refused' in session) return asCallerVisible(session);
         return await runAgentCommand(tx, { session, credential, request });
       }),
   );

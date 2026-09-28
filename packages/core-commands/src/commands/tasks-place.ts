@@ -27,7 +27,7 @@ import {
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { fromReasoned, fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseReparentOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -53,7 +53,7 @@ async function refuseUnreachedRecord(
     action: 'write',
     scope: { kind: 'record', id },
   });
-  return reached.ok ? undefined : fromReasoned(reached.refusal);
+  return reached.ok ? undefined : reached.refusal;
 }
 
 /**
@@ -207,7 +207,7 @@ export async function reparentTask(
     boardSection: null,
     boardIsTheTasksOwn: true,
   });
-  if (isRecordsRefusal(placement)) return refused(fromRecords(placement));
+  if (isRecordsRefusal(placement)) return refused(placement);
 
   // The board is asked about, and the subtree carried, only when it changes
   // (R5-THERMO-2 = R5-AUTHORITY-4).

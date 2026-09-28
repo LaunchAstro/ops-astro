@@ -60,6 +60,7 @@
 // some other way would leave the revision where it was.
 
 import { randomUUID } from 'node:crypto';
+import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { WriteMode, VisibilityClass } from './fields.ts';
 
@@ -254,21 +255,10 @@ export async function readBusinessSetting(
  * The records engine's shape, with the code the command register already holds
  * for this answer. It names the revision the row is actually at, which is
  * in-business configuration the caller is already inside the business to read,
- * and never the value the caller tried to write.
+ * and never the value the caller tried to write. A revision that is not a
+ * whole number is `FIELD_VALUE_INVALID` naming `expectedRevision` instead.
  */
-export interface SettingRevisionStale {
-  readonly refused: true;
-  /**
-   * `VERSION_STALE` for a whole-number revision the row has moved past, and
-   * `FIELD_VALUE_INVALID` naming `expectedRevision` for one that is not a whole
-   * number at all. The settings commands target no existing record, so the
-   * envelope's number check does not reach them and the operand arrives here
-   * as the caller sent it (R2-SURFACE-67).
-   */
-  readonly code: 'VERSION_STALE' | 'FIELD_VALUE_INVALID';
-  readonly names: readonly string[];
-  readonly fixes: readonly string[];
-}
+type SettingRevisionStale = CommandRefusal<'VERSION_STALE' | 'FIELD_VALUE_INVALID'>;
 
 /** The same wording the records spine uses, so a caller is told the same thing twice. */
 export const SETTING_REVISION_FIXES: readonly string[] = [
@@ -388,20 +378,14 @@ export async function writeBusinessSetting(
   // a client retrying with the named revision loops on. It is a malformed
   // operand, refused as one.
   if (write.expectedRevision !== undefined && !Number.isSafeInteger(write.expectedRevision)) {
-    return {
-      refused: true,
-      code: 'FIELD_VALUE_INVALID',
-      names: ['expectedRevision'],
-      fixes: SETTING_REVISION_OPERAND_FIXES,
-    };
+    return refuseCommand(
+      'FIELD_VALUE_INVALID',
+      ['expectedRevision'],
+      SETTING_REVISION_OPERAND_FIXES,
+    );
   }
   if (write.expectedRevision !== undefined && write.expectedRevision !== row.revision) {
-    return {
-      refused: true,
-      code: 'VERSION_STALE',
-      names: [`revision=${row.revision}`],
-      fixes: SETTING_REVISION_FIXES,
-    };
+    return refuseCommand('VERSION_STALE', [`revision=${row.revision}`], SETTING_REVISION_FIXES);
   }
 
   const written = await tx.query<{

@@ -32,7 +32,7 @@ type Party = { readonly id: BusinessId; readonly member: Member; readonly tasks:
 /** The grant check the person path runs before any handler, at the command package's boundary. */
 const GRANT_CHECK = {
   file: 'packages/core-commands/src/commands/prepare.ts',
-  from: '  if (!authorised.ok) return refused(fromReasoned(authorised.refusal));',
+  from: '  if (!authorised.ok) return refused(authorised.refusal);',
   to: '  void authorised;',
 };
 

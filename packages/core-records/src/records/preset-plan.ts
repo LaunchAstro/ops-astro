@@ -26,6 +26,7 @@ import { checkAuthority, type Subject } from '../authority/grants.ts';
 import { readFieldDefinitions } from './field-store.ts';
 import { planSlotAssignment, type FieldOrigin, type FieldValueType } from './fields.ts';
 import { isRecordsRefusal } from './refusals.ts';
+import { refuseCommand, type CommandRefusal } from '../register.ts';
 import { readSlotTable, type Slot } from './slots.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -49,16 +50,10 @@ export type PresetPlanRefusalCode =
   /** The caller holds no live `manage` grant on the record family being planned. */
   | 'SCOPE_NOT_GRANTED';
 
-export interface PresetPlanRefusal {
-  readonly code: PresetPlanRefusalCode;
-  /** The fields the refusal is about, by key. Never a value the caller did not send. */
-  readonly names: readonly string[];
-  readonly fixes: readonly string[];
-}
-
+/** `names` holds the fields the refusal is about, by key; never a value the caller did not send. */
 export type PresetPlanDecision<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly refusal: PresetPlanRefusal };
+  | { readonly ok: false; readonly refusal: CommandRefusal<PresetPlanRefusalCode> };
 
 /** One field as a preset ships it. Everything a classification needs is on it. */
 export interface PresetField {
@@ -130,7 +125,7 @@ function refuse(
   names: readonly string[],
   fixes: readonly string[],
 ): PresetPlanDecision<never> {
-  return { ok: false, refusal: { code, names, fixes } };
+  return { ok: false, refusal: refuseCommand(code, names, fixes) };
 }
 
 /**
@@ -205,10 +200,11 @@ export async function planPresetSync(
     scope: { kind: 'business', id: null },
   });
   if (!authorised.ok) {
+    const [reason = '', ...fixes] = authorised.refusal.fixes;
     return refuse(
       'SCOPE_NOT_GRANTED',
       [family],
-      [`${authorised.refusal.reason}: this plan needs manage on ${family}`, authorised.refusal.fix],
+      [`${reason}: this plan needs manage on ${family}`, ...fixes],
     );
   }
 

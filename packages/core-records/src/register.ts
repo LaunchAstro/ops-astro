@@ -655,6 +655,49 @@ export const CALLER_VISIBLE: ReadonlySet<RefusalCode> = new Set(
 );
 
 /**
+ * The one refusal shape, at every layer: identity, records, authority, the
+ * runtime and the command boundary all return it, so nothing translates
+ * between layers. It sits here, beside the register, so no layer imports
+ * upwards to name it. `C` narrows the codes a module can produce; the shape
+ * does not change. It is named for the command a caller made, which is what
+ * every refusal answers.
+ */
+export interface CommandRefusal<C extends RefusalCode = RefusalCode> {
+  readonly refused: true;
+  readonly code: C;
+  /**
+   * In-business configuration by name: field keys, slot names, the owning
+   * operation, a batch identity. Never a value the caller supplied, and never
+   * anything belonging to another business. Identity's refusals leave it
+   * empty, because which of several reasons applied is itself an inference.
+   */
+  readonly names: readonly string[];
+  /** What a person could do about it; a rule's reason, where one is given, first. */
+  readonly fixes: readonly string[];
+}
+
+/**
+ * The one constructor. It refuses an unregistered code, so no layer can
+ * invent a spelling: a code that is not in the register has no status, no
+ * visibility rule and nothing for a caller to branch on.
+ */
+export function refuseCommand<C extends RefusalCode>(
+  code: C,
+  names: readonly string[],
+  fixes: readonly string[],
+): CommandRefusal<C> {
+  if (!BY_CODE.has(code)) {
+    throw new Error(`refuseCommand: ${code} is not in the refusal register. Add it or use one.`);
+  }
+  return { refused: true, code, names, fixes };
+}
+
+/** The discriminant every result is read through. */
+export function isCommandRefusal(value: object): value is CommandRefusal {
+  return 'refused' in value && value.refused === true;
+}
+
+/**
  * Registered, and nothing in the tree can produce one yet.
  *
  * Each waits on something this part does not build: a delegations table for

@@ -10,7 +10,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
-import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { TypedOperation } from './agent-operations.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
 import type { HandlerOutcome } from './outcome.ts';
@@ -71,7 +71,7 @@ export async function authorise<O extends object>(
     );
   }
   const resolved = await resolveDelegation(tx, session.actorId, credential);
-  if (!resolved.ok) return refusing(fromReasoned(resolved.refusal));
+  if (!resolved.ok) return refusing(resolved.refusal);
   const delegation = resolved.value;
 
   // Under a live delegation the agent may ask what it may do: the answer is
@@ -91,7 +91,7 @@ export async function authorise<O extends object>(
     const { serve } = operation;
     return reach.ok
       ? { run: async (operands) => await serve(tx, call, operands, delegation) }
-      : refusing(fromReasoned(reach.refusal));
+      : refusing(reach.refusal);
   }
 
   if (operation.authority === 'decision') {
@@ -105,7 +105,7 @@ export async function authorise<O extends object>(
       collection: 'task',
       taskId,
     });
-    return refusing(fromReasoned(excluded.ok ? unreachable() : excluded.refusal));
+    return refusing(excluded.ok ? unreachable() : excluded.refusal);
   }
 
   const named = await namedTaskId(tx, request, operation.subjectTask);
@@ -122,7 +122,7 @@ export async function authorise<O extends object>(
   // was made on, never the body to read again (THERMO-RECHECK-2 NNA1).
   return decision.ok
     ? { run: async (operands) => await serve(tx, call, operands, delegation, named) }
-    : refusing(fromReasoned(decision.refusal));
+    : refusing(decision.refusal);
 }
 
 function unreachable(): never {

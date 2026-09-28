@@ -22,7 +22,7 @@
 // quarantined and named for a later reconciliation owner. Work refusal must
 // never erase a real liability.
 
-import { checkAuthority, revokeDelegation } from '../../core-records/src/index.ts';
+import { checkAuthority, refuseCommand, revokeDelegation } from '../../core-records/src/index.ts';
 import type {
   TenantQuery,
   Decision,
@@ -840,11 +840,11 @@ export async function checkAuthorityAt(
   if (value.length === 0) {
     return {
       ok: false,
-      refusal: {
-        code: 'SCOPE_NOT_GRANTED',
-        reason: 'no live grant covers it',
-        fix: 'ask a holder who may delegate',
-      },
+      refusal: refuseCommand(
+        'SCOPE_NOT_GRANTED',
+        [],
+        ['no live grant covers it', 'ask a holder who may delegate'],
+      ),
     };
   }
   return { ok: true, value };

@@ -23,12 +23,7 @@
 
 import { withSession } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
-import {
-  asCallerVisible,
-  fromIdentity,
-  isIdentityRefusal,
-  type CommandRefusal,
-} from '../commands/refusal.ts';
+import { asCallerVisible, isCommandRefusal, type CommandRefusal } from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
 import { runRead } from './dispatch.ts';
 
@@ -44,6 +39,6 @@ export async function executeRead(
     presented,
     async (tx, session) => await runRead(tx, session, request),
   );
-  if (isIdentityRefusal(outcome)) return asCallerVisible(fromIdentity(outcome));
+  if (isCommandRefusal(outcome)) return asCallerVisible(outcome);
   return outcome;
 }

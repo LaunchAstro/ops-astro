@@ -149,8 +149,9 @@ describe.skipIf(serverUrl === undefined)('a two-level manager chain under grant.
       ok: false,
       refusal: {
         code: 'GRANT_WIDENS',
-        reason: 'the granter holds no live grant covering it',
-        fix: 'narrow it',
+        refused: true,
+        names: [],
+        fixes: ['the granter holds no live grant covering it', 'narrow it'],
       },
     });
 
@@ -165,8 +166,9 @@ describe.skipIf(serverUrl === undefined)('a two-level manager chain under grant.
       ok: false,
       refusal: {
         code: 'GRANT_WIDENS',
-        reason: 'that grant may not be delegated',
-        fix: 'ask for a delegable one',
+        refused: true,
+        names: [],
+        fixes: ['that grant may not be delegated', 'ask for a delegable one'],
       },
     });
 
@@ -181,7 +183,12 @@ describe.skipIf(serverUrl === undefined)('a two-level manager chain under grant.
     });
     expect(permits).toStrictEqual({
       ok: false,
-      refusal: { code: 'GRANT_DEEPENS', reason: 'only a root grant may permit it', fix: 'drop it' },
+      refusal: {
+        refused: true,
+        code: 'GRANT_DEEPENS',
+        names: [],
+        fixes: ['only a root grant may permit it', 'drop it'],
+      },
     });
 
     // Deeper: a delegable grandchild from a middle that may not permit it.
@@ -196,8 +203,9 @@ describe.skipIf(serverUrl === undefined)('a two-level manager chain under grant.
       ok: false,
       refusal: {
         code: 'GRANT_DEEPENS',
-        reason: 'the granter may not pass it on',
-        fix: 'drop canDelegate',
+        refused: true,
+        names: [],
+        fixes: ['the granter may not pass it on', 'drop canDelegate'],
       },
     });
 

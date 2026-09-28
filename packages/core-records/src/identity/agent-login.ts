@@ -18,7 +18,8 @@
 // why there is no grant lookup here.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { refuseAgent, type AgentRefusal } from './refusals.ts';
+import { refuseCommand, type CommandRefusal } from '../register.ts';
+import type { AgentIdentityRefusalCode } from './refusals.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 
@@ -69,12 +70,12 @@ const RESOLUTION = `
 export async function resolveAgentLogin(
   tx: TenantQuery,
   presented: VerifiedSubject,
-): Promise<AgentSession | AgentRefusal> {
+): Promise<AgentSession | CommandRefusal<AgentIdentityRefusalCode>> {
   const rows = await tx.query<AgentRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
   if (found === undefined || found.actor_id === null) {
-    const refusal = refuseAgent('AUTH_NO_AGENT_IDENTITY', NO_AGENT_FIXES);
+    const refusal = refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_FIXES);
     await recordAuthenticationAttempt(tx, {
       owner: 'agent_login',
       presented,

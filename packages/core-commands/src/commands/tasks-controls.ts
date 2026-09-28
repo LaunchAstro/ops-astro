@@ -14,7 +14,7 @@ import { subjectsOf, isUuid } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
@@ -118,7 +118,7 @@ export async function cancelOnTask(
       taskId: found.taskId,
     },
   });
-  if (!result.ok) return refused(fromReasoned(result.refusal));
+  if (!result.ok) return refused(result.refusal);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',
@@ -154,7 +154,7 @@ export async function restartOnTask(
     subjects: subjectsOf(context.session),
     expiresAt,
   });
-  if (!result.ok) return refused(fromReasoned(result.refusal));
+  if (!result.ok) return refused(result.refusal);
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,
