@@ -333,10 +333,10 @@ jobs:
         with:
           node-version-file: .nvmrc
       # It reads the lockfile; nothing is installed, so no package code runs.
-      - name: Audit the lockfile
-        run: pnpm audit --json > "${RUNNER_TEMP}/audit.json" || true
       - name: High or critical fails; a moderate needs a recorded exception
-        run: node scripts/security-gate.mjs audit --report "${RUNNER_TEMP}/audit.json"
+        run: |
+          pnpm audit --json > "${RUNNER_TEMP}/audit.json" || true
+          node scripts/security-gate.mjs audit --report "${RUNNER_TEMP}/audit.json"
 
   semgrep:
     name: static analysis
