@@ -180,6 +180,7 @@ export function App(props: AppProps): ReactElement {
 
   return (
     <Shell
+      build={null}
       face="agency"
       rail={rail}
       here={here}
