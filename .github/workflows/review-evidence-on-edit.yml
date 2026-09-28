@@ -1,0 +1,62 @@
+name: review evidence on edit
+
+# A description edit re-runs `review evidence for this revision` and nothing
+# else (CQ-16, the owner's process fix of 29 September 2026). ci.yml runs
+# every check on a push, a label change and a reopen; this workflow runs on
+# `edited` alone and holds one job, under the required check's exact name,
+# with no condition and nothing it waits on. So an edit makes no new, skipped
+# or cancelled run of any other check on the head: each keeps the result its
+# last code run gave. Its concurrency group is its own, so it cannot cancel a
+# code run either.
+#
+# The trigger is `pull_request`, never its `_target` form: the token stays
+# read-only and no secret reaches the pull request's code.
+
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-evidence:
+    name: review evidence for this revision
+    runs-on: ubuntu-latest
+    steps:
+      # Retargeting a pull request is an edit too, and every other check was
+      # measured against the old base: the size, the commit range and the
+      # sweep. This run fails until they run again, so none of them stands
+      # green over a base it never read.
+      - name: A base change needs every check run again
+        env:
+          BASE_FROM: ${{ github.event.changes.base.ref.from }}
+        run: |
+          if [ -n "$BASE_FROM" ]; then
+            echo "::error::The base branch changed from ${BASE_FROM}. Every check must run again against the new base: close and reopen the pull request, or push."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The checker's own cases
+        run: bash tests/ci/review-evidence-cases.sh
+      # The body as it stands when it is judged, not the event's copy, as in
+      # ci.yml's job of the same name.
+      - name: Read the description as it stands now
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
+      - name: The review must cover the head being merged
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs

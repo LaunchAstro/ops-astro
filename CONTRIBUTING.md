@@ -145,12 +145,16 @@ currently a draft and no signing service is active.
 
 ## Keep changes reviewable
 
-The size checker allows up to 400 changed lines and warns from 300. A recorded
-reason is required for either waiver: `size-waiver-mechanical` for mechanical
-changes, or `size-waiver-coherence` for a change that must be reviewed together.
-The maintainer decides a coherence waiver. One file may not contain more
-than 400 hand-written changed lines in a pull request. Split work names the
-invariant test that verifies the integrated result.
+The size checker counts product code only. It allows up to 400 changed lines
+of non-test code and warns from 300. Test files are listed in the report but
+never count, towards the total or the per-file cap: a path under `tests/`, or a
+file named `*.test.*` or `*.spec.*`. Everything else counts, fixtures and
+scripts outside `tests/` included. A recorded reason is required for either
+waiver: `size-waiver-mechanical` for mechanical changes, or
+`size-waiver-coherence` for a change that must be reviewed together. The
+maintainer decides a coherence waiver. One file may not contain more than 400
+hand-written changed lines in a pull request. Split work names the invariant
+test that verifies the integrated result.
 
 Keep every pull request under 250 commits, the most the DCO check can
 evaluate; no ruleset change makes room for more. One ticket per pull request
