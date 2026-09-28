@@ -24,103 +24,29 @@
 // accepted ledger rules out: a client that believed it had set `actor_id` got
 // a `200` and no correction, so the bug lived in the client.
 
-import type { PresetField, PresetPlan } from '../../../core-records/src/index.ts';
-import type { ProposalView } from './proposals.ts';
-import type { QueuedWork } from './queue.ts';
-import type { SettingView } from './settings.ts';
-import type { Capability } from './capabilities.ts';
+import type { PresetField } from '../../../core-records/src/index.ts';
+import type {
+  CapabilitiesResult,
+  PersonListResult,
+  PresetPlanResult,
+  QueueResult,
+  SettingsReadResult,
+  SharedTaskRead,
+  TaskBoardResult,
+  TaskDetail,
+} from '../../../core-wire/src/index.ts';
 
-/** The task state a task points at. The machine category is what a board groups on. */
-export interface TaskStateView {
-  readonly id: string;
-  readonly key: string;
-  readonly label: string;
-  readonly machineCategory: string;
-}
-
-export interface PersonView {
-  readonly personId: string;
-  readonly name: string;
-}
-
-export interface HistoryEntry {
-  readonly at: string;
-  readonly actorId: string;
-  readonly operation: string;
-}
-
-/** A task in a list. Everything the detail has except the long text and the history. */
-export interface TaskSummary {
-  readonly id: string;
-  readonly key: string;
-  readonly title: string | null;
-  readonly state: TaskStateView | null;
-  readonly assignee: PersonView | null;
-  readonly due: string | null;
-  readonly priority: number | null;
-  readonly completedAt: string | null;
-  readonly revision: number;
-}
-
-/**
- * One comment as a reader is shown it.
- *
- * The shape is the same for both audiences and the *contents* are not: an
- * internal reader gets every comment in full, an external one gets the client
- * comments in the fields the catalogue marks `shared`, built by L2's
- * `externalCommentProjection`. The type is `unknown`-valued rather than a
- * fixed record because the external half is catalogue-driven — pinning the
- * keys here would put a second copy of the allowlist in the type, and the
- * whole point of I09 is that classifying a field is the only way to expose it.
- */
-export type CommentView = Readonly<Record<string, unknown>>;
-
-export interface TaskDetail extends TaskSummary {
-  readonly description: string | null;
-  readonly history: readonly HistoryEntry[];
-  /** Oldest first. Empty is a real answer; a denied read never reaches here. */
-  readonly comments: readonly CommentView[];
-  /**
-   * Every proposal on this task, newest lineage first, with its stored version,
-   * digest, evidence pack, gate state and expiry, its decision chain and the
-   * reservation, lease and attempt an approval produced.
-   *
-   * It is on the detail rather than behind a read of its own because a task
-   * page that showed the evidence and then had to fetch the version separately
-   * could offer a decision on a version it never displayed, and the exact
-   * version is the whole of what `decide` compares. One read, one answer, one
-   * `versionId` for the button to carry. See `reads/proposals.ts` and the
-   * "Proposal projection" heading in `docs/local/API.md`.
-   */
-  readonly proposals: readonly ProposalView[];
-}
-
-/**
- * What a reader outside the business is shown of one task (minimum contract
- * 8.1 R4, 8.2 case 7): its identifier, the task fields the catalogue marks
- * `shared`, the client comments in their shared fields, and the record's
- * revision. Nothing else is on it, so there is no internal field to hide:
- * history, proposals and every unclassified field are absent from the body,
- * not blanked.
- */
-export interface SharedTaskView {
-  readonly id: string;
-  /**
-   * The record's version, which `task.comment` requires as
-   * `expectedRevision`. An external party with a provisioned `comment` grant
-   * may write a client comment (AUTHORITY.md R4), and without this nothing it
-   * can read carries the revision the write needs (final review round 2,
-   * R2-AUTHORITY-36). It is the record's version, not a field value.
-   */
-  readonly revision: number;
-  /**
-   * Keyed by field key: every task field the catalogue classifies `shared`,
-   * which on the shipped task spine includes `title` and `state` (the state's
-   * label, I09). Empty when the catalogue classifies none.
-   */
-  readonly fields: Readonly<Record<string, unknown>>;
-  readonly comments: readonly CommentView[];
-}
+// The result types live in `views.ts`, which the clients import; the server's
+// own modules keep importing them from here.
+export type {
+  CommentView,
+  HistoryEntry,
+  PersonView,
+  SharedTaskView,
+  TaskDetail,
+  TaskStateView,
+  TaskSummary,
+} from '../../../core-wire/src/index.ts';
 
 /**
  * What each read takes, once its catalogue row has checked the body
@@ -184,26 +110,10 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
-  /**
-   * `task.read` for a reader outside the business. Its own key rather than a
-   * second shape under `task`, so a client that reads `task` can never be
-   * handed the narrower view and render its missing fields as empty.
-   */
-  | { readonly ok: true; readonly sharedTask: SharedTaskView }
-  | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
-  | { readonly ok: true; readonly persons: readonly PersonView[] }
-  | { readonly ok: true; readonly queue: readonly QueuedWork[] }
-  | { readonly ok: true; readonly plan: PresetPlan }
-  | { readonly ok: true; readonly settings: readonly SettingView[] }
-  /**
-   * The capability answer is flat: `personId`, `businessKey` and `grants` sit
-   * beside `ok` rather than under a `capabilities` object, because that is the
-   * shape the surfaces read and one nesting level for three fields buys
-   * nothing.
-   */
-  | {
-      readonly ok: true;
-      readonly personId: string;
-      readonly businessKey: string;
-      readonly grants: readonly Capability[];
-    };
+  | SharedTaskRead
+  | TaskBoardResult
+  | PersonListResult
+  | QueueResult
+  | PresetPlanResult
+  | SettingsReadResult
+  | CapabilitiesResult;

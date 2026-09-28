@@ -119,6 +119,7 @@
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
     "tests/api/web-reads.test.ts",
+    "tests/api/cq-7.test.ts",
     "tests/api/expiry-bound.test.ts",
     "tests/api/boundary-body-admission.test.ts",
     "tests/api/boundary-read-targets.test.ts",

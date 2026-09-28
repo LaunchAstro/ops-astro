@@ -18,7 +18,10 @@ import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { describeRefusal } from '../../records/submit.ts';
-import type { CapabilitiesResult, SettingRow } from '../../operations/shapes.ts';
+import type {
+  CapabilitiesResult,
+  SettingView,
+} from '../../../../../packages/core-wire/src/index.ts';
 import { holdsManage, inWords } from './reads.ts';
 import type { Conflict, Draft, Which } from './use-settings.ts';
 
@@ -90,7 +93,7 @@ export function CapabilityBanner(props: {
 /** The server's value for one setting, and when the server last wrote it. */
 export function ValueLine(props: {
   readonly which: Which;
-  readonly row: SettingRow | null;
+  readonly row: SettingView | null;
 }): ReactElement | null {
   const row = props.row;
   if (row === null) return null;
@@ -131,7 +134,7 @@ export function ValueLine(props: {
  */
 export function ConflictBlock(props: {
   readonly conflict: Conflict;
-  readonly row: SettingRow | null;
+  readonly row: SettingView | null;
   /** The conflict's reread is still in flight. */
   readonly reading: boolean;
   readonly disabled: boolean;

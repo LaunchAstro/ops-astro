@@ -76,16 +76,16 @@
 // on it with `LINEAGE_TERMINAL`. The lineage state is in the same answer as the
 // gate, so the controls close on it rather than inviting that refusal.
 
-import { type FormEvent, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
-  ProposalDecision,
-  ProposalLineage,
-  ProposalReservation,
-  ProposalVersion,
-} from '../operations/shapes.ts';
+  ProposalVersionView as ProposalVersion,
+  ProposalView as ProposalLineage,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
+import { Chain, money, Reservations, stored } from './proposal-record.tsx';
+import { Propose, type ProposeDraft } from './propose-form.tsx';
 
 /** What a refused decision left behind, held above the read that follows it. */
 export interface DecisionNote {
@@ -126,15 +126,9 @@ export interface ProposalsProps {
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
   readonly onChanged: () => void;
+  /** The task cap's currency, which the propose form offers and nothing else. */
+  readonly capCurrency: string | null | undefined;
 }
-
-/**
- * The currency the seeded budget cap is kept in. `scripts/local-seed.mjs`
- * inserts every business's cap in AUD, and `task.decide` refuses a version in
- * any other currency with `CAP_BINDING_MISMATCH`, so offering another would
- * make a proposal nobody can approve.
- */
-const CURRENCIES: readonly string[] = ['AUD'];
 
 export function Proposals(props: ProposalsProps): ReactElement {
   const at = noteAt(props.note, props.proposals ?? []);
@@ -174,6 +168,7 @@ export function Proposals(props: ProposalsProps): ReactElement {
       )}
 
       <Propose
+        capCurrency={props.capCurrency}
         client={props.client}
         draft={props.proposeDraft}
         onChanged={props.onChanged}
@@ -470,361 +465,9 @@ function settled(settlement: Settlement, props: DecideProps): void {
   props.onChanged();
 }
 
-function Chain(props: { readonly decisions: readonly ProposalDecision[] }): ReactElement | null {
-  if (props.decisions.length === 0) return null;
-  return (
-    <div className="sbact" data-decisions="chain">
-      <div className="sb__sh">
-        <span className="sb__k">Decisions</span>
-        <span className="sbact__meta">{props.decisions.length} link(s), as stored</span>
-      </div>
-      {props.decisions.map((link) => (
-        <div className="sbact__row" data-decision-seq={link.seq} key={`${String(link.seq)}`}>
-          <span className="sb__state">{link.decision}</span>
-          <span className="sbact__meta">
-            seq {link.seq} · round {link.round} · by {link.decidedByPersonId ?? 'nobody recorded'} ·{' '}
-            {link.decidedAt}
-          </span>
-          {/* The stored hash and the stored previous hash. Nothing here
-              recomputes either: a recomputed hash drawn as the stored one would
-              make a tampered link look sound. */}
-          <span className="sbact__meta" data-decision="hash">
-            hash {link.hash ?? 'none stored'} · after {link.prevHash ?? 'nothing'}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Reservations(props: {
-  readonly reservations: readonly ProposalReservation[];
-}): ReactElement | null {
-  if (props.reservations.length === 0) return null;
-  return (
-    <div className="sbact" data-reservations="list">
-      <div className="sb__sh">
-        <span className="sb__k">Money set aside</span>
-      </div>
-      {props.reservations.map((reservation) => (
-        <div
-          className="sbact__row"
-          data-reservation-id={reservation.id}
-          data-reservation-state={reservation.state}
-          key={reservation.id}
-        >
-          <span className="sb__state">{reservation.state}</span>
-          <span className="sbact__meta">
-            {/* Held and actual are two different numbers and both are drawn: a
-                reservation that held more than the work spent is the ordinary
-                case, and one number cannot say which of the two it is. */}
-            held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, '')} ·
-            spent{' '}
-            {reservation.actualMinor === null ? 'not reported' : money(reservation.actualMinor, '')}
-            {reservation.classifiedCause === null ? null : ` · ${reservation.classifiedCause}`}
-          </span>
-          {reservation.lease === null ? (
-            <span className="sbact__meta" data-lease="none">
-              no lease
-            </span>
-          ) : (
-            <span className="sbact__meta" data-lease-state={reservation.lease.state}>
-              lease {reservation.lease.state}, fence {reservation.lease.fence}
-              {reservation.lease.expiresAt === null ? '' : `, until ${reservation.lease.expiresAt}`}
-            </span>
-          )}
-          {reservation.attempt === null ? (
-            <span className="sbact__meta" data-attempt="none">
-              no attempt
-            </span>
-          ) : (
-            <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
-              attempt {reservation.attempt.state}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-interface ProposeProps {
-  readonly client: OperationsClient;
-  readonly recordId: string;
-  readonly revision: number;
-  /** An earlier refusal on this reader's authority, which outlives the reread. */
-  readonly refusal: string | null;
-  readonly onRefused: (because: string) => void;
-  readonly draft: ProposeDraft | null;
-  readonly onDraft: (next: ProposeDraft | null) => void;
-  readonly onChanged: () => void;
-}
-
-/** An unsent proposal: the fields, the attempt whose outcome is unknown, and a stale refusal. */
-export interface ProposeDraft {
-  readonly purpose: string;
-  readonly maximum: string;
-  readonly currency: string;
-  readonly pending: PendingProposal | null;
-  /** The server's `VERSION_STALE`, quoted across the reread it caused. */
-  readonly stale: string | null;
-}
-
-const EMPTY_PROPOSAL: ProposeDraft = {
-  purpose: '',
-  maximum: '',
-  currency: 'AUD',
-  pending: null,
-  stale: null,
-};
-
-/** A proposal whose outcome is not known, held so the retry is the same attempt. */
-export interface PendingProposal {
-  readonly operationId: string;
-  /** The revision the attempt was sent at, resent with it so the register replays. */
-  readonly revision: number;
-  readonly purpose: string;
-  readonly maximum: string;
-  readonly currency: string;
-}
-
-function Propose(props: ProposeProps): ReactElement {
-  const current = props.draft ?? EMPTY_PROPOSAL;
-  // `pending` is the attempt nobody knows the outcome of, as the board's create
-  // keeps one (`Projects.tsx`). `task.propose` leaves the task's revision
-  // alone, so the revision check cannot catch a retry; only the `operationId`
-  // can.
-  const { purpose, maximum, currency, pending } = current;
-  const put = (next: Partial<ProposeDraft>): void => {
-    props.onDraft({ ...current, ...next });
-  };
-  const command = useCommand();
-  const busy = command.busy;
-  // The refusal is also held above the read, because a reread remounts this
-  // form with a fresh command and the closure would otherwise be forgotten.
-  const closed = command.closed || props.refusal !== null;
-  const locked = busy || closed;
-  const because = command.because ?? props.refusal;
-  const run = command.run;
-
-  const same = (attempt: PendingProposal | null): attempt is PendingProposal =>
-    attempt !== null &&
-    attempt.purpose === purpose &&
-    attempt.maximum === maximum &&
-    attempt.currency === currency;
-
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    if (locked) return;
-    const attempt = same(pending)
-      ? pending
-      : {
-          operationId: props.client.newOperationId(),
-          revision: props.revision,
-          purpose,
-          maximum,
-          currency,
-        };
-    put({ pending: attempt, stale: null });
-    run(
-      () =>
-        props.client.mutate(
-          'task.propose',
-          {
-            recordId: props.recordId,
-            purpose,
-            // Money crosses the wire in minor units. The conversion happens once,
-            // here, because three places that each convert are three places that
-            // can disagree about what a dollar is.
-            maximumMinor: minorOf(maximum),
-            currency,
-            payload: { step: purpose },
-            // **`step` is an object, not the purpose again.** The contract is
-            // `{ kind, payload }` (`commands/requests.ts`), and `proposeOnTask`
-            // writes `step.kind` straight into `planned_steps.kind`, which is
-            // `not null`. Sending the slug as a bare string put null in that
-            // column and the handler threw, which the API reports as a 503 — so
-            // the screen said "the API answered 503" and the person had no idea
-            // their proposal was well formed and the client was not. The browser
-            // case is what found it; the mounted stand-in had accepted anything.
-            step: { kind: purpose, payload: { step: purpose } },
-          },
-          // The revision the attempt was made at: the page's for a new attempt,
-          // the first send's for a retry. A proposal made against a task that has
-          // moved on is the server's `VERSION_STALE`, not a silent write.
-          { expectedRevision: attempt.revision, operationId: attempt.operationId },
-        ),
-      settledProposal,
-    );
-  };
-
-  /**
-   * What the server said about a proposal.
-   *
-   * A refusal about this reader's authority closes the form, because there is no
-   * capability read to ask first and a control that has already been refused
-   * should not keep inviting the same refusal. Anything else the person can
-   * correct and send again. A success clears the form and reads the task, so the
-   * version that appears is the server's rather than this form's own echo.
-   */
-  function settledProposal(settlement: Settlement): void {
-    // An unknown outcome keeps the attempt; any answer from the server ends it.
-    if (settlement.kind === 'unknown') return;
-    if (settlement.kind === 'closed') props.onRefused(settlement.because);
-    if (settlement.kind === 'stale') {
-      // The task moved on. Keep the fields, read the task again, and say why.
-      props.onDraft({ ...current, pending: null, stale: settlement.because });
-      props.onChanged();
-      return;
-    }
-    if (settlement.kind !== 'ok') {
-      props.onDraft({ ...current, pending: null, stale: null });
-      return;
-    }
-    props.onDraft(null);
-    props.onChanged();
-  }
-
-  return (
-    <form className="taskform" id="task-propose" onSubmit={submit}>
-      <div className="sb__sh">
-        <span className="sb__k">Propose something</span>
-      </div>
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-propose="refusal">
-          {because}
-        </p>
-      )}
-      {current.stale === null ? null : (
-        <div role="alert" data-propose="stale">
-          <p className="field__error">{current.stale}</p>
-          <p className="card__sub">
-            Somebody else moved this task on before your proposal was stored, so it was not. The
-            task has been read again and your proposal is still here: propose it again if it still
-            applies.
-          </p>
-        </div>
-      )}
-      <div className="field">
-        <label className="tf__k" htmlFor="propose-purpose">
-          What it is for
-        </label>
-        {/*
-          The pattern is the database's own
-          (`proposal_versions_purpose_shape`, migration 0010), asked for here
-          rather than discovered as a failure: a purpose with a dot or a capital
-          in it violates that check inside the handler, and the API reports a
-          violated check as a 503 rather than as a refusal a person could act
-          on. Asking for the shape the column accepts is the difference between
-          a form that tells you and a form that breaks.
-        */}
-        <input
-          className="input"
-          disabled={locked}
-          id="propose-purpose"
-          onChange={(event) => {
-            put({ purpose: event.target.value });
-          }}
-          pattern="[a-z][a-z0-9_]{0,62}"
-          required
-          title="Lower case, digits and underscores, starting with a letter."
-          type="text"
-          value={purpose}
-        />
-        <p className="card__sub">
-          Lower case, digits and underscores, such as client_renewal_quote.
-        </p>
-      </div>
-      <div className="field">
-        <label className="tf__k" htmlFor="propose-maximum">
-          The most it may spend
-        </label>
-        <input
-          className="input"
-          disabled={locked}
-          id="propose-maximum"
-          min="0"
-          onChange={(event) => {
-            put({ maximum: event.target.value });
-          }}
-          required
-          step="0.01"
-          type="number"
-          value={maximum}
-        />
-      </div>
-      <div className="field">
-        <label className="tf__k" htmlFor="propose-currency">
-          In
-        </label>
-        <select
-          className="input"
-          disabled={locked}
-          id="propose-currency"
-          onChange={(event) => {
-            put({ currency: event.target.value });
-          }}
-          value={currency}
-        >
-          {CURRENCIES.map((code) => (
-            <option key={code} value={code}>
-              {code}
-            </option>
-          ))}
-        </select>
-      </div>
-      <button className="btn btn--primary" data-propose="submit" disabled={locked} type="submit">
-        {busy ? 'Proposing…' : 'Propose'}
-      </button>
-      {busy || !same(pending) ? null : (
-        <p className="card__sub" data-propose="unresolved">
-          This may already have been proposed. Proposing again sends the same attempt, so the server
-          answers with the original result rather than opening a second proposal.
-        </p>
-      )}
-      {!closed ? null : (
-        <p className="card__sub" data-propose="closed">
-          The server refused this. The form is closed rather than asking again on your behalf.
-        </p>
-      )}
-    </form>
-  );
-}
-
 /** How many lineages are on the task, or that nobody has said. */
 function countWord(proposals: readonly ProposalLineage[] | undefined): string {
   if (proposals === undefined) return 'not read';
   if (proposals.length === 0) return 'none';
   return `${String(proposals.length)} on this task`;
-}
-
-/** Minor units as money a person reads, with the currency the proposal named. */
-function money(minor: number, currency: string): string {
-  const amount = (minor / 100).toLocaleString('en-AU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return currency === '' ? amount : `${currency} ${amount}`;
-}
-
-/** Dollars as the server's minor units, rounded rather than truncated. */
-function minorOf(amount: string): number {
-  return Math.round(Number(amount) * 100);
-}
-
-/**
- * A stored value, printed rather than interpreted.
- *
- * The evidence body and the proposal payload are whatever the renderer and the
- * proposer put there. A screen that walked them looking for fields it knew would
- * silently drop the ones it did not, and a decision made on a partial reading of
- * the evidence is the failure the gate exists to prevent.
- */
-function stored(value: unknown): string {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
 }

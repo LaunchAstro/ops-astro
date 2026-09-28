@@ -884,6 +884,17 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
+## The cap's currency
+
+`task.read` carries `capCurrency`: the currency of the cap an approval on the
+task would draw on, which is the open envelope's cap, or the business's cap
+before the task has an envelope. `task.propose` refuses a proposal in another
+currency with `PROPOSAL_OUT_OF_SCOPE` and `task.decide` a version in another
+with `CAP_BINDING_MISMATCH`, so a client offers this currency and no list of
+its own. It is `null` when the business has no cap. It is read inside the task
+read, so a caller refused the task is told nothing about the cap
+(`tests/api/cq-7.test.ts`).
+
 ## Proposal projection
 
 `task.read` carries every proposal on the task under `proposals`, newest
@@ -1220,9 +1231,10 @@ last live share, their next read is refused earlier, at login resolution:
 content. The agent path is unchanged: an agent reads its own task through
 `externalCommentProjection` under `task`.
 `tests/acceptance/external-party.test.ts` drives all of it over HTTP, and matrix
-case (g) carries the rows. The web types the two answers as
+case (g) carries the rows. The server declares the two answers as
 `TaskReadResult = InternalTaskRead | SharedTaskRead`
-(`apps/web/src/operations/shapes.ts`), told apart by the key.
+(`packages/core-wire/src/views.ts`), and the web imports that type
+rather than keeping a copy; the two are told apart by the key.
 
 | Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
 | ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |

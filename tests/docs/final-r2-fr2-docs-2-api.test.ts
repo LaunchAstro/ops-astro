@@ -195,7 +195,7 @@ describe('API.md lines derived from the code', () => {
   });
 
   it('gives sharedTask the keys SharedTaskView declares', () => {
-    const requests = read('packages/core-commands/src/reads/requests.ts');
+    const requests = read('packages/core-wire/src/views.ts');
     const view = requests.slice(requests.indexOf('export interface SharedTaskView'));
     const keys = [...view.slice(0, view.indexOf('\n}')).matchAll(/^ {2}readonly (\w+)/gmu)].map(
       (m) => m[1] ?? '',

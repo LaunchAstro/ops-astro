@@ -17,16 +17,7 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { queue } from '../../../core-runtime/src/index.ts';
-
-export interface QueuedWork {
-  readonly reservationId: string;
-  readonly taskId: string;
-  readonly runId: string;
-  readonly versionId: string;
-  readonly lineageId: string;
-  readonly purpose: string;
-  readonly heldMinor: number;
-}
+import type { QueuedWork } from '../../../core-wire/src/index.ts';
 
 export async function readQueue(tx: TenantQuery): Promise<readonly QueuedWork[]> {
   const entries = await queue(tx);

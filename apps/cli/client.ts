@@ -26,6 +26,7 @@
 
 import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../packages/core-wire/src/index.ts';
+import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 
 /**
  * How a caller reaches the API. Injected so a test drives the real Hono app.
@@ -106,7 +107,9 @@ export function isWrite(verb: string): boolean {
  * the flag is the server failing, not an authority decision.
  */
 export function isRefusal(answer: CliAnswer): boolean {
-  const body = answer.body as { refused?: unknown; code?: unknown } | null | undefined;
+  // The server's own refusal type, loosened to what an answer may be missing:
+  // the body crossed a network, so each field is checked, not assumed.
+  const body = answer.body as Partial<CommandRefusal> | null | undefined;
   return body?.refused === true && typeof body.code === 'string';
 }
 

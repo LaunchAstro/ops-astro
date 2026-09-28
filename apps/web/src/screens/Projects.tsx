@@ -15,7 +15,8 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Board, Empty, type BoardRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import type { TaskBoardResult, TaskSummary } from '../operations/shapes.ts';
+import { titleOf } from '../views/task-title.ts';
+import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
@@ -192,7 +193,7 @@ function rowOf(task: TaskSummary): BoardRow {
   return {
     id: task.id,
     rank: null,
-    name: task.title,
+    name: titleOf(task.title),
     client: null,
     assignee: task.assignee?.name ?? null,
     dueLabel: task.due === null ? null : dayOf(task.due),

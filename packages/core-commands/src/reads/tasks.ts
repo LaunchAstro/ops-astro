@@ -26,7 +26,9 @@ import {
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { readBusinessCapId } from '../../../core-runtime/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
+import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 
@@ -208,16 +210,40 @@ async function commentsFor(
   if (!internal) {
     return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
   }
-  return comments.map((comment) => ({
+  // The times as the ISO strings they are sent as, so the type this builds is
+  // the one a client parses (`views.ts`).
+  return comments.map((comment): InternalCommentView => ({
     id: comment.id,
     audience: comment.audience,
     author: comment.authorActorId,
     body: comment.body,
     comment_type: comment.commentType,
-    posted_at: comment.postedAt,
-    edited_at: comment.editedAt,
+    posted_at: comment.postedAt.toISOString(),
+    edited_at: comment.editedAt?.toISOString() ?? null,
     source: comment.source,
   }));
+}
+
+/**
+ * The currency of the cap an approval on this task would draw on.
+ *
+ * `task.decide` draws on the task's open envelope's cap when there is one and
+ * on the business's cap otherwise, and refuses a version in any other currency
+ * with `CAP_BINDING_MISMATCH`. This reads the same cap the same way, inside the
+ * task read's own transaction, so the business is the task's and the grant
+ * that let the reader see the task is the only one that shows them this.
+ */
+async function capCurrencyOf(tx: TenantQuery, taskId: string): Promise<string | null> {
+  const rows = await tx.query<{ readonly currency: string }>(
+    `select c.currency from public.budget_caps c
+      where c.business_id = $1
+        and c.id = coalesce(
+          (select e.cap_id from public.task_envelopes e
+            where e.business_id = $1 and e.task_id = $2 and e.state = 'open'),
+          $3::uuid)`,
+    [tx.businessId, taskId, (await readBusinessCapId(tx)) ?? null],
+  );
+  return rows[0]?.currency ?? null;
 }
 
 /** One task with its history, or nothing at all. */
@@ -250,6 +276,7 @@ export async function readTaskDetail(
     // what the proposer put in it and what the decision was about. An external
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
+    capCurrency: await capCurrencyOf(tx, row.id),
   };
 }
 

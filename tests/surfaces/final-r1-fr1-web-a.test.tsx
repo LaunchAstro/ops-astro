@@ -108,6 +108,8 @@ function server(options: ServerOptions = {}) {
     history: [],
     comments: [],
     proposals: (options.lineages ?? []).map(lineageOf),
+    // The task cap's currency, which the propose form offers (CQ-7).
+    capCurrency: 'AUD',
   };
   const calls: string[] = [];
   // A read held open, the way a real network read is: without it the reread's

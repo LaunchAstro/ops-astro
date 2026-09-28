@@ -2,8 +2,9 @@
 //
 // The wire contract's one way in: the command surface, every command and read
 // with its path and prefix, which the API, the web and the command line all
-// speak. It imports records for types only and nothing else of the product,
-// so a browser bundle can load it without the database.
+// speak, and the read results they answer with (`views.ts`). It imports
+// records for types only and nothing else of the product, so a browser bundle
+// can load it without the database.
 
 export {
   COMMAND_SURFACE,
@@ -18,3 +19,36 @@ export {
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
+// What the reads answer, declared once for the server and every client.
+export type {
+  AttemptView,
+  Capability,
+  CapabilitiesResult,
+  CommentView,
+  DecisionLink,
+  EvidenceView,
+  GateView,
+  HistoryEntry,
+  InternalCommentView,
+  InternalTaskDetail,
+  InternalTaskRead,
+  LeaseView,
+  PersonListResult,
+  PersonView,
+  PresetPlanResult,
+  ProposalVersionView,
+  ProposalView,
+  QueuedWork,
+  QueueResult,
+  ReservationView,
+  SettingsReadResult,
+  SessionCapabilities,
+  SettingView,
+  SharedTaskRead,
+  SharedTaskView,
+  TaskBoardResult,
+  TaskDetail,
+  TaskReadResult,
+  TaskStateView,
+  TaskSummary,
+} from './views.ts';

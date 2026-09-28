@@ -9,7 +9,11 @@
 
 import type { ReadState } from '../../data/authorised-read.ts';
 import type { ReadName } from '../../operations/client.ts';
-import type { Grant, SettingRow, SettingsReadResult } from '../../operations/shapes.ts';
+import type {
+  Capability,
+  SettingsReadResult,
+  SettingView,
+} from '../../../../../packages/core-wire/src/index.ts';
 
 /** `POST /api/b/:businessKey/settings/read`, body `{}`, grant `settings:read`. */
 export const SETTINGS_READ: ReadName = 'settings.read';
@@ -43,12 +47,12 @@ export function rowsInHand(state: ReadState<SettingsReadResult>): SettingsReadRe
 }
 
 /** The row for a key, or nothing when the read has not answered or does not carry it. */
-export function settingOf(result: SettingsReadResult | null, key: string): SettingRow | null {
+export function settingOf(result: SettingsReadResult | null, key: string): SettingView | null {
   return result?.settings.find((row) => row.key === key) ?? null;
 }
 
 /** Whether these grants cover the two settings commands. */
-export function holdsManage(grants: readonly Grant[]): boolean {
+export function holdsManage(grants: readonly Capability[]): boolean {
   return grants.some(
     (grant) =>
       grant.collection === SETTINGS_MANAGE.collection && grant.action === SETTINGS_MANAGE.action,
@@ -56,7 +60,7 @@ export function holdsManage(grants: readonly Grant[]): boolean {
 }
 
 /** A setting's value in words. Null is a real value — the band is off. */
-export function inWords(row: SettingRow): string {
+export function inWords(row: SettingView): string {
   if (row.value === null) return 'off';
   if (typeof row.value === 'boolean') return row.value ? 'on' : 'off';
   return String(row.value);

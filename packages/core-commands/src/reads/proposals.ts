@@ -55,43 +55,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts';
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection } from './verified-decisions.ts';
-
-export interface EvidenceView {
-  readonly id: string;
-  readonly renderer: string;
-  readonly digest: string;
-  readonly body: unknown;
-}
-
-export interface DecisionLink {
-  readonly id: string;
-  readonly seq: number;
-  readonly decision: string;
-  readonly round: number;
-  readonly decidedByPersonId: string;
-  readonly decidedAt: string;
-  readonly signingKeyId: string;
-  readonly signature: string;
-  readonly prevHash: string;
-  readonly hash: string;
-  /**
-   * Which fields the link covers (`signing.ts`, `LinkVersion`). A `1` is a
-   * decision written before the link covered its round, time, lineage, acting
-   * actor, evidence digest and key id: it verifies, and those fields on it are
-   * not covered by the chain. A `3` is a decision whose signed payload also
-   * carries those fields and its place in the chain (`signedFields`).
-   */
-  readonly linkVersion: number;
-  /**
-   * The fields of this item the decision's signature covers, in this item's
-   * names. The read has already checked each of them against the signed
-   * payload. A field shown and not listed is covered only by the unkeyed
-   * chain link, which a writer who recomputes every later link can change: on
-   * a v1 or v2 decision that is its round, time and place in the chain. The
-   * signature and hash are the proof itself and are never listed.
-   */
-  readonly signedFields: readonly string[];
-}
+import type { ProposalVersionView, ProposalView } from '../../../core-wire/src/index.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -108,72 +72,6 @@ const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
     'prevHash',
   ],
 };
-
-export interface ReservationView {
-  readonly id: string;
-  readonly state: string;
-  readonly heldMinor: number;
-  readonly actualMinor: number | null;
-  readonly classifiedCause: string | null;
-  readonly leaseId: string | null;
-  readonly lease: LeaseView | null;
-  readonly attempt: AttemptView | null;
-}
-
-export interface LeaseView {
-  readonly id: string;
-  readonly fence: number;
-  readonly state: string;
-  readonly expiresAt: string;
-  readonly holderActorId: string | null;
-}
-
-export interface AttemptView {
-  readonly id: string;
-  readonly state: string;
-  readonly dispatchMarker: boolean;
-  readonly observed: boolean;
-}
-
-export interface GateView {
-  readonly id: string;
-  /**
-   * The stored state, except that a stored `pending` at or past `expiresAt`
-   * reads `expired`. See the head of this file.
-   */
-  readonly state: string;
-  readonly round: number;
-  readonly expiresAt: string;
-  /**
-   * The server's own answer, so a client with a skewed clock cannot disagree.
-   * True only for an otherwise pending gate: a decided gate is not expired.
-   */
-  readonly expired: boolean;
-  readonly payloadDigest: string;
-}
-
-export interface ProposalVersionView {
-  readonly versionId: string;
-  readonly version: number;
-  readonly purpose: string;
-  readonly maximumMinor: number;
-  readonly currency: string;
-  readonly payloadDigest: string;
-  readonly payload: unknown;
-  readonly supersededAt: string | null;
-  readonly runId: string | null;
-  readonly evidence: EvidenceView | null;
-  readonly gate: GateView | null;
-}
-
-export interface ProposalView {
-  readonly lineageId: string;
-  readonly state: string;
-  /** Newest first, so the live version is the head of the list. */
-  readonly versions: readonly ProposalVersionView[];
-  readonly decisions: readonly DecisionLink[];
-  readonly reservations: readonly ReservationView[];
-}
 
 interface VersionRow {
   readonly lineage_id: string;

@@ -24,10 +24,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  type ProposalView,
-  readTaskProposals,
-} from '../../packages/core-commands/src/reads/proposals.ts';
+import { readTaskProposals } from '../../packages/core-commands/src/reads/proposals.ts';
+import type { ProposalView } from '../../packages/core-wire/src/views.ts';
 import { DecisionIntegrityError } from '../../packages/core-commands/src/reads/verified-decisions.ts';
 import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { SigningKey } from '../../packages/core-runtime/src/signing.ts';

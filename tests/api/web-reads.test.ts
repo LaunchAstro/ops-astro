@@ -16,9 +16,11 @@ import {
   OperationsClient,
   isRefusal,
   type CallResult,
-  type PresetPlanRead,
-  type QueueRead,
 } from '../../apps/web/src/operations/client.ts';
+import type {
+  PresetPlanResult as PresetPlanRead,
+  QueueResult as QueueRead,
+} from '../../packages/core-wire/src/index.ts';
 import type { Member } from '../commands/fixture.ts';
 import { tokenFor } from './fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';

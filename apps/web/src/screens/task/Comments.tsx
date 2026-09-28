@@ -35,7 +35,7 @@
 import { useRef, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
-import type { InternalTaskComment } from '../../operations/shapes.ts';
+import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
 
 export interface CommentsProps {
@@ -44,7 +44,7 @@ export interface CommentsProps {
    * An internal reader's comments, every field present. The shared projection
    * is drawn by `SharedTaskDetail.tsx`, which never mounts this box.
    */
-  readonly comments: readonly InternalTaskComment[];
+  readonly comments: readonly InternalCommentView[];
   readonly recordId: string;
   /** The revision the comment is written against. `task.comment` does not move it. */
   readonly revision: number;

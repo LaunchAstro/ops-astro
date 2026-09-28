@@ -39,9 +39,9 @@ import { useRead } from '../../data/use-read.ts';
 import { useCommand, type Settlement } from '../../records/use-command.ts';
 import type {
   CapabilitiesResult,
-  SettingRow,
   SettingsReadResult,
-} from '../../operations/shapes.ts';
+  SettingView,
+} from '../../../../../packages/core-wire/src/index.ts';
 import { sessionMemory, type Confirmed } from './confirmed.ts';
 import {
   FOUR_EYES,
@@ -113,7 +113,7 @@ export interface SettingsModel {
   readonly disabled: boolean;
   readonly because: string | null;
   readonly conflict: Conflict | null;
-  readonly rowFor: (which: Which) => SettingRow | null;
+  readonly rowFor: (which: Which) => SettingView | null;
   readonly save: (which: Which, value: Draft) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;
@@ -188,7 +188,7 @@ export function useSettings(
   // lost, so a press now would write against a revision nobody has seen.
   const rereading = conflict !== null && read.outcome === 'loading';
 
-  const rowFor = (which: Which): SettingRow | null => settingOf(rowsInHand(read), KEY[which]);
+  const rowFor = (which: Which): SettingView | null => settingOf(rowsInHand(read), KEY[which]);
 
   // What the read decided about the memory, once per answer. A refusal drops
   // it and holds; an authorised answer lifts the hold, and the server's rows
