@@ -1,0 +1,11 @@
+{
+  "invariant": [
+    "tests/acceptance/external-party.test.ts",
+    "tests/identity/external-party.test.ts",
+    "tests/tenancy/restricted-calls.test.ts",
+    "tests/tenancy/restricted-calls-prefixes.test.ts",
+    "tests/tenancy/pooled-crossover.test.ts",
+    "tests/acceptance/role-case-matrix.test.ts",
+    "tests/ci/cq-15-security-gate.test.ts"
+  ]
+}

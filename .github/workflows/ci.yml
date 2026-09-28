@@ -320,3 +320,75 @@ jobs:
         run: node scripts/pr-size.mjs
       - name: The size gate's own cases
         run: bash tests/ci/pr-size-cases.sh
+
+  # The security gate (CQ-15, standing gate 9): three required checks, no secret
+  # beyond the read-only token. scripts/security-gate.mjs judges both reports
+  # against the reviewed, dated exceptions in .github/security-exceptions.json.
+  audit:
+    name: dependency audit
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # It reads the lockfile; nothing is installed, so no package code runs.
+      - name: Audit the lockfile
+        run: pnpm audit --json > "${RUNNER_TEMP}/audit.json" || true
+      - name: High or critical fails; a moderate needs a recorded exception
+        run: node scripts/security-gate.mjs audit --report "${RUNNER_TEMP}/audit.json"
+
+  semgrep:
+    name: static analysis
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # CQ-3's digest-pinned image; the rulesets come from the registry at run
+      # time. Source read-only, report from stdout, no job environment passed.
+      - name: Semgrep with p/default, p/secrets and p/typescript
+        env:
+          SEMGREP_IMAGE: semgrep/semgrep:1.177.0@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198
+        run: >-
+          docker run --rm -v "$PWD:/src:ro" -w /src "$SEMGREP_IMAGE"
+          semgrep scan --config p/default --config p/secrets --config p/typescript
+          --metrics off --json . > "${RUNNER_TEMP}/semgrep.json" || true
+      - name: Every finding recorded with its reason, and none new
+        run: node scripts/security-gate.mjs semgrep --report "${RUNNER_TEMP}/semgrep.json"
+
+  isolation:
+    # The client-isolation, restricted-call, pooled-crossover and permission
+    # refusal suites (also in `database conformance`), named on their own.
+    name: isolation tests
+    needs: [gate]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # The same digest and throwaway password as `database conformance`.
+        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
