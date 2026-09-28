@@ -709,6 +709,9 @@ run_case "CQ-13 code hides no field: an equals line under a list item's text sti
 run_case "CQ-13 code hides no field: a quoted equals line under quoted text is an underline" 0 "$OK_BODY$P2> Quote
 > ====
     Code review: changes requested" "README.md"
+run_case "Sol proof, criterion 10: a nested quote outdent keeps an indented review outcome visible" 1 "$OK_BODY$P2> > Quote
+> ====
+    Code review: changes requested" "README.md"
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
