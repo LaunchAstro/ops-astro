@@ -59,9 +59,8 @@ const HAND_READERS = [
 ];
 const handReaders = (text: string): boolean => HAND_READERS.some((pattern) => pattern.test(text));
 
-function scratch(): string {
-  return mkdtempSync(join(tmpdir(), 'cq11-'));
-}
+const scratch = (): string => mkdtempSync(join(tmpdir(), 'cq11-'));
+const read = (file: string): string => readFileSync(`packages/${file}`, 'utf8');
 
 describe('CQ-11 the tree', () => {
   it('CQ-11 one env-file reader: exactly one remains, and it uses util.parseEnv', () => {
@@ -127,11 +126,7 @@ describe('CQ-11 the tree', () => {
   });
 
   it('CQ-11 the live refusal: a comment on a business with no comment type still refuses, plainly', async () => {
-    const target: TaskRow = {
-      id: randomUUID(),
-      revision: 1,
-      deleted_at: null,
-    } as unknown as TaskRow;
+    const target = { id: randomUUID(), revision: 1, deleted_at: null } as unknown as TaskRow;
     // Refused before any statement, so no query is made.
     const tx = { query: vi.fn(), execute: vi.fn() } as unknown as TenantQuery;
     const answer = await writeTaskComment(
@@ -162,26 +157,21 @@ describe('CQ-11 the tree', () => {
     expect(tx.query).not.toHaveBeenCalled();
   });
 
-  it('CQ-11 issue 59: the not-found refusal takes its names, the same bytes as the hand spread', () => {
+  it('CQ-11 issue 59: the not-found names, the installer’s visibility step and typed handback operands', () => {
+    // The not-found refusal takes its names, the same bytes as the hand spread.
     expect(refuseNotFound(['lineageId'])).toStrictEqual({
       ...refuseNotFound(),
       names: ['lineageId'],
     });
-    const controls = readFileSync('packages/core-commands/src/commands/tasks-controls.ts', 'utf8');
-    expect(controls).not.toContain('...refuseNotFound()');
-  });
-
-  it('CQ-11 issue 59: the visibility step is the installer’s own, with one declared default', () => {
-    expect(existsSync('packages/core-records/src/tasks/reconcile-visibility.ts')).toBe(false);
-    const install = readFileSync('packages/core-records/src/tasks/install.ts', 'utf8');
-    expect(install.match(/visibilityClass \?\? 'internal'/gu)).toHaveLength(1);
-  });
-
-  it('CQ-11 issue 59: the handback operands carry the lease and the actual, typed', () => {
-    const operations = readFileSync(
-      'packages/core-commands/src/commands/agent-operations.ts',
-      'utf8',
+    expect(read('core-commands/src/commands/tasks-controls.ts')).not.toContain(
+      '...refuseNotFound()',
     );
+    // The visibility step is the installer's own, with one declared default.
+    expect(existsSync('packages/core-records/src/tasks/reconcile-visibility.ts')).toBe(false);
+    const install = read('core-records/src/tasks/install.ts');
+    expect(install.match(/visibilityClass \?\? 'internal'/gu)).toHaveLength(1);
+    // The handback operands carry the lease and the actual, typed.
+    const operations = read('core-commands/src/commands/agent-operations.ts');
     expect(operations).not.toContain("request['actualMinor'] as");
     expect(operations).toContain('leaseId: operands.leaseId');
   });
@@ -198,8 +188,8 @@ describe('CQ-11 the tree', () => {
     try {
       const envFile = join(dir, 'gate.env');
       writeFileSync(envFile, `GATE_SIGNING_KEY_ID=cq11@1\nGATE_SIGNING_SECRET=${canary}\n`);
-      const read = readEnvFile(envFile);
-      expect(read['GATE_SIGNING_SECRET']).toBe(canary);
+      const gate = readEnvFile(envFile);
+      expect(gate['GATE_SIGNING_SECRET']).toBe(canary);
       // A key file whose active id names no key in its keyring: refused, by name.
       const keyFile = join(dir, 'delegation.env');
       writeFileSync(
