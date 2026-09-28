@@ -16,6 +16,7 @@ import { insertActor, insertBusiness, insertLogin, insertMapping } from '../iden
 import { insertPerson } from '../identity/fixture.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { runtimeKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-records/src/commands/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
@@ -63,7 +64,7 @@ const CASES: readonly (readonly [string, () => Promise<string>, string])[] = [
 /** A read that runs, then faults: the trace sink, the composed server's onError, sees it. */
 const fault: typeof executeRead = (...a) =>
   executeRead(...a).then(() => Promise.reject(new Error('a fault past the door')));
-const FAULTY = { secret: SECRET, issuer: ISSUER, executeRead: fault };
+const FAULTY = { secret: SECRET, issuer: ISSUER, executeRead: fault, keys: runtimeKeys({}) };
 
 async function send(api: Hono, path: string, body: string | ReadableStream, token: string) {
   const headers = { ...authorised(token), [DELEGATION_HEADER]: `probe-${randomUUID()}` };
