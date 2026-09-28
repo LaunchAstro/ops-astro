@@ -73,4 +73,30 @@ describe.skipIf(serverUrl === undefined)('CQ-6 undescribed fields on both prefix
       expect(agentAnswer.body['names']).toStrictEqual([]);
     });
   });
+  describe('CQ-6 operands described: undescribed identifiers', () => {
+    it('an identifier its row does not declare is refused on both prefixes', async () => {
+      const task = await w.h.freshTask('a task sent identifiers it does not take');
+      const before = await revisionOf(task.id);
+      for (const field of ['gateId', 'batchId', 'parentId', 'leaseId', 'lineageId']) {
+        // eslint-disable-next-line no-await-in-loop -- one call at a time
+        const answer = await person('task.complete', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+          [field]: randomUUID(),
+        });
+        expectRefused(answer, 'COMMAND_BODY_INVALID', `person task.complete ${field}`);
+      }
+      expect(await revisionOf(task.id)).toBe(before);
+      for (const field of ['gateId', 'versionId', 'reservationId']) {
+        // eslint-disable-next-line no-await-in-loop -- one call at a time
+        const answer = await agent('task.comment', {
+          recordId: own.taskId,
+          body: 'a comment with an identifier it does not take',
+          audience: 'internal',
+          [field]: randomUUID(),
+        });
+        expectRefused(answer, 'COMMAND_BODY_INVALID', `agent task.comment ${field}`);
+      }
+    });
+  });
 });
