@@ -30,6 +30,10 @@ import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
+import {
+  runtimeKeys,
+  type RuntimeKeys,
+} from '../../packages/core-records/src/commands/runtime-config.ts';
 
 /**
  * The business key to its identifier, on the administrative connection: the
@@ -69,8 +73,8 @@ export interface ApiFixture {
    * first one did with it.
    */
   readonly environment: GateEnvironment;
-  /** A composition root from `composeApi`: a fresh boundary, resolver cache and gate read. */
-  compose(): Hono;
+  /** A composition root from `composeApi`: a fresh boundary, resolver cache and keys. */
+  compose(keys?: Partial<RuntimeKeys>): Hono;
   drop(): Promise<void>;
 }
 
@@ -191,15 +195,10 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
     agent,
     agentActorId,
     environment,
-    compose(): Hono {
-      // `server.ts` turns the deployment's gate file into a process fact before
-      // it builds the boundary, because `commands/runtime-config.ts` reads
-      // `process.env` rather than taking the key through every caller. A second
-      // instance does it again from the same environment, which is what makes
-      // "re-read from `process.env`" a step and not an assumption.
-      process.env['GATE_SIGNING_KEY_ID'] = environment.GATE_SIGNING_KEY_ID;
-      process.env['GATE_SIGNING_SECRET'] = environment.GATE_SIGNING_SECRET;
+    compose(keys?: Partial<RuntimeKeys>): Hono {
+      // The keys go in as values, as `server.ts` hands over the ones it read.
       return composeApi({
+        keys: { ...runtimeKeys({ ...environment }), ...keys },
         database: db.app,
         admin: db.admin,
         secret: SECRET,

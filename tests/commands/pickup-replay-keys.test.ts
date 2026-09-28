@@ -19,6 +19,7 @@ import {
   credentialEncoding,
   credentialKeyring,
   ensureCredentialKeyFile,
+  installCredentialKeys,
   KEYRING_VARIABLE,
   parseCredentialKeys,
   type CredentialIdentity,
@@ -38,6 +39,7 @@ const identity: CredentialIdentity = {
 function useKeys(active: string, ring: string): void {
   process.env[ACTIVE_KEY_VARIABLE] = active;
   process.env[KEYRING_VARIABLE] = ring;
+  installCredentialKeys(configuredCredentialKeys(process.env));
 }
 
 describe('the credential derivation (group 5)', () => {
@@ -134,6 +136,7 @@ describe.skipIf(serverUrl === undefined)('the keyring behind replay (group 4)', 
   afterEach(() => {
     delete process.env[ACTIVE_KEY_VARIABLE];
     delete process.env[KEYRING_VARIABLE];
+    installCredentialKeys(configuredCredentialKeys(process.env));
   });
 
   afterAll(async () => {

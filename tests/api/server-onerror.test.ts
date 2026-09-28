@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
+import { runtimeKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET } from '../acceptance/cast.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { asAda, revisionOf } from '../acceptance/restart-harness.ts';
@@ -104,6 +105,7 @@ describe.skipIf(serverUrl === undefined)(
         admin: world.db.admin,
         secret: ACCEPTANCE_SECRET,
         issuer: ACCEPTANCE_ISSUER,
+        keys: runtimeKeys(process.env),
         executeRead,
       }).app;
     }, 120_000);
@@ -138,6 +140,7 @@ describe.skipIf(serverUrl === undefined)(
         admin: world.db.admin,
         secret: ACCEPTANCE_SECRET,
         issuer: ACCEPTANCE_ISSUER,
+        keys: runtimeKeys(process.env),
         executeRead: async () =>
           await Promise.reject(new Error('a message that may carry a value')),
       }).app;
