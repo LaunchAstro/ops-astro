@@ -610,9 +610,9 @@ RECORD="$SAVED"
 
 # CQ-13, product issue 48: CommonMark indented code is code, a list item's
 # indented continuation is not.
-run_case "CQ-13 indented code not a field: four spaces after a blank line" 0 "$OK_BODY$P2    Code review: changes requested" "README.md"
-run_case "CQ-13 indented code not a field: a tab after a blank line" 0 "$OK_BODY$P2"$'\t'"Security review: rejected" "README.md"
-run_case "CQ-13 indented code not a field: after another indented-code line" 0 "$OK_BODY$P2    example
+run_case "CQ-13 indented code not a field: four spaces after a blank line" 1 "$OK_BODY$P2    Code review: changes requested" "README.md"
+run_case "CQ-13 indented code not a field: a tab after a blank line" 1 "$OK_BODY$P2"$'\t'"Security review: rejected" "README.md"
+run_case "CQ-13 indented code not a field: after another indented-code line" 1 "$OK_BODY$P2    example
     Code review: changes requested" "README.md"
 run_case "CQ-13 list continuation is a field: after a blank line in the item" 1 "$OK_BODY$P2- Outcomes
 
@@ -663,21 +663,21 @@ run_case "CQ-13 code hides no field: a lone equals line is text, not a break" 1 
 run_case "CQ-13 code hides no field: an indented equals line continues the paragraph" 1 "$OK_BODY${P2}Title
     ====
     Code review: changes requested" "README.md"
-run_case "CQ-13 code hides no field: a heading's equals underline still ends the paragraph" 0 "$OK_BODY${P2}Title
+run_case "CQ-13 code hides no field: a heading's equals underline still ends the paragraph" 1 "$OK_BODY${P2}Title
 ====
     Code review: changes requested" "README.md"
 # CQ-13 fix 2: an opening comment mark inside an inline code span is code.
 run_case "CQ-13 code hides no field: a comment mark inside a code span" 1 "$OK_BODY${P2}Sample \`<!--\` text$LATE" "README.md"
 run_case "CQ-13 code hides no field: a comment mark inside a double-backtick span" 1 "$OK_BODY${P2}Sample \`\` \` <!-- \`\` text$LATE" "README.md"
-run_case "CQ-13 code hides no field: a comment after a closed code span still hides" 0 "$OK_BODY${P2}Sample \`x\` <!--$LATE
+run_case "CQ-13 code hides no field: a comment after a closed code span still hides" 1 "$OK_BODY${P2}Sample \`x\` <!--$LATE
 -->" "README.md"
-run_case "CQ-13 code hides no field: an unclosed backtick does not stop a comment" 0 "$OK_BODY${P2}Sample \` <!--$LATE
+run_case "CQ-13 code hides no field: an unclosed backtick does not stop a comment" 1 "$OK_BODY${P2}Sample \` <!--$LATE
 -->" "README.md"
-run_case "CQ-13 code hides no field: a comment opened before a code span still hides" 0 "$OK_BODY${P2}Sample <!-- \`x\`$LATE
+run_case "CQ-13 code hides no field: a comment opened before a code span still hides" 1 "$OK_BODY${P2}Sample <!-- \`x\`$LATE
 -->" "README.md"
-run_case "CQ-13 code hides no field: a real comment still hides" 0 "$OK_BODY$P2<!--$LATE
+run_case "CQ-13 code hides no field: a real comment still hides" 1 "$OK_BODY$P2<!--$LATE
 -->" "README.md"
-run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 0 "$OK_BODY$P2- Sample
+run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 1 "$OK_BODY$P2- Sample
 
     <!--$LATE
 -->" "README.md"
@@ -690,6 +690,8 @@ run_case "Sol proof, criterion 10: an outdented equals line after a list keeps a
 ====
     Code review: changes requested" "README.md"
 
+# CQ-13 fix 4, fail closed: a case whose field line is hidden fails, however
+# it is hidden. The cases that asserted a hidden field passes now expect 1.
 # CQ-13 fix 3: an underline sits in its paragraph's own container. A lazy
 # line, outdented from a list item or unquoted after quoted text, is text.
 run_case "CQ-13 code hides no field: a lazy equals line after a quote keeps an indented outcome visible" 1 "$OK_BODY$P2> Quote
@@ -699,14 +701,14 @@ run_case "CQ-13 code hides no field: a second lazy equals line after a quote is 
 ====
 ====
     Code review: changes requested" "README.md"
-run_case "CQ-13 code hides no field: a quote interrupting a paragraph underlines its own text" 0 "$OK_BODY${P2}Text
+run_case "CQ-13 code hides no field: a quote interrupting a paragraph underlines its own text" 1 "$OK_BODY${P2}Text
 > Quote
 > ====
     Code review: changes requested" "README.md"
-run_case "CQ-13 code hides no field: an equals line under a list item's text still underlines it" 0 "$OK_BODY$P2- Item
+run_case "CQ-13 code hides no field: an equals line under a list item's text still underlines it" 1 "$OK_BODY$P2- Item
   ====
       Code review: changes requested" "README.md"
-run_case "CQ-13 code hides no field: a quoted equals line under quoted text is an underline" 0 "$OK_BODY$P2> Quote
+run_case "CQ-13 code hides no field: a quoted equals line under quoted text is an underline" 1 "$OK_BODY$P2> Quote
 > ====
     Code review: changes requested" "README.md"
 run_case "Sol proof, criterion 10: a nested quote outdent keeps an indented review outcome visible" 1 "$OK_BODY$P2> > Quote

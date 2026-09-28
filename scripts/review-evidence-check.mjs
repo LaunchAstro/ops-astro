@@ -620,6 +620,47 @@ if (recordProblems.length > 0) {
   );
 }
 
+// --- rule 4: no review field where it could be hidden --------------------
+
+// CQ-13 fix 4, the orchestrator's ruling on Sol's narrow review of 78b5562.
+// Four rounds found another Markdown context in which the reader and GitHub
+// disagree about whether a line shows. So the check fails closed: a raw line
+// that carries a review field after any run of indentation, quote, list,
+// comment, fence, code or emphasis marks is a field line, and every such
+// line must be one the reader counts as visible. Rules 1 to 3 then hold each
+// visible one to an accepted form. A field line the reader does not count,
+// however it is hidden, fails.
+const RAW_FIELD =
+  /^(?:[^\p{L}\p{N}\n]|\[[xX]\]|\d{1,9}[.)])*(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict)[*_`~ \t]*:/gimu;
+const fieldKey = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[ -]review$/u, '')
+    .replace('-', ' ');
+const counted = new Map();
+const count = (key) => counted.set(key, (counted.get(key) ?? 0) + 1);
+for (const f of stated) count(f.name);
+for (const [name, values] of Object.entries(record)) for (const _ of values) count(name);
+const raw = new Map();
+for (const m of body.matchAll(RAW_FIELD)) {
+  const key = fieldKey(m[1] ?? '');
+  raw.set(key, (raw.get(key) ?? 0) + 1);
+}
+const hidden = [...raw].filter(([key, n]) => n > (counted.get(key) ?? 0));
+if (hidden.length > 0) {
+  failures.push(
+    'a review field appears where it could be hidden:\n' +
+      hidden
+        .map(
+          ([key, n]) => `          ${key}: ${n} line(s) in the body, ${counted.get(key) ?? 0} read`,
+        )
+        .join('\n') +
+      '\n        Every review field line must be plain and visible: not indented as\n' +
+      '        code, in a comment, a fence, a code span or a lazy or underlined line.\n' +
+      '        Move it to its own line at the margin, or reword it so it is not a field.',
+  );
+}
+
 console.log(`review-evidence: ${changed.length} changed file(s), ${sensitive.length} sensitive`);
 
 if (failures.length > 0) {
