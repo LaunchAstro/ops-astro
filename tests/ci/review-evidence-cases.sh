@@ -26,11 +26,20 @@ fail() { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; FAILED=$((FAILE
 HEAD=1111111111111111111111111111111111111111
 OTHER=2222222222222222222222222222222222222222
 
+# CQ-13, product issue 42: each case starts with a good record unless it sets RECORD.
+RECORD="Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: @HEAD@
+Verdict: approve
+
+"
+BUILDER=claude-opus-5-5
+
 # run <label> <expect> <body> <changed files, newline separated>
 run_case() {
   local label="$1" expect="$2" body="$3" files="$4" actual
   actual="$(
-    PR_BODY="$body" HEAD_SHA="$HEAD" CHANGED_FILES="$files" \
+    PR_BODY="${RECORD//@HEAD@/$HEAD}$body" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
       node "$CHECKER" >/dev/null 2>&1; echo $?
   )"
   if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
@@ -192,7 +201,7 @@ run_case "a commented-out checkpoint is not a checkpoint" 1 "<!-- Review checkpo
 Code review: no findings" "README.md"
 
 # Bullets and bold are ordinary Markdown and still read as fields.
-run_case "a bulleted code-review field passes" 0 "$BARE_BLOCK
+run_case "a bulleted code-review field fails: a field counts only on a top-level plain line" 1 "$BARE_BLOCK
 
 - **Code review**: no findings$NOT_SENSITIVE" "README.md"
 run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
@@ -471,10 +480,10 @@ run_case "a numbered code-review line asking for changes fails" 1 "$GOOD_BLOCK${
 run_case "a ticked checklist code line asking for changes fails" 1 "$GOOD_BLOCK$P2* [x] Code review: changes requested" "README.md"
 run_case "a bold code-review line in a list inside a quote fails" 1 "$GOOD_BLOCK$P2> - **Code review:** 3 findings open" "README.md"
 run_case "an underscored bad code-review line fails" 1 "$GOOD_BLOCK${P2}__Code review__: not run" "README.md"
-run_case "a good security line written as a heading still passes" 0 "$GOOD_BLOCK$P2## Security review: run against $HEAD, no findings" "$CUSTODY"
+run_case "a good security line written as a heading fails: a field counts only on a top-level plain line" 1 "$GOOD_BLOCK$P2## Security review: run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon passes" 0 "$GOOD_BLOCK$P2**Security review:** run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon still reads a stale revision" 1 "$GOOD_BLOCK$P2**Security review:** run against $OTHER, no findings" "$CUSTODY"
-run_case "a bold whole line in a checklist passes" 0 "$BARE_BLOCK$P2- [x] **Code review: no findings.**$NOT_SENSITIVE" "README.md"
+run_case "a bold whole line in a checklist fails: a field counts only on a top-level plain line" 1 "$BARE_BLOCK$P2- [x] **Code review: no findings.**$NOT_SENSITIVE" "README.md"
 # An unclosed comment hides everything after it from the merger, and the check
 # read it anyway. Fail closed: an unclosed comment runs to the end of the body.
 run_case "the only security line inside an unclosed comment fails" 1 "$GOOD_BLOCK$P2<!--
@@ -574,6 +583,252 @@ $FENCE
 -->
 Code review: no findings
 Security review: not required: no sensitive paths changed" "README.md"
+
+# CQ-13, product issue 42: the other company's record, for this head, approving.
+OK_BODY="$GOOD_BLOCK$NOT_SENSITIVE"
+record() { printf 'Reviewer: Sol (Codex)\nModel: %s\nHead SHA: %s\nVerdict: %s\n\n' "$1" "$2" "$3"; }
+SAVED="$RECORD"
+RECORD="$(record gpt-6-sol "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a record for this head passes" 0 "$OK_BODY" "README.md"
+RECORD=""
+run_case "CQ-13 review record bound to head: no record fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$OTHER" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a record for an older head fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$HEAD" approve)"$'\n\n'"$(record gpt-6-sol "$OTHER" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a second record for an older head fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record claude-opus-5-5 "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: the builder's own company fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record some-model "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a model of no known company fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$HEAD" 'changes requested')"$'\n\n'
+run_case "CQ-13 review record bound to head: a verdict asking for changes fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record REPLACE-WITH-OUTCOME '<head sha>' REPLACE-WITH-OUTCOME)"$'\n\n'
+run_case "CQ-13 review record bound to head: the template's placeholders fail" 1 "$OK_BODY" "README.md"
+RECORD="<!--"$'\n'"$(record gpt-6-sol "$HEAD" approve)"$'\n'"-->"$'\n\n'
+run_case "CQ-13 review record bound to head: a record inside a comment fails" 1 "$OK_BODY" "README.md"
+RECORD="$SAVED"
+
+# CQ-13, product issue 48: CommonMark indented code is code, a list item's
+# indented continuation is not.
+run_case "CQ-13 indented code not a field: four spaces after a blank line" 1 "$OK_BODY$P2    Code review: changes requested" "README.md"
+run_case "CQ-13 indented code not a field: a tab after a blank line" 1 "$OK_BODY$P2"$'\t'"Security review: rejected" "README.md"
+run_case "CQ-13 indented code not a field: after another indented-code line" 1 "$OK_BODY$P2    example
+    Code review: changes requested" "README.md"
+run_case "CQ-13 list continuation is a field: after a blank line in the item" 1 "$OK_BODY$P2- Outcomes
+
+    Code review: changes requested" "README.md"
+run_case "CQ-13 list continuation is a field: a paragraph's indented next line" 1 "$OK_BODY${P2}Outcomes
+    Code review: changes requested" "README.md"
+
+# CQ-13 fix, Sol's first CQ-13 review: an `Agent-model:` may name its company first.
+# The builders' companies are all refused, and one of no known company fails.
+BUILDER="OpenAI/gpt-6-sol"
+run_case "CQ-13 review record bound to head: a company-named Agent-model refuses its own company" 1 "$OK_BODY" "README.md"
+RECORD="$(record claude-opus-5-5 "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a company-named Agent-model accepts another company" 0 "$OK_BODY" "README.md"
+RECORD="$SAVED"
+BUILDER="claude-opus-5-5
+Anthropic/claude-opus-5-5
+OpenAI/gpt-6-sol"
+run_case "CQ-13 review record bound to head: every builder's company is refused" 1 "$OK_BODY" "README.md"
+BUILDER="some-model"
+run_case "CQ-13 review record bound to head: an Agent-model of no known company fails" 1 "$OK_BODY" "README.md"
+BUILDER=claude-opus-5-5
+
+# CQ-13 fix, Sol's first CQ-13 review: `<!--` inside indented or fenced code is code,
+# and hides no later line.
+LATE="${P2}Code review: changes requested"
+run_case "CQ-13 code hides no field: an indented code line opening a comment" 1 "$OK_BODY$P2    <!-- sample$LATE" "README.md"
+run_case "CQ-13 code hides no field: a tab-indented code line opening a comment" 1 "$OK_BODY$P2"$'\t'"<!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment opening on a later code line" 1 "$OK_BODY$P2    sample
+    <!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: a fence inside a list item" 1 "$OK_BODY$P2- Sample
+
+    $FENCE
+    <!--
+    $FENCE$LATE" "README.md"
+run_case "CQ-13 code hides no field: a heading closes the list before an indented fence" 1 "$OK_BODY$P2- Sample
+# Heading
+    $FENCE$LATE" "README.md"
+run_case "CQ-13 code hides no field: indented code opening a comment after a heading" 1 "$OK_BODY$P2# Heading
+    <!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: indented code opening a comment after a closing fence" 1 "$OK_BODY$P2$FENCE
+sample
+$FENCE
+    <!--$LATE" "README.md"
+# CQ-13 fix 2, Sol's second CQ-13 review: a lone `====` is paragraph text, which indented
+# code cannot interrupt; only under paragraph text is it a heading's underline.
+run_case "CQ-13 code hides no field: a lone equals line is text, not a break" 1 "$OK_BODY$P2====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: an indented equals line continues the paragraph" 1 "$OK_BODY${P2}Title
+    ====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a heading's equals underline still ends the paragraph" 1 "$OK_BODY${P2}Title
+====
+    Code review: changes requested" "README.md"
+# CQ-13 fix 2: an opening comment mark inside an inline code span is code.
+run_case "CQ-13 code hides no field: a comment mark inside a code span" 1 "$OK_BODY${P2}Sample \`<!--\` text$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment mark inside a double-backtick span" 1 "$OK_BODY${P2}Sample \`\` \` <!-- \`\` text$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment after a closed code span still hides" 1 "$OK_BODY${P2}Sample \`x\` <!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: an unclosed backtick does not stop a comment" 1 "$OK_BODY${P2}Sample \` <!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: a comment opened before a code span still hides" 1 "$OK_BODY${P2}Sample <!-- \`x\`$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: a real comment still hides" 1 "$OK_BODY$P2<!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 1 "$OK_BODY$P2- Sample
+
+    <!--$LATE
+-->" "README.md"
+
+# A standalone equals line is paragraph text, so the next indented line is
+# paragraph continuation and its review outcome remains visible.
+run_case "Sol proof, criterion 10: a standalone equals line keeps an indented review outcome visible" 1 "$OK_BODY$P2====
+    Code review: changes requested" "README.md"
+run_case "Sol proof, criterion 10: an outdented equals line after a list keeps an indented review outcome visible" 1 "$OK_BODY$P2- Item
+====
+    Code review: changes requested" "README.md"
+
+# CQ-13 fix 4, fail closed: a case whose field line is hidden fails, however
+# it is hidden. The cases that asserted a hidden field passes now expect 1.
+# CQ-13 fix 3: an underline sits in its paragraph's own container. A lazy
+# line, outdented from a list item or unquoted after quoted text, is text.
+run_case "CQ-13 code hides no field: a lazy equals line after a quote keeps an indented outcome visible" 1 "$OK_BODY$P2> Quote
+====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a second lazy equals line after a quote is text too" 1 "$OK_BODY$P2> Quote
+====
+====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a quote interrupting a paragraph underlines its own text" 1 "$OK_BODY${P2}Text
+> Quote
+> ====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: an equals line under a list item's text still underlines it" 1 "$OK_BODY$P2- Item
+  ====
+      Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a quoted equals line under quoted text is an underline" 1 "$OK_BODY$P2> Quote
+> ====
+    Code review: changes requested" "README.md"
+run_case "Sol proof, criterion 10: a nested quote outdent keeps an indented review outcome visible" 1 "$OK_BODY$P2> > Quote
+> ====
+    Code review: changes requested" "README.md"
+
+# CQ-13 fix 4, fail closed: every raw line carrying a review field must be
+# one the reader counts as visible.
+run_case "CQ-13 fail closed: a field line in a code span fails" 1 "$OK_BODY$P2\`Code review: changes requested\`" "README.md"
+run_case "CQ-13 fail closed: a field line in a fence fails" 1 "$OK_BODY$P2$FENCE
+Verdict: changes requested
+$FENCE" "README.md"
+run_case "CQ-13 fail closed: a hyphenated record field fails" 1 "$OK_BODY${P2}Head-SHA: $OTHER" "README.md"
+run_case "CQ-13 fail closed: prose naming a field mid-line passes" 0 "$OK_BODY${P2}The body keeps one Code review: line per head." "README.md"
+run_case "CQ-13 fail closed: a line naming the model and tool passes" 0 "$OK_BODY$P2- Model and tool: claude-opus-5-5, Claude Code" "README.md"
+LONG="$(printf '[x] 1. %.0s' $(seq 1 4000))"
+run_case "CQ-13 fail closed: a long run of checkbox and number marks reads in time" 0 "$OK_BODY$P2$LONG" "README.md"
+
+RECORD=""
+run_case "Sol proof, criterion 6: a review record inside raw HTML code cannot satisfy the gate" 1 "$OK_BODY$P2<pre>
+Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+</pre>" "README.md"
+RECORD="$SAVED"
+
+# CQ-13 fix 5, the orchestrator's ruling on Sol's fifth review: a review field
+# counts only on a top-level plain line. The good record sits only inside a
+# container here, so nothing operative is left and the check fails.
+REC="$(record gpt-6-sol "$HEAD" approve)"
+RECORD=""
+run_case "CQ-13 top level only: a record inside a details block fails" 1 "$OK_BODY$P2<details>
+<summary>Record</summary>
+
+$REC
+
+</details>" "README.md"
+run_case "CQ-13 top level only: a record in a list fails" 1 "$OK_BODY$P2$(printf '%s\n' "$REC" | sed 's/^/- /')" "README.md"
+run_case "CQ-13 top level only: a record in a quote fails" 1 "$OK_BODY$P2$(printf '%s\n' "$REC" | sed 's/^/> /')" "README.md"
+run_case "CQ-13 top level only: a record as table rows fails" 1 "$OK_BODY$P2| a | b |
+| - | - |
+$REC" "README.md"
+run_case "CQ-13 top level only: a record under a setext underline fails" 1 "$OK_BODY$P2$REC
+---" "README.md"
+run_case "CQ-13 top level only: a record lazily continuing a list item fails" 1 "$OK_BODY$P2- Item
+$REC" "README.md"
+run_case "CQ-13 top level only: a record inside a code span across lines fails" 1 "$OK_BODY$P2\`\`start
+$REC
+end\`\`" "README.md"
+run_case "CQ-13 top level only: a record after a closed details block fails: no raw HTML" 1 "$OK_BODY$P2<details>
+<summary>More</summary>
+
+Notes.
+
+</details>
+
+$REC" "README.md"
+run_case "CQ-13 top level only: a record after a template comment passes" 0 "$OK_BODY$P2<!-- Fill in the record below. -->
+
+$REC" "README.md"
+RECORD="$SAVED"
+
+RECORD=""
+run_case "Sol proof, criterion 6: a review record inside an inline HTML code tag cannot satisfy the gate" 1 "$OK_BODY${P2}Example <code>
+Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+</code>" "README.md"
+RECORD="$SAVED"
+
+# CQ-13 fix 6, the orchestrator's ruling on Sol's sixth review: no raw HTML tag
+# anywhere in the body; comments alone are allowed. Text in a code span or a
+# fence is literal, not HTML (the addendum), so placeholders there pass.
+run_case "CQ-13 no raw HTML: a harmless tag elsewhere in the body fails" 1 "$OK_BODY${P2}Line one<br>line two." "README.md"
+run_case "CQ-13 no raw HTML: a closing tag alone fails" 1 "$OK_BODY$P2</div>" "README.md"
+run_case "CQ-13 no raw HTML: a declaration fails" 1 "$OK_BODY$P2<!DOCTYPE html>" "README.md"
+run_case "CQ-13 no raw HTML: a placeholder in plain text fails" 1 "$OK_BODY${P2}The canary is <canary> here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in indented code fails" 1 "$OK_BODY$P2    <kbd>x</kbd>" "README.md"
+run_case "CQ-13 no raw HTML: a tag after an unclosed backtick fails" 1 "$OK_BODY${P2}A \` then <b>bold</b>." "README.md"
+run_case "CQ-13 no raw HTML: a placeholder in a code span passes" 0 "$OK_BODY${P2}Replace \`<head sha>\` and \`<uuid>\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag leading a line ends a code span and fails" 1 "$OK_BODY${P2}See \`\`start
+<div> end\`\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in a code span across lines passes" 0 "$OK_BODY${P2}See \`\`start
+then <b>x</b> end\`\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in a fence passes" 0 "$OK_BODY$P2$FENCE
+<div>sample</div>
+$FENCE" "README.md"
+run_case "CQ-13 no raw HTML: a tag inside a comment passes" 0 "$OK_BODY$P2<!-- <div> is not used -->" "README.md"
+run_case "CQ-13 no raw HTML: an autolink passes" 0 "$OK_BODY${P2}See <https://example.com/a> for more." "README.md"
+run_case "CQ-13 no raw HTML: a comparison with spaces passes" 0 "$OK_BODY${P2}When a < b and c > d, stop." "README.md"
+
+RECORD=""
+run_case "Sol proof, criterion 6: a setext boundary cannot hide an inline HTML review record" 1 "$OK_BODY${P2}Text \`open
+---
+Example <code>close\`
+Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve" "README.md"
+RECORD="$SAVED"
+run_case "CQ-13 no raw HTML: a tag after a setext boundary fails" 1 "$OK_BODY${P2}Text \`open
+---
+Example <br>close\`" "README.md"
+
+# CQ-13 fix 7, the orchestrator's ruling on Sol's seventh review: backticks
+# never pair across a block boundary of any kind, and every tag form fails.
+run_case "CQ-13 no raw HTML: a void tag after a heading's open backtick fails" 1 "$OK_BODY$P2# Title \`open
+Text <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a tag after a thematic break fails" 1 "$OK_BODY${P2}Text \`open
+***
+More <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a tag in a table row after an open backtick fails" 1 "$OK_BODY$P2| a \`x |
+| - |
+| <br> y\` |" "README.md"
+run_case "CQ-13 no raw HTML: a tag after a list item's open backtick fails" 1 "$OK_BODY${P2}Text \`open
+- item <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a self-closing void tag fails" 1 "$OK_BODY${P2}Line one<br/>line two." "README.md"
+run_case "CQ-13 no raw HTML: a void tag with attributes fails" 1 "$OK_BODY${P2}An image <img src=\"x.png\" alt=\"x\"> here." "README.md"
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"

@@ -16,8 +16,11 @@
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
 //
-// It reads PR_BODY, HEAD_SHA and CHANGED_FILES so the same code runs in
-// continuous integration and in its own tests.
+// 3. CQ-13, product issue 42: the body carries the record of the review by a
+//    model from another company than the builder's, for this head.
+//
+// It reads PR_BODY, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
+// runs in continuous integration and in its own tests.
 //
 // What it does not do, and the pull request template says so too: it reads no
 // reviewer identity. A green result proves the evidence is bound to this exact
@@ -94,6 +97,14 @@ const changed =
           .filter(Boolean);
       })();
 
+// The builder's models: every commit's `Agent-model:` trailer in the range.
+const base = process.env['BASE_SHA'] ?? '';
+const trailers = ['log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`];
+const builders = (
+  process.env['AGENT_MODELS'] ??
+  (base === '' ? '' : execFileSync('git', trailers, { encoding: 'utf8' }))
+).split('\n');
+
 const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
@@ -132,23 +143,111 @@ const fenceRun = (line) => {
 // Drop each comment on one line of text outside a fence. One left open
 // hides everything after it, and text on either side of a comment that spans
 // lines joins into one line, as it does when GitHub renders it.
+//
+// A code span that starts first is code: a comment mark in it opens nothing.
+// Read by index once; an unclosed run length is not looked for again.
+const TICKS = /`+/gu;
 const dropComments = (line) => {
   let kept = '';
-  let rest = line;
+  let at = 0;
+  let open = line.indexOf('<!--');
+  const unclosed = new Set();
   for (;;) {
-    const open = rest.indexOf('<!--');
-    if (open === -1) return { kept: kept + rest, open: false };
-    kept += `${rest.slice(0, open)} `;
-    const close = rest.indexOf('-->', open + 4);
+    if (open !== -1 && open < at) open = line.indexOf('<!--', at);
+    TICKS.lastIndex = at;
+    const tick = TICKS.exec(line);
+    if (tick !== null && (open === -1 || tick.index < open)) {
+      const run = tick[0];
+      let end = tick.index + run.length;
+      if (!unclosed.has(run.length)) {
+        // The closing run is the next run of exactly this length.
+        let m = TICKS.exec(line);
+        while (m !== null && m[0].length !== run.length) m = TICKS.exec(line);
+        if (m === null) unclosed.add(run.length);
+        else end = m.index + run.length;
+      }
+      kept += line.slice(at, end);
+      at = end;
+      continue;
+    }
+    if (open === -1) return { kept: kept + line.slice(at), open: false };
+    kept += `${line.slice(at, open)} `;
+    const close = line.indexOf('-->', open + 4);
     if (close === -1) return { kept, open: true };
-    rest = rest.slice(close + 3);
+    at = close + 3;
   }
 };
-const visible = (text, { keepFences }) => {
+// CQ-13, product issue 48: a line four columns past the open list item's
+// content is indented code, unless it continues a paragraph.
+const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
+// A heading or a thematic break ends a paragraph and, outdented, a list item.
+const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/u;
+// Sol's second CQ-13 review: `====` underlines a heading only under paragraph text, and
+// only indented under four columns; anywhere else it is paragraph text.
+const SETEXT = /^=+[ \t]*$/u;
+// CQ-13 fix 3, Sol's third CQ-13 review: an underline sits in its paragraph's own
+// container. A lazy line, outdented from the list item or unquoted after
+// quoted text, cannot be one; it stays paragraph text.
+const QUOTED = /^(?:>[ \t]?)+/u;
+const columns = (line) => {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === ' ') col += 1;
+    else if (ch === '\t') col += 4 - (col % 4);
+    else break;
+  }
+  return col;
+};
+const visible = (text, { keepFences, keepIndented = keepFences }) => {
   const out = [];
   let fence = '';
   let comment = false;
   let pending = '';
+  let afterBlank = true;
+  // The last line was paragraph text, which indented code cannot interrupt.
+  let para = false;
+  let paraQuoted = false;
+  let listCol = 0;
+  // Sol's first CQ-13 review: whether a line is code is decided before its comments
+  // are, so `<!--` inside indented code is code and hides nothing after it.
+  const isCode = (line) => {
+    if (line.trim() === '') return false;
+    const col = columns(line);
+    return col >= (afterBlank && col < listCol ? 0 : listCol) + 4 && !para;
+  };
+  // A fence inside a list item is indented from the item's content, not the margin.
+  const fenceAt = (line) => {
+    const col = columns(line);
+    return fenceRun(col < listCol ? line : ' '.repeat(col - listCol) + line.trimStart());
+  };
+  const push = (kept) => {
+    if (kept.trim() === '') {
+      afterBlank = true;
+      para = false;
+      out.push(kept);
+      return;
+    }
+    const col = columns(kept);
+    const code = isCode(kept);
+    const lead = kept.trimStart();
+    const quoted = QUOTED.test(lead);
+    const underline =
+      para &&
+      quoted === paraQuoted &&
+      col >= listCol &&
+      col < listCol + 4 &&
+      SETEXT.test(lead.replace(QUOTED, ''));
+    const brk = !code && (BREAK.test(lead) || underline);
+    if ((afterBlank || brk) && col < listCol) listCol = 0;
+    const item = code ? null : LIST_ITEM.exec(kept.trimStart());
+    if (item !== null && col < listCol + 4) listCol = col + item[0].length;
+    afterBlank = false;
+    // A quoted line starts or continues a quoted paragraph; an unquoted one
+    // starts an unquoted paragraph, or continues the open one lazily.
+    if (quoted || !para) paraQuoted = quoted;
+    para = !code && !brk;
+    out.push(code && !keepIndented ? '' : kept);
+  };
   for (const line of text.split('\n')) {
     let rest = line;
     if (comment) {
@@ -157,14 +256,19 @@ const visible = (text, { keepFences }) => {
       comment = false;
       rest = rest.slice(end + 3);
     } else if (fence === '') {
-      const f = fenceRun(rest);
+      const f = fenceAt(rest);
+      if (f === null && isCode(rest)) {
+        push(rest);
+        continue;
+      }
       if (f !== null) {
         fence = f.run;
+        afterBlank = para = false;
         out.push(keepFences ? rest : '');
         continue;
       }
     } else {
-      const f = fenceRun(rest);
+      const f = fenceAt(rest);
       if (
         f !== null &&
         f.run[0] === fence[0] &&
@@ -180,9 +284,9 @@ const visible = (text, { keepFences }) => {
     ({ kept, open: comment } = dropComments(pending + rest));
     pending = '';
     if (comment) pending = kept;
-    else out.push(kept);
+    else push(kept);
   }
-  if (comment) out.push(pending);
+  if (comment) push(pending);
   return out.join('\n');
 };
 
@@ -455,6 +559,274 @@ if (sensitive.length > 0) {
         '        an answer.',
     );
   }
+}
+
+// --- rule 3: the other company's review record for this head --------------
+
+// CQ-13, product issue 42. Rules 1 and 2 read outcomes the author states. The
+// record the cross-company reviewer posts, copied into the body, names the
+// head it read, its model and its verdict. Every record line is read, as every
+// security line is: a record for an older head is not evidence for this one.
+//
+// Sol's first CQ-13 review: a model may name its company first, as in
+// `OpenAI/gpt-6-sol`; each part of the name is read. Every builder's company
+// is refused, and a builder model of no known company fails, because no
+// reviewer can then be shown to come from another company.
+const COMPANY = [
+  [/^(?:anthropic|claude|opus|sonnet|haiku|fable)\b/u, 'Anthropic'],
+  [/^(?:openai|gpt|o\d|codex)\b/u, 'OpenAI'],
+  [/^(?:google|gemini)\b/u, 'Google'],
+];
+const companiesOf = (model) =>
+  model
+    .trim()
+    .toLowerCase()
+    .split('/')
+    .flatMap((part) => COMPANY.filter(([r]) => r.test(part.trim())).map(([, c]) => c));
+const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
+const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
+const RECORD =
+  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,3}(reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
+const record = { reviewer: [], model: [], 'head sha': [], verdict: [] };
+for (const m of visible(body, { keepFences: false }).matchAll(RECORD)) {
+  record[(m[1] ?? '').toLowerCase()].push((m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim());
+}
+const refused = {
+  reviewer: () => false,
+  model: (v) => companiesOf(v).length === 0 || companiesOf(v).some((c) => builtBy.has(c)),
+  'head sha': (v) =>
+    !head.toLowerCase().startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
+  verdict: (v) => !/^approve\.?$/iu.test(v),
+};
+const recordProblems = Object.entries(record).flatMap(([name, values]) =>
+  values.length === 0
+    ? [`no \`${name}:\` line`]
+    : values
+        .filter((v) => outcome(v, [/./u]) !== 'accepted' || refused[name](v))
+        .map((v) => `${name}: ${v}`),
+);
+recordProblems.push(...unknownBuilders.map((b) => `Agent-model: ${b.trim()} (no known company)`));
+if (recordProblems.length > 0) {
+  failures.push(
+    "the pull request carries no complete record of another company's review\n" +
+      `        of this head:\n${recordProblems.map((p) => `          ${p}`).join('\n')}\n` +
+      "        Copy the reviewer's four lines: `Head SHA:` this head, `Model:` from\n" +
+      "        another company than the commits' `Agent-model:`, `Verdict: approve`.",
+  );
+}
+
+// --- rule 4: no review field where it could be hidden --------------------
+
+// CQ-13, Sol's fourth review: fail closed. A raw line carrying a review field
+// after any run of marks must be one the reader counts as visible.
+const RAW_FIELD =
+  /^(?:[^\p{L}\p{N}\n]|\[[xX]\]|\d{1,9}[.)])*(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict)[*_`~ \t]*:/gimu;
+const fieldKey = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[ -]review$/u, '')
+    .replace('-', ' ');
+const counted = new Map();
+const count = (key) => counted.set(key, (counted.get(key) ?? 0) + 1);
+for (const f of stated) count(f.name);
+for (const [name, values] of Object.entries(record)) for (const _ of values) count(name);
+const raw = new Map();
+for (const m of body.matchAll(RAW_FIELD)) {
+  const key = fieldKey(m[1] ?? '');
+  raw.set(key, (raw.get(key) ?? 0) + 1);
+}
+const hidden = [...raw].filter(([key, n]) => n > (counted.get(key) ?? 0));
+if (hidden.length > 0) {
+  failures.push(
+    'a review field appears where it could be hidden:\n' +
+      hidden
+        .map(
+          ([key, n]) => `          ${key}: ${n} line(s) in the body, ${counted.get(key) ?? 0} read`,
+        )
+        .join('\n') +
+      '\n        Every review field line must be plain and visible: not indented as\n' +
+      '        code, in a comment, a fence, a code span or a lazy or underlined line.\n' +
+      '        Move it to its own line at the margin, or reword it so it is not a field.',
+  );
+}
+
+// --- rule 5: a review field counts only on a top-level plain line ---------
+
+// CQ-13, Sol's fifth review: a field line counts only as a plain line of a
+// top-level paragraph, at the margin; in any container it fails. Where the
+// tracker cannot tell, the line is in a container.
+const PLAIN_FIELD =
+  /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:/iu;
+const ANY_FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})/u;
+const NEST = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|\[\^[^\]]*\]:)/u;
+const HTML_OPEN = /^ {0,3}<(!--|\?|!\[CDATA\[|![A-Za-z]|\/?[A-Za-z][A-Za-z0-9-]*)/u;
+const UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/u;
+const DELIMITER = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/u;
+// Rule 6 fails any raw tag, so an HTML block's extent matters only for a
+// comment: to its end token. Anything else runs to a blank line.
+const htmlBlock = (opener) =>
+  opener === '!--' ? { until: '-->', blank: false } : { until: '', blank: true };
+const topLevel = (text) => {
+  const lines = text.split('\n').map((l) => l.replace(/\r$/u, ''));
+  const plain = lines.map(() => false);
+  let fence = '';
+  let html = null;
+  let nest = false;
+  let table = false;
+  let afterBlank = true;
+  let para = -1;
+  let tick = 0;
+  // An HTML block's end: its token, then (for most tags) a blank line.
+  const htmlLine = (i, from) => {
+    if (html.until !== '' && lines[i].toLowerCase().includes(html.until, from)) html.until = '';
+    if (html.until === '' && !html.blank) html = null;
+  };
+  for (const [i, line] of lines.entries()) {
+    const blank = line.trim() === '';
+    if (fence !== '') {
+      const f = ANY_FENCE.exec(line);
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && line.trim().endsWith(f[1][0]))
+        fence = '';
+      continue;
+    }
+    if (html !== null) {
+      if (blank && html.until === '') html = null;
+      else htmlLine(i, 0);
+      afterBlank = blank;
+      continue;
+    }
+    if (blank) {
+      afterBlank = true;
+      para = -1;
+      tick = 0;
+      table = false;
+      continue;
+    }
+    const col = columns(line);
+    const wasBlank = afterBlank;
+    afterBlank = false;
+    // Inside a list or quote any fence counts; at the top level, as the
+    // reader has it, only one indented under four columns.
+    const inNest = nest && (!wasBlank || col > 0 || NEST.test(line));
+    const f = (inNest ? ANY_FENCE : FENCE).exec(line);
+    if (f) {
+      fence = f[1];
+      para = -1;
+      continue;
+    }
+    if (inNest) continue;
+    nest = false;
+    if (table) continue;
+    const h = HTML_OPEN.exec(line);
+    if (h) {
+      html = htmlBlock(h[1]);
+      htmlLine(i, h.index + h[0].length);
+      para = -1;
+      continue;
+    }
+    if (NEST.test(line)) {
+      nest = true;
+      para = -1;
+      continue;
+    }
+    if (para !== -1 && UNDERLINE.test(line)) {
+      for (let j = para; j < i; j += 1) plain[j] = false;
+      para = -1;
+      continue;
+    }
+    if (BREAK.test(line.trimStart()) || (col >= 4 && para === -1)) {
+      para = -1;
+      continue;
+    }
+    if (
+      line.includes('|') &&
+      DELIMITER.test(lines[i + 1] ?? '') &&
+      (lines[i + 1] ?? '').includes('|')
+    ) {
+      table = true;
+      para = -1;
+      continue;
+    }
+    if (para === -1) para = i;
+    plain[i] = tick === 0 && col === 0;
+    for (const run of line.match(/`+/gu) ?? []) {
+      if (tick === 0) tick = run.length;
+      else if (run.length === tick) tick = 0;
+    }
+  }
+  return { lines, plain };
+};
+const levels = topLevel(body);
+const buried = levels.lines.flatMap((line, i) => {
+  RAW_FIELD.lastIndex = 0;
+  const m = RAW_FIELD.exec(line);
+  if (m === null || (levels.plain[i] && PLAIN_FIELD.test(line))) return [];
+  return [`line ${i + 1}: ${fieldKey(m[1] ?? '')}`];
+});
+if (buried.length > 0) {
+  failures.push(
+    'a review field appears where it could be hidden:\n' +
+      buried.map((b) => `          ${b}`).join('\n') +
+      '\n        A review field counts only on a plain line of a top-level paragraph,\n' +
+      '        at the margin: not in a list, quote, table, heading, HTML block,\n' +
+      '        fence, code span or indented code. Move it to its own plain line.',
+  );
+}
+
+// --- rule 6: no raw HTML -------------------------------------------------
+
+// CQ-13, Sol's sixth review: a body is Markdown only. Any raw tag fails; a
+// comment, a fence and a code span are allowed.
+const RAW_HTML = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
+// Sol's seventh review: a span pairs only within a run of plain paragraph
+// lines; every other line stands alone.
+const BLOCK_LINE =
+  /^(?:[ \t]*$| {0,3}(?:#{1,6}(?:[ \t]|$)|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|`{3}|~{3}|<|(?:[-*_=][ \t]*)+$)| {4}|\t)|\|/u;
+const blocks = (text) => {
+  const out = [];
+  let joinable = false;
+  for (const line of text.split('\n')) {
+    const plain = !BLOCK_LINE.test(line);
+    if (plain && joinable) out[out.length - 1] += `\n${line}`;
+    else out.push(line);
+    joinable = plain;
+  }
+  return out;
+};
+const dropSpans = (text) => {
+  let kept = '';
+  let at = 0;
+  const unclosed = new Set();
+  for (;;) {
+    TICKS.lastIndex = at;
+    const tick = TICKS.exec(text);
+    if (tick === null) return kept + text.slice(at);
+    const run = tick[0];
+    let end = tick.index + run.length;
+    let m = null;
+    if (!unclosed.has(run.length)) {
+      m = TICKS.exec(text);
+      while (m !== null && m[0].length !== run.length) m = TICKS.exec(text);
+      if (m === null) unclosed.add(run.length);
+    }
+    if (m === null) kept += text.slice(at, end);
+    else {
+      kept += `${text.slice(at, tick.index)} `;
+      end = m.index + run.length;
+    }
+    at = end;
+  }
+};
+const markup = blocks(visible(body, { keepFences: false, keepIndented: true }))
+  .map(dropSpans)
+  .join('\n');
+const tag = RAW_HTML.exec(markup);
+if (tag !== null) {
+  failures.push(
+    `the pull request body holds raw HTML (${tag[0]}):\n` +
+      '        A body is Markdown only; an HTML comment is the one exception.\n' +
+      '        Write the text in Markdown, or put a literal sample in a code span.',
+  );
 }
 
 console.log(`review-evidence: ${changed.length} changed file(s), ${sensitive.length} sensitive`);

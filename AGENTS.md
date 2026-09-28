@@ -23,20 +23,20 @@ built code, start at [the local slice](docs/local/README.md).
 
 ## Build and review
 
-One owner, ticket branch, and isolated worktree per ticket. Normal ticket
-review reads the complete committed change. When commits are held during
+One owner, ticket branch, and isolated worktree per ticket. Ticket review
+reads the complete committed change. When commits are held during
 local foundation preparation, review the actual files and diff against an
 identified manifest, as [review checkpoints](docs/agents/review-checkpoint.md)
 requires. Commit nothing only to enable that review.
 
 The final ticket verifies the integrated feature. Done is a checked artefact.
-A frontier model from a different company than the builder's reviews that
-work, and Copilot reviews the hosted revision. An agent invokes the merge on
-Nathan's credential once every required check is green;
+Another company's frontier model reviews the builder's work; Copilot reviews
+the hosted revision.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 [Contributing](CONTRIBUTING.md) holds the seven questions and what stays his.
-A change to one of the eight protected components also needs that component's
-conformance test to be green. The sandbox's final reviewed contract requires
-Nathan's approval before implementation.
 
 Run `/security-review` before a pull request touching auth, tenancy, tool
 execution, egress, custody, or the audit chain.

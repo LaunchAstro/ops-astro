@@ -53,6 +53,15 @@ Code review: REPLACE-WITH-OUTCOME
 
 Security review: REPLACE-WITH-OUTCOME
 
+## Review record
+
+<!-- The cross-company reviewer's four lines for this head, as posted. -->
+
+Reviewer: REPLACE-WITH-OUTCOME
+Model: REPLACE-WITH-OUTCOME
+Head SHA: <head sha>
+Verdict: REPLACE-WITH-OUTCOME
+
 ## How it was tested
 
 <!--

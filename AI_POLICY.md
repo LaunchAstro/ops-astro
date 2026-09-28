@@ -35,6 +35,10 @@ every finding is closed, and notifies him afterwards. The production deploy,
 the five protected parts, a coherence waiver, a tier reduction, and the
 sandbox contract stay his own decision, as
 [Contributing](CONTRIBUTING.md) sets out.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 The conformance proofs in [Contributing](CONTRIBUTING.md) remain separate.
 
 [Model roles](docs/agents/model-roles.md) defines the written handoff. Agents
