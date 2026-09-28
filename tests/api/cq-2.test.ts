@@ -36,8 +36,10 @@ const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[na
 type Task = Record<'title' | 'recordId' | 'client', string> & { person?: string };
 type Party = { key: string; member: string; tasks: Task[]; add: (name: string) => Promise<Task> };
 
+/** No answer names another client's task: its title, its id, or its person. */
 function expectOtherClientHidden(response: string, other: Task): void {
-  expect(response).not.toContain(other.title);
+  const theirs = [other.title, other.recordId, other.person ?? other.title];
+  expect(theirs.filter((value) => response.includes(value))).toStrictEqual([]);
 }
 const ghost = (t: Task): Task => ({ ...t, recordId: randomUUID() });
 const ids = (text: string) => [
