@@ -903,6 +903,24 @@ run_case "Sol proof, criterion 1: a review outcome inside multiline strikethroug
 Code review: no findings
 struck text ends~~$NOT_SENSITIVE" "README.md"
 
+# Fix 1 for #92, the class behind criterion 1: any markup pair open across a
+# line break wraps the line, whatever the pair is.
+run_case "FU88 open markup: a field inside multiline emphasis fails" 1 "$BARE_BLOCK${P2}*emphasis starts
+Code review: no findings
+emphasis ends*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field inside multiline strong emphasis fails" 1 "$BARE_BLOCK${P2}**strong starts
+Code review: no findings
+strong ends**$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field line opening emphasis closed on the next line fails" 1 "$BARE_BLOCK${P2}**Code review: no findings
+still strong**$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field line closing emphasis opened above fails" 1 "$BARE_BLOCK${P2}*emphasis starts
+Code review: no findings*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a link inside multiline emphasis still fails" 1 "$BARE_BLOCK${P2}*see [the notes](https://example.com)
+Code review: no findings
+done*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: emphasis closed on an earlier line leaves the field plain" 0 "$BARE_BLOCK${P2}*A note* first.
+Code review: no findings$NOT_SENSITIVE" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
