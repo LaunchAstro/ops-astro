@@ -781,6 +781,25 @@ Verdict: approve
 </code>" "README.md"
 RECORD="$SAVED"
 
+# CQ-13 fix 6, the orchestrator's ruling on Sol's sixth review: no raw HTML tag
+# anywhere in the body; comments alone are allowed. Text in a code span or a
+# fence is literal, not HTML (the addendum), so placeholders there pass.
+run_case "CQ-13 no raw HTML: a harmless tag elsewhere in the body fails" 1 "$OK_BODY${P2}Line one<br>line two." "README.md"
+run_case "CQ-13 no raw HTML: a closing tag alone fails" 1 "$OK_BODY$P2</div>" "README.md"
+run_case "CQ-13 no raw HTML: a declaration fails" 1 "$OK_BODY$P2<!DOCTYPE html>" "README.md"
+run_case "CQ-13 no raw HTML: a placeholder in plain text fails" 1 "$OK_BODY${P2}The canary is <canary> here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in indented code fails" 1 "$OK_BODY$P2    <kbd>x</kbd>" "README.md"
+run_case "CQ-13 no raw HTML: a tag after an unclosed backtick fails" 1 "$OK_BODY${P2}A \` then <b>bold</b>." "README.md"
+run_case "CQ-13 no raw HTML: a placeholder in a code span passes" 0 "$OK_BODY${P2}Replace \`<head sha>\` and \`<uuid>\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in a code span across lines passes" 0 "$OK_BODY${P2}See \`\`start
+<div> end\`\` here." "README.md"
+run_case "CQ-13 no raw HTML: a tag in a fence passes" 0 "$OK_BODY$P2$FENCE
+<div>sample</div>
+$FENCE" "README.md"
+run_case "CQ-13 no raw HTML: a tag inside a comment passes" 0 "$OK_BODY$P2<!-- <div> is not used -->" "README.md"
+run_case "CQ-13 no raw HTML: an autolink passes" 0 "$OK_BODY${P2}See <https://example.com/a> for more." "README.md"
+run_case "CQ-13 no raw HTML: a comparison with spaces passes" 0 "$OK_BODY${P2}When a < b and c > d, stop." "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
