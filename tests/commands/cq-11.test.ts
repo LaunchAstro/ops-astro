@@ -17,7 +17,6 @@ import { writeTaskComment } from '../../packages/core-commands/src/commands/task
 import type { TaskRow } from '../../packages/core-commands/src/commands/context.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { configuredCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
-import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/index.ts';
 import {
   createFreshDatabase,
@@ -26,18 +25,10 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { COMMAND_SURFACE, declarationOf } from '../../packages/core-wire/src/surface.ts';
 import { usage } from '../../apps/cli/client.ts';
-import {
-  insertActor,
-  insertBusiness,
-  insertLogin,
-  insertMapping,
-  insertPerson,
-} from '../identity/fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { insertBusiness } from '../identity/fixture.ts';
+import { enrol, grantTo, installSpine, shareWithClient, type Member } from './fixture.ts';
 
 const ROOTS = ['apps', 'packages', 'scripts', 'tests'];
-const THIS_FILE = 'tests/commands/cq-11.test.ts';
-const HELPER = 'packages/core-records/src/env-file.ts';
 
 const sources = (): string[] =>
   ROOTS.flatMap((root) =>
@@ -59,16 +50,18 @@ const HAND_READERS = [
 ];
 const handReaders = (text: string): boolean => HAND_READERS.some((pattern) => pattern.test(text));
 
+const carrying = (key: string): string[] =>
+  COMMAND_SURFACE.filter((command) => key in command).map((command) => command.name);
 const scratch = (): string => mkdtempSync(join(tmpdir(), 'cq11-'));
 const read = (file: string): string => readFileSync(`packages/${file}`, 'utf8');
 
 describe('CQ-11 the tree', () => {
   it('CQ-11 one env-file reader: exactly one remains, and it uses util.parseEnv', () => {
     const found = sources().filter(
-      (file) => file !== THIS_FILE && handReaders(readFileSync(file, 'utf8')),
+      (file) => file !== 'tests/commands/cq-11.test.ts' && handReaders(readFileSync(file, 'utf8')),
     );
     expect(found).toStrictEqual([]);
-    const helper = readFileSync(HELPER, 'utf8');
+    const helper = read('core-records/src/env-file.ts');
     expect(helper).toContain("import { parseEnv } from 'node:util';");
     expect(helper).toContain('parseEnv(text)');
     // The scan is not blind: each reader it replaced is still seen.
@@ -86,12 +79,9 @@ describe('CQ-11 the tree', () => {
     const dir = scratch();
     try {
       const file = join(dir, 'local.env');
-      writeFileSync(
-        file,
-        '# a comment\n\nDATABASE_URL=postgres://a@h:1/d\n  GOTRUE_URL = http://x \n',
-      );
+      writeFileSync(file, '# a comment\n\nDATABASE_URL=pg://a@h/d\n  GOTRUE_URL = http://x \n');
       expect(readEnvFile(file)).toStrictEqual({
-        DATABASE_URL: 'postgres://a@h:1/d',
+        DATABASE_URL: 'pg://a@h/d',
         GOTRUE_URL: 'http://x',
       });
       expect(readEnvFile(join(dir, 'absent.env'))).toStrictEqual({});
@@ -102,9 +92,7 @@ describe('CQ-11 the tree', () => {
   });
 
   it('CQ-11 contractNine and the two empty package directories are gone, and ARCHITECTURE.md says when they are created', () => {
-    for (const command of COMMAND_SURFACE) {
-      expect(Object.keys(command), command.name).not.toContain('contractNine');
-    }
+    expect(carrying('contractNine')).toStrictEqual([]);
     expect(existsSync('packages/core-connectors')).toBe(false);
     expect(existsSync('packages/core-custody')).toBe(false);
     const architecture = readFileSync('ARCHITECTURE.md', 'utf8');
@@ -116,13 +104,9 @@ describe('CQ-11 the tree', () => {
 
   it('CQ-11 landed, waitingOn and pending.ts are gone, and so is the CLI suffix they fed', () => {
     expect(existsSync('packages/core-commands/src/commands/pending.ts')).toBe(false);
-    for (const command of COMMAND_SURFACE) {
-      expect(Object.keys(command), command.name).not.toContain('landed');
-      expect(Object.keys(command), command.name).not.toContain('waitingOn');
-    }
+    expect([...carrying('landed'), ...carrying('waitingOn')]).toStrictEqual([]);
     expect(usage()).toStrictEqual(COMMAND_SURFACE.map((command) => command.name));
-    const comment = readFileSync('packages/core-commands/src/commands/tasks-comment.ts', 'utf8');
-    expect(comment).not.toContain('refuseUnlanded');
+    expect(read('core-commands/src/commands/tasks-comment.ts')).not.toContain('refuseUnlanded');
   });
 
   it('CQ-11 the live refusal: a comment on a business with no comment type still refuses, plainly', async () => {
@@ -159,10 +143,8 @@ describe('CQ-11 the tree', () => {
 
   it('CQ-11 issue 59: the not-found names, the installer’s visibility step and typed handback operands', () => {
     // The not-found refusal takes its names, the same bytes as the hand spread.
-    expect(refuseNotFound(['lineageId'])).toStrictEqual({
-      ...refuseNotFound(),
-      names: ['lineageId'],
-    });
+    const spread = { ...refuseNotFound(), names: ['lineageId'] };
+    expect(refuseNotFound(['lineageId'])).toStrictEqual(spread);
     expect(read('core-commands/src/commands/tasks-controls.ts')).not.toContain(
       '...refuseNotFound()',
     );
@@ -217,6 +199,7 @@ describe('CQ-11 the tree', () => {
 
 const serverUrl = databaseUrlFromEnvironment();
 type Command = Parameters<typeof commands.executeCommand>[4];
+type Read = Parameters<typeof commands.executeRead>[3];
 type Task = { readonly id: string; readonly title: string; readonly client: Member };
 type Party = { readonly id: BusinessId; readonly member: Member; readonly tasks: Task[] };
 
@@ -230,20 +213,6 @@ describe.skipIf(serverUrl === undefined)('CQ-11 through the command entry', () =
       operationId: randomUUID(),
       ...body,
     } as Command);
-
-  /** A client outside the business, standing on the one task shared with them. */
-  async function client(id: BusinessId, member: Member, key: string, recordId: string) {
-    const subject = `${key}-${randomUUID()}`;
-    return await db.app.withBusiness(id, async (tx): Promise<Member> => {
-      const personId = await insertPerson(tx, key);
-      const actorId = await insertActor(tx, personId);
-      await insertMapping(tx, await insertLogin(tx, subject), personId, member.actorId);
-      const sharer = { personId: member.personId, actorId: member.actorId };
-      const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
-      if (!shared.ok) throw new Error(`share refused ${shared.refusal.code}`);
-      return { personId, actorId, presented: { provider: 'supabase', subject } };
-    });
-  }
 
   /** A business whose member holds one grant of each kind it uses, and two clients one share each. */
   async function party(key: string): Promise<Party> {
@@ -263,7 +232,7 @@ describe.skipIf(serverUrl === undefined)('CQ-11 through the command entry', () =
       if (commands.isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
       const recordId = String(made.recordId);
       // eslint-disable-next-line no-await-in-loop
-      const shared = await client(id, member, `${key}-client-${String(n)}`, recordId);
+      const shared = await shareWithClient(db.app, id, member, recordId);
       tasks.push({ id: recordId, title, client: shared });
     }
     return { id, member, tasks };
@@ -288,6 +257,12 @@ describe.skipIf(serverUrl === undefined)('CQ-11 through the command entry', () =
         }),
       ]),
     ).replaceAll(taskId, 'ID');
+
+  /** A read as `who`, with the record it names written out as `ID`. */
+  const ask = async (business: BusinessId, who: Member, body: { read: string; recordId: string }) =>
+    JSON.stringify(
+      await commands.executeRead(db.app, business, who.presented, body as Read),
+    ).replaceAll(body.recordId, 'ID');
 
   const comments = async (business: BusinessId) =>
     await db.admin.execute<{ readonly n: string }>(
@@ -332,10 +307,8 @@ describe.skipIf(serverUrl === undefined)('CQ-11 through the command entry', () =
     }
     // Business to business: each member aims at the other business's tasks
     // under its own business, and is answered as for a made-up id.
-    for (const [from, to] of [
-      [bravo, charlie],
-      [charlie, bravo],
-    ] as const) {
+    for (const from of [bravo, charlie]) {
+      const to = from === bravo ? charlie : bravo;
       for (const task of to.tasks) {
         // eslint-disable-next-line no-await-in-loop
         const [across, made] = await Promise.all([
@@ -350,44 +323,73 @@ describe.skipIf(serverUrl === undefined)('CQ-11 through the command entry', () =
   });
 
   it('CQ-11 isolation: the installer brings one business’s title and state forward and leaves the other’s alone', async () => {
-    const visibility = async (business: BusinessId) =>
-      await db.admin.execute<{ readonly key: string; readonly visibility_class: string }>(
-        `select f.key, f.visibility_class from public.field_defs f
-           join public.record_types t on t.business_id = f.business_id and t.id = f.record_type_id
-          where f.business_id = $1 and t.key = 'task' and f.key in ('title', 'state')
-          order by f.key`,
-        [business],
-      );
-    const downgrade = async (business: BusinessId) =>
+    const classes = async (business: BusinessId) =>
+      (
+        await db.admin.execute<{ readonly visibility_class: string }>(
+          `select f.visibility_class from public.field_defs f
+             join public.record_types t on t.business_id = f.business_id and t.id = f.record_type_id
+            where f.business_id = $1 and t.key = 'task' and f.key in ('title', 'state')`,
+          [business],
+        )
+      ).map((row) => row.visibility_class);
+    for (const business of [bravo.id, charlie.id]) {
+      // eslint-disable-next-line no-await-in-loop
       await db.admin.execute(
         `update public.field_defs set visibility_class = 'internal'
           where business_id = $1 and key in ('title', 'state') and origin = 'core'`,
         [business],
       );
-    await downgrade(bravo.id);
-    await downgrade(charlie.id);
+    }
+    const [mine, theirs] = bravo.tasks as [Task, Task];
+    const [elsewhere] = charlie.tasks as [Task];
+    /** `task.read` by a client, aimed at `task`. */
+    const asClient = async (business: BusinessId, who: Member, task: { id: string }) =>
+      await ask(business, who, { read: 'task.read', recordId: task.id });
+    // Before: a business installed ahead of I09 shows its client no title.
+    expect(await asClient(bravo.id, mine.client, mine)).not.toContain(mine.title);
     await installSpine(db.app, bravo.id);
-    expect((await visibility(bravo.id)).map((row) => row.visibility_class)).toStrictEqual([
-      'shared',
-      'shared',
-    ]);
-    expect((await visibility(charlie.id)).map((row) => row.visibility_class)).toStrictEqual([
-      'internal',
-      'internal',
-    ]);
+    expect(await classes(bravo.id)).toStrictEqual(['shared', 'shared']);
+    expect(await classes(charlie.id)).toStrictEqual(['internal', 'internal']);
+    // After: the client reads its own task's title through the shared view.
+    expect(await asClient(bravo.id, mine.client, mine)).toContain(mine.title);
+    // Another client's task and another business's are answered as a made-up id.
+    // Each client aims at the other's task, and at another business's tasks.
+    const probes = [theirs, ...charlie.tasks].map((task) => [mine.client, task] as const);
+    for (const [who, task] of [...probes, [theirs.client, mine] as const]) {
+      // eslint-disable-next-line no-await-in-loop
+      const [across, ghost] = await Promise.all([
+        asClient(bravo.id, who, task),
+        asClient(bravo.id, who, { id: randomUUID() }),
+      ]);
+      expect(across).toBe(ghost);
+      expect(across).not.toContain(task.title);
+    }
+    // The other business is untouched until its own install brings it forward.
+    expect(await asClient(charlie.id, elsewhere.client, elsewhere)).not.toContain(elsewhere.title);
     await installSpine(db.app, charlie.id);
-    expect((await visibility(charlie.id)).map((row) => row.visibility_class)).toStrictEqual([
-      'shared',
-      'shared',
-    ]);
+    expect(await classes(charlie.id)).toStrictEqual(['shared', 'shared']);
+    expect(await asClient(charlie.id, elsewhere.client, elsewhere)).toContain(elsewhere.title);
   });
 
   it('CQ-11 canary: planted record content and a canary secret reach no answer, trace or audit payload', async () => {
     const canary = `GATE_SIGNING_SECRET=cq11-canary-${randomUUID()}`;
-    const [, other] = charlie.tasks as [Task, Task];
+    // Stored as a task's content in bravo, and read back by its own member.
+    const made = await command(bravo.id, bravo.member, {
+      command: 'task.create',
+      fields: { title: canary },
+    });
+    if (commands.isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
+    const planted = String(made.recordId);
+    const own = await ask(bravo.id, bravo.member, { read: 'task.read', recordId: planted });
+    expect(own).toContain(canary);
+    // Then reached for across each boundary: another business's member, a
+    // client it was never shared with, and the comment and control paths.
+    const [client] = bravo.tasks as [Task];
     const answers = [
-      await reach(bravo.id, other.id, bravo.member, canary),
-      await reach(charlie.id, other.id, bravo.tasks[0]!.client, canary),
+      await ask(charlie.id, charlie.member, { read: 'task.read', recordId: planted }),
+      await ask(bravo.id, client.client, { read: 'task.read', recordId: planted }),
+      await reach(charlie.id, planted, charlie.member, 'b2b'),
+      await reach(bravo.id, planted, client.client, 'c2c'),
     ];
     const audit = await db.admin.execute<{ readonly row: string }>(
       'select to_jsonb(a)::text as row from public.audit_events a',

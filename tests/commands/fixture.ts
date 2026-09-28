@@ -26,6 +26,7 @@ import {
   type Scope,
 } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 
 export const TASK_COLLECTION = 'task';
 export const WHOLE_BUSINESS: Scope = { kind: 'business', id: null };
@@ -83,4 +84,26 @@ export async function installSpine(
   businessId: string,
 ): Promise<InstalledTaskSpine> {
   return await database.withBusiness(businessId, async (tx) => await installTaskSpine(tx));
+}
+
+/**
+ * A client outside the business: a login and a person with no membership, who
+ * stands on the one task `member` shares with them (the external view).
+ */
+export async function shareWithClient(
+  database: Database,
+  businessId: string,
+  member: Member,
+  recordId: string,
+): Promise<Member> {
+  const subject = `client-${randomUUID()}`;
+  return await database.withBusiness(businessId, async (tx) => {
+    const personId = await insertPerson(tx, subject);
+    const actorId = await insertActor(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, subject), personId, member.actorId);
+    const sharer = { personId: member.personId, actorId: member.actorId };
+    const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
+    if (!shared.ok) throw new Error(`shareWithClient: refused ${shared.refusal.code}`);
+    return { personId, actorId, presented: { provider: 'supabase', subject } };
+  });
 }
