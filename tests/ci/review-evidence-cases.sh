@@ -713,6 +713,18 @@ run_case "Sol proof, criterion 10: a nested quote outdent keeps an indented revi
 > ====
     Code review: changes requested" "README.md"
 
+# CQ-13 fix 4, fail closed: every raw line carrying a review field must be
+# one the reader counts as visible.
+run_case "CQ-13 fail closed: a field line in a code span fails" 1 "$OK_BODY$P2\`Code review: changes requested\`" "README.md"
+run_case "CQ-13 fail closed: a field line in a fence fails" 1 "$OK_BODY$P2$FENCE
+Verdict: changes requested
+$FENCE" "README.md"
+run_case "CQ-13 fail closed: a hyphenated record field fails" 1 "$OK_BODY${P2}Head-SHA: $OTHER" "README.md"
+run_case "CQ-13 fail closed: prose naming a field mid-line passes" 0 "$OK_BODY${P2}The body keeps one Code review: line per head." "README.md"
+run_case "CQ-13 fail closed: a line naming the model and tool passes" 0 "$OK_BODY$P2- Model and tool: claude-opus-5-5, Claude Code" "README.md"
+LONG="$(printf '[x] 1. %.0s' $(seq 1 4000))"
+run_case "CQ-13 fail closed: a long run of checkbox and number marks reads in time" 0 "$OK_BODY$P2$LONG" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
