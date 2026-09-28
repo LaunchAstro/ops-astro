@@ -32,7 +32,9 @@ PG_PORT=54390
 PG_DATABASE=ops_astro_local
 
 AUTH_CONTAINER=ops-astro-local-auth
-AUTH_IMAGE=public.ecr.aws/supabase/gotrue:v2.192.0
+# The tag is for people; the digest decides what runs. scripts/pins-check.mjs
+# refuses a tag alone here and a digest docs/supply-chain-pins.md does not record.
+AUTH_IMAGE=public.ecr.aws/supabase/gotrue:v2.192.0@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab
 AUTH_PORT=54391
 
 NETWORK=ops-astro-local

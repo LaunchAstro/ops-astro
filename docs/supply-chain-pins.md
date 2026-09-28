@@ -76,9 +76,14 @@ text or move it to a script.
 Parsing the workflows as YAML is a recorded follow-up.
 `tests/ci/pins-check-cases.sh` holds the cases.
 
-| Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
-| ---------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `postgres` | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'` |
+The check holds every `*IMAGE=` line in `scripts/local/*.sh` to the same
+digest and record (`CQ-3 auth image pin`); an image named inline is not read.
+
+| Image                            | Tag         | Digest                                                                    | Verified                                                                                                                                                                                                                               |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres`                       | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'`                                                                         |
+| `public.ecr.aws/supabase/gotrue` | `v2.192.0`  | `sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab` | The local slice's GoTrue, `scripts/local/auth-up.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026 and matching `docker image inspect --format '{{json .RepoDigests}}'` of the pulled tag |
+| `semgrep/semgrep`                | `1.177.0`   | `sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198` | CI's Semgrep check of the two settings files, `scripts/local/semgrep-settings.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026                                                           |
 
 Reproduce it the same way when raising the pin:
 
@@ -157,7 +162,16 @@ notification records what happened; it does not ask permission. The decisions
 are not reachable by a green check, and a reduction of any check's tier is one
 of them, so no pin here is loosened by a dependency update merging.
 
-The local GoTrue container is not pinned by digest. `scripts/local/auth-up.sh`
-names it by tag, `public.ecr.aws/supabase/gotrue:v2.192.0`, and
-`scripts/pins-check.mjs` reads only the workflows, so nothing checks it.
-The local Postgres container uses the digest recorded above.
+## How long a new package version waits
+
+A new version of any npm package waits 7 days after it is published before
+this project can install it, so a bad release has time to be found and pulled
+first. `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (minutes);
+`renovate.json` sets `"7 days"` at the top level and on every package rule.
+An urgent security patch can be taken sooner by hand: a reviewed change adds
+that exact version to `minimumReleaseAgeExclude`, where each entry says why.
+`trustPolicy: no-downgrade` refuses a version published with weaker trust
+evidence than an earlier one, the shape of a stolen publishing token, and
+`blockExoticSubdeps: true` refuses a sub-dependency from a git URL or tarball.
+CI's `scripts/local/semgrep-settings.sh` runs Semgrep's `p/default` on both
+files and refuses a finding or a failed scan.

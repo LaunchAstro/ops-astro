@@ -165,6 +165,8 @@ jobs:
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
       - run: pnpm check
+      - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
+        run: bash scripts/local/semgrep-settings.sh
       - name: Public content in the actual checked-out snapshot
         run: node scripts/public-content-check.mjs --repo "$PWD"
 
