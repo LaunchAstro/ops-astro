@@ -682,6 +682,11 @@ run_case "CQ-13 code hides no field: a list item's continuation still opens a co
     <!--$LATE
 -->" "README.md"
 
+# A standalone equals line is paragraph text, so the next indented line is
+# paragraph continuation and its review outcome remains visible.
+run_case "Sol proof, criterion 10: a standalone equals line keeps an indented review outcome visible" 1 "$OK_BODY$P2====
+    Code review: changes requested" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
