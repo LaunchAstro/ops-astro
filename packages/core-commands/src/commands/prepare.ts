@@ -42,9 +42,9 @@ import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-reco
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
-import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
+import { declarationOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
-import { parseRequest, refuseUndescribed } from './operands.ts';
+import { IDENTIFIER_FIELDS, parseRequest, refuseUndescribed } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export const REVISION_FIXES: readonly string[] = [
@@ -204,32 +204,6 @@ async function refuseSystemOwnedFields(
     claimed.values,
   );
 }
-
-/**
- * The fields of a request that name a record. Each one is cast to `uuid`
- * somewhere downstream — the authority check casts the scope, the rank query
- * casts an array of neighbours — and a cast raises rather than refusing. A
- * review found `recordId: 'not-a-uuid'` arriving as a fault with the chain
- * recording `failed`, where the contract promises a typed refusal.
- *
- * The list is explicit rather than derived from the field names, so a request
- * type that grows an identifier has to be added here rather than being
- * silently covered or silently missed.
- */
-const IDENTIFIER_FIELDS: readonly string[] = [
-  'recordId',
-  'parentId',
-  'batchId',
-  'afterId',
-  'beforeId',
-  'board',
-  'boardSection',
-  'gateId',
-  'versionId',
-  'lineageId',
-  'reservationId',
-  'leaseId',
-];
 
 /**
  * `NOT_FOUND`, and not a code that says "malformed".
@@ -554,7 +528,9 @@ export async function prepareCommand(
   const irrelevant =
     refuseIrrelevantTarget(request, declaration) ?? refuseOtherTarget(request, declaration);
   if (irrelevant !== undefined) return irrelevant;
-  const undescribed = refuseUndescribed(request, declaration);
+  // Against the row itself: a replay prepares with the target left out, and
+  // the revision the first call sent is still a field this row takes.
+  const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
   if (undescribed !== undefined) return refused(undescribed);
 
   const spine = await readTaskSpine(tx);

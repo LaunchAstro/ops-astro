@@ -133,10 +133,40 @@ function mistyped(declaration: CommandDeclaration, names: readonly string[]): Co
 }
 
 /**
+ * The fields of a request that name a record. Each one is cast to `uuid`
+ * somewhere downstream — the authority check casts the scope, the rank query
+ * casts an array of neighbours — and a cast raises rather than refusing. A
+ * review found `recordId: 'not-a-uuid'` arriving as a fault with the chain
+ * recording `failed`, where the contract promises a typed refusal.
+ *
+ * The list is explicit rather than derived from the field names, so a request
+ * type that grows an identifier has to be added here rather than being
+ * silently covered or silently missed.
+ */
+export const IDENTIFIER_FIELDS: readonly string[] = [
+  'recordId',
+  'parentId',
+  'batchId',
+  'afterId',
+  'beforeId',
+  'board',
+  'boardSection',
+  'gateId',
+  'versionId',
+  'lineageId',
+  'reservationId',
+  'leaseId',
+];
+
+/**
  * A body field the row does not describe is refused `COMMAND_BODY_INVALID`,
- * before authority on both prefixes, as a target the command does not take
- * already is. The fields the envelope reads itself are the identity, the
- * command the route names and, on a command with a target, its revision.
+ * before any command code runs on both prefixes: before authority on the
+ * person prefix, after the delegation's answers on the agent prefix. The fields the envelope reads
+ * itself are the identity, the command the route names and, on a command with
+ * a target, its revision. An identifier field keeps the answer its own rule
+ * gives it: the irrelevant-target refusal (`prepare.ts`) on the person
+ * prefix, and on the agent prefix the delegation's purpose, which reads a
+ * stray `recordId` itself (API.md, id operands).
  *
  * The refusal names no field. A key is the caller's own text, and echoing it
  * would carry whatever it holds into the register and back out; the fix names
@@ -149,6 +179,7 @@ export function refuseUndescribed(
   const spec = declaration.operands;
   if (spec === undefined) return undefined;
   const allowed = new Set([
+    ...IDENTIFIER_FIELDS,
     'command',
     'operationId',
     ...(declaration.targetsExistingRecord ? ['expectedRevision'] : []),

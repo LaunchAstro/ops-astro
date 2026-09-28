@@ -93,14 +93,10 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     'operation id a number': ['OPERATION_ID_REQUIRED', ''],
     'system field, no credential': ['FIELD_NOT_WRITABLE', 'refused:FIELD_NOT_WRITABLE'],
     'leaseSeconds 0, no credential': ['FIELD_VALUE_INVALID', 'refused:FIELD_VALUE_INVALID'],
-    'report a list, no credential': [
-      'RESERVATION_NOT_CLAIMABLE',
-      'refused:RESERVATION_NOT_CLAIMABLE',
-    ],
-    'actualMinor 1, no credential': [
-      'RESERVATION_NOT_CLAIMABLE',
-      'refused:RESERVATION_NOT_CLAIMABLE',
-    ],
+    // A pickup takes neither field, so since CQ-6 (Sol's review 1 on #91,
+    // criterion 6) each is refused as undescribed rather than ignored.
+    'report a list, no credential': ['COMMAND_BODY_INVALID', 'refused:COMMAND_BODY_INVALID'],
+    'actualMinor 1, no credential': ['COMMAND_BODY_INVALID', 'refused:COMMAND_BODY_INVALID'],
     'no credential': ['RESERVATION_NOT_CLAIMABLE', 'refused:RESERVATION_NOT_CLAIMABLE'],
     'unknown credential': ['RESERVATION_NOT_CLAIMABLE', 'refused:RESERVATION_NOT_CLAIMABLE'],
     'sibling task': ['RESERVATION_NOT_CLAIMABLE', 'refused:RESERVATION_NOT_CLAIMABLE'],
