@@ -120,6 +120,10 @@ fi
 . "${LOCAL}/auth.env"
 
 # ------------------------------------------------------------------- the auth
+# GoTrue must stamp GOTRUE_URL as `iss`, so a container that does not is replaced.
+if running "${AUTH_CONTAINER}" && ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\""; then
+  docker rm -f "${AUTH_CONTAINER}" >/dev/null
+fi
 if running "${AUTH_CONTAINER}"; then
   echo "auth-up: ${AUTH_CONTAINER} already running"
 else
@@ -141,6 +145,7 @@ else
     -e DATABASE_URL="postgres://postgres:ops_astro_local@${PG_CONTAINER}:5432/${PG_DATABASE}?sslmode=disable&search_path=auth" \
     -e GOTRUE_JWT_SECRET="${SUPABASE_JWT_SECRET}" \
     -e GOTRUE_JWT_AUD=authenticated \
+    -e GOTRUE_JWT_ISSUER="${GOTRUE_URL}" \
     -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
     -e GOTRUE_JWT_ADMIN_ROLES=service_role \
     -e GOTRUE_JWT_EXP=3600 \

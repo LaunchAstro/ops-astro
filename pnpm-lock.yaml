@@ -108,6 +108,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@hono/node-server':
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.9)
+      hono:
+        specifier: 4.13.9
+        version: 4.13.9
     devDependencies:
       '@commitlint/cli':
         specifier: 21.2.2
@@ -115,9 +122,6 @@ importers:
       '@commitlint/config-conventional':
         specifier: 21.2.2
         version: 21.2.2
-      '@hono/node-server':
-        specifier: 2.1.1
-        version: 2.1.1(hono@4.10.7)
       '@swc/core':
         specifier: 1.16.2
         version: 1.16.2
@@ -136,9 +140,6 @@ importers:
       dependency-cruiser:
         specifier: 18.4.0
         version: 18.4.0
-      hono:
-        specifier: 4.10.7
-        version: 4.10.7
       husky:
         specifier: 9.1.7
         version: 9.1.7
@@ -1102,8 +1103,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono@4.10.7:
-    resolution: {integrity: sha512-icXIITfw/07Q88nLSkB9aiUrd8rYzSweK681Kjo/TSggaGbOX4RRyxxm71v+3PC8C/j+4rlxGeoTRxQDkaJkUw==}
+  hono@4.13.9:
+    resolution: {integrity: sha512-7dMkQmZoC4E6F7AtaQSPhlWAdnBti+j7rreMZl8QB4jFiEhP9TWbGWUMi8WYzBCgmgulxuvLQupKqo+Co6Omyg==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -1905,9 +1906,9 @@ snapshots:
 
   '@exodus/bytes@1.15.2': {}
 
-  '@hono/node-server@2.1.1(hono@4.10.7)':
+  '@hono/node-server@2.1.1(hono@4.13.9)':
     dependencies:
-      hono: 4.10.7
+      hono: 4.13.9
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -2396,7 +2397,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.10.7: {}
+  hono@4.13.9: {}
 
   html-encoding-sniffer@6.0.0:
     dependencies:

@@ -71,17 +71,19 @@
     "verify:restart-legs": "node tests/browser/restart-legs.mjs",
     "cli": "node apps/cli/main.ts"
   },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "hono": "4.13.9"
+  },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
-    "@hono/node-server": "2.1.1",
     "@swc/core": "1.16.2",
     "@types/node": "24.13.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "dependency-cruiser": "18.4.0",
-    "hono": "4.10.7",
     "husky": "9.1.7",
     "jsdom": "28.1.0",
     "lint-staged": "17.5.0",
