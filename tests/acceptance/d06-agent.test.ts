@@ -48,6 +48,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'session.capabilities',
   'task.read',
   'task.comment',
+  'task.propose',
   'task.heartbeat',
   'task.pickup',
   'task.handback',
@@ -141,6 +142,32 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
+      return { body: { operationId, ...body }, credential };
+    }
+    if (name === 'task.propose') {
+      // The picked-up task's envelope holds its approved work to the minor
+      // unit; room is widened here as `roomToApprove` widens the cap, so the
+      // positive control is a proposal and the cell tests the field.
+      await harness.world.db.admin.execute(
+        `update public.task_envelopes set maximum_minor = maximum_minor + 1000000
+          where business_id = $1 and state = 'open'`,
+        [harness.world.alpha],
+      );
+      const read = await harness.asAgent(
+        'task.read',
+        { operationId: randomUUID(), recordId: held.taskId },
+        credential,
+      );
+      const task = (read.body['detail'] as { task: { revision: number } }).task;
+      const body = {
+        recordId: held.taskId,
+        expectedRevision: task.revision,
+        purpose: 'synthetic_comment',
+        maximumMinor: 100,
+        currency: 'AUD',
+        payload: { change: 'a synthetic change' },
+        step: { kind: 'synthetic_comment', payload: {} },
+      };
       return { body: { operationId, ...body }, credential };
     }
     if (name === 'task.heartbeat') {

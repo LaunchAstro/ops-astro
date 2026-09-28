@@ -31,9 +31,11 @@ import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
+import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
+  expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
   SYSTEM_OWNED_FIXES,
@@ -358,6 +360,39 @@ async function serveComment(
   );
 }
 
+/**
+ * A proposal on the agent's own task (T2b). `authorise` has held the purpose
+ * scope to this record and `task:write` to the delegating person's live grant.
+ * The proposal is the agent's, by its own actor; the runtime's check under its
+ * locks asks the delegating person's grants, the ceiling the delegation
+ * narrows, never a grant of the agent's, which holds none. The task is only
+ * read here: the runtime locks it in its own order, after cap and envelope.
+ */
+async function servePropose(
+  tx: TenantQuery,
+  { session, request, declaration }: AgentCall,
+  _operands: NoOperands,
+  delegation: Delegation,
+  taskId: string | undefined,
+) {
+  if (taskId === undefined) return NOT_FOUND();
+  const spine = await readTaskSpine(tx);
+  const target = await lockTask(tx, spine.taskTypeId, taskId, { forUpdate: false });
+  if (target === undefined) return NOT_FOUND();
+  const fields = { ...request, expectedRevision: expectedRevisionOf(request) };
+  return await proposeFor(
+    tx,
+    {
+      target,
+      collection: declaration.collection,
+      taskTypeId: spine.taskTypeId,
+      actorId: session.actorId,
+      subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
+    },
+    fields as unknown as ProposeFields,
+  );
+}
+
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
@@ -503,6 +538,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // record (`prepare.ts`, `lockTask`), so this one does too.
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveComment,
+    }),
+  ],
+  [
+    'task.propose',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: servePropose,
     }),
   ],
   [

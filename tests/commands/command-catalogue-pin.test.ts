@@ -161,6 +161,7 @@ const PINNED_AGENT_SURFACE = [
   'task.handback',
   'task.heartbeat',
   'task.pickup',
+  'task.propose',
   'task.queue',
   'task.read',
 ];
@@ -317,7 +318,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same eight, two of them before a pickup', () => {
+  it('lets an agent reach the same nine, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
