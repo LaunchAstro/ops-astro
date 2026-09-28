@@ -18,9 +18,20 @@ try {
   assert.ok(plantedPr, 'PR 87 has no link to the planted pull request');
 
   const run = api(`actions/runs/${runId}`);
+  const planted = JSON.parse(
+    gh(
+      'pr',
+      'view',
+      plantedPr,
+      '-R',
+      repo,
+      '--json',
+      'baseRefName,headRefName,headRefOid,mergeStateStatus,state',
+    ),
+  );
   assert.match(run.path, /^\.github\/workflows\/review-evidence-on-edit\.yml(?:@.*)?$/u);
   assert.equal(run.event, 'pull_request');
-  assert.ok(run.pull_requests.some((pr) => String(pr.number) === plantedPr));
+  assert.equal(run.head_sha, planted.headRefOid, 'The edit run is not on the planted PR head');
 
   const { jobs } = api(`actions/runs/${runId}/jobs?per_page=100`);
   assert.deepEqual(
@@ -29,14 +40,14 @@ try {
   );
 
   const { check_runs: checks } = api(`commits/${run.head_sha}/check-runs?per_page=100`);
+  const size = checks.filter((check) => check.name === 'pull request size');
+  assert.equal(size.length, 1, 'The edit created another pull request size check');
+  assert.equal(size[0].conclusion, 'failure', 'The planted size check is no longer red');
   assert.ok(
-    checks.some((check) => check.name === 'pull request size' && check.conclusion === 'failure'),
-    'The planted head has no failed pull request size check after the edit run',
+    Date.parse(size[0].completed_at) < Date.parse(run.created_at),
+    'The failed size check did not precede the description edit run',
   );
 
-  const planted = JSON.parse(
-    gh('pr', 'view', plantedPr, '-R', repo, '--json', 'baseRefName,headRefName,state'),
-  );
   const rules = api(`rules/branches/${encodeURIComponent(planted.baseRefName)}`);
   assert.ok(
     rules.some(
@@ -48,6 +59,7 @@ try {
     ),
     `pull request size is not required on the planted PR's base ${planted.baseRefName}`,
   );
+  assert.equal(planted.mergeStateStatus, 'BLOCKED', 'The planted pull request can merge');
   assert.equal(planted.state, 'CLOSED', 'The planted pull request is still open');
   const ref = spawnSync('gh', ['api', `repos/${repo}/git/ref/heads/${planted.headRefName}`], {
     encoding: 'utf8',
