@@ -73,6 +73,49 @@ export const NOT_OWNED_FIX = {
   heartbeat: 'Renew the lease this pickup issued, at the fence it handed back.',
 } as const;
 
+/** Each operation's next step per cause: fixed text, as the reason is. */
+export const LEASE_FIXES: {
+  readonly heartbeat: {
+    readonly notOwned: string;
+    readonly lost: string;
+    readonly expired: string;
+  };
+  readonly handback: Readonly<Record<LeaseCause, string>>;
+} = {
+  heartbeat: {
+    notOwned: NOT_OWNED_FIX.heartbeat,
+    lost: 'A lease is renewed under current rights. Ask a manager for write on this task.',
+    expired: 'Pick the work up again if it is still claimable.',
+  },
+  handback: {
+    not_owned: NOT_OWNED_FIX.handback,
+    fence_presented:
+      'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
+    fence_superseded: 'The replacement owns the work. This report is retained, not settled.',
+    not_live:
+      'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
+    expired: 'Pick the work up again under a new lease and a new fence. The report is retained.',
+    version_superseded:
+      'The report is retained, not accepted. Work the current version under a new pickup.',
+    lineage_ended:
+      'The report is retained, not accepted. Work the current version under a new pickup.',
+    authority_lost:
+      'A lease is handed back under current rights. Ask a manager for write on this task.',
+    held: NOT_OWNED_FIX.handback,
+  },
+};
+
+/**
+ * Every text a heartbeat or handback lease refusal can carry: the reasons and
+ * the next steps. A refusal holding anything else has echoed something, and
+ * `tests/runtime/cq-8-support.ts` (`unsent`) checks against this list.
+ */
+export const LEASE_WORDING: readonly string[] = [
+  ...Object.values(REASONS).map((row) => row.reason),
+  ...Object.values(LEASE_FIXES.heartbeat),
+  ...Object.values(LEASE_FIXES.handback),
+];
+
 /** A lease refusal in its one wording: the cause's reason, the operation's fix. */
 export interface LeaseVerdict {
   readonly code: RuntimeRefusalCode;

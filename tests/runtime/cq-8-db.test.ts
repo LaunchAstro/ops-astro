@@ -19,17 +19,26 @@ import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tena
 import { isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { enrol } from '../commands/fixture.ts';
 import {
-  approve,
+  appliedDetail,
+  approveBody,
+  asAgent,
   asPerson,
+  handbackBody,
+  proposeBody,
   createTask,
   liveWork,
   openSchedules,
-  pickup,
-  propose,
   revisionOf,
   type Schedules,
 } from './schedules-harness.ts';
-import { classify, cq8World, unsent, type Cq8World, type Party } from './cq-8-support.ts';
+import {
+  classifyAll,
+  cq8World,
+  unsent,
+  type Cq8World,
+  type Party,
+  type Statement,
+} from './cq-8-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -113,17 +122,17 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
   });
 
   it('CQ-8 command locks first: in every transaction the command layer locks before any lock acquire takes', async () => {
-    const seen: { readonly text: string; readonly key: unknown }[][] = [];
+    const seen: Statement[][] = [];
     const recording: Database = {
       ...s.db.app,
       withBusiness: async (business, run) =>
         await s.db.app.withBusiness(business, async (tx) => {
-          const statements: { text: string; key: unknown }[] = [];
+          const statements: Statement[] = [];
           seen.push(statements);
           return await run({
             businessId: tx.businessId,
             query: async (text, parameters = []) => {
-              statements.push({ text: text.replaceAll(/\s+/gu, ' ').trim(), key: parameters[0] });
+              statements.push({ text: text.replaceAll(/\s+/gu, ' ').trim(), parameters });
               return await tx.query(text, parameters);
             },
           });
@@ -154,19 +163,65 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       },
       recording,
     );
-    const proposal = await propose(s, parent, { maximumMinor: 500 });
-    const decided = await approve(s, proposal);
-    await pickup(s, decided['reservationId']);
+    // The runtime's own transactions, through the same recording entry: each
+    // holds the grants its authority rests on before `acquire` takes anything.
+    const proposal = appliedDetail(
+      await asPerson(
+        s,
+        proposeBody(parent, await revisionOf(s, parent), { maximumMinor: 500 }),
+        recording,
+      ),
+      'task.propose',
+    );
+    const decided = appliedDetail(
+      await asPerson(s, approveBody(proposal), recording),
+      'task.decide',
+    );
+    const picked = appliedDetail(
+      await asAgent(
+        s,
+        {
+          command: 'task.pickup',
+          operationId: randomUUID(),
+          reservationId: decided['reservationId'],
+          leaseSeconds: 600,
+        },
+        undefined,
+        recording,
+      ),
+      'task.pickup',
+    );
+    const credential = String(picked['credential']);
+    const lease = { leaseId: picked['leaseId'], fence: picked['fence'] };
+    appliedDetail(
+      await asAgent(
+        s,
+        { command: 'task.heartbeat', operationId: randomUUID(), ...lease, leaseSeconds: 600 },
+        credential,
+        recording,
+      ),
+      'task.heartbeat',
+    );
+    appliedDetail(await asAgent(s, handbackBody(picked), credential, recording), 'task.handback');
 
     let commandLocks = 0;
+    let orderedLocks = 0;
+    let compared = 0;
     for (const statements of seen) {
-      const kinds = statements.map(classify);
+      const kinds = classifyAll(statements);
       const lastCommand = kinds.lastIndexOf('command');
       const firstOrdered = kinds.indexOf('ordered');
       commandLocks += kinds.filter((kind) => kind === 'command').length;
-      if (lastCommand >= 0 && firstOrdered >= 0) expect(lastCommand).toBeLessThan(firstOrdered);
+      orderedLocks += kinds.filter((kind) => kind === 'ordered').length;
+      if (lastCommand < 0 || firstOrdered < 0) continue;
+      compared += 1;
+      expect(lastCommand, statements[lastCommand]?.text).toBeLessThan(firstOrdered);
     }
+    // Both classes were taken, and at least the decision and the pickup took
+    // both in one transaction, so the order above was compared, not assumed.
     expect(commandLocks).toBeGreaterThanOrEqual(3);
+    expect(orderedLocks).toBeGreaterThanOrEqual(3);
+    expect(compared).toBeGreaterThanOrEqual(2);
   });
 
   it('CQ-8 pooled crossover: after the locks moved, a pooled backend carries no business and no lock into the next request', async () => {
@@ -239,6 +294,8 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       const [one, two] = p.tasks as [Party['tasks'][number], Party['tasks'][number]];
       const ghost = randomUUID();
       // eslint-disable-next-line no-await-in-loop
+      const before = await revisionOfIn(p.id, two.id);
+      // eslint-disable-next-line no-await-in-loop
       const own = await read(p.id, one.client, { read: 'task.read', recordId: one.id });
       expect(JSON.stringify(own)).toContain(one.title);
       // eslint-disable-next-line no-await-in-loop
@@ -247,6 +304,9 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       const none = await reach(p, ghost, one.id, one.client);
       expect(other.replaceAll(two.id, 'ID')).toBe(none.replaceAll(ghost, 'ID'));
       for (const leaked of [two.title, two.client.personId]) expect(other).not.toContain(leaked);
+      // Nor changed: the other client's task is at the revision it was.
+      // eslint-disable-next-line no-await-in-loop
+      expect(await revisionOfIn(p.id, two.id)).toBe(before);
     }
   });
 
@@ -256,6 +316,13 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
     const leaseId = String(work.picked['leaseId']);
     const fence = Number(work.picked['fence']);
     const made = randomUUID();
+    // Every task's revision before any foreign call, to compare with after.
+    const before = new Map<string, number>();
+    for (const task of [...bravo.tasks, ...charlie.tasks]) {
+      const home = bravo.tasks.includes(task) ? bravo : charlie;
+      // eslint-disable-next-line no-await-in-loop
+      before.set(task.id, await revisionOfIn(home.id, task.id));
+    }
     const both = async (business: string, id: string) => [
       await beat(business, id, fence, who),
       await giveBack(business, id, fence, who.holder_actor_id),
@@ -281,8 +348,10 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       for (const leaked of [two.title, two.client.personId, p.member.personId])
         expect(theirs).not.toContain(leaked);
     }
-    // Business to business: each side's member and clients reach the other's tasks
-    // through the locked paths and see none of them, nor change them.
+    // Business to business: each side's member and clients reach the other's
+    // tasks through the locked paths and see none of them. Nor change them: each
+    // task, both businesses' and both clients', is at the revision it had
+    // before the first foreign call, so one accepted write fails the test.
     for (const [from, to] of [
       [bravo, charlie],
       [charlie, bravo],
@@ -296,8 +365,8 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       }
       for (const task of to.tasks) {
         // eslint-disable-next-line no-await-in-loop
-        expect(await revisionOfIn(to.id, task.id)).toBeLessThanOrEqual(2);
+        expect(await revisionOfIn(to.id, task.id)).toBe(before.get(task.id));
       }
     }
-  });
+  }, 60_000);
 });

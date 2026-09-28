@@ -39,7 +39,7 @@ import {
   fenceCause,
   holdsLease,
   leaseVerdict,
-  NOT_OWNED_FIX,
+  LEASE_FIXES,
   personWriteLive,
   refuseLease,
   readLease,
@@ -137,26 +137,8 @@ export interface StaleVerdict {
   readonly fix: string;
 }
 
-/** Each cause's next step on a handback: fixed text, as the reason is. */
-const HANDBACK_FIXES: Readonly<Record<LeaseCause, string>> = {
-  not_owned: NOT_OWNED_FIX.handback,
-  fence_presented:
-    'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
-  fence_superseded: 'The replacement owns the work. This report is retained, not settled.',
-  not_live:
-    'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
-  expired: 'Pick the work up again under a new lease and a new fence. The report is retained.',
-  version_superseded:
-    'The report is retained, not accepted. Work the current version under a new pickup.',
-  lineage_ended:
-    'The report is retained, not accepted. Work the current version under a new pickup.',
-  authority_lost:
-    'A lease is handed back under current rights. Ask a manager for write on this task.',
-  held: NOT_OWNED_FIX.handback,
-};
-
 function staleVerdict(cause: LeaseCause): StaleVerdict {
-  return leaseVerdict(cause, HANDBACK_FIXES[cause]) as StaleVerdict;
+  return leaseVerdict(cause, LEASE_FIXES.handback[cause]) as StaleVerdict;
 }
 
 /**
@@ -213,7 +195,7 @@ export async function handback(
   const found = await discover(tx, request.leaseId);
   // The same answer as a lease that is somebody else's: the presented id is
   // not echoed and existence is not told apart (root ruling 2).
-  if (found === undefined) return refuseLease('not_owned', HANDBACK_FIXES.not_owned);
+  if (found === undefined) return refuseLease('not_owned', LEASE_FIXES.handback.not_owned);
   const locks = await lockHandback(tx, request.leaseId, found);
 
   // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
@@ -312,12 +294,12 @@ async function recheckOwner(
   );
   const holder = request.holder;
   if (holder !== undefined) {
-    if (!holdsLease(lease, holder)) return refuseLease('not_owned', HANDBACK_FIXES.not_owned);
+    if (!holdsLease(lease, holder)) return refuseLease('not_owned', LEASE_FIXES.handback.not_owned);
     if (
       holder.claimant === 'person' &&
       !(await personWriteLive(tx, holder, found.task_id, lockedAt))
     )
-      return refuseLease('authority_lost', HANDBACK_FIXES.authority_lost);
+      return refuseLease('authority_lost', LEASE_FIXES.handback.authority_lost);
   }
   // The fence check, before anything else is written. Distinct causes, each
   // with its own code, because a caller told the wrong one retries wrongly.
