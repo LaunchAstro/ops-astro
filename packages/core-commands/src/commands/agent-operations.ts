@@ -17,9 +17,9 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { isFieldMap, refuseUndescribed } from './operands.ts';
+import { isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
-import { declarationOf, type CommandName } from '../../../core-wire/src/index.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 import {
   handbackLease,
   refuseActualMinor,
@@ -281,10 +281,6 @@ export async function parseOperands<O extends object>(
   if (irrelevant.length > 0) {
     return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, READ_BODY_FIXES));
   }
-  // A field the surface row does not describe, next, as the person prefix
-  // refuses it (`prepare.ts`): the same answer on both prefixes.
-  const undescribed = refuseUndescribed(request, declarationOf(request.command));
-  if (undescribed !== undefined) return refused(undescribed);
   return operation.operands(request);
 }
 
