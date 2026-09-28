@@ -10,6 +10,14 @@ packages:
 # needs a reason, and this one has none.
 allowBuilds:
   '@swc/core': false
+# Supply-chain settings, stated rather than left to pnpm's defaults (CQ-3).
+# A new version waits 3 days (4320 minutes, the registry's 72-hour unpublish
+# window) before an install may take it; renovate.json waits the same.
+minimumReleaseAge: 4320
 # vite 8.3.0 is the draft's pinned build; excluded from the minimum release age so the lockfile can hold it.
 minimumReleaseAgeExclude:
   - vite@8.3.0
+# Refuse a version published with weaker trust evidence than an earlier one.
+trustPolicy: no-downgrade
+# A dependency of a dependency comes from the registry, never a git URL or tarball.
+blockExoticSubdeps: true

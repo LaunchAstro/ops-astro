@@ -76,9 +76,16 @@ text or move it to a script.
 Parsing the workflows as YAML is a recorded follow-up.
 `tests/ci/pins-check-cases.sh` holds the cases.
 
-| Image      | Tag         | Digest                                                                    | Verified                                                                                                                                                       |
-| ---------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `postgres` | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'` |
+The check also reads every `*IMAGE=` line in `scripts/local/*.sh` and holds it
+to the same digest and the same record, so the local containers are pinned
+the way the workflow's are. Only that assignment form is read, so a local
+script names its image in a variable, not inline on a `docker run` line.
+`tests/ci/cq-3-supply-chain.test.ts` holds those cases (`CQ-3 auth image pin`).
+
+| Image                            | Tag         | Digest                                                                    | Verified                                                                                                                                                                                                                               |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres`                       | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'`                                                                         |
+| `public.ecr.aws/supabase/gotrue` | `v2.192.0`  | `sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab` | The local slice's GoTrue, `scripts/local/auth-up.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026 and matching `docker image inspect --format '{{json .RepoDigests}}'` of the pulled tag |
 
 Reproduce it the same way when raising the pin:
 
@@ -157,7 +164,20 @@ notification records what happened; it does not ask permission. The decisions
 are not reachable by a green check, and a reduction of any check's tier is one
 of them, so no pin here is loosened by a dependency update merging.
 
-The local GoTrue container is not pinned by digest. `scripts/local/auth-up.sh`
-names it by tag, `public.ecr.aws/supabase/gotrue:v2.192.0`, and
-`scripts/pins-check.mjs` reads only the workflows, so nothing checks it.
-The local Postgres container uses the digest recorded above.
+## How long a new package version waits
+
+A new version of any npm package waits 3 days after it is published before
+this project can install it. The registry lets a publisher withdraw a version
+for 72 hours, and a malicious release is often found and pulled inside that window, so waiting it out gives a bad version time to be withdrawn before it could arrive here. `pnpm-workspace.yaml` sets `minimumReleaseAge: 4320` (minutes),
+and `renovate.json` sets `"minimumReleaseAge": "3 days"` at the top level and
+on every package rule, so Renovate does not propose what pnpm would refuse.
+`vite@8.3.0` is the one exclusion, because the lockfile already holds it.
+
+Two more settings sit beside it. `trustPolicy: no-downgrade` refuses a version
+published with weaker trust evidence than an earlier version of the same
+package, which is what a stolen publishing token tends to look like.
+`blockExoticSubdeps: true` refuses a dependency of a dependency that comes from
+a git URL or a tarball instead of the registry. `CQ-3 supply-chain refusals`
+shows pnpm refusing an exotic source, and the settings check refusing a
+weakened trust policy; pnpm's own downgrade refusal needs registry trust
+evidence that no offline test can supply, so it is not reproduced there.
