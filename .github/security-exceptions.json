@@ -5,7 +5,7 @@
       "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
       "path": "packages/core-records/src/authority/credential-keys.ts",
       "matches": ["e4472431d852e8b5"],
-      "file": "b0377768c9b86354",
+      "file": "a4421217cd4fcfb8",
       "reason": "The pattern is built from a fixed setting-name constant, never from input.",
       "impact": "None reachable: no caller supplies the name, so no ReDoS input exists.",
       "owner": "Nathan Mulligan, maintainer",
