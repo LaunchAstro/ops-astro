@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+
+const repo = 'LaunchAstro/ops-astro';
+const name =
+  'Sol proof, criterion 3: an edited description leaves a planted required check red and the branch is deleted';
+const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8' });
+const api = (path) => JSON.parse(gh('api', `repos/${repo}/${path}`));
+
+try {
+  const body = JSON.parse(gh('pr', 'view', '87', '-R', repo, '--json', 'body')).body;
+  const runId = body.match(
+    /https:\/\/github\.com\/LaunchAstro\/ops-astro\/actions\/runs\/(\d+)/u,
+  )?.[1];
+  const plantedPr = body.match(/https:\/\/github\.com\/LaunchAstro\/ops-astro\/pull\/(\d+)/u)?.[1];
+  assert.ok(runId, 'PR 87 has no link to the planted description-edit run');
+  assert.ok(plantedPr, 'PR 87 has no link to the planted pull request');
+
+  const run = api(`actions/runs/${runId}`);
+  const planted = JSON.parse(
+    gh(
+      'pr',
+      'view',
+      plantedPr,
+      '-R',
+      repo,
+      '--json',
+      'baseRefName,headRefName,headRefOid,mergeStateStatus,state',
+    ),
+  );
+  assert.match(run.path, /^\.github\/workflows\/review-evidence-on-edit\.yml(?:@.*)?$/u);
+  assert.equal(run.event, 'pull_request');
+  assert.equal(run.head_sha, planted.headRefOid, 'The edit run is not on the planted PR head');
+
+  const { jobs } = api(`actions/runs/${runId}/jobs?per_page=100`);
+  assert.deepEqual(
+    jobs.map((job) => job.name),
+    ['review evidence for this revision'],
+  );
+
+  const { check_runs: checks } = api(`commits/${run.head_sha}/check-runs?per_page=100`);
+  const size = checks.filter((check) => check.name === 'pull request size');
+  assert.equal(size.length, 1, 'The edit created another pull request size check');
+  assert.equal(size[0].conclusion, 'failure', 'The planted size check is no longer red');
+  assert.ok(
+    Date.parse(size[0].completed_at) < Date.parse(run.created_at),
+    'The failed size check did not precede the description edit run',
+  );
+
+  const rules = api(`rules/branches/${encodeURIComponent(planted.baseRefName)}`);
+  assert.ok(
+    rules.some(
+      (rule) =>
+        rule.type === 'required_status_checks' &&
+        rule.parameters.required_status_checks.some(
+          (check) => check.context === 'pull request size',
+        ),
+    ),
+    `pull request size is not required on the planted PR's base ${planted.baseRefName}`,
+  );
+  assert.equal(planted.mergeStateStatus, 'BLOCKED', 'The planted pull request can merge');
+  assert.equal(planted.state, 'CLOSED', 'The planted pull request is still open');
+  const ref = spawnSync('gh', ['api', `repos/${repo}/git/ref/heads/${planted.headRefName}`], {
+    encoding: 'utf8',
+  });
+  assert.equal(ref.status, 1, 'The planted branch still exists');
+  assert.match(ref.stderr, /HTTP 404/u, 'Could not confirm that the planted branch is deleted');
+  console.log(`PASS ${name}`);
+} catch (error) {
+  console.error(`FAIL ${name}`);
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
