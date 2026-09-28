@@ -51,7 +51,11 @@ export interface PickupOperands extends LeaseOperands {
 
 /** What `task.handback` reads by type before any authority. */
 export interface HandbackOperands {
+  /** The lease named. One that is not a string names no lease, and is sent as `''`. */
+  readonly leaseId: string;
   readonly outcome: string;
   readonly fence: number;
   readonly report?: Readonly<Record<string, unknown>>;
+  /** Present when the body carried it; any other value was refused. */
+  readonly actualMinor?: null;
 }

@@ -18,13 +18,16 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { planSlotAssignment, type FieldDefinition } from '../records/fields.ts';
+import {
+  planSlotAssignment,
+  type FieldDefinition,
+  type VisibilityClass,
+} from '../records/fields.ts';
 import { readSlotTable, type Slot } from '../records/slots.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { TASK_SPINE, TASK_TYPE_KEY, type SpineField } from './spine.ts';
 import { COMMENT_SPINE, COMMENT_TYPE_KEY } from './comments.ts';
 import { TASK_STATE_FIELDS, TASK_STATE_SEED, TASK_STATE_TYPE_KEY } from './states.ts';
-import { reconcileVisibility } from './reconcile-visibility.ts';
 
 export interface InstalledTaskSpine {
   readonly taskTypeId: string;
@@ -61,6 +64,53 @@ async function createRecordType(tx: TenantQuery, key: string, name: string): Pro
     [tx.businessId, id, key, name],
   );
   return id;
+}
+
+/**
+ * The visibility class a spine field is installed with. Deny by default: which
+ * fields a client projection may see is a product policy for the portal slice,
+ * and a field that leaks because nobody decided is the failure an allowlist
+ * exists to prevent.
+ */
+function declaredVisibility(field: SpineField): VisibilityClass {
+  return field.visibilityClass ?? 'internal';
+}
+
+/**
+ * The spine fields whose visibility an existing install is brought forward to.
+ *
+ * Named rather than derived from every declared class, because each is its own
+ * ruling: I09 decided a shared task shows its client the title and the status,
+ * and a field a later spine declares shared is a later decision about whether
+ * installed businesses follow it.
+ */
+const RECONCILED_VISIBILITY: ReadonlySet<string> = new Set(['title', 'state']);
+
+/**
+ * Bring title and state on an installed task type to their declared class
+ * (SURFACE-R-1), the one field rows the existing-type path touches.
+ *
+ * A business installed before 035967b holds both `internal`, because the
+ * installer then declared no class and wrote the deny-by-default one, and the
+ * installer's early return on an existing type never read its fields again,
+ * so its client read a shared task as `{}`. `visibility_class` is not an
+ * immutable column (0004's `field_defs_immutable` names the ones that are), so
+ * the row is updated in place. Only the core rows of these two keys on this
+ * task type, and only where they differ, so a second call writes nothing and
+ * no preset field or other core field is read, let alone rewritten.
+ */
+async function reconcileVisibility(tx: TenantQuery, taskTypeId: string): Promise<void> {
+  for (const field of TASK_SPINE) {
+    if (!RECONCILED_VISIBILITY.has(field.key)) continue;
+    // Two rows on one connection inside the caller's transaction.
+    // oxlint-disable-next-line no-await-in-loop
+    await tx.query(
+      `update field_defs set visibility_class = $4
+        where business_id = $1 and record_type_id = $2 and key = $3 and origin = 'core'
+          and visibility_class is distinct from $4`,
+      [tx.businessId, taskTypeId, field.key, declaredVisibility(field)],
+    );
+  }
 }
 
 /**
@@ -111,10 +161,7 @@ async function createField(
       field.writeMode,
       field.owningOperations.length === 0 ? null : field.owningOperations,
       field.escalatingOperation,
-      // Deny by default. Which fields a client projection may see is a product
-      // policy for the portal slice, and a field that leaks because nobody
-      // decided is the failure an allowlist exists to prevent.
-      field.visibilityClass ?? 'internal',
+      declaredVisibility(field),
       field.searchable ?? false,
       field.uniqueValue ?? false,
     ],
@@ -130,7 +177,7 @@ async function createField(
     owningOperations: field.owningOperations,
     owningOperation: field.owningOperations.length === 0 ? null : field.owningOperations.join(' '),
     escalatingOperation: field.escalatingOperation,
-    visibilityClass: field.visibilityClass ?? 'internal',
+    visibilityClass: declaredVisibility(field),
     searchable: field.searchable ?? false,
     uniqueValue: field.uniqueValue ?? false,
     origin: 'core',

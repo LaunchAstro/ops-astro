@@ -38,7 +38,11 @@ export function asCallerVisible(refusal: CommandRefusal): CommandRefusal {
   return refuseNotFound();
 }
 
-/** The refusal a caller gets for a record that is not there, whatever the reason. */
-export function refuseNotFound(): CommandRefusal {
-  return refuseCommand('NOT_FOUND', [], NOT_FOUND_FIXES);
+/**
+ * The refusal a caller gets for a record that is not there, whatever the
+ * reason. `names` is the field that named it, where the caller sent more than
+ * one identifier; `asCallerVisible` always passes none.
+ */
+export function refuseNotFound(names: readonly string[] = []): CommandRefusal {
+  return refuseCommand('NOT_FOUND', names, NOT_FOUND_FIXES);
 }

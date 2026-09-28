@@ -63,7 +63,7 @@ async function lineageOnTask(
   );
   if (tasks[0] === undefined) return refused(refuseNotFound());
   if (!isUuid(lineageId)) {
-    return refused({ ...refuseNotFound(), names: ['lineageId'] });
+    return refused(refuseNotFound(['lineageId']));
   }
   const lineages = await tx.query<{ readonly task_id: string }>(
     `select task_id from public.proposal_lineages where business_id = $1 and id = $2`,
@@ -71,7 +71,7 @@ async function lineageOnTask(
   );
   const lineage = lineages[0];
   if (lineage === undefined) {
-    return refused({ ...refuseNotFound(), names: ['lineageId'] });
+    return refused(refuseNotFound(['lineageId']));
   }
   if (lineage.task_id !== taskId) {
     return refused(
