@@ -4,7 +4,11 @@
 // entries name a moderate GHSA id; high and critical are never excepted. Semgrep
 // entries name a rule, a file and `matches`: for each finding, the first 16 hex
 // of the sha256 of the bytes from its start.offset to its end.offset, so moved
-// code still matches and other code in its place does not. Unlisted findings,
+// code still matches and other code in its place does not, and `file`: the same
+// hash of the whole file, so any change to the reviewed file (a new caller of
+// the flagged code included) fails until the exception is reviewed again. A
+// file hash says nothing about callers in other files: an exported function's
+// new caller elsewhere is left to the expiry and the review. Unlisted findings,
 // scanner errors, empty scans, missing reports and exceptions that lack a field,
 // are past or over a year out, or match nothing all fail. It prints rule, file
 // and line, never the matched text or its hash: for p/secrets that is the secret.
@@ -82,14 +86,18 @@ if (kind === 'audit' && report !== undefined) {
 }
 
 /** The first 16 hex of the sha256 of a finding's matched bytes, or a refusal. */
-function matched(r) {
-  let bytes = Buffer.alloc(0);
+const hash = (bytes) => createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+/** The bytes of a reported file, or none when it cannot be read. */
+function source(path) {
   try {
-    bytes = readFileSync(join(root, r.path)).subarray(r.start.offset, r.end.offset);
+    return readFileSync(join(root, path));
   } catch {
-    // An unreadable source is refused below, like an empty match.
+    return Buffer.alloc(0);
   }
-  if (bytes.length > 0) return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+}
+function matched(r) {
+  const bytes = source(r.path).subarray(r.start?.offset, r.end?.offset);
+  if (bytes.length > 0) return hash(bytes);
   refuse(`${r.check_id} at ${r.path}:${r.start?.line}: its matched source cannot be read`);
   return 'unreadable';
 }
@@ -109,6 +117,10 @@ if (kind === 'semgrep' && report !== undefined) {
     if (i === -1) refuse(`${where}: a finding with no recorded exception`);
     else if (hashes.join() !== recorded.join())
       refuse(`${where}: its matched source is not the source the exception records`);
+    else if (typeof listed[i].file !== 'string' || listed[i].file === '')
+      refuse(`${where}: the exception names no file revision`);
+    else if (hash(source(found[0].path)) !== listed[i].file)
+      refuse(`${where}: the file changed since the exception was reviewed; review it again`);
     used.add(i);
   }
 }
