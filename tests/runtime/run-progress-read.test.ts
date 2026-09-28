@@ -229,7 +229,7 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
     for (const cursor of [-1, 1.5, '1']) {
       // eslint-disable-next-line no-await-in-loop
       expect(codeOf((await readAs(s.decider, { recordId: work.taskId, cursor })) as never)).toBe(
-        'COMMAND_BODY_INVALID',
+        'FIELD_VALUE_INVALID',
       );
     }
     const idle = await createTask(s, `t2a-idle-${randomUUID()}`);
@@ -250,14 +250,16 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
 
     // A client shared on this task only: the execution is internal work, so
     // neither this task nor the sibling it never saw is answered.
+    await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
     const client = await cq8World(s).client(s.business, s.decider, 't2a-client', work.taskId);
     const ownShared = await readAs(client, { recordId: work.taskId });
     const unseen = await readAs(client, { recordId: sibling.taskId });
 
     // A person whose read is on the sibling only.
     const narrow = await enrol(s.db.app, s.business, 't2a-narrow');
-    await s.db.app.withBusiness(s.business, async (tx) =>
-      grantTo(tx, narrow, 'read', { kind: 'record', id: sibling.taskId }),
+    await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await grantTo(tx, narrow, 'read', { kind: 'record', id: sibling.taskId }),
     );
     const narrowed = await readAs(narrow, { recordId: work.taskId });
     expect(
@@ -266,6 +268,7 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
 
     const cases = [
       ['another business', foreign, 'NOT_FOUND'],
+      ['fabricated task', await readAs(s.decider, { recordId: randomUUID() }), 'NOT_FOUND'],
       ['client on its shared task', ownShared, 'NOT_FOUND'],
       ['unseen client', unseen, 'NOT_FOUND'],
       ['no grant', await readAs(stranger, { recordId: work.taskId }), 'SCOPE_NOT_GRANTED'],
@@ -277,8 +280,10 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
       expect(JSON.stringify(answer), name).not.toContain(work.taskId);
     }
     // The foreign business's own view of run_events holds nothing of this one's.
-    const seen = await s.db.app.withBusiness(other, async (tx) =>
-      tx.query<{ readonly n: string }>('select count(*)::text as n from public.run_events'),
+    const seen = await s.db.app.withBusiness(
+      other,
+      async (tx) =>
+        await tx.query<{ readonly n: string }>('select count(*)::text as n from public.run_events'),
     );
     expect(seen[0]?.n).toBe('0');
   });

@@ -35,6 +35,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
+import type { TaskExecution } from './execution.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -61,6 +62,11 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /**
+   * The task's runs and their progress events after `cursor`, a position the
+   * caller already holds (0 for the start). See `reads/execution.ts`.
+   */
+  readonly 'task.execution': { readonly recordId: string; readonly cursor: number };
   /**
    * What a preset would do to this business's model, computed without doing
    * any of it. It is a read because it writes nothing — including on success,
@@ -116,4 +122,5 @@ export type ReadResult =
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
+  | { readonly ok: true; readonly execution: TaskExecution }
   | CapabilitiesResult;

@@ -105,7 +105,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // load-bearing one — two answers can share a code and still differ in a
     // `details` array that names what was found.
     const targeted = COMMAND_SURFACE.filter(
-      (declaration) => declaration.targetsExistingRecord || declaration.name === 'task.read',
+      (declaration) =>
+        declaration.targetsExistingRecord ||
+        (declaration.kind === 'read' && declaration.authorisedOn === 'record'),
     );
     expect(targeted.length).toBeGreaterThan(0);
     for (const declaration of targeted) {
