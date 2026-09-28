@@ -141,7 +141,9 @@ it('S0-1 services unchanged: a report it cannot read is refused, never green', (
 it('S0-1 credentials canary', () => {
   const before = snapshot(LIVE, JOBS);
   expect(readFileSync(before, 'utf8')).not.toContain(CANARY);
-  const moved = LIVE.map((c) => ({ ...c, started: '2026-09-29T03:00:00Z' }));
+  const moved: Container[] = LIVE.map((c) =>
+    Object.assign({}, c, { started: '2026-09-29T03:00:00Z' }),
+  );
   const report = compare(before, snapshot(moved, JOBS));
   expect(report.status).toBe(1);
   expect(report.out).not.toContain(CANARY);
@@ -175,17 +177,25 @@ it('S0-1 staging apart: own names, own ports, own credentials, no layout', () =>
     for (const port of service.ports ?? [])
       expect(port, name).toMatch(/^127\.0\.0\.1:\$\{STAGING_[A-Z_]+_PORT:\?[^}]+\}:\d+$/u);
     // Named volumes only: no path on the machine.
-    for (const volume of service.volumes ?? []) expect(volume, name).toMatch(/^ops-astro-staging-/u);
+    for (const volume of service.volumes ?? [])
+      expect(volume, name).toMatch(/^ops-astro-staging-/u);
   }
-  for (const network of Object.values(def.networks)) expect(network.name).toMatch(/^ops-astro-staging/u);
-  for (const volume of Object.values(def.volumes)) expect(volume.name).toMatch(/^ops-astro-staging-/u);
+  for (const network of Object.values(def.networks))
+    expect(network.name).toMatch(/^ops-astro-staging/u);
+  for (const volume of Object.values(def.volumes))
+    expect(volume.name).toMatch(/^ops-astro-staging-/u);
 
   const text = read('deploy/staging/compose.json');
   const names = [...text.matchAll(PLACEHOLDER)].map((m) => m.groups!['name']!);
   expect(names.length).toBeGreaterThan(5);
   for (const name of names) expect(name).toMatch(/^STAGING_/u);
-  // No machine layout: no address but loopback, no host path, no user's home.
-  expect(text.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/gu)?.filter((ip) => ip !== '127.0.0.1') ?? []).toEqual([]);
+  // No machine layout: no address but loopback (and the auth server's listen-on-all
+  // inside its own container), no host path, no user's home.
+  expect(
+    text
+      .match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/gu)
+      ?.filter((ip) => !['127.0.0.1', '0.0.0.0'].includes(ip)) ?? [],
+  ).toEqual([]);
   expect(text).not.toMatch(/"\/(?:Users|home|srv|opt|var\/lib\/docker)\b/u);
 });
 
@@ -201,7 +211,10 @@ it('S0-1 database majors', () => {
   expect(Number(match!.groups!['major'])).toBe(def['x-ops-astro'].productionDatabaseMajor);
   // The pin is recorded where every other image pin is.
   expect(read('docs/supply-chain-pins.md')).toMatch(
-    new RegExp(`\\| \`postgres\`\\s+\\| \`17-alpine\`\\s+\\| \`sha256:${match!.groups!['digest']}\``, 'u'),
+    new RegExp(
+      `\\| \`postgres\`\\s+\\| \`17-alpine\`\\s+\\| \`sha256:${match!.groups!['digest']}\``,
+      'u',
+    ),
   );
   // The auth server is the same pinned build the local slice runs.
   const auth = def.services['auth']!.image!;

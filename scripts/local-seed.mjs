@@ -33,6 +33,7 @@ import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
+import { productionSigns } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -417,6 +418,17 @@ if (!adminUrl || !appUrl) {
   process.exit(1);
 }
 
+// Staging holds made-up data only (S0-1). A database showing what a restored
+// production backup brings is refused here, before a row or a file is written.
+const admin = connectAsAdmin(adminUrl, { source: 'seed' });
+const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS));
+if (signs.length > 0) {
+  console.error(`local-seed: REFUSED, this looks like a production backup: ${signs.join('; ')}.`);
+  console.error('local-seed: staging and local databases hold made-up data only.');
+  await admin.close();
+  process.exit(1);
+}
+
 const { users, placeholder } = readUsers();
 if (placeholder) {
   console.warn('local-seed: .local/synthetic-users.json was absent, so a PLACEHOLDER was written.');
@@ -733,7 +745,6 @@ async function shareWithExternal(tx, taskName, adminEmail, externalEmail, people
   return { recordId: rows[0].id, grantId: shared.value };
 }
 
-const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const database = connect(appUrl, { source: 'seed' });
 try {
   const businessIds = {};
