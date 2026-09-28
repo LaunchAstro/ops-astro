@@ -59,7 +59,7 @@ const shownLines = (inline) => {
 // A comment hides its text and is allowed; any other HTML fails. Read as the
 // browser closes it (`<!-->`, `<!--->`, `--!>`), and to the end when unclosed,
 // so no tag survives inside what looked like one comment.
-const COMMENT = /<!--(?:-?>|[\s\S]*?(?:--!?>|$))/gu;
+const COMMENT = new RegExp(String.raw`<!--(?:-?>|[\s\S]*?(?:--!?>|$))`, 'gu');
 const notComment = (html) => html.replaceAll(COMMENT, '').trim();
 // Indented code is refused a tag too: a sample goes in a fence or a span.
 const TAG = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
@@ -135,7 +135,9 @@ export const readBody = (body) => {
  */
 export const unfiled = async (values) => {
   const filed = values.flatMap((v) => {
-    const n = /follow-up\s+#(\d{1,7})\.?$/iu.exec(v)?.[1];
+    // Normalised as the outcome grammar reads it: trimmed, one full stop off.
+    const text = v.trim().replace(/\.$/u, '').trim();
+    const n = /follow-up\s+#(\d{1,7})$/iu.exec(text)?.[1];
     return n === undefined ? [] : [[v, n]];
   });
   const open = await Promise.all(filed.map(([, n]) => isOpen(n)));

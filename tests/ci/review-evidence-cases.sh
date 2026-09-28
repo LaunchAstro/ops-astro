@@ -865,6 +865,7 @@ fu_case "a noun that disagrees fails" 1 "1 findings, 0 closed, 1 filed as follow
 fu_case "an issue that is not open fails" 1 "2 findings, 1 closed, 1 filed as follow-up #99" "88"
 fu_case "no issue number fails" 1 "2 findings, 1 closed, 1 filed as follow-up" "88"
 fu_case "two issues fail: one form, one issue" 1 "2 findings, 0 closed, 2 filed as follow-up #88 and #89" "88 89"
+fu_case "a closed issue behind a spaced full stop still fails" 1 "2 findings, 1 closed, 1 filed as follow-up #99 ." "88"
 fu_case "a sensitive change may file a code finding" 0 "2 findings, 1 closed, 1 filed as follow-up #88" "88" "$CUSTODY"
 run_case "FU88 follow-up: no issue list and no repository to ask fails" 1 "${FU}Code review: 2 findings, 1 closed, 1 filed as follow-up #88$NOT_SENSITIVE" "README.md"
 OPEN_ISSUES="88" run_case "FU88 follow-up: the security line has no follow-up form" 1 "${FU}Code review: no findings${P2}Security review: run against $HEAD, 2 findings, 1 closed, 1 filed as follow-up #88" "$CUSTODY"
