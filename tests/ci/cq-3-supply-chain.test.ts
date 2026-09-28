@@ -20,6 +20,10 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+
+type Command = Parameters<typeof executeCommand>[4];
 
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -31,12 +35,7 @@ const GOTRUE = 'public.ecr.aws/supabase/gotrue:v2.192.0';
 const GOTRUE_DIGEST = 'b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab';
 const BOTH = ['pnpm-workspace.yaml', 'renovate.json'];
 const byUrl = (url: string) => `${url}/c.tgz`;
-const VERBS = [
-  'select count(*)::int as n from $t where business_id = $1',
-  'select 1 as n from $t where business_id = $1',
-  'update $t set business_id = business_id where business_id = $1 returning 1 as n',
-  'delete from $t where business_id = $1 returning 1 as n',
-];
+const UPDATE = { command: 'task.update', expectedRevision: 1, fields: { title: 'taken' } };
 
 /** Every value `key` is stated with: twice or commented out never reads as one. */
 const stated = (text: string, key: string) =>
@@ -246,6 +245,8 @@ describe('CQ-3 supply-chain settings', () => {
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', () => {
   let db: FreshDatabase;
   const parties: string[] = [];
+  /** Each business's task, made by its member (write); its client (read) is in `clients`. */
+  const own = new Map<string, { task: string; title: string; member: Member }>();
   const clients: { businessId: string; member: Member }[] = [];
 
   beforeAll(async () => {
@@ -259,6 +260,10 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
         await grantTo(tx, member, 'write');
         await grantTo(tx, client, 'read');
       });
+      const title = `${key}-${randomUUID()}`;
+      const create = { command: 'task.create', operationId: randomUUID(), fields: { title } };
+      const made = await executeCommand(db.app, id, member.presented, 'api', create as Command);
+      own.set(id, { task: 'recordId' in made ? `${made.recordId}` : '', title, member });
       clients.push({ businessId: id, member: client });
       return id;
     };
@@ -272,26 +277,39 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
     const check = await run('node', ['scripts/pins-check.mjs'], ROOT, { DATABASE_URL: db.appUrl });
     const named = parties.some((id) => check.out.includes(id));
     expect([check.status, named], check.out).toStrictEqual([0, false]);
-    const tables = await db.admin.execute<{ t: string }>(
-      `select table_name as t from information_schema.columns
-        where table_schema = 'public' and column_name = 'business_id'`,
-    );
-    // As the app role, `mine` counts, lists, changes and deletes `theirs` rows in every business
-    // table, one transaction each. A refusal reaches zero rows.
-    const reach = async (mine: string, theirs: string, verbs: readonly string[]) => {
-      const sql = tables.flatMap(({ t }) => verbs.map((v) => v.replace('$t', `public.${t}`)));
-      const rows = await Promise.all(
-        sql.map(async (q) =>
-          db.app.withBusiness(mine, (tx) => tx.query<{ n: number }>(q, [theirs])).catch(() => []),
-        ),
+    // Each client and member, under its own login and at either business, reads, lists (the board,
+    // the people) and changes the other business's task. An answer that is not a refusal reaches
+    // it when it carries that business, its task, title, member or client.
+    const reached = async (who: Member, mine: string, theirs: string) => {
+      const t = own.get(theirs);
+      const [as, id, edit] = [who.presented, `${t?.task}`, { ...UPDATE, recordId: t?.task }];
+      const answers = await Promise.all(
+        [mine, theirs].flatMap((at) => [
+          executeRead(db.app, at, as, { read: 'task.read', recordId: id }),
+          executeRead(db.app, at, as, { read: 'task.board', board: null }),
+          executeRead(db.app, at, as, { read: 'person.list' }),
+          executeCommand(db.app, at, as, 'api', { ...edit, operationId: randomUUID() } as Command),
+        ]),
       );
-      return rows.flat().reduce((sum, row) => sum + Number(row.n), 0);
+      const client = clients.find((c) => c.businessId === theirs)?.member;
+      const marks = [theirs, id, `${t?.title}`, `${t?.member.personId}`, `${client?.personId}`];
+      const text = answers.filter((a) => !('refused' in a)).map((a) => JSON.stringify(a));
+      return text.filter((x) => marks.some((m) => x.includes(m))).length;
     };
-    const [bravo, charlie] = parties as [string, string];
-    expect(await reach(bravo, bravo, VERBS.slice(0, 1))).toBeGreaterThan(0);
-    expect([await reach(bravo, charlie, VERBS), await reach(charlie, bravo, VERBS)]).toEqual([
-      0, 0,
-    ]);
+    const tries = clients.flatMap(({ businessId: mine, member }) => {
+      const theirs = `${parties.find((id) => id !== mine)}`;
+      return [member, own.get(mine)?.member as Member].map((who) => reached(who, mine, theirs));
+    });
+    expect(await Promise.all(tries)).toStrictEqual([0, 0, 0, 0]);
+    // The control: each client reads its own task, still under its own title.
+    const mineRead = async ({ businessId: at, member }: (typeof clients)[number]) => {
+      const answer = await executeRead(db.app, at, member.presented, {
+        read: 'task.read',
+        recordId: `${own.get(at)?.task}`,
+      });
+      return JSON.stringify(answer).includes(`${own.get(at)?.title}`);
+    };
+    expect(await Promise.all(clients.map(mineRead))).toStrictEqual([true, true]);
   };
 
   it(
