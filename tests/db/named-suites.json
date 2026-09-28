@@ -131,6 +131,7 @@
     "tests/api/cq-2.test.ts",
     "tests/commands/cq-4.test.ts",
     "tests/commands/cq-5.test.ts",
+    "tests/api/cq-6.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/acceptance/external-party.test.ts",
     "tests/acceptance/comment-rulings.test.ts",
