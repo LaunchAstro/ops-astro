@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The browser entry, and the only place a stylesheet is imported.
+// The browser entry, and where the stylesheets' order is fixed.
 //
-// THE LOAD ORDER IS THE CONTRACT and this is where it is stated: tokens, then
-// primitives, then the shell, then the board, then the task surfaces. Component
-// modules import no CSS at all, which is what keeps the order in one readable
-// place instead of distributed across whichever module happened to load first.
+// THE LOAD ORDER IS THE CONTRACT: the shared package's sheets first (tokens,
+// primitives, shell, board, task surfaces, in the order its `index.ts` imports
+// them), then this application's own. The package is imported here, before the
+// slice's sheet and before any screen, so its sheets load first whichever
+// module imports it next. Component modules import no CSS at all.
 //
 // It is also the composition root: the real `fetch`, the real `sessionStorage`
 // and the addresses of the API and the identity provider are supplied here and
@@ -13,11 +14,7 @@
 
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import '../../../packages/ui/src/styles/1-tokens.css';
-import '../../../packages/ui/src/styles/2-primitives.css';
-import '../../../packages/ui/src/styles/3-shell.css';
-import '../../../packages/ui/src/styles/4-board.css';
-import '../../../packages/ui/src/styles/5-task.css';
+import '@launchastro/ui';
 import './styles/6-slice.css';
 import { App } from './App.tsx';
 import { SessionStore, tabStorage } from './session/token.ts';

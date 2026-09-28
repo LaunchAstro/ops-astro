@@ -85,10 +85,10 @@ module.exports = {
       severity: 'error',
       comment:
         "An app or package enters another package only through that package's index.ts, " +
-        'with no exception. Tests and scripts prove modules, not the interface, and may reach in.',
+        'stylesheets included, with no exception. Tests and scripts prove modules, not the interface, and may reach in.',
       from: { path: '^((?:apps|packages)/[^/]+)/' },
       to: {
-        path: '^packages/[^/]+/src/.+\\.(ts|tsx|mjs|js)$',
+        path: '^packages/[^/]+/src/',
         pathNot: ['^$1/', '^packages/[^/]+/src/index\\.ts$'],
       },
     },
