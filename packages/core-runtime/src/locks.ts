@@ -20,7 +20,7 @@
 // against, so the classifier calling in from `handback.ts` can assert it is
 // running inside the locks it needs instead of taking them again.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 
 /** The classes, in the contract's order. The number is the order. */
 export const LOCK_ORDER = [

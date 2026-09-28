@@ -31,9 +31,8 @@
 // opens no hold; what it creates is a pending gate somebody has to decide.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import { settleDelegation } from '../../core-records/src/authority/delegations.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { settleDelegation } from '../../core-records/src/index.ts';
+import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, exceeds } from './budget.ts';
 import { acquire } from './locks.ts';

@@ -28,7 +28,7 @@
 
 import type { Context } from 'hono';
 import { verify } from 'hono/jwt';
-import type { VerifiedSubject } from '../../../packages/core-records/src/identity/login-resolution.ts';
+import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';

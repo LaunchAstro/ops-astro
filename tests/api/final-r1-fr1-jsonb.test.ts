@@ -28,12 +28,12 @@ import {
   type ApiFixture,
 } from './fixture.ts';
 import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
-import { verifyAuditChain } from '../../packages/core-records/src/commands/audit.ts';
+import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import {
   DELEGATION_HEADER,
   pathOf,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

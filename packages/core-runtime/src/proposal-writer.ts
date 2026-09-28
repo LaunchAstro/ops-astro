@@ -40,7 +40,7 @@
 // does not exist.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { LockSet } from './locks.ts';
 import { digestOf } from './signing.ts';
 import { renderEvidence } from './evidence.ts';

@@ -26,7 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import {
   approve,
   approveBody,

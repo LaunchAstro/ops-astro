@@ -19,8 +19,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
-import { READS } from '../../packages/core-records/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { READS } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';

@@ -5,10 +5,7 @@
 // what it must refuse matters as much as what it accepts.
 
 import { describe, expect, it } from 'vitest';
-import {
-  canonicalPayload,
-  payloadDigest,
-} from '../../packages/core-records/src/commands/digest.ts';
+import { canonicalPayload, payloadDigest } from '../../packages/core-digest/src/digest.ts';
 
 describe('the canonical payload', () => {
   it('reads the same for two objects whose keys arrived in a different order', () => {

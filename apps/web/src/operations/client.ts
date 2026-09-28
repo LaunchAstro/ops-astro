@@ -43,11 +43,8 @@
 // prose as `operation_id` and the coordinator ruled on the camelCase spelling
 // at 22:53Z; there is one spelling on the wire and this is it.
 
-import {
-  PREFIX,
-  pathOf,
-  type CommandName,
-} from '../../../../packages/core-records/src/commands/surface.ts';
+import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 
 /**
  * The reads, named here as their own type.

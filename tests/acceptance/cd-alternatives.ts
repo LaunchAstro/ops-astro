@@ -9,7 +9,7 @@
 //
 // A harness, not a suite: nothing here runs on its own.
 
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 

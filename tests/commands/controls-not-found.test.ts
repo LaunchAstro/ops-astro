@@ -13,13 +13,13 @@ import { describe, expect, it } from 'vitest';
 import {
   cancelOnTask,
   restartOnTask,
-} from '../../packages/core-records/src/commands/tasks-controls.ts';
+} from '../../packages/core-commands/src/commands/tasks-controls.ts';
 import {
   isRefused,
   type HandlerOutcome,
-} from '../../packages/core-records/src/commands/outcome.ts';
-import { refuseNotFound } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
+} from '../../packages/core-commands/src/commands/outcome.ts';
+import { refuseNotFound } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
 const TASK = '3f1d2f3a-0000-4000-8000-000000000001';

@@ -15,14 +15,11 @@ import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertActor, insertBusiness, insertLogin, insertMapping } from '../identity/fixture.ts';
 import { insertPerson } from '../identity/fixture.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import {
-  gateSigningKey,
-  runtimeKeys,
-} from '../../packages/core-records/src/commands/runtime-config.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { gateSigningKey, runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { configuredCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 

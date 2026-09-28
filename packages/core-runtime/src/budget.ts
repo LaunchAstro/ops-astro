@@ -12,7 +12,7 @@
 // no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
 // the wrong one raises the wrong ceiling.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** A cap's ceiling and everything its envelopes hold or spent, as exact SQL text. */

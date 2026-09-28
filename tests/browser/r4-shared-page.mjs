@@ -5,7 +5,7 @@
 //
 // The external party holds no membership. Its only authority is one record
 // grant issued by `shareRecord`, and its `task.read` answers `sharedTask`, the
-// server's shared projection (`packages/core-records/src/reads/requests.ts`,
+// server's shared projection (`packages/core-commands/src/reads/requests.ts`,
 // `SharedTaskView`): the fields the catalogue marks `shared` and the client
 // comments. The page draws that and nothing else. It never builds an internal
 // task out of it and never fetches anything to fill it in.

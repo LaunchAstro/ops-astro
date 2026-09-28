@@ -32,7 +32,7 @@ import {
   declarationOf,
   pathOf,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

@@ -15,7 +15,7 @@ const folded = (text: string): string => text.replaceAll(/\s+/gu, ' ');
 
 const API = (): string => read('docs/local/API.md');
 
-const C = 'packages/core-records/src/commands';
+const C = 'packages/core-commands/src/commands';
 const R = 'packages/core-runtime/src';
 
 /** Every table row of `API.md` whose first cell starts with `operation`. */
@@ -195,7 +195,7 @@ describe('API.md lines derived from the code', () => {
   });
 
   it('gives sharedTask the keys SharedTaskView declares', () => {
-    const requests = read('packages/core-records/src/reads/requests.ts');
+    const requests = read('packages/core-commands/src/reads/requests.ts');
     const view = requests.slice(requests.indexOf('export interface SharedTaskView'));
     const keys = [...view.slice(0, view.indexOf('\n}')).matchAll(/^ {2}readonly (\w+)/gmu)].map(
       (m) => m[1] ?? '',
@@ -244,7 +244,7 @@ describe('API.md operands and codes derived from the code', () => {
     const cell = refusals('task.propose', '/task/propose');
     for (const code of codes) expect(cell, code).toContain(`\`${code}\``);
     expect(cell).not.toMatch(/`COMMAND_BODY_INVALID`[^,]*`lineageId`/u);
-    const register = read(`${C}/register.ts`).replaceAll(/\n\s*\/\/ ?/gu, ' ');
+    const register = read('packages/core-records/src/register.ts').replaceAll(/\n\s*\/\/ ?/gu, ' ');
     expect(register).toContain(
       'second barrier behind the proposal, and no command case reaches it',
     );

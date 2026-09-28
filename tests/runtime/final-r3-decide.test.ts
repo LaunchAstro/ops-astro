@@ -26,7 +26,7 @@ import {
   type IdentWorld,
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

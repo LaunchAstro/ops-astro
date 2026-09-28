@@ -9,7 +9,7 @@
 // caller reads it once, after `acquire` returns, and uses that one instant for
 // every expiry check and renewal in the rest of the transaction.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 
 /**
  * The database's current instant as text, to be passed back as

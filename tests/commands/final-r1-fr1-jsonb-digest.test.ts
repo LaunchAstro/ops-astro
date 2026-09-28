@@ -11,10 +11,7 @@
 // digest, where the signing canonicaliser once dropped it.
 
 import { describe, expect, it } from 'vitest';
-import {
-  canonicalPayload,
-  payloadDigest,
-} from '../../packages/core-records/src/commands/digest.ts';
+import { canonicalPayload, payloadDigest } from '../../packages/core-digest/src/digest.ts';
 
 describe('FR1-JSONB: the canonical payload at its edges', () => {
   it('#11: a number that overflows to Infinity has no canonical form', () => {

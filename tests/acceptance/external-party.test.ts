@@ -11,11 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  COMMAND_SURFACE,
-  pathOf,
-  type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { createPositiveBody } from './role-case-bodies.ts';
 import {

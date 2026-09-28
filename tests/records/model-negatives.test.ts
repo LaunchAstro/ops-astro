@@ -43,9 +43,9 @@ import {
   TASK_STATE_FIELDS,
   TASK_STATE_TYPE_KEY,
 } from '../../packages/core-records/src/tasks/states.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { BUSINESS_KEY, createApiFixture, tokenFor, type ApiFixture } from '../api/fixture.ts';

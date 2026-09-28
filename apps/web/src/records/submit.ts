@@ -26,7 +26,7 @@ import {
   type OperationsClient,
   type WireRefusal,
 } from '../operations/client.ts';
-import type { CommandName } from '../../../../packages/core-records/src/commands/surface.ts';
+import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 
 export interface SubmitRequest {
   /** The operation that owns the write. The caller names it; this does not guess. */

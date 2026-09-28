@@ -14,8 +14,11 @@ review of the integrated head has been recorded, so nothing here is accepted.
 
 | Responsibility              | Home                       | State                                                                                                             |
 | --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Commands and reads          | `packages/core-commands`   | The person and agent envelopes, every command handler and the read dispatch, with tests.                          |
+| Wire contract               | `packages/core-wire`       | The command surface: every command and read, its path and prefix, with tests.                                     |
+| Payload digest              | `packages/core-digest`     | The canonical payload and its hash, shared by the server and the command line, with tests.                        |
 | Runtime and agent execution | `packages/core-runtime`    | Propose, decide, pick up, hand back and the recovery classifier, with tests. Nothing dispatches and nothing acts. |
-| Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, task commands and reads, with tests.                            |
+| Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, the task type and the refusal register, with tests.             |
 | Credential broker           | `packages/core-custody`    | Not built                                                                                                         |
 | Provider operations         | `packages/core-connectors` | Not built                                                                                                         |
 | Shared interface components | `packages/ui`              | Primitives, state, styles and the slice's surfaces, with tests.                                                   |
@@ -24,6 +27,21 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Web application             | `apps/web`                 | React and Vite: sign-in, task list, task detail, comments and settings, with tests.                               |
 | Worker                      | `apps/worker`              | Not built                                                                                                         |
 | Declarative presets         | `presets`                  | Not built                                                                                                         |
+
+The core packages are layered, and the arrows point one way: records at the
+bottom, the runtime on it, the command package on both, and the apps on top.
+The wire contract (`core-wire`, the command surface) and the payload digest
+(`core-digest`) are leaves beside them, which the web and the command line
+load without the database. Every package is entered only through its
+`src/index.ts`, with no exception. `pnpm deps:cruise` fails on an import that
+points up a layer or past an index (`.dependency-cruiser.cjs`).
+
+```text
+apps/api ─► core-commands ─► core-runtime ─► core-records (and core-wire, core-digest)
+apps/web ─► core-wire ─(types)─► core-records
+apps/cli ─► core-wire, core-digest
+core-commands ─► core-wire, core-digest
+```
 
 The four rows marked not built are empty directories holding only a
 `.gitkeep`. The rest are source with tests beside them, run against a real
@@ -55,7 +73,7 @@ the migrations and the tenancy suites, and
 model the API resolves against.
 
 A command's facts are one `COMMAND_SURFACE` row
-(`packages/core-records/src/commands/surface.ts`): its authority target,
+(`packages/core-wire/src/surface.ts`): its authority target,
 expected-revision rule, `untargetedIdentifiers`, `runtimeShaped` and `agent`
 reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
 same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the

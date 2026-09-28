@@ -19,9 +19,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
-import { isRetryableViolation } from '../../packages/core-records/src/commands/register-store.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
+import { isRetryableViolation } from '../../packages/core-commands/src/commands/register-store.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { AffectedSetChanged } from '../../packages/core-runtime/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {

@@ -27,9 +27,9 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { readTaskSpine } from '../../packages/core-records/src/commands/context.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { planTaskPlacement } from '../../packages/core-records/src/tasks/placement.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
 

@@ -39,12 +39,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
-import { SYSTEM_OWNED_FIELDS } from '../../packages/core-records/src/commands/prepare.ts';
+import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
 import {
   COMMAND_SURFACE,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
 import { COMMENT_SPINE } from '../../packages/core-records/src/tasks/comments.ts';
 import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.ts';

@@ -48,14 +48,19 @@ export {
   type PickedUp,
   type PickupRequest,
   type QueueEntry,
+  NOT_CLAIMABLE_FIX,
+  NOT_CLAIMABLE_REASON,
+  type PickedUpByPerson,
 } from './pickup.ts';
 export {
   handback,
   type HandbackRequest,
   type HandedBack,
   type SuccessorRequest,
+  retainHistoricalReport,
+  type HandbackHolder,
 } from './handback.ts';
-export { AffectedSetChanged } from './rediscovery.ts';
+export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
@@ -63,6 +68,7 @@ export {
   type Classification,
   type ClassifyRequest,
   type NonclaimableCause,
+  classifyAuthorityLoss,
 } from './recovery.ts';
 export {
   canonicalise,
@@ -78,6 +84,10 @@ export {
   type DecisionPayloadFields,
   type LinkVersion,
   type SigningKey,
+  decidedAtText,
+  decisionLink,
+  keyResolver,
+  type KeyResolver,
 } from './signing.ts';
 export { acquire, LOCK_ORDER, type LockClass, type LockRequest, type LockSet } from './locks.ts';
 export {
@@ -89,3 +99,11 @@ export {
   type RuntimeRefusalCode,
   type RuntimeResult,
 } from './refusals.ts';
+export {
+  delegationCredentialKeys,
+  gateSigningKey,
+  readBusinessCapId,
+  runtimeKeys,
+  withRuntimeKeys,
+  type RuntimeKeys,
+} from './runtime-config.ts';

@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE } from '../../packages/core-records/src/commands/surface.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, MEMBER_ACTIONS } from './cast.ts';
 
 type Pair = readonly [collection: string, action: string];

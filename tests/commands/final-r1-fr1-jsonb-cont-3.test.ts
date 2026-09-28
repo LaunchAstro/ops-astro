@@ -22,9 +22,9 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, installSpine, type Member } from './fixture.ts';
-import { settle } from '../../packages/core-records/src/commands/agent-settle.ts';
-import { refuseCommand } from '../../packages/core-records/src/commands/refusal.ts';
-import { lookupAttempt } from '../../packages/core-records/src/commands/register-store.ts';
+import { settle } from '../../packages/core-commands/src/commands/agent-settle.ts';
+import { refuseCommand } from '../../packages/core-commands/src/commands/refusal.ts';
+import { lookupAttempt } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { AgentSession } from '../../packages/core-records/src/identity/agent-login.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

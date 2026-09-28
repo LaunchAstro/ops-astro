@@ -13,14 +13,12 @@
 // unchanged rather than re-deriving it — a second module that decides for
 // itself what an agent may decide is a second place that rule can drift.
 
+import { REFUSAL_REGISTER } from '../../core-records/src/index.ts';
 import type {
   DelegationRefusal,
   DelegationRefusalCode,
-} from '../../core-records/src/authority/delegations.ts';
-import {
-  REFUSAL_REGISTER,
-  type RuntimeRefusalCode,
-} from '../../core-records/src/commands/register.ts';
+  RuntimeRefusalCode,
+} from '../../core-records/src/index.ts';
 
 /**
  * The codes this module returns as its own. Declared once, in the refusal

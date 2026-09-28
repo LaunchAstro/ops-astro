@@ -24,10 +24,7 @@
 // because being skipped is a thrown error rather than an absent row.
 
 import { randomUUID } from 'node:crypto';
-import type {
-  CommandDeclaration,
-  CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */

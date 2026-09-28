@@ -19,7 +19,7 @@
 // left here is the cases and what each one claims.
 //
 // **The expected answers come from the product.** `refusal()` reads each
-// status from the register's own column (`statusOf`, `commands/register.ts`),
+// status from the register's own column (`statusOf`, `core-records/src/register.ts`),
 // and what an agent may reach is read from `AGENT_SURFACE` and `BEFORE_PICKUP`
 // in `commands/agent-envelope.ts`, which read the surface rows. Nothing
 // here writes a status literal beside a code: remembering the pairing is how a
@@ -32,11 +32,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE, pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
+} from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';

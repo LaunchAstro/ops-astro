@@ -15,10 +15,10 @@ import type { AgentSession } from '../../packages/core-records/src/identity/agen
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
-} from '../../packages/core-records/src/commands/agent-operations.ts';
-import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
-import { lockTask } from '../../packages/core-records/src/commands/prepare.ts';
-import { declarationOf } from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/agent-operations.ts';
+import type { AgentRequest } from '../../packages/core-commands/src/commands/agent-call.ts';
+import { lockTask } from '../../packages/core-commands/src/commands/prepare.ts';
+import { declarationOf } from '../../packages/core-wire/src/surface.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK_TYPE = '22222222-2222-4222-8222-222222222222';

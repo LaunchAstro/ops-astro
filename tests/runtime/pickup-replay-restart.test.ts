@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { LOCAL_KEY_FILE } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { BUSINESS_KEY, ISSUER, SECRET } from '../api/fixture.ts';
 import {

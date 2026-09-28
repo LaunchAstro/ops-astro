@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {

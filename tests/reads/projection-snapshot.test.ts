@@ -27,8 +27,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   type ProposalView,
   readTaskProposals,
-} from '../../packages/core-records/src/reads/proposals.ts';
-import { DecisionIntegrityError } from '../../packages/core-records/src/reads/verified-decisions.ts';
+} from '../../packages/core-commands/src/reads/proposals.ts';
+import { DecisionIntegrityError } from '../../packages/core-commands/src/reads/verified-decisions.ts';
 import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { SigningKey } from '../../packages/core-runtime/src/signing.ts';
 import {

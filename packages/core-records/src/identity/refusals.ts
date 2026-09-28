@@ -30,7 +30,7 @@ export type IdentityRefusalCode = 'AUTH_UNKNOWN_LOGIN' | 'AUTH_NO_MEMBERSHIP' | 
  * The two codes the agent path adds, kept in their own union rather than
  * widened into `IdentityRefusalCode`.
  *
- * `commands/register.ts` derives its `RefusalCode` from that union, and the
+ * `core-records/src/register.ts` derives its `RefusalCode` from that union, and the
  * register is L3's. Widening it here would reach into the command surface from
  * the identity module, which is the coupling the register exists to prevent.
  * These are exported for L3 to register with the rest.

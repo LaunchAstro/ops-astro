@@ -24,7 +24,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
-import { readSharedTask } from '../../packages/core-records/src/reads/tasks.ts';
+import { readSharedTask } from '../../packages/core-commands/src/reads/tasks.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,

@@ -28,12 +28,9 @@ import type { BusinessId } from '../../packages/core-records/src/tenancy/databas
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import {
-  runtimeKeys,
-  type RuntimeKeys,
-} from '../../packages/core-records/src/commands/runtime-config.ts';
+import { runtimeKeys, type RuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 
 /**
  * The business key to its identifier, on the administrative connection: the

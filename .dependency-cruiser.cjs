@@ -47,6 +47,52 @@ module.exports = {
       to: {},
     },
     {
+      name: 'layer-records-is-the-bottom',
+      severity: 'error',
+      comment:
+        'The packages are layered: records at the bottom, the runtime on it, the command ' +
+        'package on both, and the apps on top. The wire contract and the payload digest are ' +
+        'leaves beside them. Records imports none of the others.',
+      from: { path: '^packages/core-records/' },
+      to: { path: '^packages/core-(runtime|commands|wire|digest)/' },
+    },
+    {
+      name: 'layer-runtime-below-commands',
+      severity: 'error',
+      comment: 'The runtime sits under the command package and never imports it.',
+      from: { path: '^packages/core-runtime/' },
+      to: { path: '^packages/core-commands/' },
+    },
+    {
+      name: 'layer-wire-and-digest-are-leaves',
+      severity: 'error',
+      comment:
+        'The web and the command line load the wire contract and the digest, so neither ' +
+        'may reach the runtime or the command package. The wire contract takes records ' +
+        'types only; the digest imports nothing of the product.',
+      from: { path: '^packages/core-(wire|digest)/' },
+      to: { path: '^packages/core-(runtime|commands)/' },
+    },
+    {
+      name: 'layer-digest-imports-no-package',
+      severity: 'error',
+      comment: 'The digest is a leaf: it imports no other package.',
+      from: { path: '^packages/core-digest/' },
+      to: { path: '^packages/', pathNot: '^packages/core-digest/' },
+    },
+    {
+      name: 'index-only',
+      severity: 'error',
+      comment:
+        "An app or package enters another package only through that package's index.ts, " +
+        'stylesheets included, with no exception. Tests and scripts prove modules, not the interface, and may reach in.',
+      from: { path: '^((?:apps|packages)/[^/]+)/' },
+      to: {
+        path: '^packages/[^/]+/src/',
+        pathNot: ['^$1/', '^packages/[^/]+/src/index\\.ts$'],
+      },
+    },
+    {
       name: 'no-unresolvable',
       severity: 'error',
       comment: 'An import that does not resolve is a module that was never read.',

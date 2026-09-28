@@ -30,12 +30,8 @@
 // and `mintedByActorId` is their acting identity, never the agent's.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import {
-  mintDelegation,
-  type MintedDelegation,
-} from '../../core-records/src/authority/delegations.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
+import { mintDelegation } from '../../core-records/src/index.ts';
+import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import type { LockRequest } from './locks.ts';
 import { only } from './only.ts';

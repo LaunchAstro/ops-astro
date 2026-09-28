@@ -92,7 +92,7 @@ describe('RUNTIME.md on grants judged at the locked instant (R2-RUNTIME-4, -5)',
 
 describe('RUNTIME.md on the proposal read binding evidence (R2-THERMO-17)', () => {
   it('says each decision is bound to its version and pack, and rows stay mutable', () => {
-    const source = read('packages/core-records/src/reads/verified-decisions.ts');
+    const source = read('packages/core-commands/src/reads/verified-decisions.ts');
     expect(source).toContain('function unboundEvidence(');
     const limits = runtime.slice(runtime.indexOf('Its limits:'));
     expect(limits).toMatch(
@@ -124,7 +124,7 @@ describe('RUNTIME.md on task.propose (R2-RUNTIME-24, -25, -26, -52)', () => {
   });
 
   it('answers NOT_FOUND on a trashed task, as task.restart does', () => {
-    expect(read('packages/core-records/src/commands/tasks-propose.ts')).toContain(
+    expect(read('packages/core-commands/src/commands/tasks-propose.ts')).toContain(
       'if (target.deleted_at !== null) return refused(refuseNotFound());',
     );
     expect(runtime).toMatch(
@@ -139,7 +139,7 @@ describe('a uuid in any case (R2-AUTHORITY-33)', () => {
       'A uuid is one identifier however it is cased; handlers compare the lower-case form.',
     );
     expect(read(`${RUNTIME_SRC}/decide.ts`)).toContain('gateId: presented.gateId.toLowerCase(),');
-    expect(read('packages/core-records/src/commands/tasks-controls.ts')).toContain(
+    expect(read('packages/core-commands/src/commands/tasks-controls.ts')).toContain(
       'const taskId = recordId.toLowerCase();',
     );
   });

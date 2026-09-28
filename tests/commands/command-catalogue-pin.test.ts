@@ -25,18 +25,18 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
-import type { CommandRequest } from '../../packages/core-records/src/commands/requests.ts';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
+import type { CommandRequest } from '../../packages/core-commands/src/commands/requests.ts';
 import {
   COMMAND_SURFACE,
   NEEDS_NO_EXPECTED_REVISION,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { handleCommand } from '../../packages/core-records/src/commands/handlers.ts';
+} from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { handleCommand } from '../../packages/core-commands/src/commands/handlers.ts';
 
 const calls: { readonly handler: string; readonly operands: readonly unknown[] }[] = [];
 
@@ -48,62 +48,62 @@ function recorder(handler: string) {
   };
 }
 
-vi.mock('../../packages/core-records/src/commands/tasks-write.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
   updateTask: recorder('updateTask'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-state.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-state.ts', async (original) => ({
   ...(await original<object>()),
   setState: recorder('setState'),
   writeOwnedFields: recorder('writeOwnedFields'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-place.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (original) => ({
   ...(await original<object>()),
   moveTask: recorder('moveTask'),
   rankTask: recorder('rankTask'),
   reparentTask: recorder('reparentTask'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-trash.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (original) => ({
   ...(await original<object>()),
   purgeTasks: recorder('purgeTasks'),
   restoreTasks: recorder('restoreTasks'),
   trashTask: recorder('trashTask'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-comment.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (original) => ({
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
 }));
-vi.mock('../../packages/core-records/src/commands/settings-write.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-propose.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-decide.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-decide.ts', async (original) => ({
   ...(await original<object>()),
   decideOnGate: recorder('decideOnGate'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-pickup.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (original) => ({
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-handback.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
   handbackOwnLease: recorder('handbackOwnLease'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-lease.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-lease.ts', async (original) => ({
   ...(await original<object>()),
   heartbeatOwnLease: recorder('heartbeatOwnLease'),
 }));
-vi.mock('../../packages/core-records/src/commands/authority-controls.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
 }));
-vi.mock('../../packages/core-records/src/commands/tasks-controls.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
   restartOnTask: recorder('restartOnTask'),

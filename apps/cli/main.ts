@@ -28,8 +28,8 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
-import { canonicalPayload } from '../../packages/core-records/src/commands/digest.ts';
-import { DELEGATION_HEADER } from '../../packages/core-records/src/commands/surface.ts';
+import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import {
   accepts,
   createCli,
@@ -289,7 +289,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     // A person's read carries none: it has nothing to replay, and the registry's
     // `kind` is what says which is which. The agent prefix is the exception: its
     // envelope refuses any call without one, reads included
-    // (`packages/core-records/src/commands/agent-envelope.ts`).
+    // (`packages/core-commands/src/commands/agent-envelope.ts`).
     // The id the command line chose is the caller's only way to replay a write
     // whose answer never arrived, so a transport failure or a fault names it.
     const generated =

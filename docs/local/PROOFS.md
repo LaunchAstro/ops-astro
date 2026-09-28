@@ -442,7 +442,7 @@ field's own `writeMode` rather than expecting a single answer:
 `TRANSITION_PROTECTED` names the owning operations, so `intake_state` names
 `task.triage`, for any value, `accepted` included. That is the D03 precedence
 ruling (see [the rulings table](#engineering-rulings-and-how-far-each-is-proved)).
-`refuseSpoof` in `packages/core-records/src/commands/tasks-write.ts` runs before
+`refuseSpoof` in `packages/core-commands/src/commands/tasks-write.ts` runs before
 the engine classifies. On `task.update` it refuses only `source`
 (`SPOOFABLE_ON_UPDATE`). On `task.create` it refuses both `source` and
 `intake_state` `SOURCE_SPOOFED` (`SPOOFABLE_ON_CREATE`), and the D03 block of
@@ -608,7 +608,7 @@ the fix.
    guarded it with `OPERATION_ID.test(...)`, which coerced `undefined` to the
    string `"undefined"`, and the caller got a plain-text 500. The guard now
    checks the type first (the `operationId` guard in
-   `packages/core-records/src/commands/envelope.ts`), and
+   `packages/core-commands/src/commands/envelope.ts`), and
    `surface-inventory.test.ts` ("answers an absent operationId with
    OPERATION_ID_REQUIRED, like null and the empty string") asserts
    `OPERATION_ID_REQUIRED` 422 for the absent field, `null` and `''`.
@@ -665,7 +665,7 @@ lane does not own.
   out. It also checks that the seeded admin holds every grant a
   `COMMAND_SURFACE` declaration asks for.
 - **Closed: `lockTask` was not exported.** It is exported from
-  `packages/core-records/src/commands/prepare.ts` now, and
+  `packages/core-commands/src/commands/prepare.ts` now, and
   `tests/tenancy/production-lookup.test.ts` runs it under each mutation.
   `predicate-rls.test.ts` still hand-writes the predicate-less variant of the
   record lookup, as supplementary evidence (its header says so).

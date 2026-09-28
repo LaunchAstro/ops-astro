@@ -12,7 +12,7 @@
 // person command entry retries it once in a fresh transaction, which
 // discovers again.
 
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 import { acquire, type LockRequest, type LockSet } from './locks.ts';
 
 /**

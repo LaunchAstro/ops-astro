@@ -24,8 +24,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import {
   appliedDetail,
   asAgent,

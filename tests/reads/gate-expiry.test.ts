@@ -32,7 +32,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readTaskProposals } from '../../packages/core-records/src/reads/proposals.ts';
+import { readTaskProposals } from '../../packages/core-commands/src/reads/proposals.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   bearer,
@@ -274,7 +274,7 @@ describe.skipIf(serverUrl === undefined)('a gate past its deadline, on read', ()
         'utf8',
       );
       const readSource = readFileSync(
-        new URL('../../packages/core-records/src/reads/proposals.ts', import.meta.url),
+        new URL('../../packages/core-commands/src/reads/proposals.ts', import.meta.url),
         'utf8',
       );
       expect(decideSource).toContain('(g.expires_at <= $3::timestamptz) as expired');

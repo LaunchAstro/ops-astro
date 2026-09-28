@@ -32,9 +32,9 @@ import {
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

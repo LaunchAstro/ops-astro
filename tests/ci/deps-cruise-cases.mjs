@@ -217,3 +217,124 @@ test('one missing target among existing ones is a configuration error, not a pas
     assert.doesNotMatch(run.stdout, /actually read/u);
   });
 });
+
+// CQ-4: the package layers, cruised with this repository's own rules over a
+// synthetic tree laid out like it. Records is the bottom layer, the runtime
+// sits on it, and the command package sits on both. The wire contract and the
+// payload digest are leaves the web and the command line load. Every package
+// is entered through its `index.ts`, with no exception.
+const REPO_CONFIG = readFileSync(join(repoRoot, '.dependency-cruiser.cjs'), 'utf8');
+const RECORDS = 'packages/core-records/src';
+const RUNTIME = 'packages/core-runtime/src';
+const COMMANDS = 'packages/core-commands/src';
+const WIRE = 'packages/core-wire/src';
+const DIGEST = 'packages/core-digest/src';
+const LAYERED = {
+  [`${RECORDS}/index.ts`]: "export { grant } from './authority/grants.ts';\n",
+  [`${RECORDS}/authority/grants.ts`]: 'export const grant = 1;\n',
+  [`${RUNTIME}/index.ts`]: "export { pickup } from './pickup.ts';\n",
+  [`${RUNTIME}/pickup.ts`]:
+    "import { grant } from '../../core-records/src/index.ts';\nexport const pickup = grant;\n",
+  [`${COMMANDS}/index.ts`]: "export { run } from './commands/envelope.ts';\n",
+  [`${COMMANDS}/commands/envelope.ts`]:
+    "import { grant } from '../../../core-records/src/index.ts';\n" +
+    "import { pickup } from '../../../core-runtime/src/index.ts';\n" +
+    'export const run = grant + pickup;\n',
+  [`${WIRE}/index.ts`]: "export { pathOf } from './surface.ts';\n",
+  [`${WIRE}/surface.ts`]:
+    "import type { grant } from '../../core-records/src/index.ts';\nexport const pathOf: typeof grant = 1;\n",
+  [`${DIGEST}/index.ts`]: "export { digest } from './digest.ts';\n",
+  [`${DIGEST}/digest.ts`]: 'export const digest = 1;\n',
+  'apps/api/app.ts':
+    "import { run } from '../../packages/core-commands/src/index.ts';\nexport const a = run;\n",
+  'apps/web/src/client.ts':
+    "import { pathOf } from '../../../packages/core-wire/src/index.ts';\nexport const w = pathOf;\n",
+  'apps/cli/main.ts':
+    "import { digest } from '../../packages/core-digest/src/index.ts';\nexport const c = digest;\n",
+};
+const layered = (extra, run) => fixture({ ...LAYERED, ...extra }, run, REPO_CONFIG);
+const cruiseTree = (root) => cruise(root, 'apps', 'packages');
+
+test('CQ-4 deps cruise cases: the layered tree passes', () => {
+  layered({}, (root) => {
+    const run = cruiseTree(root);
+    assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+  });
+});
+
+for (const [name, file, from, rule] of [
+  [
+    'a records file importing runtime',
+    `${RECORDS}/authority/uses.ts`,
+    '../../../core-runtime/src/index.ts',
+    'layer-records-is-the-bottom',
+  ],
+  [
+    'a records file importing the command package',
+    `${RECORDS}/authority/uses.ts`,
+    '../../../core-commands/src/index.ts',
+    'layer-records-is-the-bottom',
+  ],
+  [
+    'runtime importing the command package',
+    `${RUNTIME}/uses.ts`,
+    '../../core-commands/src/index.ts',
+    'layer-runtime-below-commands',
+  ],
+  [
+    'the wire contract importing the command package',
+    `${WIRE}/uses.ts`,
+    '../../core-commands/src/index.ts',
+    'layer-wire-and-digest-are-leaves',
+  ],
+  [
+    'the digest importing records',
+    `${DIGEST}/uses.ts`,
+    '../../core-records/src/index.ts',
+    'layer-digest-imports-no-package',
+  ],
+]) {
+  test(`CQ-4 deps cruise cases: ${name} fails by its named rule`, () => {
+    layered({ [file]: `import { run } from '${from}';\nexport const x = run;\n` }, (root) => {
+      const run = cruiseTree(root);
+      assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+      assert.match(run.stderr, new RegExp(rule, 'u'));
+    });
+  });
+}
+
+for (const [name, file, from] of [
+  [
+    'an app reaching past the command index',
+    'apps/api/deep.ts',
+    '../../packages/core-commands/src/commands/envelope.ts',
+  ],
+  [
+    'the command package reaching past the records index',
+    `${COMMANDS}/commands/deep.ts`,
+    '../../../core-records/src/authority/grants.ts',
+  ],
+  [
+    'runtime reaching past the records index',
+    `${RUNTIME}/deep.ts`,
+    '../../core-records/src/authority/grants.ts',
+  ],
+  [
+    'the web reaching past the wire index',
+    'apps/web/src/deep.ts',
+    '../../../packages/core-wire/src/surface.ts',
+  ],
+  [
+    'the command line reaching past the digest index',
+    'apps/cli/deep.ts',
+    '../../packages/core-digest/src/digest.ts',
+  ],
+]) {
+  test(`CQ-4 index only: ${name} fails`, () => {
+    layered({ [file]: `import * as m from '${from}';\nexport const x = m;\n` }, (root) => {
+      const run = cruiseTree(root);
+      assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+      assert.match(run.stderr, /index-only/u);
+    });
+  });
+}
