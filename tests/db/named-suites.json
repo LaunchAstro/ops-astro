@@ -131,6 +131,7 @@
     "tests/api/cq-6.test.ts",
     "tests/api/cq-6-body.test.ts",
     "tests/api/sol-cq6-review.test.ts",
+    "tests/api/sol-cq6-fix-review.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/acceptance/external-party.test.ts",
     "tests/acceptance/comment-rulings.test.ts",
