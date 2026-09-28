@@ -340,8 +340,11 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   },
   'task.decide': { gateId: 'id', versionId: 'id', decision: 'any', note: 'any' },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
+  // A lease call names its task through its lease; a `recordId` beside the
+  // lease is taken and plays no part in the check (API.md, id operands).
   'task.handback': {
     leaseId: 'any',
+    recordId: 'any',
     fence: 'any',
     outcome: 'any',
     report: 'any',
@@ -365,7 +368,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
-  'task.heartbeat': { leaseId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
