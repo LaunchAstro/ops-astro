@@ -10,16 +10,12 @@ packages:
 # needs a reason, and this one has none.
 allowBuilds:
   '@swc/core': false
-# Supply-chain settings, stated rather than left to pnpm's defaults (CQ-3).
-# A new version waits 7 days (10080 minutes) before an install may take it;
-# renovate.json waits the same. Semgrep's p/default refuses anything shorter.
+# A new version waits 7 days (10080 minutes), as in renovate.json (CQ-3).
 minimumReleaseAge: 10080
 # vite 8.3.0 is the draft's pinned build; excluded from the minimum release age so the lockfile can hold it.
 minimumReleaseAgeExclude:
   - vite@8.3.0
-  # Locked before the 7-day rule (28 September 2026) and younger than 7 days
-  # then; each entry comes out once its version is a week old. hono 4.13.9 is
-  # CQ-1's security upgrade.
+  # Locked before the 7-day rule; each comes out once a week old. hono is CQ-1's fix.
   - hono@4.13.9 # published 24 Sep, a week old 1 Oct
   - '@exodus/bytes@1.15.2' # published 21 Sep, a week old 28 Sep
   - tldts@7.4.14 # published 21 Sep, a week old 29 Sep

@@ -76,16 +76,14 @@ text or move it to a script.
 Parsing the workflows as YAML is a recorded follow-up.
 `tests/ci/pins-check-cases.sh` holds the cases.
 
-The check also reads every `*IMAGE=` line in `scripts/local/*.sh` and holds it
-to the same digest and the same record, so the local containers are pinned
-the way the workflow's are. Only that assignment form is read, so a local
-script names its image in a variable, not inline on a `docker run` line.
-`tests/ci/cq-3-supply-chain.test.ts` holds those cases (`CQ-3 auth image pin`).
+The check holds every `*IMAGE=` line in `scripts/local/*.sh` to the same
+digest and record (`CQ-3 auth image pin`); an image named inline is not read.
 
 | Image                            | Tag         | Digest                                                                    | Verified                                                                                                                                                                                                                               |
 | -------------------------------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `postgres`                       | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'`                                                                         |
 | `public.ecr.aws/supabase/gotrue` | `v2.192.0`  | `sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab` | The local slice's GoTrue, `scripts/local/auth-up.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026 and matching `docker image inspect --format '{{json .RepoDigests}}'` of the pulled tag |
+| `semgrep/semgrep`                | `1.177.0`   | `sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198` | CI's Semgrep check of the two settings files, `scripts/local/semgrep-settings.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026                                                           |
 
 Reproduce it the same way when raising the pin:
 
@@ -167,24 +165,13 @@ of them, so no pin here is loosened by a dependency update merging.
 ## How long a new package version waits
 
 A new version of any npm package waits 7 days after it is published before
-this project can install it. A malicious release is often found and pulled
-within days, so waiting a week gives a bad version time to be
-withdrawn before it could arrive here. `pnpm-workspace.yaml` sets
-`minimumReleaseAge: 10080` (minutes), and `renovate.json` sets
-`"minimumReleaseAge": "7 days"` at the top level and on every package rule, so
-Renovate does not propose what pnpm would refuse. 7 days is also the shortest
-wait Semgrep's `p/default` rules accept. An urgent security patch can still be
-taken sooner by hand: a reviewed change adds that exact version to
-`minimumReleaseAgeExclude`. `vite@8.3.0` is excluded because the lockfile
-holds it. Four more versions, hono 4.13.9 (CQ-1's security upgrade) among
-them, were locked before this rule and were under a week old when it arrived;
-each is listed with the date it turns a week old, and comes out after that.
-
-Two more settings sit beside it. `trustPolicy: no-downgrade` refuses a version
-published with weaker trust evidence than an earlier version of the same
-package, which is what a stolen publishing token tends to look like.
-`blockExoticSubdeps: true` refuses a dependency of a dependency that comes from
-a git URL or a tarball instead of the registry. `CQ-3 supply-chain refusals`
-shows pnpm refusing an exotic source, and the settings check refusing a
-weakened trust policy; pnpm's own downgrade refusal needs registry trust
-evidence that no offline test can supply, so it is not reproduced there.
+this project can install it, so a bad release has time to be found and pulled
+first. `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (minutes);
+`renovate.json` sets `"7 days"` at the top level and on every package rule.
+An urgent security patch can be taken sooner by hand: a reviewed change adds
+that exact version to `minimumReleaseAgeExclude`, where each entry says why.
+`trustPolicy: no-downgrade` refuses a version published with weaker trust
+evidence than an earlier one, the shape of a stolen publishing token, and
+`blockExoticSubdeps: true` refuses a sub-dependency from a git URL or tarball.
+CI's `scripts/local/semgrep-settings.sh` runs Semgrep's `p/default` on both
+files and refuses a finding or a failed scan.

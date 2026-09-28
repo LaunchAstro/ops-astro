@@ -29,10 +29,8 @@
 //      The rerun at 356dbe5 added `uses: docker://`, held to the same digest.
 //   3. Every pin appears in docs/supply-chain-pins.md. A pin nobody recorded
 //      is a pin nobody verified.
-//   4. Every `*IMAGE=` line in scripts/local/*.sh is held to rule 2 and rule 3
-//      (CQ-3). The local GoTrue container ran on a tag nothing checked. Only
-//      that assignment form is read: a script that names an image inline on a
-//      `docker run` line is not, so the local scripts keep the variable.
+//   4. Every `*IMAGE=` line in scripts/local/*.sh is held to rules 2 and 3
+//      (CQ-3). An image named inline on a `docker run` line is not read.
 //
 // This is not a YAML parser. It reads the workflows line by line, with LF,
 // CRLF or CR endings. It reads a `uses`, `image` or `container` key written
