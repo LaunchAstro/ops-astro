@@ -19,7 +19,6 @@ import {
   credentialEncoding,
   credentialKeyring,
   ensureCredentialKeyFile,
-  installCredentialKeys,
   KEYRING_VARIABLE,
   parseCredentialKeys,
   type CredentialIdentity,
@@ -36,10 +35,12 @@ const identity: CredentialIdentity = {
   delegationId: '33333333-3333-4333-8333-333333333333',
 };
 
+let restart = (): void => undefined;
+
 function useKeys(active: string, ring: string): void {
   process.env[ACTIVE_KEY_VARIABLE] = active;
   process.env[KEYRING_VARIABLE] = ring;
-  installCredentialKeys(configuredCredentialKeys(process.env));
+  restart();
 }
 
 describe('the credential derivation (group 5)', () => {
@@ -131,12 +132,16 @@ describe.skipIf(serverUrl === undefined)('the keyring behind replay (group 4)', 
   beforeAll(async () => {
     world = await replayWorld('prk');
     approver = await world.approver('keys-approver');
+    // A deployment rotates its keyring by restarting: a fresh composition, handed the new one.
+    restart = () =>
+      void (world.api = world.fixture.compose({
+        delegation: configuredCredentialKeys(process.env),
+      }));
   }, 120_000);
 
   afterEach(() => {
     delete process.env[ACTIVE_KEY_VARIABLE];
     delete process.env[KEYRING_VARIABLE];
-    installCredentialKeys(configuredCredentialKeys(process.env));
   });
 
   afterAll(async () => {

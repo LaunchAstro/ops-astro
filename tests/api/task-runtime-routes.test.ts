@@ -162,22 +162,18 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
     const id = 'test/cq-2-values@1';
     const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
     const own = fixture.compose({ delegation });
-    try {
-      const { taskId, reservationId } = await approvedReservation('keys as values', 'cq2_values');
-      const body = { operationId: randomUUID(), reservationId };
-      const picked = detailOf(await asAgent('task.pickup', body, undefined, own));
-      const again = detailOf(await asAgent('task.pickup', body, undefined, own));
-      const read = { operationId: randomUUID(), recordId: taskId };
-      const reading = await asAgent('task.read', read, String(picked['credential']), own);
-      expect([again['credential'], reading.status]).toStrictEqual([picked['credential'], 200]);
-      const sql = `select signing_key_id as k from public.gate_decisions where business_id = $1
-         union all select credential_key_id from public.delegations where business_id = $1`;
-      const used = await fixture.db.admin.execute<{ k: string }>(sql, [fixture.business]);
-      const gate = fixture.environment.GATE_SIGNING_KEY_ID;
-      expect(used.map((row) => row.k)).toEqual(expect.arrayContaining([gate, id]));
-    } finally {
-      fixture.compose();
-    }
+    const { taskId, reservationId } = await approvedReservation('keys as values', 'cq2_values');
+    const body = { operationId: randomUUID(), reservationId };
+    const picked = detailOf(await asAgent('task.pickup', body, undefined, own));
+    const again = detailOf(await asAgent('task.pickup', body, undefined, own));
+    const read = { operationId: randomUUID(), recordId: taskId };
+    const reading = await asAgent('task.read', read, String(picked['credential']), own);
+    expect([again['credential'], reading.status]).toStrictEqual([picked['credential'], 200]);
+    const sql = `select signing_key_id as k from public.gate_decisions where business_id = $1
+       union all select credential_key_id from public.delegations where business_id = $1`;
+    const used = await fixture.db.admin.execute<{ k: string }>(sql, [fixture.business]);
+    const gate = fixture.environment.GATE_SIGNING_KEY_ID;
+    expect(used.map((row) => row.k)).toEqual(expect.arrayContaining([gate, id]));
   });
 
   describe('task.propose', () => {
@@ -888,15 +884,15 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(picked['taskId']).toBe(taskId);
 
       // The restart. Nothing the first instance holds is carried across: the
-      // gate values are not in `process.env`: the second composition root is
-      // handed them again, as `server.ts` hands over the deployment's own file.
+      // gate values are cleared so the second composition root has to put them
+      // back, exactly as `server.ts` does from the deployment's own file.
       delete process.env['GATE_SIGNING_KEY_ID'];
       delete process.env['GATE_SIGNING_SECRET'];
-      expect(process.env['GATE_SIGNING_SECRET']).toBeUndefined();
+      expect(gateSigningKey()).toBeUndefined();
 
       const restarted = fixture.compose();
       expect(restarted).not.toBe(api);
-      expect(gateSigningKey()).toBeDefined();
+      expect(process.env['GATE_SIGNING_SECRET']).toBeUndefined();
 
       // The second instance was handed no reservation, no lease and no fence.
       // It knows about this work only because Postgres does: the queue read on
