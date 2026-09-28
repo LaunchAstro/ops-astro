@@ -58,6 +58,21 @@ const REASONS: Readonly<Record<LeaseCause, { code: RuntimeRefusalCode; reason: s
   held: { code: 'LEASE_HELD', reason: 'another live lease owns the work on this task' },
 };
 
+/** The fixed reason for a cause, for a caller that spells the code itself. */
+export function leaseReason(cause: LeaseCause): string {
+  return REASONS[cause].reason;
+}
+
+/**
+ * The next step when the named lease is not the caller's, per operation. The
+ * command layer answers a malformed lease id in these same bytes, before it
+ * reaches a uuid parameter (`core-commands/src/commands/tasks-lease.ts`).
+ */
+export const NOT_OWNED_FIX = {
+  handback: 'Hand back the lease your own pickup was issued.',
+  heartbeat: 'Renew the lease this pickup issued, at the fence it handed back.',
+} as const;
+
 /** A lease refusal in its one wording: the cause's reason, the operation's fix. */
 export interface LeaseVerdict {
   readonly code: RuntimeRefusalCode;

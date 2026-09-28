@@ -62,12 +62,20 @@ describe('RUNTIME.md on migration 0029 (R2-RUNTIME-6, R2-AUTHORITY-20)', () => {
 
 describe('RUNTIME.md on grants judged at the locked instant (R2-RUNTIME-4, -5)', () => {
   it('names checkAuthorityAt and lockedAt, which the cited handlers call', () => {
-    expect(read(`${RUNTIME_SRC}/recovery.ts`)).toContain('export async function checkAuthorityAt(');
+    expect(read(`${RUNTIME_SRC}/recovery/classifier.ts`)).toContain(
+      'export async function checkAuthorityAt(',
+    );
     for (const file of ['decide.ts', 'pickup.ts', 'heartbeat.ts', 'handback.ts']) {
       const source = read(`${RUNTIME_SRC}/${file}`);
       expect(source, file).toContain('const lockedAt = await lockedInstant(tx);');
-      expect(source, file).toMatch(/checkAuthorityAt\([\s\S]{0,300}?lockedAt,/u);
+      // A person's own write goes through the one lease path (CQ-8).
+      expect(source, file).toMatch(
+        /(?:checkAuthorityAt|personWriteLive)\([\s\S]{0,300}?lockedAt[,)]/u,
+      );
     }
+    expect(read(`${RUNTIME_SRC}/lease-ownership.ts`)).toMatch(
+      /checkAuthorityAt\([\s\S]{0,300}?lockedAt,/u,
+    );
     expect(runtime).toMatch(/decide grant again[^.]*\(`checkAuthorityAt`, `lockedAt`\)/u);
     expect(runtime).toMatch(
       /pickup, heartbeat and handback[^.]*at the locked instant \(`checkAuthorityAt`, `lockedAt`\)/u,
@@ -82,7 +90,7 @@ describe('RUNTIME.md on grants judged at the locked instant (R2-RUNTIME-4, -5)',
   });
 
   it('says task.cancel holds its grants before the runtime set and re-reads write', () => {
-    const cancel = bodyOf(read(`${RUNTIME_SRC}/recovery.ts`), 'cancelAndClassify');
+    const cancel = bodyOf(read(`${RUNTIME_SRC}/recovery/lease-retirement.ts`), 'cancelAndClassify');
     expect(cancel.indexOf('holdCoveringGrants(')).toBeGreaterThan(0);
     expect(cancel.indexOf('holdCoveringGrants(')).toBeLessThan(cancel.indexOf('lockRediscovered('));
     expect(cancel).toMatch(/checkAuthorityAt\([\s\S]{0,200}?action: 'write'/u);
