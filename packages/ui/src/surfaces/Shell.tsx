@@ -38,6 +38,8 @@ export interface ShellProps {
   /** Whether the open panel is seated as a grid track or floating over. */
   readonly seated: boolean;
   readonly panel?: ReactNode;
+  /** The build identifier. Red-first stub for S0-1c: accepted, not yet drawn. */
+  readonly build: string | null;
   readonly children: ReactNode;
 }
 
