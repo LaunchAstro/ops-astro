@@ -24,12 +24,8 @@
 // `main.ts` beside this file is the runnable entry (`pnpm cli`); this module
 // stays importable so a test can drive it with an injected transport.
 
-import {
-  COMMAND_SURFACE,
-  PREFIX,
-  pathOf,
-  type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import type { CommandName } from '../../packages/core-wire/src/index.ts';
 
 /**
  * How a caller reaches the API. Injected so a test drives the real Hono app.

@@ -37,7 +37,7 @@
 // declared operation with no route would fail the surface inventory, and a route that
 // pretends to work would be worse than either.
 
-import type { Action } from '../../../core-records/src/index.ts';
+import type { Action } from '../../core-records/src/index.ts';
 
 export type CommandName =
   // The contract's nine.

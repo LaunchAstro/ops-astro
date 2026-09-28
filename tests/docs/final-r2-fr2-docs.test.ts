@@ -210,7 +210,7 @@ describe('placement after FR2-PLACE-CONT (FR2-DOCS-3)', () => {
   });
 
   it('says reparent and move take task.placement before the target row lock', () => {
-    const surface = read('packages/core-commands/src/commands/surface.ts');
+    const surface = read('packages/core-wire/src/surface.ts');
     expect(surface).toContain("const TASK_PLACEMENT_LOCK = 'task.placement';");
     for (const command of ['task.reparent', 'task.move']) {
       expect(surface).toContain(

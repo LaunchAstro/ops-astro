@@ -97,7 +97,7 @@ on the chain lock, not on the cap row.
 
 `task.reparent` and `task.move` take a per-business advisory lock,
 `task.placement`, in the envelope before the target row lock (their `serialise`
-in `COMMAND_SURFACE`, `commands/surface.ts`; `serialiseOn` in
+in `COMMAND_SURFACE`, `core-wire/src/surface.ts`; `serialiseOn` in
 `prepareCommand`, `commands/prepare.ts`). One key serves both, because a move
 carries its subtree's board and a reparent reads its parent, so either could
 otherwise hold a row the other waits for.
@@ -105,7 +105,7 @@ otherwise hold a row the other waits for.
 `task.propose` takes cap, envelope, task, lineage, then the superseded version's
 holds, live lease and delegation, in one ordered call (`lockProposal`,
 `propose.ts`). It is declared `targetLock: 'runtime'`
-(`COMMAND_SURFACE`, `commands/surface.ts`), so the command envelope only reads
+(`COMMAND_SURFACE`, `core-wire/src/surface.ts`), so the command envelope only reads
 the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 `proposeOnTask` compares the expected revision once the runtime's locks are held
 (`commands/tasks-propose.ts`).
@@ -1179,7 +1179,7 @@ direct SQL.
   commit (`tests/runtime/final-r2-fr2-runtime.test.ts`).
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
-  (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `commands/surface.ts`;
+  (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or
   lease belongs to (`authorisedOn: 'claim'`, the same file), the scope the

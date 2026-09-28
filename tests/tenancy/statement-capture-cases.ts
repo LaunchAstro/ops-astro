@@ -25,7 +25,7 @@ import {
   pathOf,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
@@ -37,7 +37,7 @@ import {
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { createApi } from '../../apps/api/app.ts';
-import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   ACCEPTANCE_ISSUER,

@@ -24,7 +24,7 @@ import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.t
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { createApi } from '../../apps/api/app.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

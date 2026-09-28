@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { COMMAND_SURFACE, pathOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { createApi, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';

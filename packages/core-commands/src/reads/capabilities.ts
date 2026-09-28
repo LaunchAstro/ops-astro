@@ -27,7 +27,8 @@
 
 import { effectiveGrants, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Action, ScopeKind } from '../../../core-records/src/index.ts';
-import { declarationOf, type CommandName } from '../commands/surface.ts';
+import { declarationOf } from '../../../core-wire/src/index.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 
 /** One thing the caller may do, as the grant model spells it. */
 export interface Capability {

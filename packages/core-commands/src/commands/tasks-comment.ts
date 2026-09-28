@@ -33,7 +33,7 @@ import type {
   EntryPoint,
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
-import type { CommandDeclaration } from './surface.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';

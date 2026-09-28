@@ -21,10 +21,10 @@ import {
   pathOf,
   type CommandDeclaration,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
   agentPath,
   bearer,

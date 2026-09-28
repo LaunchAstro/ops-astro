@@ -287,7 +287,7 @@ to a verified subject and then to a session through
 `packages/core-records/src/identity/login-resolution.ts`, so who you are is
 what the token says, never what the body claims. [AUTHORITY.md](AUTHORITY.md)
 has the three credentials and what each confers. The route itself is derived
-from `COMMAND_SURFACE` in `packages/core-commands/src/commands/surface.ts`, so a
+from `COMMAND_SURFACE` in `packages/core-wire/src/surface.ts`, so a
 command with no declaration has no route, and a read is a declaration with
 `kind: 'read'`. On the person prefix a read carries no `operationId` and no
 `expectedRevision` ([API.md](API.md)). On the agent prefix every call, reads

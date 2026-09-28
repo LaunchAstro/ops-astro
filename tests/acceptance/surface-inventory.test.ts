@@ -31,7 +31,7 @@ import {
   READS,
   pathOf,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { accepts, createCli, usage } from '../../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../../apps/web/src/operations/client.ts';
 import {

@@ -20,7 +20,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { gateSigningKey } from '../../packages/core-runtime/src/runtime-config.ts';
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { enrol } from '../commands/fixture.ts';

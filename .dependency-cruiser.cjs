@@ -50,10 +50,11 @@ module.exports = {
       name: 'layer-records-is-the-bottom',
       severity: 'error',
       comment:
-        'The packages are layered: records, then the runtime, then the command package, ' +
-        'then the apps. Records is the bottom and imports neither layer above it.',
+        'The packages are layered: records at the bottom, the runtime on it, the command ' +
+        'package on both, and the apps on top. The wire contract and the payload digest are ' +
+        'leaves beside them. Records imports none of the others.',
       from: { path: '^packages/core-records/' },
-      to: { path: '^packages/(core-runtime|core-commands)/' },
+      to: { path: '^packages/core-(runtime|commands|wire|digest)/' },
     },
     {
       name: 'layer-runtime-below-commands',
@@ -63,32 +64,33 @@ module.exports = {
       to: { path: '^packages/core-commands/' },
     },
     {
+      name: 'layer-wire-and-digest-are-leaves',
+      severity: 'error',
+      comment:
+        'The web and the command line load the wire contract and the digest, so neither ' +
+        'may reach the runtime or the command package. The wire contract takes records ' +
+        'types only; the digest imports nothing of the product.',
+      from: { path: '^packages/core-(wire|digest)/' },
+      to: { path: '^packages/core-(runtime|commands)/' },
+    },
+    {
+      name: 'layer-digest-imports-no-package',
+      severity: 'error',
+      comment: 'The digest is a leaf: it imports no other package.',
+      from: { path: '^packages/core-digest/' },
+      to: { path: '^packages/', pathNot: '^packages/core-digest/' },
+    },
+    {
       name: 'index-only',
       severity: 'error',
       comment:
-        "An app or package enters another package only through that package's index.ts. " +
-        'The one exception is the wire contract, commands/surface.ts and commands/digest.ts, ' +
-        'which the web and the command line import directly because the index reaches the ' +
-        'database. Tests and scripts prove modules, not the interface, and may reach in.',
+        "An app or package enters another package only through that package's index.ts, " +
+        'with no exception. Tests and scripts prove modules, not the interface, and may reach in.',
       from: { path: '^((?:apps|packages)/[^/]+)/' },
       to: {
         path: '^packages/[^/]+/src/.+\\.(ts|tsx|mjs|js)$',
-        pathNot: [
-          '^$1/',
-          '^packages/[^/]+/src/index\\.ts$',
-          '^packages/ui/',
-          '^packages/core-commands/src/commands/(surface|digest)\\.ts$',
-        ],
+        pathNot: ['^$1/', '^packages/[^/]+/src/index\\.ts$'],
       },
-    },
-    {
-      name: 'index-only-wire-clients',
-      severity: 'error',
-      comment:
-        'Only the web and the command line take the wire contract directly; ' +
-        'everything else uses the command index.',
-      from: { path: '^(apps|packages)/', pathNot: '^(apps/(web|cli)|packages/core-commands)/' },
-      to: { path: '^packages/core-commands/src/commands/(surface|digest)\\.ts$' },
     },
     {
       name: 'no-unresolvable',

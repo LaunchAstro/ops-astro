@@ -34,7 +34,9 @@ import type {
   VerifiedSubject,
   EntryPoint,
 } from '../../../core-records/src/index.ts';
-import { payloadDigest } from './digest.ts';
+import { declarationOf } from '../../../core-wire/src/index.ts';
+import { payloadDigest } from '../../../core-digest/src/index.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAuditEvent } from './audit.ts';
 import {
   asCallerVisible,
@@ -44,7 +46,6 @@ import {
   refuseCommand,
   type CommandRefusal,
 } from './refusal.ts';
-import { declarationOf, type CommandDeclaration } from './surface.ts';
 import {
   OPERATION_ID,
   isRetryableViolation,

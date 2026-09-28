@@ -27,7 +27,7 @@ import { heartbeatOwnLease } from '../../packages/core-commands/src/commands/tas
 import { handbackOwnLease } from '../../packages/core-commands/src/commands/tasks-handback.ts';
 import { refuseNotFound } from '../../packages/core-commands/src/commands/refusal.ts';
 import { refused } from '../../packages/core-commands/src/commands/outcome.ts';
-import { declarationOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { declarationOf } from '../../packages/core-wire/src/surface.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK_TYPE = '22222222-2222-4222-8222-222222222222';

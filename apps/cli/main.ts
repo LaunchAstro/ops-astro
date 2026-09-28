@@ -28,8 +28,8 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
-import { canonicalPayload } from '../../packages/core-commands/src/commands/digest.ts';
-import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
+import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import {
   accepts,
   createCli,

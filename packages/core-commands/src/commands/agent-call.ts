@@ -5,7 +5,7 @@
 // (THERMO-RECHECK NA5).
 
 import type { AgentSession } from '../../../core-records/src/index.ts';
-import type { CommandDeclaration, CommandName } from './surface.ts';
+import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
 
 /**
  * What an agent sends.

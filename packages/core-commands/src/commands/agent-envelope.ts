@@ -58,14 +58,10 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { payloadDigest } from './digest.ts';
+import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts';
+import { payloadDigest } from '../../../core-digest/src/index.ts';
+import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
 import { asCallerVisible, fromAgentIdentity, refuseCommand } from './refusal.ts';
-import {
-  COMMAND_SURFACE,
-  declarationOf,
-  type CommandDeclaration,
-  type CommandName,
-} from './surface.ts';
 import {
   OPERATION_ID,
   lookupAttempt,

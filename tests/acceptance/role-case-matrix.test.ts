@@ -32,7 +32,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE, pathOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,

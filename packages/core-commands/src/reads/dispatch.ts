@@ -17,14 +17,14 @@ import {
   type CommandRefusal,
 } from '../commands/refusal.ts';
 import { readTaskSpine } from '../commands/context.ts';
-import { declarationOf } from '../commands/surface.ts';
+import { declarationOf } from '../../../core-wire/src/index.ts';
+import { payloadDigest } from '../../../core-digest/src/index.ts';
 import {
   SYSTEM_OWNED_FIXES,
   claimedSystemFields,
   irrelevantIdentifiers,
 } from '../commands/prepare.ts';
 import { writeAuditEvent } from '../commands/audit.ts';
-import { payloadDigest } from '../commands/digest.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './catalogue.ts';
 import { DecisionIntegrityError } from './verified-decisions.ts';
@@ -37,7 +37,7 @@ export const READ_BODY_FIXES: readonly string[] = [
 /**
  * Every read, audited, in the caller's own transaction (I13).
  *
- * `commands/surface.ts` used to say a read writes no audit event and it now
+ * `core-wire/src/surface.ts` used to say a read writes no audit event and it now
  * says the opposite, because the accepted ledger asks for every successful and
  * refused production operation to be audited and a read that leaves no trace
  * is the one way to look at a business's work without the business learning it

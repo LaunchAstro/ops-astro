@@ -362,7 +362,7 @@ it holds them.
 
 **The authority target comes from the declaration, not the body.** Each
 declaration's `authorisedOn` names it (`CommandDeclaration` in
-`commands/surface.ts`). `record` is checked against the task named in
+`core-wire/src/surface.ts`). `record` is checked against the task named in
 `recordId`. That is every command with `targetsExistingRecord`, plus
 `task.cancel` and `task.restart`, which name their task without writing it.
 `target` is checked at the scope of the grant or delegation being revoked

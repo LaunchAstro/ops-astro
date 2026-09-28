@@ -29,7 +29,7 @@ import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   connect,

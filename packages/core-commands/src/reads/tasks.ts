@@ -27,7 +27,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
-import { READS } from '../commands/surface.ts';
+import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 
 interface TaskRowRead {

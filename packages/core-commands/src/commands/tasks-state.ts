@@ -42,7 +42,7 @@ import { refuseWrongValueType } from './values.ts';
 import { refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
-import type { CommandName } from './surface.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
 
 /**

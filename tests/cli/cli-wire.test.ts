@@ -11,7 +11,7 @@
 
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DELEGATION_HEADER } from '../../packages/core-commands/src/commands/surface.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { runCli } from './cli-process-harness.ts';
 
 interface Seen {

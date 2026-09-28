@@ -19,7 +19,7 @@ import {
   isOperandRefusal,
 } from '../../packages/core-commands/src/commands/agent-operations.ts';
 import type { AgentRequest } from '../../packages/core-commands/src/commands/agent-call.ts';
-import type { CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 const parse = (command: CommandName, fields: Record<string, unknown>): unknown => {
   const operation = AGENT_OPERATIONS.get(command);

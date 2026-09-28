@@ -6,7 +6,7 @@
 
 import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';
-import { DELEGATION_HEADER } from './surface.ts';
+import { DELEGATION_HEADER } from '../../../core-wire/src/index.ts';
 
 /**
  * Whether an operand of the owning `task.handback` contract must be sent,

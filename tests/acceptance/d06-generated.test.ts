@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
-import type { CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
   FIELDS_PAYLOAD_OPERATIONS,

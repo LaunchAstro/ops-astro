@@ -31,7 +31,7 @@ import {
   COMMAND_SURFACE,
   NEEDS_NO_EXPECTED_REVISION,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
