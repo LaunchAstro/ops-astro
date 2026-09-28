@@ -40,8 +40,9 @@ const NOT_FOUND = {
   ok: false,
   refusal: {
     code: 'NOT_FOUND',
-    reason: 'no such record or person here',
-    fix: 'check the identifiers',
+    refused: true,
+    names: [],
+    fixes: ['no such record or person here', 'check the identifiers'],
   },
 };
 

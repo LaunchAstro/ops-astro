@@ -137,7 +137,7 @@ export async function setBusinessSetting(
     // Passed straight through: the writer already named the revision the row is
     // at and the fixes the records spine words, so restating either here would
     // be two wordings of one answer drifting apart.
-    return refused(refuseCommand(written.code, written.names, written.fixes));
+    return refused(written);
   }
 
   // The revision is in the handle *and* in the detail: the handle is what a

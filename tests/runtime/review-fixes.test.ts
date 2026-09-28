@@ -81,7 +81,7 @@ async function proposeOn(
       ...(options.lineageId === undefined ? {} : { lineageId: options.lineageId }),
     });
     if (!result.ok)
-      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.reason}`);
+      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.fixes.join('; ')}`);
     return result.value;
   });
 }
@@ -715,7 +715,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(third.ok).toBe(false);
     if (third.ok) return;
     expect(third.refusal.code).toBe('SUCCESSOR_OUT_OF_BOUNDS');
-    expect(third.refusal.reason).toContain('third');
+    expect(third.refusal.fixes[0]).toContain('third');
     await settle(database, fixture, heldThird);
   });
 

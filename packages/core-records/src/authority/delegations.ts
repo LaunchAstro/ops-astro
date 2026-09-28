@@ -38,6 +38,7 @@
 // path here reads a permission the delegation stored.
 
 import { createHash, randomUUID } from 'node:crypto';
+import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
   configuredCredentialKeys,
@@ -57,13 +58,7 @@ export type DelegationRefusalCode =
 /** The same shape `grants.ts` returns, with this module's codes. Returned, never thrown. */
 export type DelegationDecision<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly refusal: DelegationRefusal };
-
-export interface DelegationRefusal {
-  readonly code: DelegationRefusalCode;
-  readonly reason: string;
-  readonly fix: string;
-}
+  | { readonly ok: false; readonly refusal: CommandRefusal<DelegationRefusalCode> };
 
 /** The actions a delegation may carry. `decide` is not one of them (I07). */
 export type DelegableAction = Exclude<Action, 'decide'>;
@@ -160,7 +155,7 @@ function refuse(
   reason: string,
   fix: string,
 ): DelegationDecision<never> {
-  return { ok: false, refusal: { code, reason, fix } };
+  return { ok: false, refusal: refuseCommand(code, [], [reason, fix]) };
 }
 
 export function digestOf(credential: string): string {

@@ -8,7 +8,7 @@ import { subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { fromReasoned, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { gateSigningKey, readBusinessCapId } from '../../../core-runtime/src/index.ts';
 
@@ -100,15 +100,7 @@ export async function decideOnGate(
     // root ruling 2 of dd30aa8). The refused audit row is still this
     // business's, written by the envelope.
     if (result.refusal.code === 'GATE_NOT_FOUND') return refused(GATE_NOT_VISIBLE);
-    // The runtime refuses a note it cannot sign and store (final review R1
-    // #53). The field is named here, as every other `FIELD_VALUE_INVALID`
-    // names its field; the value itself is not echoed.
-    if (result.refusal.code === 'FIELD_VALUE_INVALID') {
-      return refused(
-        refuseCommand('FIELD_VALUE_INVALID', ['note'], [result.refusal.reason, result.refusal.fix]),
-      );
-    }
-    return refused(fromReasoned(result.refusal));
+    return refused(result.refusal);
   }
 
   const decided = result.value;

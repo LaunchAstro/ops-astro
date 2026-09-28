@@ -17,19 +17,8 @@
 // inventory read. This row says only how the check is asked.
 
 import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
-import type {
-  TenantQuery,
-  Session,
-  Refusal,
-  PresetField,
-  PresetPlanRefusal,
-} from '../../../core-records/src/index.ts';
-import {
-  fromReasoned,
-  refuseCommand,
-  refuseNotFound,
-  type CommandRefusal,
-} from '../commands/refusal.ts';
+import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
@@ -164,11 +153,11 @@ const PRESET_FIELDS_FIX = 'Send fields as an array of field objects, which may b
  * `checkAuthority` uses for any operation no grant covers: it is the same
  * refusal, reached by a read with no collection of its own to ask about.
  */
-const NO_GRANT_AT_ALL: Refusal = {
-  code: 'SCOPE_NOT_GRANTED',
-  reason: 'no live grant covers it',
-  fix: 'ask a holder who may delegate',
-};
+const NO_GRANT_AT_ALL = refuseCommand(
+  'SCOPE_NOT_GRANTED',
+  [],
+  ['no live grant covers it', 'ask a holder who may delegate'],
+);
 
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   'task.read': {
@@ -302,7 +291,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
           fields: operands.fields,
         },
       );
-      if (!planned.ok) return fromPresetPlan(planned.refusal);
+      if (!planned.ok) return planned.refusal;
       return { ok: true, plan: planned.value };
     },
   },
@@ -336,25 +325,11 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     async serve(tx, session) {
       const capabilities = await readCapabilities(tx, session);
-      if (capabilities.grants.length === 0) return fromReasoned(NO_GRANT_AT_ALL);
+      if (capabilities.grants.length === 0) return NO_GRANT_AT_ALL;
       return { ok: true, ...capabilities };
     },
   },
 };
-
-/**
- * The planner's refusal as the command register spells it.
- *
- * The three `PRESET_*` codes are registered here rather than widened into the
- * records register, which is what L2's module comment asks for: a model module
- * reaching into the command surface to add a code is the coupling the register
- * exists to prevent. The mapping is total over
- * `PresetPlanRefusalCode` — `SCOPE_NOT_GRANTED` is already the register's own
- * spelling — so a fourth code added there is a type error here.
- */
-function fromPresetPlan(refusal: PresetPlanRefusal): CommandRefusal {
-  return refuseCommand(refusal.code, refusal.names, refusal.fixes);
-}
 
 /** Whether `board` names a live task in the caller's business: `task.move`'s own check. */
 async function boardExists(tx: TenantQuery, taskTypeId: string, board: string): Promise<boolean> {

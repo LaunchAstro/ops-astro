@@ -21,8 +21,17 @@
 // and the held total. W01's kill-before-commit case must find nothing.
 
 import { randomUUID } from 'node:crypto';
-import { checkAuthority, checkDelegatedAuthority } from '../../core-records/src/index.ts';
-import type { TenantQuery, Subject, Delegation } from '../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  checkDelegatedAuthority,
+  refuseCommand,
+} from '../../core-records/src/index.ts';
+import type {
+  CommandRefusal,
+  TenantQuery,
+  Subject,
+  Delegation,
+} from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
@@ -52,14 +61,9 @@ import { refuse, type RuntimeResult } from './refusals.ts';
  * the request layer's code, not one of the runtime's own register rows, so it
  * is typed here beside `decide` rather than widened into `RuntimeRefusalCode`.
  */
-export interface NoteRefusal {
-  readonly code: 'FIELD_VALUE_INVALID';
-  readonly reason: string;
-  readonly fix: string;
-}
-
 export type DecideResult =
-  RuntimeResult<Decided> | { readonly ok: false; readonly refusal: NoteRefusal };
+  | RuntimeResult<Decided>
+  | { readonly ok: false; readonly refusal: CommandRefusal<'FIELD_VALUE_INVALID'> };
 
 const NUL = String.fromCodePoint(0);
 // With the `u` flag a paired surrogate reads as one code point, so this
@@ -183,11 +187,14 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   if (fault !== null) {
     return {
       ok: false,
-      refusal: {
-        code: 'FIELD_VALUE_INVALID',
-        reason: `note: ${fault}, so it cannot be signed and stored`,
-        fix: 'Send the note as text without NUL characters or unpaired surrogates.',
-      },
+      refusal: refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['note'],
+        [
+          `note: ${fault}, so it cannot be signed and stored`,
+          'Send the note as text without NUL characters or unpaired surrogates.',
+        ],
+      ),
     };
   }
 
@@ -616,7 +623,7 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
     // contradiction between two checks that hold the same locks. It aborts
     // the transaction instead.
     throw new Error(
-      `decide: preflight passed and reserve refused ${reserved.refusal.code} after the decision was written (${reserved.refusal.reason})`,
+      `decide: preflight passed and reserve refused ${reserved.refusal.code} after the decision was written (${reserved.refusal.fixes.join('; ')})`,
     );
   }
 

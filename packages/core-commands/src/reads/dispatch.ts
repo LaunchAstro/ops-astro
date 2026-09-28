@@ -10,7 +10,6 @@
 import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session } from '../../../core-records/src/index.ts';
 import {
-  fromReasoned,
   isCommandRefusal,
   refuseCommand,
   refuseNotFound,
@@ -216,7 +215,7 @@ async function serveRead<K extends ReadName>(
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
       if (session.roleKey === null && row.outsiderNotFound) return served(refuseNotFound());
-      return served(fromReasoned(authorised.refusal));
+      return served(authorised.refusal);
     }
   }
 

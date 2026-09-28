@@ -257,7 +257,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       if (after.ok) return;
       expect(after.refusal.code).toBe('DELEGATION_NARROWED');
       expect(after.refusal.code).not.toBe('SCOPE_NOT_GRANTED');
-      expect(after.refusal.reason).toContain('grant');
+      expect(after.refusal.fixes[0]).toContain('grant');
     });
 
     it('stops resolving once the delegation itself is revoked', async () => {
@@ -319,7 +319,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       expect(second.ok).toBe(false);
       if (second.ok) return;
       expect(second.refusal.code).toBe('DELEGATION_ALREADY_LIVE');
-      expect(second.refusal.fix.length).toBeGreaterThan(0);
+      expect(second.refusal.fixes[1]?.length).toBeGreaterThan(0);
       // Refused, not faulted: nothing was inserted and the first hold stands.
       expect(await liveRows('dup_same_task')).toBe(1);
       const stillResolves = await db.app.withBusiness(business, async (tx) =>

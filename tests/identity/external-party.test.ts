@@ -16,7 +16,10 @@ import {
   resolveLogin,
   type Session,
 } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { isRefusal, type Refusal } from '../../packages/core-records/src/identity/refusals.ts';
+import {
+  isCommandRefusal as isRefusal,
+  type CommandRefusal as Refusal,
+} from '../../packages/core-records/src/register.ts';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {

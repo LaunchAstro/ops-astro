@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The typed refusal, in the three codes identity can produce.
+// The refusal codes identity can produce. The shape is the register's one
+// `CommandRefusal`, with `names` always empty.
 //
 // A refusal is returned, never thrown. Thrown refusals become error handling,
 // and error handling is where a refusal turns into a 500 or, worse, into an
@@ -46,33 +47,3 @@ export type IdentityRefusalCode = 'AUTH_UNKNOWN_LOGIN' | 'AUTH_NO_MEMBERSHIP' | 
  * and a silent failure is none of them.
  */
 export type AgentIdentityRefusalCode = 'AUTH_NO_AGENT_IDENTITY' | 'AUTH_SESSION_EXPIRED';
-
-export interface Refusal {
-  readonly refused: true;
-  readonly code: IdentityRefusalCode;
-  /** What a person could do about it. Never a value, never a name. */
-  readonly fixes: readonly string[];
-}
-
-/** The same shape, in the agent path's codes. Separate so the register stays L3's. */
-export interface AgentRefusal {
-  readonly refused: true;
-  readonly code: AgentIdentityRefusalCode;
-  readonly fixes: readonly string[];
-}
-
-export function refuse(code: IdentityRefusalCode, fixes: readonly string[]): Refusal {
-  return { refused: true, code, fixes };
-}
-
-export function refuseAgent(
-  code: AgentIdentityRefusalCode,
-  fixes: readonly string[],
-): AgentRefusal {
-  return { refused: true, code, fixes };
-}
-
-/** The discriminant, so a caller can tell a result from a refusal. */
-export function isRefusal(value: object): value is Refusal | AgentRefusal {
-  return 'refused' in value && value.refused === true;
-}

@@ -26,7 +26,14 @@
 // read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
-import { refuse, type Refusal } from './refusals.ts';
+import { refuseCommand, type CommandRefusal } from '../register.ts';
+import type { IdentityRefusalCode } from './refusals.ts';
+
+type Refusal = CommandRefusal<IdentityRefusalCode>;
+
+/** Identity names nothing: which of several reasons applied is itself an inference. */
+const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
+  refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 

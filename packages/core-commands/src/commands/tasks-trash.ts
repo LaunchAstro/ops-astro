@@ -23,13 +23,7 @@ import {
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import {
-  fromReasoned,
-  fromRecords,
-  refuseCommand,
-  type CommandRefusal,
-  type ReasonedRefusal,
-} from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refusePurgeOperands, refuseRestoreOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
@@ -52,8 +46,8 @@ export async function trashTask(tx: TenantQuery, context: CommandContext): Promi
     authorise: async (recordIds: readonly string[]) =>
       await refuseUnreached(tx, context, target.id, recordIds),
   });
-  if ('denied' in trashed) return refused(fromReasoned(trashed.denied));
-  if (isRecordsRefusal(trashed)) return refused(fromRecords(trashed));
+  if ('denied' in trashed) return refused(trashed.denied);
+  if (isRecordsRefusal(trashed)) return refused(trashed);
   // Trashing writes `deleted_at`, so the revision moved. The handle carries
   // the new one: a caller that has to guess it would be refused
   // `VERSION_STALE` for doing the next honest thing.
@@ -77,7 +71,7 @@ async function refuseUnreached(
   context: CommandContext,
   rootId: string,
   recordIds: readonly string[],
-): Promise<ReasonedRefusal | undefined> {
+): Promise<CommandRefusal | undefined> {
   const descendants = recordIds.filter((id) => id !== rootId);
   if (descendants.length === 0) return undefined;
   const subjects = subjectsOf(context.session);
@@ -110,7 +104,7 @@ export async function restoreTasks(
   const operands = refuseRestoreOperands(batchId);
   if (operands !== undefined) return refused(operands);
   const restored = await restoreBatch(tx, { batchId });
-  if (isRecordsRefusal(restored)) return refused(fromRecords(restored));
+  if (isRecordsRefusal(restored)) return refused(restored);
   // The ids go in the stored result: the event this command writes has one
   // subject column and a restore has no single subject (R2-RUNTIME-55).
   return applied(null, null, {
@@ -154,7 +148,7 @@ export async function purgeTasks(
           trashedBefore,
           commentTypeId: context.spine.taskCommentTypeId,
         });
-  if (isRecordsRefusal(purged)) return refused(fromRecords(purged));
+  if (isRecordsRefusal(purged)) return refused(purged);
   // `retained` names the aged trash the runtime still holds, so the stored
   // result says what the purge kept as well as how much it removed. The
   // destroyed ids are named too: after the purge, this result is the only

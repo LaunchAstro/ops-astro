@@ -37,7 +37,7 @@ import type {
   FieldDefinition,
   MachineCategory,
 } from '../../../core-records/src/index.ts';
-import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -216,7 +216,7 @@ export async function setState(
     stateId: state.id,
     taskStateTypeId: context.spine.taskStateTypeId,
   });
-  if (isRecordsRefusal(moved)) return refused(fromRecords(moved));
+  if (isRecordsRefusal(moved)) return refused(moved);
 
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from records where business_id = $1 and id = $2`,

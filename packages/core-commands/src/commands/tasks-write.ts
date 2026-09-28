@@ -39,7 +39,7 @@ import {
   planTaskPlacement,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
-import { fromRecords, refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -123,7 +123,7 @@ export async function createTask(
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const classified = refuseGenericWrite(definitions, Object.keys(request.fields));
   if (classified !== undefined) {
-    return refused(fromRecords(classified), attemptedFrom(request.fields, classified.names));
+    return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
   const mistyped = refuseWrongValueType(definitions, request.fields);
@@ -153,7 +153,7 @@ export async function createTask(
     boardSection: request.boardSection ?? null,
     suppliedKeys: Object.keys(request.fields),
   });
-  if (isRecordsRefusal(placement)) return refused(fromRecords(placement));
+  if (isRecordsRefusal(placement)) return refused(placement);
 
   const named =
     request.stateKey === undefined
@@ -235,7 +235,7 @@ export async function updateTask(
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const classified = refuseGenericWrite(definitions, Object.keys(request.fields));
   if (classified !== undefined) {
-    return refused(fromRecords(classified), attemptedFrom(request.fields, classified.names));
+    return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
   const mistyped = refuseWrongValueType(definitions, request.fields);

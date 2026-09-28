@@ -28,7 +28,7 @@ describe('capVerdict', () => {
       ok: false,
       refusal: expect.objectContaining({
         code: 'BUDGET_UNAVAILABLE',
-        reason: `no budget cap ${CAP_ID} in this business`,
+        fixes: [`no budget cap ${CAP_ID} in this business`, expect.any(String)],
       }),
     });
   });
@@ -64,7 +64,10 @@ describe('envelopeVerdict', () => {
       ok: false,
       refusal: expect.objectContaining({
         code: 'BUDGET_UNAVAILABLE',
-        reason: "this task's envelope holds 300 of 500, which leaves no room for 201",
+        fixes: [
+          "this task's envelope holds 300 of 500, which leaves no room for 201",
+          expect.any(String),
+        ],
       }),
     });
   });

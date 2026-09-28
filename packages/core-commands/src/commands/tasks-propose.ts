@@ -9,7 +9,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
@@ -169,7 +169,7 @@ export async function proposeOnTask(
     );
   }
   const result = await proposeUnderLocks(tx, proposal, held);
-  if (!result.ok) return refused(fromReasoned(result.refusal));
+  if (!result.ok) return refused(result.refusal);
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

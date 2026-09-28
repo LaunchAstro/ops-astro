@@ -94,8 +94,6 @@ export {
   isRuntimeRefusal,
   refuse,
   SUGGESTED_STATUS,
-  type AnyRefusal,
-  type RuntimeRefusal,
   type RuntimeRefusalCode,
   type RuntimeResult,
 } from './refusals.ts';

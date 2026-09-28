@@ -124,7 +124,7 @@ async function proposeOn(
       ...(options.lineageId === undefined ? {} : { lineageId: options.lineageId }),
     });
     if (!result.ok)
-      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.reason}`);
+      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.fixes.join('; ')}`);
     return result.value;
   });
 }
@@ -661,7 +661,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
       // Distinct from BUDGET_UNAVAILABLE on purpose: the caller told the wrong
       // one raises the wrong ceiling.
       expect(refused.refusal.code).toBe('BUDGET_EXHAUSTED');
-      expect(refused.refusal.reason).toContain('cap');
+      expect(refused.refusal.fixes[0]).toContain('cap');
     }
 
     await database.app.withBusiness(fixture.businessId, async (tx) => {

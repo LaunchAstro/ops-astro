@@ -27,10 +27,6 @@ import {
 import { REFUSAL_REGISTER, statusOf } from '../../packages/core-records/src/register.ts';
 import {
   asCallerVisible,
-  fromAgentIdentity,
-  fromReasoned,
-  fromIdentity,
-  fromRecords,
   refuseCommand,
   refuseNotFound,
   type CommandRefusal,
@@ -38,10 +34,6 @@ import {
 import { handbackLease } from '../../packages/core-commands/src/commands/tasks-handback.ts';
 import { isRefused } from '../../packages/core-commands/src/commands/outcome.ts';
 import { refuse as refuseRecords } from '../../packages/core-records/src/records/refusals.ts';
-import {
-  refuse as refuseIdentity,
-  refuseAgent,
-} from '../../packages/core-records/src/identity/refusals.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
 /** Every registered code, its HTTP status and its visibility, in register order. */
@@ -187,7 +179,7 @@ describe('one refusal from each road, byte for byte', () => {
   it('a runtime refusal: reason then fix, into fixes', () => {
     const result = refuseRuntime('LEASE_EXPIRED', 'The lease ended.', 'Pick the work up again.');
     if (result.ok) throw new Error('unreachable');
-    const shaped = fromReasoned(result.refusal);
+    const shaped = result.refusal;
     expect(keys(shaped)).toBe(
       '{"refused":true,"code":"LEASE_EXPIRED","names":[],"fixes":["The lease ended.","Pick the work up again."]}',
     );
@@ -198,11 +190,11 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('a delegation refusal the runtime passes through', () => {
-    const shaped = fromReasoned({
-      code: 'DELEGATION_NOT_LIVE',
-      reason: 'The delegation is over.',
-      fix: 'Ask again.',
-    });
+    const shaped = refuseCommand(
+      'DELEGATION_NOT_LIVE',
+      [],
+      ['The delegation is over.', 'Ask again.'],
+    );
     expect(wire(shaped)).toStrictEqual([
       401,
       '{"refused":true,"code":"DELEGATION_NOT_LIVE","names":[],"fixes":["The delegation is over.","Ask again."]}',
@@ -210,11 +202,11 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('an authority refusal', () => {
-    const shaped = fromReasoned({
-      code: 'SCOPE_NOT_GRANTED',
-      reason: 'No grant covers this.',
-      fix: 'Ask for one.',
-    });
+    const shaped = refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      [],
+      ['No grant covers this.', 'Ask for one.'],
+    );
     expect(keys(shaped)).toBe(
       '{"refused":true,"code":"SCOPE_NOT_GRANTED","names":[],"fixes":["No grant covers this.","Ask for one."]}',
     );
@@ -222,7 +214,7 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('a records refusal keeps its names', () => {
-    const shaped = fromRecords(refuseRecords('FIELD_UNKNOWN', ['colour'], ['Use a field it has.']));
+    const shaped = refuseRecords('FIELD_UNKNOWN', ['colour'], ['Use a field it has.']);
     expect(wire(shaped)).toStrictEqual([
       422,
       '{"refused":true,"code":"FIELD_UNKNOWN","names":["colour"],"fixes":["Use a field it has."]}',
@@ -230,13 +222,11 @@ describe('one refusal from each road, byte for byte', () => {
   });
 
   it('an identity refusal, person and agent, carries no names', () => {
-    expect(wire(fromIdentity(refuseIdentity('ACTOR_INACTIVE', ['Ask an admin.'])))).toStrictEqual([
+    expect(wire(refuseCommand('ACTOR_INACTIVE', [], ['Ask an admin.']))).toStrictEqual([
       403,
       '{"refused":true,"code":"ACTOR_INACTIVE","names":[],"fixes":["Ask an admin."]}',
     ]);
-    expect(
-      wire(fromAgentIdentity(refuseAgent('AUTH_SESSION_EXPIRED', ['Sign in again.']))),
-    ).toStrictEqual([
+    expect(wire(refuseCommand('AUTH_SESSION_EXPIRED', [], ['Sign in again.']))).toStrictEqual([
       401,
       '{"refused":true,"code":"AUTH_SESSION_EXPIRED","names":[],"fixes":["Sign in again."]}',
     ]);

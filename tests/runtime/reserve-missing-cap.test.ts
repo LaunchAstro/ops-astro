@@ -55,7 +55,7 @@ describe('reserve against a cap it cannot read (thermo O2)', () => {
       ok: false,
       refusal: expect.objectContaining({
         code: 'BUDGET_UNAVAILABLE',
-        reason: `no budget cap ${CAP} in this business`,
+        fixes: [`no budget cap ${CAP} in this business`, expect.any(String)],
       }),
     });
     expect(writes).toStrictEqual([]);

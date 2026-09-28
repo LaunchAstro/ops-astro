@@ -217,8 +217,12 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
     if (refused.ok) throw new Error('a stale, unreleasable hold was claimed');
     expect(refused.refusal).toStrictEqual({
       code: 'RESERVATION_NOT_CLAIMABLE',
-      reason: 'the approval behind this reservation is no longer current',
-      fix: 'Re-read the queue. A superseded or terminal approval authorises nothing.',
+      refused: true,
+      names: [],
+      fixes: [
+        'the approval behind this reservation is no longer current',
+        'Re-read the queue. A superseded or terminal approval authorises nothing.',
+      ],
     });
 
     const after = await database.app.withBusiness(fixture.businessId, rowsOf);
@@ -243,8 +247,12 @@ describe.skipIf(serverUrl === undefined)('pickup refusal order', () => {
     if (refused.ok) throw new Error('a stale approval was claimed');
     expect(refused.refusal).toStrictEqual({
       code: 'RESERVATION_NOT_CLAIMABLE',
-      reason: 'the approval behind this reservation is no longer current',
-      fix: 'Re-read the queue. A superseded or terminal approval authorises nothing.',
+      refused: true,
+      names: [],
+      fixes: [
+        'the approval behind this reservation is no longer current',
+        'Re-read the queue. A superseded or terminal approval authorises nothing.',
+      ],
     });
 
     const after = await database.app.withBusiness(fixture.businessId, rowsOf);
