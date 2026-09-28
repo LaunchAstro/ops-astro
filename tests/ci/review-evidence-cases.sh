@@ -736,6 +736,42 @@ Verdict: approve
 </pre>" "README.md"
 RECORD="$SAVED"
 
+# CQ-13 fix 5, the orchestrator's ruling on Sol's fifth review: a review field
+# counts only on a top-level plain line. The good record sits only inside a
+# container here, so nothing operative is left and the check fails.
+REC="$(record gpt-6-sol "$HEAD" approve)"
+RECORD=""
+run_case "CQ-13 top level only: a record inside a details block fails" 1 "$OK_BODY$P2<details>
+<summary>Record</summary>
+
+$REC
+
+</details>" "README.md"
+run_case "CQ-13 top level only: a record in a list fails" 1 "$OK_BODY$P2$(printf '%s\n' "$REC" | sed 's/^/- /')" "README.md"
+run_case "CQ-13 top level only: a record in a quote fails" 1 "$OK_BODY$P2$(printf '%s\n' "$REC" | sed 's/^/> /')" "README.md"
+run_case "CQ-13 top level only: a record as table rows fails" 1 "$OK_BODY$P2| a | b |
+| - | - |
+$REC" "README.md"
+run_case "CQ-13 top level only: a record under a setext underline fails" 1 "$OK_BODY$P2$REC
+---" "README.md"
+run_case "CQ-13 top level only: a record lazily continuing a list item fails" 1 "$OK_BODY$P2- Item
+$REC" "README.md"
+run_case "CQ-13 top level only: a record inside a code span across lines fails" 1 "$OK_BODY$P2\`\`start
+$REC
+end\`\`" "README.md"
+run_case "CQ-13 top level only: a record after a closed details block passes" 0 "$OK_BODY$P2<details>
+<summary>More</summary>
+
+Notes.
+
+</details>
+
+$REC" "README.md"
+run_case "CQ-13 top level only: a record after a template comment passes" 0 "$OK_BODY$P2<!-- Fill in the record below. -->
+
+$REC" "README.md"
+RECORD="$SAVED"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
