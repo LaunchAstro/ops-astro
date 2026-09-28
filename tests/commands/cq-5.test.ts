@@ -97,6 +97,12 @@ describe('CQ-5 the source', () => {
     expect(declarations).toStrictEqual([]);
   });
 
+  it('Sol proof, criterion 5: composed refusal declaration fails uniqueness check', () => {
+    const planted =
+      'export type SplitRefusal = { readonly refused: true } & { readonly code: string };';
+    expect(refusalShapes('planted.ts', planted)).toStrictEqual(['planted.ts:SplitRefusal']);
+  });
+
   it('CQ-5 converters gone: fromRecords, fromIdentity, fromAgentIdentity and fromReasoned, and nothing replaces them', () => {
     const files = sourcesOf([...LAYERS, 'apps/web', 'apps/cli', 'scripts']);
     const texts = files.map((f) => [f, readFileSync(f, 'utf8')] as const);
