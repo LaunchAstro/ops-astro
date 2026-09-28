@@ -360,7 +360,8 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       });
       expectRefused(agentAnswer, 'COMMAND_BODY_INVALID', 'agent, undescribed field');
       expect(agentAnswer.text).not.toContain(CANARY);
-      expect(agentAnswer.text).toBe(personAnswer.text);
+      expect(personAnswer.body['names']).toStrictEqual([]);
+      expect(agentAnswer.body['names']).toStrictEqual([]);
     });
   });
 

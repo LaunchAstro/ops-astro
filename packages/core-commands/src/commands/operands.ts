@@ -132,6 +132,41 @@ function mistyped(declaration: CommandDeclaration, names: readonly string[]): Co
   return refuseCommand('FIELD_VALUE_INVALID', names, [...fixes]);
 }
 
+/**
+ * A body field the row does not describe is refused `COMMAND_BODY_INVALID`,
+ * before authority on both prefixes, as a target the command does not take
+ * already is. The fields the envelope reads itself are the identity, the
+ * command the route names and, on a command with a target, its revision.
+ *
+ * The refusal names no field. A key is the caller's own text, and echoing it
+ * would carry whatever it holds into the register and back out; the fix names
+ * the fields the row does take instead, which are the server's.
+ */
+export function refuseUndescribed(
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): CommandRefusal | undefined {
+  const spec = declaration.operands;
+  if (spec === undefined) return undefined;
+  const allowed = new Set([
+    'command',
+    'operationId',
+    ...(declaration.targetsExistingRecord ? ['expectedRevision'] : []),
+    ...Object.keys(spec),
+  ]);
+  if (Object.keys(request).every((field) => allowed.has(field))) return undefined;
+  const takes = Object.keys(spec);
+  return refuseCommand(
+    'COMMAND_BODY_INVALID',
+    [],
+    [
+      takes.length === 0
+        ? `Send no fields but operationId${declaration.targetsExistingRecord ? ' and expectedRevision' : ''}: ${declaration.name} takes none.`
+        : `Send only the fields ${declaration.name} takes: ${takes.join(', ')}.`,
+    ],
+  );
+}
+
 /** A request with no mismatched operand is the typed request its row describes. */
 function isDescribed(
   _request: UncheckedRequest,
