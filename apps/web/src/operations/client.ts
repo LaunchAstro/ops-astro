@@ -44,7 +44,7 @@
 // at 22:53Z; there is one spelling on the wire and this is it.
 
 import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
-import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
+import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 
 /**
  * The reads, named here as their own type.
@@ -147,20 +147,13 @@ export interface CommandOutcome {
 }
 
 /**
- * A refusal as it arrives over HTTP.
- *
- * This is the wire shape, deliberately declared here rather than imported from
- * the domain: the browser parses JSON that crossed a network, and typing it as
- * the server's own object would be claiming to know something it has only been
- * told. `code` is what code branches on; `names` and `fixes` are what a person
- * reads, and this module never rewrites either (checklist B7, N3).
+ * A refusal as it arrives over HTTP: the server's one refusal shape, taken
+ * type-only through the wire contract, so the browser declares no second one.
+ * `isWireRefusal` still checks the flag and the code on the parsed body before
+ * anything reads it. `code` is what code branches on; `names` and `fixes` are
+ * what a person reads, and this module never rewrites either (checklist B7, N3).
  */
-export interface WireRefusal {
-  readonly refused: true;
-  readonly code: string;
-  readonly names: readonly string[];
-  readonly fixes: readonly string[];
-}
+export type WireRefusal = CommandRefusal;
 
 /** The transport did not produce an answer at all. Not a refusal: an absence. */
 export interface Unavailable {

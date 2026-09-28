@@ -12,7 +12,7 @@ import type { CallResult, WireRefusal } from '../../apps/web/src/operations/clie
 import { useCommand } from '../../apps/web/src/records/use-command.ts';
 import { mount } from './mount.tsx';
 
-const refusal = (code: string): WireRefusal => ({
+const refusal = (code: WireRefusal['code']): WireRefusal => ({
   refused: true,
   code,
   names: ['task'],
