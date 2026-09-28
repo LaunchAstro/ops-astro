@@ -161,6 +161,9 @@ const dropComments = (line) => {
 // interrupt a paragraph. A list item's indented continuation is the item's
 // own text, read as a field as before.
 const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
+// A heading or a thematic break ends a paragraph and, outdented, a list item.
+const BREAK =
+  /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|=+[ \t]*$)/u;
 const columns = (line) => {
   let col = 0;
   for (const ch of line) {
@@ -176,14 +179,15 @@ const visible = (text, { keepFences }) => {
   let comment = false;
   let pending = '';
   let afterBlank = true;
-  let inCode = false;
+  // The last line was paragraph text, which indented code cannot interrupt.
+  let para = false;
   let listCol = 0;
   // Sol on 1fb12f0: whether a line is code is decided before its comments
   // are, so `<!--` inside indented code is code and hides nothing after it.
   const isCode = (line) => {
     if (line.trim() === '') return false;
     const col = columns(line);
-    return col >= (afterBlank && col < listCol ? 0 : listCol) + 4 && (afterBlank || inCode);
+    return col >= (afterBlank && col < listCol ? 0 : listCol) + 4 && !para;
   };
   // A fence inside a list item is indented from the item's content, not the margin.
   const fenceAt = (line) => {
@@ -193,16 +197,18 @@ const visible = (text, { keepFences }) => {
   const push = (kept) => {
     if (kept.trim() === '') {
       afterBlank = true;
+      para = false;
       out.push(kept);
       return;
     }
     const col = columns(kept);
     const code = isCode(kept);
-    if (afterBlank && col < listCol) listCol = 0;
+    const brk = !code && BREAK.test(kept.trimStart());
+    if ((afterBlank || brk) && col < listCol) listCol = 0;
     const item = code ? null : LIST_ITEM.exec(kept.trimStart());
     if (item !== null && col < listCol + 4) listCol = col + item[0].length;
     afterBlank = false;
-    inCode = code;
+    para = !code && !brk;
     out.push(code && !keepFences ? '' : kept);
   };
   for (const line of text.split('\n')) {
@@ -220,7 +226,7 @@ const visible = (text, { keepFences }) => {
       }
       if (f !== null) {
         fence = f.run;
-        afterBlank = inCode = false;
+        afterBlank = para = false;
         out.push(keepFences ? rest : '');
         continue;
       }
@@ -540,7 +546,7 @@ const companiesOf = (model) =>
     .toLowerCase()
     .split('/')
     .flatMap((part) => COMPANY.filter(([r]) => r.test(part.trim())).map(([, c]) => c));
-const builtBy = new Set(builders.flatMap(companiesOf));
+const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 const RECORD =
   /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,3}(reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
