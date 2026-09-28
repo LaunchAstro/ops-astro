@@ -815,6 +815,21 @@ run_case "CQ-13 no raw HTML: a tag after a setext boundary fails" 1 "$OK_BODY${P
 ---
 Example <br>close\`" "README.md"
 
+# CQ-13 fix 7, the orchestrator's ruling on Sol's seventh review: backticks
+# never pair across a block boundary of any kind, and every tag form fails.
+run_case "CQ-13 no raw HTML: a void tag after a heading's open backtick fails" 1 "$OK_BODY$P2# Title \`open
+Text <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a tag after a thematic break fails" 1 "$OK_BODY${P2}Text \`open
+***
+More <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a tag in a table row after an open backtick fails" 1 "$OK_BODY$P2| a \`x |
+| - |
+| <br> y\` |" "README.md"
+run_case "CQ-13 no raw HTML: a tag after a list item's open backtick fails" 1 "$OK_BODY${P2}Text \`open
+- item <br> close\`" "README.md"
+run_case "CQ-13 no raw HTML: a self-closing void tag fails" 1 "$OK_BODY${P2}Line one<br/>line two." "README.md"
+run_case "CQ-13 no raw HTML: a void tag with attributes fails" 1 "$OK_BODY${P2}An image <img src=\"x.png\" alt=\"x\"> here." "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
