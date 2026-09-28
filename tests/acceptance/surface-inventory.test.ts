@@ -257,13 +257,11 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
   });
 
   it('marks nothing as not-landed without saying what it waits for', () => {
-    // A declared operation that refuses `DEPENDENCY_NOT_LANDED` is honest only
-    // while it names the thing it is waiting for. This is the generated check
-    // that the honesty is kept up as parts land.
-    const silent = COMMAND_SURFACE.filter((one) => !one.landed && one.waitingOn === '');
-    expect(silent).toStrictEqual([]);
-    const notLanded = COMMAND_SURFACE.filter((one) => !one.landed).map((one) => one.name);
-    report('not landed', notLanded.length === 0 ? ['none'] : notLanded);
+    // Every declared operation is built, so no row carries a "not landed" flag
+    // and none can be silent about what it waits for.
+    const flagged = COMMAND_SURFACE.filter((one) => 'landed' in one || 'waitingOn' in one);
+    expect(flagged).toStrictEqual([]);
+    report('not landed', ['none']);
   });
 
   it('answers every declaration with a result or a typed refusal, never a fault', async () => {

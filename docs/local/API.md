@@ -473,8 +473,9 @@ half, including that the envelope receives the raw value, and
 
 ## The operations L4's runtime made possible
 
-`NOT_LANDED` is empty. Nothing in `COMMAND_SURFACE` answers
-`DEPENDENCY_NOT_LANDED` because a part it rests on has not been built.
+Every operation in `COMMAND_SURFACE` is built. The one `DEPENDENCY_NOT_LANDED`
+a command answers for a missing part is `task.comment` on a business with no
+comment record type.
 
 | Operation       | Route            | Body                                                                                                                                       | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -1217,7 +1218,7 @@ classifies it. The classification lives in `field_defs`, which the seed writes
 through `installTaskSpine` (`tasks/install.ts`), not a migration. A reseed
 brings an earlier install forward: on an existing task type the installer sets
 `title` and `state` to `shared` where they differ (`reconcileVisibility`,
-`tasks/reconcile-visibility.ts`), so an upgraded business shows both as a fresh
+`tasks/install.ts`), so an upgraded business shows both as a fresh
 one does.
 
 For an external party, a `task.read` of a record its shares do not cover and

@@ -27,7 +27,6 @@ import { readFieldDefinitions } from '../../packages/core-records/src/records/fi
 import {
   COMMAND_SURFACE,
   CONTRACT_NINE,
-  NOT_LANDED,
   READS,
   declarationOf,
   pathOf,
@@ -56,15 +55,12 @@ describe('the surface as a table', () => {
   });
 
   it('has nothing left that is declared and not built', () => {
-    // Empty, and that is the visible diff this list exists to produce. It held
-    // five, then four when L2 installed the comment record type, and now none:
-    // `task.propose`, `task.decide`, `task.pickup` and `task.handback` became
-    // real commands against L4's runtime, so each one's `waitingOn` text went
-    // in the same commit as its test.
-    expect([...NOT_LANDED].toSorted()).toStrictEqual([]);
+    // Every row is built, so no row carries a "declared but not built" flag
+    // and there is no list of such rows to keep empty.
     for (const command of COMMAND_SURFACE) {
-      expect(command.waitingOn, command.name).toBe('');
-      expect(command.landed, command.name).toBe(true);
+      expect(Object.keys(command), command.name).not.toContain('landed');
+      expect(Object.keys(command), command.name).not.toContain('waitingOn');
+      expect(Object.keys(command), command.name).not.toContain('contractNine');
     }
   });
 
@@ -104,7 +100,6 @@ describe('the surface as a table', () => {
       // rather than assumed from the kind.
       if (command.kind === 'read') {
         expect(command.targetsExistingRecord, command.name).toBe(false);
-        expect(command.landed, command.name).toBe(true);
       }
     }
   });
@@ -126,8 +121,8 @@ describe('the surface as a table', () => {
     // different action, which is the whole of the asymmetry: every member may
     // see a setting, and changing one is `manage`.
     expect(collections.get('settings.read')).toBe('settings');
-    expect(declarationOf('settings.read')?.action).toBe('read');
-    expect(declarationOf('settings.set_four_eyes_threshold')?.action).toBe('manage');
+    expect(declarationOf('settings.read').action).toBe('read');
+    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
     expect(collections.get('session.capabilities')).toBe('session');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
@@ -181,7 +176,8 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
   });
 
   it('finds every operation the model names in the surface', () => {
-    const missing = named.filter((name) => declarationOf(name as CommandName) === undefined);
+    const declared = new Set<string>(COMMAND_SURFACE.map((command) => command.name));
+    const missing = named.filter((name) => !declared.has(name));
     expect(missing).toStrictEqual([]);
   });
 
@@ -206,12 +202,14 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.complete',
       'task.reopen',
     ]);
-    expect(declarationOf('task.rank')).toBeDefined();
+    expect(declarationOf('task.rank').name).toBe('task.rank');
   });
 
-  it('gives every named operation a landed implementation, not a declaration', () => {
+  it('gives every named operation a write with a handler, not a declaration', () => {
+    // `HANDLERS` (`handlers.ts`) is a mapped type over every write, so a write
+    // row is a handler by construction.
     for (const name of named) {
-      expect(declarationOf(name as CommandName)?.landed, name).toBe(true);
+      expect(declarationOf(name as CommandName).kind, name).toBe('write');
     }
   });
 });

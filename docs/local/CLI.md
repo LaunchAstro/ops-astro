@@ -28,8 +28,7 @@ nothing of its own on stdout, so the output can be piped to `jq`.
 
 The operation list comes from `COMMAND_SURFACE`
 (`packages/core-wire/src/surface.ts`), the same registry the API
-mounts its routes from. An operation the API has not landed is listed with what
-it is waiting on. The command line answers an operation it does not know on its
+mounts its routes from. The command line answers an operation it does not know on its
 own, before it reads the body, business, bearer or API origin and before it
 sends any request. It prints
 `{"code":"COMMAND_UNKNOWN","names":[<verb>],"fixes":[...]}` and exits 2

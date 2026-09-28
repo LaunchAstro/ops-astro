@@ -149,7 +149,7 @@ describe.skipIf(serverUrl === undefined)(
       // The five the journey is made of, checked by name against the surface and
       // then against what the client really got back.
       for (const name of JOURNEY) {
-        expect(declarationOf(name), `${name} is declared`).toBeDefined();
+        expect(declarationOf(name).name, `${name} is declared`).toBe(name);
         expect(answers.has(name), `${name} was driven`).toBe(true);
         // The client's own answer about the verb, asked the way `usage()` asks it.
         expect(accepts(name), `${name} is a verb the command line takes`).toBe(true);

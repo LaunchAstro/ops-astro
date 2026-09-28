@@ -16,8 +16,8 @@
 // does not exist is a field nobody can change". Specification 2.2's second
 // observable result asks a person to assign a task and move it through stages,
 // which are two of those ten. So the owning operations are declared here with
-// the nine, and the `contractNine` flag keeps the two sets distinguishable
-// rather than merged. The three trash-family operations are here for the same
+// the nine, and `CONTRACT_NINE` below names the nine so the two sets stay
+// distinguishable rather than merged. The three trash-family operations are here for the same
 // reason: specification 14.3 requires the purge to write an audit event, and
 // an audit event is written by a command.
 //
@@ -29,13 +29,6 @@
 // their own, so adding a command is one row (architecture review d8746a2,
 // candidate 1). The handlers stay in `handlers.ts`, keyed by the same name,
 // because the web client imports this table and must not import the database.
-//
-// **What the flags are for.** `landed` says whether the part this command
-// rests on has been built. A command that is declared and not landed still
-// runs the whole envelope — identity, revision, audit — and then refuses
-// `DEPENDENCY_NOT_LANDED` naming what it waits for. That is deliberate: a
-// declared operation with no route would fail the surface inventory, and a route that
-// pretends to work would be worse than either.
 
 import type { Action } from '../../core-records/src/index.ts';
 
@@ -176,12 +169,6 @@ export interface CommandDeclaration {
   readonly serialise?: string;
   /** The grant action the domain operation checks before it does anything. */
   readonly action: Action;
-  /** One of the nine the contract names, as opposed to one the model requires. */
-  readonly contractNine: boolean;
-  /** False when the table or record type it needs has not landed. */
-  readonly landed: boolean;
-  /** What it waits for, in words a reader can act on. Empty when it has landed. */
-  readonly waitingOn: string;
   /**
    * The identifier fields an untargeted write may carry. Any other identifier
    * in its body is refused `COMMAND_BODY_INVALID` rather than ignored
@@ -241,14 +228,11 @@ function declare(
     readonly authorisedOn?: CommandDeclaration['authorisedOn'];
     readonly targetLock?: CommandDeclaration['targetLock'];
     readonly serialise?: string;
-    readonly contractNine?: boolean;
-    readonly waitingOn?: string;
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
   } = {},
 ): CommandDeclaration {
-  const waitingOn = options.waitingOn ?? '';
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
   return {
     operands: WRITE_OPERANDS[name] ?? {},
@@ -264,9 +248,6 @@ function declare(
     authorisedOn: options.authorisedOn ?? (targetsExistingRecord ? 'record' : 'business'),
     targetLock: options.targetLock ?? 'command',
     action,
-    contractNine: options.contractNine ?? false,
-    landed: waitingOn === '',
-    waitingOn,
     agent: options.agent ?? 'never',
   };
 }
@@ -277,8 +258,7 @@ const SESSION_COLLECTION = 'session';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
- * revision, and is always landed: the records it reads are the ones the
- * commands above already write. It is authorised on the business unless it
+ * revision. It is authorised on the business unless it
  * names one task, which `reads/dispatch.ts` asks about at record scope; the
  * read path decides that from its catalogue row, and
  * `tests/commands/read-authorised-on.test.ts` holds this field to it.
@@ -300,9 +280,6 @@ function read(
     authorisedOn: options.authorisedOn ?? 'business',
     targetLock: 'command',
     action: options.action ?? 'read',
-    contractNine: false,
-    landed: true,
-    waitingOn: '',
     agent: options.agent ?? 'never',
   };
 }
@@ -374,21 +351,19 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.create', 'write', {
     targetsExistingRecord: false,
-    contractNine: true,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
   }),
-  declare('task.update', 'write', { contractNine: true }),
-  declare('task.complete', 'write', { contractNine: true }),
-  declare('task.reopen', 'write', { contractNine: true }),
-  declare('task.comment', 'comment', { contractNine: true, agent: 'delegated' }),
+  declare('task.update', 'write'),
+  declare('task.complete', 'write'),
+  declare('task.reopen', 'write'),
+  declare('task.comment', 'comment', { agent: 'delegated' }),
   // F1. The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
-  declare('task.propose', 'write', { contractNine: true, targetLock: 'runtime' }),
+  declare('task.propose', 'write', { targetLock: 'runtime' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
   declare('task.decide', 'decide', {
     targetsExistingRecord: false,
-    contractNine: true,
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
   }),
@@ -397,7 +372,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record-scoped writer picks up, renews and hands back on that task.
   declare('task.pickup', 'write', {
     targetsExistingRecord: false,
-    contractNine: true,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['reservationId'],
     runtimeShaped: 'reservationId',
@@ -405,7 +379,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   declare('task.handback', 'write', {
     targetsExistingRecord: false,
-    contractNine: true,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],
     runtimeShaped: 'leaseId',
@@ -551,15 +524,18 @@ export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set(
   ),
 );
 
-/** The contract's nine, kept separate from the operations the model requires. */
-export const CONTRACT_NINE: readonly CommandName[] = COMMAND_SURFACE.filter(
-  (command) => command.contractNine,
-).map((command) => command.name);
-
-/** Declared, routed, and refusing until the part they rest on lands. */
-export const NOT_LANDED: readonly CommandName[] = COMMAND_SURFACE.filter(
-  (command) => !command.landed,
-).map((command) => command.name);
+/** The contract's nine, the first nine names of `CommandName`. */
+export const CONTRACT_NINE: readonly CommandName[] = [
+  'task.create',
+  'task.update',
+  'task.complete',
+  'task.reopen',
+  'task.comment',
+  'task.propose',
+  'task.decide',
+  'task.pickup',
+  'task.handback',
+];
 
 /** The path the HTTP boundary and the command line both derive from the name. */
 export function pathOf(name: CommandName): string {

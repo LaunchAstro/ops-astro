@@ -152,7 +152,5 @@ const USAGE = 'Run with no arguments to list the operations this command line of
 
 /** What `--help` prints. The same set, in the same order, from the same table. */
 export function usage(): readonly string[] {
-  return COMMAND_SURFACE.map(
-    (command) => `${command.name}${command.landed ? '' : `  (waiting on ${command.waitingOn})`}`,
-  );
+  return COMMAND_SURFACE.map((command) => command.name);
 }
