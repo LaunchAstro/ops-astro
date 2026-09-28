@@ -41,6 +41,7 @@
 //   - the template's literal placeholders are refused by name.
 
 import { execFileSync } from 'node:child_process';
+import { readBody, unfiled } from './review-evidence-read.mjs';
 
 const body = process.env['PR_BODY'] ?? '';
 const head = (process.env['HEAD_SHA'] ?? '').trim();
@@ -129,166 +130,8 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // indented code line, and the outcomes after it are visible. And comments
 // were removed before fences were found, so `<!--` inside a fenced sample ate
 // the closing fence; inside a fence it is literal code now, and a fence line
-// inside a comment is hidden with the comment. A fence may follow the same
-// quote and list markers a field may, and a backtick fence's info string has
-// no backtick in it.
-const FENCE = /^ {0,3}(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})(.*)$/u;
-const fenceRun = (line) => {
-  const m = FENCE.exec(line);
-  if (m === null) return null;
-  const run = m[1] ?? '';
-  const info = m[2] ?? '';
-  return run[0] === '`' && info.includes('`') ? null : { run, info };
-};
-// Drop each comment on one line of text outside a fence. One left open
-// hides everything after it, and text on either side of a comment that spans
-// lines joins into one line, as it does when GitHub renders it.
-//
-// A code span that starts first is code: a comment mark in it opens nothing.
-// Read by index once; an unclosed run length is not looked for again.
-const TICKS = /`+/gu;
-const dropComments = (line) => {
-  let kept = '';
-  let at = 0;
-  let open = line.indexOf('<!--');
-  const unclosed = new Set();
-  for (;;) {
-    if (open !== -1 && open < at) open = line.indexOf('<!--', at);
-    TICKS.lastIndex = at;
-    const tick = TICKS.exec(line);
-    if (tick !== null && (open === -1 || tick.index < open)) {
-      const run = tick[0];
-      let end = tick.index + run.length;
-      if (!unclosed.has(run.length)) {
-        // The closing run is the next run of exactly this length.
-        let m = TICKS.exec(line);
-        while (m !== null && m[0].length !== run.length) m = TICKS.exec(line);
-        if (m === null) unclosed.add(run.length);
-        else end = m.index + run.length;
-      }
-      kept += line.slice(at, end);
-      at = end;
-      continue;
-    }
-    if (open === -1) return { kept: kept + line.slice(at), open: false };
-    kept += `${line.slice(at, open)} `;
-    const close = line.indexOf('-->', open + 4);
-    if (close === -1) return { kept, open: true };
-    at = close + 3;
-  }
-};
-// CQ-13, product issue 48: a line four columns past the open list item's
-// content is indented code, unless it continues a paragraph.
-const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
-// A heading or a thematic break ends a paragraph and, outdented, a list item.
-const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/u;
-// Sol's second CQ-13 review: `====` underlines a heading only under paragraph text, and
-// only indented under four columns; anywhere else it is paragraph text.
-const SETEXT = /^=+[ \t]*$/u;
-// CQ-13 fix 3, Sol's third CQ-13 review: an underline sits in its paragraph's own
-// container. A lazy line, outdented from the list item or unquoted after
-// quoted text, cannot be one; it stays paragraph text.
-const QUOTED = /^(?:>[ \t]?)+/u;
-const columns = (line) => {
-  let col = 0;
-  for (const ch of line) {
-    if (ch === ' ') col += 1;
-    else if (ch === '\t') col += 4 - (col % 4);
-    else break;
-  }
-  return col;
-};
-const visible = (text, { keepFences, keepIndented = keepFences }) => {
-  const out = [];
-  let fence = '';
-  let comment = false;
-  let pending = '';
-  let afterBlank = true;
-  // The last line was paragraph text, which indented code cannot interrupt.
-  let para = false;
-  let paraQuoted = false;
-  let listCol = 0;
-  // Sol's first CQ-13 review: whether a line is code is decided before its comments
-  // are, so `<!--` inside indented code is code and hides nothing after it.
-  const isCode = (line) => {
-    if (line.trim() === '') return false;
-    const col = columns(line);
-    return col >= (afterBlank && col < listCol ? 0 : listCol) + 4 && !para;
-  };
-  // A fence inside a list item is indented from the item's content, not the margin.
-  const fenceAt = (line) => {
-    const col = columns(line);
-    return fenceRun(col < listCol ? line : ' '.repeat(col - listCol) + line.trimStart());
-  };
-  const push = (kept) => {
-    if (kept.trim() === '') {
-      afterBlank = true;
-      para = false;
-      out.push(kept);
-      return;
-    }
-    const col = columns(kept);
-    const code = isCode(kept);
-    const lead = kept.trimStart();
-    const quoted = QUOTED.test(lead);
-    const underline =
-      para &&
-      quoted === paraQuoted &&
-      col >= listCol &&
-      col < listCol + 4 &&
-      SETEXT.test(lead.replace(QUOTED, ''));
-    const brk = !code && (BREAK.test(lead) || underline);
-    if ((afterBlank || brk) && col < listCol) listCol = 0;
-    const item = code ? null : LIST_ITEM.exec(kept.trimStart());
-    if (item !== null && col < listCol + 4) listCol = col + item[0].length;
-    afterBlank = false;
-    // A quoted line starts or continues a quoted paragraph; an unquoted one
-    // starts an unquoted paragraph, or continues the open one lazily.
-    if (quoted || !para) paraQuoted = quoted;
-    para = !code && !brk;
-    out.push(code && !keepIndented ? '' : kept);
-  };
-  for (const line of text.split('\n')) {
-    let rest = line;
-    if (comment) {
-      const end = rest.indexOf('-->');
-      if (end === -1) continue;
-      comment = false;
-      rest = rest.slice(end + 3);
-    } else if (fence === '') {
-      const f = fenceAt(rest);
-      if (f === null && isCode(rest)) {
-        push(rest);
-        continue;
-      }
-      if (f !== null) {
-        fence = f.run;
-        afterBlank = para = false;
-        out.push(keepFences ? rest : '');
-        continue;
-      }
-    } else {
-      const f = fenceAt(rest);
-      if (
-        f !== null &&
-        f.run[0] === fence[0] &&
-        f.run.length >= fence.length &&
-        f.info.trim() === ''
-      ) {
-        fence = '';
-      }
-      out.push(keepFences ? rest : '');
-      continue;
-    }
-    let kept;
-    ({ kept, open: comment } = dropComments(pending + rest));
-    pending = '';
-    if (comment) pending = kept;
-    else push(kept);
-  }
-  if (comment) push(pending);
-  return out.join('\n');
-};
+// inside a comment is hidden with the comment.
+const { stated, record, buried, html, prose } = readBody(body);
 
 // The literal strings the template ships with. An unreplaced one is named in
 // the failure rather than reported as "no outcome stated", because the author
@@ -304,35 +147,6 @@ const PLACEHOLDERS = [
 // A field is a line that begins with the field name. `Code review:` at the
 // start of a line is an answer; "the code review found nothing" inside a
 // sentence, or a path ending in security-review.md, is not.
-//
-// Any Markdown line prefix still leaves a line that begins with the field
-// name. The security review of d77b375, finding 2: a contradicting line
-// written as a heading, a blockquote or a numbered item was not read, though
-// GitHub shows it as an ordinary field line. So any run of heading marks,
-// quote marks, list bullets, list numbers and checklist boxes may come first,
-// and bold or underscore emphasis may wrap the name, the colon or the line.
-// Sol's recheck of 356dbe5 added the checklist box and emphasis closing after
-// the colon: `- [ ] Security review: rejected` was not read, and
-// `**Security review:** run against <head>, no findings` read as `** run …`.
-//
-// Each prefix token matches a run one way only. The security rerun at 356dbe5,
-// N1: `#{1,6}` with optional space between tokens split a line of `#` every
-// possible way, and 40 of them took 41.8 s. `#+(?!#)` takes the whole run as
-// one token, so a line of any length is read in linear time, and seven or
-// more `#` still lead a field rather than hiding it.
-const FIELD =
-  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)]|\[[ x]\])[ \t]*)*[*_]{0,3}(code|security)[ -]review[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
-
-/** Every occurrence of a field, in order, as {name, value, line}. */
-const fields = (text) => {
-  FIELD.lastIndex = 0;
-  return [...text.matchAll(FIELD)].map((m) => ({
-    name: (m[1] ?? '').toLowerCase(),
-    // Emphasis closing at the end of the line wraps the outcome, not part of it.
-    value: (m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim(),
-    line: m[0].trim(),
-  }));
-};
 
 // Did the review happen, and what did it conclude?
 //
@@ -354,6 +168,11 @@ const CODE_FORMS = [
   /^the\s+review\s+found\s+nothing$/u,
   /^every\s+finding\s+it\s+raised\s+is\s+closed$/u,
   new RegExp(String.raw`^${COUNTED}$`, 'u'),
+  // Issue 88: minor findings filed under standing permission, to an open issue.
+  new RegExp(
+    String.raw`^(?<raised>\d{1,4})\s+(?<noun>findings?),\s+(?<closed>\d{1,4})\s+closed,\s+(?<filed>\d{1,4})\s+filed\s+as\s+follow-up\s+#\d{1,7}$`,
+    'u',
+  ),
 ];
 const RAN_FORMS = [
   new RegExp(String.raw`^run\s+against\s+${SHA},\s+no\s+findings$`, 'u'),
@@ -371,6 +190,7 @@ const CODE_HELP = [
   'every finding it raised is closed',
   '<N> findings, all closed',
   '<N> findings, <N> closed',
+  '<N> findings, <M> closed, <K> filed as follow-up #<open issue>, M + K = N, K at least 1',
 ];
 const RAN_HELP = [
   'run against <sha>, no findings',
@@ -385,10 +205,11 @@ const help = (forms) =>
 
 /** A counted form states one number of findings raised and closes them all. */
 const countsAgree = (m) => {
-  const { raised, noun, closed } = m.groups ?? {};
+  const { raised, noun, closed, filed } = m.groups ?? {};
   if (raised === undefined) return true;
   const n = Number(raised);
   if (n < 1 || (noun === 'finding') !== (n === 1)) return false;
+  if (filed !== undefined) return Number(filed) >= 1 && Number(closed) + Number(filed) === n;
   return closed === undefined || Number(closed) === n;
 };
 
@@ -420,14 +241,12 @@ const explain = {
   absent: 'says the review was not run',
   negative: 'says the review failed or left findings open',
   unaccepted: 'is not one of the accepted outcome forms',
+  unfiled: 'names a follow-up that is not an open issue in this repository',
 };
 
 const failures = [];
 
 // --- rule 1: a checkpoint for this head ------------------------------------
-
-const prose = visible(body, { keepFences: true });
-const stated = fields(visible(body, { keepFences: false }));
 
 const checkpoint = /Review checkpoint[\s\S]{0,600}?head:\s*([0-9a-f]{7,40})/iu.exec(prose);
 
@@ -442,8 +261,10 @@ if (codeReviewLines.length === 0) {
       '        at; it does not say a review happened or what it concluded.',
   );
 } else {
+  const notFiled = await unfiled(codeReviewLines.map((f) => f.value));
   for (const field of codeReviewLines) {
-    const verdict = outcome(field.value, CODE_FORMS);
+    let verdict = outcome(field.value, CODE_FORMS);
+    if (verdict === 'accepted' && notFiled.has(field.value)) verdict = 'unfiled';
     if (verdict === 'accepted') continue;
     failures.push(
       `a code-review line ${explain[verdict]}:\n` +
@@ -585,12 +406,6 @@ const companiesOf = (model) =>
     .flatMap((part) => COMPANY.filter(([r]) => r.test(part.trim())).map(([, c]) => c));
 const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
-const RECORD =
-  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,3}(reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
-const record = { reviewer: [], model: [], 'head sha': [], verdict: [] };
-for (const m of visible(body, { keepFences: false }).matchAll(RECORD)) {
-  record[(m[1] ?? '').toLowerCase()].push((m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim());
-}
 const refused = {
   reviewer: () => false,
   model: (v) => companiesOf(v).length === 0 || companiesOf(v).some((c) => builtBy.has(c)),
@@ -619,150 +434,12 @@ if (recordProblems.length > 0) {
 
 // CQ-13, Sol's fourth review: fail closed. A raw line carrying a review field
 // after any run of marks must be one the reader counts as visible.
-const RAW_FIELD =
-  /^(?:[^\p{L}\p{N}\n]|\[[xX]\]|\d{1,9}[.)])*(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict)[*_`~ \t]*:/gimu;
-const fieldKey = (name) =>
-  name
-    .toLowerCase()
-    .replace(/[ -]review$/u, '')
-    .replace('-', ' ');
-const counted = new Map();
-const count = (key) => counted.set(key, (counted.get(key) ?? 0) + 1);
-for (const f of stated) count(f.name);
-for (const [name, values] of Object.entries(record)) for (const _ of values) count(name);
-const raw = new Map();
-for (const m of body.matchAll(RAW_FIELD)) {
-  const key = fieldKey(m[1] ?? '');
-  raw.set(key, (raw.get(key) ?? 0) + 1);
-}
-const hidden = [...raw].filter(([key, n]) => n > (counted.get(key) ?? 0));
-if (hidden.length > 0) {
-  failures.push(
-    'a review field appears where it could be hidden:\n' +
-      hidden
-        .map(
-          ([key, n]) => `          ${key}: ${n} line(s) in the body, ${counted.get(key) ?? 0} read`,
-        )
-        .join('\n') +
-      '\n        Every review field line must be plain and visible: not indented as\n' +
-      '        code, in a comment, a fence, a code span or a lazy or underlined line.\n' +
-      '        Move it to its own line at the margin, or reword it so it is not a field.',
-  );
-}
 
 // --- rule 5: a review field counts only on a top-level plain line ---------
 
 // CQ-13, Sol's fifth review: a field line counts only as a plain line of a
 // top-level paragraph, at the margin; in any container it fails. Where the
 // tracker cannot tell, the line is in a container.
-const PLAIN_FIELD =
-  /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:/iu;
-const ANY_FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})/u;
-const NEST = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|\[\^[^\]]*\]:)/u;
-const HTML_OPEN = /^ {0,3}<(!--|\?|!\[CDATA\[|![A-Za-z]|\/?[A-Za-z][A-Za-z0-9-]*)/u;
-const UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/u;
-const DELIMITER = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/u;
-// Rule 6 fails any raw tag, so an HTML block's extent matters only for a
-// comment: to its end token. Anything else runs to a blank line.
-const htmlBlock = (opener) =>
-  opener === '!--' ? { until: '-->', blank: false } : { until: '', blank: true };
-const topLevel = (text) => {
-  const lines = text.split('\n').map((l) => l.replace(/\r$/u, ''));
-  const plain = lines.map(() => false);
-  let fence = '';
-  let html = null;
-  let nest = false;
-  let table = false;
-  let afterBlank = true;
-  let para = -1;
-  let tick = 0;
-  // An HTML block's end: its token, then (for most tags) a blank line.
-  const htmlLine = (i, from) => {
-    if (html.until !== '' && lines[i].toLowerCase().includes(html.until, from)) html.until = '';
-    if (html.until === '' && !html.blank) html = null;
-  };
-  for (const [i, line] of lines.entries()) {
-    const blank = line.trim() === '';
-    if (fence !== '') {
-      const f = ANY_FENCE.exec(line);
-      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && line.trim().endsWith(f[1][0]))
-        fence = '';
-      continue;
-    }
-    if (html !== null) {
-      if (blank && html.until === '') html = null;
-      else htmlLine(i, 0);
-      afterBlank = blank;
-      continue;
-    }
-    if (blank) {
-      afterBlank = true;
-      para = -1;
-      tick = 0;
-      table = false;
-      continue;
-    }
-    const col = columns(line);
-    const wasBlank = afterBlank;
-    afterBlank = false;
-    // Inside a list or quote any fence counts; at the top level, as the
-    // reader has it, only one indented under four columns.
-    const inNest = nest && (!wasBlank || col > 0 || NEST.test(line));
-    const f = (inNest ? ANY_FENCE : FENCE).exec(line);
-    if (f) {
-      fence = f[1];
-      para = -1;
-      continue;
-    }
-    if (inNest) continue;
-    nest = false;
-    if (table) continue;
-    const h = HTML_OPEN.exec(line);
-    if (h) {
-      html = htmlBlock(h[1]);
-      htmlLine(i, h.index + h[0].length);
-      para = -1;
-      continue;
-    }
-    if (NEST.test(line)) {
-      nest = true;
-      para = -1;
-      continue;
-    }
-    if (para !== -1 && UNDERLINE.test(line)) {
-      for (let j = para; j < i; j += 1) plain[j] = false;
-      para = -1;
-      continue;
-    }
-    if (BREAK.test(line.trimStart()) || (col >= 4 && para === -1)) {
-      para = -1;
-      continue;
-    }
-    if (
-      line.includes('|') &&
-      DELIMITER.test(lines[i + 1] ?? '') &&
-      (lines[i + 1] ?? '').includes('|')
-    ) {
-      table = true;
-      para = -1;
-      continue;
-    }
-    if (para === -1) para = i;
-    plain[i] = tick === 0 && col === 0;
-    for (const run of line.match(/`+/gu) ?? []) {
-      if (tick === 0) tick = run.length;
-      else if (run.length === tick) tick = 0;
-    }
-  }
-  return { lines, plain };
-};
-const levels = topLevel(body);
-const buried = levels.lines.flatMap((line, i) => {
-  RAW_FIELD.lastIndex = 0;
-  const m = RAW_FIELD.exec(line);
-  if (m === null || (levels.plain[i] && PLAIN_FIELD.test(line))) return [];
-  return [`line ${i + 1}: ${fieldKey(m[1] ?? '')}`];
-});
 if (buried.length > 0) {
   failures.push(
     'a review field appears where it could be hidden:\n' +
@@ -777,50 +454,7 @@ if (buried.length > 0) {
 
 // CQ-13, Sol's sixth review: a body is Markdown only. Any raw tag fails; a
 // comment, a fence and a code span are allowed.
-const RAW_HTML = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
-// Sol's seventh review: a span pairs only within a run of plain paragraph
-// lines; every other line stands alone.
-const BLOCK_LINE =
-  /^(?:[ \t]*$| {0,3}(?:#{1,6}(?:[ \t]|$)|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|`{3}|~{3}|<|(?:[-*_=][ \t]*)+$)| {4}|\t)|\|/u;
-const blocks = (text) => {
-  const out = [];
-  let joinable = false;
-  for (const line of text.split('\n')) {
-    const plain = !BLOCK_LINE.test(line);
-    if (plain && joinable) out[out.length - 1] += `\n${line}`;
-    else out.push(line);
-    joinable = plain;
-  }
-  return out;
-};
-const dropSpans = (text) => {
-  let kept = '';
-  let at = 0;
-  const unclosed = new Set();
-  for (;;) {
-    TICKS.lastIndex = at;
-    const tick = TICKS.exec(text);
-    if (tick === null) return kept + text.slice(at);
-    const run = tick[0];
-    let end = tick.index + run.length;
-    let m = null;
-    if (!unclosed.has(run.length)) {
-      m = TICKS.exec(text);
-      while (m !== null && m[0].length !== run.length) m = TICKS.exec(text);
-      if (m === null) unclosed.add(run.length);
-    }
-    if (m === null) kept += text.slice(at, end);
-    else {
-      kept += `${text.slice(at, tick.index)} `;
-      end = m.index + run.length;
-    }
-    at = end;
-  }
-};
-const markup = blocks(visible(body, { keepFences: false, keepIndented: true }))
-  .map(dropSpans)
-  .join('\n');
-const tag = RAW_HTML.exec(markup);
+const tag = html.length > 0 ? html : null;
 if (tag !== null) {
   failures.push(
     `the pull request body holds raw HTML (${tag[0]}):\n` +

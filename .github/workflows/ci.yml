@@ -302,6 +302,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # Issue 88: the check parses the body with markdown-it, pinned in the lockfile.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh
       - name: Read the description as it stands now
@@ -309,12 +316,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
+        # Issue 88: the open issues, read with the same token, so a follow-up
+        # outcome can be held to one. The check itself gets no token.
+        run: |
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
+          gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null) | .number' > "${RUNNER_TEMP}/open-issues.txt"
       - name: The review must cover the head being merged
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
+        run: |
+          OPEN_ISSUES="$(cat "${RUNNER_TEMP}/open-issues.txt")" \
+            PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
 
   pr-size:
     name: pull request size

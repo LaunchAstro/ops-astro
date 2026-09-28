@@ -847,6 +847,7 @@ Code review: no findings$NOT_SENSITIVE" "README.md"
 # Issue 88: a minor finding filed as a follow-up under the owner's standing
 # permission is a truthful outcome, once, in one fixed form that names a real
 # open issue. OPEN_ISSUES stands in for the GitHub lookup in these cases.
+unset OPEN_ISSUES GH_TOKEN GITHUB_API_URL GITHUB_REPOSITORY
 FU="Review checkpoint
   head:        $HEAD$P2"
 fu_case() {
