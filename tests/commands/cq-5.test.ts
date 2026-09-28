@@ -28,6 +28,7 @@ import {
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { agentWorld, type AgentWorld } from './agent-fixture.ts';
+import { refusalShapes, registryOf } from '../support/refusal-shapes.ts';
 
 const LAYERS = ['packages', 'apps/api'];
 const sourcesOf = (roots: readonly string[]): string[] =>
@@ -37,40 +38,12 @@ const sourcesOf = (roots: readonly string[]): string[] =>
       .map((file) => `${root}/${file}`),
   );
 
-/** A `refused` or a `code` among an object's own members, shorthand or typed. */
-const OWN_MEMBER = {
-  refused: /(^|[\s;,{])(readonly\s+)?refused\??\s*[:,;]/u,
-  code: /(^|[\s;,{])(readonly\s+)?code\??\s*[:,;]/u,
-};
-
-/**
- * Every brace block in `text` whose own members include both `refused` and
- * `code`: an interface, an object type or an object literal, so a second
- * declared shape and a refusal built outside the constructor are both found.
- * Named by the `interface` or `type` it opens, or `literal`.
- */
-function refusalShapes(file: string, text: string): string[] {
-  const source = text.replaceAll(/\/\*[\s\S]*?\*\/|\/\/.*$/gmu, '');
-  const found: string[] = [];
-  const open: number[] = [];
-  for (let i = 0; i < source.length; i += 1) {
-    if (source[i] === '{') open.push(i);
-    if (source[i] !== '}') continue;
-    const start = open.pop() ?? 0;
-    let own = source.slice(start + 1, i);
-    while (/\{[^{}]*\}/u.test(own)) own = own.replaceAll(/\{[^{}]*\}/gu, '');
-    if (OWN_MEMBER.refused.test(own) && OWN_MEMBER.code.test(`${own};`)) {
-      const opener = /(?:interface|type)\s+(\w+)[^{;]*$/u.exec(source.slice(0, start))?.[1];
-      found.push(`${file}:${opener ?? 'literal'}`);
-    }
-  }
-  return found;
-}
-
 describe('CQ-5 the source', () => {
   it('CQ-5 one refusal type: the register declares the only shape with a code and a refusal flag', () => {
+    const files = sourcesOf([...LAYERS, 'apps/web', 'apps/cli']);
+    const registry = registryOf(files.map((f) => readFileSync(f, 'utf8')));
     const shapes = sourcesOf(LAYERS)
-      .flatMap((f) => refusalShapes(f, readFileSync(f, 'utf8')))
+      .flatMap((f) => refusalShapes(f, readFileSync(f, 'utf8'), registry))
       .toSorted();
     // The HTTP door, copying the four wire fields in order; the declaration;
     // and the one constructor's own return.
@@ -87,6 +60,30 @@ describe('CQ-5 the source', () => {
       'planted.ts:Second',
       'planted.ts:literal',
     ]);
+    // Split across a named type, an interface's `extends` or another file, it is still found.
+    const split =
+      'type Flag = { readonly refused: true };\n' +
+      'export type Joined = Flag & { readonly code: string };\n' +
+      'export interface Extended extends Flag { readonly code: string }';
+    expect(refusalShapes('split.ts', split)).toStrictEqual([
+      'split.ts:Extended',
+      'split.ts:Joined',
+    ]);
+    const elsewhere = registryOf(['export interface Coded { readonly code: string }']);
+    expect(
+      refusalShapes(
+        'b.ts',
+        'type Far = Flagged & Coded; type Flagged = { refused: true };',
+        elsewhere,
+      ),
+    ).toStrictEqual(['b.ts:Far']);
+    // A name alone is an alias of that type, not a second shape.
+    expect(
+      refusalShapes(
+        'alias.ts',
+        'type Same = Second; type Second = { refused: true; code: string };',
+      ),
+    ).toStrictEqual(['alias.ts:Second']);
   });
 
   it('Sol proof, criterion 5: the web declares no second refusal shape', () => {
