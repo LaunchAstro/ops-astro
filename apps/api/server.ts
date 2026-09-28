@@ -153,6 +153,8 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The HS256 secret the Supabase adapter verifies bearers with. */
   readonly secret: string;
+  /** The issuer every bearer must name: the GoTrue URL, `GOTRUE_URL`. */
+  readonly issuer: string;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -208,7 +210,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
-      verify: createSupabaseVerifier({ secret: config.secret }),
+      verify: createSupabaseVerifier({ secret: config.secret, issuer: config.issuer }),
       resolveBusiness,
       executeRead,
       executeCommand,
@@ -234,11 +236,13 @@ async function main(): Promise<void> {
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const secret = environment['SUPABASE_JWT_SECRET'];
+  const issuer = environment['GOTRUE_URL'];
 
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
     ['SUPABASE_JWT_SECRET', secret],
+    ['GOTRUE_URL', issuer],
   ] as const) {
     if (value === undefined || value === '') {
       console.error(`api: ${name} is not set. Run scripts/local/db-up.sh and auth-up.sh first.`);
@@ -277,6 +281,7 @@ async function main(): Promise<void> {
     database,
     admin,
     secret: secret as string,
+    issuer: issuer as string,
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is

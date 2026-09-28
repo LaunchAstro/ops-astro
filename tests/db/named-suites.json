@@ -124,6 +124,7 @@
     "tests/api/boundary-read-targets.test.ts",
     "tests/api/boundary-system-fields.test.ts",
     "tests/api/boundary-capabilities.test.ts",
+    "tests/api/cq-1.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/acceptance/external-party.test.ts",
     "tests/acceptance/comment-rulings.test.ts",

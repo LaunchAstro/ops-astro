@@ -304,8 +304,12 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
+/** The largest body a surface route reads. Files go by signed link, never through the API. */
+export const MAX_BODY_BYTES = 1_048_576;
+
 /**
- * A body that is not an object is refused rather than coerced into one.
+ * A body that is not an object is refused rather than coerced into one, and
+ * so is one over `MAX_BODY_BYTES`.
  *
  * So is one with no canonical form. `JSON.parse` reads a number too large for
  * a double, 1e400, as Infinity, and every entry takes the payload digest
@@ -316,10 +320,35 @@ async function readObject(
   context: Context,
 ): Promise<Readonly<Record<string, unknown>> | undefined> {
   try {
-    const parsed: unknown = await context.req.json();
+    const text = await readLimited(context.req.raw, MAX_BODY_BYTES);
+    if (text === undefined) return undefined;
+    const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
     canonicalPayload(parsed);
     return parsed as Readonly<Record<string, unknown>>;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The body as text, or nothing past `limit` bytes: counted as they arrive, so
+ * a body with no Content-Length, or a wrong one, stops at the limit.
+ */
+async function readLimited(request: Request, limit: number): Promise<string | undefined> {
+  if (Number(request.headers.get('content-length')) > limit) return undefined;
+  let total = 0;
+  const counted = request.body?.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > limit) controller.error(new RangeError('over the body limit'));
+        else controller.enqueue(chunk);
+      },
+    }),
+  );
+  try {
+    return await new Response(counted).text();
   } catch {
     return undefined;
   }

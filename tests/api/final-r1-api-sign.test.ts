@@ -27,6 +27,7 @@ import { executeAgentCommand } from '../../packages/core-records/src/commands/ag
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 
 const SECRET = 'a-local-test-secret-for-final-r1-api-sign';
+const GOTRUE = { aud: 'authenticated', iss: 'http://127.0.0.1:54391' };
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const BRAVO = '33333333-3333-4333-8333-333333333333';
 const MIA = '22222222-2222-4222-8222-222222222222';
@@ -43,7 +44,7 @@ const unreachable: Database = {
 function build() {
   return createApi({
     database: unreachable,
-    verify: createSupabaseVerifier({ secret: SECRET }),
+    verify: createSupabaseVerifier({ secret: SECRET, issuer: GOTRUE.iss }),
     resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
@@ -82,7 +83,7 @@ describe('R1-AUTHORITY-2: only a verified signature can be reported as expired',
     });
 
     it(`${prefix} prefix: a past-exp bearer with its signature replaced is AUTH_UNKNOWN_LOGIN`, async () => {
-      const genuine = await sign({ sub: MIA, exp: past() }, SECRET, 'HS256');
+      const genuine = await sign({ ...GOTRUE, sub: MIA, exp: past() }, SECRET, 'HS256');
       const garbled = `${genuine.slice(0, genuine.lastIndexOf('.'))}.AAAA`;
       expect(await codeFor(path, garbled)).toStrictEqual({
         status: 401,
@@ -99,7 +100,7 @@ describe('R1-AUTHORITY-2: only a verified signature can be reported as expired',
     });
 
     it(`${prefix} prefix: a past-exp bearer this deployment signed stays AUTH_SESSION_EXPIRED`, async () => {
-      const expired = await sign({ sub: MIA, exp: past() }, SECRET, 'HS256');
+      const expired = await sign({ ...GOTRUE, sub: MIA, exp: past() }, SECRET, 'HS256');
       expect(await codeFor(path, expired)).toStrictEqual({
         status: 401,
         code: 'AUTH_SESSION_EXPIRED',

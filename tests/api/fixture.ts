@@ -41,6 +41,8 @@ export { createBusinessResolver } from '../../apps/api/server.ts';
 /** The HS256 secret this deployment's GoTrue would sign with. Local to the run. */
 export const SECRET = 'a-local-test-secret-for-the-api-journey-cases';
 
+export const ISSUER = 'http://127.0.0.1:54391';
+
 /** The key the path names the business by, which the server resolves itself. */
 export const BUSINESS_KEY = 'alpha';
 
@@ -87,6 +89,7 @@ export async function tokenFor(
     {
       sub: subject,
       aud: 'authenticated',
+      iss: ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 600),
     },
@@ -200,6 +203,7 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
         database: db.app,
         admin: db.admin,
         secret: SECRET,
+        issuer: ISSUER,
         executeRead,
       }).app;
     },

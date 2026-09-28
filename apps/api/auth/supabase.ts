@@ -13,16 +13,16 @@
 // what this function reads and the signature is all it reads.
 //
 // **A bad token and a missing token are the same answer.** Forged, unsigned
-// (`alg: none`), signed with the wrong secret, missing a `sub`, or simply
-// absent: all of them return nothing, and the boundary turns nothing into one
+// (`alg: none`), signed with the wrong secret, for another audience or issuer,
+// missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
 // `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
 // which of their guesses was closer. The one exception is a bearer whose
 // signature verifies against this secret and whose `exp` has passed: it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
 // `Verified` and `signatureVerifies`).
 //
-// **It verifies; it does not decode.** `hono/jwt` checks the HS256 signature
-// and `exp` against the secret the local GoTrue was started with. There is no
+// **It verifies; it does not decode.** `hono/jwt` checks the HS256 signature,
+// `exp`, audience and issuer against the secret GoTrue was started with. There is no
 // path through this file that reads a claim out of an unverified token, which
 // is the failure mode a hand-rolled base64 split invites.
 
@@ -33,9 +33,14 @@ import type { VerifiedSubject } from '../../../packages/core-records/src/identit
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
 
+/** The `aud` GoTrue gives a signed-in session (`GOTRUE_JWT_AUD`). */
+export const SUPABASE_AUDIENCE = 'authenticated';
+
 export interface SupabaseVerifierOptions {
   /** The HS256 secret the local GoTrue signs with, from `.local/auth.env`. */
   readonly secret: string;
+  /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
+  readonly issuer: string;
 }
 
 /**
@@ -55,6 +60,8 @@ export interface SupabaseVerifierOptions {
  */
 export type Verified = VerifiedSubject | 'expired';
 
+type Checks = Parameters<typeof verify>[2];
+
 export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
 /**
@@ -66,8 +73,9 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  * accident. The composition root supplies the secret once.
  */
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
-  const { secret } = options;
+  const { secret, issuer } = options;
   if (secret === '') throw new Error('createSupabaseVerifier: the JWT secret is empty');
+  const expected = { alg: 'HS256', aud: SUPABASE_AUDIENCE, iss: issuer } as const;
 
   return async function verifySupabaseToken(
     request: Context['req'],
@@ -79,14 +87,16 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     try {
       // HS256 named explicitly: passing the algorithm rather than reading it
       // from the token's own header is what stops a token that nominates
-      // `none` from verifying against no key at all. `exp` is checked here.
-      claims = (await verify(token, secret, 'HS256')) as Record<string, unknown>;
+      // `none` from verifying against no key at all. `exp`, `aud` and `iss` too.
+      claims = (await verify(token, secret, expected)) as Record<string, unknown>;
     } catch (cause) {
       // The algorithm is still named when verifying rather than read from the
       // token's own header, so a token nominating `alg: none` verifies against
       // no key at all and lands here like any other forgery. Only a signature
       // that did verify can be reported as expired.
-      return isExpiry(cause) && (await signatureVerifies(token, secret)) ? 'expired' : undefined;
+      const expired =
+        isExpiry(cause) && (await signatureVerifies(token, secret, { ...expected, exp: false }));
+      return expired ? 'expired' : undefined;
     }
 
     const subject = claims['sub'];
@@ -117,16 +127,16 @@ function isExpiry(cause: unknown): boolean {
  * Whether a token Hono called expired is signed by this deployment's secret.
  *
  * **Hono's name for the error is not proof of the signature.** `hono/jwt`
- * 4.10.7 checks `exp` before the signature (`utils/jwt/jwt.js:63-65` against
- * `:92-101`), so a forged or unsigned bearer with a past `exp` throws
+ * 4.13.9 checks `exp`, `iss` and `aud` before the signature (`utils/jwt/jwt.js`
+ * `verify`), so a forged or unsigned bearer with a past `exp` throws
  * `JwtTokenExpired` too. It is verified again with the expiry check off and
- * everything else the first call checked still on: HS256 named, `nbf` and
- * `iat` checked. Only a bearer that passes is `AUTH_SESSION_EXPIRED`; the
+ * everything else the first call checked still on: HS256 named, `nbf`, `iat`,
+ * `aud` and `iss` checked. Only a bearer that passes is `AUTH_SESSION_EXPIRED`; the
  * rest are `AUTH_UNKNOWN_LOGIN` (API.md admission step 1).
  */
-async function signatureVerifies(token: string, secret: string): Promise<boolean> {
+async function signatureVerifies(token: string, secret: string, checks: Checks): Promise<boolean> {
   try {
-    await verify(token, secret, { alg: 'HS256', exp: false });
+    await verify(token, secret, checks);
     return true;
   } catch {
     return false;

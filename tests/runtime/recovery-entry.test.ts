@@ -201,6 +201,7 @@ async function startServer(db: FreshDatabase, scope: string | undefined): Promis
       DATABASE_URL: db.appUrl,
       DATABASE_ADMIN_URL: admin.toString(),
       SUPABASE_JWT_SECRET: 'recovery-entry-secret-recovery-entry-secret',
+      GOTRUE_URL: 'http://127.0.0.1:54391',
       GATE_SIGNING_KEY_ID: '',
       GATE_SIGNING_SECRET: '',
       DELEGATION_CREDENTIAL_KEY_FILE: join(keys, 'delegation-keys.json'),

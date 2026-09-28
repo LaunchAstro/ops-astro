@@ -30,6 +30,7 @@ import { executeCommand } from '../../packages/core-records/src/commands/envelop
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { authorised, createBusinessResolver, post, SECRET, tokenFor } from '../api/fixture.ts';
+import { ISSUER } from '../api/fixture.ts';
 import {
   agentPath,
   createControls,
@@ -51,7 +52,7 @@ describe.skipIf(serverUrl === undefined)('propose racing handback on one task', 
     second = connect(c.fixture.db.appUrl, { source: 'runtime' });
     secondApi = createApi({
       database: second,
-      verify: createSupabaseVerifier({ secret: SECRET }),
+      verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
       resolveBusiness: createBusinessResolver(c.fixture.db.admin),
       executeCommand,
       executeRead,

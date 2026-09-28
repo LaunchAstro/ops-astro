@@ -49,6 +49,7 @@ import {
 import { installSpine } from '../commands/fixture.ts';
 import type { AgentIdentity, Caller } from './cast.ts';
 import {
+  ACCEPTANCE_ISSUER,
   ACCEPTANCE_SECRET,
   ADMIN_ACTIONS,
   ADMIN_COLLECTIONS,
@@ -60,7 +61,7 @@ import {
 
 // Re-exported so every proof keeps one import for the fixture. The cast lives
 // next door for the per-file cap's sake, not because it is a separate concern.
-export { ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
+export { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { createApi } from '../../apps/api/app.ts';
@@ -163,7 +164,7 @@ export async function createWorld(part: string): Promise<World> {
   const byKey: Readonly<Record<string, BusinessId>> = { alpha, bravo };
   const api = createApi({
     database: db.app,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
+    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
     // The server resolves the key on the administrative connection because the
     // tenancy root is behind forced row security. Two keys are the whole map
     // here, and an unknown key answers nothing, exactly as the server's does.
@@ -213,7 +214,7 @@ export function rebuildApi(world: World): {
   return {
     api: createApi({
       database,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
+      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
       resolveBusiness: async (key: string) => byKey[key],
       executeCommand,
       executeRead,

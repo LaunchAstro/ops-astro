@@ -271,6 +271,7 @@ describe('one refusal from each road, byte for byte', () => {
 });
 
 const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
+const ISSUER = 'http://127.0.0.1:54391';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
@@ -295,7 +296,7 @@ const api = createApi({
   database: stubDatabase(),
   executeCommand,
   executeRead,
-  verify: createSupabaseVerifier({ secret: SECRET }),
+  verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
   resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
 });
 
@@ -325,6 +326,7 @@ describe('the boundary’s own refusals, as the HTTP response carries them', () 
       {
         sub: MIA,
         aud: 'authenticated',
+        iss: ISSUER,
         role: 'authenticated',
         exp: Math.floor(Date.now() / 1000) + 600,
       },
