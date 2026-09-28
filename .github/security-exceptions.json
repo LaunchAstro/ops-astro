@@ -1,0 +1,35 @@
+{
+  "audit": [],
+  "semgrep": [
+    {
+      "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+      "path": "packages/core-records/src/authority/credential-keys.ts",
+      "count": 1,
+      "reason": "The pattern is built from a fixed setting-name constant, never from input.",
+      "impact": "None reachable: no caller supplies the name, so no ReDoS input exists.",
+      "owner": "Nathan Mulligan, maintainer",
+      "control": "The name is one of two module constants; review of any change to this reader.",
+      "expires": "2026-12-28"
+    },
+    {
+      "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+      "path": "scripts/local-seed.mjs",
+      "count": 2,
+      "reason": "Local seed script; the pattern is built from fixed variable names in the script.",
+      "impact": "None: runs only on a developer machine against its own local env file.",
+      "owner": "Nathan Mulligan, maintainer",
+      "control": "Not shipped: scripts/ is outside the application build.",
+      "expires": "2026-12-28"
+    },
+    {
+      "rule": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
+      "path": "scripts/local/auth-seed.mjs",
+      "count": 1,
+      "reason": "Local seed script logging its own seed person's address and status.",
+      "impact": "None: the format string holds the script's own seed data, not input.",
+      "owner": "Nathan Mulligan, maintainer",
+      "control": "Not shipped: scripts/local/ runs only against the local auth container.",
+      "expires": "2026-12-28"
+    }
+  ]
+}
