@@ -18,7 +18,7 @@ import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
-import type { CommandName } from './surface.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 import {
   handbackLease,
   refuseActualMinor,

@@ -26,7 +26,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { serialiseOn } from '../../packages/core-commands/src/commands/prepare.ts';
-import { declarationOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { declarationOf } from '../../packages/core-wire/src/surface.ts';
 import {
   planTaskPlacement,
   wouldCloseParentLoop,

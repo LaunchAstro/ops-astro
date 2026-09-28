@@ -563,7 +563,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 
 - The declaration asks `manage` on tasks at the revoked row's own scope: the
   grant's scope, or the delegation's purpose scope (the `grant.revoke` and
-  `delegation.revoke` declarations in `commands/surface.ts`,
+  `delegation.revoke` declarations in `core-wire/src/surface.ts`,
   `authorisedOn: 'target'`; `SCOPE_OF.target`, `commands/prepare.ts`). A manager
   whose `manage` covers exactly that scope reaches the handler. A body naming
   no such row is asked at business scope, so a caller who manages nothing is
@@ -664,7 +664,7 @@ The other three support controls, `task.cancel`, `task.restart` and
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
 `task.cancel` and `task.restart` are authorised on the task named in
 `recordId`, so a record-scoped `write` grant is enough (their declarations in
-`commands/surface.ts`). `task.pickup`, `task.heartbeat` and `task.handback` are
+`core-wire/src/surface.ts`). `task.pickup`, `task.heartbeat` and `task.handback` are
 authorised as `write` on the task their reservation or lease belongs to
 (`authorisedOn: 'claim'` in the same declarations), the scope the runtime and
 `grant.revoke` ask. A record-scoped writer works their own lease

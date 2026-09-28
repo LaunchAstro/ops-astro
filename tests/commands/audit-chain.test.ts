@@ -23,7 +23,7 @@ import {
   verifyAuditChain,
   writeAuditEvent,
 } from '../../packages/core-commands/src/commands/audit.ts';
-import { payloadDigest } from '../../packages/core-commands/src/commands/digest.ts';
+import { payloadDigest } from '../../packages/core-digest/src/digest.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

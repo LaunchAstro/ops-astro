@@ -45,18 +45,20 @@ import {
   agentAnswer,
   isCommandRefusal,
   refuseCommand,
+} from '../../packages/core-commands/src/index.ts';
+import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
   pathOf,
-  canonicalPayload,
-} from '../../packages/core-commands/src/index.ts';
+} from '../../packages/core-wire/src/index.ts';
+import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
+import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
   executeAgentCommand,
   AgentRequest,
   CommandRefusal,
-  CommandDeclaration,
   CommandRequest,
   executeRead,
   ReadRequest,

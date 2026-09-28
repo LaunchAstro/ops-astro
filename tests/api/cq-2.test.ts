@@ -19,7 +19,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { gateSigningKey, runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { configuredCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
-import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 

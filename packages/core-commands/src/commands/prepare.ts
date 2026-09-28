@@ -42,7 +42,7 @@ import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-reco
 import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
-import type { CommandDeclaration } from './surface.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 

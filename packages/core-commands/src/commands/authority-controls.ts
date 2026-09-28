@@ -46,7 +46,7 @@ import type { TenantQuery, Action, Scope } from '../../../core-records/src/index
 import { classifyAuthorityLoss, requireUnchanged } from '../../../core-runtime/src/index.ts';
 import type { Classification } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { declarationOf } from './surface.ts';
+import { declarationOf } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 

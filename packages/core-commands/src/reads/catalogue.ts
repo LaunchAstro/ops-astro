@@ -9,7 +9,7 @@
 // the read's name outside the switch (thermo review b483399, H3). Each is now
 // a field of the read's row, and `reads/dispatch.ts` runs one pipeline over
 // the row with no branch on the name. It is the read-path twin of the command
-// catalogue (`commands/surface.ts`), and keyed by every read name, so a read
+// catalogue (`core-wire/src/surface.ts`), and keyed by every read name, so a read
 // added to the union is a type error here until someone says what it takes.
 //
 // The grant the read asks, collection and action, stays on its

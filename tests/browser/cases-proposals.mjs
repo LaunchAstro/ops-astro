@@ -10,7 +10,7 @@
 //
 // **P2 and P3 issue their own `decide` grant.** `task.propose` takes `write`
 // and `task.decide` takes the `decide` action on the `task` collection
-// (`commands/surface.ts` declares it). When this file was written no seeded
+// (`core-wire/src/surface.ts` declares it). When this file was written no seeded
 // role held `decide`; `scripts/local-seed.mjs` now grants it to the admin. The
 // cases still issue the grant themselves through `issueGrant` -- the authority
 // path, the same one `n6-revocation.mjs` uses to revoke one -- and take it back

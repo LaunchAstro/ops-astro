@@ -23,7 +23,7 @@ import type {
   TaskStateRow,
   EntryPoint,
 } from '../../../core-records/src/index.ts';
-import type { CommandDeclaration } from './surface.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 
 /** The task type's identifiers, read rather than installed. */
 export interface TaskSpine {

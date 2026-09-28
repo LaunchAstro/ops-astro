@@ -33,7 +33,7 @@ import {
   DELEGATION_HEADER,
   pathOf,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

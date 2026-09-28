@@ -16,7 +16,7 @@
 // must not be named in `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import { READS } from '../../packages/core-commands/src/commands/surface.ts';
+import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
 
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];

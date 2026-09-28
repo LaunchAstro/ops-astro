@@ -25,7 +25,7 @@ import {
 } from './fixture.ts';
 import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

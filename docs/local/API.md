@@ -78,7 +78,7 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    body with no canonical form, such as a number too large for a double
    (`1e400` parses to `Infinity`), is `COMMAND_BODY_INVALID` 400 in the same
    way on every prefix: `readObject` (`apps/api/app.ts`) runs
-   `canonicalPayload` (`commands/digest.ts`) over the parsed body, and a throw
+   `canonicalPayload` (`core-digest/src/digest.ts`) over the parsed body, and a throw
    is a body refusal.
 4. A key that names no business answers exactly as login resolution answers a
    caller the business does not know: `AUTH_NO_MEMBERSHIP` 403 with login
@@ -294,7 +294,7 @@ directly.
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page
-use. Each is a row of `COMMAND_SURFACE` (`commands/surface.ts`), so its route is
+use. Each is a row of `COMMAND_SURFACE` (`core-wire/src/surface.ts`), so its route is
 the general rule above. Every write also answers the envelope's own refusals:
 `OPERATION_ID_REQUIRED` 422, `OPERATION_ID_REUSED` 409, `COMMAND_BODY_INVALID`
 400, `FIELD_NOT_WRITABLE` 422 for a system-owned field and `SCOPE_NOT_GRANTED`
@@ -804,13 +804,13 @@ What each one does:
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
-(`packages/core-commands/src/commands/surface.ts`, 28 writes and 7 reads) by
+(`packages/core-wire/src/surface.ts`, 28 writes and 7 reads) by
 `mountSurface` in `createApi` (`apps/api/app.ts`), once for the person prefix
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
 `apps/cli/client.ts`) and posts them to the person prefix, or to the agent
 prefix when a call asks for it. Both mounts are `PREFIX` in
-`commands/surface.ts` (`/api/b/` and `/api/a/b/`), and the delegation header's
+`core-wire/src/surface.ts` (`/api/b/` and `/api/a/b/`), and the delegation header's
 name is `DELEGATION_HEADER` there, which `apps/api/app.ts` imports.
 `GET /api/health` (its route in `composeApi`, `apps/api/server.ts`) is the one
 route outside the table. Every name is routed on both prefixes. The tables say

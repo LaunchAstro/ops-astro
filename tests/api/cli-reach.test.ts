@@ -24,7 +24,7 @@ import {
   COMMAND_SURFACE,
   declarationOf,
   type CommandName,
-} from '../../packages/core-commands/src/commands/surface.ts';
+} from '../../packages/core-wire/src/surface.ts';
 import { accepts, createCli, type CliAnswer, type Transport } from '../../apps/cli/client.ts';
 import {
   authorised,

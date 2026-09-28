@@ -27,7 +27,7 @@
 // would be the exact failure the read-outcome vocabulary exists to prevent: a
 // caller cannot tell "there is nothing" from "this was never built".
 
-import type { CommandDeclaration } from './surface.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 

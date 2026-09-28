@@ -19,7 +19,7 @@ import { AffectedSetChanged } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { isCommandRefusal, type CommandRefusal } from './refusal.ts';
 import { storable } from './audit.ts';
-import type { CommandName } from './surface.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 
 /** What a caller gets when a command applies: a durable handle, never a record. */
 export interface CommandHandle {

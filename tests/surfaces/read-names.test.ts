@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { READ_NAMES, type OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { COMMAND_SURFACE } from '../../packages/core-commands/src/commands/surface.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 
 const declaredReads = new Set(
   COMMAND_SURFACE.filter((command) => command.kind === 'read').map((command) => command.name),

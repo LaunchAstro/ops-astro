@@ -12,7 +12,7 @@ import {
 import type { TenantQuery, AgentSession } from '../../../core-records/src/index.ts';
 import { retainHistoricalReport } from '../../../core-runtime/src/index.ts';
 import type { CommandRefusal } from './refusal.ts';
-import type { CommandDeclaration } from './surface.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { AgentCall, HandbackOperands } from './agent-call.ts';
 import { taskOfLease } from './prepare.ts';
 

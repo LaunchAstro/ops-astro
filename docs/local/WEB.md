@@ -6,7 +6,7 @@ The staff application: sign in, the projects board, one task page. It is a Vite
 dev server on `127.0.0.1:5190` that proxies `/api` to the API on
 `127.0.0.1:8790`, so the browser only ever makes same-origin requests.
 `OperationsClient` takes an `origin`, empty for same-origin, and posts under
-`PREFIX.person` from `commands/surface.ts`. `App` takes it as `apiOrigin`, which
+`PREFIX.person` from `core-wire/src/surface.ts`. `App` takes it as `apiOrigin`, which
 `main.tsx` reads from `VITE_API_ORIGIN` (unset in local runs).
 
 ## Start it

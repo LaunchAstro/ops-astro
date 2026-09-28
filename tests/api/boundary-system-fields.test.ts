@@ -28,7 +28,7 @@ import {
 } from './fixture.ts';
 import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
-import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { INSTALLED_SYSTEM_FIELDS } from '../acceptance/d06-cases.ts';
 
