@@ -30,9 +30,11 @@ const sourcesOf = (roots: readonly string[]): string[] =>
       .map((file) => `${root}/${file}`),
   );
 
-/** A member called `name` among an object's own members, shorthand or typed. */
-const ownMember = (name: string) =>
-  new RegExp(`(^|[\\s;,{])(readonly\\s+)?${name}\\??\\s*[:,;]`, 'u');
+/** A `refused` or a `code` among an object's own members, shorthand or typed. */
+const OWN_MEMBER = {
+  refused: /(^|[\s;,{])(readonly\s+)?refused\??\s*[:,;]/u,
+  code: /(^|[\s;,{])(readonly\s+)?code\??\s*[:,;]/u,
+};
 
 /**
  * Every brace block in `text` whose own members include both `refused` and
@@ -50,7 +52,7 @@ function refusalShapes(file: string, text: string): string[] {
     const start = open.pop() ?? 0;
     let own = source.slice(start + 1, i);
     while (/\{[^{}]*\}/u.test(own)) own = own.replaceAll(/\{[^{}]*\}/gu, '');
-    if (ownMember('refused').test(own) && ownMember('code').test(`${own};`)) {
+    if (OWN_MEMBER.refused.test(own) && OWN_MEMBER.code.test(`${own};`)) {
       const opener = /(?:interface|type)\s+(\w+)[^{;]*$/u.exec(source.slice(0, start))?.[1];
       found.push(`${file}:${opener ?? 'literal'}`);
     }
