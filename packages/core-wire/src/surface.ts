@@ -358,7 +358,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.comment', 'comment', { agent: 'delegated' }),
   // The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
-  declare('task.propose', 'write', { targetLock: 'runtime' }),
+  declare('task.propose', 'write', { targetLock: 'runtime', agent: 'delegated' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
   declare('task.decide', 'decide', {

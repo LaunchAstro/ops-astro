@@ -54,6 +54,7 @@ import {
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
+import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -149,6 +150,8 @@ export interface ApiConfig {
    * to reach the fault branch.
    */
   readonly executeRead?: ReadExecutor;
+  /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
+  readonly identity?: ServedIdentity;
 }
 
 export interface ComposedApi {
@@ -194,6 +197,21 @@ export function composeApi(config: ApiConfig): ComposedApi {
       reachable ? 200 : 503,
     );
   });
+
+  const { identity } = config;
+  if (identity !== undefined) {
+    // Loopback only: the answer names the checkout path and the process id.
+    server.get('/api/identity', async (context) => {
+      const peer = (
+        context.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
+      )?.incoming?.socket?.remoteAddress;
+      if (!isLoopback(peer)) return context.notFound();
+      const ledger = await admin.execute<{ version: string; checksum: string }>(
+        'select version, checksum from ops.schema_migrations',
+      );
+      return context.json({ ...identity, migrationHead: migrationHead(ledger) }, 200);
+    });
+  }
 
   server.route(
     '/',
@@ -260,6 +278,7 @@ async function main(): Promise<void> {
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
   const { app, resolveBusiness } = composeApi({
+    identity: readIdentity(ROOT),
     database,
     admin,
     secret: secret as string,

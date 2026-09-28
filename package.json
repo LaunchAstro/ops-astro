@@ -74,7 +74,9 @@
     "verify:d06-mounted": "node tests/browser/d06-mounted.mjs",
     "verify:restart": "bash scripts/local/restart-proof.sh",
     "verify:restart-legs": "node tests/browser/restart-legs.mjs",
-    "cli": "node apps/cli/main.ts"
+    "cli": "node apps/cli/main.ts",
+    "worker": "node apps/worker/main.ts",
+    "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",

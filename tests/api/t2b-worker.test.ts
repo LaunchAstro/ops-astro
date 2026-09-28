@@ -94,9 +94,13 @@ describe.skipIf(serverUrl === undefined)(
     let origin: string;
     let personToken: string;
     let agentToken: string;
-    const task: Record<'worker' | 'route' | 'sibling', { id: string; revision: number }> = {
+    const task: Record<
+      'worker' | 'route' | 'noWrite' | 'sibling',
+      { id: string; revision: number }
+    > = {
       worker: { id: '', revision: 0 },
       route: { id: '', revision: 0 },
+      noWrite: { id: '', revision: 0 },
       sibling: { id: '', revision: 0 },
     };
     const credential = { worker: '', route: '', noWrite: '', foreign: '' };
@@ -121,19 +125,25 @@ describe.skipIf(serverUrl === undefined)(
       return { id: String(answer.body['recordId']), revision: Number(answer.body['revision']) };
     }
 
-    async function mint(taskId: string, actions: ('read' | 'comment' | 'write')[], agent?: string) {
+    /** One live delegation per agent and purpose, so each case mints its own purpose word. */
+    async function mint(
+      taskId: string,
+      actions: ('read' | 'comment' | 'write')[],
+      purpose: string,
+      agent?: string,
+    ) {
       return await fixture.db.app.withBusiness(fixture.business, async (tx) => {
         const minted = await mintDelegation(tx, {
           agentActorId: agent ?? fixture.agentActorId,
           delegatePersonId: fixture.member.personId,
           mintedByActorId: fixture.member.actorId,
-          purpose: 'synthetic_comment',
+          purpose,
           collections: ['task'],
           actions,
           purposeScope: { kind: 'record', id: taskId },
           expiresAt: new Date(Date.now() + 3_600_000),
         });
-        if (!minted.ok) throw new Error(`fixture: mint refused ${minted.refusal.code}`);
+        if (!minted.ok) throw new Error(`fixture: mint ${purpose} refused ${minted.refusal.code}`);
         return minted.value.credential;
       });
     }
@@ -151,10 +161,11 @@ describe.skipIf(serverUrl === undefined)(
       agentToken = await tokenFor(fixture.agent.subject);
       task.worker = await createTask('the task the worker proposes on');
       task.route = await createTask('the task the route cases propose on');
+      task.noWrite = await createTask('a task whose delegation carries no write');
       task.sibling = await createTask('a sibling task outside every delegation');
-      credential.worker = await mint(task.worker.id, ['read', 'comment', 'write']);
-      credential.route = await mint(task.route.id, ['read', 'comment', 'write']);
-      credential.noWrite = await mint(task.route.id, ['read', 'comment']);
+      credential.worker = await mint(task.worker.id, ['read', 'comment', 'write'], 'worker');
+      credential.route = await mint(task.route.id, ['read', 'comment', 'write'], 'route');
+      credential.noWrite = await mint(task.noWrite.id, ['read', 'comment'], 'no_write');
       const otherAgent = randomUUID();
       await fixture.db.app.withBusiness(fixture.business, async (tx) => {
         await tx.query(
@@ -162,7 +173,12 @@ describe.skipIf(serverUrl === undefined)(
           [fixture.business, otherAgent],
         );
       });
-      credential.foreign = await mint(task.route.id, ['read', 'comment', 'write'], otherAgent);
+      credential.foreign = await mint(
+        task.route.id,
+        ['read', 'comment', 'write'],
+        'route',
+        otherAgent,
+      );
       server = serve({ fetch: api.fetch, hostname: '127.0.0.1', port: 0 });
       await new Promise<void>((done) => {
         server.once('listening', () => done());
@@ -237,7 +253,7 @@ describe.skipIf(serverUrl === undefined)(
       it('an agent whose delegation lacks task:write is refused', async () => {
         const answer = await asAgent(
           'task.propose',
-          proposal(task.route.id, task.route.revision),
+          proposal(task.noWrite.id, task.noWrite.revision),
           credential.noWrite,
         );
         expect(answer.body).toMatchObject({ refused: true, code: 'DELEGATION_OUT_OF_PURPOSE' });

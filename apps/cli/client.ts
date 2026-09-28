@@ -24,7 +24,12 @@
 // `main.ts` beside this file is the runnable entry (`pnpm cli`); this module
 // stays importable so a test can drive it with an injected transport.
 
-import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import {
+  COMMAND_SURFACE,
+  DELEGATION_HEADER,
+  PREFIX,
+  pathOf,
+} from '../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../packages/core-wire/src/index.ts';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 
@@ -40,6 +45,24 @@ export type Transport = (
   credential: string,
   delegation?: string,
 ) => Promise<Response>;
+
+/**
+ * The transport over HTTP to the API at `api`: the bearer as a bearer, the
+ * delegation in its own header when there is one. The command line and the
+ * worker both post through this one (T2b, RN-04), so there is one client.
+ */
+export function httpTransport(api: string): Transport {
+  return async (path, sent, bearer, held) =>
+    await fetch(`${api}${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${bearer}`,
+        ...(held === undefined ? {} : { [DELEGATION_HEADER]: held }),
+      },
+      body: sent,
+    });
+}
 
 export interface CliOptions {
   readonly transport: Transport;
