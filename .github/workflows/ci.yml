@@ -10,11 +10,11 @@ on:
     # adding a size waiver leaves the old red result standing and removing one
     # leaves the old green result standing, so the waiver means whatever it
     # meant at the last push. Round four found it.
-    # `edited` matters as much as the rest: the review-evidence check reads
-    # the pull request body, so changing or removing that evidence must
-    # refresh the result. Without it, a passing check keeps standing over a
-    # body that no longer says what it said. Round five found it.
-    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    # `edited` is not here. The review-evidence check reads the pull request
+    # body, so an edit must refresh that result (round five), but only that
+    # one: review-evidence-on-edit.yml runs it alone on `edited` (CQ-16), so
+    # a description edit neither re-runs nor cancels any other check.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -284,22 +284,35 @@ jobs:
         run: bash tests/ci/commit-range-cases.sh
 
   review-evidence:
+    # review-evidence-on-edit.yml holds the same job for a description edit.
+    # Both read the body as it stands when they judge it, not the event's copy,
+    # and judge it last: a code run still in flight when the body is edited
+    # finishes after the edit's run, and must not stand on the old body.
     name: review evidence for this revision
     needs: [gate]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: The review must cover the head being merged
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/review-evidence-check.mjs
+          persist-credentials: false
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh
+      - name: Read the description as it stands now
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
+      - name: The review must cover the head being merged
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
 
   pr-size:
     name: pull request size
