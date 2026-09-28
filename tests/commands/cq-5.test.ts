@@ -82,6 +82,14 @@ describe('CQ-5 the source', () => {
     ]);
   });
 
+  it('Sol proof, criterion 5: the web declares no second refusal shape', () => {
+    const declarations = sourcesOf(['apps/web', 'apps/cli'])
+      .flatMap((file) => refusalShapes(file, readFileSync(file, 'utf8')))
+      .filter((shape) => !shape.endsWith(':literal'))
+      .toSorted();
+    expect(declarations).toStrictEqual([]);
+  });
+
   it('CQ-5 converters gone: fromRecords, fromIdentity, fromAgentIdentity and fromReasoned, and nothing replaces them', () => {
     const files = sourcesOf([...LAYERS, 'apps/web', 'apps/cli', 'scripts']);
     const texts = files.map((f) => [f, readFileSync(f, 'utf8')] as const);
@@ -89,6 +97,13 @@ describe('CQ-5 the source', () => {
     // A replacement re-spells another refusal: `refuseCommand(x.code, ...)`.
     const respelled = /refuseCommand\(\s*[\w.]+\.code\b/u;
     expect(texts.filter(([, t]) => named.test(t) || respelled.test(t)).map(([f]) => f)).toEqual([]);
+  });
+
+  it('Sol proof, criterion 6: share authority denial is not rebuilt', () => {
+    const source = readFileSync('packages/core-records/src/authority/shares.ts', 'utf8');
+    const rebuilt =
+      /refusal:\s*refuseCommand\(\s*'SCOPE_NOT_GRANTED',\s*\[\],\s*authorised\.refusal\.fixes\)/u;
+    expect(rebuilt.test(source)).toBe(false);
   });
 });
 
@@ -201,6 +216,13 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
         }
       }
     }
+  });
+
+  it('Sol proof, criterion 4: client isolation exercises the external shared view', async () => {
+    const [task] = bravo.tasks as [Task];
+    const answer = await read(bravo.id, task.client, { read: 'task.read', recordId: task.id });
+    expect(answer).toHaveProperty('sharedTask');
+    expect(answer).not.toHaveProperty('task');
   });
 
   it('CQ-5 grants: a cross-business grant is refused, in the one shape', async () => {
