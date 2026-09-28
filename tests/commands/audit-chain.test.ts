@@ -22,8 +22,8 @@ import {
   readAuditEvents,
   verifyAuditChain,
   writeAuditEvent,
-} from '../../packages/core-records/src/commands/audit.ts';
-import { payloadDigest } from '../../packages/core-records/src/commands/digest.ts';
+} from '../../packages/core-commands/src/commands/audit.ts';
+import { payloadDigest } from '../../packages/core-commands/src/commands/digest.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

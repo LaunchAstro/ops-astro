@@ -22,9 +22,9 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { PROTECTED_TASK_FIELDS } from '../../packages/core-records/src/tasks/spine.ts';
 

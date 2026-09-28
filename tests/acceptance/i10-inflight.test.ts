@@ -27,10 +27,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   connect,
   type Database,

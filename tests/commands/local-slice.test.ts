@@ -30,11 +30,11 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import type { ReadRequest } from '../../packages/core-records/src/reads/requests.ts';
+import type { ReadRequest } from '../../packages/core-commands/src/reads/requests.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

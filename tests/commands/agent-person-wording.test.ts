@@ -15,19 +15,19 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { AgentSession } from '../../packages/core-records/src/identity/agent-login.ts';
-import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
   type AgentOperation,
-} from '../../packages/core-records/src/commands/agent-operations.ts';
-import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
-import { pickupAsPerson } from '../../packages/core-records/src/commands/tasks-pickup.ts';
-import { heartbeatOwnLease } from '../../packages/core-records/src/commands/tasks-lease.ts';
-import { handbackOwnLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
-import { refuseNotFound } from '../../packages/core-records/src/commands/refusal.ts';
-import { refused } from '../../packages/core-records/src/commands/outcome.ts';
-import { declarationOf } from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/agent-operations.ts';
+import type { AgentRequest } from '../../packages/core-commands/src/commands/agent-call.ts';
+import { pickupAsPerson } from '../../packages/core-commands/src/commands/tasks-pickup.ts';
+import { heartbeatOwnLease } from '../../packages/core-commands/src/commands/tasks-lease.ts';
+import { handbackOwnLease } from '../../packages/core-commands/src/commands/tasks-handback.ts';
+import { refuseNotFound } from '../../packages/core-commands/src/commands/refusal.ts';
+import { refused } from '../../packages/core-commands/src/commands/outcome.ts';
+import { declarationOf } from '../../packages/core-commands/src/commands/surface.ts';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK_TYPE = '22222222-2222-4222-8222-222222222222';

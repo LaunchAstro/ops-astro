@@ -18,10 +18,9 @@
 // rollback is a refusal that a partial commit can turn into a success.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import { checkAuthority } from '../../core-records/src/authority/grants.ts';
-import type { Subject } from '../../core-records/src/authority/grants.ts';
-import { readBusinessCapId } from '../../core-records/src/commands/runtime-config.ts';
+import { checkAuthority } from '../../core-records/src/index.ts';
+import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
+import { readBusinessCapId } from './runtime-config.ts';
 import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
 import type { LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';

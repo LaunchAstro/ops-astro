@@ -49,10 +49,10 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { tenancyConformance } from '../../packages/core-records/src/tenancy/conformance.ts';
-import * as shippedEnvelope from '../../packages/core-records/src/commands/envelope.ts';
-import * as shippedRefusal from '../../packages/core-records/src/commands/refusal.ts';
-import { readAuditEvents } from '../../packages/core-records/src/commands/audit.ts';
-import * as shippedPrepare from '../../packages/core-records/src/commands/prepare.ts';
+import * as shippedEnvelope from '../../packages/core-commands/src/commands/envelope.ts';
+import * as shippedRefusal from '../../packages/core-commands/src/commands/refusal.ts';
+import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
+import * as shippedPrepare from '../../packages/core-commands/src/commands/prepare.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { createSourceMutant, type SourceMutant } from '../support/source-mutant.ts';
@@ -63,7 +63,7 @@ const ROW_SECURITY_RULE = 'row security enabled and forced on every application 
 
 /** The one line the mutant changes: a condition that binds `$1` and filters nothing. */
 const PREDICATE_MUTATION = {
-  file: 'packages/core-records/src/commands/prepare.ts',
+  file: 'packages/core-commands/src/commands/prepare.ts',
   from: "const TENANT_PREDICATE = 'business_id = $1';",
   to: "const TENANT_PREDICATE = '$1::uuid is not null';",
 };
@@ -272,10 +272,10 @@ describe.skipIf(serverUrl === undefined)('I14: the production lookup under mutat
     removed = {
       lockTask: (await mutant.load<typeof shippedPrepare>(PREDICATE_MUTATION.file)).lockTask,
       executeCommand: (
-        await mutant.load<typeof shippedEnvelope>('packages/core-records/src/commands/envelope.ts')
+        await mutant.load<typeof shippedEnvelope>('packages/core-commands/src/commands/envelope.ts')
       ).executeCommand,
       isCommandRefusal: (
-        await mutant.load<typeof shippedRefusal>('packages/core-records/src/commands/refusal.ts')
+        await mutant.load<typeof shippedRefusal>('packages/core-commands/src/commands/refusal.ts')
       ).isCommandRefusal,
     };
     db = await createFreshDatabase({ part: 'i' });

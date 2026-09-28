@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { AGENT_OPERATIONS } from '../../packages/core-records/src/commands/agent-operations.ts';
+} from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { AGENT_OPERATIONS } from '../../packages/core-commands/src/commands/agent-operations.ts';
 
 describe('the agent surface and the agent operation table', () => {
   it('reach the same operations', () => {

@@ -41,22 +41,18 @@ import {
   connect,
   connectAsAdmin,
   isBusinessId,
-  type AdminConnection,
-  type Database,
-} from '../../packages/core-records/src/tenancy/database.ts';
+  KEY_FILE_VARIABLE,
+} from '../../packages/core-records/src/index.ts';
+import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type ReadExecutor } from './app.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import {
+  executeAgentCommand,
   describeFault,
   executeCommand,
-} from '../../packages/core-records/src/commands/envelope.ts';
-import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
-import {
-  runtimeKeys,
-  withRuntimeKeys,
-  type RuntimeKeys,
-} from '../../packages/core-records/src/commands/runtime-config.ts';
-import { KEY_FILE_VARIABLE } from '../../packages/core-records/src/authority/credential-keys.ts';
+  executeRead as readExecutor,
+} from '../../packages/core-commands/src/index.ts';
+import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
   describeRecovered,

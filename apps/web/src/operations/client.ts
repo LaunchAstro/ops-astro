@@ -47,7 +47,7 @@ import {
   PREFIX,
   pathOf,
   type CommandName,
-} from '../../../../packages/core-records/src/commands/surface.ts';
+} from '../../../../packages/core-commands/src/commands/surface.ts';
 
 /**
  * The reads, named here as their own type.

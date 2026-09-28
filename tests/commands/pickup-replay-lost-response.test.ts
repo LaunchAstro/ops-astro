@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
 import { LOCAL_KEY_FILE } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { detailOf, replayWorld, type Approver, type ReplayWorld } from './pickup-replay-harness.ts';
 

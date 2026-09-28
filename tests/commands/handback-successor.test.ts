@@ -18,9 +18,9 @@
 // `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import { handbackLease } from '../../packages/core-records/src/commands/tasks-handback.ts';
-import { readSuccessor } from '../../packages/core-records/src/commands/successor.ts';
-import { isRefused } from '../../packages/core-records/src/commands/outcome.ts';
+import { handbackLease } from '../../packages/core-commands/src/commands/tasks-handback.ts';
+import { readSuccessor } from '../../packages/core-commands/src/commands/successor.ts';
+import { isRefused } from '../../packages/core-commands/src/commands/outcome.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
 /** A transaction that fails the test if it is touched. */

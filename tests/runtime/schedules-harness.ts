@@ -32,10 +32,10 @@ import {
   type BusinessId,
   type Database,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';

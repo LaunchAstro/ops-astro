@@ -33,40 +33,35 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   NO_MEMBERSHIP_FIXES,
-  type VerifiedSubject,
-} from '../../packages/core-records/src/identity/login-resolution.ts';
-import {
   NO_AGENT_FIXES,
   EXPIRED_FIXES,
-} from '../../packages/core-records/src/identity/agent-login.ts';
-import type { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+  recordBodyRefusal,
+  statusOf,
+} from '../../packages/core-records/src/index.ts';
+import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
-  type executeAgentCommand,
-} from '../../packages/core-records/src/commands/agent-envelope.ts';
-import type { AgentRequest } from '../../packages/core-records/src/commands/agent-call.ts';
-import {
   isCommandRefusal,
   refuseCommand,
-  type CommandRefusal,
-} from '../../packages/core-records/src/commands/refusal.ts';
-import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
   pathOf,
-  type CommandDeclaration,
-} from '../../packages/core-records/src/commands/surface.ts';
-import type { CommandRequest } from '../../packages/core-records/src/commands/requests.ts';
-import type { executeRead } from '../../packages/core-records/src/reads/execute.ts';
-import type { ReadRequest } from '../../packages/core-records/src/reads/requests.ts';
-import { recordBodyRefusal } from '../../packages/core-records/src/identity/authentication-attempts.ts';
+  canonicalPayload,
+} from '../../packages/core-commands/src/index.ts';
+import type {
+  executeCommand,
+  executeAgentCommand,
+  AgentRequest,
+  CommandRefusal,
+  CommandDeclaration,
+  CommandRequest,
+  executeRead,
+  ReadRequest,
+} from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
-import { statusOf } from '../../packages/core-records/src/commands/register.ts';
-import { canonicalPayload } from '../../packages/core-records/src/commands/digest.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -74,7 +69,7 @@ import { canonicalPayload } from '../../packages/core-records/src/commands/diges
  * the real executor is passed without a cast.
  *
  * The request names the read in `read` rather than in `command`, and
- * `packages/core-records/src/reads/dispatch.ts` looks its catalogue row up by
+ * `packages/core-commands/src/reads/dispatch.ts` looks its catalogue row up by
  * that name. A read carries no `operation_id` and no `expected_revision`,
  * because there is nothing to replay and nothing to be stale against.
  */

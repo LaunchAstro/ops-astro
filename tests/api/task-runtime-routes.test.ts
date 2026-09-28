@@ -20,8 +20,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
-import { gateSigningKey } from '../../packages/core-records/src/commands/runtime-config.ts';
+import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
+import { gateSigningKey } from '../../packages/core-runtime/src/runtime-config.ts';
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { enrol } from '../commands/fixture.ts';
 import {
@@ -308,7 +308,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
      *
      * Flipped from `it.fails` to a plain `it` on the integration head once
      * L3-PART-B-3 registered `DELEGATION_ALREADY_LIVE` at 409 in
-     * `commands/register.ts`: the mint's refusal
+     * `core-records/src/register.ts`: the mint's refusal
      * (`tests/identity`) now travels the envelope as a typed 409 instead of
      * raising in `agent-envelope.ts` as an unregistered code.
      */

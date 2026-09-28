@@ -49,10 +49,10 @@ import {
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand, runCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeCommand, runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { withSession } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandResult } from '../../packages/core-records/src/commands/register-store.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

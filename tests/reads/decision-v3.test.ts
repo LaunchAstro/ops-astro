@@ -25,8 +25,8 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readTaskProposals } from '../../packages/core-records/src/reads/proposals.ts';
-import { DecisionIntegrityError } from '../../packages/core-records/src/reads/verified-decisions.ts';
+import { readTaskProposals } from '../../packages/core-commands/src/reads/proposals.ts';
+import { DecisionIntegrityError } from '../../packages/core-commands/src/reads/verified-decisions.ts';
 import {
   CHAIN_GENESIS,
   canonicalise,

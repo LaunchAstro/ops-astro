@@ -21,13 +21,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SYSTEM_OWNED_FIELDS } from '../../packages/core-records/src/commands/prepare.ts';
-import { AGENT_SURFACE } from '../../packages/core-records/src/commands/agent-envelope.ts';
+import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
+import { AGENT_SURFACE } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { TOP_LEVEL_FIELDS } from './d06-cases.ts';
 import {
   COMMAND_SURFACE,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import {
   Tally,
   durableProbe,

@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
 import { createIdentWorld, type IdentWorld, type Picked } from '../acceptance/ident-audit-cases.ts';
-import { pickupReceiptBinding } from '../../packages/core-records/src/commands/pickup-receipt.ts';
+import { pickupReceiptBinding } from '../../packages/core-commands/src/commands/pickup-receipt.ts';
 
 describe.skipIf(serverUrl === undefined)('pickup receipt binding (NNA2)', () => {
   let w: IdentWorld;

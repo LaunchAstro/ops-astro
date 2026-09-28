@@ -31,7 +31,7 @@ describe('AUTHORITY.md on task.comment (#21, #42, #61, #26)', () => {
     expect(comments).toMatch(/trashed task[^.]*NOT_FOUND/u);
     expect(comments).toContain('tests/acceptance/comment-rulings.test.ts');
     // The refusal the doc names is the one the handler makes.
-    expect(read('packages/core-records/src/commands/tasks-comment.ts')).toContain(
+    expect(read('packages/core-commands/src/commands/tasks-comment.ts')).toContain(
       'if (on.target.deleted_at !== null) return refused(refuseNotFound());',
     );
   });
@@ -39,7 +39,7 @@ describe('AUTHORITY.md on task.comment (#21, #42, #61, #26)', () => {
   it('records internal-only agent comments as the owner ruling, not a pending choice', () => {
     expect(folded(authority)).not.toContain('awaits root or owner confirmation');
     expect(folded(authority)).toMatch(/Internal-only is Nathan's ruling/u);
-    expect(read('packages/core-records/src/commands/agent-operations.ts')).toContain(
+    expect(read('packages/core-commands/src/commands/agent-operations.ts')).toContain(
       "const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);",
     );
   });
@@ -69,7 +69,7 @@ describe('API.md task.pickup row (#29)', () => {
   it('names every code pickup and its handler refuse with directly', () => {
     const sources = [
       read('packages/core-runtime/src/pickup.ts'),
-      read('packages/core-records/src/commands/tasks-pickup.ts'),
+      read('packages/core-commands/src/commands/tasks-pickup.ts'),
     ].join('\n');
     const codes = new Set(
       [...sources.matchAll(/refuse(?:Command)?\(\s*'([A-Z_]+)'/gu)].map((match) => match[1]),
@@ -82,7 +82,7 @@ describe('API.md task.pickup row (#29)', () => {
 describe('the task.propose comment (#30, #66)', () => {
   it('states the seven-day maximum rather than no bound', () => {
     // Comment text with its ` * ` line starts folded away.
-    const source = read('packages/core-records/src/commands/tasks-propose.ts').replaceAll(
+    const source = read('packages/core-commands/src/commands/tasks-propose.ts').replaceAll(
       /\s*\n\s*\*\s?/gu,
       ' ',
     );
@@ -105,7 +105,7 @@ describe('CLI.md before a pickup (#37)', () => {
   it('names the decision refusal beside the operation one', () => {
     const cli = folded(read('docs/local/CLI.md'));
     expect(cli).toMatch(/`task\.decide` with `DELEGATION_EXCLUDES_DECISION`/u);
-    expect(read('packages/core-records/src/commands/agent-authority.ts')).toContain(
+    expect(read('packages/core-commands/src/commands/agent-authority.ts')).toContain(
       "'DELEGATION_EXCLUDES_DECISION'",
     );
   });

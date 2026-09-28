@@ -26,7 +26,7 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   awaitWaiters,
   barrier,

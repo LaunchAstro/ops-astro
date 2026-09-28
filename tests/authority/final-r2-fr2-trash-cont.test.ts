@@ -18,8 +18,8 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   revokeShare,
   shareRecord,

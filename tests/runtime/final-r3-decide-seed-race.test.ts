@@ -34,8 +34,8 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';

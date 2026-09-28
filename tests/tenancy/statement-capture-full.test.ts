@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
   type CommandDeclaration,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import { createStatementLog } from '../../packages/core-records/src/tenancy/statements.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';

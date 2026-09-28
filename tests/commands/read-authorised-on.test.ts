@@ -8,8 +8,8 @@
 // (THERMO-RECHECK-2 H3: `task.read` was declared `business`).
 
 import { describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE } from '../../packages/core-records/src/commands/surface.ts';
-import { READ_CATALOGUE } from '../../packages/core-records/src/reads/catalogue.ts';
+import { COMMAND_SURFACE } from '../../packages/core-commands/src/commands/surface.ts';
+import { READ_CATALOGUE } from '../../packages/core-commands/src/reads/catalogue.ts';
 
 describe("a read's declared authority scope", () => {
   const reads = COMMAND_SURFACE.filter((row) => row.kind === 'read');

@@ -12,13 +12,13 @@ import { describe, expect, it } from 'vitest';
 import {
   revokeDelegationAsManager,
   revokeGrantAsManager,
-} from '../../packages/core-records/src/commands/authority-controls.ts';
+} from '../../packages/core-commands/src/commands/authority-controls.ts';
 import {
   isRefused,
   type HandlerOutcome,
-} from '../../packages/core-records/src/commands/outcome.ts';
-import { refuseNotFound } from '../../packages/core-records/src/commands/refusal.ts';
-import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
+} from '../../packages/core-commands/src/commands/outcome.ts';
+import { refuseNotFound } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
 /** A transaction that holds no grant and no delegation. */

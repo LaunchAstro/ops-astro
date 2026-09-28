@@ -23,7 +23,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { pathOf, type CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-commands/src/commands/surface.ts';
 import {
   insertActor,
   insertAgentActor,

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalPayload,
   payloadDigest,
-} from '../../packages/core-records/src/commands/digest.ts';
+} from '../../packages/core-commands/src/commands/digest.ts';
 
 describe('the canonical payload', () => {
   it('reads the same for two objects whose keys arrived in a different order', () => {

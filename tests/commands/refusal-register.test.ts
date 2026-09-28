@@ -18,7 +18,7 @@ import {
   UNPRODUCED_CODES,
   registeredRefusal,
   type RefusalCode,
-} from '../../packages/core-records/src/commands/register.ts';
+} from '../../packages/core-records/src/register.ts';
 import {
   asCallerVisible,
   fromReasoned,
@@ -26,7 +26,7 @@ import {
   fromRecords,
   refuseCommand,
   refuseNotFound,
-} from '../../packages/core-records/src/commands/refusal.ts';
+} from '../../packages/core-commands/src/commands/refusal.ts';
 import { refuse as refuseRecords } from '../../packages/core-records/src/records/refusals.ts';
 import { refuse as refuseIdentity } from '../../packages/core-records/src/identity/refusals.ts';
 

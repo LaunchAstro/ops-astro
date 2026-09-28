@@ -28,7 +28,7 @@ import {
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import type { CommandName } from '../../packages/core-records/src/commands/surface.ts';
+import type { CommandName } from '../../packages/core-commands/src/commands/surface.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

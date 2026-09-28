@@ -14,7 +14,7 @@
 // approval to whichever of the two the reader happened to trust.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
 import { digestOf } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 

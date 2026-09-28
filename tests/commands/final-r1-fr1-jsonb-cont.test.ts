@@ -23,12 +23,12 @@ import {
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import {
   isCommandRefusal,
   refuseCommand,
-} from '../../packages/core-records/src/commands/refusal.ts';
-import { registerAttempt } from '../../packages/core-records/src/commands/register-store.ts';
+} from '../../packages/core-commands/src/commands/refusal.ts';
+import { registerAttempt } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { InstalledTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

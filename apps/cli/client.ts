@@ -29,7 +29,7 @@ import {
   PREFIX,
   pathOf,
   type CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 
 /**
  * How a caller reaches the API. Injected so a test drives the real Hono app.

@@ -21,12 +21,8 @@
 // and the held total. W01's kill-before-commit case must find nothing.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/tenancy/database.ts';
-import { checkAuthority, type Subject } from '../../core-records/src/authority/grants.ts';
-import {
-  checkDelegatedAuthority,
-  type Delegation,
-} from '../../core-records/src/authority/delegations.ts';
+import { checkAuthority, checkDelegatedAuthority } from '../../core-records/src/index.ts';
+import type { TenantQuery, Subject, Delegation } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';

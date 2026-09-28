@@ -24,7 +24,7 @@ import {
   registeredRefusal,
   statusOf,
   type RefusalCode,
-} from '../../packages/core-records/src/commands/register.ts';
+} from '../../packages/core-records/src/register.ts';
 
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 

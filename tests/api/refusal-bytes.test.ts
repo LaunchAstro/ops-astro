@@ -20,8 +20,8 @@ import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   OperationsClient,
   isRefusal,

@@ -27,7 +27,7 @@ pnpm cli logout
 nothing of its own on stdout, so the output can be piped to `jq`.
 
 The operation list comes from `COMMAND_SURFACE`
-(`packages/core-records/src/commands/surface.ts`), the same registry the API
+(`packages/core-commands/src/commands/surface.ts`), the same registry the API
 mounts its routes from. An operation the API has not landed is listed with what
 it is waiting on. The command line answers an operation it does not know on its
 own, before it reads the body, business, bearer or API origin and before it
@@ -61,7 +61,7 @@ fresh one. A read on the person prefix is sent with exactly the body given and
 no `operationId`. Every call on the agent prefix (`--agent`) gets one, reads
 included, because the agent envelope refuses any call without it
 (`OPERATION_ID_REQUIRED` in `runAgentCommand`,
-`packages/core-records/src/commands/agent-envelope.ts`). To retry a write
+`packages/core-commands/src/commands/agent-envelope.ts`). To retry a write
 safely, put your own `operationId` in the body and send the same body again.
 The API replays the first answer instead of writing twice. When the command
 line chose the `operationId` and the call gets no answer (exit 3) or a fault

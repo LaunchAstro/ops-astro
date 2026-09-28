@@ -58,7 +58,7 @@ of the surface is mounted.
 A success is the envelope's outcome: `recordId`, `revision`, `detail`. A
 refusal is `{ refused: true, code, names, fixes }` (`refuse` in
 `apps/api/app.ts`) under the status the refusal register's own column gives
-the code (`statusOf`, `commands/register.ts`). A client branches on the code.
+the code (`statusOf`, `core-records/src/register.ts`). A client branches on the code.
 A proxy and a log reader see the status. Neither is derived from the other.
 
 **Admission is the same on both prefixes.** Every generated route goes
@@ -98,7 +98,7 @@ malformed one, and holds the expired bearer on every key.
 Five operations used to take their request type at its word and answer a
 plain-text 500 when an operand was missing. Each now answers
 `FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
-(`packages/core-records/src/commands/operands.ts`):
+(`packages/core-commands/src/commands/operands.ts`):
 
 | Operation                                    | Operand                                  | What it has to be                                                          | Checked at                                                                                             |
 | -------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -393,7 +393,7 @@ row and `boardExists`, `reads/catalogue.ts`; minimum contract 8.2 cases 1 and
 `tests/commands/board-not-found.test.ts` holds it. `WRONG_BUSINESS` stays
 registered and unproducible (minimum contract 4.4, as corrected 14 September
 2026): a cross-business probe is `NOT_FOUND` to the caller and `NOT_FOUND` in
-the prober's own audit (`UNPRODUCED_CODES`, `commands/register.ts`).
+the prober's own audit (`UNPRODUCED_CODES`, `core-records/src/register.ts`).
 
 ## The operations L2 made possible
 
@@ -804,7 +804,7 @@ What each one does:
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
-(`packages/core-records/src/commands/surface.ts`, 28 writes and 7 reads) by
+(`packages/core-commands/src/commands/surface.ts`, 28 writes and 7 reads) by
 `mountSurface` in `createApi` (`apps/api/app.ts`), once for the person prefix
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
@@ -1179,7 +1179,7 @@ composition root supplies:
 executeRead(database, businessId, presented, request) => Promise<unknown>
 ```
 
-exported as `executeRead` from `packages/core-records/src/reads/execute.ts`,
+exported as `executeRead` from `packages/core-commands/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.

@@ -14,8 +14,9 @@ review of the integrated head has been recorded, so nothing here is accepted.
 
 | Responsibility              | Home                       | State                                                                                                             |
 | --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Commands and reads          | `packages/core-commands`   | The person and agent envelopes, every command handler and the read dispatch, with tests.                          |
 | Runtime and agent execution | `packages/core-runtime`    | Propose, decide, pick up, hand back and the recovery classifier, with tests. Nothing dispatches and nothing acts. |
-| Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, task commands and reads, with tests.                            |
+| Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, the task type and the refusal register, with tests.             |
 | Credential broker           | `packages/core-custody`    | Not built                                                                                                         |
 | Provider operations         | `packages/core-connectors` | Not built                                                                                                         |
 | Shared interface components | `packages/ui`              | Primitives, state, styles and the slice's surfaces, with tests.                                                   |
@@ -24,6 +25,19 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Web application             | `apps/web`                 | React and Vite: sign-in, task list, task detail, comments and settings, with tests.                               |
 | Worker                      | `apps/worker`              | Not built                                                                                                         |
 | Declarative presets         | `presets`                  | Not built                                                                                                         |
+
+The three core packages are layered, and the arrows point one way: records
+at the bottom, the runtime on it, the command package on both, and the apps
+on top. Each is entered only through its `src/index.ts`. The web and the
+command line take the wire contract (`commands/surface.ts` and
+`commands/digest.ts`) directly instead, because the command index reaches the
+database. `pnpm deps:cruise` fails on an import that points up a layer or past
+an index (`.dependency-cruiser.cjs`).
+
+```text
+apps/api ──────────► core-commands ──► core-runtime ──► core-records
+apps/web, apps/cli ─► core-commands/src/commands/{surface,digest}.ts (wire contract)
+```
 
 The four rows marked not built are empty directories holding only a
 `.gitkeep`. The rest are source with tests beside them, run against a real
@@ -55,7 +69,7 @@ the migrations and the tenancy suites, and
 model the API resolves against.
 
 A command's facts are one `COMMAND_SURFACE` row
-(`packages/core-records/src/commands/surface.ts`): its authority target,
+(`packages/core-commands/src/commands/surface.ts`): its authority target,
 expected-revision rule, `untargetedIdentifiers`, `runtimeShaped` and `agent`
 reach. `prepare.ts` reads the row. The handlers are a typed table keyed by the
 same name (`HANDLERS` in `commands/handlers.ts`), kept off the row because the

@@ -27,7 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   CommandDeclaration,
   CommandName,
-} from '../../packages/core-records/src/commands/surface.ts';
+} from '../../packages/core-commands/src/commands/surface.ts';
 import type { Answer } from './world.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */

@@ -22,9 +22,9 @@ import type { AdminConnection } from '../../packages/core-records/src/tenancy/da
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
 const SECRET = 'a-local-test-secret-for-final-r1-api-sign';
 const GOTRUE = { aud: 'authenticated', iss: 'http://127.0.0.1:54391' };

@@ -204,11 +204,11 @@ interface SettingRevisionStale {
 ### Refusal codes, as L3 registered them
 
 These are not in `IdentityRefusalCode` or `RecordsRefusalCode`, on purpose.
-`commands/register.ts` derives its `RefusalCode` from those unions and the
+`core-records/src/register.ts` derives its `RefusalCode` from those unions and the
 register is L3's file. A model module reaching into the command surface to add a
 code is the coupling the register exists to prevent. L3 has registered every one
 of them, with the HTTP status in the register's own column (`statusOf`,
-`commands/register.ts`). The last column says whether a caller can meet the
+`core-records/src/register.ts`). The last column says whether a caller can meet the
 code on this head, and where that is shown.
 
 | Code                                                                         | Status | Reachable on this head                                                                                                 |
@@ -228,7 +228,7 @@ code on this head, and where that is shown.
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
 | `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                    |
 
-`DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`commands/register.ts`). The
+`DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
 up, not when the person approved it (`mintDelegation`,
 `authority/delegations.ts`), so a grant revoked or expired in between leaves
@@ -245,7 +245,7 @@ outside `AGENT_SURFACE`, and `runAgentCommand` refuses that first.
 (`tests/commands/agent-surface-derivation.test.ts`). It is 403 and not
 `DELEGATION_NOT_LIVE` 401 because a live credential would not change the
 answer. `tests/acceptance/role-case-matrix.test.ts` case (h) asserts it
-over every declaration. It is off `UNPRODUCED_CODES` (`commands/register.ts`).
+over every declaration. It is off `UNPRODUCED_CODES` (`core-records/src/register.ts`).
 
 It is also the answer to an agent call that presents no delegation credential,
 which is an agent before any pickup (`authorise`). Such a call reaches
@@ -290,7 +290,7 @@ mints racing) and reaches a caller as 409 through `task.pickup`.
 `tests/identity/agent-delegation.test.ts:321,337` hold the mint's answer, and
 `tests/api/task-runtime-routes.test.ts:317,336` hold the 409 over HTTP with its
 audit row. It is off `UNPRODUCED_CODES`, and the register's comment says why
-(`commands/register.ts`). `tests/commands/runtime-codes.test.ts` asserts that
+(`core-records/src/register.ts`). `tests/commands/runtime-codes.test.ts` asserts that
 it stays off ("has come off the unproduced list"), that it is registered at 409
 and caller-visible ("registers it, gives it 409"), and that it is not one of the
 twenty runtime codes ("is not one of the runtime codes"). The runtime passes

@@ -20,9 +20,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import { runtimeKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
+import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET } from '../acceptance/cast.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { asAda, revisionOf } from '../acceptance/restart-harness.ts';

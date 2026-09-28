@@ -32,7 +32,7 @@ import {
 import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/grants.ts';
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
-import { declarationOf } from '../packages/core-records/src/commands/surface.ts';
+import { declarationOf } from '../packages/core-commands/src/commands/surface.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;

@@ -27,8 +27,8 @@ import {
   WHOLE_BUSINESS,
   type Member,
 } from '../commands/fixture.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-records/src/commands/refusal.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { SigningKey } from '../../packages/core-runtime/src/signing.ts';
 
 /** Isolated, created in the test, never a production key. */

@@ -15,11 +15,11 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import type { CommandContext } from '../../packages/core-records/src/commands/context.ts';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
 import {
   handbackLease,
   handbackOwnLease,
-} from '../../packages/core-records/src/commands/tasks-handback.ts';
+} from '../../packages/core-commands/src/commands/tasks-handback.ts';
 
 const ACTOR = '33333333-3333-4333-8333-333333333333';
 

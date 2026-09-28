@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { expect } from 'vitest';
-import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
+import { pathOf } from '../../packages/core-commands/src/commands/surface.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import { insertLogin } from '../identity/fixture.ts';
 import {
