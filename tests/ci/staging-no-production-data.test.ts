@@ -101,6 +101,11 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     // A database with no auth schema at all has no addresses to judge.
     expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
     await db.admin.execute('create table auth.users (id uuid, email text)');
+    // A phone-only sign-in has no address, and the seed never makes one.
+    await db.admin.execute('insert into auth.users (id, email) values ($1, null)', [randomUUID()]);
+    expect(await productionSigns(db.admin, MADE_UP)).toEqual([
+      '1 sign-in address that is not a made-up one',
+    ]);
     await address('someone@example.com');
     await business('charlie');
     expect(await productionSigns(db.admin, MADE_UP)).toHaveLength(2);
