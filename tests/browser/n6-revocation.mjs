@@ -29,6 +29,7 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
@@ -190,12 +191,9 @@ export async function n6Cases(given) {
 // ------------------------------------------------------------------ standalone
 
 function fromEnvFile(name) {
-  if (process.env[name]) return process.env[name];
-  for (const line of readFileSync(`${root}.local/db.env`, 'utf8').split('\n')) {
-    const match = new RegExp(`^${name}=(.+)$`, 'u').exec(line.trim());
-    if (match) return match[1];
-  }
-  return undefined;
+  return (
+    process.env[name] || readEnvFile(`${root}.local/db.env`, { required: true })[name] || undefined
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

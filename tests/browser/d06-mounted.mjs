@@ -32,6 +32,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { PROTECTED_TASK_FIELDS } from '../../packages/core-records/src/tasks/spine.ts';
@@ -98,13 +99,8 @@ const expectedCodeOf = (cell) =>
     : 'FIELD_NOT_WRITABLE';
 
 /** Where the agent signs in: the GoTrue this stack was configured with. */
-const gotrue = () => {
-  for (const line of readFileSync(`${root}.local/auth.env`, 'utf8').split('\n')) {
-    const match = /^GOTRUE_URL=(.+)$/u.exec(line.trim());
-    if (match) return match[1];
-  }
-  return 'http://127.0.0.1:54391';
-};
+const gotrue = () =>
+  readEnvFile(`${root}.local/auth.env`, { required: true }).GOTRUE_URL || 'http://127.0.0.1:54391';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 

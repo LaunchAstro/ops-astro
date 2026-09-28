@@ -29,6 +29,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {
   API,
@@ -219,11 +220,11 @@ const APPROVE = '[data-decide="approve"]';
 
 /** `.local/auth.env` is where the local identity service is named. The environment wins. */
 function gotrueUrl() {
-  if (process.env.GOTRUE_URL) return process.env.GOTRUE_URL;
-  const line = readFileSync(`${root}.local/auth.env`, 'utf8')
-    .split('\n')
-    .find((entry) => entry.startsWith('GOTRUE_URL='));
-  return line === undefined ? 'http://127.0.0.1:54391' : line.slice('GOTRUE_URL='.length).trim();
+  return (
+    process.env.GOTRUE_URL ||
+    readEnvFile(`${root}.local/auth.env`, { required: true }).GOTRUE_URL ||
+    'http://127.0.0.1:54391'
+  );
 }
 
 /** The person behind a seeded login, by the subject GoTrue minted, as the P group finds ada. */

@@ -17,6 +17,7 @@ export {
   withCredentialKeys,
   type CredentialKeysDecision,
 } from './authority/credential-keys.ts';
+export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,

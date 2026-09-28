@@ -32,7 +32,6 @@
 // through `withBusiness` like everything else in the slice.
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -42,6 +41,7 @@ import {
   connectAsAdmin,
   isBusinessId,
   KEY_FILE_VARIABLE,
+  readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type ReadExecutor } from './app.ts';
@@ -62,25 +62,6 @@ import {
 } from './recovery-entry.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-/** `KEY=value` lines, comments and blanks ignored. A missing file is empty. */
-export function readEnvFile(file: string): Readonly<Record<string, string>> {
-  const values: Record<string, string> = {};
-  let text: string;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    return values;
-  }
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
-    const at = trimmed.indexOf('=');
-    if (at === -1) continue;
-    values[trimmed.slice(0, at)] = trimmed.slice(at + 1);
-  }
-  return values;
-}
 
 /**
  * The real environment wins, so a shell can override a local file.

@@ -36,6 +36,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
@@ -167,10 +168,10 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
       throw new Error(`task.create refused: ${JSON.stringify(created)}`);
     }
     const taskId = created.recordId;
-    const gate = readFileSync(join(root, '.local/gate.env'), 'utf8');
+    const gate = readEnvFile(join(root, '.local/gate.env'), { required: true });
     const signingKey = {
-      id: /^GATE_SIGNING_KEY_ID=(.+)$/mu.exec(gate)?.[1] ?? '',
-      secret: /^GATE_SIGNING_SECRET=(.+)$/mu.exec(gate)?.[1] ?? '',
+      id: gate['GATE_SIGNING_KEY_ID'] ?? '',
+      secret: gate['GATE_SIGNING_SECRET'] ?? '',
     };
     const caps = await database.admin.execute<{ id: string }>(
       'select id from public.budget_caps where business_id = $1',

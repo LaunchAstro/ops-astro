@@ -14,6 +14,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
 export const root = fileURLToPath(new URL('../..', import.meta.url));
 // Screenshots and the results table default to a gitignored directory inside the
@@ -143,12 +144,9 @@ export const VIEWPORT = { width: 1480, height: 900 };
 mkdirSync(SHOTS, { recursive: true });
 
 export function fromEnvFile(name) {
-  if (process.env[name]) return process.env[name];
-  for (const line of readFileSync(`${root}.local/db.env`, 'utf8').split('\n')) {
-    const match = new RegExp(`^${name}=(.+)$`, 'u').exec(line.trim());
-    if (match) return match[1];
-  }
-  return undefined;
+  return (
+    process.env[name] || readEnvFile(`${root}.local/db.env`, { required: true })[name] || undefined
+  );
 }
 
 export const users = JSON.parse(readFileSync(`${root}.local/synthetic-users.json`, 'utf8'));

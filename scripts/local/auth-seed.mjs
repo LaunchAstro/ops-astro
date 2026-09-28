@@ -18,9 +18,10 @@
 // forgotten file still signs in.
 
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const LOCAL = join(ROOT, '.local');
@@ -81,24 +82,6 @@ const PEOPLE = [
 /** Local-only, fixed so a reseed does not invalidate a handback. */
 function passwordFor(email) {
   return `slice-local-${email.split('@')[0]}-2026`;
-}
-
-function readEnv(file) {
-  const values = {};
-  let text;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    return values;
-  }
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
-    const at = trimmed.indexOf('=');
-    if (at === -1) continue;
-    values[trimmed.slice(0, at)] = trimmed.slice(at + 1);
-  }
-  return values;
 }
 
 const base64url = (input) =>
@@ -162,7 +145,7 @@ async function findByEmail(gotrue, token, email) {
 }
 
 async function main() {
-  const env = { ...readEnv(join(LOCAL, 'auth.env')), ...process.env };
+  const env = { ...readEnvFile(join(LOCAL, 'auth.env')), ...process.env };
   const gotrue = env.GOTRUE_URL ?? 'http://127.0.0.1:54391';
   const secret = env.SUPABASE_JWT_SECRET;
   if (secret === undefined || secret === '') {
