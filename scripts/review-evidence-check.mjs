@@ -143,16 +143,40 @@ const fenceRun = (line) => {
 // Drop each comment on one line of text outside a fence. One left open
 // hides everything after it, and text on either side of a comment that spans
 // lines joins into one line, as it does when GitHub renders it.
+//
+// An inline code span that starts first is code, as GitHub shows it: a
+// comment mark inside it opens nothing. An unclosed backtick run is literal.
+// The line is read by index, once: a run length found unclosed is not looked
+// for again, so a long line of backticks reads in linear time.
+const TICKS = /`+/gu;
 const dropComments = (line) => {
   let kept = '';
-  let rest = line;
+  let at = 0;
+  let open = line.indexOf('<!--');
+  const unclosed = new Set();
   for (;;) {
-    const open = rest.indexOf('<!--');
-    if (open === -1) return { kept: kept + rest, open: false };
-    kept += `${rest.slice(0, open)} `;
-    const close = rest.indexOf('-->', open + 4);
+    if (open !== -1 && open < at) open = line.indexOf('<!--', at);
+    TICKS.lastIndex = at;
+    const tick = TICKS.exec(line);
+    if (tick !== null && (open === -1 || tick.index < open)) {
+      const run = tick[0];
+      let end = tick.index + run.length;
+      if (!unclosed.has(run.length)) {
+        // The closing run is the next run of exactly this length.
+        let m = TICKS.exec(line);
+        while (m !== null && m[0].length !== run.length) m = TICKS.exec(line);
+        if (m === null) unclosed.add(run.length);
+        else end = m.index + run.length;
+      }
+      kept += line.slice(at, end);
+      at = end;
+      continue;
+    }
+    if (open === -1) return { kept: kept + line.slice(at), open: false };
+    kept += `${line.slice(at, open)} `;
+    const close = line.indexOf('-->', open + 4);
     if (close === -1) return { kept, open: true };
-    rest = rest.slice(close + 3);
+    at = close + 3;
   }
 };
 // CQ-13, product issue 48: indented code is code too. A line indented four
@@ -162,8 +186,10 @@ const dropComments = (line) => {
 // own text, read as a field as before.
 const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
 // A heading or a thematic break ends a paragraph and, outdented, a list item.
-const BREAK =
-  /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|=+[ \t]*$)/u;
+const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/u;
+// Sol on c1ed67d: `====` underlines a heading only under paragraph text, and
+// only indented under four columns; anywhere else it is paragraph text.
+const SETEXT = /^=+[ \t]*$/u;
 const columns = (line) => {
   let col = 0;
   for (const ch of line) {
@@ -203,7 +229,10 @@ const visible = (text, { keepFences }) => {
     }
     const col = columns(kept);
     const code = isCode(kept);
-    const brk = !code && BREAK.test(kept.trimStart());
+    const brk =
+      !code &&
+      (BREAK.test(kept.trimStart()) ||
+        (para && col < listCol + 4 && SETEXT.test(kept.trimStart())));
     if ((afterBlank || brk) && col < listCol) listCol = 0;
     const item = code ? null : LIST_ITEM.exec(kept.trimStart());
     if (item !== null && col < listCol + 4) listCol = col + item[0].length;
