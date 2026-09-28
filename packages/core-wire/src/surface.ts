@@ -205,7 +205,25 @@ export interface CommandDeclaration {
    * also `before-pickup`, when it holds nothing yet (minimum contract 8.2).
    */
   readonly agent: 'never' | 'delegated' | 'before-pickup';
+  /**
+   * The body fields a command takes beyond its identity and its expected
+   * revision, each with the JSON kind it must arrive as. The envelope parses a
+   * body against this once, into the typed request or a refusal, before any
+   * command code runs. A read describes its operands on its catalogue row
+   * (`reads/catalogue.ts`), so it carries none here.
+   */
+  readonly operands?: OperandSpec;
 }
+
+/**
+ * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
+ * number, `flag` a boolean, `map` an object that is not an array, `any`
+ * whatever the command checks by value itself. `?` admits absent, `|null`
+ * admits null.
+ */
+export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
+export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
+export type OperandSpec = Readonly<Record<string, Operand>>;
 
 /**
  * The key `task.reparent` and `task.move` serialise on. One key for both: a
@@ -233,6 +251,7 @@ function declare(
   const waitingOn = options.waitingOn ?? '';
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
   return {
+    operands: WRITE_OPERANDS[name] ?? {},
     ...(options.untargetedIdentifiers === undefined
       ? {}
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
@@ -287,6 +306,67 @@ function read(
     agent: options.agent ?? 'never',
   };
 }
+
+// Each write's operands, as `requests.ts` types them. `recordId` is here on
+// every targeted command, and `operationId` and `expectedRevision` nowhere:
+// the envelope reads those two itself. An operand whose kind its command
+// already answers in its own words (a comment's `comment_type`, a pickup's
+// reservation, a revocation's absent id, a reparent's parent after its task)
+// is `any` here, so the caller keeps that answer and its place.
+const TARGET = { recordId: 'id' } as const;
+const FIELDS = { ...TARGET, fields: 'map' } as const;
+const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
+  'task.create': {
+    fields: 'map',
+    parentId: 'id?|null',
+    board: 'id?|null',
+    boardSection: 'id?|null',
+    stateKey: 'any',
+  },
+  'task.update': FIELDS,
+  'task.complete': TARGET,
+  'task.reopen': { ...TARGET, reason: 'any' },
+  'task.start': TARGET,
+  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.propose': {
+    ...TARGET,
+    purpose: 'any',
+    maximumMinor: 'any',
+    currency: 'any',
+    payload: 'map',
+    step: 'any',
+    expiresInSeconds: 'any',
+    lineageId: 'id?|null',
+  },
+  'task.decide': { gateId: 'id', versionId: 'id', decision: 'any', note: 'any' },
+  'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
+  'task.handback': {
+    leaseId: 'any',
+    fence: 'any',
+    outcome: 'any',
+    report: 'any',
+    actualMinor: 'any',
+    successor: 'any',
+  },
+  'task.assign': FIELDS,
+  'task.triage': FIELDS,
+  'task.set_stage': FIELDS,
+  'task.set_party': FIELDS,
+  'task.set_audience': FIELDS,
+  'task.reparent': { ...TARGET, parentId: 'any' },
+  'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
+  'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
+  'task.trash': TARGET,
+  'task.restore': { batchId: 'id' },
+  'task.purge': { olderThanDays: 'any' },
+  'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
+  'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
+  'grant.revoke': { grantId: 'any' },
+  'delegation.revoke': { delegationId: 'any' },
+  'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
+  'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
+  'task.heartbeat': { leaseId: 'any', fence: 'any', leaseSeconds: 'any' },
+};
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.create', 'write', {

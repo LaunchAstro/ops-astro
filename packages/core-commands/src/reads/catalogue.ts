@@ -341,3 +341,12 @@ async function boardExists(tx: TenantQuery, taskTypeId: string, board: string): 
   );
   return found.length > 0;
 }
+
+/**
+ * Whether a surface name is one of these reads. The catalogue holds exactly
+ * the surface's reads (`tests/commands/read-authorised-on.test.ts`), so the
+ * boundary narrows a route's name with this rather than casting its body.
+ */
+export function isReadName(name: string): name is ReadName {
+  return Object.hasOwn(READ_CATALOGUE, name);
+}

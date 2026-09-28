@@ -42,14 +42,16 @@
 // returns L2's answer rather than inventing a runtime code for it.
 //
 // **What this path does not duplicate.** The repeat-request identity, the
-// audit row and the refusal's rollback are the same mechanisms the person
-// envelope owns, reached through the same `register-store.ts` and
-// `audit.ts`. What it cannot reuse is `runCommand` itself: that takes a
-// `Session`, which has a `personId`, and an `AgentSession` has no `personId`
-// field at all. Not null — absent. Synthesising one so the person envelope
-// would accept an agent is exactly the collapse the identity model exists to
-// prevent, and it would put the delegating person's identity on the agent's
-// audit rows.
+// register lookup, the replay and the settling of a refusal are the person
+// envelope's own, reached through `enter` and `settle` in `envelope.ts`, and
+// the body is parsed against the same surface row (`parseRequest`). This
+// entry is a policy over them: its reach, how a stored answer is released and
+// how a fresh call is authorised and run. What it cannot reuse is
+// `runCommand`'s preparation: that takes a `Session`, which has a `personId`,
+// and an `AgentSession` has no `personId` field at all. Not null — absent.
+// Synthesising one so the person envelope would accept an agent is exactly the
+// collapse the identity model exists to prevent, and it would put the
+// delegating person's identity on the agent's audit rows.
 
 import { resolveAgentLogin } from '../../../core-records/src/index.ts';
 import type {
@@ -59,28 +61,23 @@ import type {
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts';
-import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
 import { asCallerVisible, refuseCommand } from './refusal.ts';
-import {
-  OPERATION_ID,
-  lookupAttempt,
-  registerAttempt,
-  type CommandHandle,
-  type CommandResult,
-} from './register-store.ts';
-import { retryOnce } from './envelope.ts';
+import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
+import { enter, retryOnce, settle } from './envelope.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
-import { answerReplay } from './agent-replay.ts';
-import { settle, writeCallEvent } from './agent-settle.ts';
+import { releaseReplay } from './agent-replay.ts';
+import { writeAuditEvent } from './audit.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
   parseOperands,
   type TypedOperation,
 } from './agent-operations.ts';
+import { parseRequest } from './operands.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
+import type { IdentifiedRequest } from './requests.ts';
 
 /**
  * The two operations an agent may reach before it holds anything.
@@ -159,79 +156,62 @@ export function agentAnswer(
   return command === 'session.capabilities' ? { ok: true, ...result.detail } : result;
 }
 
+const OUTSIDE_FIXES: readonly string[] = [
+  'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, heartbeat, handback and its capabilities.',
+  'Every other operation belongs to a person.',
+];
+
 async function runAgentCommand(
   tx: TenantQuery,
-  presented: Omit<AgentCall, 'declaration'>,
+  presented: {
+    readonly session: AgentCall['session'];
+    readonly credential: string | undefined;
+    readonly request: AgentRequest;
+  },
 ): Promise<CommandResult> {
-  const { session, request } = presented;
-  const digest = payloadDigest(comparable(request));
+  const { session, credential, request } = presented;
   const operation = AGENT_OPERATIONS.get(request.command);
   if (operation === undefined) {
-    return await settle(
-      tx,
-      session,
-      request,
-      digest,
-      refuseCommand(
-        'DELEGATION_EXCLUDES_OPERATION',
-        [request.command],
-        [
-          'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, heartbeat, handback and its capabilities.',
-          'Every other operation belongs to a person.',
-        ],
-      ),
-      true,
+    const outside = refuseCommand(
+      'DELEGATION_EXCLUDES_OPERATION',
+      [request.command],
+      OUTSIDE_FIXES,
     );
+    return await enter(tx, session, request, { outside });
   }
-  const call: AgentCall = { ...presented, declaration: declarationOf(request.command) };
-
-  // `typeof` first, as the person envelope asks it (`envelope.ts`). The pattern
-  // coerces what it is given, so a number or a one-element array would pass as
-  // the string it prints as, and register or collide with a later request that
-  // sent that string; an absent identity would pass as `"undefined"` and reach
-  // the register's bound parameter as a fault. The type is the envelope's to
-  // hold, whatever the boundary in front of it passes through (Sol 6
-  // AUTHORITY-4).
-  if (typeof request.operationId !== 'string' || !OPERATION_ID.test(request.operationId)) {
-    return await settle(
-      tx,
-      session,
-      request,
-      digest,
-      refuseCommand(
-        'OPERATION_ID_REQUIRED',
-        [],
-        [
-          'Send an operation_id: 8 to 200 characters of letters, digits, dot, colon, dash or underscore.',
-        ],
+  const declaration = declarationOf(request.command);
+  const callOf = (identified: IdentifiedRequest): AgentCall => ({
+    session,
+    credential,
+    request: identified,
+    declaration,
+  });
+  return await enter(tx, session, request, {
+    release: async (stored, identified) =>
+      await releaseReplay(tx, callOf(identified), operation, stored),
+    attempt: async (identified, digest) =>
+      await operation.open(
+        async (row) => await runRow(tx, callOf(identified), identified, row, digest),
       ),
-      true,
-    );
-  }
-
-  // The same register the person path uses, keyed on the agent's own actor, so
-  // a pickup retried after a lost response replays the lease it already holds
-  // instead of claiming a second one.
-  const seen = await lookupAttempt(tx, session.actorId, request.operationId);
-  if (seen !== undefined) return await answerReplay(tx, call, operation, seen, digest);
-
-  return await operation.open(async (row) => await runRow(tx, call, row, digest));
+  });
 }
 
 /** The rest of a call, generic over the row's operands (`AgentOperation`, NNA3). */
 async function runRow<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
+  request: IdentifiedRequest,
   operation: TypedOperation<O>,
   digest: string,
 ): Promise<CommandResult> {
-  const { session, request } = call;
+  const { session } = call;
   // The request's own shape, before any authority is read: a system-owned
   // field (D06, the person path's own classifier) and then each operand the
   // command takes. Neither tells the caller anything about the business.
   const operands = await parseOperands(tx, request, operation);
   if (isOperandRefusal(operands)) {
-    return await settle(tx, session, request, digest, operands.refusal, false, operands.attempted);
+    const { refusal, attempted } = operands;
+    return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
 
   const authorised = await authorise(tx, call, operation);
@@ -239,6 +219,11 @@ async function runRow<O extends object>(
     await operation.onRefused?.(tx, call, operands, authorised.refusal);
     return await settle(tx, session, request, digest, authorised.refusal);
   }
+  // The body against its surface row, as the person prefix parses it and at
+  // the same point: after authority, before the savepoint and any command
+  // code. The row's own parser above has already read what it types.
+  const parsed = parseRequest(request, call.declaration);
+  if ('refusal' in parsed) return await settle(tx, session, request, digest, parsed.refusal);
 
   await tx.query('savepoint agent_work');
   const outcome = await authorised.run(operands);
@@ -253,7 +238,8 @@ async function runRow<O extends object>(
       : 'release savepoint agent_work',
   );
   if (isRefused(outcome)) {
-    return await settle(tx, session, request, digest, outcome.refusal, false, outcome.attempted);
+    const { refusal, attempted } = outcome;
+    return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
 
   const handle: CommandHandle = {
@@ -270,17 +256,15 @@ async function runRow<O extends object>(
     result: storable(handle),
     recordId: outcome.recordId,
   });
-  await writeCallEvent(tx, session, request, digest, {
+  await writeAuditEvent(tx, {
+    actorId: session.actorId,
+    command: request.command,
+    operationId: request.operationId,
+    payloadDigest: digest,
     outcome: 'applied',
     subjectRecordId: outcome.recordId,
   });
   return handle;
-}
-
-/** Everything the register compares, which is the request without its identity. */
-function comparable(request: AgentRequest): Readonly<Record<string, unknown>> {
-  const { operationId: _identity, ...rest } = request;
-  return rest;
 }
 
 /**

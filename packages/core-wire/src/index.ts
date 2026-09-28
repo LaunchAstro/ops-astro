@@ -15,6 +15,9 @@ export {
   READS,
   type CommandDeclaration,
   type CommandName,
+  type Operand,
+  type OperandKind,
+  type OperandSpec,
 } from './surface.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
