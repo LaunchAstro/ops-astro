@@ -76,7 +76,12 @@ let testTotal = 0;
 for (let i = 0; i < numstat.length; i += 1) {
   const record = numstat[i];
   if (!record) continue;
-  const [addedRaw, deletedRaw, only] = record.split('\t');
+  // Only the first two tabs separate fields: a path may hold a tab of its own.
+  const first = record.indexOf('\t');
+  const second = record.indexOf('\t', first + 1);
+  const addedRaw = record.slice(0, first);
+  const deletedRaw = record.slice(first + 1, second);
+  const only = record.slice(second + 1);
   // A rename's record ends in a tab, and its two paths follow.
   const paths = only ? [only] : [numstat[i + 1] ?? '', numstat[i + 2] ?? ''];
   if (!only) i += 2;
