@@ -647,6 +647,15 @@ run_case "CQ-13 code hides no field: a fence inside a list item" 1 "$OK_BODY$P2-
     $FENCE
     <!--
     $FENCE$LATE" "README.md"
+run_case "CQ-13 code hides no field: a heading closes the list before an indented fence" 1 "$OK_BODY$P2- Sample
+# Heading
+    $FENCE$LATE" "README.md"
+run_case "CQ-13 code hides no field: indented code opening a comment after a heading" 1 "$OK_BODY$P2# Heading
+    <!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: indented code opening a comment after a closing fence" 1 "$OK_BODY$P2$FENCE
+sample
+$FENCE
+    <!--$LATE" "README.md"
 run_case "CQ-13 code hides no field: a real comment still hides" 0 "$OK_BODY$P2<!--$LATE
 -->" "README.md"
 run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 0 "$OK_BODY$P2- Sample
