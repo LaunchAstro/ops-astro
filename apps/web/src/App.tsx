@@ -178,10 +178,14 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+  // bundler that did not stamp, and the rail then says the build is unstamped.
+  const build = (import.meta.env['VITE_OPS_ASTRO_BUILD'] as string | undefined) ?? '';
+
   return (
     <Shell
-      build={null}
       face="agency"
+      build={build === '' ? null : build}
       rail={rail}
       here={here}
       title={match?.route.title ?? 'Not found'}

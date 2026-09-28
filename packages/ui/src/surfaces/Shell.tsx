@@ -38,7 +38,10 @@ export interface ShellProps {
   /** Whether the open panel is seated as a grid track or floating over. */
   readonly seated: boolean;
   readonly panel?: ReactNode;
-  /** The build identifier. Red-first stub for S0-1c: accepted, not yet drawn. */
+  /**
+   * The build identifier, drawn at the foot of the rail (S0-1, line C2). Null
+   * is a build that carries none, and the rail says so rather than going blank.
+   */
   readonly build: string | null;
   readonly children: ReactNode;
 }
@@ -70,6 +73,11 @@ export function Shell(props: ShellProps): ReactElement {
             </a>
           ))}
         </div>
+        {/* The version stamp's one fixed place. The browser rows read
+            `data-build` here and match it against the served build. */}
+        <p className="rail__build" data-build={props.build ?? ''}>
+          {props.build === null ? 'Build not stamped' : `Build ${props.build}`}
+        </p>
       </nav>
 
       <main className="main">

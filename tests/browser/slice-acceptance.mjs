@@ -19,6 +19,10 @@
 //     else may churn grants in front of it: D1 does, and so D1 follows it.
 //   - R1 makes the task D1 then edits, so R1 comes first of the two.
 //
+// I10, R4 and N6 each print their `served` line first and record it against
+// the version stamp (S0-1, line C8): which build served the page is part of
+// what those rows prove.
+//
 // **Nothing here seeds a task.** Every record it reasons about is one it
 // created during the run, with a title carrying the run's own timestamp, so a
 // row already in the database cannot make a case pass.
@@ -27,7 +31,14 @@
 
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { VIEWPORT, closeQuietly, fromEnvFile, record, writeResults } from './harness.mjs';
+import {
+  VIEWPORT,
+  closeQuietly,
+  fromEnvFile,
+  record,
+  servedBuild,
+  writeResults,
+} from './harness.mjs';
 import { casesB1toB4, casesB5 } from './cases-b.mjs';
 import { casesN3toN5 } from './cases-n3-n5.mjs';
 import { caseN7, casesN6 } from './cases-n6-n7.mjs';
@@ -76,6 +87,7 @@ try {
   await casesB5(run);
   await casesCreateRetry(run);
   await casesN1toN2(run);
+  await servedBuild(browser, 'N6');
   await casesN6(run);
   await casesTaskDrafts(run);
   await casesSessionExpiry(run);
@@ -95,7 +107,9 @@ try {
   // holds a read taken before a revocation and cannot have grants churning
   // under it.
   await casesProposals(run);
+  await servedBuild(browser, 'I10');
   await (await import('./i10-open-page.mjs')).casesI10OpenPage(run);
+  await servedBuild(browser, 'R4');
   await (await import('./r4-shared-page.mjs')).casesR4SharedPage(run);
   await (await import('./surface-final.mjs')).casesSurfaceFinal(run);
   await casesB6toB7(run);
