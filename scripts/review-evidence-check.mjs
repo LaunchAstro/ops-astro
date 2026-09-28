@@ -187,10 +187,10 @@ const dropComments = (line) => {
 const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
 // A heading or a thematic break ends a paragraph and, outdented, a list item.
 const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/u;
-// Sol on c1ed67d: `====` underlines a heading only under paragraph text, and
+// Sol's second CQ-13 review: `====` underlines a heading only under paragraph text, and
 // only indented under four columns; anywhere else it is paragraph text.
 const SETEXT = /^=+[ \t]*$/u;
-// CQ-13 fix 3, Sol on 170ef0e: an underline sits in its paragraph's own
+// CQ-13 fix 3, Sol's third CQ-13 review: an underline sits in its paragraph's own
 // container. A lazy line, outdented from the list item or unquoted after
 // quoted text, cannot be one; it stays paragraph text.
 const QUOTED = /^(?:>[ \t]?)+/u;
@@ -213,7 +213,7 @@ const visible = (text, { keepFences }) => {
   let para = false;
   let paraQuoted = false;
   let listCol = 0;
-  // Sol on 1fb12f0: whether a line is code is decided before its comments
+  // Sol's first CQ-13 review: whether a line is code is decided before its comments
   // are, so `<!--` inside indented code is code and hides nothing after it.
   const isCode = (line) => {
     if (line.trim() === '') return false;
@@ -573,7 +573,7 @@ if (sensitive.length > 0) {
 // head it read, its model and its verdict. Every record line is read, as every
 // security line is: a record for an older head is not evidence for this one.
 //
-// Sol on 1fb12f0: a model may name its company first, as in
+// Sol's first CQ-13 review: a model may name its company first, as in
 // `OpenAI/gpt-6-sol`; each part of the name is read. Every builder's company
 // is refused, and a builder model of no known company fails, because no
 // reviewer can then be shown to come from another company.
@@ -622,7 +622,7 @@ if (recordProblems.length > 0) {
 
 // --- rule 4: no review field where it could be hidden --------------------
 
-// CQ-13 fix 4, the orchestrator's ruling on Sol's narrow review of 78b5562.
+// CQ-13 fix 4, the orchestrator's ruling on Sol's fourth, narrow CQ-13 review.
 // Four rounds found another Markdown context in which the reader and GitHub
 // disagree about whether a line shows. So the check fails closed: a raw line
 // that carries a review field after any run of indentation, quote, list,

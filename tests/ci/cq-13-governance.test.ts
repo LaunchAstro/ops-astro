@@ -26,7 +26,7 @@ const OTHER_RULES = [
   /human-merged/iu,
   /\bhuman merge\b/iu,
   /\bNathan merges\b/u,
-  // Sol on 1fb12f0: green checks alone stated as the whole rule.
+  // Sol's first CQ-13 review: green checks alone stated as the whole rule.
   /\brule is every required check green\b/iu,
   /\bno discretion beyond that rule\b/iu,
 ];
@@ -65,7 +65,7 @@ it('CQ-13 issues pointer list', () => {
 // The required status checks on the primary ruleset (23396133) before CQ-13,
 // read from the live ruleset on 28 September 2026 as context and app id.
 // `.github/required-checks.json` is the list after the change; it must hold
-// every one of these, bound to the same app. Sol on 1fb12f0: the test compares
+// every one of these, bound to the same app. Sol's first CQ-13 review: the test compares
 // the two lists, not job names or prose.
 const ACTIONS = 15368;
 const BEFORE = [

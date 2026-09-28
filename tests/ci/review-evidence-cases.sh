@@ -620,7 +620,7 @@ run_case "CQ-13 list continuation is a field: after a blank line in the item" 1 
 run_case "CQ-13 list continuation is a field: a paragraph's indented next line" 1 "$OK_BODY${P2}Outcomes
     Code review: changes requested" "README.md"
 
-# CQ-13 fix, Sol on 1fb12f0: an `Agent-model:` may name its company first.
+# CQ-13 fix, Sol's first CQ-13 review: an `Agent-model:` may name its company first.
 # The builders' companies are all refused, and one of no known company fails.
 BUILDER="OpenAI/gpt-6-sol"
 run_case "CQ-13 review record bound to head: a company-named Agent-model refuses its own company" 1 "$OK_BODY" "README.md"
@@ -635,7 +635,7 @@ BUILDER="some-model"
 run_case "CQ-13 review record bound to head: an Agent-model of no known company fails" 1 "$OK_BODY" "README.md"
 BUILDER=claude-opus-5-5
 
-# CQ-13 fix, Sol on 1fb12f0: `<!--` inside indented or fenced code is code,
+# CQ-13 fix, Sol's first CQ-13 review: `<!--` inside indented or fenced code is code,
 # and hides no later line.
 LATE="${P2}Code review: changes requested"
 run_case "CQ-13 code hides no field: an indented code line opening a comment" 1 "$OK_BODY$P2    <!-- sample$LATE" "README.md"
@@ -656,7 +656,7 @@ run_case "CQ-13 code hides no field: indented code opening a comment after a clo
 sample
 $FENCE
     <!--$LATE" "README.md"
-# CQ-13 fix 2, Sol on c1ed67d: a lone `====` is paragraph text, which indented
+# CQ-13 fix 2, Sol's second CQ-13 review: a lone `====` is paragraph text, which indented
 # code cannot interrupt; only under paragraph text is it a heading's underline.
 run_case "CQ-13 code hides no field: a lone equals line is text, not a break" 1 "$OK_BODY$P2====
     Code review: changes requested" "README.md"
