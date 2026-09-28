@@ -55,6 +55,9 @@ export interface AgentIdentity {
 /** The deployment secret for this suite. Local, disposable, never a real one. */
 export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
 
+/** The issuer the acceptance tokens carry, as GoTrue stamps its own URL. */
+export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
+
 /**
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
@@ -99,6 +102,7 @@ export async function tokenFor(
     {
       sub: subject,
       aud: 'authenticated',
+      iss: ACCEPTANCE_ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 3600),
     },

@@ -47,6 +47,7 @@ import {
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
+  ACCEPTANCE_ISSUER,
   ACCEPTANCE_SECRET,
   bearer,
   call,
@@ -106,7 +107,7 @@ function observeOn(wrapper: Wrapper, world: World) {
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
   const api = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
+    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
     resolveBusiness: async (key: string) => byKey[key],
     executeCommand,
     executeRead,

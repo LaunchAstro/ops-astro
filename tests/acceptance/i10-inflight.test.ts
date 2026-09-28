@@ -37,6 +37,7 @@ import {
   type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
+  ACCEPTANCE_ISSUER,
   ACCEPTANCE_SECRET,
   bearer,
   call,
@@ -223,7 +224,7 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
     reader = holding(connect(world.db.appUrl, { source: 'runtime' }));
     readerApi = createApi({
       database: reader,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET }),
+      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
       resolveBusiness: async (key: string) => (key === 'alpha' ? world.alpha : undefined),
       executeCommand,
       executeRead,

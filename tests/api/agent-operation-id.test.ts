@@ -26,6 +26,7 @@ import {
   authorised,
   createApiFixture,
   createBusinessResolver,
+  ISSUER,
   SECRET,
   tokenFor,
   type ApiFixture,
@@ -91,7 +92,7 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
     const seen: AgentRequest[] = [];
     const recording = createApi({
       database: fixture.db.app,
-      verify: createSupabaseVerifier({ secret: SECRET }),
+      verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
       resolveBusiness: createBusinessResolver(fixture.db.admin),
       executeCommand,
       executeRead,

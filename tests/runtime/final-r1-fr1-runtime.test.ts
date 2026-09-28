@@ -37,6 +37,7 @@ import {
   authorised,
   createBusinessResolver,
   post,
+  ISSUER,
   SECRET,
   tokenFor,
   type Answer,
@@ -74,7 +75,7 @@ function secondOf(c: Controls): Second {
   const database: Database = connect(c.fixture.db.appUrl, { source: 'runtime' });
   const api: Hono = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: SECRET }),
+    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
     resolveBusiness: createBusinessResolver(c.fixture.db.admin),
     executeCommand,
     executeRead,

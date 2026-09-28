@@ -13,6 +13,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ACCEPTANCE_SECRET, serverUrl, type World } from '../acceptance/world.ts';
+import { ACCEPTANCE_ISSUER } from '../acceptance/world.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -76,6 +77,7 @@ export async function serveApi(world: World): Promise<ServedApi> {
       DATABASE_URL: world.db.appUrl,
       DATABASE_ADMIN_URL: admin.toString(),
       SUPABASE_JWT_SECRET: ACCEPTANCE_SECRET,
+      GOTRUE_URL: ACCEPTANCE_ISSUER,
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
       DELEGATION_CREDENTIAL_KEY_FILE: join(keys, 'delegation-keys.json'),

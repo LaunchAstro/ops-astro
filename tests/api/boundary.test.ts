@@ -27,6 +27,7 @@ import { executeCommand } from '../../packages/core-records/src/commands/envelop
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 
 const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
+const ISSUER = 'http://127.0.0.1:54391';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
@@ -74,6 +75,7 @@ async function tokenFor(subject: string, options: { readonly expiresIn?: number 
     {
       sub: subject,
       aud: 'authenticated',
+      iss: ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 600),
     },
@@ -85,7 +87,7 @@ async function tokenFor(subject: string, options: { readonly expiresIn?: number 
 function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: Seen[] = []) {
   return createApi({
     database: stubDatabase(seen),
-    verify: createSupabaseVerifier({ secret: SECRET }),
+    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
     resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
@@ -186,7 +188,7 @@ describe('only a verified token says who is calling', () => {
 
   it('refuses a token with no subject', async () => {
     const anonymous = await sign(
-      { aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 600 },
+      { aud: 'authenticated', iss: ISSUER, exp: Math.floor(Date.now() / 1000) + 600 },
       SECRET,
       'HS256',
     );

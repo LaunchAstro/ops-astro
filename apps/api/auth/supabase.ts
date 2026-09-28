@@ -36,6 +36,8 @@ export const SUPABASE_PROVIDER = 'supabase';
 export interface SupabaseVerifierOptions {
   /** The HS256 secret the local GoTrue signs with, from `.local/auth.env`. */
   readonly secret: string;
+  /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
+  readonly issuer: string;
 }
 
 /**
