@@ -12,6 +12,9 @@
     { "context": "CodeQL", "integration_id": 57789 },
     { "context": "DCO", "integration_id": 1861 },
     { "context": "database conformance gate", "integration_id": 15368 },
-    { "context": "database conformance", "integration_id": 15368 }
+    { "context": "database conformance", "integration_id": 15368 },
+    { "context": "dependency audit", "integration_id": 15368 },
+    { "context": "static analysis", "integration_id": 15368 },
+    { "context": "isolation tests", "integration_id": 15368 }
   ]
 }
