@@ -896,6 +896,13 @@ api_case "a pull request is not an issue and fails" 1 7
 api_case "a missing issue fails" 1 404
 kill "$SERVER" 2>/dev/null; wait "$SERVER" 2>/dev/null; rm -f "$PORT_FILE"
 
+run_case "Sol proof, criterion 1: a review outcome inside a multiline link is not a plain line" 1 "$BARE_BLOCK${P2}[link starts
+Code review: no findings
+link ends](https://example.com)$NOT_SENSITIVE" "README.md"
+run_case "Sol proof, criterion 1: a review outcome inside multiline strikethrough is not a plain line" 1 "$BARE_BLOCK${P2}~~struck text starts
+Code review: no findings
+struck text ends~~$NOT_SENSITIVE" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
