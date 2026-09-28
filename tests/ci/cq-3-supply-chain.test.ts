@@ -39,7 +39,7 @@ const VERBS = [
 
 /** Every value `key` is stated with: twice or commented out never reads as one. */
 const stated = (text: string, key: string) =>
-  [...text.matchAll(new RegExp(`^${key}:[ \\t]*(.*?)(?:\\s+#.*)?$`, 'gmu'))].map((m) => m[1]);
+  [...text.matchAll(/^(\w+): *(.*?)(?: +#.*)?$/gmu)].flatMap((m) => (m[1] === key ? [m[2]] : []));
 
 /** The distinct release ages of Renovate's top level and each package rule; none without rules. */
 function renovateAges(text: string): unknown[] {
@@ -206,13 +206,11 @@ describe('CQ-3 supply-chain settings', () => {
   });
 
   it('CQ-3 supply-chain refusals: a trust downgrade, an exotic source and a scanner failure', async () => {
-    const set = (key: string, to: string) =>
-      workspace.replace(new RegExp(`^${key}: .*$`, 'mu'), `${key}: ${to}`);
     const tried = await Promise.all([
       install(workspace, () => '1.0.1'),
       install(workspace, byUrl),
-      install(set('trustPolicy', 'off'), () => '1.0.1'),
-      install(set('blockExoticSubdeps', 'false'), byUrl),
+      install(workspace.replace('trustPolicy: no-downgrade', 'trustPolicy: off'), () => '1.0.1'),
+      install(workspace.replace('Subdeps: true', 'Subdeps: false'), byUrl),
     ]);
     runs.push(...tried);
     const [downgrade, exotic] = tried;
