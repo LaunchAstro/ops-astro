@@ -10,7 +10,8 @@ import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { gateSigningKey, readBusinessCapId } from '../../../core-runtime/src/index.ts';
+import { gateSigningKey } from '../../../core-runtime/src/index.ts';
+import { decisionCapId } from '../reads/task-cap.ts';
 
 export interface DecideFields {
   readonly gateId: string;
@@ -67,7 +68,10 @@ export async function decideOnGate(
     );
   }
 
-  const capId = await readBusinessCapId(tx);
+  // The task's open envelope's cap, or the business's before there is one
+  // (`reads/task-cap.ts`), which is also the cap whose currency `task.read`
+  // offers. The runtime still refuses a cap that is not the envelope's.
+  const capId = await decisionCapId(tx, fields.gateId);
   if (capId === undefined) {
     return refused(
       refuseCommand(

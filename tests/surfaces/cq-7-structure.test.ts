@@ -8,8 +8,8 @@
 // copy, so a declaration whose fields are exactly a server type's fields fails
 // too.
 //
-// Component size: the task page and every component split out of it or out of
-// `proposals.tsx` is at most 150 lines, and `proposals.tsx` is under 500.
+// Component size: the task page and every component it mounts is at most 150
+// lines, and `proposals.tsx` is under 500.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -117,15 +117,24 @@ function functionLengths(source: string): Map<string, number> {
   return lengths;
 }
 
+// Every component the task page mounts: the page itself, everything under
+// `screens/task/` (read from the directory, so a new part is covered the day
+// it lands) and the proposal views.
 const SPLIT = [
   'apps/web/src/screens/TaskDetail.tsx',
-  'apps/web/src/screens/task/Notices.tsx',
+  'apps/web/src/screens/SharedTaskDetail.tsx',
+  ...sources('apps/web/src/screens/task').toSorted(),
   'apps/web/src/views/proposals.tsx',
   'apps/web/src/views/proposal-record.tsx',
   'apps/web/src/views/propose-form.tsx',
 ];
 
 describe('CQ-7 component size', () => {
+  it('covers Comments and every other part under screens/task', () => {
+    expect(SPLIT).toContain('apps/web/src/screens/task/Comments.tsx');
+    expect(SPLIT).toContain('apps/web/src/screens/task/Notices.tsx');
+  });
+
   it.each(SPLIT)('keeps every component in %s to 150 lines', (file) => {
     expect(existsSync(file), file).toBe(true);
     const long = [...functionLengths(readFileSync(file, 'utf8'))].filter(([, n]) => n > 150);
