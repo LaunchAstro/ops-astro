@@ -209,8 +209,15 @@ export const LOCAL_KEY_FILE: string = join(
   'delegation.env',
 );
 
+let handedOver: CredentialKeysDecision | undefined;
+
+/** The keyring a composition root read, used from now on (`runtime-config.ts`). */
+export function installCredentialKeys(keys: CredentialKeysDecision): void {
+  handedOver = keys;
+}
+
 /**
- * This process's keyring.
+ * This process's keyring: called bare, the one handed over, else the one configured.
  *
  * Explicit configuration wins, and once either setting is present the file
  * is not consulted: a deployment that configured half a keyring has a
@@ -218,8 +225,10 @@ export const LOCAL_KEY_FILE: string = join(
  * file is used and created if it is absent.
  */
 export function configuredCredentialKeys(
-  environment: Readonly<Record<string, string | undefined>> = process.env,
+  settings?: Readonly<Record<string, string | undefined>>,
 ): CredentialKeysDecision {
+  if (settings === undefined && handedOver !== undefined) return handedOver;
+  const environment = settings ?? process.env;
   const active = environment[ACTIVE_KEY_VARIABLE];
   const keyring = environment[KEYRING_VARIABLE];
   if ((active ?? '') !== '' || (keyring ?? '') !== '') {
