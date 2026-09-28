@@ -22,17 +22,47 @@
 // surfaces. A type that hides a refusal from the surfaces that need to raise
 // it is a type protecting the wrong reader.
 
+import type { CommandName } from '../../../core-wire/src/index.ts';
+import { OPERATION_ID } from './register-store.ts';
+
 export type FieldValues = Readonly<Record<string, unknown>>;
 
-interface Envelope {
-  /** The repeat-request identity. Required on every command in the surface. */
+/**
+ * A body as it arrived, with the command its route names. Nothing in it is
+ * checked: the envelope reads the identity off it, and the preparation parses
+ * it against its row's operands into a `CommandRequest` or a refusal, once.
+ */
+export interface UncheckedRequest {
+  readonly command: CommandName;
+  readonly operationId?: unknown;
+  readonly [field: string]: unknown;
+}
+
+/** An unchecked request whose identity the envelope has read and found usable. */
+export interface IdentifiedRequest extends UncheckedRequest {
   readonly operationId: string;
 }
 
-interface Targeted extends Envelope {
+/**
+ * Whether the request carries a usable repeat-request identity. `typeof`
+ * first: the pattern coerces what it is given, so an absent identity would
+ * pass as `"undefined"` and a number as the string it prints as.
+ */
+export function hasIdentity(request: UncheckedRequest): request is IdentifiedRequest {
+  return typeof request.operationId === 'string' && OPERATION_ID.test(request.operationId);
+}
+
+// Type aliases rather than interfaces, so each member of the union is also an
+// `UncheckedRequest`: a parsed request is still the body it was parsed from.
+type Envelope = {
+  /** The repeat-request identity. Required on every command in the surface. */
+  readonly operationId: string;
+};
+
+type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
-}
+};
 
 export type CommandRequest =
   | ({
@@ -206,7 +236,7 @@ export type CommandRequest =
  * attempts, not a conflict; two differing anywhere else under one identity are
  * the conflict `OPERATION_ID_REUSED` names.
  */
-export function comparablePayload(request: CommandRequest): Readonly<Record<string, unknown>> {
+export function comparablePayload(request: UncheckedRequest): Readonly<Record<string, unknown>> {
   const { operationId: _identity, ...rest } = request;
   return rest;
 }

@@ -45,7 +45,6 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import {
-  OPERATION_ID,
   isRetryableViolation,
   lookupAttempt,
   registerAttempt,
@@ -53,7 +52,13 @@ import {
   type CommandResult,
   type RegisteredAttempt,
 } from './register-store.ts';
-import { comparablePayload, type CommandRequest } from './requests.ts';
+import {
+  comparablePayload,
+  hasIdentity,
+  type CommandRequest,
+  type IdentifiedRequest,
+  type UncheckedRequest,
+} from './requests.ts';
 import { handleCommand } from './handlers.ts';
 import { isRefused, refused, type Applied, type Refused } from './outcome.ts';
 import { pickupReceiptBinding } from './pickup-receipt.ts';
@@ -63,6 +68,68 @@ const IDENTITY_FIXES: readonly string[] = [
   'Send an operation_id: 8 to 200 characters of letters, digits, dot, colon, dash or underscore.',
   'Present the same one to retry the same request, and a new one for a new attempt.',
 ];
+
+/** Whoever the call is attributed to: a person's actor or an agent's. */
+export interface Caller {
+  readonly actorId: string;
+}
+
+/**
+ * What one entry does differently, the rest of a call being the same on both
+ * prefixes: the identity check, the register lookup, the replay and the
+ * settling are `enter`'s, once. An entry either refuses the call before its
+ * identity is read (the agent's reach), or releases a stored answer and runs a
+ * fresh attempt its own way.
+ */
+export type Entry =
+  | { readonly outside: CommandRefusal }
+  | {
+      /**
+       * A stored success as the rights held now release it: an answer in its
+       * place, a refusal, or nothing when it goes out as stored.
+       */
+      readonly release: (
+        stored: CommandHandle,
+        request: IdentifiedRequest,
+      ) => Promise<CommandResult | Refused | undefined>;
+      /** A request the register has not seen, carrying a usable identity. */
+      readonly attempt: (request: IdentifiedRequest, digest: string) => Promise<CommandResult>;
+    };
+
+/**
+ * The part of every call that is the same on both prefixes, in this order:
+ * the entry's own exclusion, the repeat-request identity, the register lookup
+ * and the replay, then the entry's attempt.
+ */
+export async function enter(
+  tx: TenantQuery,
+  caller: Caller,
+  request: UncheckedRequest,
+  entry: Entry,
+): Promise<CommandResult> {
+  const digest = payloadDigest(comparablePayload(request));
+  if ('outside' in entry) return await settle(tx, caller, request, digest, entry.outside, 'none');
+  // The identity first, because an attempt with no identity is not an attempt
+  // the register can hold, and it is still an attempt the chain records.
+  // `hasIdentity` asks `typeof` first, and it is not belt and braces.
+  // `RegExp.prototype.test` coerces its argument to a string, so an omitted
+  // `operationId` -- the field an ordinary HTTP caller leaves out most easily
+  // -- would coerce to the nine-character `"undefined"` and pass the pattern,
+  // and a number or a one-element array would pass as the string it prints as
+  // (Sol 6 AUTHORITY-4).
+  if (!hasIdentity(request)) {
+    const refusal = refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES);
+    return await settle(tx, caller, request, digest, refusal, 'none');
+  }
+  // One register for both prefixes, keyed on the caller's own actor, so a
+  // pickup retried after a lost response replays the lease it already holds.
+  const seen = await lookupAttempt(tx, caller.actorId, request.operationId);
+  if (seen !== undefined) {
+    const release = async (stored: CommandHandle) => await entry.release(stored, request);
+    return await replay(tx, caller, request, digest, seen, release);
+  }
+  return await entry.attempt(request, digest);
+}
 
 /**
  * Run one command inside an open transaction whose business is set and whose
@@ -75,39 +142,20 @@ export async function runCommand(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: UncheckedRequest,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
-  const digest = payloadDigest(comparablePayload(request));
-
-  // The identity first, because an attempt with no identity is not an attempt
-  // the register can hold, and it is still an attempt the chain records.
-  // `typeof` first, and it is not belt and braces. `RegExp.prototype.test`
-  // coerces its argument to a string, so an omitted `operationId` -- the field
-  // an ordinary HTTP caller leaves out most easily -- arrives as `undefined`,
-  // coerces to the nine-character `"undefined"`, and passes the pattern. The
-  // real `undefined` then reaches `lookupAttempt`'s bound parameter and the
-  // driver raises `UNDEFINED_VALUE`, which the boundary shows as a plain 500.
-  // `null` and `''` were always refused correctly; the absent field was not.
-  if (typeof request.operationId !== 'string' || !OPERATION_ID.test(request.operationId)) {
-    return await settle(tx, session, request, digest, {
-      refusal: refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES),
-      withoutIdentity: true,
-    });
-  }
-
-  const seen = await lookupAttempt(tx, session.actorId, request.operationId);
-  if (seen !== undefined) {
-    return await replayOrRefuse(tx, session, entryPoint, request, digest, declaration, seen);
-  }
-
-  if (declaration.targetsExistingRecord && typeof expectedRevisionOf(request) !== 'number') {
-    return await settle(tx, session, request, digest, {
-      refusal: refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES),
-    });
-  }
-
-  return await attempt(tx, session, entryPoint, request, digest, declaration);
+  return await enter(tx, session, request, {
+    release: async (stored) =>
+      await withheldNow(tx, session, entryPoint, request, declaration, stored),
+    attempt: async (identified, digest) => {
+      if (declaration.targetsExistingRecord && typeof expectedRevisionOf(identified) !== 'number') {
+        const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
+        return await settle(tx, session, identified, digest, refusal);
+      }
+      return await attempt(tx, session, entryPoint, identified, digest, declaration);
+    },
+  });
 }
 
 /**
@@ -145,7 +193,8 @@ export async function executeCommand(
   businessId: BusinessId,
   presented: VerifiedSubject,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  // Typed callers and unchecked bodies alike: either is parsed against its row.
+  request: CommandRequest | UncheckedRequest,
 ): Promise<CommandResult> {
   return await retryOnce(
     async () => await callOnce(database, businessId, presented, entryPoint, request),
@@ -188,7 +237,7 @@ async function callOnce(
   businessId: BusinessId,
   presented: VerifiedSubject,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: UncheckedRequest,
 ): Promise<CommandResult> {
   const outcome = await withSession(
     database,
@@ -216,7 +265,7 @@ async function recordFailure(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
-  request: CommandRequest,
+  request: UncheckedRequest,
   original: unknown,
 ): Promise<void> {
   try {
@@ -224,7 +273,7 @@ async function recordFailure(
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: request.command,
-        operationId: OPERATION_ID.test(request.operationId) ? request.operationId : null,
+        operationId: hasIdentity(request) ? request.operationId : null,
         outcome: 'failed',
         payloadDigest: failedDigest(request),
       });
@@ -268,7 +317,7 @@ const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
  * (final review round 1, #11). It gets the all-zero digest instead, which the
  * column's shape admits and no SHA-256 of a payload will realistically be.
  */
-function failedDigest(request: CommandRequest): string {
+function failedDigest(request: UncheckedRequest): string {
   try {
     return payloadDigest(comparablePayload(request));
   } catch {
@@ -283,14 +332,18 @@ const REUSED_FIXES: readonly string[] = [
   'The first result stands; returning it for a second payload would hide your bug.',
 ];
 
-async function replayOrRefuse(
+/**
+ * A request the register already holds: refused when the body differs, else
+ * the stored answer as the rights held now release it. The register row stays
+ * as it was: the operation happened, and nothing here repeats it.
+ */
+async function replay(
   tx: TenantQuery,
-  session: Session,
-  entryPoint: EntryPoint,
-  request: CommandRequest,
+  caller: Caller,
+  request: IdentifiedRequest,
   digest: string,
-  declaration: CommandDeclaration,
   seen: RegisteredAttempt,
+  release: (stored: CommandHandle) => Promise<CommandResult | Refused | undefined>,
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
   // for two different commands differs here without a second comparison. A
@@ -298,40 +351,40 @@ async function replayOrRefuse(
   // mutation showed it could not fail, which means it was a claim about the
   // digest rather than a check on the request.
   if (seen.payload_digest !== digest) {
-    return await settle(tx, session, request, digest, {
-      refusal: refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES),
-      // The register already holds this identity, so nothing is written to it.
-      registered: true,
-    });
+    const refusal = refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES);
+    // The register already holds this identity, so nothing is written to it.
+    return await settle(tx, caller, request, digest, refusal, 'registered');
   }
 
   // The original result, returned exactly. A caller cannot tell a replay from
   // the first call, which is the point; the chain can, which is also the point.
-  const replayed = seen.result as unknown as CommandResult;
+  const stored = seen.result as unknown as CommandResult;
   // A stored refusal carries nothing protected. A stored success is released
-  // only to the rights held now, as the agent replay releases its own
-  // (`agent-replay.ts`): a revocation bites on the next call, and a replay is
-  // a call (Sol 6 AUTHORITY-1). The register row stays as it was: the
-  // operation happened, and nothing here repeats it.
-  const withheld = await withheldNow(tx, session, entryPoint, request, declaration, replayed);
-  if (withheld !== undefined) {
-    return await settle(tx, session, request, digest, { ...withheld, registered: true });
+  // only to the rights held now: a revocation bites on the next call, and a
+  // replay is a call (Sol 6 AUTHORITY-1).
+  const released = isCommandRefusal(stored) ? undefined : await release(stored);
+  if (released !== undefined && isCommandRefusal(released)) {
+    return await settle(tx, caller, request, digest, released, 'registered');
+  }
+  if (released !== undefined && 'refusal' in released) {
+    const { refusal, attempted } = released;
+    return await settle(tx, caller, request, digest, refusal, 'registered', attempted);
   }
   await writeAuditEvent(tx, {
-    actorId: session.actorId,
+    actorId: caller.actorId,
     command: request.command,
     operationId: request.operationId,
     outcome: 'replayed',
-    refusalCode: isCommandRefusal(replayed) ? replayed.code : null,
-    subjectRecordId: isCommandRefusal(replayed) ? null : replayed.recordId,
+    refusalCode: isCommandRefusal(stored) ? stored.code : null,
+    subjectRecordId: isCommandRefusal(stored) ? null : stored.recordId,
     payloadDigest: digest,
   });
-  return replayed;
+  return released ?? stored;
 }
 
 /**
  * The refusal a stored success answers with now, or nothing when it goes out
- * as stored. A stored refusal always goes out as stored.
+ * as stored.
  *
  * The same preparation a fresh call takes, with the target's revision left
  * out: the scope, the R4 rule and the grant decision are the ones the first
@@ -346,11 +399,10 @@ async function withheldNow(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
-  stored: CommandResult,
+  stored: CommandHandle,
 ): Promise<Refused | undefined> {
-  if (isCommandRefusal(stored)) return undefined;
   const prepared = await prepareCommand(tx, session, entryPoint, request, {
     ...declaration,
     targetsExistingRecord: false,
@@ -382,7 +434,7 @@ async function attempt(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: IdentifiedRequest,
   digest: string,
   declaration: CommandDeclaration,
 ): Promise<CommandResult> {
@@ -395,8 +447,9 @@ async function attempt(
       // storing the untranslated one would hand a second caller an audit-only
       // code the first caller never saw — the one mechanism the visibility
       // column exists for, defeated on the replay path. A review found this.
-      await record(tx, session, request, digest, asCallerVisible(outcome.refusal), null);
-      return await settle(tx, session, request, digest, { ...outcome, registered: true });
+      await register(tx, session, request, digest, asCallerVisible(outcome.refusal), null);
+      const { refusal, attempted } = outcome;
+      return await settle(tx, session, request, digest, refusal, 'registered', attempted);
     }
     const handle: CommandHandle = {
       command: request.command,
@@ -404,7 +457,7 @@ async function attempt(
       revision: outcome.revision,
       detail: outcome.detail,
     };
-    await record(tx, session, request, digest, handle, outcome.recordId);
+    await register(tx, session, request, digest, handle, outcome.recordId);
     await tx.query('release savepoint command_attempt');
     await writeAuditEvent(tx, {
       actorId: session.actorId,
@@ -443,7 +496,7 @@ async function attemptWork(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: IdentifiedRequest,
   declaration: CommandDeclaration,
 ): Promise<Applied | Refused> {
   await tx.query('savepoint command_work');
@@ -459,24 +512,28 @@ async function attemptWork(
   return outcome;
 }
 
-/** The preparation and then the command, which is all that is inside the savepoint. */
+/**
+ * The preparation and then the command, which is all that is inside the
+ * savepoint. The preparation hands back the request parsed against its row's
+ * operands, and the command is given that and never the body.
+ */
 async function work(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: IdentifiedRequest,
   declaration: CommandDeclaration,
 ): Promise<Applied | Refused> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, declaration);
   if ('refusal' in prepared) return prepared;
-  return await handleCommand(tx, prepared, request);
+  return await handleCommand(tx, prepared, prepared.request);
 }
 
 /** One register row for this request, whatever it came to. */
-async function record(
+export async function register(
   tx: TenantQuery,
-  session: Session,
-  request: CommandRequest,
+  caller: Caller,
+  request: IdentifiedRequest,
   digest: string,
   result: CommandHandle | CommandRefusal,
   recordId: string | null,
@@ -484,39 +541,45 @@ async function record(
   await registerAttempt(tx, {
     operationId: request.operationId,
     command: request.command,
-    actorId: session.actorId,
+    actorId: caller.actorId,
     digest,
     result,
     recordId,
   });
 }
 
-interface Settlement extends Refused {
-  /** The register already holds this identity, or there is no identity to hold. */
-  readonly registered?: boolean;
-  readonly withoutIdentity?: boolean;
-}
+/**
+ * Where a refusal's identity stands: `register` writes the register row,
+ * `registered` means the register already holds this identity, and `none`
+ * that the request carried no usable identity to hold.
+ */
+export type IdentityStanding = 'register' | 'registered' | 'none';
 
-/** Record the refusal, then hand the caller the version they are allowed to see. */
-async function settle(
+/**
+ * Record the refusal, then hand the caller the version they are allowed to
+ * see. The one way a refusal is settled on either prefix.
+ */
+export async function settle(
   tx: TenantQuery,
-  session: Session,
-  request: CommandRequest,
+  caller: Caller,
+  request: UncheckedRequest,
   digest: string,
-  settlement: Settlement,
+  refusal: CommandRefusal,
+  standing: IdentityStanding = 'register',
+  attempted?: Readonly<Record<string, unknown>>,
 ): Promise<CommandRefusal> {
-  const { refusal, attempted } = settlement;
   // A name can echo a key the caller sent, and `registerAttempt` stores it in
   // the form `storable` gives. The caller is answered with that form, so a
   // replay's bytes are the first answer's.
   const visible = storable(asCallerVisible(refusal));
-  if (settlement.registered !== true && settlement.withoutIdentity !== true) {
-    await record(tx, session, request, digest, visible, null);
+  const identified = standing !== 'none' && hasIdentity(request) ? request : undefined;
+  if (standing === 'register' && identified !== undefined) {
+    await register(tx, caller, identified, digest, visible, null);
   }
   await writeAuditEvent(tx, {
-    actorId: session.actorId,
+    actorId: caller.actorId,
     command: request.command,
-    operationId: settlement.withoutIdentity === true ? null : request.operationId,
+    operationId: identified === undefined ? null : identified.operationId,
     outcome: 'refused',
     refusalCode: refusal.code,
     subjectRecordId: null,

@@ -44,6 +44,7 @@ import type { Database, VerifiedSubject } from '../../packages/core-records/src/
 import {
   agentAnswer,
   isCommandRefusal,
+  isReadName,
   refuseCommand,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -57,11 +58,8 @@ import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
   executeAgentCommand,
-  AgentRequest,
   CommandRefusal,
-  CommandRequest,
   executeRead,
-  ReadRequest,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 
@@ -223,28 +221,27 @@ export function createApi(options: ApiOptions): Hono {
   mountSurface(`${PREFIX.person}:businessKey`, PERSON, async (context, declaration, admitted) => {
     const { presented, businessId, body } = admitted;
     // The command comes from the route, never from the body, so a caller
-    // cannot post to one endpoint and have another operation run.
-    if (declaration.kind === 'read') {
+    // cannot post to one endpoint and have another operation run. Nothing
+    // here reads the body: each envelope parses it once against the route's
+    // own row, and a body that does not match is refused there.
+    const { name } = declaration;
+    if (isReadName(name)) {
       // An absent or mistyped operand is refused by the read itself, inside
       // its audited transaction (`reads/dispatch.ts`), not here.
       // The name comes from the route here too, so a caller cannot post to
       // one read and have another one run.
       const read = await options.executeRead(options.database, businessId, presented, {
         ...body,
-        read: declaration.name,
-      } as ReadRequest);
+        read: name,
+      });
       if (isCommandRefusal(read)) return refuse(context, read);
       return context.json(read, 200);
     }
 
-    const request = { ...body, command: declaration.name } as CommandRequest;
-    const result = await options.executeCommand(
-      options.database,
-      businessId,
-      presented,
-      'api',
-      request,
-    );
+    const result = await options.executeCommand(options.database, businessId, presented, 'api', {
+      ...body,
+      command: name,
+    });
 
     if (isCommandRefusal(result)) return refuse(context, result);
     return context.json({ ...result }, 200);
@@ -263,13 +260,12 @@ export function createApi(options: ApiOptions): Hono {
       // operation run. `operationId` is passed as the JSON carried it, absent
       // included: the envelope asks `typeof` itself and refuses anything that
       // is not a string, so the rule lives in one place (Sol 6 AUTHORITY-4).
-      const request = { ...body, command: declaration.name } as AgentRequest;
       const result = await agentExecutor(
         options.database,
         businessId,
         presented,
         context.req.header(DELEGATION_HEADER),
-        request,
+        { ...body, command: declaration.name },
       );
       if (isCommandRefusal(result)) return refuse(context, result);
       return context.json(agentAnswer(declaration.name, result), 200);

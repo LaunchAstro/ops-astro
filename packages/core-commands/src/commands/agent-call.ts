@@ -5,10 +5,11 @@
 // (THERMO-RECHECK NA5).
 
 import type { AgentSession } from '../../../core-records/src/index.ts';
-import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
+import type { UncheckedRequest } from './requests.ts';
 
 /**
- * What an agent sends.
+ * What an agent sends: the person prefix's own unchecked request.
  *
  * The credential is **not** in it. It arrives beside the request the way the
  * bearer token does, because it is a credential rather than a field: a payload
@@ -16,11 +17,7 @@ import type { CommandDeclaration, CommandName } from '../../../core-wire/src/ind
  * authority would be a body that could be logged, replayed into a register row
  * and compared by a digest.
  */
-export interface AgentRequest {
-  readonly command: CommandName;
-  readonly operationId: string;
-  readonly [field: string]: unknown;
-}
+export type AgentRequest = UncheckedRequest;
 
 /** One agent call: who is calling, under what credential, asking what. */
 export interface AgentCall {
