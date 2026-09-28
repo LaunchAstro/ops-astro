@@ -16,12 +16,13 @@
 // throwaway database migrated from empty, with real HS256 bearers the real
 // Supabase adapter verifies. Nothing is substituted except the port.
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
 import { gateSigningKey } from '../../packages/core-records/src/commands/runtime-config.ts';
+import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { enrol } from '../commands/fixture.ts';
 import {
   authorised,
@@ -156,6 +157,24 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
     }
     return { taskId: task.id, reservationId: String(detailOf(decided)['reservationId']) };
   }
+
+  it('CQ-2 keys as values: decision signing and agent pickup work end to end', async () => {
+    const id = 'test/cq-2-values@1';
+    const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
+    const own = fixture.compose({ delegation });
+    const { taskId, reservationId } = await approvedReservation('keys as values', 'cq2_values');
+    const body = { operationId: randomUUID(), reservationId };
+    const picked = detailOf(await asAgent('task.pickup', body, undefined, own));
+    const again = detailOf(await asAgent('task.pickup', body, undefined, own));
+    const read = { operationId: randomUUID(), recordId: taskId };
+    const reading = await asAgent('task.read', read, String(picked['credential']), own);
+    expect([again['credential'], reading.status]).toStrictEqual([picked['credential'], 200]);
+    const sql = `select signing_key_id as k from public.gate_decisions where business_id = $1
+       union all select credential_key_id from public.delegations where business_id = $1`;
+    const used = await fixture.db.admin.execute<{ k: string }>(sql, [fixture.business]);
+    const gate = fixture.environment.GATE_SIGNING_KEY_ID;
+    expect(used.map((row) => row.k)).toEqual(expect.arrayContaining([gate, id]));
+  });
 
   describe('task.propose', () => {
     it('makes a proposal at its own path and hands back the version to decide on', async () => {
@@ -873,7 +892,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
 
       const restarted = fixture.compose();
       expect(restarted).not.toBe(api);
-      expect(gateSigningKey()).toBeDefined();
+      expect(process.env['GATE_SIGNING_SECRET']).toBeUndefined();
 
       // The second instance was handed no reservation, no lease and no fence.
       // It knows about this work only because Postgres does: the queue read on

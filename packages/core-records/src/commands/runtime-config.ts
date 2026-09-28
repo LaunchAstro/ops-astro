@@ -6,9 +6,9 @@
 // Both are deployment facts, and both are deliberately unreachable from a
 // request body. A caller who could name the signing key could sign a chain
 // link with a key nobody trusts; a caller who could name the cap could draw on
-// a ceiling somebody else's business was given. So the key comes from the
-// process environment and the cap is read from the business the serving
-// transaction is already inside.
+// a ceiling somebody else's business was given. So the keys are handed over as
+// values (`withRuntimeKeys`), never through `process.env`, which child processes
+// inherit, and the cap is read from the business the transaction is inside.
 //
 // **Why the key is not in the database.** `gate_decisions.signing_key_id` is
 // stored beside every link so a verifier can say which key signed it, and the
@@ -18,17 +18,44 @@
 // `signing.ts` names HMAC as the custody choice a real signer replaces behind
 // `sign`/`verify`; this is the same seam one layer up.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { SigningKey } from '../../../core-runtime/src/signing.ts';
 import {
   configuredCredentialKeys,
+  withCredentialKeys,
   type CredentialKeysDecision,
 } from '../authority/credential-keys.ts';
 
+type Settings = Readonly<Record<string, string | undefined>>;
+
+/** Both deployment keys, read once by a composition root. */
+export interface RuntimeKeys {
+  readonly gate: SigningKey | undefined;
+  readonly delegation: CredentialKeysDecision;
+}
+
+export function runtimeKeys(settings: Settings): RuntimeKeys {
+  return { gate: gateSigningKey(settings), delegation: configuredCredentialKeys(settings) };
+}
+
+const handedOver = new AsyncLocalStorage<RuntimeKeys>();
+
+/**
+ * Runs `run` with the keys its commands and reads use, the keyring also where
+ * the runtime's own mint reads it. A composed app runs each request so, and two
+ * apps in one process keep their own. Outside one, a test or a script reads
+ * its own `process.env` instead.
+ */
+export function withRuntimeKeys<T>(keys: RuntimeKeys, run: () => T): T {
+  return handedOver.run(keys, () => withCredentialKeys(keys.delegation, run));
+}
+
 /** The key this deployment signs decision links with, or nothing if unconfigured. */
-export function gateSigningKey(
-  environment: Readonly<Record<string, string | undefined>> = process.env,
-): SigningKey | undefined {
+export function gateSigningKey(settings?: Settings): SigningKey | undefined {
+  const held = settings === undefined ? handedOver.getStore() : undefined;
+  if (held !== undefined) return held.gate;
+  const environment = settings ?? process.env;
   const id = environment['GATE_SIGNING_KEY_ID'];
   const secret = environment['GATE_SIGNING_SECRET'];
   if (id === undefined || id === '' || secret === undefined || secret === '') return undefined;
@@ -48,10 +75,8 @@ export function gateSigningKey(
  * the gitignored `.local/delegation.env`, which is created once and never
  * rewritten (`authority/credential-keys.ts`).
  */
-export function delegationCredentialKeys(
-  environment: Readonly<Record<string, string | undefined>> = process.env,
-): CredentialKeysDecision {
-  return configuredCredentialKeys(environment);
+export function delegationCredentialKeys(): CredentialKeysDecision {
+  return configuredCredentialKeys();
 }
 
 /**

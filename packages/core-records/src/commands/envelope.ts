@@ -227,13 +227,33 @@ async function recordFailure(
       return undefined;
     });
   } catch (secondary) {
-    console.warn('executeCommand: the failed attempt could not be recorded', {
-      command: request.command,
-      cause: secondary instanceof Error ? secondary.message : 'unknown',
-      original: original instanceof Error ? original.message : 'unknown',
-    });
+    console.warn(
+      `executeCommand: the failed attempt at ${request.command} could not be recorded ` +
+        `(${describeFault(secondary)}); the attempt itself failed with ${describeFault(original)}`,
+    );
   }
 }
+
+/**
+ * What a log may say about a fault: the driver's code and constraint, or the
+ * error's class. Never the message, which can quote what a caller sent.
+ */
+export function describeFault(cause: unknown): string {
+  const fault: Readonly<Record<string, unknown>> =
+    typeof cause === 'object' && cause !== null ? (cause as Record<string, unknown>) : {};
+  const code =
+    bounded(fault['code'], FAULT_CODE) ?? bounded(fault['name'], IDENTIFIER) ?? 'unknown';
+  const constraint = bounded(fault['constraint_name'], IDENTIFIER);
+  return constraint === undefined ? code : `${code} on ${constraint}`;
+}
+
+function bounded(value: unknown, shape: RegExp): string | undefined {
+  return typeof value === 'string' && shape.test(value) ? value : undefined;
+}
+
+// A SQLSTATE (`22P02`) or a runtime's code (`ECONNREFUSED`); an identifier or class name.
+const FAULT_CODE = /^[0-9A-Z_]{1,40}$/u;
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
 
 /**
  * The digest a `failed` event carries.

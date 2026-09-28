@@ -22,7 +22,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
@@ -31,6 +31,10 @@ import { connect, type Database } from '../../packages/core-records/src/tenancy/
 import { executeRead } from '../../packages/core-records/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import {
+  runtimeKeys,
+  withRuntimeKeys,
+} from '../../packages/core-records/src/commands/runtime-config.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
@@ -73,7 +77,7 @@ interface Second {
 
 function secondOf(c: Controls): Second {
   const database: Database = connect(c.fixture.db.appUrl, { source: 'runtime' });
-  const api: Hono = createApi({
+  const inner: Hono = createApi({
     database,
     verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
     resolveBusiness: createBusinessResolver(c.fixture.db.admin),
@@ -81,6 +85,10 @@ function secondOf(c: Controls): Second {
     executeRead,
     executeAgentCommand,
   });
+  // Handed the fixture's keys as values, as `composeApi` hands the server's.
+  const keys = runtimeKeys({ ...c.fixture.environment });
+  const api = new Hono().use(async (_context, next) => await withRuntimeKeys(keys, next));
+  api.route('/', inner);
   return {
     asPerson: async (name, body, as) =>
       await post(
