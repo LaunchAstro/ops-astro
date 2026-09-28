@@ -31,6 +31,7 @@
 // row by key and answers nothing else, and every statement after it runs
 // through `withBusiness` like everything else in the slice.
 
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,9 +46,16 @@ import {
 } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi, type ReadExecutor } from './app.ts';
 import { executeAgentCommand } from '../../packages/core-records/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
+import {
+  describeFault,
+  executeCommand,
+} from '../../packages/core-records/src/commands/envelope.ts';
 import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
-import { delegationCredentialKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
+import {
+  runtimeKeys,
+  useRuntimeKeys,
+  type RuntimeKeys,
+} from '../../packages/core-records/src/commands/runtime-config.ts';
 import { KEY_FILE_VARIABLE } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
@@ -83,9 +91,9 @@ export function readEnvFile(file: string): Readonly<Record<string, string>> {
  *
  * A key file named in the real environment is not shadowed by the checkout's
  * keyring: with `DELEGATION_CREDENTIAL_KEY_FILE` set, `.local/delegation.env`
- * is not read. Copied into the process environment its two settings would be
- * explicit configuration, and `configuredCredentialKeys` never consults the
- * named file once either is present (`credential-keys.ts`).
+ * is not read. Read here its two settings would be explicit configuration,
+ * and `configuredCredentialKeys` never consults the named file once either is
+ * present (`credential-keys.ts`).
  */
 export function localEnvironment(): Readonly<Record<string, string | undefined>> {
   const keyFileNamed = (process.env[KEY_FILE_VARIABLE] ?? '') !== '';
@@ -155,6 +163,8 @@ export interface ApiConfig {
   readonly secret: string;
   /** The issuer every bearer must name: the GoTrue URL, `GOTRUE_URL`. */
   readonly issuer: string;
+  /** The signing key and delegation keyring `main` read, never put in `process.env`. */
+  readonly keys: RuntimeKeys;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -181,6 +191,7 @@ export interface ComposedApi {
  */
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
+  useRuntimeKeys(config.keys);
   const executeRead = config.executeRead ?? readExecutor;
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
@@ -220,9 +231,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // A fault reaching here is a fault, not a refusal, and it is reported as one
   // rather than as a 404 that reads like a missing route or a 403 that reads
-  // like a decision. The message is not echoed: a message may carry a value.
+  // like a decision. The message is neither echoed nor logged: a message may
+  // carry a value. The log gets a bounded code and a reference.
   server.onError((cause, context) => {
-    console.error('api: unhandled', cause instanceof Error ? cause.message : cause);
+    const reference = randomUUID();
+    console.error(
+      `api: unhandled fault ${describeFault(cause)} (reference ${reference}): the request ` +
+        'could not be completed. Its contents and the fault text are left out of this log.',
+    );
     if ('getResponse' in cause) return cause.getResponse();
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
@@ -252,25 +268,13 @@ async function main(): Promise<void> {
 
   const database = connect(databaseUrl as string, { source: 'runtime' });
   const admin = connectAsAdmin(adminUrl as string, { source: 'admin' });
-  // The signing key is a process fact, read by `commands/runtime-config.ts`
-  // from the environment rather than passed down through every caller. The
-  // composition root is where a deployment's environment is assembled, so this
-  // is where the file the seed wrote becomes one.
-  for (const name of [
-    'GATE_SIGNING_KEY_ID',
-    'GATE_SIGNING_SECRET',
-    'DELEGATION_CREDENTIAL_KEY_ID',
-    'DELEGATION_CREDENTIAL_KEYS',
-  ] as const) {
-    const value = environment[name];
-    if (value !== undefined && value !== '') process.env[name] = value;
-  }
+  // Read once and handed to `composeApi` as values; none go into `process.env`.
+  const keys = runtimeKeys(environment);
   // Checked at boot so a malformed keyring stops the server with its reason,
   // rather than serving until the first agent pickup refuses. The problem names
   // the setting, never a key's bytes.
-  const credentialKeys = delegationCredentialKeys();
-  if (!credentialKeys.ok) {
-    console.error(`api: delegation credential keys: ${credentialKeys.problem}`);
+  if (!keys.delegation.ok) {
+    console.error(`api: delegation credential keys: ${keys.delegation.problem}`);
     process.exit(1);
   }
 
@@ -282,6 +286,7 @@ async function main(): Promise<void> {
     admin,
     secret: secret as string,
     issuer: issuer as string,
+    keys,
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
