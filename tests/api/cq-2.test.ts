@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
+import type { ReadExecutor } from '../../apps/api/app.ts';
 import { authorised, createApiFixture, ISSUER, post, SECRET, tokenFor } from './fixture.ts';
 import type { ApiFixture } from './fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
@@ -15,31 +16,36 @@ import { insertActor, insertBusiness, insertLogin, insertMapping } from '../iden
 import { insertPerson } from '../identity/fixture.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { executeCommand } from '../../packages/core-records/src/commands/envelope.ts';
-import { runtimeKeys } from '../../packages/core-records/src/commands/runtime-config.ts';
+import {
+  gateSigningKey,
+  runtimeKeys,
+} from '../../packages/core-records/src/commands/runtime-config.ts';
+import { configuredCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
+import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { pathOf } from '../../packages/core-records/src/commands/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
-const [CREATE, READ] = [pathOf('task.create'), pathOf('task.read')];
+const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
+const [BOARD, QUEUE] = [pathOf('task.board'), pathOf('task.queue')];
 const TABLES = 'audit_events operations records grants authentication_attempts'.split(' ');
 const NAMES = JSON.stringify(['GATE_SIGNING_', 'DELEGATION_CREDENTIAL_KEY']);
 const DEAD = 'postgres://cq2@127.0.0.1:1/cq2';
-type Party = Record<'key' | 'title' | 'recordId' | 'member' | 'client', string>;
+const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[name] ?? DEAD);
+type Task = Record<'title' | 'recordId' | 'client', string>;
+type Party = { key: string; member: string; tasks: Task[] };
 
-/** `node apps/api/server.ts` over no database, printing the key settings it holds at exit. */
-function start(settings: Record<string, string>) {
-  const report = `process.on('exit', () => console.error('CQ2-ENV', JSON.stringify(Object.keys(
-    process.env).filter((name) => ${NAMES}.some((prefix) => name.startsWith(prefix))))));`;
+/** `node apps/api/server.ts`, printing the key settings it holds once listening, or at exit. */
+function start(settings: Record<string, string>, [url, admin]: readonly string[] = [DEAD, DEAD]) {
+  const report = `const held = () => console.error('CQ2-ENV', JSON.stringify(Object.keys(process.env)
+    .filter((name) => ${NAMES}.some((prefix) => name.startsWith(prefix)))));
+  process.on('exit', held); const log = console.log; console.log = (...parts) => { log(...parts);
+    if (String(parts[0]).startsWith('api: listening')) setImmediate(() => process.exit(0)); };`;
   const preload = `data:text/javascript,${encodeURIComponent(report)}`;
-  const settled = { SUPABASE_JWT_SECRET: SECRET, GOTRUE_URL: ISSUER, API_PORT: '0', ...settings };
-  const env = { PATH: process.env['PATH'], DATABASE_URL: DEAD, DATABASE_ADMIN_URL: DEAD };
-  const options = {
-    cwd: ROOT,
-    env: { ...env, ...settled },
-    encoding: 'utf8' as const,
-    timeout: 60_000,
-  };
+  const env = { PATH: process.env['PATH'], DATABASE_URL: url, DATABASE_ADMIN_URL: admin };
+  const settled = { ...env, SUPABASE_JWT_SECRET: SECRET, GOTRUE_URL: ISSUER, API_PORT: '0' };
+  const options = { cwd: ROOT, env: { ...settled, ...settings }, timeout: 60_000 };
   const run = spawnSync(process.execPath, ['--import', preload, 'apps/api/server.ts'], options);
   return { status: run.status, output: `${run.stdout}${run.stderr}` };
 }
@@ -60,20 +66,6 @@ const send = async (api: Hono, path: string, body: object, token: string) =>
   await post(api, path, body, authorised(token));
 
 describe('CQ-2 start-up', () => {
-  it('CQ-2 process.env: after start-up it holds no key the server put there', () => {
-    const gate = join(ROOT, '.local', 'gate.env');
-    const wrote = !existsSync(gate);
-    mkdirSync(join(ROOT, '.local'), { recursive: true });
-    if (wrote)
-      writeFileSync(gate, `GATE_SIGNING_KEY_ID=cq2@1\nGATE_SIGNING_SECRET=${randomUUID()}`);
-    expect(runtimeKeys({}).delegation.ok).toBe(true);
-    // The keys are in the checkout's files only, and recovery then stops the start.
-    const { status, output } = start({ RECOVERY_BUSINESS_KEYS: '' });
-    if (wrote) rmSync(gate);
-    expect([status, output]).toStrictEqual([1, expect.stringContaining('CQ2-ENV []')]);
-    expect(output).toContain('RECOVERY_BUSINESS_KEYS is not set');
-  });
-
   it('CQ-2 malformed keyring: start-up stops naming the setting, never a key byte', () => {
     const bytes = randomBytes(16).toString('base64url');
     const keyring = { DELEGATION_CREDENTIAL_KEYS: `cq2@1:${bytes}` };
@@ -93,36 +85,41 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     return JSON.stringify(await Promise.all(all));
   };
 
+  const composed = (executeRead: ReadExecutor, keys = runtimeKeys({ ...fixture.environment })) => {
+    const { app, admin } = fixture.db;
+    const config = { database: app, admin, secret: SECRET, issuer: ISSUER, keys, executeRead };
+    return composeApi(config).app;
+  };
+
   async function faulting(body: object, fault?: Error) {
-    const executeRead = async (...args: unknown[]): Promise<never> => {
+    const faulty = composed(async (...args: unknown[]): Promise<never> => {
       if (fault !== undefined) throw fault;
-      await fixture.db.admin.execute('select $1::uuid', [(args[3] as Party).recordId]);
+      await fixture.db.admin.execute('select $1::uuid', [(args[3] as Task).recordId]);
       throw new Error('unreachable');
-    };
-    const { db, environment } = fixture;
-    const keys = runtimeKeys({ ...environment });
-    const config = { database: db.app, admin: db.admin, secret: SECRET, issuer: ISSUER, keys };
-    const faulty = composeApi({ ...config, executeRead }).app;
+    });
     return await logged(async () => await send(faulty, `/api/b/alpha${READ}`, body, token));
   }
 
-  /** A business whose member holds one grant, write, and whose client one read of one task. */
+  /** A business whose member holds one grant, write, and two clients one read of a task each. */
   async function party(key: string): Promise<Party> {
-    const [id, title] = [await insertBusiness(fixture.db.app, key), `cq2-${randomUUID()}`];
+    const id = await insertBusiness(fixture.db.app, key);
     await installSpine(fixture.db.app, id);
     const member = await enrol(fixture.db.app, id, `${key}-member`);
     await fixture.db.app.withBusiness(id, async (tx) => await grantTo(tx, member, 'write'));
     const own = await tokenFor(member.presented.subject);
-    const task = { operationId: randomUUID(), fields: { title } };
-    const made = await send(api, `/api/b/${key}${CREATE}`, task, own);
-    const recordId = String(made.body['recordId']);
-    await fixture.db.app.withBusiness(id, async (tx) => {
-      const personId = await insertPerson(tx, `${key}-client`);
-      await insertActor(tx, personId);
-      await insertMapping(tx, await insertLogin(tx, `${key}-client`), personId, member.actorId);
-      await grantTo(tx, { ...member, personId }, 'read', { kind: 'record', id: recordId });
+    const tasks = [`${key}-client-1`, `${key}-client-2`].map(async (client) => {
+      const task = { operationId: randomUUID(), fields: { title: `cq2-${randomUUID()}` } };
+      const { body } = await send(api, `/api/b/${key}${CREATE}`, task, own);
+      const recordId = String(body['recordId']);
+      await fixture.db.app.withBusiness(id, async (tx) => {
+        const personId = await insertPerson(tx, client);
+        await insertActor(tx, personId);
+        await insertMapping(tx, await insertLogin(tx, client), personId, member.actorId);
+        await grantTo(tx, { ...member, personId }, 'read', { kind: 'record', id: recordId });
+      });
+      return { title: task.fields.title, recordId, client: await tokenFor(client) };
     });
-    return { key, title, recordId, member: own, client: await tokenFor(`${key}-client`) };
+    return { key, member: own, tasks: await Promise.all(tasks) };
   }
 
   beforeAll(async () => {
@@ -133,6 +130,21 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   afterAll(async () => await fixture?.drop());
 
+  it('CQ-2 process.env: after start-up it holds no key the server put there', () => {
+    const gate = join(ROOT, '.local', 'gate.env');
+    const wrote = !existsSync(gate);
+    mkdirSync(join(ROOT, '.local'), { recursive: true });
+    if (wrote)
+      writeFileSync(gate, `GATE_SIGNING_KEY_ID=cq2@1\nGATE_SIGNING_SECRET=${randomUUID()}`);
+    expect(runtimeKeys({}).delegation.ok).toBe(true);
+    // The keys are in the checkout's files only; the server recovers, listens, then reports.
+    const { status, output } = start({ RECOVERY_BUSINESS_KEYS: 'none' }, URLS);
+    if (wrote) rmSync(gate);
+    expect([status, output]).toStrictEqual([
+      0,
+      expect.stringMatching(/listening[^]*CQ2-ENV \[\]/u),
+    ]);
+  });
   it('CQ-2 database error log: the log line holds the error code and command name, never the value', async () => {
     const value = `cq2-value-${randomUUID()}`;
     const { app } = fixture.db;
@@ -157,10 +169,16 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   it('CQ-2 unhandled error: planted personal data and a canary secret reach no log, trace, response or alert', async () => {
     const planted = `Jane Citizen, jane.citizen@example.com, SUPABASE_JWT_SECRET=${randomUUID()}`;
+    const traces = () => [fixture.db.app.log.entries, fixture.db.admin.log.entries].flat();
+    const traced = traces().length;
     const [answer, log] = await faulting({ recordId: randomUUID() }, new Error(planted));
     expect([answer.status, answer.body['code']]).toEqual([503, 'SERVICE_UNAVAILABLE']);
-    expect(log).toMatch(/api: unhandled fault Error \(reference [0-9a-f-]{36}\)/u);
-    const seen = JSON.stringify([answer.body, log]) + (await dump());
+    // The alert an operator gets is raised from this line; nothing is NOTIFY'd from the fault.
+    const alert = log.split('\n').filter((line) => line.startsWith('api: unhandled fault'));
+    expect(alert).toStrictEqual([expect.stringMatching(/^api: unhandled fault Error \(ref/u)]);
+    const trace = JSON.stringify(traces().slice(traced));
+    expect([trace.length > 2, /\bNOTIFY\b/iu.test(trace)]).toStrictEqual([true, false]);
+    const seen = JSON.stringify([answer.body, log, trace, alert]) + (await dump());
     for (const part of planted.split(', ')) expect(seen).not.toContain(part);
   });
 
@@ -179,23 +197,78 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     const [faulted, faultLog] = await faulting({ recordId: canary });
     expect([made.status, faulted.status]).toStrictEqual([200, 503]);
     const traces = JSON.stringify(fixture.db.app.log.entries) + (await dump(['audit_events']));
-    expect(JSON.stringify([faulted.body, log, faultLog, traces])).not.toContain(canary);
+    const all = [made.body, faulted.body, log, faultLog, traces];
+    expect(JSON.stringify(all)).not.toContain(canary);
   });
 
   it('CQ-2 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
     const [b, c] = [await party('bravo'), await party('charlie')];
-    const reads = async (p: Party, who: string) => {
-      const { body } = await send(api, `/api/b/${p.key}${READ}`, { recordId: p.recordId }, who);
-      return JSON.stringify(body).includes(p.title);
-    };
-    expect(await Promise.all([reads(b, b.client), reads(c, c.client)])).toEqual([true, true]);
+    // Read, list, count (the board's and queue's), export and change, as `who`.
+    const tries = (p: Party, t: Task, who: string) =>
+      Object.entries({
+        [READ]: { recordId: t.recordId },
+        [BOARD]: { board: null },
+        [QUEUE]: {},
+        '/task/export': {},
+        [UPDATE]: {
+          operationId: randomUUID(),
+          recordId: t.recordId,
+          expectedRevision: 1,
+          fields: { title: 'cq2-changed' },
+        },
+      }).map(async ([path, body]) => await send(api, `/api/b/${p.key}${path}`, body, who));
+    const reached = async (p: Party, t: Task, who: string) =>
+      JSON.stringify((await Promise.all(tries(p, t, who))).map((a) => [a.status, a.body]));
+    // Each client reads its own task; the other client's, in the same business, it cannot.
+    const records = await dump(['records']);
+    const clients = [b, c].map(async (p) => {
+      const [one, two] = p.tasks as [Task, Task];
+      const [own, other, others] = await Promise.all([
+        reached(p, one, one.client),
+        reached(p, two, one.client),
+        reached(p, one, two.client),
+      ]);
+      expect([own.startsWith('[[200,'), own.includes(one.title)]).toEqual([true, true]);
+      expect([other.includes(two.title), others.includes(one.title)]).toEqual([false, false]);
+    });
+    await Promise.all(clients);
+    expect(await dump(['records'])).toBe(records);
     // A stranger's refusal is the target's own door ledger (CQ-1); nothing else may change.
     const before = await dump(TABLES.slice(0, 4));
-    const strangers = [c.member, c.client, b.member, b.client];
-    const cross = strangers.map((who, i) => async () => await reads(i < 2 ? b : c, who));
-    const [crossed, log] = await logged(async () => await Promise.all(cross.map((r) => r())));
-    expect(crossed).toStrictEqual([false, false, false, false]);
+    const strangers = [c, b].flatMap((p) => [p.member].concat(p.tasks.map((t) => t.client)));
+    const [crossed, log] = await logged(async () => {
+      const target = (i: number) => (i < 3 ? b : c);
+      const all = strangers.flatMap((who, i) =>
+        target(i).tasks.map((t) => reached(target(i), t, who)),
+      );
+      return await Promise.all(all);
+    });
+    expect(`${crossed}`).not.toMatch(/\[200,/u);
     expect(await dump(TABLES.slice(0, 4))).toBe(before);
-    expect([log.includes(b.title), log.includes(c.title)]).toStrictEqual([false, false]);
+    for (const t of [b, c].flatMap((p) => p.tasks))
+      expect(`${crossed}${log}`).not.toContain(t.title);
+    // The records were changeable all along: their own member's change goes through.
+    const [first] = b.tasks as [Task];
+    expect((await Promise.all(tries(b, first, b.member)))[4]?.status).toBe(200);
+  });
+
+  it('CQ-2 keys per app: a second composition leaves the first app its own keys', async () => {
+    const seen: string[] = [];
+    const noting: ReadExecutor = async () => {
+      const ring = configuredCredentialKeys();
+      seen.push(`${gateSigningKey()?.id} ${ring.ok ? ring.keys.activeKeyId : ''}`);
+      throw new Error('noted');
+    };
+    const [one, two] = ['cq2/first@1', 'cq2/second@1'].map((id) => {
+      const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
+      return composed(noting, { gate: { id, secret: randomUUID() }, delegation });
+    }) as [Hono, Hono];
+    const read = async (app: Hono) =>
+      await send(app, `/api/b/alpha${READ}`, { recordId: randomUUID() }, token);
+    await logged(async () => await Promise.all([one, two, one].map(read)));
+    expect(seen.toSorted()).toStrictEqual(
+      ['first', 'first', 'second'].map((n) => `cq2/${n}@1 cq2/${n}@1`),
+    );
+    expect(String(gateSigningKey()?.id)).not.toMatch(/^cq2\//u);
   });
 });
