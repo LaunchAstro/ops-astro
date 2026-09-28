@@ -20,11 +20,24 @@
 // address that a person reloads (checklist B5), and a dev server that 404s it
 // would make the reload case untestable for a reason that has nothing to do
 // with the product.
+//
+// One thing both do: stamp the build (S0-1, line C2). The identifier from
+// `build-stamp.ts` is compiled into the bundle for the shell to draw, written
+// into the entry document as a `<meta>`, and, in a build, written into the
+// artefact as `build.json`. The dev server stamps its page too, with the
+// checkout it started from, so a browser run can tell which build served it.
 
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { isLoopback, readIdentity } from '../api/identity.ts';
+import {
+  buildIdentifier,
+  STAMP_FILE,
+  STAMP_META,
+  STAMP_SHAPE,
+  STAMP_VARIABLE,
+} from './build-stamp.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -86,6 +99,33 @@ function servedIdentity(): Plugin {
   };
 }
 
+/**
+ * The version stamp. `scripts/build.mjs` names the identifier once and hands it
+ * over, so the artefact carries the one it checks; a bare `vite` or `vite build`
+ * reads the checkout itself.
+ */
+function buildStamp(): Plugin {
+  const handed = process.env[STAMP_VARIABLE];
+  if (handed !== undefined && !STAMP_SHAPE.test(handed)) {
+    throw new Error(`${STAMP_VARIABLE}=${JSON.stringify(handed)} is not a build identifier`);
+  }
+  const build = handed ?? buildIdentifier(root);
+  return {
+    name: 'ops-astro-build-stamp',
+    config: () => ({ define: { 'import.meta.env.VITE_OPS_ASTRO_BUILD': JSON.stringify(build) } }),
+    transformIndexHtml: () => [
+      { tag: 'meta', attrs: { name: STAMP_META, content: build }, injectTo: 'head' },
+    ],
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: STAMP_FILE,
+        source: `${JSON.stringify({ build })}\n`,
+      });
+    },
+  };
+}
+
 const relative = (id: string): string => id.slice(root.length).replace(/\?.*$/u, '');
 
 const apiTarget = process.env['API_ORIGIN'] ?? 'http://127.0.0.1:8790';
@@ -93,7 +133,7 @@ const port = Number(process.env['WEB_PORT'] ?? '5190');
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  plugins: [react(), moduleGraphManifest(), servedIdentity()],
+  plugins: [react(), moduleGraphManifest(), servedIdentity(), buildStamp()],
   resolve: {
     alias: {
       '@launchastro/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),

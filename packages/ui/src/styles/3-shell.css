@@ -63,6 +63,13 @@
   letter-spacing: var(--tracking-label);
   color: var(--ink-faint);
 }
+.rail__build {
+  margin: auto 0 0;
+  padding: 0 var(--s-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+}
 .rail__group {
   display: flex;
   flex-direction: column;
