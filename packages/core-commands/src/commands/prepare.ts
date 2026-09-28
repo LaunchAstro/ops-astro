@@ -44,7 +44,7 @@ import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
-import { parseRequest } from './operands.ts';
+import { parseRequest, refuseUndescribed } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export const REVISION_FIXES: readonly string[] = [
@@ -554,6 +554,8 @@ export async function prepareCommand(
   const irrelevant =
     refuseIrrelevantTarget(request, declaration) ?? refuseOtherTarget(request, declaration);
   if (irrelevant !== undefined) return irrelevant;
+  const undescribed = refuseUndescribed(request, declaration);
+  if (undescribed !== undefined) return refused(undescribed);
 
   const spine = await readTaskSpine(tx);
 
