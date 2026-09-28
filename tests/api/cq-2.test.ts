@@ -28,13 +28,17 @@ import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tena
 
 const ROOT = join(import.meta.dirname, '../..');
 const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
-const [BOARD, QUEUE] = [pathOf('task.board'), pathOf('task.queue')];
+const [BOARD, QUEUE, PEOPLE] = [pathOf('task.board'), pathOf('task.queue'), pathOf('person.list')];
 const TABLES = 'audit_events operations records grants authentication_attempts'.split(' ');
 const NAMES = JSON.stringify(['GATE_SIGNING_', 'DELEGATION_CREDENTIAL_KEY']);
 const DEAD = 'postgres://cq2@127.0.0.1:1/cq2';
 const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[name] ?? DEAD);
-type Task = Record<'title' | 'recordId' | 'client', string>;
-type Party = { key: string; member: string; tasks: Task[] };
+type Task = Record<'title' | 'recordId' | 'client' | 'person', string>;
+type Party = { key: string; member: string; tasks: Task[]; add: (name: string) => Promise<Task> };
+const ghost = (t: Task): Task => ({ ...t, recordId: randomUUID() });
+const ids = (text: string) => [
+  ...new Set(text.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gu)),
+];
 
 /** `node apps/api/server.ts`, printing the key settings it holds once listening, or at exit. */
 function start(settings: Record<string, string>, [url, admin]: readonly string[] = [DEAD, DEAD]) {
@@ -107,19 +111,21 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     const member = await enrol(fixture.db.app, id, `${key}-member`);
     await fixture.db.app.withBusiness(id, async (tx) => await grantTo(tx, member, 'write'));
     const own = await tokenFor(member.presented.subject);
-    const tasks = [`${key}-client-1`, `${key}-client-2`].map(async (client) => {
+    const add = async (client: string): Promise<Task> => {
       const task = { operationId: randomUUID(), fields: { title: `cq2-${randomUUID()}` } };
       const { body } = await send(api, `/api/b/${key}${CREATE}`, task, own);
       const recordId = String(body['recordId']);
-      await fixture.db.app.withBusiness(id, async (tx) => {
-        const personId = await insertPerson(tx, client);
+      const person = await fixture.db.app.withBusiness(id, async (tx) => {
+        const personId = await insertPerson(tx, `${client}-${randomUUID()}`);
         await insertActor(tx, personId);
         await insertMapping(tx, await insertLogin(tx, client), personId, member.actorId);
         await grantTo(tx, { ...member, personId }, 'read', { kind: 'record', id: recordId });
+        return personId;
       });
-      return { title: task.fields.title, recordId, client: await tokenFor(client) };
-    });
-    return { key, member: own, tasks: await Promise.all(tasks) };
+      return { title: task.fields.title, recordId, person, client: await tokenFor(client) };
+    };
+    const tasks = await Promise.all([1, 2].map(async (n) => await add(`${key}-client-${n}`)));
+    return { key, member: own, tasks, add };
   }
 
   beforeAll(async () => {
@@ -203,7 +209,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   it('CQ-2 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
     const [b, c] = [await party('bravo'), await party('charlie')];
-    // Read, list, count (the board's and queue's), export and change, as `who`.
+    // Read, list, count (the board's and queue's), export, change and the people list, as `who`.
     const tries = (p: Party, t: Task, who: string) =>
       Object.entries({
         [READ]: { recordId: t.recordId },
@@ -216,23 +222,35 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
           expectedRevision: 1,
           fields: { title: 'cq2-changed' },
         },
+        [PEOPLE]: {},
       }).map(async ([path, body]) => await send(api, `/api/b/${p.key}${path}`, body, who));
     const reached = async (p: Party, t: Task, who: string) =>
       JSON.stringify((await Promise.all(tries(p, t, who))).map((a) => [a.status, a.body]));
-    // Each client reads its own task; the other client's, in the same business, it cannot.
+    // Each client reads its own task. Another client's in the same business is answered as a
+    // made-up id is, and no answer names another record, another person or a title not its own.
     const records = await dump(['records']);
     const clients = [b, c].map(async (p) => {
       const [one, two] = p.tasks as [Task, Task];
-      const [own, other, others] = await Promise.all([
+      const [own, other, none, others] = await Promise.all([
         reached(p, one, one.client),
         reached(p, two, one.client),
+        reached(p, ghost(two), one.client),
         reached(p, one, two.client),
       ]);
       expect([own.startsWith('[[200,'), own.includes(one.title)]).toEqual([true, true]);
+      expect(other).toBe(none);
+      // The only ids any answer to a client carries are its own task's: no other record or person.
+      const mine = ids(`${one.recordId} ${one.title}`).toSorted();
+      expect([ids([own, other, none].join()).toSorted(), ids(others)]).toStrictEqual([mine, []]);
       expect([other.includes(two.title), others.includes(one.title)]).toEqual([false, false]);
     });
     await Promise.all(clients);
     expect(await dump(['records'])).toBe(records);
+    // Counts: another client's task and person arriving change nothing the first client sees.
+    const [first] = b.tasks as [Task];
+    const was = await reached(b, first, first.client);
+    await b.add('bravo-client-3');
+    expect(await reached(b, first, first.client)).toBe(was);
     // A stranger's refusal is the target's own door ledger (CQ-1); nothing else may change.
     const before = await dump(TABLES.slice(0, 4));
     const strangers = [c, b].flatMap((p) => [p.member].concat(p.tasks.map((t) => t.client)));
@@ -248,7 +266,6 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     for (const t of [b, c].flatMap((p) => p.tasks))
       expect(`${crossed}${log}`).not.toContain(t.title);
     // The records were changeable all along: their own member's change goes through.
-    const [first] = b.tasks as [Task];
     expect((await Promise.all(tries(b, first, b.member)))[4]?.status).toBe(200);
   });
 
