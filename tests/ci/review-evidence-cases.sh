@@ -620,6 +620,40 @@ run_case "CQ-13 list continuation is a field: after a blank line in the item" 1 
 run_case "CQ-13 list continuation is a field: a paragraph's indented next line" 1 "$OK_BODY${P2}Outcomes
     Code review: changes requested" "README.md"
 
+# CQ-13 fix, Sol on 1fb12f0: an `Agent-model:` may name its company first.
+# The builders' companies are all refused, and one of no known company fails.
+BUILDER="OpenAI/gpt-6-sol"
+run_case "CQ-13 review record bound to head: a company-named Agent-model refuses its own company" 1 "$OK_BODY" "README.md"
+RECORD="$(record claude-opus-5-5 "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a company-named Agent-model accepts another company" 0 "$OK_BODY" "README.md"
+RECORD="$SAVED"
+BUILDER="claude-opus-5-5
+Anthropic/claude-opus-5-5
+OpenAI/gpt-6-sol"
+run_case "CQ-13 review record bound to head: every builder's company is refused" 1 "$OK_BODY" "README.md"
+BUILDER="some-model"
+run_case "CQ-13 review record bound to head: an Agent-model of no known company fails" 1 "$OK_BODY" "README.md"
+BUILDER=claude-opus-5-5
+
+# CQ-13 fix, Sol on 1fb12f0: `<!--` inside indented or fenced code is code,
+# and hides no later line.
+LATE="${P2}Code review: changes requested"
+run_case "CQ-13 code hides no field: an indented code line opening a comment" 1 "$OK_BODY$P2    <!-- sample$LATE" "README.md"
+run_case "CQ-13 code hides no field: a tab-indented code line opening a comment" 1 "$OK_BODY$P2"$'\t'"<!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment opening on a later code line" 1 "$OK_BODY$P2    sample
+    <!--$LATE" "README.md"
+run_case "CQ-13 code hides no field: a fence inside a list item" 1 "$OK_BODY$P2- Sample
+
+    $FENCE
+    <!--
+    $FENCE$LATE" "README.md"
+run_case "CQ-13 code hides no field: a real comment still hides" 0 "$OK_BODY$P2<!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 0 "$OK_BODY$P2- Sample
+
+    <!--$LATE
+-->" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

@@ -22,7 +22,14 @@ const MERGE_DOCS = [
   'docs/supply-chain-pins.md',
   'docs/current-decisions.md',
 ];
-const OTHER_RULES = [/human-merged/iu, /\bhuman merge\b/iu, /\bNathan merges\b/u];
+const OTHER_RULES = [
+  /human-merged/iu,
+  /\bhuman merge\b/iu,
+  /\bNathan merges\b/u,
+  // Sol on 1fb12f0: green checks alone stated as the whole rule.
+  /\brule is every required check green\b/iu,
+  /\bno discretion beyond that rule\b/iu,
+];
 
 it('CQ-13 merge rule agrees', () => {
   for (const path of MERGE_DOCS) {
@@ -55,28 +62,36 @@ it('CQ-13 issues pointer list', () => {
   }
 });
 
-// The required checks on the primary ruleset before CQ-13, as read from the
-// live ruleset on 28 September 2026. Those this repository's workflow emits
-// must still be emitted; the two app checks keep their configuration.
-const REQUIRED_FROM_CI = [
-  'contamination gate',
-  'gitleaks over the full history',
-  'local checks',
-  'database conformance gate',
-  'database conformance',
-  'OSI licence allowlist',
-  'commit messages and provenance',
-  'review evidence for this revision',
-  'pull request size',
-];
+// The required status checks on the primary ruleset (23396133) before CQ-13,
+// read from the live ruleset on 28 September 2026 as context and app id.
+// `.github/required-checks.json` is the list after the change; it must hold
+// every one of these, bound to the same app. Sol on 1fb12f0: the test compares
+// the two lists, not job names or prose.
+const ACTIONS = 15368;
+const BEFORE = [
+  ['local checks', ACTIONS],
+  ['contamination gate', ACTIONS],
+  ['gitleaks over the full history', ACTIONS],
+  ['OSI licence allowlist', ACTIONS],
+  ['commit messages and provenance', ACTIONS],
+  ['pull request size', ACTIONS],
+  ['review evidence for this revision', ACTIONS],
+  ['CodeQL', 57789],
+  ['DCO', 1861],
+  ['database conformance gate', ACTIONS],
+  ['database conformance', ACTIONS],
+] as const;
+
+type Check = { context: string; integration_id: number };
 
 it('CQ-13 no check dropped', () => {
+  const after = (
+    JSON.parse(read('.github/required-checks.json')) as { required_status_checks: Check[] }
+  ).required_status_checks.map((c) => `${c.context} @ ${c.integration_id}`);
+  for (const [context, app] of BEFORE) expect(after).toContain(`${context} @ ${app}`);
+  // Every Actions check the list requires is a job this repository's CI emits.
   const ci = read('.github/workflows/ci.yml');
   const jobs = [...ci.matchAll(/^ {4}name: (.+)$/gmu)].map((m) => m[1]?.trim());
-  for (const name of REQUIRED_FROM_CI) expect(jobs, name).toContain(name);
-  expect(ci).toContain('run: node scripts/review-evidence-check.mjs');
-  expect(ci).toContain('run: bash tests/ci/review-evidence-cases.sh');
-  expect(flat(read('docs/plan/ruleset.md'))).toContain(
-    'review-evidence, pull-request-size and DCO results',
-  );
+  for (const entry of after.filter((c) => c.endsWith(` @ ${ACTIONS}`)))
+    expect(jobs, entry).toContain(entry.slice(0, -` @ ${ACTIONS}`.length));
 });
