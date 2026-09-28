@@ -26,6 +26,8 @@
     "gate:cases": "bash tests/gate/gate-cases.sh",
     "gate:hooks": "bash tests/gate/hook-exit-cases.sh",
     "commits:cases": "bash tests/ci/commit-range-cases.sh",
+    "migrations:unchanged": "node scripts/migrations-unchanged.mjs",
+    "migrations:cases": "node --test tests/ci/migrations-unchanged-cases.mjs",
     "size:cases": "bash tests/ci/pr-size-cases.sh",
     "review:cases": "bash tests/ci/review-evidence-cases.sh",
     "session:cases": "bash tests/agents/session-check-cases.sh",

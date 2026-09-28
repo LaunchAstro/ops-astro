@@ -34,6 +34,7 @@ const STEPS = [
   ['gate:cases', 'the gate catches what it must'],
   ['gate:hooks', 'the hook handles every exit code'],
   ['commits:cases', 'commit messages and provenance'],
+  ['migrations:cases', 'a changed applied migration fails'],
   ['provenance:cases', 'the actual commit message hook'],
   ['candidate:cases', 'candidate snapshots and public-content cases'],
   ['public:history:cases', 'public policy on outgoing history and metadata'],

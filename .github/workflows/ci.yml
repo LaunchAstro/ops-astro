@@ -285,6 +285,13 @@ jobs:
         run: node scripts/commit-range-check.mjs
       - name: The checker's own cases
         run: bash tests/ci/commit-range-cases.sh
+      - name: Migrations already on the base branch are byte-unchanged
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/migrations-unchanged.mjs
+      - name: The migration check's own cases
+        run: node --test tests/ci/migrations-unchanged-cases.mjs
 
   pr-size:
     name: pull request size
