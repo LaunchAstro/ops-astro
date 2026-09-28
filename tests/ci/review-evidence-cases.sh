@@ -656,6 +656,25 @@ run_case "CQ-13 code hides no field: indented code opening a comment after a clo
 sample
 $FENCE
     <!--$LATE" "README.md"
+# CQ-13 fix 2, Sol on c1ed67d: a lone `====` is paragraph text, which indented
+# code cannot interrupt; only under paragraph text is it a heading's underline.
+run_case "CQ-13 code hides no field: a lone equals line is text, not a break" 1 "$OK_BODY$P2====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: an indented equals line continues the paragraph" 1 "$OK_BODY${P2}Title
+    ====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a heading's equals underline still ends the paragraph" 0 "$OK_BODY${P2}Title
+====
+    Code review: changes requested" "README.md"
+# CQ-13 fix 2: an opening comment mark inside an inline code span is code.
+run_case "CQ-13 code hides no field: a comment mark inside a code span" 1 "$OK_BODY${P2}Sample \`<!--\` text$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment mark inside a double-backtick span" 1 "$OK_BODY${P2}Sample \`\` \` <!-- \`\` text$LATE" "README.md"
+run_case "CQ-13 code hides no field: a comment after a closed code span still hides" 0 "$OK_BODY${P2}Sample \`x\` <!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: an unclosed backtick does not stop a comment" 0 "$OK_BODY${P2}Sample \` <!--$LATE
+-->" "README.md"
+run_case "CQ-13 code hides no field: a comment opened before a code span still hides" 0 "$OK_BODY${P2}Sample <!-- \`x\`$LATE
+-->" "README.md"
 run_case "CQ-13 code hides no field: a real comment still hides" 0 "$OK_BODY$P2<!--$LATE
 -->" "README.md"
 run_case "CQ-13 code hides no field: a list item's continuation still opens a comment" 0 "$OK_BODY$P2- Sample
