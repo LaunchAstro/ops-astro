@@ -290,6 +290,56 @@ function refuseUnstorableOperands(request: UncheckedRequest): Refused | undefine
   return refused(refuseUnstorable(unstorable));
 }
 
+/**
+ * The identifier operands a handler binds to a uuid parameter without typing
+ * them first, by command: optional ones, which may be absent or `null`, and
+ * required ones, which must be there.
+ *
+ * `refuseMalformedIdentifier` answers a *string* that is not a uuid, and it
+ * lets any other type through, because `task.move` and `task.reparent` answer
+ * a non-string `board` or `parentId` by name in their own handlers. These
+ * three did not, and final review round 2 (R2-SURFACE-8) found `afterId: 5`,
+ * `lineageId: 5` and a `gateId` of 5 or none each reaching the bind and
+ * answering 503. They are refused by name, as API.md says of every absent or
+ * mistyped operand. `task.cancel` and `task.restart` type their `lineageId`
+ * themselves and are not listed.
+ *
+ * Round 3 found two more. The R2-AUTHORITY-33 fix lower-cases `versionId` in
+ * `decide()`, which threw on one that was absent or not a string
+ * (R3-AUTHORITY-6), and `task.create` carries `parentId`, `board` and
+ * `boardSection` into its placement without typing any of them (R3-SURFACE-8).
+ */
+const TYPED_IDENTIFIERS: Readonly<
+  Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
+> = {
+  'task.rank': { optional: ['afterId', 'beforeId'] },
+  'task.propose': { optional: ['lineageId'] },
+  'task.create': { optional: ['parentId', 'board', 'boardSection'] },
+  'task.decide': { required: ['gateId', 'versionId'] },
+};
+
+const TYPED_IDENTIFIER_FIXES: readonly string[] = [
+  'Send each name above as the identifier string you were given.',
+];
+
+function refuseMistypedIdentifier(
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): Refused | undefined {
+  const typed = TYPED_IDENTIFIERS[declaration.name];
+  if (typed === undefined) return undefined;
+  const named = request;
+  const mistyped = [
+    ...(typed.optional ?? []).filter(
+      (field) =>
+        named[field] !== undefined && named[field] !== null && typeof named[field] !== 'string',
+    ),
+    ...(typed.required ?? []).filter((field) => typeof named[field] !== 'string'),
+  ];
+  if (mistyped.length === 0) return undefined;
+  return refused(refuseCommand('FIELD_VALUE_INVALID', mistyped.toSorted(), TYPED_IDENTIFIER_FIXES));
+}
+
 const BODY_FIXES: readonly string[] = [
   'Send only the fields this command declares.',
   'A command that targets no existing record takes no record identifier.',
@@ -534,6 +584,8 @@ export async function prepareCommand(
   // operand check on this prefix has always come: the typed request the
   // command is handed, or the refusal naming what did not match, which a
   // missing target answers first when it is not an identifier's.
+  const mistyped = refuseMistypedIdentifier(request, declaration);
+  if (mistyped !== undefined) return mistyped;
   const parsed = parseRequest(request, declaration);
   if ('refusal' in parsed && !parsed.afterTarget) return refused(parsed.refusal);
   const unstorable = refuseUnstorableOperands(request);

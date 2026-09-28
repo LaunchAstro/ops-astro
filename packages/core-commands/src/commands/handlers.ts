@@ -27,7 +27,6 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
-import { expectedRevisionOf } from './prepare.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -70,9 +69,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     commentOnTask(tx, context, request.body, request.audience, request.commentType),
 
   // The revision travels with the rest of the envelope rather than as a
-  // field of the settings payload: `expectedRevisionOf` reads it the same
-  // way the targeted commands' check does, so a settings body naming one is
-  // answered instead of silently dropped.
+  // field of the settings payload, and goes to the settings write as sent,
+  // so a settings body naming one is answered instead of silently dropped:
+  // a mistyped one by the write's own `FIELD_VALUE_INVALID` (its row says
+  // `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
 
@@ -110,13 +110,7 @@ function setting(
   context: CommandContext,
   request: RequestOf<'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off'>,
 ): Promise<HandlerOutcome> {
-  return setBusinessSetting(
-    tx,
-    context,
-    request.command,
-    request.value,
-    expectedRevisionOf(request),
-  );
+  return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }
 
 export async function handleCommand<K extends WriteName>(
