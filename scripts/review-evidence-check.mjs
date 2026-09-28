@@ -661,6 +661,161 @@ if (hidden.length > 0) {
   );
 }
 
+// --- rule 5: a review field counts only on a top-level plain line ---------
+
+// CQ-13 fix 5, the orchestrator's ruling on Sol's fifth review: a record in a
+// raw HTML pre block was read as visible. Rather than add one more context,
+// a field line is operative only as a plain line of a top-level paragraph, at
+// the margin. A field line anywhere else fails: in a fence, indented code, a
+// code span, an HTML block (open until its closing tag and a blank line), a
+// list, quote or footnote (with their lazy lines), a table, or a heading. The
+// tracker is conservative: where it cannot tell, the line is in a container,
+// and the author moves the field to a plain line.
+const PLAIN_FIELD =
+  /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:/iu;
+const ANY_FENCE = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})/u;
+const NEST = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|\[\^[^\]]*\]:)/u;
+const HTML_OPEN = /^ {0,3}<(!--|\?|!\[CDATA\[|![A-Za-z]|\/?[A-Za-z][A-Za-z0-9-]*)/u;
+const INLINE_BLOCK =
+  /<(pre|details|summary|div|table|script|style|textarea|template|blockquote|ul|ol|dl|section|article|aside|noscript|iframe|object|svg|math)\b/iu;
+const RAW_TAGS = new Set(['pre', 'script', 'style', 'textarea']);
+const VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+]);
+const UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/u;
+const DELIMITER = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/u;
+const htmlBlock = (opener, line) => {
+  const token = opener.toLowerCase();
+  const tag = token.replace(/^\//u, '');
+  if (token === '!--') return { until: '-->', blank: false };
+  if (token === '?') return { until: '?>', blank: false };
+  if (token === '![cdata[') return { until: ']]>', blank: false };
+  if (token.startsWith('!')) return { until: '>', blank: false };
+  if (RAW_TAGS.has(tag)) return { until: `</${tag}>`, blank: false };
+  const closed = token.startsWith('/') || VOID_TAGS.has(tag) || /\/>\s*$/u.test(line);
+  return { until: closed ? '' : `</${tag}`, blank: true };
+};
+const topLevel = (text) => {
+  const lines = text.split('\n').map((l) => l.replace(/\r$/u, ''));
+  const plain = lines.map(() => false);
+  let fence = '';
+  let html = null;
+  let nest = false;
+  let table = false;
+  let afterBlank = true;
+  let para = -1;
+  let tick = 0;
+  // An HTML block's end: its token, then (for most tags) a blank line.
+  const htmlLine = (i, from) => {
+    if (html.until !== '' && lines[i].toLowerCase().includes(html.until, from)) html.until = '';
+    if (html.until === '' && !html.blank) html = null;
+  };
+  for (const [i, line] of lines.entries()) {
+    const blank = line.trim() === '';
+    if (fence !== '') {
+      const f = ANY_FENCE.exec(line);
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && line.trim().endsWith(f[1][0]))
+        fence = '';
+      continue;
+    }
+    if (html !== null) {
+      if (blank && html.until === '') html = null;
+      else htmlLine(i, 0);
+      afterBlank = blank;
+      continue;
+    }
+    if (blank) {
+      afterBlank = true;
+      para = -1;
+      tick = 0;
+      table = false;
+      continue;
+    }
+    const col = columns(line);
+    const wasBlank = afterBlank;
+    afterBlank = false;
+    // Inside a list or quote any fence counts; at the top level, as the
+    // reader has it, only one indented under four columns.
+    const inNest = nest && (!wasBlank || col > 0 || NEST.test(line));
+    const f = (inNest ? ANY_FENCE : FENCE).exec(line);
+    if (f) {
+      fence = f[1];
+      para = -1;
+      continue;
+    }
+    if (inNest) continue;
+    nest = false;
+    if (table) continue;
+    const h = HTML_OPEN.exec(line);
+    if (h) {
+      html = htmlBlock(h[1], line);
+      htmlLine(i, h.index + h[0].length);
+      para = -1;
+      continue;
+    }
+    if (NEST.test(line)) {
+      nest = true;
+      para = -1;
+      continue;
+    }
+    if (para !== -1 && UNDERLINE.test(line)) {
+      for (let j = para; j < i; j += 1) plain[j] = false;
+      para = -1;
+      continue;
+    }
+    if (BREAK.test(line.trimStart()) || (col >= 4 && para === -1)) {
+      para = -1;
+      continue;
+    }
+    if (
+      line.includes('|') &&
+      DELIMITER.test(lines[i + 1] ?? '') &&
+      (lines[i + 1] ?? '').includes('|')
+    ) {
+      table = true;
+      para = -1;
+      continue;
+    }
+    if (para === -1) para = i;
+    plain[i] = tick === 0 && col === 0;
+    for (const run of line.match(/`+/gu) ?? []) {
+      if (tick === 0) tick = run.length;
+      else if (run.length === tick) tick = 0;
+    }
+    const inline = INLINE_BLOCK.exec(line);
+    if (inline) html = { until: `</${inline[1].toLowerCase()}`, blank: true };
+  }
+  return { lines, plain };
+};
+const levels = topLevel(body);
+const buried = levels.lines.flatMap((line, i) => {
+  RAW_FIELD.lastIndex = 0;
+  const m = RAW_FIELD.exec(line);
+  if (m === null || (levels.plain[i] && PLAIN_FIELD.test(line))) return [];
+  return [`line ${i + 1}: ${fieldKey(m[1] ?? '')}`];
+});
+if (buried.length > 0) {
+  failures.push(
+    'a review field appears where it could be hidden:\n' +
+      buried.map((b) => `          ${b}`).join('\n') +
+      '\n        A review field counts only on a plain line of a top-level paragraph,\n' +
+      '        at the margin: not in a list, quote, table, heading, HTML block,\n' +
+      '        fence, code span or indented code. Move it to its own plain line.',
+  );
+}
+
 console.log(`review-evidence: ${changed.length} changed file(s), ${sensitive.length} sensitive`);
 
 if (failures.length > 0) {

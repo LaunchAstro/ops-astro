@@ -201,7 +201,7 @@ run_case "a commented-out checkpoint is not a checkpoint" 1 "<!-- Review checkpo
 Code review: no findings" "README.md"
 
 # Bullets and bold are ordinary Markdown and still read as fields.
-run_case "a bulleted code-review field passes" 0 "$BARE_BLOCK
+run_case "a bulleted code-review field fails: a field counts only on a top-level plain line" 1 "$BARE_BLOCK
 
 - **Code review**: no findings$NOT_SENSITIVE" "README.md"
 run_case "a bulleted code-review field that was not run fails" 1 "$BARE_BLOCK
@@ -480,10 +480,10 @@ run_case "a numbered code-review line asking for changes fails" 1 "$GOOD_BLOCK${
 run_case "a ticked checklist code line asking for changes fails" 1 "$GOOD_BLOCK$P2* [x] Code review: changes requested" "README.md"
 run_case "a bold code-review line in a list inside a quote fails" 1 "$GOOD_BLOCK$P2> - **Code review:** 3 findings open" "README.md"
 run_case "an underscored bad code-review line fails" 1 "$GOOD_BLOCK${P2}__Code review__: not run" "README.md"
-run_case "a good security line written as a heading still passes" 0 "$GOOD_BLOCK$P2## Security review: run against $HEAD, no findings" "$CUSTODY"
+run_case "a good security line written as a heading fails: a field counts only on a top-level plain line" 1 "$GOOD_BLOCK$P2## Security review: run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon passes" 0 "$GOOD_BLOCK$P2**Security review:** run against $HEAD, no findings" "$CUSTODY"
 run_case "bold closing after the colon still reads a stale revision" 1 "$GOOD_BLOCK$P2**Security review:** run against $OTHER, no findings" "$CUSTODY"
-run_case "a bold whole line in a checklist passes" 0 "$BARE_BLOCK$P2- [x] **Code review: no findings.**$NOT_SENSITIVE" "README.md"
+run_case "a bold whole line in a checklist fails: a field counts only on a top-level plain line" 1 "$BARE_BLOCK$P2- [x] **Code review: no findings.**$NOT_SENSITIVE" "README.md"
 # An unclosed comment hides everything after it from the merger, and the check
 # read it anyway. Fail closed: an unclosed comment runs to the end of the body.
 run_case "the only security line inside an unclosed comment fails" 1 "$GOOD_BLOCK$P2<!--
