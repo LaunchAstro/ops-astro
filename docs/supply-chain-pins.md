@@ -161,6 +161,10 @@ notification records what happened; it does not ask permission. The decisions
 [Contributing](../CONTRIBUTING.md#who-invokes-the-merge) reserves to Nathan
 are not reachable by a green check, and a reduction of any check's tier is one
 of them, so no pin here is loosened by a dependency update merging.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 
 ## How long a new package version waits
 

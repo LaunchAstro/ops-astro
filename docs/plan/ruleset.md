@@ -81,4 +81,8 @@ pull request and the merged revision; that notification records what happened
 and does not ask permission. An applicable conformance proof remains a
 separate required condition, and the decisions listed in
 [Contributing](../../CONTRIBUTING.md#who-invokes-the-merge) as Nathan's own
-are not reachable by a green check.
+are not reachable by a green check. The merge rule: an agent merges on
+Nathan's credential once every required check is green on the head being
+merged; a change touching one of the eight protected components merges only on
+that component's green conformance proof and Nathan's acceptance; the
+production deploy is the one other human gate.

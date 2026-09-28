@@ -34,6 +34,10 @@ A frontier model from a different company than the builder's reviews that
 work, and Copilot reviews the hosted revision. An agent invokes the merge on
 Nathan's credential once every required check is green;
 [Contributing](CONTRIBUTING.md) holds the seven questions and what stays his.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 A change to one of the eight protected components also needs that component's
 conformance test to be green. The sandbox's final reviewed contract requires
 Nathan's approval before implementation.

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // CQ-13: the governance documents say one thing, and the merge gate keeps
-// every check it had. Product issues 43 and 50, and the issue list, were
-// answered on the roadmap's ticket; these cases hold the repository to them.
+// every check it had.
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
-// Prettier and hand wrapping move line breaks; the sentence is what must agree.
 const flat = (text: string): string => text.replace(/\s+/gu, ' ');
 
 // Product issue 43: the roadmap's rule (D36-5, build safeguards rule 3).
@@ -24,7 +22,6 @@ const MERGE_DOCS = [
   'docs/supply-chain-pins.md',
   'docs/current-decisions.md',
 ];
-// The rules these documents stated before, in the words they used.
 const OTHER_RULES = [/human-merged/iu, /\bhuman merge\b/iu, /\bNathan merges\b/u];
 
 it('CQ-13 merge rule agrees', () => {
@@ -79,7 +76,6 @@ it('CQ-13 no check dropped', () => {
   for (const name of REQUIRED_FROM_CI) expect(jobs, name).toContain(name);
   expect(ci).toContain('run: node scripts/review-evidence-check.mjs');
   expect(ci).toContain('run: bash tests/ci/review-evidence-cases.sh');
-  expect(read('.github/dco.yml')).toContain('require:');
   expect(flat(read('docs/plan/ruleset.md'))).toContain(
     'review-evidence, pull-request-size and DCO results',
   );

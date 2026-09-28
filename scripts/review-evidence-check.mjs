@@ -16,8 +16,11 @@
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
 //
-// It reads PR_BODY, HEAD_SHA and CHANGED_FILES so the same code runs in
-// continuous integration and in its own tests.
+// 3. CQ-13, product issue 42: the body carries the record of the review by a
+//    model from another company than the builder's, for this head.
+//
+// It reads PR_BODY, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
+// runs in continuous integration and in its own tests.
 //
 // What it does not do, and the pull request template says so too: it reads no
 // reviewer identity. A green result proves the evidence is bound to this exact
@@ -94,6 +97,14 @@ const changed =
           .filter(Boolean);
       })();
 
+// The builder's models: every commit's `Agent-model:` trailer in the range.
+const base = process.env['BASE_SHA'] ?? '';
+const trailers = ['log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`];
+const builders = (
+  process.env['AGENT_MODELS'] ??
+  (base === '' ? '' : execFileSync('git', trailers, { encoding: 'utf8' }))
+).split('\n');
+
 const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
@@ -144,11 +155,44 @@ const dropComments = (line) => {
     rest = rest.slice(close + 3);
   }
 };
+// CQ-13, product issue 48: indented code is code too. A line indented four
+// columns past the open list item's content (a tab reaching the next multiple
+// of four) is code after a blank line or another code line; it cannot
+// interrupt a paragraph. A list item's indented continuation is the item's
+// own text, read as a field as before.
+const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?: {1,4}|\t)/u;
+const columns = (line) => {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === ' ') col += 1;
+    else if (ch === '\t') col += 4 - (col % 4);
+    else break;
+  }
+  return col;
+};
 const visible = (text, { keepFences }) => {
   const out = [];
   let fence = '';
   let comment = false;
   let pending = '';
+  let afterBlank = true;
+  let inCode = false;
+  let listCol = 0;
+  const push = (kept) => {
+    if (kept.trim() === '') {
+      afterBlank = true;
+      out.push(kept);
+      return;
+    }
+    const col = columns(kept);
+    if (afterBlank && col < listCol) listCol = 0;
+    const code = col >= listCol + 4 && (afterBlank || inCode);
+    const item = code ? null : LIST_ITEM.exec(kept.trimStart());
+    if (item !== null && col < listCol + 4) listCol = col + item[0].length;
+    afterBlank = false;
+    inCode = code;
+    out.push(code && !keepFences ? '' : kept);
+  };
   for (const line of text.split('\n')) {
     let rest = line;
     if (comment) {
@@ -160,6 +204,7 @@ const visible = (text, { keepFences }) => {
       const f = fenceRun(rest);
       if (f !== null) {
         fence = f.run;
+        afterBlank = inCode = false;
         out.push(keepFences ? rest : '');
         continue;
       }
@@ -180,9 +225,9 @@ const visible = (text, { keepFences }) => {
     ({ kept, open: comment } = dropComments(pending + rest));
     pending = '';
     if (comment) pending = kept;
-    else out.push(kept);
+    else push(kept);
   }
-  if (comment) out.push(pending);
+  if (comment) push(pending);
   return out.join('\n');
 };
 
@@ -455,6 +500,48 @@ if (sensitive.length > 0) {
         '        an answer.',
     );
   }
+}
+
+// --- rule 3: the other company's review record for this head --------------
+
+// CQ-13, product issue 42. Rules 1 and 2 read outcomes the author states. The
+// record the cross-company reviewer posts, copied into the body, names the
+// head it read, its model and its verdict. Every record line is read, as every
+// security line is: a record for an older head is not evidence for this one.
+const COMPANY = [
+  [/^(?:claude|opus|sonnet|haiku|fable)\b/u, 'Anthropic'],
+  [/^(?:gpt|o\d|codex)\b/u, 'OpenAI'],
+  [/^gemini\b/u, 'Google'],
+];
+const companyOf = (model) => COMPANY.find(([r]) => r.test(model.trim().toLowerCase()))?.[1] ?? '';
+const builtBy = new Set(builders.map(companyOf).filter(Boolean));
+const RECORD =
+  /^[ \t]*(?:(?:#+(?!#)|>|[-*+]|\d{1,9}[.)])[ \t]*)*[*_]{0,3}(reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:[ \t]*[*_]{0,3}[ \t]*(.*)$/gimu;
+const record = { reviewer: [], model: [], 'head sha': [], verdict: [] };
+for (const m of visible(body, { keepFences: false }).matchAll(RECORD)) {
+  record[(m[1] ?? '').toLowerCase()].push((m[2] ?? '').replace(/[ \t]*[*_]+$/u, '').trim());
+}
+const refused = {
+  reviewer: () => false,
+  model: (v) => companyOf(v) === '' || builtBy.has(companyOf(v)),
+  'head sha': (v) =>
+    !head.toLowerCase().startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
+  verdict: (v) => !/^approve\.?$/iu.test(v),
+};
+const recordProblems = Object.entries(record).flatMap(([name, values]) =>
+  values.length === 0
+    ? [`no \`${name}:\` line`]
+    : values
+        .filter((v) => outcome(v, [/./u]) !== 'accepted' || refused[name](v))
+        .map((v) => `${name}: ${v}`),
+);
+if (recordProblems.length > 0) {
+  failures.push(
+    "the pull request carries no complete record of another company's review\n" +
+      `        of this head:\n${recordProblems.map((p) => `          ${p}`).join('\n')}\n` +
+      "        Copy the reviewer's four lines: `Head SHA:` this head, `Model:` from\n" +
+      "        another company than the commits' `Agent-model:`, `Verdict: approve`.",
+  );
 }
 
 console.log(`review-evidence: ${changed.length} changed file(s), ${sensitive.length} sensitive`);

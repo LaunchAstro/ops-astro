@@ -93,6 +93,15 @@ reduction of any check's tier and the sandbox's final contract stay his
 decision. Automatic merging stays disabled. Per
 [ADR 0046](adr/0046-merge-mode-machine-proven-merges.md).
 
+**Amended 28 September 2026** (CQ-13, on Nathan's line of that day). The merge
+rule: an agent merges on Nathan's credential once every required check is
+green on the head being merged; a change touching one of the eight protected
+components merges only on that component's green conformance proof and
+Nathan's acceptance; the production deploy is the one other human gate.
+Pull requests stay under 250 commits, with no ruleset change. Identifier
+resolution stays, tested, for its named callers MP-8-6 and C48; API-1's
+command catalogue replaces capability-map discovery, which was not ported.
+
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical
 evidence digest with adjudicated verdicts remains outstanding. The

@@ -15,6 +15,11 @@ Pstack supplies selected standards inside that workflow.
 | Nathan                     | Decide the production deploy, the five protected parts, coherence waivers, tier reductions, and the final sandbox contract before it is built. |
 | Conformance proof          | The component's conformance test must be green before a change to one of the eight protected components merges. A check, not a person.         |
 
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
+
 The builder cannot approve its own work. A model's report is not a
 conformance proof. A review of a previous revision does not cover later
 changes.

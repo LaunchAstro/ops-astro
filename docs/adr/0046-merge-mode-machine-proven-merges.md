@@ -8,6 +8,12 @@ gate, per
 **Amended 23 September 2026**: the merge is invoked by an agent rather than
 by a person, from the first product pull request after the governance change
 that carried this amendment.
+**Amended 28 September 2026** (CQ-13, product issue 43): every document
+that states the merge rule states this one sentence. The merge rule: an agent
+merges on Nathan's credential once every required check is green on the head
+being merged; a change touching one of the eight protected components merges
+only on that component's green conformance proof and Nathan's acceptance; the
+production deploy is the one other human gate.
 
 Use merge commits only. Disable squash, rebase merge, linear history, and
 all automatic merging. Preserve reviewed signed commits and require that the
@@ -25,8 +31,8 @@ presses the button.
 **What is not reachable by a green check**, and stays Nathan's own decision:
 the production deploy, the five protected parts (T1a, T1d1, T1d2, T1e, T1i),
 a coherence waiver on the size cap, a reduction of any check's tier, and the
-sandbox's final contract. The governance change carrying this amendment is
-itself human-merged.
+sandbox's final contract. Nathan merged the governance change carrying this
+amendment himself.
 
 Separate the non-bypassable main protections from any solo-maintainer exemption
 for a human approving-review requirement. The exemption must not bypass a pull

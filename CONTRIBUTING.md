@@ -48,8 +48,10 @@ agent judges it. The review ruleset requests Copilot's review on every push.
 The primary ruleset requires every review conversation resolved, Copilot's
 included, before the merge button is enabled. `review evidence for this
 revision` is a required check, so the code-review and security-review
-outcomes must be stated for the exact head being merged. None of these
-reports that a review finished; [the ruleset procedure](docs/plan/ruleset.md)
+outcomes must be stated for the exact head being merged, and so must the
+record the cross-company reviewer posted: `Reviewer:`, `Model:` (not the
+builder's company), `Head SHA:` and `Verdict: approve`. The record is copied
+text, not proof that the reading happened; [the ruleset procedure](docs/plan/ruleset.md)
 says why no required check can. Question four below is answered in the pull
 request body and bound to the head by that check, not by a further gate.
 
@@ -61,8 +63,10 @@ These stay Nathan's own decision, and no green check releases any of them:
 - a reduction of any check's tier;
 - the sandbox's final contract, approved before implementation.
 
-This governance change is itself human-merged, and so is any change whose
-merge waits on a protected component's conformance proof.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 
 ### The seven questions
 
@@ -147,6 +151,12 @@ changes, or `size-waiver-coherence` for a change that must be reviewed together.
 The maintainer decides a coherence waiver. One file may not contain more
 than 400 hand-written changed lines in a pull request. Split work names the
 invariant test that verifies the integrated result.
+
+Keep every pull request under 250 commits, the most the DCO check can
+evaluate; no ruleset change makes room for more. One ticket per pull request
+under the size cap keeps it there. A pull request that cannot be split waits
+for Nathan's line before the DCO check leaves the required checks for its one
+merge, and the removal and the restore are recorded on its ticket.
 
 Use synthetic fixtures. Retain third-party licences and attribution. Presets
 are data only, as the [preset boundary](docs/licensing/preset-boundary.md)

@@ -18,9 +18,14 @@ blind spots.
 Copilot reviews the hosted revision. An agent then invokes the merge on
 Nathan's credential once every required check is green, and notifies him.
 [Contributing](../../CONTRIBUTING.md) lists what stays his decision.
+The merge rule: an agent merges on Nathan's credential once every required
+check is green on the head being merged; a change touching one of the eight
+protected components merges only on that component's green conformance proof
+and Nathan's acceptance; the production deploy is the one other human gate.
 
 Before product code begins, rehearse the complete loop on a throwaway feature,
-including security review, hosted checks, a human merge, and the verify ticket.
+including security review, hosted checks, a merge Nathan invoked himself, and
+the verify ticket.
 Retain a verify command that CI runs. Foundation tooling checks alone do not
 complete this rehearsal.
 
