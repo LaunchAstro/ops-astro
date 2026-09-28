@@ -708,7 +708,7 @@ async function orphanAndFabricated() {
  * agent rather than in process.
  *
  * What it can prove today and what it cannot are both recorded. `task.decide`
- * is declared with the action `decide` (`commands/surface.ts`) and
+ * is declared with the action `decide` (`core-wire/src/surface.ts`) and
  * `authority/grants.ts` matches `(collection, action)` exactly -- there is no
  * implication from `manage` -- so until a seeded identity holds `task:decide`
  * every decision here is `SCOPE_NOT_GRANTED` and everything downstream of it

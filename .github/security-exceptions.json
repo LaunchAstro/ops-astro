@@ -16,7 +16,7 @@
       "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
       "path": "scripts/local-seed.mjs",
       "matches": ["1589f278e618b24e", "1589f278e618b24e"],
-      "file": "13c663636ca75e4f",
+      "file": "336ee1fe17e9c119",
       "reason": "Local seed script; the pattern is built from fixed variable names in the script.",
       "impact": "None: runs only on a developer machine against its own local env file.",
       "owner": "Nathan Mulligan, maintainer",

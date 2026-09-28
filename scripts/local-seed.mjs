@@ -80,7 +80,7 @@ const GRANTS_BY_ROLE = {
     ['task', 'manage'],
     ['person', 'read'],
     // The two settings commands take `manage` on the `settings` collection
-    // (`commands/surface.ts`), and the admin had six task actions and
+    // (`core-wire/src/surface.ts`), and the admin had six task actions and
     // `person:read`, so as seeded nobody could write either setting: WEB-COMMENTS
     // observed `POST /settings/set_four_eyes_threshold` as the admin answering
     // 403 SCOPE_NOT_GRANTED against the live stack. A setting that decides who
@@ -89,7 +89,7 @@ const GRANTS_BY_ROLE = {
     ['settings', 'manage'],
     // A decision draws on the business's budget cap and signs a link into the
     // append-only decision chain, which is the same class of act as the
-    // `settings` grant above. `commands/surface.ts` declares `task.decide`
+    // `settings` grant above. `core-wire/src/surface.ts` declares `task.decide`
     // with the action `decide`, and `authority/grants.ts` matches the
     // collection and the action exactly -- there is no implication, so
     // `task:manage` never covered it. As seeded before this line no identity
