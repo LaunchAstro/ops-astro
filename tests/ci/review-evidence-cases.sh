@@ -26,11 +26,21 @@ fail() { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; FAILED=$((FAILE
 HEAD=1111111111111111111111111111111111111111
 OTHER=2222222222222222222222222222222222222222
 
+# CQ-13 (product issue 42): every body carries the other company's review
+# record for this head, so each case starts with one unless it sets RECORD.
+RECORD="Reviewer: Sol (Codex)
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+
+"
+BUILDER=claude-opus-5-5
+
 # run <label> <expect> <body> <changed files, newline separated>
 run_case() {
   local label="$1" expect="$2" body="$3" files="$4" actual
   actual="$(
-    PR_BODY="$body" HEAD_SHA="$HEAD" CHANGED_FILES="$files" \
+    PR_BODY="$RECORD$body" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
       node "$CHECKER" >/dev/null 2>&1; echo $?
   )"
   if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
@@ -574,6 +584,45 @@ $FENCE
 -->
 Code review: no findings
 Security review: not required: no sensitive paths changed" "README.md"
+
+# CQ-13, product issue 42. The record of the other company's review names the
+# head it read; an older head, no record, the builder's own company or a
+# verdict other than approve fails.
+OK_BODY="$GOOD_BLOCK$NOT_SENSITIVE"
+record() { printf 'Reviewer: Sol (Codex)\nModel: %s\nHead SHA: %s\nVerdict: %s\n\n' "$1" "$2" "$3"; }
+SAVED="$RECORD"
+RECORD="$(record gpt-6-sol "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a record for this head passes" 0 "$OK_BODY" "README.md"
+RECORD=""
+run_case "CQ-13 review record bound to head: no record fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$OTHER" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a record for an older head fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$HEAD" approve)"$'\n\n'"$(record gpt-6-sol "$OTHER" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a second record for an older head fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record claude-opus-5-5 "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: the builder's own company fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record some-model "$HEAD" approve)"$'\n\n'
+run_case "CQ-13 review record bound to head: a model of no known company fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record gpt-6-sol "$HEAD" 'changes requested')"$'\n\n'
+run_case "CQ-13 review record bound to head: a verdict asking for changes fails" 1 "$OK_BODY" "README.md"
+RECORD="$(record REPLACE-WITH-OUTCOME '<head sha>' REPLACE-WITH-OUTCOME)"$'\n\n'
+run_case "CQ-13 review record bound to head: the template's placeholders fail" 1 "$OK_BODY" "README.md"
+RECORD="<!--"$'\n'"$(record gpt-6-sol "$HEAD" approve)"$'\n'"-->"$'\n\n'
+run_case "CQ-13 review record bound to head: a record inside a comment fails" 1 "$OK_BODY" "README.md"
+RECORD="$SAVED"
+
+# CQ-13, product issue 48. CommonMark: a line indented four spaces or a tab
+# after a blank line or another indented-code line is indented code, shown as
+# code and not a field. A list item's indented continuation is not code.
+run_case "CQ-13 indented code not a field: four spaces after a blank line" 0 "$OK_BODY$P2    Code review: changes requested" "README.md"
+run_case "CQ-13 indented code not a field: a tab after a blank line" 0 "$OK_BODY$P2"$'\t'"Security review: rejected" "README.md"
+run_case "CQ-13 indented code not a field: after another indented-code line" 0 "$OK_BODY$P2    example
+    Code review: changes requested" "README.md"
+run_case "CQ-13 list continuation is a field: after a blank line in the item" 1 "$OK_BODY$P2- Outcomes
+
+    Code review: changes requested" "README.md"
+run_case "CQ-13 list continuation is a field: a paragraph's indented next line" 1 "$OK_BODY${P2}Outcomes
+    Code review: changes requested" "README.md"
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
