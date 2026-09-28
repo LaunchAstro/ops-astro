@@ -47,11 +47,21 @@ export function refuse(
   return { ok: false, refusal: refuseCommand(code, [], [reason, fix]) };
 }
 
+/**
+ * Whether a refusal is one of the runtime's own: a register row marked
+ * `runtime`, and not one of L2's delegation codes. It takes any refusal, so
+ * it answers from the register rather than by elimination, or an identity
+ * code such as `AUTH_UNKNOWN_LOGIN` would count as the runtime's.
+ */
 export function isRuntimeRefusal(
   refusal: CommandRefusal,
 ): refusal is CommandRefusal<RuntimeRefusalCode> {
-  return !Object.hasOwn(DELEGATION_CODES, refusal.code);
+  return RUNTIME_CODES.has(refusal.code) && !Object.hasOwn(DELEGATION_CODES, refusal.code);
 }
+
+const RUNTIME_CODES: ReadonlySet<string> = new Set(
+  REFUSAL_REGISTER.filter((row) => row.runtime).map((row) => row.code),
+);
 
 // A record over L2's union rather than a list, so a delegation code L2 adds is
 // a type error here instead of a code this module silently claims as its own.

@@ -17,7 +17,7 @@ interface Rows {
 }
 
 const ok = (rows: readonly string[]) => ({ ok: true as const, value: { rows } });
-const denied = { refused: true as const, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] };
+const denied = { refused: true as const, code: 'SCOPE_NOT_GRANTED' as const, names: [], fixes: [] };
 const down = { unavailable: true as const, because: 'The API did not answer.' };
 
 function projection(grantKey = 'alpha:tok'): {

@@ -18,7 +18,14 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { insertBusiness } from '../identity/fixture.ts';
+import {
+  insertActor,
+  insertBusiness,
+  insertLogin,
+  insertMapping,
+  insertPerson,
+} from '../identity/fixture.ts';
+import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { agentWorld, type AgentWorld } from './agent-fixture.ts';
 
@@ -94,9 +101,16 @@ describe('CQ-5 the source', () => {
     const files = sourcesOf([...LAYERS, 'apps/web', 'apps/cli', 'scripts']);
     const texts = files.map((f) => [f, readFileSync(f, 'utf8')] as const);
     const named = /\bfrom(?:Records|Identity|AgentIdentity|Reasoned|PresetPlan)\b/u;
-    // A replacement re-spells another refusal: `refuseCommand(x.code, ...)`.
+    // A replacement re-spells another refusal: `refuseCommand(x.code, ...)`,
+    // or rebuilds one under a constant code from its parts:
+    // `refuseCommand('SCOPE_NOT_GRANTED', [], x.refusal.fixes)`.
     const respelled = /refuseCommand\(\s*[\w.]+\.code\b/u;
-    expect(texts.filter(([, t]) => named.test(t) || respelled.test(t)).map(([f]) => f)).toEqual([]);
+    const rebuilt = /refuseCommand\((?:[^()]|\([^()]*\))*?\.refusal\.(?:code|names|fixes)\b/u;
+    const converts = (t: string) => named.test(t) || respelled.test(t) || rebuilt.test(t);
+    expect(texts.filter(([, t]) => converts(t)).map(([f]) => f)).toEqual([]);
+    // The rebuild CQ-5's first head had in `shares.ts` is caught.
+    const planted = "refusal: refuseCommand('SCOPE_NOT_GRANTED', [], authorised.refusal.fixes)";
+    expect(converts(planted)).toBe(true);
   });
 
   it('Sol proof, criterion 6: share authority denial is not rebuilt', () => {
@@ -126,7 +140,24 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
   const read = async (business: BusinessId, who: Member, body: object) =>
     await commands.executeRead(db.app, business, who.presented, body as Read);
 
-  /** A business whose member holds write and read, and two clients one read grant each. */
+  /**
+   * A client outside the business: a login and a person with no membership,
+   * who stands on the one task the member shares with them (the external view).
+   */
+  async function client(id: BusinessId, member: Member, key: string, recordId: string) {
+    const subject = `${key}-${randomUUID()}`;
+    return await db.app.withBusiness(id, async (tx): Promise<Member> => {
+      const personId = await insertPerson(tx, key);
+      const actorId = await insertActor(tx, personId);
+      await insertMapping(tx, await insertLogin(tx, subject), personId, member.actorId);
+      const sharer = { personId: member.personId, actorId: member.actorId };
+      const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
+      if (!shared.ok) throw new Error(`share refused ${shared.refusal.code}`);
+      return { personId, actorId, presented: { provider: 'supabase', subject } };
+    });
+  }
+
+  /** A business whose member holds write, read and share, and two external clients one share each. */
   async function party(key: string): Promise<Party> {
     const id = (await insertBusiness(db.app, key)) as BusinessId;
     await installSpine(db.app, id);
@@ -134,6 +165,7 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
     await db.app.withBusiness(id, async (tx) => {
       await grantTo(tx, member, 'write');
       await grantTo(tx, member, 'read');
+      await grantTo(tx, member, 'share');
     });
     const tasks: Task[] = [];
     for (const n of [1, 2]) {
@@ -141,14 +173,10 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
       // eslint-disable-next-line no-await-in-loop
       const made = await command(id, member, { command: 'task.create', fields: { title } });
       if (commands.isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
-      // eslint-disable-next-line no-await-in-loop
-      const client = await enrol(db.app, id, `${key}-client-${String(n)}`);
       const recordId = String(made.recordId);
       // eslint-disable-next-line no-await-in-loop
-      await db.app.withBusiness(id, async (tx) => {
-        await grantTo(tx, client, 'read', { kind: 'record', id: recordId });
-      });
-      tasks.push({ id: recordId, title, client });
+      const shared = await client(id, member, `${key}-client-${String(n)}`, recordId);
+      tasks.push({ id: recordId, title, client: shared });
     }
     return { id, member, tasks };
   }
@@ -194,7 +222,13 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
       expect(theirs.replaceAll(one.id, 'ID')).toBe(nobody.replaceAll(ghost.id, 'ID'));
       for (const leaked of [one.title, one.client.personId, p.member.personId])
         expect(theirs).not.toContain(leaked);
-      // Client to client: another client's task, the same way.
+      // Client to client, across the external boundary: each client reads its
+      // own task through the shared view, and another client's task is
+      // answered as a made-up id is.
+      // eslint-disable-next-line no-await-in-loop
+      const own = await read(p.id, one.client, { read: 'task.read', recordId: one.id });
+      expect(own).toHaveProperty('sharedTask');
+      expect(JSON.stringify(own)).toContain(one.title);
       // eslint-disable-next-line no-await-in-loop
       const [other, none] = await Promise.all([
         reach(p, two, one.client),

@@ -30,7 +30,13 @@
 
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { checkAuthority, issueGrant, revokeGrant, type Subject } from './grants.ts';
+import {
+  checkAuthority,
+  issueGrant,
+  revokeGrant,
+  type RefusalCode as AuthorityRefusalCode,
+  type Subject,
+} from './grants.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /** Who is sharing: the person, and the actor the grant row names as granter. */
@@ -47,7 +53,8 @@ export interface ShareRequest {
   readonly personId: string;
 }
 
-export type ShareRefusalCode = 'SCOPE_NOT_GRANTED' | 'NOT_FOUND';
+/** Authority's own refusal, passed through unchanged, or `NOT_FOUND`. */
+export type ShareRefusalCode = AuthorityRefusalCode | 'NOT_FOUND';
 
 export type ShareDecision<T> =
   | { readonly ok: true; readonly value: T }
@@ -129,7 +136,7 @@ async function refuseShare(
     scope: { kind: 'record', id: request.recordId },
   });
   if (!authorised.ok) {
-    return { ok: false, refusal: refuseCommand('SCOPE_NOT_GRANTED', [], authorised.refusal.fixes) };
+    return { ok: false, refusal: authorised.refusal };
   }
   const found = await tx.query<{ readonly record: boolean; readonly person: boolean }>(
     `select exists (select 1 from public.records r
