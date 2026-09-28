@@ -190,6 +190,10 @@ const BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t
 // Sol on c1ed67d: `====` underlines a heading only under paragraph text, and
 // only indented under four columns; anywhere else it is paragraph text.
 const SETEXT = /^=+[ \t]*$/u;
+// CQ-13 fix 3, Sol on 170ef0e: an underline sits in its paragraph's own
+// container. A lazy line, outdented from the list item or unquoted after
+// quoted text, cannot be one; it stays paragraph text.
+const QUOTED = /^(?:>[ \t]?)+/u;
 const columns = (line) => {
   let col = 0;
   for (const ch of line) {
@@ -207,6 +211,7 @@ const visible = (text, { keepFences }) => {
   let afterBlank = true;
   // The last line was paragraph text, which indented code cannot interrupt.
   let para = false;
+  let paraQuoted = false;
   let listCol = 0;
   // Sol on 1fb12f0: whether a line is code is decided before its comments
   // are, so `<!--` inside indented code is code and hides nothing after it.
@@ -229,14 +234,22 @@ const visible = (text, { keepFences }) => {
     }
     const col = columns(kept);
     const code = isCode(kept);
-    const brk =
-      !code &&
-      (BREAK.test(kept.trimStart()) ||
-        (para && col < listCol + 4 && SETEXT.test(kept.trimStart())));
+    const lead = kept.trimStart();
+    const quoted = QUOTED.test(lead);
+    const underline =
+      para &&
+      quoted === paraQuoted &&
+      col >= listCol &&
+      col < listCol + 4 &&
+      SETEXT.test(lead.replace(QUOTED, ''));
+    const brk = !code && (BREAK.test(lead) || underline);
     if ((afterBlank || brk) && col < listCol) listCol = 0;
     const item = code ? null : LIST_ITEM.exec(kept.trimStart());
     if (item !== null && col < listCol + 4) listCol = col + item[0].length;
     afterBlank = false;
+    // A quoted line starts or continues a quoted paragraph; an unquoted one
+    // starts an unquoted paragraph, or continues the open one lazily.
+    if (quoted || !para) paraQuoted = quoted;
     para = !code && !brk;
     out.push(code && !keepFences ? '' : kept);
   };

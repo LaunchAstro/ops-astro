@@ -695,6 +695,14 @@ run_case "Sol proof, criterion 10: an outdented equals line after a list keeps a
 run_case "CQ-13 code hides no field: a lazy equals line after a quote keeps an indented outcome visible" 1 "$OK_BODY$P2> Quote
 ====
     Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a second lazy equals line after a quote is text too" 1 "$OK_BODY$P2> Quote
+====
+====
+    Code review: changes requested" "README.md"
+run_case "CQ-13 code hides no field: a quote interrupting a paragraph underlines its own text" 0 "$OK_BODY${P2}Text
+> Quote
+> ====
+    Code review: changes requested" "README.md"
 run_case "CQ-13 code hides no field: an equals line under a list item's text still underlines it" 0 "$OK_BODY$P2- Item
   ====
       Code review: changes requested" "README.md"
