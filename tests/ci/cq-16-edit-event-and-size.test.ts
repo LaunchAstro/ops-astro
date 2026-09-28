@@ -4,7 +4,7 @@
 // counts non-test code only. Each case is named after a line of the ticket's supporting checklist.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -12,7 +12,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const CI = '.github/workflows/ci.yml';
-const ON_EDIT = '.github/workflows/review-evidence-on-edit.yml';
+// FU-93 moved the check here from ci.yml; it runs on code events and on an edit.
+const REVIEW = '.github/workflows/review-evidence.yml';
 const CHECK = 'review evidence for this revision';
 
 /** A top-level key's block, from `key:` to the next line that starts in column one. */
@@ -60,42 +61,40 @@ describe('CQ-16 edited runs review evidence only', () => {
     const types = /^ {4}types: \[(.*)\]$/mu.exec(top(ci, 'on'))?.[1]?.split(/,\s*/u);
     expect(types).toEqual(['opened', 'synchronize', 'reopened', 'labeled', 'unlabeled']);
 
-    const edit = read(ON_EDIT);
-    expect(top(edit, 'on')).toBe('on:\n  pull_request:\n    types: [edited]\n\n');
+    expect(prTypes(read(REVIEW))).toContain('edited');
   });
 
   it('CQ-16 edited runs review evidence only: one job, with no condition, named exactly as the required check', () => {
-    const edit = jobs(read(ON_EDIT));
+    const edit = jobs(read(REVIEW));
     expect([...edit.keys()]).toEqual(['review-evidence']);
     const block = edit.get('review-evidence') ?? '';
     expect(/^ {4}name: (.*)$/mu.exec(block)?.[1]).toBe(CHECK);
-    expect(job(read(CI), CHECK)).not.toBe('');
+    expect(job(read(CI), CHECK)).toBe('');
     // A condition could skip it, and `needs` would name a job this workflow does not hold.
     expect(block.match(/^ {4}(if|needs):/mu)).toBeNull();
   });
 
   it('CQ-16 edited runs review evidence only: an edit cannot cancel a code run, because its concurrency group is its own', () => {
-    const edit = read(ON_EDIT);
+    const edit = read(REVIEW);
     expect(/^name: (.*)$/mu.exec(edit)?.[1]).not.toBe(/^name: (.*)$/mu.exec(read(CI))?.[1]);
     expect(top(edit, 'concurrency')).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
   });
 
   it('CQ-16 edited runs review evidence only: both runs read the description as it stands, and judge it last', () => {
-    for (const block of [job(read(CI), CHECK), job(read(ON_EDIT), CHECK)]) {
-      // The event's copy of the body is the body when the run was queued. A code run that
-      // finishes after an edit's run must not judge the old one.
-      expect(block).not.toContain('github.event.pull_request.body');
-      expect(step(block, FETCH)).toContain('gh api "repos/${REPO}/pulls/${PR_NUMBER}"');
-      expect(step(block, BINDS)).toContain('PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")"');
-      expect(step(block, BINDS)).toContain('node scripts/review-evidence-check.mjs');
-      expect(step(block, CASES)).toContain('bash tests/ci/review-evidence-cases.sh');
-      const order = [CASES, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
-      expect(order.every((at, i) => at > (order[i - 1] ?? -1))).toBe(true);
-    }
+    const block = job(read(REVIEW), CHECK);
+    // The event's copy of the body is the body when the run was queued. A code run that
+    // finishes after an edit's run must not judge the old one.
+    expect(block).not.toContain('github.event.pull_request.body');
+    expect(step(block, FETCH)).toContain('gh api "repos/${REPO}/pulls/${PR_NUMBER}"');
+    expect(step(block, BINDS)).toContain('PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")"');
+    expect(step(block, BINDS)).toContain('node scripts/review-evidence-check.mjs');
+    expect(step(block, CASES)).toContain('bash tests/ci/review-evidence-cases.sh');
+    const order = [CASES, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
+    expect(order.every((at, i) => at > (order[i - 1] ?? -1))).toBe(true);
   });
 
   it('CQ-16 edited runs review evidence only: a base change fails the edit run until every check runs again', () => {
-    const block = job(read(ON_EDIT), CHECK);
+    const block = job(read(REVIEW), CHECK);
     const base = step(block, BASE);
     expect(base).toContain('BASE_FROM: ${{ github.event.changes.base.ref.from }}');
     expect(block.indexOf(`- name: ${BASE}\n`)).toBeLessThan(block.indexOf(`- name: ${FETCH}\n`));
@@ -112,7 +111,7 @@ describe('CQ-16 edited runs review evidence only', () => {
 
 describe('CQ-16 workflow permissions', () => {
   it('CQ-16 workflow permissions: the new workflow holds a read-only token and no secret', () => {
-    const edit = read(ON_EDIT);
+    const edit = read(REVIEW);
     expect(top(edit, 'permissions')).toBe(
       'permissions:\n  contents: read\n  pull-requests: read\n\n',
     );
@@ -126,19 +125,15 @@ describe('CQ-16 workflow permissions', () => {
     expect(ci.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target/u)).toBeNull();
     expect(top(ci, 'permissions')).toBe('permissions:\n  contents: read\n\n');
     const own = [...jobs(ci)].filter(([, b]) => /^ {4}permissions:/mu.test(b)).map(([k]) => k);
-    expect(own).toEqual(['review-evidence']);
-    expect(job(ci, CHECK)).toContain(
-      '    permissions:\n      contents: read\n      pull-requests: read\n',
-    );
+    expect(own).toEqual([]);
   });
 
   it('CQ-16 workflow permissions: the token reaches only the step that reads the description', () => {
-    for (const block of [job(read(CI), CHECK), job(read(ON_EDIT), CHECK)]) {
-      expect(block.match(/github\.token/gu)).toHaveLength(1);
-      expect(step(block, FETCH)).toContain('GH_TOKEN: ${{ github.token }}');
-      // The checkout leaves no copy of the token in .git/config for the steps that run head code.
-      expect(block).toContain('persist-credentials: false');
-    }
+    const block = job(read(REVIEW), CHECK);
+    expect(block.match(/github\.token/gu)).toHaveLength(1);
+    expect(step(block, FETCH)).toContain('GH_TOKEN: ${{ github.token }}');
+    // The checkout leaves no copy of the token in .git/config for the steps that run head code.
+    expect(block).toContain('persist-credentials: false');
   });
 });
 
@@ -280,5 +275,56 @@ describe('CQ-16 contributing says code only', () => {
     expect(text).toContain('`tests/`');
     expect(text).toContain('`*.test.*`');
     expect(text).toContain('`*.spec.*`');
+  });
+});
+
+// FU-93, issue 93: the edit run's passing result sat beside the push run's failed one, because
+// the two came from different workflows, and the pull request stayed blocked until someone re-ran
+// the push run's job. A newer run of a workflow replaces its older run's results, so one workflow
+// must hold the check and run on every event that can change its verdict.
+const workflows = () =>
+  readdirSync(join(ROOT, '.github/workflows'))
+    .filter((f) => /\.ya?ml$/u.test(f))
+    .map((f) => `.github/workflows/${f}`);
+
+/** The `pull_request` event types a workflow runs on; GitHub's default when it names none. */
+function prTypes(text: string): string[] {
+  const on = top(text, 'on');
+  if (!/^ {2}pull_request:/mu.test(on)) return [];
+  const listed = /^ {2}pull_request:\n {4}types: \[(.*)\]$/mu.exec(on)?.[1];
+  return listed === undefined ? ['opened', 'synchronize', 'reopened'] : listed.split(/,\s*/u);
+}
+
+/** Every check name a workflow's jobs report under. */
+const names = (text: string) => [...text.matchAll(/^ {4}name: (.+)$/gmu)].map((m) => m[1]?.trim());
+
+describe('FU-93 one workflow owns review evidence', () => {
+  it('FU-93 one workflow owns review evidence: one job in one workflow carries the check name, so a newer run replaces a stale failure', () => {
+    expect(workflows().filter((p) => job(read(p), CHECK) !== '')).toEqual([REVIEW]);
+  });
+
+  it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, and on an edit', () => {
+    expect(top(read(REVIEW), 'on')).toBe(
+      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited]\n\n',
+    );
+    expect(read(REVIEW)).not.toContain('pull_request_target');
+  });
+
+  it('FU-93 one workflow owns review evidence: a push runs every required check, and an edit runs this one alone', () => {
+    const required = (
+      JSON.parse(read('.github/required-checks.json')) as {
+        required_status_checks: { context: string; integration_id: number }[];
+      }
+    ).required_status_checks
+      .filter((c) => c.integration_id === 15368)
+      .map((c) => c.context);
+    const on = (event: string) =>
+      workflows()
+        .filter((p) => prTypes(read(p)).includes(event))
+        .flatMap((p) => names(read(p)));
+    for (const event of ['opened', 'synchronize', 'reopened'])
+      for (const context of required) expect(on(event), `${event}: ${context}`).toContain(context);
+    // Nothing else runs on an edit, so no other check is re-run, skipped, cancelled or left missing.
+    expect(on('edited')).toEqual([CHECK]);
   });
 });

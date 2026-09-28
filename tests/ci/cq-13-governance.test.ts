@@ -89,8 +89,11 @@ it('CQ-13 no check dropped', () => {
     JSON.parse(read('.github/required-checks.json')) as { required_status_checks: Check[] }
   ).required_status_checks.map((c) => `${c.context} @ ${c.integration_id}`);
   for (const [context, app] of BEFORE) expect(after).toContain(`${context} @ ${app}`);
-  // Every Actions check the list requires is a job this repository's CI emits.
-  const ci = read('.github/workflows/ci.yml');
+  // Every Actions check the list requires is a job this repository's CI emits. FU-93 moved
+  // review evidence into a workflow of its own.
+  const ci = ['ci.yml', 'review-evidence.yml']
+    .map((f) => read(`.github/workflows/${f}`))
+    .join('\n');
   const jobs = [...ci.matchAll(/^ {4}name: (.+)$/gmu)].map((m) => m[1]?.trim());
   for (const entry of after.filter((c) => c.endsWith(` @ ${ACTIONS}`)))
     expect(jobs, entry).toContain(entry.slice(0, -` @ ${ACTIONS}`.length));
