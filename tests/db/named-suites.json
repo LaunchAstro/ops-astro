@@ -130,6 +130,7 @@
     "tests/commands/cq-5.test.ts",
     "tests/api/cq-6.test.ts",
     "tests/api/cq-6-body.test.ts",
+    "tests/runtime/cq-8-db.test.ts",
     "tests/api/sol-cq6-review.test.ts",
     "tests/api/sol-cq6-fix-review.test.ts",
     "tests/identity/external-party.test.ts",

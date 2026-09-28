@@ -13,7 +13,7 @@
 // Nothing here writes. Each function returns what the server decided, or a
 // refusal, and the command that called it writes once.
 
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
 
@@ -211,9 +211,7 @@ export async function lockSiblings(
     parentId === null
       ? `board:${board?.toLowerCase() ?? 'none'}`
       : `parent:${parentId.toLowerCase()}`;
-  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `task.siblings:${tx.businessId}:${set}`,
-  ]);
+  await advisoryLock(tx, `task.siblings:${tx.businessId}:${set}`);
 }
 
 /** One sibling's rank, and whether it is in the working set or the trash. */

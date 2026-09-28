@@ -33,7 +33,8 @@ import { randomUUID } from 'node:crypto';
 import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import type { LockRequest } from './locks.ts';
+import { nextFence, personWriteLive, refuseLease } from './lease-ownership.ts';
+import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
@@ -232,17 +233,62 @@ export async function pickup(
   tx: TenantQuery,
   request: PickupRequest,
 ): Promise<RuntimeResult<PickedUp | PickedUpByPerson>> {
-  const discovered = await tx.query<{
-    readonly envelope_id: string;
-    readonly version_id: string;
-    readonly run_id: string;
-    readonly task_id: string;
-    readonly lineage_id: string;
-    readonly purpose: string;
-    readonly lease_id: string | null;
-    readonly cap_id: string;
-    readonly step_id: string;
-  }>(
+  const found = await findClaim(tx, request.reservationId);
+  // Final review R1 #10. A reservation on a trashed task is answered exactly
+  // as one that does not exist, as a trashed task is to its readers: the same
+  // two sentences the command layer gives for an unknown reservation, so the
+  // answer says nothing about what was there. Restore brings the work back.
+  if (found === undefined)
+    return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
+  const { locks, found: taskLeases } = await lockClaim(tx, request, found);
+
+  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
+  // pickup that waited on these locks past a lease's expiry would still read
+  // that lease as live and refuse the replacement. The clock read here, after
+  // the locks, is the one instant every lease-expiry decision below and the new
+  // lease's own expiry use.
+  const lockedAt = await lockedInstant(tx);
+  const rechecked = await recheckClaim(tx, request.reservationId, lockedAt);
+  if (!rechecked.ok) return rechecked;
+  const { state, plan } = rechecked.value;
+
+  const claimed = await claimHold(tx, request.reservationId, found, state, plan, locks);
+  if (!claimed.ok) return claimed;
+  const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
+  if (fenced !== null) return fenced;
+
+  // From the database instant above, not the process clock. Whole
+  // milliseconds, so the `Date` the delegation is minted with and the lease
+  // column hold the same instant.
+  const expiry = await tx.query<{ readonly at: Date }>(
+    `select date_trunc('milliseconds', $1::timestamptz + make_interval(secs => $2)) as at`,
+    [lockedAt, request.leaseSeconds],
+  );
+  const expiresAt = only(expiry, 'pickup: the new lease expiry').at;
+  const authorised = await authoriseClaimant(tx, request, found, expiresAt, lockedAt);
+  if (!authorised.ok) return authorised;
+  const delegation = authorised.value;
+
+  const lease = await writeLease(tx, request, found, claimed.value, delegation, expiresAt);
+  return await answer(tx, request, found, claimed.value, lease, delegation);
+}
+
+/** What discovery found behind the reservation, before any lock. */
+interface Found {
+  readonly envelope_id: string;
+  readonly version_id: string;
+  readonly run_id: string;
+  readonly task_id: string;
+  readonly lineage_id: string;
+  readonly purpose: string;
+  readonly lease_id: string | null;
+  readonly cap_id: string;
+  readonly step_id: string;
+}
+
+/** Find: the reservation and every row the claim touches, on a task not in the trash. */
+async function findClaim(tx: TenantQuery, reservationId: string): Promise<Found | undefined> {
+  const discovered = await tx.query<Found>(
     `select res.envelope_id, res.version_id, res.run_id, res.lease_id, env.cap_id,
             run.task_id, run.lineage_id, step.id as step_id, ver.purpose
        from public.reservations res
@@ -254,47 +300,49 @@ export async function pickup(
                                and task.deleted_at is null
       where res.business_id = $1 and res.id = $2
       order by step.ordinal limit 1`,
-    [tx.businessId, request.reservationId],
+    [tx.businessId, reservationId],
   );
-  const found = discovered[0];
-  // Final review R1 #10. A reservation on a trashed task is answered exactly
-  // as one that does not exist, as a trashed task is to its readers: the same
-  // two sentences the command layer gives for an unknown reservation, so the
-  // answer says nothing about what was there. Restore brings the work back.
-  if (found === undefined)
-    return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
+  return discovered[0];
+}
 
+/**
+ * Lock: the claimant's covering grants for share, then the complete set.
+ *
+ * Final review R1 #5. The task's live lease may be another reservation's,
+ * and if it has expired this pickup fences it. Fencing it is the transition
+ * that makes that lease's hold nonclaimable, so the hold is classified here
+ * too (R5), which needs its reservation, run, lineage and accounting parents
+ * in this set rather than reached for afterwards.
+ *
+ * R5. The cap is in the set because a replacement hold reads its committed
+ * total, and the reservation's own lease is in it because that is the lease
+ * this transaction may have to fence. Discovering either of them after the
+ * reservation lock would be the backwards acquisition the contract forbids.
+ * A lease that appears between discovery and the locks needs a lock not
+ * held and rolls back as `AffectedSetChanged`; one that ended goes on (N1).
+ */
+async function lockClaim(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+): Promise<{ readonly locks: LockSet; readonly found: readonly TaskLease[] }> {
   await holdCoveringGrants(tx, authoritySubjects(request), request.collection);
-
-  // Final review R1 #5. The task's live lease may be another reservation's,
-  // and if it has expired this pickup fences it below. Fencing it is the
-  // transition that makes that lease's hold nonclaimable, so the hold is
-  // classified here too (R5), which needs its reservation, run, lineage and
-  // accounting parents in this set rather than reached for afterwards.
-  const discoverTaskLeases = async (): Promise<readonly TaskLease[]> =>
-    await tx.query<TaskLease>(
-      `select l.id as lease_id, res.id as reservation_id, res.envelope_id, env.cap_id,
-              run.id as run_id, run.lineage_id
-         from public.leases l
-         left join public.reservations res
-           on res.business_id = l.business_id and res.lease_id = l.id
-          and res.state = 'held' and res.id <> $3
-         left join public.task_envelopes env
-           on env.business_id = res.business_id and env.id = res.envelope_id
-         left join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
-        where l.business_id = $1 and l.task_id = $2 and l.state = 'live'
-        order by l.id, res.id`,
-      [tx.businessId, found.task_id, request.reservationId],
-    );
-
-  // R5. The cap is in the set because a replacement hold reads its committed
-  // total, and the reservation's own lease is in it because that is the lease
-  // this transaction may have to fence. Discovering either of them after the
-  // reservation lock would be the backwards acquisition the contract forbids.
-  // A lease that appears between discovery and the locks needs a lock not
-  // held and rolls back as `AffectedSetChanged`; one that ended goes on (N1).
-  const { locks, found: taskLeases } = await lockRediscovered(tx, {
-    discover: discoverTaskLeases,
+  return await lockRediscovered(tx, {
+    discover: async () =>
+      await tx.query<TaskLease>(
+        `select l.id as lease_id, res.id as reservation_id, res.envelope_id, env.cap_id,
+                run.id as run_id, run.lineage_id
+           from public.leases l
+           left join public.reservations res
+             on res.business_id = l.business_id and res.lease_id = l.id
+            and res.state = 'held' and res.id <> $3
+           left join public.task_envelopes env
+             on env.business_id = res.business_id and env.id = res.envelope_id
+           left join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+          where l.business_id = $1 and l.task_id = $2 and l.state = 'live'
+          order by l.id, res.id`,
+        [tx.businessId, found.task_id, request.reservationId],
+      ),
     locks: (leases) => [
       { lockClass: 'cap', id: found.cap_id },
       { lockClass: 'envelope', id: found.envelope_id },
@@ -309,15 +357,14 @@ export async function pickup(
     changed:
       'pickup: the live leases on the task changed under discovery; roll back and rediscover rather than extending the lock set',
   });
+}
 
-  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
-  // pickup that waited on these locks past a lease's expiry would still read
-  // that lease as live and refuse the replacement. The clock read here, after
-  // the locks, is the one instant every lease-expiry decision below and the new
-  // lease's own expiry use.
-  const lockedAt = await lockedInstant(tx);
-
-  // Re-read under the locks. Everything above was discovery.
+/** Re-check, under the locks: everything above was discovery. */
+async function recheckClaim(
+  tx: TenantQuery,
+  reservationId: string,
+  lockedAt: string,
+): Promise<RuntimeResult<{ readonly state: ClaimState; readonly plan: ClaimPlan }>> {
   const claimable = await tx.query<ClaimState>(
     `select res.state, res.lease_id, res.held_minor::text as held_minor, run.state as run_state,
             exists (select 1 from public.handback_reports hr
@@ -342,181 +389,188 @@ export async function pickup(
        join public.records task on task.business_id = run.business_id and task.id = run.task_id
                                and task.deleted_at is null
       where res.business_id = $1 and res.id = $2`,
-    [tx.businessId, request.reservationId, lockedAt],
+    [tx.businessId, reservationId, lockedAt],
   );
   const state = claimable[0];
   // Gone, or its task trashed while this waited on the task lock: the same
   // answer as a reservation that never existed (#10).
   if (state === undefined)
     return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
-  const plan = planClaim(state, request.reservationId);
+  const plan = planClaim(state, reservationId);
   if (plan.kind === 'refuse') return plan.refusal;
-  const expiredLeaseId = plan.kind === 'replace' ? plan.fence : null;
+  return { ok: true, value: { state, plan } };
+}
 
-  // R5. The owning transaction does the whole expired-lease lifecycle. It
-  // fences the old lease and classifies the old hold under the locks it
-  // already holds; the replacement hold is opened below.
+/**
+ * Write the hold this claim works. R5: the owning transaction does the whole
+ * expired-lease lifecycle. It fences the old lease and classifies the old hold
+ * under the locks it already holds. The abandoned reservation is never
+ * revived; a replacement is a new row with a new attempt, on the
+ * still-approved version.
+ */
+async function claimHold(
+  tx: TenantQuery,
+  reservationId: string,
+  found: Found,
+  state: ClaimState,
+  plan: ClaimPlan,
+  locks: LockSet,
+): Promise<RuntimeResult<{ readonly reservationId: string; readonly attemptId: string }>> {
+  const expiredLeaseId = plan.kind === 'replace' ? plan.fence : null;
   if (expiredLeaseId !== null) {
     await endLease(tx, expiredLeaseId, 'expired');
     const classified = await classifyUnderLocks(
       tx,
-      {
-        reservationId: request.reservationId,
-        cause: 'lease_expired_and_fenced',
-        causeId: expiredLeaseId,
-      },
+      { reservationId, cause: 'lease_expired_and_fenced', causeId: expiredLeaseId },
       locks,
     );
     if (!classified.released) {
       return refuse(
         'RESERVATION_NOT_CLAIMABLE',
-        `the hold behind lease ${expiredLeaseId} could not be released: ${classified.reason}`,
+        `the hold behind this reservation's expired lease could not be released: ${classified.reason}`,
         'A retained or quarantined hold goes to its recorded owner, not to a worker.',
       );
     }
   }
-  // The abandoned reservation is never revived; a replacement is a new row
-  // with a new attempt, on the still-approved version.
-  const claimed: RuntimeResult<{ readonly reservationId: string; readonly attemptId: string }> =
-    plan.kind === 'fresh'
-      ? { ok: true, value: { reservationId: request.reservationId, attemptId: state.attempt_id } }
-      : await reserve(tx, {
-          envelopeId: found.envelope_id,
-          versionId: found.version_id,
-          runId: found.run_id,
-          stepId: found.step_id,
-          heldMinor: Number(state.held_minor),
-        });
-  if (!claimed.ok) return claimed;
-  const { reservationId, attemptId } = claimed.value;
+  if (plan.kind === 'fresh') {
+    return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
+  }
+  return await reserve(tx, {
+    envelopeId: found.envelope_id,
+    versionId: found.version_id,
+    runId: found.run_id,
+    stepId: found.step_id,
+    heldMinor: Number(state.held_minor),
+  });
+}
 
-  // Never steal a live lease. An expired one is fenced out by the new fence
-  // below rather than deleted, so a late report from it can still be retained.
+/**
+ * Never steal a live lease. An expired one is fenced out by the new fence
+ * rather than deleted, so a late report from it can still be retained. Read
+ * live under the task lock, so the guard in `endLease` changes nothing here.
+ * Its hold is classified in this transaction, under the locks taken for it,
+ * rather than left counted until a restart replay finds it (final review R1
+ * #5). A marked hold is quarantined by the classifier and stays with its
+ * recorded owner; this pickup goes on.
+ */
+async function fenceLiveLease(
+  tx: TenantQuery,
+  taskId: string,
+  taskLeases: readonly TaskLease[],
+  locks: LockSet,
+  lockedAt: string,
+): Promise<RuntimeResult<never> | null> {
   const held = await tx.query<{ readonly id: string; readonly expired: boolean }>(
     `select id, (expires_at <= $3::timestamptz) as expired from public.leases
       where business_id = $1 and task_id = $2 and state = 'live'`,
-    [tx.businessId, found.task_id, lockedAt],
+    [tx.businessId, taskId, lockedAt],
   );
   const current = held[0];
-  if (current !== undefined) {
-    if (!current.expired) {
-      return refuse(
-        'LEASE_HELD',
-        `another live lease owns the work on task ${found.task_id}`,
-        'Wait for it to be handed back, or for it to expire.',
-      );
-    }
-    // Read live just above under the task lock, so the guard in `endLease`
-    // changes nothing here. Its hold is classified in this transaction, under
-    // the locks taken for it above, rather than left counted until a restart
-    // replay finds it (final review R1 #5). A marked hold is quarantined by
-    // the classifier and stays with its recorded owner; this pickup goes on.
-    await endLease(tx, current.id, 'expired');
-    for (const row of taskLeases) {
-      if (row.lease_id !== current.id || row.reservation_id === null) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await classifyUnderLocks(
-        tx,
-        {
-          reservationId: row.reservation_id,
-          cause: 'lease_expired_and_fenced',
-          causeId: current.id,
-        },
-        locks,
-      );
-    }
+  if (current === undefined) return null;
+  if (!current.expired) {
+    return refuseLease('held', 'Wait for it to be handed back, or for it to expire.');
   }
-
-  // From the database instant above, not the process clock. Whole
-  // milliseconds, so the `Date` the delegation is minted with and the lease
-  // column hold the same instant.
-  const expiry = await tx.query<{ readonly at: Date }>(
-    `select date_trunc('milliseconds', $1::timestamptz + make_interval(secs => $2)) as at`,
-    [lockedAt, request.leaseSeconds],
-  );
-  const expiresAt = only(expiry, 'pickup: the new lease expiry').at;
-
-  // The claimant's authority, read under the locks (T3 lines 62-64).
-  let delegation: MintedDelegation | undefined;
-  if (request.claimant === 'person') {
-    // The person's own live grants on this task, and nobody else's: not the
-    // approver's, and not a body's choice. The approval is the recorded
-    // authorisation and was checked above; this is the claimant's authority.
-    // At the locked instant (final review R2-RUNTIME-4): a grant that lapsed
-    // while this waited on the cap does not count.
-    const granted = await checkAuthorityAt(
+  await endLease(tx, current.id, 'expired');
+  for (const row of taskLeases) {
+    if (row.lease_id !== current.id || row.reservation_id === null) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await classifyUnderLocks(
       tx,
-      authoritySubjects(request),
-      {
-        collection: request.collection,
-        action: 'write',
-        scope: { kind: 'record', id: found.task_id },
-      },
-      lockedAt,
+      { reservationId: row.reservation_id, cause: 'lease_expired_and_fenced', causeId: current.id },
+      locks,
     );
-    if (!granted.ok) {
+  }
+  return null;
+}
+
+/**
+ * Authorise the claimant, under the locks (T3 lines 62-64). A person: their
+ * own live grants on this task, and nobody else's -- not the approver's, and
+ * not a body's choice. The approval is the recorded authorisation and was
+ * checked above; this is the claimant's authority. At the locked instant
+ * (final review R2-RUNTIME-4): a grant that lapsed while this waited on the
+ * cap does not count.
+ *
+ * An agent: the delegation expires with the lease, minted against the
+ * delegating person's live grants, which L2 reads for itself; nothing is
+ * copied here. `purposeScope` is R5's one-task ceiling (coordinator addendum
+ * 1). L2 reads the delegating person's grants through `now()`, the
+ * transaction's start, so they are judged here first at the locked instant,
+ * with L2's own refusal, and a grant that lapsed mints nothing.
+ */
+async function authoriseClaimant(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+  expiresAt: Date,
+  lockedAt: string,
+): Promise<RuntimeResult<MintedDelegation | undefined>> {
+  if (request.claimant === 'person') {
+    const person = { subjects: authoritySubjects(request), collection: request.collection };
+    if (!(await personWriteLive(tx, person, found.task_id, lockedAt))) {
       return refuse(
         'SCOPE_NOT_GRANTED',
         'no live grant of yours covers work on this task',
         'Ask a manager for write on this task, or leave it for a holder who has it.',
       );
     }
-  } else {
-    // The delegation expires with the lease. Minted against the delegating
-    // person's live grants, which L2 reads for itself; nothing is copied here.
-    // `purposeScope` is R5's one-task ceiling (coordinator addendum 1): L2
-    // owns the field (0016) and refuses a call outside that one record.
-    // L2 reads the delegating person's grants through `now()`, the
-    // transaction's start. Judged here first at the locked instant (final
-    // review R2-RUNTIME-4), with L2's own refusal, so a grant that lapsed
-    // while this waited on the cap mints nothing.
-    const actions = ['read', 'comment', 'write'] as const;
-    for (const action of actions) {
-      // Sequential, as L2's own check is: one transaction, one connection.
-      // oxlint-disable-next-line no-await-in-loop
-      const delegable = await checkAuthorityAt(
-        tx,
-        [{ kind: 'person', id: request.authorisedByPersonId }],
-        { collection: request.collection, action, scope: { kind: 'business', id: null } },
-        lockedAt,
-      );
-      if (!delegable.ok) {
-        return {
-          ok: false,
-          refusal: refuseCommand(
-            'DELEGATION_WIDENS',
-            [],
-            [
-              `the delegating person holds no live ${action} grant on ${request.collection}`,
-              'narrow the purpose, or grant the person that authority first',
-            ],
-          ),
-        };
-      }
-    }
-    const minted = await mintDelegation(tx, {
-      agentActorId: request.agentActorId,
-      delegatePersonId: request.authorisedByPersonId,
-      mintedByActorId: request.mintedByActorId,
-      purpose: found.purpose,
-      collections: [request.collection],
-      actions: [...actions],
-      expiresAt,
-      purposeScope: { kind: 'record', id: found.task_id },
-    });
-    if (!minted.ok) return { ok: false, refusal: minted.refusal };
-    delegation = minted.value;
+    return { ok: true, value: undefined };
   }
+  const actions = ['read', 'comment', 'write'] as const;
+  for (const action of actions) {
+    // Sequential, as L2's own check is: one transaction, one connection.
+    // oxlint-disable-next-line no-await-in-loop
+    const delegable = await checkAuthorityAt(
+      tx,
+      [{ kind: 'person', id: request.authorisedByPersonId }],
+      { collection: request.collection, action, scope: { kind: 'business', id: null } },
+      lockedAt,
+    );
+    if (!delegable.ok) {
+      return {
+        ok: false,
+        refusal: refuseCommand(
+          'DELEGATION_WIDENS',
+          [],
+          [
+            `the delegating person holds no live ${action} grant on ${request.collection}`,
+            'narrow the purpose, or grant the person that authority first',
+          ],
+        ),
+      };
+    }
+  }
+  const minted = await mintDelegation(tx, {
+    agentActorId: request.agentActorId,
+    delegatePersonId: request.authorisedByPersonId,
+    mintedByActorId: request.mintedByActorId,
+    purpose: found.purpose,
+    collections: [request.collection],
+    actions: [...actions],
+    expiresAt,
+    purposeScope: { kind: 'record', id: found.task_id },
+  });
+  if (!minted.ok) return { ok: false, refusal: minted.refusal };
+  return { ok: true, value: minted.value };
+}
 
-  // Monotonic per task, computed under the task lock. A sequence would be
-  // shared across tenants; this is per task and unique by index.
-  const fences = await tx.query<{ readonly next: string }>(
-    `select coalesce(max(fence), 0) + 1 as next from public.leases
-      where business_id = $1 and task_id = $2`,
-    [tx.businessId, found.task_id],
-  );
-  const fence = Number(fences[0]?.next ?? 1);
+interface NewLease {
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly holderActorId: string;
+  readonly expiresAt: Date;
+}
 
+/** Write the lease at the task's next fence, and bind the hold, attempt and run to it once. */
+async function writeLease(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+  claimed: { readonly reservationId: string; readonly attemptId: string },
+  delegation: MintedDelegation | undefined,
+  expiresAt: Date,
+): Promise<NewLease> {
+  const fence = await nextFence(tx, found.task_id);
   const holderActorId = request.claimant === 'person' ? request.actorId : request.agentActorId;
   const leaseId = randomUUID();
   await tx.query(
@@ -529,7 +583,7 @@ export async function pickup(
       leaseId,
       found.task_id,
       found.run_id,
-      reservationId,
+      claimed.reservationId,
       delegation?.delegation.id ?? null,
       holderActorId,
       request.authorisedByPersonId,
@@ -537,23 +591,33 @@ export async function pickup(
       expiresAt,
     ],
   );
-
   // Bound once. The reservation stays `held`; binding is a claim, not a spend.
   await tx.query(
     `update public.reservations set lease_id = $3
       where business_id = $1 and id = $2 and lease_id is null`,
-    [tx.businessId, reservationId, leaseId],
+    [tx.businessId, claimed.reservationId, leaseId],
   );
   await tx.query(
     `update public.attempts set state = 'dispatched', lease_id = $3
       where business_id = $1 and id = $2 and state = 'reserved'`,
-    [tx.businessId, attemptId, leaseId],
+    [tx.businessId, claimed.attemptId, leaseId],
   );
   await tx.query(
     `update public.planned_runs set state = 'claimed' where business_id = $1 and id = $2`,
     [tx.businessId, found.run_id],
   );
+  return { leaseId, fence, holderActorId, expiresAt };
+}
 
+/** The claim's handles and brief, as the holder is handed them. */
+async function answer(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+  claimed: { readonly reservationId: string; readonly attemptId: string },
+  lease: NewLease,
+  delegation: MintedDelegation | undefined,
+): Promise<RuntimeResult<PickedUp | PickedUpByPerson>> {
   const context = await tx.query<{
     readonly revision: string;
     readonly currency: string;
@@ -565,20 +629,20 @@ export async function pickup(
        join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
        join public.records r on r.business_id = res.business_id and r.id = $3
       where res.business_id = $1 and res.id = $2`,
-    [tx.businessId, reservationId, found.task_id],
+    [tx.businessId, claimed.reservationId, found.task_id],
   );
   const facts = only(context, "pickup: the new hold's task, envelope and reservation");
   const common: PickedUpCommon = {
-    leaseId,
-    fence,
-    reservationId,
-    attemptId,
+    leaseId: lease.leaseId,
+    fence: lease.fence,
+    reservationId: claimed.reservationId,
+    attemptId: claimed.attemptId,
     taskId: found.task_id,
     runId: found.run_id,
     versionId: found.version_id,
-    expiresAt,
+    expiresAt: lease.expiresAt,
     authorisedByPersonId: request.authorisedByPersonId,
-    holderActorId,
+    holderActorId: lease.holderActorId,
     declaredIncompleteness: DECLARED_INCOMPLETENESS,
     brief: { taskId: found.task_id, purpose: found.purpose },
     expectedVersions: { versionId: found.version_id, taskRevision: Number(facts.revision) },
