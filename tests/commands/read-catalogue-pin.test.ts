@@ -30,6 +30,7 @@ const PINNED_SHAPE = {
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
+  'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
 };
@@ -40,11 +41,12 @@ const PINNED_IDENTIFIERS = {
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
+  'task.execution': ['recordId'],
   'task.queue': [],
   'task.read': ['recordId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.read'];
+const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read'];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -97,6 +99,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     RECORD_ID,
   ],
   'task.board': [BOARD, BOARD, BOARD, null, null, BOARD, BOARD, BOARD, BOARD, BOARD, BOARD],
+  // T2a: `task.read`'s recordId check; an absent cursor is the start.
+  'task.execution': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
   'preset.plan': [
     plan('recordTypeKey'),
     plan('recordTypeKey'),
@@ -125,7 +129,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same seven reads', () => {
+  it('names the same eight reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
