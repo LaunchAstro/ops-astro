@@ -830,6 +830,97 @@ run_case "CQ-13 no raw HTML: a tag after a list item's open backtick fails" 1 "$
 run_case "CQ-13 no raw HTML: a self-closing void tag fails" 1 "$OK_BODY${P2}Line one<br/>line two." "README.md"
 run_case "CQ-13 no raw HTML: a void tag with attributes fails" 1 "$OK_BODY${P2}An image <img src=\"x.png\" alt=\"x\"> here." "README.md"
 
+# Issue 88: the body is read by a real CommonMark parser (markdown-it, pinned),
+# so what GitHub shows and what the check reads are the same tree. A line that
+# renders as a field and is not a counted plain field fails, whichever way it
+# was spelled.
+run_case "FU88 parser: a field spelled with an escaped colon fails" 1 "$OK_BODY${P2}Code review\: changes requested" "README.md"
+run_case "FU88 parser: a field spelled with an entity fails" 1 "$OK_BODY${P2}Code&#32;review: changes requested" "README.md"
+run_case "FU88 parser: a field as link text fails" 1 "$OK_BODY$P2[Code review: changes requested](https://example.com)" "README.md"
+run_case "FU88 parser: a field struck through fails" 1 "$OK_BODY$P2~~Code review: no findings~~" "README.md"
+run_case "FU88 parser: a comment closed by --!> hides no tag" 1 "$OK_BODY$P2<!-- a --!> <b>x</b> -->" "README.md"
+run_case "FU88 parser: an HTML block in a list item fails" 1 "$OK_BODY$P2- <div>x</div>" "README.md"
+run_case "FU88 parser: an escaped tag is text and passes" 0 "$OK_BODY${P2}Write &lt;div&gt; or \\<div\\> as text." "README.md"
+run_case "FU88 parser: a field on a later line of a top-level paragraph passes" 0 "$BARE_BLOCK${P2}Outcomes follow.
+Code review: no findings$NOT_SENSITIVE" "README.md"
+
+# Issue 88: a minor finding filed as a follow-up under the owner's standing
+# permission is a truthful outcome, once, in one fixed form that names a real
+# open issue. OPEN_ISSUES stands in for the GitHub lookup in these cases.
+unset OPEN_ISSUES GH_TOKEN GITHUB_API_URL GITHUB_REPOSITORY
+FU="Review checkpoint
+  head:        $HEAD$P2"
+fu_case() {
+  local label="$1" expect="$2" line="$3" open="$4" files="${5:-README.md}" tail="$NOT_SENSITIVE"
+  [ "$files" = "README.md" ] || tail="${P2}Security review: run against $HEAD, no findings"
+  OPEN_ISSUES="$open" run_case "FU88 follow-up: $label" "$expect" "${FU}Code review: $line$tail" "$files"
+}
+fu_case "'3 findings, 2 closed, 1 filed as follow-up #88' with #88 open passes" 0 "3 findings, 2 closed, 1 filed as follow-up #88" "88"
+fu_case "'1 finding, 0 closed, 1 filed as follow-up #88' passes" 0 "1 finding, 0 closed, 1 filed as follow-up #88." "12 88"
+fu_case "any case passes" 0 "2 Findings, 1 Closed, 1 Filed As Follow-Up #88" "88"
+fu_case "counts that do not add up fail" 1 "3 findings, 1 closed, 1 filed as follow-up #88" "88"
+fu_case "more filed than raised fails" 1 "1 finding, 0 closed, 2 filed as follow-up #88" "88"
+fu_case "none filed fails" 1 "2 findings, 2 closed, 0 filed as follow-up #88" "88"
+fu_case "a noun that disagrees fails" 1 "1 findings, 0 closed, 1 filed as follow-up #88" "88"
+fu_case "an issue that is not open fails" 1 "2 findings, 1 closed, 1 filed as follow-up #99" "88"
+fu_case "no issue number fails" 1 "2 findings, 1 closed, 1 filed as follow-up" "88"
+fu_case "two issues fail: one form, one issue" 1 "2 findings, 0 closed, 2 filed as follow-up #88 and #89" "88 89"
+fu_case "a closed issue behind a spaced full stop still fails" 1 "2 findings, 1 closed, 1 filed as follow-up #99 ." "88"
+fu_case "a sensitive change may file a code finding" 0 "2 findings, 1 closed, 1 filed as follow-up #88" "88" "$CUSTODY"
+run_case "FU88 follow-up: no issue list and no repository to ask fails" 1 "${FU}Code review: 2 findings, 1 closed, 1 filed as follow-up #88$NOT_SENSITIVE" "README.md"
+OPEN_ISSUES="88" run_case "FU88 follow-up: the security line has no follow-up form" 1 "${FU}Code review: no findings${P2}Security review: run against $HEAD, 2 findings, 1 closed, 1 filed as follow-up #88" "$CUSTODY"
+
+# Without OPEN_ISSUES the check asks GitHub. A local stand-in answers here:
+# #5 open, #6 closed, #7 a pull request, anything else 404.
+PORT_FILE="$(mktemp)"
+node -e '
+  const http = require("node:http");
+  const rows = { 5: { state: "open" }, 6: { state: "closed" }, 7: { state: "open", pull_request: {} } };
+  const s = http.createServer((req, res) => {
+    const m = /^\/repos\/o\/r\/issues\/(\d+)$/.exec(req.url);
+    const ok = req.headers.authorization === "Bearer t" && m && rows[m[1]];
+    res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify(ok ? rows[m[1]] : { message: "Not Found" }));
+  });
+  s.listen(0, "127.0.0.1", () => require("node:fs").writeFileSync(process.argv[1], String(s.address().port)));
+' "$PORT_FILE" &
+SERVER=$!
+for _ in $(seq 1 50); do [ -s "$PORT_FILE" ] && break; sleep 0.1; done
+api_case() {
+  GITHUB_API_URL="http://127.0.0.1:$(cat "$PORT_FILE")" GITHUB_REPOSITORY=o/r GH_TOKEN=t \
+    run_case "FU88 follow-up, asking GitHub: $1" "$2" "${FU}Code review: 2 findings, 1 closed, 1 filed as follow-up #$3$NOT_SENSITIVE" "README.md"
+}
+api_case "an open issue passes" 0 5
+api_case "a closed issue fails" 1 6
+api_case "a pull request is not an issue and fails" 1 7
+api_case "a missing issue fails" 1 404
+kill "$SERVER" 2>/dev/null; wait "$SERVER" 2>/dev/null; rm -f "$PORT_FILE"
+
+run_case "Sol proof, criterion 1: a review outcome inside a multiline link is not a plain line" 1 "$BARE_BLOCK${P2}[link starts
+Code review: no findings
+link ends](https://example.com)$NOT_SENSITIVE" "README.md"
+run_case "Sol proof, criterion 1: a review outcome inside multiline strikethrough is not a plain line" 1 "$BARE_BLOCK${P2}~~struck text starts
+Code review: no findings
+struck text ends~~$NOT_SENSITIVE" "README.md"
+
+# Fix 1 for #92, the class behind criterion 1: any markup pair open across a
+# line break wraps the line, whatever the pair is.
+run_case "FU88 open markup: a field inside multiline emphasis fails" 1 "$BARE_BLOCK${P2}*emphasis starts
+Code review: no findings
+emphasis ends*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field inside multiline strong emphasis fails" 1 "$BARE_BLOCK${P2}**strong starts
+Code review: no findings
+strong ends**$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field line opening emphasis closed on the next line fails" 1 "$BARE_BLOCK${P2}**Code review: no findings
+still strong**$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a field line closing emphasis opened above fails" 1 "$BARE_BLOCK${P2}*emphasis starts
+Code review: no findings*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: a link inside multiline emphasis still fails" 1 "$BARE_BLOCK${P2}*see [the notes](https://example.com)
+Code review: no findings
+done*$NOT_SENSITIVE" "README.md"
+run_case "FU88 open markup: emphasis closed on an earlier line leaves the field plain" 0 "$BARE_BLOCK${P2}*A note* first.
+Code review: no findings$NOT_SENSITIVE" "README.md"
+
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

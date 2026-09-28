@@ -94,15 +94,19 @@ one trailing full stop, and it must be exactly one of these forms; anything
 else fails, and the failure lists them:
 
 - code review: `no findings`, `the review found nothing`,
-  `every finding it raised is closed`, `<N> findings, all closed` or
-  `<N> findings, <N> closed`;
+  `every finding it raised is closed`, `<N> findings, all closed`,
+  `<N> findings, <N> closed` or
+  `<N> findings, <M> closed, <K> filed as follow-up #<issue>`;
 - security review: `run against <sha>, no findings`,
   `run against <sha>, <N> findings, all closed` or
   `run against <sha>, <N> findings, <N> closed`; on a change that touches
   no sensitive path, the fixed text `not required: no sensitive paths changed`
   as well.
 
-N is the same number on both sides, at least 1, with `finding` for 1. On a
+N is the same number on both sides, at least 1, with `finding` for 1. The
+follow-up form is for minor findings filed rather than fixed under the owner's
+standing permission: M + K = N, K is at least 1, and the check asks GitHub
+that `#<issue>` is an open issue here. It cannot see what the issue holds. On a
 sensitive change `<sha>` must be the pull request's head. An explanation
 goes on the following lines, which the check does not read. So
 `approved with 2 findings; 2 resolved` and `no findings after recheck` fail

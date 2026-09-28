@@ -109,6 +109,7 @@ comparing this page with the lockfile should find them agreeing.
 | `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin. |
 | `hono`               | 4.13.9  | The API and its sign-in `verify()`. 4.13.5 is the first release fixing every 4.10.7 advisory (issue 76).                  |
 | `@hono/node-server`  | 2.1.1   | The API's Node listener in `apps/api/server.ts`, so a runtime dependency.                                                 |
+| `markdown-it`        | 14.3.2  | The review-evidence check's parser (issue 88). 15.x needs `argparse` 3, whose PSF-2.0 licence the licence check refuses.  |
 
 **The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
 7.0.2 and no alternative parser installed, `depcruise` pointed at a tree of

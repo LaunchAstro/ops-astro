@@ -30,6 +30,7 @@ Code review, one of:
   every finding it raised is closed
   <N> findings, all closed
   <N> findings, <N> closed
+  <N> findings, <M> closed, <K> filed as follow-up #<issue>
 
 Security review, one of:
   run against <sha>, no findings
@@ -38,6 +39,8 @@ Security review, one of:
   not required: no sensitive paths changed
 
 N is the same number on both sides, at least 1, with `finding` for 1.
+In the follow-up form M + K = N, K is at least 1, and #<issue> is one open
+issue in this repository that the check finds.
 <sha> is the revision the security review ran against; on a sensitive
 change the check requires it to be this pull request's head.
 `not required: no sensitive paths changed` is fixed text, and passes only
