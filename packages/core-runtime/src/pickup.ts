@@ -33,7 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { nextFence, personWriteLive, refuseLease } from './lease-ownership.ts';
+import { leaseReason, nextFence, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
@@ -468,7 +468,11 @@ async function fenceLiveLease(
   const current = held[0];
   if (current === undefined) return null;
   if (!current.expired) {
-    return refuseLease('held', 'Wait for it to be handed back, or for it to expire.');
+    return refuse(
+      'LEASE_HELD',
+      leaseReason('held'),
+      'Wait for it to be handed back, or for it to expire.',
+    );
   }
   await endLease(tx, current.id, 'expired');
   for (const row of taskLeases) {

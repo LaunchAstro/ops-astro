@@ -39,6 +39,7 @@ import {
   fenceCause,
   holdsLease,
   leaseVerdict,
+  NOT_OWNED_FIX,
   personWriteLive,
   refuseLease,
   readLease,
@@ -138,7 +139,7 @@ export interface StaleVerdict {
 
 /** Each cause's next step on a handback: fixed text, as the reason is. */
 const HANDBACK_FIXES: Readonly<Record<LeaseCause, string>> = {
-  not_owned: 'Hand back the lease your own pickup was issued.',
+  not_owned: NOT_OWNED_FIX.handback,
   fence_presented:
     'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
   fence_superseded: 'The replacement owns the work. This report is retained, not settled.',
@@ -151,7 +152,7 @@ const HANDBACK_FIXES: Readonly<Record<LeaseCause, string>> = {
     'The report is retained, not accepted. Work the current version under a new pickup.',
   authority_lost:
     'A lease is handed back under current rights. Ask a manager for write on this task.',
-  held: 'Hand back the lease your own pickup was issued.',
+  held: NOT_OWNED_FIX.handback,
 };
 
 function staleVerdict(cause: LeaseCause): StaleVerdict {

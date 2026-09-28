@@ -32,6 +32,7 @@ import { lockedInstant } from './clock.ts';
 import {
   fenceCause,
   holdsLease,
+  NOT_OWNED_FIX,
   personWriteLive,
   readLease,
   refuseLease,
@@ -83,7 +84,7 @@ export interface Renewed {
 }
 
 const HEARTBEAT_FIXES = {
-  notOwned: 'Renew the lease this pickup issued, at the fence it handed back.',
+  notOwned: NOT_OWNED_FIX.heartbeat,
   lost: 'A lease is renewed under current rights. Ask a manager for write on this task.',
   expired: 'Pick the work up again if it is still claimable.',
 } as const;
