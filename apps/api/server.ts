@@ -53,7 +53,7 @@ import {
 import { executeRead as readExecutor } from '../../packages/core-records/src/reads/execute.ts';
 import {
   runtimeKeys,
-  useRuntimeKeys,
+  withRuntimeKeys,
   type RuntimeKeys,
 } from '../../packages/core-records/src/commands/runtime-config.ts';
 import { KEY_FILE_VARIABLE } from '../../packages/core-records/src/authority/credential-keys.ts';
@@ -91,9 +91,9 @@ export function readEnvFile(file: string): Readonly<Record<string, string>> {
  *
  * A key file named in the real environment is not shadowed by the checkout's
  * keyring: with `DELEGATION_CREDENTIAL_KEY_FILE` set, `.local/delegation.env`
- * is not read. Read here its two settings would be explicit configuration,
- * and `configuredCredentialKeys` never consults the named file once either is
- * present (`credential-keys.ts`).
+ * is not read. Copied into the process environment its two settings would be
+ * explicit configuration, and `configuredCredentialKeys` never consults the
+ * named file once either is present (`credential-keys.ts`).
  */
 export function localEnvironment(): Readonly<Record<string, string | undefined>> {
   const keyFileNamed = (process.env[KEY_FILE_VARIABLE] ?? '') !== '';
@@ -191,10 +191,11 @@ export interface ComposedApi {
  */
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
-  useRuntimeKeys(config.keys);
   const executeRead = config.executeRead ?? readExecutor;
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
+  // This app's keys, for this request only: no other composition can replace them.
+  server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran.
   server.get('/api/health', async (context) => {
@@ -300,7 +301,8 @@ async function main(): Promise<void> {
   if (scope.keys.length === 0) {
     console.log('restart recovery: explicitly no deployment businesses');
   }
-  const recovered = await recoverDeployment(database, resolveBusiness, scope.keys);
+  const recovery = async () => await recoverDeployment(database, resolveBusiness, scope.keys);
+  const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
     await Promise.allSettled([database.close(), admin.close()]);

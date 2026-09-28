@@ -33,6 +33,7 @@
 // presented, and cannot be recovered from their digests. Nothing here
 // relabels them.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac, randomBytes } from 'node:crypto';
 import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -209,15 +210,15 @@ export const LOCAL_KEY_FILE: string = join(
   'delegation.env',
 );
 
-let handedOver: CredentialKeysDecision | undefined;
+const handedOver = new AsyncLocalStorage<CredentialKeysDecision>();
 
-/** The keyring a composition root read, used from now on (`runtime-config.ts`). */
-export function installCredentialKeys(keys: CredentialKeysDecision): void {
-  handedOver = keys;
+/** Runs `run` with the keyring a composed app was handed (`runtime-config.ts`). */
+export function withCredentialKeys<T>(keys: CredentialKeysDecision, run: () => T): T {
+  return handedOver.run(keys, run);
 }
 
 /**
- * This process's keyring: called bare, the one handed over, else the one configured.
+ * This keyring: called bare, the one handed over, else the one configured.
  *
  * Explicit configuration wins, and once either setting is present the file
  * is not consulted: a deployment that configured half a keyring has a
@@ -227,7 +228,8 @@ export function installCredentialKeys(keys: CredentialKeysDecision): void {
 export function configuredCredentialKeys(
   settings?: Readonly<Record<string, string | undefined>>,
 ): CredentialKeysDecision {
-  if (settings === undefined && handedOver !== undefined) return handedOver;
+  const held = settings === undefined ? handedOver.getStore() : undefined;
+  if (held !== undefined) return held;
   const environment = settings ?? process.env;
   const active = environment[ACTIVE_KEY_VARIABLE];
   const keyring = environment[KEYRING_VARIABLE];
