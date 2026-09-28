@@ -29,10 +29,10 @@ import {
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import {
   accepts,
   createCli,
+  httpTransport,
   isRefusal,
   isWrite,
   unknownVerb,
@@ -305,16 +305,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       credential,
       entry: agent ? 'agent' : 'person',
       ...(delegation === undefined ? {} : { delegation }),
-      transport: async (path, sent, bearer, held) =>
-        await fetch(`${api}${path}`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${bearer}`,
-            ...(held === undefined ? {} : { [DELEGATION_HEADER]: held }),
-          },
-          body: sent,
-        }),
+      transport: httpTransport(api),
     });
 
     let answer: CliAnswer;

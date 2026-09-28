@@ -5,9 +5,9 @@
 // b483399, H2).
 
 import { subjectsOf } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
-import type { CommandContext } from './context.ts';
+import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -66,6 +66,38 @@ export async function proposeOnTask(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('proposeOnTask: reached without a task');
+  return await proposeFor(
+    tx,
+    {
+      target,
+      collection: context.declaration.collection,
+      taskTypeId: context.spine.taskTypeId,
+      actorId: context.session.actorId,
+      subjects: subjectsOf(context.session),
+    },
+    fields,
+  );
+}
+
+/**
+ * Who proposes, on which locked task. A person proposes as themselves; an
+ * agent proposes as its own actor, and the runtime's authority check under the
+ * locks asks the delegating person's grants, which are the ceiling its
+ * delegation narrows (`agent-operations.ts`, T2b).
+ */
+export interface Proposer {
+  readonly target: TaskRow;
+  readonly collection: string;
+  readonly taskTypeId: string;
+  readonly actorId: string;
+  readonly subjects: readonly Subject[];
+}
+
+export async function proposeFor(
+  tx: TenantQuery,
+  { target, collection, taskTypeId, actorId, subjects }: Proposer,
+  fields: ProposeFields,
+): Promise<HandlerOutcome> {
   // A trashed task is gone to the work surface until its batch is restored,
   // so a proposal on it answers as one on a task that is not there, before
   // any operand and before the revision (final review round 2, R2-RUNTIME-52;
@@ -140,9 +172,9 @@ export async function proposeOnTask(
 
   const proposal = {
     taskId: target.id,
-    collection: context.declaration.collection,
-    proposedByActorId: context.session.actorId,
-    subjects: subjectsOf(context.session),
+    collection,
+    proposedByActorId: actorId,
+    subjects,
     purpose: fields.purpose,
     maximumMinor: fields.maximumMinor,
     currency: fields.currency,
@@ -159,7 +191,7 @@ export async function proposeOnTask(
   // revision is compared here, with the task lock already held in that order,
   // so a concurrent write is still refused `VERSION_STALE` and never merged.
   const held = await lockProposal(tx, proposal);
-  const current = await lockTask(tx, context.spine.taskTypeId, target.id);
+  const current = await lockTask(tx, taskTypeId, target.id);
   if (current === undefined || current.deleted_at !== null) {
     return refused(refuseNotFound());
   }

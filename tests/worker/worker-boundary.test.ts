@@ -23,11 +23,16 @@ const ROOT = resolve(import.meta.dirname, '../..');
 const WORKER_ENTRY = 'apps/worker/main.ts';
 const FIXTURE_REPORTER = 'tests/support/declining-reporter.ts';
 
-/** Every static or dynamic import specifier a file names. */
+/**
+ * Every import specifier a file names that loads a module at run time. A
+ * type-only import or export is erased before the code runs and loads nothing,
+ * so it is not an edge of the graph the process executes. Static imports are
+ * read at the start of a line, so a planted import inside a string is not one.
+ */
 function specifiers(text: string): readonly string[] {
   const found: string[] = [];
   const pattern =
-    /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|import\s+['"]([^'"]+)['"]/gu;
+    /^(?:import|export)\s+(?!type\s)[^'"]*?from\s+['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)|^import\s+['"]([^'"]+)['"]/gmu;
   for (const match of text.matchAll(pattern)) {
     const specifier = match[1] ?? match[2] ?? match[3];
     if (specifier !== undefined) found.push(specifier);
