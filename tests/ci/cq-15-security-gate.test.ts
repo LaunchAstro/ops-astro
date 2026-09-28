@@ -186,6 +186,22 @@ describe('CQ-15 security gate', () => {
     expect(invariant.filter((s) => !named.includes(`"${String(s)}"`))).toEqual([]);
   });
 
+  it('CQ-15 ruleset: the four checks are required beside the existing ones, strict mode kept', () => {
+    type Required = { strict_required_status_checks_policy: boolean; required_status_checks: L };
+    const list = JSON.parse(read('.github/required-checks.json')) as Required;
+    const names = JSON.stringify(list.required_status_checks);
+    const four = [
+      'gitleaks over the full history',
+      'dependency audit',
+      'static analysis',
+      'isolation tests',
+    ];
+    expect([
+      list.strict_required_status_checks_policy,
+      four.filter((n) => !names.includes(`"${n}"`)),
+    ]).toEqual([true, []]);
+  });
+
   it('CQ-15 no secret printed: the gate reports rule and place, never the match, and the jobs hold no secret', () => {
     const { status, out } = gate('semgrep', scan([hit()]));
     expect(`${status} ${out.includes(TOKEN)} ${out.includes('a.ts:1')}`).toBe('1 false true');
