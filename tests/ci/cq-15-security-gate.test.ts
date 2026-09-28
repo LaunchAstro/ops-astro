@@ -114,6 +114,50 @@ describe('CQ-15 security gate', () => {
     ]);
   });
 
+  it('Sol proof, criterion 6: a changed caller or missing file binding invalidates an exception', () => {
+    const expression = 'new RegExp(name)';
+    const baseline = [
+      'function parse(name: string) {',
+      `  return ${expression};`,
+      '}',
+      "parse('FIXED');",
+    ].join('\n');
+    const changed = `${baseline}\nfunction fromRequest(name: string) { return parse(name); }`;
+    const exception = {
+      rule: 'javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp',
+      path: 'a.ts',
+      matches: [createHash('sha256').update(expression).digest('hex').slice(0, 16)],
+      file: createHash('sha256').update(baseline).digest('hex').slice(0, 16),
+      reason: 'The only caller passes a fixed name.',
+      impact: 'No caller-controlled pattern.',
+      owner: 'Maintainer',
+      control: 'Review changes to the source file.',
+      expires: '2026-12-28',
+    };
+    const runOn = (source: string, listed: object) => {
+      const offset = source.indexOf(expression);
+      const line = source.slice(0, offset).split('\n').length;
+      const finding = {
+        check_id: exception.rule,
+        path: 'a.ts',
+        start: { line, offset },
+        end: { line, offset: offset + expression.length },
+      };
+      const args = [
+        GATE,
+        'semgrep',
+        ...scratch(scan([finding]), { semgrep: [listed] }, source),
+        '--today',
+        '2026-09-28',
+      ];
+      return spawnSync('node', args, { cwd: ROOT, encoding: 'utf8' }).status;
+    };
+
+    expect(runOn(baseline, exception), 'the reviewed file and finding').toBe(0);
+    expect(runOn(changed, exception), 'a new caller changes the reviewed file').toBe(1);
+    expect(runOn(baseline, { ...exception, file: undefined }), 'an unbound exception').toBe(1);
+  });
+
   it('CQ-15 exception expiry: each names impact, owner, control and expiry, and fails once expired', () => {
     const one = (entry: object) => ({ semgrep: [{ ...RULE, ...entry }] });
     const field = (f: string): Case => [f, 'semgrep', scan([hit()]), one({ [f]: ' ' }), 1];
