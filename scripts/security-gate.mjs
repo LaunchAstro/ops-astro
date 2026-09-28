@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The security gate (CQ-15, standing gate 9): judges a `pnpm audit --json` or
-// Semgrep `--json` report against .github/security-exceptions.json (audit entries
-// by GHSA id, Semgrep entries by rule, file and exact count). It fails on
-// a high or critical advisory (never excepted), an unlisted moderate one, an
-// unlisted Semgrep finding or a count other than the recorded one, a scanner
-// error, an empty scan, a missing report, and an exception lacking a field,
-// expired, over a year out or matching nothing. It prints rule, file and line,
-// never the matched text, which for a p/secrets finding is the secret.
+// Semgrep `--json` report against .github/security-exceptions.json. Audit
+// entries name a moderate GHSA id; high and critical are never excepted. Semgrep
+// entries name a rule, a file and `matches`: for each finding, the first 16 hex
+// of the sha256 of the bytes from its start.offset to its end.offset, so moved
+// code still matches and other code in its place does not. Unlisted findings,
+// scanner errors, empty scans, missing reports and exceptions that lack a field,
+// are past or over a year out, or match nothing all fail. It prints rule, file
+// and line, never the matched text or its hash: for p/secrets that is the secret.
 //
 // Usage: node scripts/security-gate.mjs audit|semgrep --report <file>
-//          [--exceptions <file>] [--today YYYY-MM-DD]
+//          [--exceptions <file>] [--root <dir>] [--today YYYY-MM-DD]
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -19,7 +21,7 @@ const flag = (name, fallback) => {
   const at = argv.indexOf(`--${name}`);
   return at === -1 ? fallback : argv[at + 1];
 };
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(flag('root', resolve(import.meta.dirname, '..')));
 const today = flag('today', new Date().toISOString().slice(0, 10));
 const inAYear = new Date(Date.parse(today) + 366 * 86_400_000).toISOString().slice(0, 10);
 const FIELDS = ['reason', 'impact', 'owner', 'control', 'expires'];
@@ -45,7 +47,10 @@ function load(path, what) {
 }
 
 const report = load(flag('report', ''), `the ${kind} report`);
-const file = flag('exceptions', join(root, '.github/security-exceptions.json'));
+const file = flag(
+  'exceptions',
+  resolve(import.meta.dirname, '../.github/security-exceptions.json'),
+);
 const entries = load(file, 'the exceptions file')?.[kind] ?? [];
 if (!Array.isArray(entries)) refuse(`exceptions.${kind} is not a list`);
 const listed = Array.isArray(entries) ? entries : [];
@@ -76,6 +81,19 @@ if (kind === 'audit' && report !== undefined) {
   }
 }
 
+/** The first 16 hex of the sha256 of a finding's matched bytes, or a refusal. */
+function matched(r) {
+  let bytes = Buffer.alloc(0);
+  try {
+    bytes = readFileSync(join(root, r.path)).subarray(r.start.offset, r.end.offset);
+  } catch {
+    // An unreadable source is refused below, like an empty match.
+  }
+  if (bytes.length > 0) return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+  refuse(`${r.check_id} at ${r.path}:${r.start?.line}: its matched source cannot be read`);
+  return 'unreadable';
+}
+
 if (kind === 'semgrep' && report !== undefined) {
   const errors = (report.errors ?? []).filter((e) => e.level !== 'warn');
   if (errors.length > 0) refuse(`Semgrep reported ${errors.length} error(s); a failed scan fails`);
@@ -85,10 +103,12 @@ if (kind === 'semgrep' && report !== undefined) {
   const groups = Map.groupBy(results, (r) => `${r.check_id}\n${r.path}`);
   for (const [key, found] of groups) {
     const where = `${found[0].check_id} at ${found.map((r) => `${r.path}:${r.start?.line}`)}`;
+    const hashes = found.map(matched).toSorted();
     const i = listed.findIndex((e) => `${e.rule}\n${e.path}` === key);
+    const recorded = Array.isArray(listed[i]?.matches) ? listed[i].matches.toSorted() : [];
     if (i === -1) refuse(`${where}: a finding with no recorded exception`);
-    else if (found.length !== listed[i].count)
-      refuse(`${where}: ${found.length} finding(s), the exception records ${listed[i].count}`);
+    else if (hashes.join() !== recorded.join())
+      refuse(`${where}: its matched source is not the source the exception records`);
     used.add(i);
   }
 }
