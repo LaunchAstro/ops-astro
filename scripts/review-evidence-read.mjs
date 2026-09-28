@@ -39,16 +39,22 @@ const fieldKey = (name) =>
 
 // An inline node's children, one entry per line GitHub shows. Only text and
 // emphasis keep a line plain; a code span, a link, an image, strikethrough or
-// HTML in it does not.
+// HTML in it does not. #92, Sol's criterion 1: markdown-it lists a run's
+// children flat, each open/close pair marked by `nesting` +1 and -1, so any
+// pair of any kind open across a line break wraps both lines and neither is
+// plain. Emphasis counts only opened and closed on the line itself.
 const PLAIN_NODE = new Set(['text', 'strong_open', 'strong_close', 'em_open', 'em_close']);
 const shownLines = (inline) => {
   const out = [{ text: '', plain: true }];
+  let open = 0;
   for (const child of inline.children ?? []) {
     const at = out.at(-1);
     if (child.type === 'softbreak' || child.type === 'hardbreak') {
-      out.push({ text: '', plain: true });
+      if (open !== 0) at.plain = false;
+      out.push({ text: '', plain: open === 0 });
       continue;
     }
+    open += child.nesting;
     if (!PLAIN_NODE.has(child.type)) at.plain = false;
     if (['text', 'code_inline', 'image'].includes(child.type)) at.text += child.content;
     else if (child.type === 'html_inline') at.text += ' ';
