@@ -35,6 +35,10 @@ const DEAD = 'postgres://cq2@127.0.0.1:1/cq2';
 const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[name] ?? DEAD);
 type Task = Record<'title' | 'recordId' | 'client', string> & { person?: string };
 type Party = { key: string; member: string; tasks: Task[]; add: (name: string) => Promise<Task> };
+
+function expectOtherClientHidden(response: string, other: Task): void {
+  expect(response).not.toContain(other.title);
+}
 const ghost = (t: Task): Task => ({ ...t, recordId: randomUUID() });
 const ids = (text: string) => [
   ...new Set(text.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gu)),
@@ -242,7 +246,8 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
       // The only ids any answer to a client carries are its own task's: no other record or person.
       const mine = ids(`${one.recordId} ${one.title}`).toSorted();
       expect([ids([own, other, none].join()).toSorted(), ids(others)]).toStrictEqual([mine, []]);
-      expect([other.includes(two.title), others.includes(one.title)]).toEqual([false, false]);
+      expectOtherClientHidden(other, two);
+      expectOtherClientHidden(others, one);
     });
     await Promise.all(clients);
     expect(await dump(['records'])).toBe(records);
@@ -267,6 +272,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
       expect(`${crossed}${log}`).not.toContain(t.title);
     // The records were changeable all along: their own member's change goes through.
     expect((await Promise.all(tries(b, first, b.member)))[4]?.status).toBe(200);
+  });
+
+  it('Sol proof, criterion 4: isolation catches another client task ID', () => {
+    const other: Task = { title: 'hidden title', recordId: randomUUID(), client: 'client-b' };
+    const leaked = JSON.stringify([[200, { taskId: other.recordId }]]);
+    expect(() => expectOtherClientHidden(leaked, other)).toThrow();
   });
 
   it('CQ-2 keys per app: a second composition leaves the first app its own keys', async () => {
