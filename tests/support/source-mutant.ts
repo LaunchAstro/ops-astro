@@ -30,6 +30,8 @@ const DEFAULT_TREES: readonly string[] = [
   'packages/core-records/src',
   'packages/core-runtime/src',
   'packages/core-commands/src',
+  'packages/core-wire/src',
+  'packages/core-digest/src',
 ];
 
 export interface MutationSpec {

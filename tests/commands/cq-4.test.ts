@@ -4,7 +4,7 @@
 // client and permission check on the command and read paths came with it.
 //
 // Each case goes through the command package's one entry, `index.ts`, the way
-// the API does. The mutation case loads a copy of the three packages with the
+// the API does. The mutation case loads a copy of the packages with the
 // grant check at that package's boundary removed, and shows the parity case
 // then goes red: a parity case that passed either way would prove nothing.
 
@@ -29,17 +29,11 @@ type Read = Parameters<typeof commands.executeRead>[3];
 type Task = { readonly id: string; readonly title: string; readonly client: Member };
 type Party = { readonly id: BusinessId; readonly member: Member; readonly tasks: Task[] };
 
-const TREES = [
-  'packages/core-records/src',
-  'packages/core-runtime/src',
-  'packages/core-commands/src',
-];
 /** The grant check the person path runs before any handler, at the command package's boundary. */
 const GRANT_CHECK = {
   file: 'packages/core-commands/src/commands/prepare.ts',
   from: '  if (!authorised.ok) return refused(fromReasoned(authorised.refusal));',
   to: '  void authorised;',
-  trees: TREES,
 };
 
 /** The codes a missing grant and an agent outside its delegation answer with, before the move. */
@@ -173,7 +167,7 @@ describe.skipIf(serverUrl === undefined)('CQ-4 the command package entry', () =>
       }
     }
     expect(await records()).toBe(before);
-  });
+  }, 60_000);
 
   it('CQ-4 permission parity: a missing grant answers the codes it answered before the move', async () => {
     const codes = async (entry: Entry) => {
