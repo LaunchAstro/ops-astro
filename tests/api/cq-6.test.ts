@@ -339,6 +339,31 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
     });
   });
 
+  describe('CQ-6 operands described: undescribed fields', () => {
+    it('a field its row does not describe is refused on both prefixes, and its key is not echoed', async () => {
+      const task = await w.h.freshTask('a task an undescribed field is sent to');
+      const before = await revisionOf(task.id);
+      const key = `unlisted_${CANARY}`;
+      const personAnswer = await person('task.complete', {
+        recordId: task.id,
+        expectedRevision: task.revision,
+        [key]: 'a caller-supplied value',
+      });
+      expectRefused(personAnswer, 'COMMAND_BODY_INVALID', 'person, undescribed field');
+      expect(personAnswer.text).not.toContain(CANARY);
+      expect(await revisionOf(task.id)).toBe(before);
+      const agentAnswer = await agent('task.comment', {
+        recordId: own.taskId,
+        body: 'a comment the row refuses',
+        audience: 'internal',
+        [key]: 'a caller-supplied value',
+      });
+      expectRefused(agentAnswer, 'COMMAND_BODY_INVALID', 'agent, undescribed field');
+      expect(agentAnswer.text).not.toContain(CANARY);
+      expect(agentAnswer.text).toBe(personAnswer.text);
+    });
+  });
+
   describe('CQ-6 canary', () => {
     it('a canary secret and record content in a refused body reach no log, audit row or refusal', async () => {
       const logged: string[] = [];
