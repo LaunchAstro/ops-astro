@@ -19,6 +19,9 @@ const image = (red: number): Buffer => {
   return PNG.sync.write(png);
 };
 
+/** A page of the mockup side: its origin, compared whole (never a prefix of the address). */
+const fromMockup = (url: string): boolean => new URL(url).origin === 'http://mockup.invalid';
+
 vi.mock('playwright', () => ({
   chromium: { launch: () => Promise.resolve({ close: () => Promise.resolve() }) },
 }));
@@ -33,7 +36,7 @@ vi.mock('./capture.ts', () => ({
     loaded.push(url);
     return Promise.resolve({
       evaluate: () => Promise.resolve(['Chivo Mono', 'Funnel Display', 'Funnel Sans']),
-      screenshot: () => Promise.resolve(image(url.startsWith('http://mockup.invalid') ? 255 : 0)),
+      screenshot: () => Promise.resolve(image(fromMockup(url) ? 255 : 0)),
     });
   },
   openSide: () => Promise.resolve({ context: { close: () => Promise.resolve() } }),
@@ -81,17 +84,11 @@ afterAll(() => {
 it('MP-1-3 different component pixels fail the local mockup comparison', () => {
   expect(loaded).toContain('http://app.invalid/gallery/');
   expect(result, report).toBe(1);
-  expect(
-    loaded.some(
-      (url) => url.startsWith('http://mockup.invalid') && !url.includes('/agency/projects/'),
-    ),
-  ).toBe(true);
+  expect(loaded.some((url) => fromMockup(url) && !url.includes('/agency/projects/'))).toBe(true);
 });
 
 it('MP-1-6 the local comparison loads an unconnected client or workbench mockup', () => {
-  expect(
-    loaded.some(
-      (url) => url.startsWith('http://mockup.invalid') && /\/clients\/|\/workbench\//u.test(url),
-    ),
-  ).toBe(true);
+  expect(loaded.some((url) => fromMockup(url) && /\/clients\/|\/workbench\//u.test(url))).toBe(
+    true,
+  );
 });
