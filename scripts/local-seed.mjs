@@ -101,6 +101,10 @@ const GRANTS_BY_ROLE = {
     // Settings ▸ Access (C32): the owner and administrators hold
     // `access:manage` on install (the key catalogue's default holders).
     ['access', 'manage'],
+    // The operations view and the privacy incident record (C55): the owner
+    // and administrators hold both on install, and no agent ever does.
+    ['operations', 'read'],
+    ['privacy', 'manage'],
   ],
   member: [
     ['task', 'read'],
