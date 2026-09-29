@@ -258,6 +258,7 @@ export async function readTaskDetail(
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
+    adHoc: false,
   };
 }
 
@@ -331,4 +332,13 @@ export async function readBoard(
     [tx.businessId, taskTypeId, board],
   );
   return rows.map(summaryOf);
+}
+
+/** Not built yet: the Ad hoc default a new time entry on this task takes (MP-4-10). */
+export async function adHocDefault(
+  _tx: TenantQuery,
+  _taskTypeId: string,
+  _recordId: string,
+): Promise<boolean> {
+  return await Promise.resolve(false);
 }

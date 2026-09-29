@@ -89,6 +89,8 @@ export interface TaskDetail extends TaskSummary {
   readonly capCurrency: string | null;
   /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
   readonly rank: RankView;
+  /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
+  readonly adHoc: boolean;
 }
 
 /**
