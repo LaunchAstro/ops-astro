@@ -24,7 +24,8 @@
 // refusal writes nothing. A drill that ran, passed or failed, leaves one
 // receipt in the store (`backups.drills`, where the operations view reads the
 // date of the last tested restore) and one line in the operator's record
-// folder, with the fields `RECEIPT_FIELDS` names and no other.
+// folder, with the fields `RECEIPT_FIELDS` (drill-receipt.mjs) names and no
+// other.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -36,9 +37,11 @@ import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
+import { RESTORE_ROLE, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment, requireOperator } from './operator.ts';
 
-const RESTORE_ROLE = 'ops_astro_backup_restore';
+export { RECEIPT_FIELDS, recordDrill } from './drill-receipt.mjs';
+
 const APP_ROLE = 'ops_astro_app';
 const ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
 const DB = 'drill';
@@ -212,45 +215,6 @@ export async function restoreDrill({
     if (started) await run(['rm', '-f', '-v', name]);
   }
   return record;
-}
-
-/** The fields every drill receipt carries, and no other: no record data, key, credential, fingerprint or path. */
-export const RECEIPT_FIELDS = [
-  'action',
-  'outcome',
-  'stage',
-  'at',
-  'target',
-  'productionMajor',
-  'sourceMajor',
-  'targetMajor',
-  'archiveTakenAt',
-  'tables',
-  'readAs',
-  'timings',
-  'lastTestedRestore',
-  'business',
-  'operator',
-];
-
-/**
- * The drill's receipt in the store, as the restore identity: the store stamps
- * the time, and a passed drill's time is the date of the last tested restore.
- */
-export async function recordDrill(storeUrl, operator, record) {
-  const sql = postgres(storeUrl, { max: 1, onnotice: () => {}, connect_timeout: 10 });
-  try {
-    return await sql.begin(async (tx) => {
-      await tx.unsafe(`set local role ${RESTORE_ROLE}`);
-      const [row] = await tx`select backups.record_drill(
-        ${record.outcome}, ${record.stage ?? null}, ${operator}, ${record.archiveTakenAt ?? null},
-        ${record.productionMajor}, ${record.sourceMajor}, ${record.targetMajor},
-        ${record.tables ?? null}, ${sql.json(record.timings)}) as at`;
-      return row.at === null ? null : row.at.toISOString();
-    });
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
 }
 
 /**
