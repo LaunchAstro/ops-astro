@@ -117,7 +117,7 @@ async function loginIn(db: EmptyDatabase, role: string): Promise<{ url: string; 
 class Client {
   readonly #sql: postgres.Sql;
   constructor(url: string) {
-    this.#sql = postgres(url, { max: 1, onnotice: () => undefined });
+    this.#sql = postgres(url, { max: 1, onnotice: () => {} });
   }
   async query<Row = Record<string, unknown>>(
     text: string,

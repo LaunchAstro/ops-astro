@@ -231,7 +231,7 @@ async function press(page: Mounted, selector: string): Promise<void> {
 }
 
 const revisionOnPage = (page: Mounted): string | null | undefined =>
-  page.find('[data-revision]')?.getAttribute('data-revision');
+  (page.find('[data-revision]') as HTMLElement | null)?.dataset['revision'];
 
 describe('a lost comment or proposal is the same attempt after a reread', () => {
   it('comment: a title save moves the revision, and the retry replays the stored comment', async () => {

@@ -68,7 +68,7 @@ for (let at = 0; at < args.length; at += 1) {
 
 function service(name) {
   const text = given.get(name);
-  if (text === undefined) return undefined;
+  if (text === undefined) return;
   try {
     return parseService(text);
   } catch (error) {

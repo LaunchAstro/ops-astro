@@ -28,7 +28,9 @@ const outside = createServer((_request, response) => {
     .writeHead(200, { 'content-type': 'text/javascript' })
     .end('window.plantedOutside = true;');
 });
-await new Promise((resolve) => outside.listen(0, '127.0.0.1', resolve));
+await new Promise((resolve) => {
+  outside.listen(0, '127.0.0.1', resolve);
+});
 const OUTSIDE = `http://127.0.0.1:${String(outside.address().port)}`;
 
 const server = createServer((request, response) => {
@@ -51,7 +53,9 @@ const server = createServer((request, response) => {
     response.writeHead(404).end();
   }
 });
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+await new Promise((resolve) => {
+  server.listen(0, '127.0.0.1', resolve);
+});
 const origin = `http://127.0.0.1:${String(server.address().port)}`;
 
 const browser = await chromium.launch();
@@ -67,7 +71,7 @@ try {
     inline: window.plantedInline === true,
     handler: window.plantedHandler === true,
     outside: window.plantedOutside === true,
-    ownBundle: document.getElementById('app')?.children.length ?? 0,
+    ownBundle: document.querySelector('#app')?.children.length ?? 0,
   }));
   const rows = [
     ['the page’s own bundle runs', ran.ownBundle > 0],

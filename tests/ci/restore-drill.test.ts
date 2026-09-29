@@ -159,7 +159,9 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       ]);
       if (ready.code === 0) break;
       // oxlint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => {
+        setTimeout(r, 500);
+      });
     }
     const sql = `
       create schema ops;
@@ -213,7 +215,7 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
         ('${A.business}', '${AGENT}', '${A.person}');
       create table public.tasks (business_id uuid not null, id int primary key, title text);
       insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
-      ${['businesses', 'people', 'memberships', 'grants', 'delegations', 'tasks'].map(barrier).join('\n')}`;
+      ${['businesses', 'people', 'memberships', 'grants', 'delegations', 'tasks'].map((table) => barrier(table)).join('\n')}`;
     const created = await run(
       ['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'fixture'],
       Buffer.from(sql),

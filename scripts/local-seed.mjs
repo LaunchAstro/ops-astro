@@ -608,7 +608,7 @@ async function seedAgentUser(auth, agent) {
     headers,
     body: JSON.stringify({ email: agent.email, password: agent.password, email_confirm: true }),
   });
-  const body = await created.json().catch(() => undefined);
+  const body = await created.json().catch(() => {});
   if (typeof body?.id === 'string') return { subject: body.id, reachable: true };
   // Already there: find it, and keep the subject GoTrue already issued.
   const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, { headers });
@@ -626,7 +626,7 @@ async function seedAgentUser(auth, agent) {
 async function authAdmin() {
   const { localServiceToken } = await import('./local/signing-key.mjs');
   const token = await localServiceToken(root);
-  if (token === undefined) return undefined;
+  if (token === undefined) return;
   return { url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391', token };
 }
 

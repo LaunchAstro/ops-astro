@@ -83,7 +83,7 @@ function client(): {
 }
 
 const outcome = (): string | null =>
-  document.querySelector('[data-settings="read"]')?.getAttribute('data-outcome') ?? null;
+  document.querySelector<HTMLElement>('[data-settings="read"]')?.dataset['outcome'] ?? null;
 
 const cached = (): string =>
   Object.keys(window.sessionStorage)
