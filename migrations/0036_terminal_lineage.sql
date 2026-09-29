@@ -45,19 +45,26 @@ begin
   -- lineage this caller cannot see is left to the tenancy check and the
   -- foreign key, which answer it as they always have; only a visible terminal
   -- lineage is refused here.
+  --
+  -- The lock is the lineage row, for share, and the read runs after the row
+  -- is written (an AFTER trigger, so after every BEFORE trigger too). A
+  -- terminal transition that committed first is seen here; one that comes
+  -- second waits on this lock for the insert to commit, so a version and a
+  -- cancel never cross (Sol review 1 on #153, criterion 2).
   select state into lineage_state from public.proposal_lineages
-   where business_id = new.business_id and id = new.lineage_id;
+   where business_id = new.business_id and id = new.lineage_id
+     for share;
   if lineage_state is not null and lineage_state <> 'live' then
     raise exception 'LINEAGE_TERMINAL: lineage % is %, and takes no further versions',
       new.lineage_id, lineage_state
       using errcode = 'check_violation';
   end if;
-  return new;
+  return null;
 end;
 $$;
 
 revoke all on function public.proposal_versions_on_live_lineage() from public;
 
 create trigger proposal_versions_on_live_lineage
-  before insert on public.proposal_versions
+  after insert on public.proposal_versions
   for each row execute function public.proposal_versions_on_live_lineage();
