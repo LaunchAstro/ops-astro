@@ -176,9 +176,9 @@ identity, grant, record and command-envelope spine ported from
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
 decision, budget, lease and attempt migrations, and the model-call ledger and
-copy register (`0032_model_calls`), and the pinned instruction files
-(`0033_bootstrap_pins`), the budget wait (`0034_budget_wait`) and its answers
-(`0035_budget_answers`). Read `ls migrations/` for the current set.
+copy register (`0042_model_calls`), and the pinned instruction files
+(`0043_bootstrap_pins`), the budget wait (`0044_budget_wait`) and its answers
+(`0045_budget_answers`). Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -263,7 +263,7 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses. `model_route_room` (migration 0032, AW-01's fair share) is
+whom it refuses. `model_route_room` (migration 0042, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold

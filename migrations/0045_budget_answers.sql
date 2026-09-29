@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
 -- AW-05: the answers at the budget stop. A run waiting for budget
--- (0034) leaves the wait only by a person's answer to its latest ask
+-- (0044) leaves the wait only by a person's answer to its latest ask
 -- (`core-runtime/src/budget-answer.ts`):
 --
 --   budget_approvals  one row per person approving a top-up of one ask: the
@@ -22,7 +22,7 @@
 --
 -- Both tables are append-only: the application group may insert and read,
 -- and never update or delete. The worker and broker roles hold nothing.
--- The number is placed by the rebase onto main (build-ahead).
+-- Numbered after main's 0041 at the rebase; the batch integration may number it again.
 
 create table public.budget_approvals (
   business_id  uuid        not null,

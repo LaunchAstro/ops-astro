@@ -20,8 +20,8 @@
 --                      or it came back above the hold: held at the maximum until
 --                      a person records an outcome, never released by a machine
 --
--- No prompt text and no answer text is stored here. The number is placed by
--- the rebase onto main (build-ahead).
+-- No prompt text and no answer text is stored here.
+-- Numbered after main's 0041 at the rebase; the batch integration may number it again.
 
 create table public.model_calls (
   business_id     uuid        not null,

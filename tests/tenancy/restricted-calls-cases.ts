@@ -65,8 +65,8 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
-  // 0033 takes back update on the whole run and grants it on `state` alone.
-  'public.planned_runs': { from: '0033', letters: 'u' },
+  // 0043 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0043', letters: 'u' },
 };
 
 /**
@@ -77,7 +77,7 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
-  'public.planned_runs': { from: '0033', columns: ['state'] },
+  'public.planned_runs': { from: '0043', columns: ['state'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */

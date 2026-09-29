@@ -19,7 +19,7 @@
 --
 -- The application group may insert and read an ask and may never update or
 -- delete one. The worker and broker roles hold nothing on it.
--- The number is placed by the rebase onto main (build-ahead).
+-- Numbered after main's 0041 at the rebase; the batch integration may number it again.
 
 alter table public.planned_runs drop constraint planned_runs_state_known;
 alter table public.planned_runs

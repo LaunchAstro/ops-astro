@@ -26,7 +26,7 @@
 -- audit copy and may never read, update or delete one. The worker and broker
 -- roles hold nothing on any of them. The run they belong to keeps its
 -- version, task and lineage: the application may update its state alone.
--- The number is placed by the rebase onto main (build-ahead).
+-- Numbered after main's 0041 at the rebase; the batch integration may number it again.
 
 create table public.run_definition_pins (
   business_id           uuid        not null,

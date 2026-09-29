@@ -1417,7 +1417,7 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## The model call's ledger
 
-`0032_model_calls` (AW-01; numbered again at the rebase) adds two tables,
+`0042_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
 both tenancy-scoped with row security forced, and the fair share's count
 (`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
 
@@ -1467,7 +1467,7 @@ sends the values read there. Client persons and guests do not exist yet
 
 ## Instruction files pinned by digest
 
-`0033_bootstrap_pins` (AW-02; numbered again at the rebase) adds three
+`0043_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
 tables, each tenancy-scoped with row security forced. A file's identity is its
 digest and its size; the path is provenance only.
 
@@ -1485,7 +1485,7 @@ digest and its size; the path is provenance only.
 The application group may select and insert a pin and a ledger row, and never
 update or delete one; it may insert an audit copy and never read, update or
 delete it. The worker and broker roles hold nothing on any of them. The run
-itself is never rewritten either: 0033 takes back the application's update on
+itself is never rewritten either: 0043 takes back the application's update on
 `planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
@@ -1513,8 +1513,8 @@ nothing. `setDigest` is the path-sorted set digest over a run's reads.
 
 ## The budget wait
 
-The approved ceiling is the stop (AW-05; `0034_budget_wait`, numbered again
-at the rebase). A model call whose priced maximum does not fit in what the
+The approved ceiling is the stop (AW-05; `0044_budget_wait`, numbered after
+main's 0041 at the rebase). A model call whose priced maximum does not fit in what the
 run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
 transaction the run stops and asks (`raiseBudgetWait`,
 `core-custody/src/broker-wait.ts`). The reserve holds the run's task, the run,
@@ -1548,7 +1548,7 @@ calls on one run reaching the ceiling at once stop it once.
 ## The answers at the budget stop
 
 A waiting run leaves the wait only by a person's answer to its latest ask
-(AW-05; `0035_budget_answers`, numbered again at the rebase;
+(AW-05; `0045_budget_answers`, numbered after main's 0041 at the rebase;
 `core-runtime/src/budget-answer.ts`). The trigger lets it become `planned`
 only when that ask has a `top_up` answer, and `cancelled` only when it has an
 `end`. `budget_answers` (one per ask) and `budget_approvals` (one per person
