@@ -90,13 +90,13 @@ export const ROUTES = {
   // The component gallery (MP-1-3): every piece of the kit in its states,
   // for the owner's checks and the width-and-theme harness. It draws sample
   // words and no record; it asks for a session like every working page, and
-  // it has no rail entry because it is not a place work happens.
+  // the route manifest has no page for it, so it has no rail entry: it is not
+  // a place work happens.
   'agency:gallery': {
     namespace: 'agency',
     path: '/gallery/',
     title: 'Component gallery',
     surface: 'none',
-    rail: false,
     authenticated: true,
   },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
