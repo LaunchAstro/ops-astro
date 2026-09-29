@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
+  effectOperationId,
   READS,
   type CommandDeclaration,
   type CommandName,
@@ -64,6 +65,7 @@ const LEASE_WORK: readonly CommandName[] = [
   'task.handback',
   'task.heartbeat',
   'task.dispatch',
+  'task.observe',
 ];
 
 /** A domain-state digest without `handback_reports`, for I08's retained handback report. */
@@ -159,6 +161,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       leaseId: String(detail['leaseId']),
       fence: Number(detail['fence']),
       delegationId: String(detail['delegationId']),
+      attemptId: String(detail['attemptId']),
       credential: String(detail['credential']),
       reservationId,
     };
@@ -172,6 +175,28 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const agent = await freshAgent();
         const reservationId = await reservationBy(ada, 'work an agent picks up');
         return agentCell(agent, name, { reservationId }, undefined, null);
+      }
+      case 'task.observe': {
+        // Dispatched, and its one effect applied under the attempt's identity (T2c2).
+        const agent = await freshAgent();
+        const p = await pickUpBy(ada, agent, 'work whose effect is observed');
+        const lease = { leaseId: p.leaseId, fence: p.fence };
+        const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
+        const effect = await w.agent(
+          agent,
+          'task.comment',
+          {
+            operationId: effectOperationId(p.attemptId),
+            recordId: p.taskId,
+            body: 'the synthetic effect',
+            audience: 'internal',
+          },
+          p.credential,
+        );
+        if (marked.code !== 'ok' || effect.code !== 'ok') {
+          throw new Error(`audit: effect refused ${marked.code} ${effect.code}`);
+        }
+        return agentCell(agent, name, { ...lease, attemptId: p.attemptId }, p.credential, null);
       }
       case 'task.heartbeat':
       case 'task.dispatch':
@@ -205,14 +230,20 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
-  async function adaLease(title: string): Promise<{ leaseId: string; fence: number }> {
+  async function adaLease(
+    title: string,
+  ): Promise<{ leaseId: string; fence: number; attemptId: string }> {
     const reservationId = await reservationBy(w.h.world.ada, title);
     const picked = await w.person(w.h.world.ada, 'task.pickup', { reservationId });
     const detail = picked.body['detail'] as Record<string, unknown> | undefined;
     if (picked.code !== 'ok' || detail === undefined) {
       throw new Error(`audit: ada's pickup refused ${picked.code}`);
     }
-    return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+    return {
+      leaseId: String(detail['leaseId']),
+      fence: Number(detail['fence']),
+      attemptId: String(detail['attemptId']),
+    };
   }
 
   async function refused(declaration: CommandDeclaration): Promise<Cell> {
@@ -227,10 +258,16 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       }
       case 'task.heartbeat':
       case 'task.dispatch':
+      case 'task.observe':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body =
+          name === 'task.handback'
+            ? { ...lease, ...settle }
+            : name === 'task.observe'
+              ? { ...lease, attemptId: lease.attemptId }
+              : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
       default: {
@@ -256,12 +293,18 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         );
       case 'task.heartbeat':
       case 'task.dispatch':
+      case 'task.observe':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);
         const lease = { leaseId: randomUUID(), fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body =
+          name === 'task.handback'
+            ? { ...lease, ...settle }
+            : name === 'task.observe'
+              ? { ...lease, attemptId: p.attemptId }
+              : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
       default:
@@ -330,9 +373,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 36 exported operations both ways', () => {
+  it('covered all 38 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(36);
+    expect(names).toHaveLength(38);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
     // R2 (`noah`, no grant) is the refused caller on every one of the 36.

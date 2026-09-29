@@ -24,7 +24,11 @@
 // because being skipped is a thrown error rather than an absent row.
 
 import { randomUUID } from 'node:crypto';
-import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
+import {
+  effectOperationId,
+  type CommandDeclaration,
+  type CommandName,
+} from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
 /**
@@ -99,14 +103,44 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
   return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
 }
 
-/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
-async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+/** The context's person's own pickup of fresh approved work (EX-01), as its answer's detail. */
+async function ownPickup(context: BodyContext): Promise<Record<string, unknown>> {
   const picked = await context.asPerson('task.pickup', {
     reservationId: await approvedReservationId(context),
   });
   if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
-  const detail = picked.body['detail'] as Record<string, unknown>;
+  return picked.body['detail'] as Record<string, unknown>;
+}
+
+/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+  const detail = await ownPickup(context);
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+}
+
+/**
+ * The person's own lease with its step dispatched and its one effect applied
+ * under the attempt's operation identity (T2c2): what `task.observe` takes.
+ */
+export async function ownAppliedEffect(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number; attemptId: string }> {
+  const detail = await ownPickup(context);
+  const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+  const attemptId = String(detail['attemptId']);
+  const taskId = String(detail['taskId']);
+  const marked = await context.asPerson('task.dispatch', lease);
+  if (marked.code !== 'ok') throw new Error(`matrix: dispatch refused ${marked.code}`);
+  const read = await context.asPerson('task.read', { recordId: taskId });
+  const effect = await context.asPerson('task.comment', {
+    operationId: effectOperationId(attemptId),
+    recordId: taskId,
+    expectedRevision: (read.body['task'] as { revision: number }).revision,
+    body: 'the synthetic effect',
+    audience: 'internal',
+  });
+  if (effect.code !== 'ok') throw new Error(`matrix: effect refused ${effect.code}`);
+  return { ...lease, attemptId };
 }
 
 export function createPositiveBody(
@@ -273,6 +307,16 @@ export function createPositiveBody(
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
+      case 'task.observe':
+        // The person observes the effect they applied on their own lease (T2c2).
+        return { body: await ownAppliedEffect(context) };
+      case 'task.receipt': {
+        // The receipt of an effect the person applied and observed (T2c2).
+        const applied = await ownAppliedEffect(context);
+        const observed = await context.asPerson('task.observe', applied);
+        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
+        return { body: { attemptId: applied.attemptId } };
+      }
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

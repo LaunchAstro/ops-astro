@@ -77,6 +77,8 @@ export const READ_NAMES = [
   'preset.plan',
   // A task's runs and their progress events (T2a).
   'task.execution',
+  // What an observed effect came from (T2c2); the task page draws it in T2g.
+  'task.receipt',
 ] as const;
 
 /**

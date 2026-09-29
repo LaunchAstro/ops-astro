@@ -24,7 +24,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
 import { AGENT_SURFACE } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { TOP_LEVEL_FIELDS } from './d06-cases.ts';
-import { COMMAND_SURFACE, type CommandName } from '../../packages/core-wire/src/surface.ts';
+import {
+  COMMAND_SURFACE,
+  effectOperationId,
+  type CommandName,
+} from '../../packages/core-wire/src/surface.ts';
 import {
   Tally,
   durableProbe,
@@ -51,6 +55,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.propose',
   'task.heartbeat',
   'task.dispatch',
+  'task.observe',
   'task.pickup',
   'task.handback',
 ];
@@ -71,6 +76,7 @@ interface Pickup {
   readonly leaseId: string;
   readonly fence: number;
   readonly taskId: string;
+  readonly attemptId: string;
 }
 
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
@@ -109,6 +115,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       leaseId: String(detail['leaseId']),
       fence: Number(detail['fence']),
       taskId: String(detail['taskId']),
+      attemptId: String(detail['attemptId']),
     };
   }
 
@@ -173,6 +180,22 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     }
     if (name === 'task.heartbeat' || name === 'task.dispatch') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
+    }
+    if (name === 'task.observe') {
+      // The step dispatched and its one effect applied first; both replay (T2c2).
+      const lease = { leaseId: held.leaseId, fence: held.fence };
+      await harness.asAgent('task.dispatch', lease, credential);
+      await harness.asAgent(
+        'task.comment',
+        {
+          operationId: effectOperationId(held.attemptId),
+          recordId: held.taskId,
+          body: 'the synthetic effect',
+          audience: 'internal',
+        },
+        credential,
+      );
+      return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
     const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };

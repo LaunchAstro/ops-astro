@@ -220,6 +220,7 @@ export async function createHarness(part: string): Promise<Harness> {
         : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
+      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
