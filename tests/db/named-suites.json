@@ -72,7 +72,8 @@
     "FR3R-0030 names final-r3r-0030-upgrade-race as an invariant (migration 0030, SOL-R3R-1: on a database seeded at 0029 through the runtime, the application role's move of a decided gate onto a superseded version with its own run, step and pack, made while 0030 is paused after its check block, waits for 0030 and is refused gates_version_fixed_once_decided with the gate on its decided version; the same move in flight when the upgrade starts makes the upgrade wait, then refuses the upgrade at 0029). R4-THERMO-4 adds two cases to final-r2-dbtest-gate-pack-binding, one per trigger guard: (d) a decided gate reset to pending and then moved, refused by the decision guard alone, and (e) a superseded gate with no decision moved, refused by the state guard alone.",
     "FR5-0030 adds two cases to final-r3r-0030-upgrade-race (SOL-R3R2-1): a real propose on a database at 0029, held between its evidence pack and its gate (a first version) or between superseding the old gate and its pack (a successor), while 0030 starts as the runner applies it. Both must commit, with 0030 recorded, its pack key validated and the gate on its own version's pack. Unedited, 0030 deadlocked with the first; locking evidence_packs before gates deadlocks with the second; 0030 now locks proposal_versions first.",
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
-    "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked."
+    "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
+    "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -208,7 +209,8 @@
     "tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts",
     "tests/runtime/final-r3r-0030-upgrade-race.test.ts",
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
-    "tests/tenancy/final-r6-runner-guard.test.ts"
+    "tests/tenancy/final-r6-runner-guard.test.ts",
+    "tests/web/mp-2-1-isolation-api.test.tsx"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
