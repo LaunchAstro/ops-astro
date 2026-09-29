@@ -54,6 +54,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0037 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
+  // 0038 (C58): an ended session is written once; never changed or deleted.
+  ['si', 'ended_sessions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

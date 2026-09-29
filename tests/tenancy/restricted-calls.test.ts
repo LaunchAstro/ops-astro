@@ -106,6 +106,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.person_logins pl
        join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
       where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C58: an ended session, as signing out writes one for a person's own session.
+  'public.ended_sessions': `insert into public.ended_sessions
+       (business_id, person_id, session_id, reason)
+     select business_id, id, gen_random_uuid(), 'sign_out'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

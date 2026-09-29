@@ -13,6 +13,7 @@
     "tests/operations/c81-legal-documents.test.ts",
     "tests/operations/c81-register.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
-    "tests/authority/c58-end-access.test.ts"
+    "tests/authority/c58-end-access.test.ts",
+    "tests/api/c58-sessions.test.ts"
   ]
 }
