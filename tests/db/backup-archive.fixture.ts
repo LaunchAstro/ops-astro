@@ -14,10 +14,16 @@ export const PART: number = 4 * 1024 * 1024;
 
 /**
  * Adds `body` to the store through the backup identity's two functions, as
- * the job does: in parts, then completed with its size and whole digest. In
+ * the job does: in parts, then completed with its size and whole digest (and
+ * the restore challenge's sha256, when there is one). In
  * its own transaction unless `open` says the caller holds one.
  */
-export async function addArchive(client: Client, body: Buffer, open = false): Promise<void> {
+export async function addArchive(
+  client: Client,
+  body: Buffer,
+  open = false,
+  challengeSha256: string | null = null,
+): Promise<void> {
   if (!open) await client.query('begin');
   try {
     for (let seq = 0; seq * PART < body.length; seq += 1) {
@@ -28,7 +34,11 @@ export async function addArchive(client: Client, body: Buffer, open = false): Pr
       ]);
     }
     const digest = createHash('sha256').update(body).digest('hex');
-    await client.query('select backups.complete_archive($1, $2)', [body.length, digest]);
+    await client.query('select backups.complete_archive($1, $2, $3)', [
+      body.length,
+      digest,
+      challengeSha256,
+    ]);
     if (!open) await client.query('commit');
   } catch (error) {
     if (!open) await client.query('rollback');

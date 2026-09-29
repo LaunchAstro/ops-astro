@@ -95,7 +95,13 @@ function exportCases() {
     expect(readFileSync(file).equals(archive.body)).toBe(true);
     expect((await carried()).digestOf(readFileSync(file))).toBe(archive.sha256);
     const written = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, unknown>;
-    expect(Object.keys(written).toSorted()).toStrictEqual(['bytes', 'format', 'sha256', 'takenAt']);
+    expect(Object.keys(written).toSorted()).toStrictEqual([
+      'archiveId',
+      'bytes',
+      'format',
+      'sha256',
+      'takenAt',
+    ]);
     expect(written['bytes']).toBe(archive.body.length);
     expect(written['sha256']).toBe(archive.sha256);
     for (const text of [everything(dir), JSON.stringify(receipt), everything(gate.records)]) {
@@ -200,7 +206,8 @@ function refusalCases() {
       'an extra field': JSON.stringify({ ...good, key: CANARY }),
       'a missing field': JSON.stringify({ ...good, sha256: undefined }),
       'a prototype key': `{"__proto__":{"x":1},${JSON.stringify(good).slice(1)}`,
-      'another format': JSON.stringify({ ...good, format: 'ops-astro-sealed-archive/1' }),
+      'another format': JSON.stringify({ ...good, format: 'ops-astro-sealed-archive/2' }),
+      'an archive id that is not one': JSON.stringify({ ...good, archiveId: CANARY }),
       'an upper-case digest': JSON.stringify({ ...good, sha256: good['sha256']!.toUpperCase() }),
       'a short digest': JSON.stringify({ ...good, sha256: good['sha256']!.slice(2) }),
       'a size that is text': JSON.stringify({ ...good, bytes: String(size) }),

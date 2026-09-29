@@ -26,8 +26,10 @@
 // Runs wherever Docker runs, CI's hosted runner included. The fixture is a
 // real pg_dump of made-up rows, taken in a container of staging's own image.
 import { spawn, spawnSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 type DrillRecord = Record<string, unknown> & { outcome: string; stage?: string };
@@ -96,6 +98,8 @@ const A2 = {
 };
 // A root grant over A2.derived, revoked, and a grant A.person holds from it.
 const ROOT = randomUUID();
+/** The restore challenge the fixture's dump carries, as the job writes one (migration 0034). */
+const CHALLENGE = randomBytes(32).toString('hex');
 // An agent's actor acting for A.person under a live delegation (migration 0008).
 const AGENT = randomUUID();
 
@@ -166,6 +170,8 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
     const sql = `
       create schema ops;
       create table ops.schema_migrations (version text primary key, checksum text not null);
+      create table ops.restore_challenge (one boolean primary key default true, challenge text not null);
+      insert into ops.restore_challenge (challenge) values ('${CHALLENGE}');
       insert into ops.schema_migrations values ('0033', 'a'), ('0034', 'b');
       create function public.app_business_id() returns uuid language sql stable
         as $$ select nullif(current_setting('app.business_id', true), '')::uuid $$;
@@ -304,6 +310,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
   theRestoreDrillCases2();
   theRestoreDrillCases3();
   theRestoreDrillCases4();
+  carriedRestoreCases();
 });
 
 function theRestoreDrillCases1() {
@@ -453,7 +460,7 @@ function drillTargetCases1() {
         sourceMajor: PRODUCTION_MAJOR,
         targetMajor: PRODUCTION_MAJOR,
         productionMajor: PRODUCTION_MAJOR,
-        tables: 7,
+        tables: 8,
         readAs: 'ops_astro_app',
       });
       const timings = record['timings'] as Record<string, number>;
@@ -533,7 +540,7 @@ function drillScopeCases1() {
         return docker(args, input);
       },
     });
-    expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 7 });
+    expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 8 });
     // Every statement that reads the copy's tables runs as the tenancy role
     // under the named business; the owner session never reads one.
     const reads = calls.filter(
@@ -688,5 +695,97 @@ function drillScopeCases6() {
     });
     expect(record).toMatchObject({ outcome: 'failed', stage: 'scope' });
     expect(calls).toEqual([]);
+  });
+}
+
+type Carried = {
+  writeCarried: (
+    file: string,
+    fetchInto: (into: string) => Promise<Record<string, unknown>>,
+  ) => Promise<unknown>;
+  readChallenge: (file: string) => string | null;
+};
+type AsOperator = { drillAsOperator: (options: Record<string, unknown>) => Promise<DrillRecord> };
+
+/**
+ * The fixture's sealed dump carried and drilled as an admitted operator, in a
+ * folder of its own: the receipt, its log line and the challenge kept beside it.
+ */
+async function carriedRestore(
+  scope: Scope,
+): Promise<{ kept: string; receipt: DrillRecord; log: string }> {
+  const dir = mkdtempSync(join(tmpdir(), 's0-3e-real-'));
+  try {
+    const file = join(dir, 'archive.sealed');
+    const path = '../../scripts/ops/carried-archive.mjs';
+    const { writeCarried } = (await import(/* @vite-ignore */ path)) as Carried;
+    await writeCarried(file, (into) => {
+      writeFileSync(into, sealed, { mode: 0o600, flag: 'wx' });
+      const sha256 = createHash('sha256').update(sealed).digest('hex');
+      return Promise.resolve({ archiveId: randomUUID(), takenAt, sha256, bytes: sealed.length });
+    });
+    const records = join(dir, 'records');
+    const gate = {
+      ok: true,
+      operator: { personId: randomUUID(), business: 'made-up' },
+      records,
+      recordSignIn: () => Promise.resolve(),
+    };
+    const drill = '../../scripts/ops/restore-drill.mjs';
+    const { drillAsOperator } = (await import(/* @vite-ignore */ drill)) as AsOperator;
+    // The real drill: Docker, the throwaway container, pg_restore and the check.
+    const receipt = await drillAsOperator({
+      gate,
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope,
+    });
+    const challenge = existsSync(`${file}.challenge`)
+      ? readFileSync(`${file}.challenge`, 'utf8')
+      : '';
+    return {
+      kept: challenge,
+      receipt,
+      log: readFileSync(join(records, 'deployments.jsonl'), 'utf8'),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function carriedRestoreCases() {
+  describe('S0-3e carried drill, real restore', () => {
+    it('a carried archive goes through every real stage in a throwaway container, and the challenge read back from the restored database is kept beside it, never in the receipt or log', async () => {
+      const { kept, receipt, log } = await carriedRestore(SCOPE);
+      expect(receipt).toMatchObject({
+        outcome: 'pending',
+        stage: null,
+        tables: 8,
+        readAs: 'ops_astro_app',
+        ranOn: 'carried archive',
+        targetMajor: PRODUCTION_MAJOR,
+      });
+      expect(Object.keys(receipt['timings'] as object).toSorted()).toStrictEqual([
+        'check',
+        'fetch',
+        'open',
+        'restore',
+        'start',
+      ]);
+      expect(kept).toBe(`${CHALLENGE}\n`);
+      const digest = createHash('sha256').update(sealed).digest('hex');
+      for (const text of [JSON.stringify(receipt), log]) {
+        expect(text).not.toContain(CHALLENGE);
+        expect(text).not.toContain(digest);
+      }
+      expect(await drillContainers()).toBe('');
+    }, 180_000);
+
+    it('a carried restore that fails its check keeps no challenge', async () => {
+      const { kept, receipt } = await carriedRestore({ ...SCOPE, person: B.person });
+      expect(receipt).toMatchObject({ outcome: 'failed', stage: 'check' });
+      expect(kept).toBe('');
+      expect(await drillContainers()).toBe('');
+    }, 180_000);
   });
 }

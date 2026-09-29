@@ -11,8 +11,8 @@
 // `S0-3 carried archive`: the receipt round trip on the file side, and hostile
 // receipts refused.
 
-import { randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -77,16 +77,42 @@ function keptCases() {
     expect(receipt).toMatchObject({
       outcome: 'pending',
       ranOn: 'carried archive',
-      archiveDigest: held.sha256,
       lastTestedRestore: null,
       operator,
     });
     const kept = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
     expect(kept.map((line) => JSON.parse(line) as Receipt)).toStrictEqual([receipt]);
+    // Criterion 14: the digest is in neither the printed receipt nor its log.
+    expect(`${JSON.stringify(receipt)}${kept.join('')}`).not.toContain(held.sha256);
     // The kept line is what --record takes back on the machine that runs staging.
-    expect((await carried()).readCarriedReceipt(saved(`${kept[0]}\n`), operator)).toStrictEqual(
-      receipt,
-    );
+    const own = { personId: operator, business: 'made-up' };
+    expect((await carried()).readCarriedReceipt(saved(`${kept[0]}\n`), own)).toStrictEqual(receipt);
+  });
+
+  it('the restore challenge a drill read back is kept beside the archive, mode 600, and never printed or logged', async () => {
+    const { file } = await carriedFile();
+    const gate = gateOf();
+    const challenge = randomBytes(32).toString('hex');
+    const { drillAsOperator } = await drillModule();
+    const receipt = await drillAsOperator({
+      gate,
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope,
+      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+        await options.fetchArchive();
+        const result = { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
+        // As restoreDrill keeps it: off the record's own fields.
+        return Object.defineProperty(result, 'challenge', { value: challenge, enumerable: false });
+      },
+      reach: noStore,
+    });
+    expect(receipt['outcome']).toBe('pending');
+    expect(readFileSync(`${file}.challenge`, 'utf8')).toBe(`${challenge}\n`);
+    expect(statSync(`${file}.challenge`).mode & 0o777).toBe(0o600);
+    const log = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8');
+    expect(`${JSON.stringify(receipt)}${log}`).not.toContain(challenge);
+    expect((await carried()).readChallenge(file)).toBe(challenge);
   });
 }
 
@@ -98,7 +124,6 @@ function refusedCases() {
       ...Object.fromEntries(RECEIPT_FIELDS.map((field) => [field, null])),
       ...PASSED,
       outcome: 'pending',
-      archiveDigest: 'ab'.repeat(32),
       action: 'restore drill recorded',
       at: TAKEN,
       business: 'made-up',
@@ -106,9 +131,17 @@ function refusedCases() {
       ranOn: 'carried archive',
     };
     const { readCarriedReceipt } = await carried();
-    expect(readCarriedReceipt(saved(JSON.stringify(good)), operator)).toStrictEqual(good);
+    const own = { personId: operator, business: 'made-up' };
+    expect(readCarriedReceipt(saved(JSON.stringify(good)), own)).toStrictEqual(good);
     const hostile: Record<string, string> = {
       'another person': JSON.stringify({ ...good, operator: randomUUID() }),
+      'another business': JSON.stringify({ ...good, business: 'another-business' }),
+      'a target of its own': JSON.stringify({ ...good, target: CANARY }),
+      'a stage of its own': JSON.stringify({ ...good, stage: CANARY }),
+      'a reader of its own': JSON.stringify({ ...good, readAs: CANARY }),
+      'timings of its own': JSON.stringify({ ...good, timings: { [CANARY]: 1 } }),
+      'a timing that is not a count': JSON.stringify({ ...good, timings: { fetch: CANARY } }),
+      'a business that is not text': JSON.stringify({ ...good, business: { key: CANARY } }),
       'a drill that ran on staging': JSON.stringify({ ...good, ranOn: 'staging machine' }),
       'a receipt already recorded': JSON.stringify({ ...good, lastTestedRestore: TAKEN }),
       'another action': JSON.stringify({ ...good, action: 'archive exported' }),
@@ -118,12 +151,12 @@ function refusedCases() {
       'a major that is not a number': JSON.stringify({ ...good, sourceMajor: '17' }),
       'an outcome of its own': JSON.stringify({ ...good, outcome: 'maybe' }),
       'a pass the store never checked': JSON.stringify({ ...good, outcome: 'passed' }),
-      'a digest that is not one': JSON.stringify({ ...good, archiveDigest: 'AB'.repeat(32) }),
+      'a digest carried in it': JSON.stringify({ ...good, archiveDigest: 'ab'.repeat(32) }),
       'two receipts': `${JSON.stringify(good)}\n${JSON.stringify(good)}`,
       'not JSON': 'passed',
     };
     for (const [what, text] of Object.entries(hostile)) {
-      expect(() => readCarriedReceipt(saved(text), operator), what).toThrow(NAMES_NOTHING);
+      expect(() => readCarriedReceipt(saved(text), own), what).toThrow(NAMES_NOTHING);
     }
   });
 }

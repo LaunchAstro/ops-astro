@@ -3,14 +3,20 @@
 // S0-3e: the carried archive's round trip through the real store (the clean-host
 // leg, recovery contract D-3). The export reads the newest backup as the restore
 // identity, so the store logs the read; the carried drill's receipt, brought
-// back, is recorded against that read by `backups.record_carried_drill`, once,
-// for the operator who ran it, and names where it ran. The file side is
+// back with the archive it restored, is recorded against that read, on the
+// archive's own id, by `backups.record_carried_drill`: once, for the operator
+// who ran it in the business it ran in, only for the digest of the file carried
+// back and, for a pass, only with the restore challenge a restore of that
+// archive reads back. Here the challenge is the one the test's archive was
+// completed with, kept beside the file as the drill keeps it; that a real
+// restore reads it back from the restored database is
+// tests/ci/restore-drill.test.ts's carried case. The file side is
 // tests/ci/carried-archive.test.ts and tests/ci/carried-receipt.test.ts.
 //
 // S0-3 (S0-3e). The shared fixture is backup-identity.fixture.ts.
 
-import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,6 +24,7 @@ import {
   serverUrl,
   BACKUP,
   RETENTION,
+  RESTORE,
   keys,
   asRole,
   attempt,
@@ -34,7 +41,7 @@ import { passed } from './backup-drill-records.fixture.ts';
 
 type Receipt = Record<string, unknown>;
 type Act = (options: Record<string, unknown>) => Promise<Receipt>;
-type DrillModule = { drillAsOperator: Act; exportArchive: Act; recordCarried: Act };
+type DrillModule = { exportArchive: Act; recordCarried: Act };
 const drillModule = async (): Promise<DrillModule> => {
   const path = '../../scripts/ops/restore-drill.mjs';
   return (await import(
@@ -65,46 +72,70 @@ const carriedBack = (receipt: Receipt, change: Receipt = {}): string => {
   return file;
 };
 
-/** `--record`, as the person `personId`, of the receipt file `receiptFile`. */
-const record = async (personId: string, receiptFile: string): Promise<Receipt> =>
+/** `--record`, as the person `personId`, of `receiptFile`, with the archive `archiveFile`. */
+const record = async (
+  personId: string,
+  receiptFile: string,
+  archiveFile: string = exported,
+): Promise<Receipt> =>
   await (
     await drillModule()
   ).recordCarried({
     gate: gateOf(personId),
     storeUrl: restoreLogin.url,
     receiptFile,
+    archiveFile,
     reach: hostReach,
   });
+
+/** The pending receipt a carried drill prints for the archive taken at `takenAt`. */
+const pendingReceipt = (takenAt: string): Receipt => ({
+  action: 'restore drill recorded',
+  ...passed,
+  outcome: 'pending',
+  at: new Date().toISOString(),
+  archiveTakenAt: takenAt,
+  lastTestedRestore: null,
+  business: 'made-up',
+  operator,
+  ranOn: 'carried archive',
+});
+
+/** Both files of the carried archive `file`, copied to a folder of their own. */
+const copied = (file: string): string => {
+  const copy = join(mkdtempSync(join(scratch, 'copy-')), 'archive.sealed');
+  copyFileSync(file, copy);
+  copyFileSync(`${file}.json`, `${copy}.json`);
+  return copy;
+};
+
+const sha = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
 
 let receipt: Receipt;
 let exported: string;
 
-/** A new sealed backup in the store, exported, and drilled on the carried file. */
+/**
+ * A new sealed backup in the store, completed with its restore challenge's
+ * sha256 as the job completes one, exported; beside the export, the challenge
+ * as a drill that restored it keeps it. Answers the receipt that drill prints.
+ */
 async function carriedReceipt(): Promise<Receipt> {
   const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
+  const challenge = randomBytes(32).toString('hex');
   const job = await asRole(backupLogin.url, BACKUP);
   try {
-    await addArchive(job, body);
+    await addArchive(job, body, false, sha(challenge));
   } finally {
     await job.end();
   }
-  const { exportArchive, drillAsOperator } = await drillModule();
   const file = join(mkdtempSync(join(scratch, 'carry-')), 'archive.sealed');
   exported = file;
-  const gate = gateOf(operator);
-  await exportArchive({ gate, storeUrl: restoreLogin.url, file, reach: hostReach });
+  await (
+    await drillModule()
+  ).exportArchive({ gate: gateOf(operator), storeUrl: restoreLogin.url, file, reach: hostReach });
+  writeFileSync(`${file}.challenge`, `${challenge}\n`, { mode: 0o600 });
   const takenAt = (JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { takenAt: string }).takenAt;
-  const at = new Date().toISOString();
-  return await drillAsOperator({
-    gate,
-    archiveFile: file,
-    privateKey: keys.privateKey,
-    scope: { business: randomUUID(), client: randomUUID(), person: randomUUID() },
-    drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
-      await options.fetchArchive();
-      return { event: 'restore drill', at, ...passed, archiveTakenAt: takenAt };
-    },
-  });
+  return pendingReceipt(takenAt);
 }
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
@@ -116,6 +147,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       receipt = await carriedReceipt();
     }, 120_000);
     refusedCases();
+    challengeCases();
     roundTripCases();
     concurrentCases();
   });
@@ -123,9 +155,10 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
 
 /**
  * The exported file with its sealed backup swapped: another dump sealed to the
- * same (public) backup key, its own digest, and the real time; then drilled.
+ * same (public) backup key, its own digest, the real time and id, and the real
+ * challenge beside it.
  */
-async function swappedAndDrilled(): Promise<Receipt> {
+async function swapped(): Promise<string> {
   const { sealArchive } = await seal();
   const { digestOf } = (await import(
     /* @vite-ignore */
@@ -134,43 +167,42 @@ async function swappedAndDrilled(): Promise<Receipt> {
   const held = JSON.parse(readFileSync(`${exported}.json`, 'utf8')) as Record<string, unknown>;
   const body = sealArchive(Buffer.from('-- another dump\n'), keys.publicKey);
   const file = join(mkdtempSync(join(scratch, 'swap-')), 'archive.sealed');
-  const swapped = { ...held, sha256: digestOf(body), bytes: body.length };
   writeFileSync(file, body);
-  writeFileSync(`${file}.json`, `${JSON.stringify(swapped)}\n`);
-  const at = new Date().toISOString();
-  return await (
-    await drillModule()
-  ).drillAsOperator({
-    gate: gateOf(operator),
-    archiveFile: file,
-    privateKey: keys.privateKey,
-    scope: { business: randomUUID(), client: randomUUID(), person: randomUUID() },
-    drill: async (options: { fetchArchive: () => Promise<{ takenAt: string }> }) => {
-      const archive = await options.fetchArchive();
-      return { event: 'restore drill', at, ...passed, archiveTakenAt: archive.takenAt };
-    },
-  });
+  writeFileSync(
+    `${file}.json`,
+    `${JSON.stringify({ ...held, sha256: digestOf(body), bytes: body.length })}\n`,
+  );
+  copyFileSync(`${exported}.challenge`, `${file}.challenge`);
+  return file;
 }
 
 function refusedCases() {
-  it('a swapped archive, re-sealed to the backup key with its own digest and the real time, is refused at --record and writes nothing', async () => {
-    const swapped = await swappedAndDrilled();
-    expect(swapped['archiveTakenAt']).toBe(receipt['archiveTakenAt']);
-    await expect(record(operator, carriedBack(swapped))).rejects.toThrow(
+  it('a swapped archive, re-sealed to the backup key with its own digest, the real time, id and challenge, is refused at --record and writes nothing', async () => {
+    await expect(record(operator, carriedBack(receipt), await swapped())).rejects.toThrow(
       /^(?!.*(?:postgres|s0-3e-)).*$/u,
     );
     expect(await drills()).toStrictEqual([]);
   });
 
-  it('the export is a read the store logs, as the restore identity', async () => {
-    const reads = await store.admin.execute<{ action: string; actor: string }>(
-      "select action, actor from backups.receipts where action = 'backup read'",
+  it('the export is a read the store logs, as the restore identity, the header and each part', async () => {
+    const reads = await store.admin.execute<{ action: string; actor: string; part: number | null }>(
+      "select action, actor, part from backups.receipts where action = 'backup read' order by id",
     );
-    expect([...reads]).toStrictEqual([{ action: 'backup read', actor: restoreLogin.name }]);
+    expect([...reads]).toStrictEqual([
+      { action: 'backup read', actor: restoreLogin.name, part: null },
+      { action: 'backup read', actor: restoreLogin.name, part: 0 },
+    ]);
   });
 
   it('a receipt brought back by another person is refused, and the store records nothing', async () => {
     await expect(record(randomUUID(), carriedBack(receipt))).rejects.toThrow();
+    expect(await drills()).toStrictEqual([]);
+  });
+
+  it('a receipt of another business is refused before the store, and the store records nothing', async () => {
+    await expect(
+      record(operator, carriedBack(receipt, { business: 'another-business' })),
+    ).rejects.toThrow(/another person or business/u);
     expect(await drills()).toStrictEqual([]);
   });
 
@@ -183,22 +215,104 @@ function refusedCases() {
   });
 }
 
+function challengeCases() {
+  it('a pending receipt with its archive but no restore challenge is refused, and the store records nothing', async () => {
+    await expect(record(operator, carriedBack(receipt), copied(exported))).rejects.toThrow(
+      /no restore challenge/u,
+    );
+    expect(await drills()).toStrictEqual([]);
+  });
+
+  it('a pending receipt with a restore challenge that is not the one the job wrote is refused by the store', async () => {
+    const copy = copied(exported);
+    writeFileSync(`${copy}.challenge`, `${randomBytes(32).toString('hex')}\n`);
+    await expect(record(operator, carriedBack(receipt), copy)).rejects.toThrow(
+      /did not take the receipt/u,
+    );
+    expect(await drills()).toStrictEqual([]);
+  });
+
+  it('a read of one of two archives taken in one transaction never attests the other, even with its own digest and challenge', async () => {
+    const before = (await drills()).length;
+    const { sealArchive } = await seal();
+    const challenges = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')];
+    const bodies = ['-- one\n', '-- two\n'].map((dump) =>
+      sealArchive(Buffer.from(dump), keys.publicKey),
+    );
+    const job = await asRole(backupLogin.url, BACKUP);
+    try {
+      await job.query('begin');
+      for (const [i, body] of bodies.entries()) {
+        // oxlint-disable-next-line no-await-in-loop -- one archive after the other, in one transaction
+        await addArchive(job, body, true, sha(challenges[i] ?? ''));
+      }
+      await job.query('commit');
+    } finally {
+      await job.end();
+    }
+    const reader = await asRole(restoreLogin.url, RESTORE);
+    try {
+      const { rows } = await reader.query<{ id: string; taken_at: Date }>(
+        'select id::text, taken_at from backups.read_latest()',
+      );
+      const [read] = rows;
+      const [unread] = [
+        ...(await store.admin.execute<{ id: string; sha256: string }>(
+          `select id::text, sha256 from backups.archives where id <> '${read?.id}'
+             and taken_at = (select taken_at from backups.archives where id = '${read?.id}')`,
+        )),
+      ];
+      expect(unread).toBeDefined();
+      const index = bodies.findIndex((body) => sha(body) === unread?.sha256);
+      // The other archive: its own digest and the challenge its dump carried.
+      expect(index).toBeGreaterThanOrEqual(0);
+      const call =
+        'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)';
+      const args = ['passed', null, operator, read?.taken_at, 17, 17, 17, 12, { fetch: 1 }];
+      const attempted = [...args, unread?.sha256, challenges[index], unread?.id];
+      expect(await attempt(reader, call, attempted)).toBe('42501');
+    } finally {
+      await reader.end();
+    }
+    expect(await drills()).toHaveLength(before);
+  });
+}
+
 function roundTripCases() {
-  it('the round trip: brought back, the receipt is recorded once as a carried drill and dates the last tested restore', async () => {
+  it('the round trip: with the archive and the challenge its restore reads back, the receipt is recorded once as a carried drill, echoes none of it, and dates the last tested restore', async () => {
+    const challenge = readFileSync(`${exported}.challenge`, 'utf8');
     const recorded = await record(operator, carriedBack(receipt));
+    expect(Object.keys(recorded).toSorted()).toStrictEqual(
+      ['action', 'at', 'business', 'lastTestedRestore', 'operator', 'outcome', 'ranOn'].toSorted(),
+    );
     expect(recorded).toMatchObject({ outcome: 'passed', ranOn: 'carried archive', operator });
     expect(typeof recorded['lastTestedRestore']).toBe('string');
     expect(await drills()).toStrictEqual([{ outcome: 'passed', ran_on: 'carried archive' }]);
-    // A replay of the same receipt never records a second drill.
+    // A replay of the same receipt, challenge and all, never records a second drill.
+    writeFileSync(`${exported}.challenge`, challenge);
     await expect(record(operator, carriedBack(receipt))).rejects.toThrow();
     expect(await drills()).toStrictEqual([{ outcome: 'passed', ran_on: 'carried archive' }]);
   });
 
   it('only the restore identity records a carried drill', async () => {
     const at = receipt['archiveTakenAt'];
-    const digest = receipt['archiveDigest'];
-    const args = ['passed', null, operator, at, 17, 17, 17, 12, { fetch: 1 }, digest];
-    const call = 'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)';
+    const held = JSON.parse(readFileSync(`${exported}.json`, 'utf8')) as Record<string, string>;
+    const args = [
+      'passed',
+      null,
+      operator,
+      at,
+      17,
+      17,
+      17,
+      12,
+      { fetch: 1 },
+      held['sha256'],
+      'ab'.repeat(32),
+      held['archiveId'],
+    ];
+    const call =
+      'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)';
     for (const [url, role] of [
       [backupLogin.url, BACKUP],
       [retentionLogin.url, RETENTION],
@@ -226,5 +340,50 @@ function concurrentCases() {
     ]);
     expect(both.map((result) => result.status).toSorted()).toStrictEqual(['fulfilled', 'rejected']);
     expect(await drills()).toHaveLength(before + 1);
+  });
+
+  it('exporting an archive without a clean-host restore cannot record a passed drill', async () => {
+    const before = (await drills()).length;
+    const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
+    const job = await asRole(backupLogin.url, BACKUP);
+    try {
+      await addArchive(job, body);
+    } finally {
+      await job.end();
+    }
+    const file = join(mkdtempSync(join(scratch, 'sol-export-')), 'archive.sealed');
+    await (
+      await drillModule()
+    ).exportArchive({
+      gate: gateOf(operator),
+      storeUrl: restoreLogin.url,
+      file,
+      reach: hostReach,
+    });
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as {
+      takenAt: string;
+      sha256: string;
+    };
+    const fabricated: Receipt = {
+      action: 'restore drill recorded',
+      outcome: 'pending',
+      stage: null,
+      at: new Date().toISOString(),
+      target: 'throwaway container',
+      productionMajor: 17,
+      sourceMajor: 17,
+      targetMajor: 17,
+      archiveTakenAt: held.takenAt,
+      tables: 12,
+      readAs: 'ops_astro_app',
+      timings: { fetch: 1, open: 1, start: 1, restore: 1, check: 1 },
+      lastTestedRestore: null,
+      business: 'made-up',
+      operator,
+      ranOn: 'carried archive',
+      archiveDigest: held.sha256,
+    };
+    await expect(record(operator, carriedBack(fabricated))).rejects.toThrow();
+    expect(await drills()).toHaveLength(before);
   });
 }

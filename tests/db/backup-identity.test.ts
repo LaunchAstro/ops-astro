@@ -24,6 +24,7 @@
 // backup-store.test.ts, backup-store-drills.test.ts and
 // backup-store-encryption.test.ts.
 
+import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import {
@@ -202,7 +203,35 @@ function identityScopeCases3() {
     } finally {
       await client.end();
     }
-    expect(allowed).toStrictEqual([]);
+    // Its one write (REV158K criterion 13): the restore challenge, refused a
+    // null as every value not of its shape. It changes no row here.
+    expect(allowed).toStrictEqual([
+      'execute ops.set_restore_challenge(text)',
+      'call ops.set_restore_challenge(text): 22023',
+    ]);
     expect(await contents()).toBe(before);
+  });
+
+  it('writes one thing: the restore challenge, one row replaced before each dump, of its one shape, that the tenancy role never reads', async () => {
+    const client = await asRole(login.url, BACKUP);
+    const [first, second] = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')];
+    try {
+      await client.query('select ops.set_restore_challenge($1)', [first]);
+      await client.query('select ops.set_restore_challenge($1)', [second]);
+      for (const bad of ['', 'AB'.repeat(32), `${first}'; drop table ops.restore_challenge; --`]) {
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await attempt(client, 'select ops.set_restore_challenge($1)', [bad])).toBe('22023');
+      }
+    } finally {
+      await client.end();
+    }
+    const rows = await db.admin.execute<{ challenge: string }>(
+      'select challenge from ops.restore_challenge',
+    );
+    expect([...rows]).toStrictEqual([{ challenge: second }]);
+    const [app] = await db.admin.execute<{ reads: boolean }>(
+      "select has_table_privilege('ops_astro_app', 'ops.restore_challenge', 'select') as reads",
+    );
+    expect(app?.reads).toBe(false);
   });
 }

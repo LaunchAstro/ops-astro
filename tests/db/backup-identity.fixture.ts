@@ -137,7 +137,13 @@ export async function hostReach(
   const sql = postgres(url, { max: 1, onnotice: () => {} });
   let printed: string;
   try {
-    const results = (await sql.unsafe(text)) as unknown as Record<string, unknown>[][];
+    // A last statement with psql's `\bind 'v' ... \g` (backup-store-reach.mjs
+    // `bound`) runs as psql runs it: its values as bound parameters.
+    const [, before = '', statement = text, args = ''] =
+      /^([\s\S]*\n)?([^\n]*) \\bind((?: '[^']*')*) \\g\n?$/u.exec(text) ?? [];
+    if (before.trim() !== '') await sql.unsafe(before);
+    const values = [...args.matchAll(/'([^']*)'/gu)].map(([, v]) => v ?? '');
+    const results = [await sql.unsafe(statement, values)].flat(1) as Record<string, unknown>[][];
     printed = results
       .flat()
       .map((row) => String(Object.values(row)[0] ?? ''))

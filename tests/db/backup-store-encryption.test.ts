@@ -120,14 +120,18 @@ async function fetchedTakenAt(): Promise<string> {
 
 function backupEncryptionCases3() {
   it('lets the restore identity read the newest backup only through the store, logging each read', async () => {
-    const [newest] = await store.admin.execute<{ id: string; taken_at: Date }>(
-      'select id::text, taken_at from backups.archives order by taken_at desc, id desc limit 1',
+    const [newest] = await store.admin.execute<{ id: string; taken_at: Date; parts: number }>(
+      'select id::text, taken_at, parts from backups.archives order by taken_at desc, id desc limit 1',
     );
     const before = (await receipts()).length;
     expect(await fetchedTakenAt()).toBe(newest?.taken_at.toISOString());
     const logged = await receipts();
-    expect(logged.length).toBe(before + 1);
-    expect(logged.at(-1)).toMatchObject({ action: 'backup read', archive_id: newest?.id });
+    // The header's read, then one for each part it handed out (REV158S2 criterion 12).
+    const reads = 1 + (newest?.parts ?? 0);
+    expect(logged.length).toBe(before + reads);
+    for (const read of logged.slice(before)) {
+      expect(read).toMatchObject({ action: 'backup read', archive_id: newest?.id });
+    }
     const [actor] = await store.admin.execute<{ actor: string }>(
       'select actor from backups.receipts order by id desc limit 1',
     );
@@ -163,6 +167,6 @@ function backupEncryptionCases3() {
         await other.end();
       }
     }
-    expect((await receipts()).length).toBe(before + 1);
+    expect((await receipts()).length).toBe(before + reads);
   });
 }

@@ -78,7 +78,8 @@
     "S0-7 adds the Postgres-major suite (the database under test runs the major the job names, 17 unless the look-ahead names 18, and a planted migration calling uuidv7() is refused on 17 by the server, with the ledger unchanged).",
     "ORCH25-SL01-STORE adds backup-store-bounded as an invariant (S0-3 store bounded: the store's cap is backups.settings.max_bytes, which no job identity can change or read around; an archive that fills the store exactly is taken and one byte more is refused 53400 with no row or receipt; of two archives written at once that fit alone but not together, one is refused, under read committed and under repeatable read; a lost first archive leaves its room to the second; an expired backup gives its room back; a lowered cap refuses every new archive and deletes nothing).",
     "ORCH26 (REV854 criterion 13) adds backup-carried-drill (S0-3 carried archive: the export is a read the store logs as the restore identity; a carried receipt is recorded once, only by the restore identity, only for an archive the store handed out and only for the operator who ran it, and it dates the last tested restore).",
-    "REV158S criterion 5 (ORCH option A, chunked storage) adds backup-store-parts (S0-3 store parts: an archive is kept in parts of at most 4 MiB, added only in order from 0 and none twice, completed with its size and whole digest in the transaction that opened it or never committed; a streamed archive of several parts is stored exactly and read back part by part into a file; a part changed in the store fails the fetch; a part is read only of an archive this login read; an archive over the cap is refused 53400 part way through and writes nothing)."
+    "REV158S criterion 5 (ORCH option A, chunked storage) adds backup-store-parts (S0-3 store parts: an archive is kept in parts of at most 4 MiB, added only in order from 0 and none twice, completed with its size and whole digest in the transaction that opened it or never committed; a streamed archive of several parts is stored exactly and read back part by part into a file; a part changed in the store fails the fetch; a part is read only of an archive this login read; an archive over the cap is refused 53400 part way through and writes nothing).",
+    "REV158S2 criteria 12 and 13 (ORCH28-REV158S2) adds backup-store-read-binding (S0-3 store read binding: every part read_part hands out leaves its own receipt; a read of one archive never attests a carried receipt of another taken in the same transaction; the carried record is joined to its read on the archive id, never a time)."
   ],
   "invariant": [
     "tests/ci/staging-no-production-data.test.ts",
@@ -238,7 +239,8 @@
     "tests/db/backup-store-encryption.test.ts",
     "tests/db/backup-store-bounded.test.ts",
     "tests/db/backup-carried-drill.test.ts",
-    "tests/db/backup-store-parts.test.ts"
+    "tests/db/backup-store-parts.test.ts",
+    "tests/db/backup-store-read-binding.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

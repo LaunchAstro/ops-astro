@@ -138,7 +138,7 @@ export const COMMANDS: Record<string, Command> = {
       ...env,
     }),
   'the carried receipt record': (env) =>
-    spawn(DRILL, ['--record', drillKey()], {
+    spawn(DRILL, ['--record', drillKey(), '--archive', drillKey()], {
       RESTORE_STORE_URL: `postgres://drill:${CANARY}@127.0.0.1:1/never`,
       ...env,
     }),

@@ -254,7 +254,8 @@ live('S0-3 store reach, live', () => {
     expect(upkeep).toMatchObject({ outcome: 'recorded', count: 0, restoreFresh: true });
 
     expect(asAdmin("select string_agg(action, ',' order by id) from backups.receipts").out).toBe(
-      'backup recorded,backup read',
+      // The header's read, then its one part's (REV158S2 criterion 12).
+      'backup recorded,backup read,backup read',
     );
   }, 180_000);
 
@@ -270,6 +271,79 @@ live('S0-3 store reach, live', () => {
     expect(refused).toMatchObject({ outcome: 'failed', stage: 'store' });
     expect(JSON.stringify(refused)).not.toMatch(/s03r_|postgres:\/\//u);
   }, 60_000);
+
+  // REV158K criteria 13 and 14: the carried record through real psql. The
+  // digest and the challenge go as bound parameters, so a statement the
+  // server refuses and logs carries neither; the challenge the job wrote makes
+  // the pass.
+  it('the carried record goes through psql with its digest and challenge bound: a refused one leaves neither in the store log, and the right one passes', async () => {
+    const reach = await reachOn(names('staging'));
+    const { runBackup } = await importOps<JobModule>('backup.mjs');
+    let written = '';
+    const added = await runBackup({
+      challenge: (challenge: string) => {
+        written = challenge;
+        return Promise.resolve();
+      },
+      dump: () => Promise.resolve(Buffer.from(`PGDMP carried ${randomBytes(4).toString('hex')}`)),
+      storeUrl: logins['ops_astro_backup'],
+      publicKey: keys.publicKey,
+      reach,
+      send,
+    });
+    expect(added).toMatchObject({ outcome: 'recorded' });
+    const ops =
+      await importOps<Record<string, (o: Record<string, unknown>) => Promise<unknown>>>(
+        'restore-drill.mjs',
+      );
+    const operator = randomUUID();
+    const gate = {
+      ok: true,
+      operator: { personId: operator, business: 'made-up' },
+      records: mkdtempSync(join(scratch, 'records-')),
+      recordSignIn: () => Promise.resolve(),
+    };
+    const storeUrl = logins['ops_astro_backup_restore'];
+    const file = join(mkdtempSync(join(scratch, 'carry-')), 'archive.sealed');
+    await ops['exportArchive']?.({ gate, storeUrl, file, reach });
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, string>;
+    const receiptFile = join(scratch, `receipt-${randomBytes(4).toString('hex')}.json`);
+    const receipt = {
+      action: 'restore drill recorded',
+      outcome: 'pending',
+      stage: null,
+      at: new Date().toISOString(),
+      target: 'throwaway container',
+      productionMajor: 17,
+      sourceMajor: 17,
+      targetMajor: 17,
+      archiveTakenAt: held['takenAt'],
+      tables: 12,
+      readAs: 'ops_astro_app',
+      timings: { fetch: 1, open: 2, start: 3, restore: 4, check: 5 },
+      lastTestedRestore: null,
+      business: 'made-up',
+      operator,
+      ranOn: 'carried archive',
+    };
+    writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);
+    const wrong = randomBytes(32).toString('hex');
+    writeFileSync(`${file}.challenge`, `${wrong}\n`);
+    const record = () =>
+      ops['recordCarried']?.({ gate, storeUrl, receiptFile, archiveFile: file, reach });
+    await expect(record()).rejects.toThrow(/did not take the receipt/u);
+    const logged = docker(['logs', names('backups')]).out;
+    expect(logged).toMatch(/ERROR/u);
+    for (const secret of [wrong, held['sha256'] ?? '', written])
+      expect(logged).not.toContain(secret);
+    writeFileSync(`${file}.challenge`, `${written}\n`);
+    await expect(record()).resolves.toMatchObject({ outcome: 'passed' });
+    expect(
+      asAdmin(
+        "select count(*) from backups.drills where ran_on = 'carried archive' and outcome = 'passed'",
+      ).out,
+    ).toBe('1');
+  }, 180_000);
 
   // REV158S criterion 5: an archive larger than the store container's memory
   // (512m in staging's definition) goes in and comes back out in parts, and
