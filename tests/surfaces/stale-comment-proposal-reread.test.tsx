@@ -232,7 +232,7 @@ describe('a stale comment or proposal rereads and keeps the text', () => {
     const { client, revisionsOf, task } = server();
     const page = await open(client);
     await typeComment(page, 'A long comment typed with care.');
-    await page.choose('#comment-audience', 'client');
+    await page.click('#conversation-tab-client');
     // Somebody else moved the task on after this page read it.
     task.revision = 4;
 
@@ -242,7 +242,7 @@ describe('a stale comment or proposal rereads and keeps the text', () => {
     expect((page.find('#comment-body') as HTMLTextAreaElement).value).toBe(
       'A long comment typed with care.',
     );
-    expect((page.find('#comment-audience') as HTMLSelectElement).value).toBe('client');
+    expect(page.find('#conversation-tab-client')?.getAttribute('aria-selected')).toBe('true');
     expect(page.find('[data-comment="stale"]')?.textContent).toContain('VERSION_STALE');
 
     await press(page, '[data-comment="post"]');

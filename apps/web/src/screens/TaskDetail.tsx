@@ -662,6 +662,7 @@ function Loaded(props: LoadedProps): ReactElement {
               refusal={props.commentRefusal}
               onRefused={props.onCommentRefused}
               onPosted={props.onChanged}
+              onOpenPanel={props.onOpenPanel}
               draft={props.commentDraft}
               onDraft={props.onCommentDraft}
             />

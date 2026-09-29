@@ -110,6 +110,22 @@ describe('MP-4-5 CS-4.32 the tab survives a reread', () => {
   });
 });
 
+describe('MP-4-5 CS-4.32 the tab survives a post', () => {
+  it('a client message posted from Client leaves Client showing', async () => {
+    const { client } = recording();
+    const view = await mount(
+      <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
+    );
+    await tick();
+    await view.click('#conversation-tab-client');
+    await typeInto(view, '#comment-body', 'For the client.');
+    await view.click('[data-comment="post"]');
+    await tick();
+    expect(view.find('#conversation-tab-client')?.getAttribute('aria-selected')).toBe('true');
+    expect((view.find('#comment-body') as HTMLTextAreaElement).value).toBe('');
+  });
+});
+
 describe('MP-4-5 client thread order', () => {
   it('the client thread reads in time order, whatever order it arrived in', async () => {
     const view = await withThread();
@@ -208,9 +224,10 @@ describe('MP-4-5 reply door placed', () => {
       />,
     );
     await tick();
-    const door = '[data-comments="section"] [data-panel-door="reply"]';
-    expect(view.find(door)?.textContent).toBe('Reply in the task panel');
-    await view.click(door);
+    expect(view.find('[data-comments="section"] [data-panel-door="reply"]')?.textContent).toBe(
+      'Reply in the task panel',
+    );
+    await view.click('[data-comments="section"] [data-panel-door="reply"]');
     expect(opened).toStrictEqual(['reply']);
   });
 });
