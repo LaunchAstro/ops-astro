@@ -21,6 +21,7 @@ import {
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -159,6 +160,10 @@ export function createPositiveBody(
       case 'privacy.draft_breach_notices':
       case 'privacy.record_incident':
         return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

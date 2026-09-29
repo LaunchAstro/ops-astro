@@ -333,6 +333,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'legal.publish_version',
           pair('versionId', f.legalVersionId, (versionId) => ({ versionId })),
         ],
+        [
+          'credential.revoke',
+          pair('credentialId', f.credentialId, (credentialId) => ({ credentialId })),
+        ],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

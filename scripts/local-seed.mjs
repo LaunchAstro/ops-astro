@@ -105,6 +105,9 @@ const GRANTS_BY_ROLE = {
     // and administrators hold both on install, and no agent ever does.
     ['operations', 'read'],
     ['privacy', 'manage'],
+    // An agent credential of their own (API-2): the owner and administrators
+    // hold `credential:write` on install.
+    ['credential', 'write'],
   ],
   member: [
     ['task', 'read'],

@@ -16,7 +16,18 @@ export {
   LEGACY_SCHEME,
   withCredentialKeys,
   type CredentialKeysDecision,
+  type DelegationCredentialKeys,
 } from './authority/credential-keys.ts';
+export {
+  CREDENTIAL_EXCLUDED_ACTIONS,
+  CREDENTIAL_MAX_DAYS,
+  deriveAgentCredential,
+  issueAgentCredential,
+  lockAgentCredential,
+  revokeAgentCredential,
+  type AgentCredential,
+  type CredentialKey,
+} from './authority/agent-credentials.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,

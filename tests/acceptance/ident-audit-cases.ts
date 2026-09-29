@@ -78,6 +78,7 @@ export interface IdentWorld {
     batchId: string;
     grantId: string;
     legalVersionId: string;
+    credentialId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -239,6 +240,18 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     [world.bravo, world.bea.actorId],
   );
 
+  // An agent credential of bravo's (API-2), written directly: the alpha caller
+  // is handed its id and must not learn it exists.
+  const bravoCredential = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.agent_credentials
+       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+        credential_hash, credential_scheme, credential_key_id, expires_at)
+     values ($1, gen_random_uuid(), $2, $3, $2, 'A bravo credential.', array['task:read'],
+             repeat('0', 64), 'hmac-sha256-v1', 'bravo', now() + interval '1 day')
+     returning id`,
+    [world.bravo, world.bea.actorId, world.bea.personId],
+  );
+
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
   const otherPicked = await pickUpAs(world.ada, secondAgent, 'the second agent’s work', 'alpha');
@@ -268,6 +281,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
       legalVersionId: String(bravoLegal[0]?.id),
+      credentialId: String(bravoCredential[0]?.id),
     },
     otherPicked,
     rhea,

@@ -105,7 +105,8 @@
     "C59 adds c59-second-factor-commands and c59-step-up-person (the step-up and its setting through the real preparation, the second factor required once enrolled, the setting a person's alone) and c59-factor-routes and c59-factor-routes-hostile (enrolment, verification and removal over in-process Hono against a loopback stand-in provider, sharing c59-factor-routes-world); the adapter and rule cases in c59-second-factor need no database and are not named.",
     "C81 adds c81-legal-documents and c81-legal-documents-access (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)",
     "C81 adds c81-register and c81-register-isolation (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)",
-    "C81 adds c81-breach-drill and c81-breach-drill-clock (the 30-day assessment flagged on the database clock on the operations view, the incident's link to the published breach runbook, and privacy.draft_breach_notices under privacy:manage over in-process Hono drafting the OAIC's and each person's notice at the named recipient, refusals, three crossings and the canary)"
+    "C81 adds c81-breach-drill and c81-breach-drill-clock (the 30-day assessment flagged on the database clock on the operations view, the incident's link to the published breach runbook, and privacy.draft_breach_notices under privacy:manage over in-process Hono drafting the OAIC's and each person's notice at the named recipient, refusals, three crossings and the canary)",
+    "API-2 adds api-2-agent-credential and api-2-agent-credential-revoke (the agent credential issued and revoked by a person over in-process Hono under credential:write: the scope narrowed to the issuer's grants and never decide, share or manage, the 90-day expiry, the secret shown once and kept as its digest, the issuer's replay, audit, refusals per key, person to person, the revocation race on two connections, three crossings and the canary; the credential's use leans on S0-6)"
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -305,7 +306,9 @@
     "tests/api/c59-factor-routes-hostile.test.ts",
     "tests/operations/c81-legal-documents-access.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
-    "tests/operations/c81-breach-drill-clock.test.ts"
+    "tests/operations/c81-breach-drill-clock.test.ts",
+    "tests/api/api-2-agent-credential.test.ts",
+    "tests/api/api-2-agent-credential-revoke.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

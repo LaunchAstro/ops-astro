@@ -76,10 +76,10 @@ describe('the surface as a table', () => {
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
-    // documents, asked of `privacy`.
+    // documents, asked of `privacy`. `credential` is API-2's agent credential.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential)\/[a-z_]+$/u.test(
           path,
         ),
       ),

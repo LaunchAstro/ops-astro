@@ -22,6 +22,7 @@ import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
+import { issueCredential, revokeCredential } from './credential-write.ts';
 import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
@@ -97,6 +98,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'legal.draft_version': draftVersion,
   'legal.approve_version': approveVersion,
   'legal.publish_version': publishVersion,
+  'credential.issue': issueCredential,
+  'credential.revoke': revokeCredential,
   'privacy.set_overseas_service': setService,
   'privacy.set_data_class': setClass,
 

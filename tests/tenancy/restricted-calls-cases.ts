@@ -40,6 +40,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'overseas_services'],
   // 0036 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
+  // 0037 (API-2): an agent credential is issued by insert and revoked by
+  // update; never deleted.
+  ['siu', 'agent_credentials'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
