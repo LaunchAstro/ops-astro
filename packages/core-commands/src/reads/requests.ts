@@ -37,6 +37,7 @@ import type {
   MapViewResult,
   MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
+import type { Detail, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -57,9 +58,9 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string };
+  readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null };
+  readonly 'task.board': { readonly board: string | null } & Paging;
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
@@ -116,6 +117,17 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /** A task or a page at a named detail level (API-3, `detail.ts`). */
+  | {
+      readonly ok: true;
+      readonly detail: Detail;
+      readonly view: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly ok: true;
+      readonly page: readonly Readonly<Record<string, unknown>>[];
+      readonly next: string | null;
+    }
   | SharedTaskRead
   | TaskBoardResult
   | PersonListResult

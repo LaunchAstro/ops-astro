@@ -32,6 +32,7 @@ import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
+import { blockersOf, isRefusal, pageOf, parsePaging, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -180,10 +181,14 @@ async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusa
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   'task.read': {
     identifiers: ['recordId'],
-    parse: ({ recordId }) =>
-      typeof recordId === 'string'
-        ? parsed({ recordId })
-        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
+    parse: (body) => {
+      if (typeof body['recordId'] !== 'string') {
+        return rejected('recordId', 'Send recordId as the task’s identifier or its key.');
+      }
+      const paging = parsePaging(body);
+      if (isRefusal(paging)) return { ok: false, refusal: paging };
+      return parsed({ recordId: body['recordId'], ...paging });
+    },
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
     // and learns nothing from it either way, and an unresolved name is checked
@@ -192,7 +197,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, _operands, { spine, recordId }) {
+    async serve(tx, session, operands, { spine, recordId }) {
       if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
       // first among them, gets the shared view, which is built from the
@@ -211,7 +216,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         internal: true,
       });
       // Not there, or there in another business: one answer, deliberately.
-      return task === undefined ? refuseNotFound() : { ok: true, task };
+      if (task === undefined) return refuseNotFound();
+      if (operands.detail === undefined) return { ok: true, task };
+      const view = taskAt(operands.detail, task, await blockersOf(tx, recordId));
+      return { ok: true, detail: operands.detail, view };
     },
   },
   'map.view': {
@@ -253,13 +261,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // not, and answering it with that list gave a body that asked nothing
     // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    parse: ({ board }) =>
-      typeof board === 'string' || board === null
-        ? parsed({ board })
-        : rejected(
-            'board',
-            'Send board as a board task’s identifier, or null for tasks on no board.',
-          ),
+    parse: (body) => {
+      const { board } = body;
+      if (typeof board !== 'string' && board !== null) {
+        return rejected(
+          'board',
+          'Send board as a board task’s identifier, or null for tasks on no board.',
+        );
+      }
+      const paging = parsePaging(body);
+      if (isRefusal(paging)) return { ok: false, refusal: paging };
+      return parsed({ board, ...paging });
+    },
     spine: true,
     authority: 'declared',
     outsiderNotFound: true,
@@ -276,7 +289,11 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ) {
         return refuseNotFound();
       }
-      return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
+      const tasks = await readBoard(tx, spine.taskTypeId, operands.board);
+      const { board: _board, ...paging } = operands;
+      if (Object.keys(paging).length === 0) return { ok: true, tasks };
+      const page = pageOf(tasks, paging);
+      return 'refused' in page ? page : { ok: true, page: page.items, next: page.next };
     },
   },
   'person.list': {
