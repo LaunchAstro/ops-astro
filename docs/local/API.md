@@ -1070,12 +1070,35 @@ proposals: {
     signedFields: string[];            // the item fields the signature covers
   }[];
   reservations: {
-    id; state; heldMinor; actualMinor; classifiedCause; leaseId;
+    id; envelopeId;                    // the envelope it holds against (MP-6-5)
+    state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
     attempt: { id; state; dispatchMarker; observed } | null;
   }[];
 }[]
 ```
+
+`task.read` also carries `ledger`, the task's token ledger (MP-6-5), taken in
+the same statement as the proposals so an envelope and the reservations
+beside it are one snapshot:
+
+```
+ledger: {
+  envelopes: {                         // the open one first, then closed, newest first
+    id; state: 'open' | 'closed';
+    maximumMinor;                      // the allowance
+    heldMinor; actualMinor;            // held and spent against it
+    currency; openedAt; closedAt;
+    openedBy: { versionId } | null;    // the approval whose reservation opened it
+    cap: { key; limitMinor; currency };// the cap it draws on
+  }[];                                 // empty before any approval
+}
+```
+
+The per-run rows are the proposals' reservations: each names its envelope, and
+the held reservations and the spent ones add up to its `heldMinor` and
+`actualMinor`. It is read only and adds no audit event beyond the read's own.
+AW-05's ceiling and its stops are not on it yet (SL11).
 
 Three things about the shape matter. First, `gate.expired` is the
 server's answer, so a client with a skewed clock cannot disagree with the

@@ -91,6 +91,13 @@ export interface TaskDetail extends TaskSummary {
   readonly envelope: TaskEnvelope | null;
   /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
   readonly alerts: readonly TaskAlert[];
+  /**
+   * The task's token ledger (MP-6-5): each envelope's allowance, what it was
+   * built from, and what is held and spent against it. The per-run rows are the
+   * proposals' reservations, each naming its envelope. Read inside the task
+   * read, so a reader who may not read the task is told nothing of it.
+   */
+  readonly ledger: TaskLedgerView;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -111,6 +118,28 @@ export interface TaskEnvelope {
   readonly maximumMinor: number;
   readonly heldMinor: number;
   readonly actualMinor: number;
+}
+
+export interface TaskLedgerView {
+  /** Open one first, then the closed ones, newest first. Empty before any approval. */
+  readonly envelopes: readonly EnvelopeView[];
+}
+
+export interface EnvelopeView {
+  readonly id: string;
+  readonly state: 'open' | 'closed';
+  /** The allowance. */
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  /** Spent. */
+  readonly actualMinor: number;
+  readonly currency: string;
+  readonly openedAt: string;
+  readonly closedAt: string | null;
+  /** The approval whose reservation opened it: its first reservation's version. */
+  readonly openedBy: { readonly versionId: string } | null;
+  /** The cap it draws on. */
+  readonly cap: { readonly key: string; readonly limitMinor: number; readonly currency: string };
 }
 
 /**
@@ -196,6 +225,8 @@ export interface DecisionLink {
 
 export interface ReservationView {
   readonly id: string;
+  /** The task envelope it holds against (MP-6-5): the per-run rows add up to it. */
+  readonly envelopeId: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
