@@ -5,7 +5,8 @@
 // the browser restart"). The API is a real process, stopped and replaced by a
 // second one started from the same tree; the browser is the web's client
 // module, a fresh instance after the restart, as a reloaded page builds one.
-// The worker's leg waits on T2b's worker process, which is not on this base.
+// The worker's leg is `tests/acceptance/inbox-worker-restart.test.ts`, run by
+// the runtime proofs' runner on its own Postgres.
 //
 // The inbox before the restart holds every axis at once: an open mention
 // that was seen and delivered, a decision cleared by a named decider, and a
