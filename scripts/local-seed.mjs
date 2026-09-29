@@ -34,7 +34,7 @@ import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
-import { guardMadeUp, markMadeUp, productionSigns, SEED_TAG } from './ops/made-up-only.ts';
+import { admitMadeUp, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -415,17 +415,16 @@ if (!adminUrl || !appUrl) {
 
 // Staging holds made-up data only (S0-1). A database the seed cannot vouch for
 // from its own mark and guard is refused here, before a row or a file is
-// written; the guard is in place before the seed's first write.
+// written; the guard is in place, and judged again, before the first write.
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
-const signs = await productionSigns(admin, [], confirmed);
+const signs = await admitMadeUp(admin, confirmed);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
   console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
   await admin.close();
   process.exit(1);
 }
-await guardMadeUp(admin);
 
 const { users, placeholder } = readUsers();
 if (placeholder) {

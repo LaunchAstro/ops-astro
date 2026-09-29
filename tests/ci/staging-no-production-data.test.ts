@@ -14,7 +14,12 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { markMadeUp, productionSigns, type OwnerQuery } from '../../scripts/ops/made-up-only.ts';
+import {
+  admitMadeUp,
+  markMadeUp,
+  productionSigns,
+  type OwnerQuery,
+} from '../../scripts/ops/made-up-only.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const SEED = new URL('../../scripts/local-seed.mjs', import.meta.url).pathname;
@@ -318,6 +323,29 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     } finally {
       await db.admin.execute('drop table public.s01a_loaded');
     }
+  });
+
+  it('S0-1 no production data: a row landing between the check and the guard is refused', async () => {
+    await reset();
+    let planted = false;
+    const racing: OwnerQuery = {
+      execute: async (text, parameters) => {
+        const rows = await db.admin.execute(text, parameters);
+        // The first new-database answer is given; then another session writes.
+        if (!planted && text.includes('pg_relation_size')) {
+          planted = true;
+          await db.admin.execute(
+            'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+            [randomUUID(), 'racing-canary', 'Racing canary'],
+          );
+        }
+        return rows as never;
+      },
+    };
+    expect(await admitMadeUp(racing, true)).toEqual([
+      'it carries no made-up mark and is not a new database',
+    ]);
+    expect(planted).toBe(true);
   });
 
   it('S0-1 no production data: a table made after the mark is guarded from its first row', async () => {
