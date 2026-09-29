@@ -4,7 +4,9 @@
 // C4 live-sync 4 (LIVE-SYNC.md, acceptance 4): B has an unsaved title edit
 // when A renames the task. B's text is untouched, B sees that the task
 // changed, and B's save meets `VERSION_STALE`: an edit begun at revision N is
-// offered at N, and nothing is merged for B.
+// offered at N, and nothing is merged for B. The regions B is not editing
+// (the status, the comments) keep updating under the draft, and the notice
+// says who changed what, from the re-read.
 
 import { act } from 'react';
 import { expect, it } from 'vitest';
@@ -30,14 +32,15 @@ function server() {
     priority: null,
     completedAt: null,
     revision: 1,
-    history: [],
-    comments: [],
+    history: [] as { at: string; actorId: string; operation: string }[],
+    comments: [] as Record<string, unknown>[],
   };
   const offered: number[] = [];
   const encoder = new TextEncoder();
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   const route = (at: string, body: string): Response => {
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (at.endsWith('/person/list'))
+      return json({ ok: true, persons: [{ personId: 'p-ana', name: 'Ana Bell' }] });
     if (at.includes('/live?'))
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -59,12 +62,32 @@ function server() {
   };
   const fetch = ((url: string | URL, init?: RequestInit) =>
     Promise.resolve(route(String(url), String(init?.body)))) as unknown as typeof globalThis.fetch;
-  const rename = (title: string): void => {
-    task.title = title;
+  const invalidate = (): void => {
     task.revision += 1;
     stream?.enqueue(encoder.encode(`event: invalidate\ndata: task:${ID}\n\n`));
   };
-  return { fetch, offered, rename };
+  return { fetch, offered, task, invalidate };
+}
+
+function rename(api: ReturnType<typeof server>, title: string): void {
+  api.task.title = title;
+  api.invalidate();
+}
+
+/** Ana moves the task on and says so, recorded as the server would. */
+function moveOn(api: ReturnType<typeof server>): void {
+  const { task } = api;
+  task.state = { id: 's2', key: 'done', label: 'Done', machineCategory: 'completed' };
+  task.comments.push({
+    id: 'c-ana',
+    audience: 'internal',
+    comment_type: 'note',
+    author: 'Ana Bell',
+    posted_at: '2026-09-30T01:00:00Z',
+    body: 'Moved it on',
+  });
+  task.history.push({ at: '2026-09-30T01:00:00Z', actorId: 'p-ana', operation: 'task.move' });
+  api.invalidate();
 }
 
 const pause = (): Promise<void> =>
@@ -95,7 +118,7 @@ it('C4 live-sync 4: an unsaved edit is untouched, the change is shown, and its s
 
   await page.type('#task-title', 'My unsaved title');
   expect(page.find('[data-live="changed"]')).toBeNull();
-  api.rename('Somebody renamed it');
+  rename(api, 'Somebody renamed it');
   await until('B sees that it changed', () => page.find('[data-live="changed"]') !== null);
   expect(title()).toBe('My unsaved title');
 
@@ -106,5 +129,31 @@ it('C4 live-sync 4: an unsaved edit is untouched, the change is shown, and its s
   );
   expect(api.offered).toEqual([1]);
   expect(title()).toBe('My unsaved title');
+  await page.unmount();
+});
+
+it('C4 live-sync 4: regions not being edited keep updating under a draft, and the notice says who changed what', async () => {
+  const api = server();
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'b',
+    token: 't',
+    fetch: api.fetch,
+  });
+  const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
+  await until('the page', () => page.find('#task-title') !== null);
+  const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
+
+  await page.type('#task-title', 'My unsaved title');
+  moveOn(api);
+  await until(
+    'the comment arrives under the draft',
+    () => page.find('[data-comment-id="c-ana"]') !== null,
+  );
+  expect(title()).toBe('My unsaved title');
+  expect(page.find('[data-draft-resolve="choice"]')).not.toBeNull();
+  expect(page.host.textContent).toContain('Done');
+  expect(page.find('[data-live-who]')?.textContent).toBe('Ana Bell');
+  expect(page.find('[data-live-what]')?.textContent).toBe('status, a comment');
   await page.unmount();
 });
