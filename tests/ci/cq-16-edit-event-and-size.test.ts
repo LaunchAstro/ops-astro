@@ -115,7 +115,8 @@ describe('CQ-16 workflow permissions', () => {
   it('CQ-16 workflow permissions: the new workflow holds a read-only token and no secret', () => {
     const edit = read(REVIEW);
     expect(top(edit, 'permissions')).toBe(
-      'permissions:\n  contents: read\n  pull-requests: read\n\n',
+      // FU-151: issues: read, so the job can list the open issues a follow-up names.
+      'permissions:\n  contents: read\n  pull-requests: read\n  issues: read\n\n',
     );
     expect(
       edit.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target|^ {4}permissions:/mu),
