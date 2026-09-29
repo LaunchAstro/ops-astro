@@ -165,3 +165,26 @@ export {
   type NightStepRow,
   type TripwireRow,
 } from './connections/signal.ts';
+export {
+  ALL_CLASSES,
+  classMatches,
+  clientClasses,
+  deriveGraduation,
+  listGraduation,
+  lockClientMandates,
+  mandateIsLive,
+  scopeChoices,
+  type Derived,
+  type Earned,
+  type GraduationClassRow,
+  type GraduationState,
+  type MandateRow,
+} from './mandates/mandates.ts';
+export {
+  bumpGraduationClass,
+  insertMandate,
+  lockGraduationClass,
+  lockMandate,
+  revokeMandate,
+  type MandateFiling,
+} from './mandates/writes.ts';

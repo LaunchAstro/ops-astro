@@ -120,7 +120,15 @@ export type CommandName =
   | 'connector.repair'
   // Grants, tripwires and the night round (MP-14-8): one read by
   // `connection:read`, the same page's key. The sections change nothing.
-  | 'connection.signal';
+  | 'connection.signal'
+  // Graduation and standing mandates (MP-14-10a): the per-client region is one
+  // read by `connection:read`; filing, revoking, promoting and demoting are
+  // `mandate:manage`, a money key, never an agent's.
+  | 'connection.graduation'
+  | 'mandate.file'
+  | 'mandate.revoke'
+  | 'graduation.promote'
+  | 'graduation.demote';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -281,6 +289,7 @@ const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
 const CUSTODY_COLLECTION = 'custody';
 const CONNECTION_COLLECTION = 'connection';
+const MANDATE_COLLECTION = 'mandate';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -378,6 +387,24 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'secret.set': { name: 'text', value: 'any', clientId: 'id?|null', expectedRevision: 'any' },
   'secret.clear': { secretId: 'id', expectedRevision: 'any' },
   'connector.repair': { connectionId: 'id', expectedRevision: 'any' },
+  // A mandate's classes, ceiling and expiry are checked by value in the
+  // command, which names the field it refuses.
+  'mandate.file': {
+    clientId: 'id',
+    classes: 'any',
+    refuses: 'any',
+    ceiling: 'any',
+    expiresAt: 'any',
+    label: 'any',
+  },
+  'mandate.revoke': { mandateId: 'id', expectedRevision: 'any' },
+  'graduation.promote': {
+    classId: 'id',
+    ceiling: 'any',
+    expiresAt: 'any',
+    expectedRevision: 'any',
+  },
+  'graduation.demote': { classId: 'id', expectedRevision: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -535,6 +562,33 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['connectionId'],
+  }),
+
+  // Graduation and standing mandates (MP-14-10a). The region is one read on
+  // the page's key, asked per client by the scopes the caller holds it at.
+  // Every change is `mandate:manage` business-wide (owner and administrators;
+  // a mandate carries a spend ceiling), never an agent: an agent may propose,
+  // never create, an activation.
+  read('connection.graduation', CONNECTION_COLLECTION),
+  declare('mandate.file', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('mandate.revoke', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['mandateId'],
+  }),
+  declare('graduation.promote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
+  }),
+  declare('graduation.demote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
