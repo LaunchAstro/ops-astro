@@ -389,6 +389,8 @@ export interface TaskBoardResult {
    * record grants, a client login under owner answer 22.
    */
   readonly withheld?: number;
+  /** When the newest task served last changed (MP-5-7); null when none is served. */
+  readonly changedAt: string | null;
 }
 
 export interface PersonListResult {

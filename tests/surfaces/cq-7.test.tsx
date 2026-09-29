@@ -26,6 +26,10 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
     revision: 3,
     description: null,
     history: [],
+    // The board row's fields (MP-5-8): this stub answers task.board too.
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
     comments: [],
     proposals: [],
     ...(fields.capCurrency === undefined ? {} : { capCurrency: fields.capCurrency }),

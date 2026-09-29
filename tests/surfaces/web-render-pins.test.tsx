@@ -228,6 +228,9 @@ describe('the board, pinned whole', () => {
         assignee: null,
         due: null,
         revision: 1,
+        rank: { number: null, score: null, calc: '' },
+        stage: null,
+        clientSet: false,
       })),
       {
         id: 't-none',
@@ -237,6 +240,9 @@ describe('the board, pinned whole', () => {
         assignee: { personId: 'p-1', name: 'Ada' },
         due: '2020-01-01T00:00:00.000Z',
         revision: 1,
+        rank: { number: null, score: null, calc: '' },
+        stage: null,
+        clientSet: false,
       },
     ];
     const fetch = (async (url: string | URL) =>

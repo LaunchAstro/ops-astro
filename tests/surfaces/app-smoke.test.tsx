@@ -49,6 +49,9 @@ const TASK = {
   priority: null,
   completedAt: null,
   revision: 3,
+  rank: { number: null, score: null, calc: '' },
+  stage: null,
+  clientSet: false,
 };
 
 /** A `fetch` that answers from a queue, one scripted reply per call. */

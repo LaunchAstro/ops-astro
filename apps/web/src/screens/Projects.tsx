@@ -7,19 +7,22 @@
 // the business's unboarded tasks — the acceptance case creates a task
 // **without a board** and expects to find it (B1).
 //
-// The board component is the ported one and it draws nine columns the slice
-// does not yet store. Those cells draw a dash, which is the ported behaviour
-// for "not set": the gap between what the mockup draws and what this build
-// stores is recorded rather than papered over by dropping the columns.
+// The board is the board machine with the Projects board's nine columns
+// (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
+// and its calc line, the stage and the due come from stored records. What the
+// product does not store yet draws a dash or nothing and is recorded as such:
+// the client's name (the client model), the estimate (MP-4-8), the actual
+// (MP-4-6's time entries), the comment counts (INB-1) and starring (P-20).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import { Empty, type BoardRow } from '@launchastro/ui';
+import { ProjectsBoard } from '../../../../packages/ui/src/surfaces/ProjectsBoard.tsx';
+import type { ProjectRow } from '../../../../packages/ui/src/board/projects.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
-import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
+import type { BoardTask, TaskBoardResult } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 
@@ -177,10 +180,20 @@ export function Projects(props: ProjectsProps): ReactElement {
         }
       >
         {(value) => (
-          <Board
+          <ProjectsBoard
             rows={value.tasks.map((task) => rowOf(task))}
-            groups={groupsOf(value.tasks)}
-            filters={[{ kind: 'board', label: 'none' }]}
+            withheld={value.withheld ?? 0}
+            changedAt={value.changedAt ?? null}
+            stages={[]}
+            href={(row) => pathTo('agency:task-detail', { key: row.key })}
+            address={window.location.search}
+            onAddress={(query) => {
+              window.history.replaceState(
+                window.history.state,
+                '',
+                `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
+              );
+            }}
           />
         )}
       </RecordState>
@@ -188,33 +201,28 @@ export function Projects(props: ProjectsProps): ReactElement {
   );
 }
 
-/** One stored task as a board row. Everything the slice does not store is null. */
-function rowOf(task: TaskSummary): BoardRow {
+/** One task from the read as a Projects board row (MP-5-8). */
+function rowOf(task: BoardTask): ProjectRow {
   return {
     id: task.id,
-    rank: null,
+    key: task.key,
     name: titleOf(task.title),
+    rank: { number: task.rank.number, calc: task.rank.calc },
+    // No ticket builds starring yet, so the starred tier is empty (P-20).
+    starred: false,
+    // The client's name waits on the client model; `clientSet` says only
+    // that there is one.
     client: null,
-    assignee: task.assignee?.name ?? null,
-    dueLabel: task.due === null ? null : dayOf(task.due),
-    due: dueTone(task.due),
-    stage: null,
-    state: drawTaskState(task.state),
+    assignee: task.assignee === null ? null : { name: task.assignee.name, agent: false },
+    due: task.due,
+    completed: task.completedAt !== null,
+    stage: task.stage,
+    status: task.state?.label ?? 'No state',
     estimate: null,
     actual: null,
-    group: groupOf(task),
-    href: pathTo('agency:task-detail', { key: task.key }),
+    comments: { client: 0, mentions: 0, latest: null },
   };
 }
-
-const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
-  ...new Set(tasks.map((task) => groupOf(task))),
-];
-
-/** The heading a task sits under. A stateless one gets its own, not somebody else's. */
-const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
-
-const dayOf = (iso: string): string => iso.slice(0, 10);
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 

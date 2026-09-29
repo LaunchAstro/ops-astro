@@ -222,33 +222,34 @@ const json = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   });
 
+const BOARD_TASKS = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    key: 'TSK-7',
+    title: 'Booking form',
+    state: { id: 's1', key: 'active', label: 'In progress', machineCategory: 'started' },
+    assignee: { personId: 'p-1', name: 'Noah Reid' },
+    due: '2026-10-04T00:00:00.000Z',
+    priority: null,
+    completedAt: null,
+    revision: 2,
+    rank: {
+      number: 4,
+      score: 320,
+      calc: 'impact 8 × confidence 5 × ease 8 × priority 1 × age 1 = 320 · derived',
+    },
+    stage: 'Launch',
+    clientSet: true,
+  },
+];
+
 describe('MP-5-8 column read-back, drawn from task.board', () => {
   it('draws the stored rank with its calc line, the stage and the due from the read', async () => {
-    const tasks = [
-      {
-        id: '11111111-1111-4111-8111-111111111111',
-        key: 'TSK-7',
-        title: 'Booking form',
-        state: { id: 's1', key: 'active', label: 'In progress', machineCategory: 'started' },
-        assignee: { personId: 'p-1', name: 'Noah Reid' },
-        due: '2026-10-04T00:00:00.000Z',
-        priority: null,
-        completedAt: null,
-        revision: 2,
-        rank: {
-          number: 4,
-          score: 320,
-          calc: 'impact 8 × confidence 5 × ease 8 × priority 1 × age 1 = 320 · derived',
-        },
-        stage: 'Launch',
-        clientSet: true,
-      },
-    ];
     const fetch = (() =>
       Promise.resolve(
         json({
           ok: true,
-          tasks,
+          tasks: BOARD_TASKS,
           changedAt: null,
           withheld: 0,
         }),
@@ -269,7 +270,9 @@ describe('MP-5-8 column read-back, drawn from task.board', () => {
       'impact 8 × confidence 5 × ease 8 × priority 1 × age 1 = 320 · derived',
     ]);
     expect(mounted.find('tbody tr td[data-key="stage"] .cbd__chip')?.textContent).toBe('Launch');
-    expect(mounted.find('tbody tr td[data-key="assignee"]')?.textContent).toContain('Noah Reid');
+    // The mockup draws the short name; the whole name is its title (P-24).
+    expect(mounted.find('tbody tr td[data-key="assignee"]')?.textContent).toContain('Noah');
+    expect(mounted.find('tbody tr td[data-key="assignee"] [title="Noah Reid"]')).not.toBeNull();
     expect(mounted.find('tbody tr td[data-key="name"] a')?.getAttribute('href')).toContain('TSK-7');
   });
 });
