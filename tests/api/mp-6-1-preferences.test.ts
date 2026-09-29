@@ -20,6 +20,7 @@ import { createControls, type Controls } from './controls-fixture.ts';
 const serverUrl = databaseUrlFromEnvironment();
 const storeIsHere = COMMAND_SURFACE.some((row) => String(row.name) === 'preference.save');
 
+// eslint-disable-next-line max-lines-per-function -- one person's preference, the refusals around it
 describe.skipIf(serverUrl === undefined || !storeIsHere)('MP-6-1 job list preference', () => {
   let c: Controls;
   let other: Member;

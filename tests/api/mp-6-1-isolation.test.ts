@@ -26,6 +26,7 @@ import { createControls, type Controls } from './controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one world of two businesses, every crossing on it
 describe.skipIf(serverUrl === undefined)('MP-6-1 isolation', () => {
   let c: Controls;
   const canary = `CANARY-${randomUUID()}`;
@@ -62,6 +63,49 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 isolation', () => {
     };
   }
 
+  /** Client one reads and decides A's tasks, client two B's; `both` reads the whole business. */
+  async function enrolClients(): Promise<void> {
+    const { db, business } = c.fixture;
+    clientOne = await enrol(db.app, business, 'client-one');
+    clientTwo = await enrol(db.app, business, 'client-two');
+    both = await enrol(db.app, business, 'both');
+    await db.app.withBusiness(business, async (tx) => {
+      for (const [member, task] of [
+        [clientOne, taskA],
+        [clientOne, runA],
+        [clientTwo, taskB],
+        [clientTwo, runB],
+      ] as const) {
+        // eslint-disable-next-line no-await-in-loop -- issueGrant reads the granter's rows
+        await grantTo(tx, member, 'read', { kind: 'record', id: task });
+        // eslint-disable-next-line no-await-in-loop -- as above
+        await grantTo(tx, member, 'decide', { kind: 'record', id: task });
+      }
+      await grantTo(tx, both, 'read');
+    });
+  }
+
+  /** `both` again in business Bravo, with read, decide and write there. */
+  async function enrolInBravo(): Promise<void> {
+    const { db } = c.fixture;
+    const bravo = await insertBusiness(db.app, 'bravo');
+    await installSpine(db.app, bravo);
+    await db.app.withBusiness(bravo, async (tx) => {
+      const { insertActor, insertLogin, insertMapping, insertMembership, insertPerson } =
+        await import('../identity/fixture.ts');
+      const personId = await insertPerson(tx, 'both-bravo');
+      const actorId = await insertActor(tx, personId);
+      await insertMembership(tx, personId);
+      const loginId = await insertLogin(tx, both.presented.subject);
+      await insertMapping(tx, loginId, personId, actorId);
+      bothInBravo = { personId, actorId, presented: both.presented };
+      await grantTo(tx, bothInBravo, 'read');
+      await grantTo(tx, bothInBravo, 'decide');
+      // Write too, so a check naming A's lease reaches the lease lookup itself.
+      await grantTo(tx, bothInBravo, 'write');
+    });
+  }
+
   beforeAll(async () => {
     c = await createControls('mp_6_1_isolation');
     const a = await working(`${canary} client one run`, 'worked_one');
@@ -84,41 +128,8 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 isolation', () => {
     expect(recorded.status).toBe(200);
     ({ taskId: taskA, gateId: gateA } = await pending(`${canary} client one`));
     ({ taskId: taskB, gateId: gateB } = await pending('made-up client two task'));
-
-    const { db, business } = c.fixture;
-    clientOne = await enrol(db.app, business, 'client-one');
-    clientTwo = await enrol(db.app, business, 'client-two');
-    both = await enrol(db.app, business, 'both');
-    await db.app.withBusiness(business, async (tx) => {
-      for (const [member, task] of [
-        [clientOne, taskA],
-        [clientOne, runA],
-        [clientTwo, taskB],
-        [clientTwo, runB],
-      ] as const) {
-        // eslint-disable-next-line no-await-in-loop -- issueGrant reads the granter's rows
-        await grantTo(tx, member, 'read', { kind: 'record', id: task });
-        // eslint-disable-next-line no-await-in-loop -- as above
-        await grantTo(tx, member, 'decide', { kind: 'record', id: task });
-      }
-      await grantTo(tx, both, 'read');
-    });
-    const bravo = await insertBusiness(db.app, 'bravo');
-    await installSpine(db.app, bravo);
-    await db.app.withBusiness(bravo, async (tx) => {
-      const { insertActor, insertLogin, insertMapping, insertMembership, insertPerson } =
-        await import('../identity/fixture.ts');
-      const personId = await insertPerson(tx, 'both-bravo');
-      const actorId = await insertActor(tx, personId);
-      await insertMembership(tx, personId);
-      const loginId = await insertLogin(tx, both.presented.subject);
-      await insertMapping(tx, loginId, personId, actorId);
-      bothInBravo = { personId, actorId, presented: both.presented };
-      await grantTo(tx, bothInBravo, 'read');
-      await grantTo(tx, bothInBravo, 'decide');
-      // Write too, so a check naming A's lease reaches the lease lookup itself.
-      await grantTo(tx, bothInBravo, 'write');
-    });
+    await enrolClients();
+    await enrolInBravo();
   }, 180_000);
 
   afterAll(async () => await c?.drop());
@@ -174,6 +185,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 isolation', () => {
     });
   });
 
+  // eslint-disable-next-line max-lines-per-function -- the three crossings, each read from both sides
   describe('MP-6-1 isolation', () => {
     it('another business: Bravo’s list and Alpha’s refusal carry nothing of A', async () => {
       const bravoList = await inBravo('gate.pending', {});
