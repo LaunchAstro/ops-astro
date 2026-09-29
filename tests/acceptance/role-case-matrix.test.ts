@@ -511,30 +511,20 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             ? 'DELEGATION_OUT_OF_PURPOSE'
             : 'DELEGATION_EXCLUDES_OPERATION',
       );
+      // A heartbeat, like a handback, names its task through the lease and
+      // never through a stray `recordId` (final review R1 #23), so the sibling
+      // is reached by its own lease. C80's request names its task through
+      // `taskId`, never a stray `recordId`, so the sibling is reached through
+      // that operand.
+      const probe = harness.probeBody(declaration);
+      const body =
+        declaration.name === 'task.heartbeat'
+          ? { ...probe, leaseId: siblingLease['leaseId'], fence: siblingLease['fence'] }
+          : declaration.name === 'live_correction.request'
+            ? { ...probe, ...C80_REQUEST, partyId: randomUUID(), taskId: sibling.id }
+            : { ...probe, recordId: sibling.id };
       // eslint-disable-next-line no-await-in-loop
-      const answer = await harness.asAgent(
-        declaration.name,
-        declaration.name === 'live_correction.request'
-          ? // C80's request names its task through `taskId`, never a stray
-            // `recordId`, so the sibling is reached through that operand.
-            {
-              ...harness.probeBody(declaration),
-              ...C80_REQUEST,
-              partyId: randomUUID(),
-              taskId: sibling.id,
-            }
-          : declaration.name === 'task.heartbeat'
-            ? // A heartbeat, like a handback, names its task through the lease
-              // and never through a stray `recordId` (final review R1 #23), so
-              // the sibling is reached by its own lease.
-              {
-                ...harness.probeBody(declaration),
-                leaseId: siblingLease['leaseId'],
-                fence: siblingLease['fence'],
-              }
-            : { ...harness.probeBody(declaration), recordId: sibling.id },
-        credential,
-      );
+      const answer = await harness.asAgent(declaration.name, body, credential);
       observe('agent-after-pickup', table, declaration.name, answer, expected);
     }
 
