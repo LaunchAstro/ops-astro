@@ -27,6 +27,7 @@ export const RECEIPT_FIELDS = [
   'business',
   'operator',
   'ranOn',
+  'archiveDigest',
 ];
 
 /**
@@ -53,6 +54,9 @@ export async function recordDrill(
     value(record.targetMajor ?? null, 'integer'),
     value(record.tables ?? null, 'integer'),
     value(record.timings, 'jsonb'),
+    // A carried drill names the archive it restored by its ciphertext digest,
+    // which the store checks against its own (not a key fingerprint).
+    ...(carried ? [value(record.archiveDigest ?? null, 'text')] : []),
   ];
   const at = await reach(
     storeUrl,

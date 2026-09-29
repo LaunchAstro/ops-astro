@@ -238,12 +238,15 @@ grant execute on function backups.record_drill(text, text, uuid, timestamptz, in
 
 -- A carried drill's receipt, brought back (restore-drill.mjs --record). It is
 -- taken only against a read of that archive the store logged for this same
--- login inside the freshness window, and only once per archive and outcome, so
+-- login inside the freshness window, only if the digest the drill restored is
+-- the one the store recorded for that archive (the tenth argument; a digest of
+-- ciphertext, not a key fingerprint), and only once per archive and outcome, so
 -- a receipt cannot be made up for an archive the store never handed out, nor
--- replayed to keep the restore fresh. The time the store stamps is the time it
+-- for another archive carried in its place, nor replayed to keep the restore
+-- fresh. The time the store stamps is the time it
 -- was brought back.
 create function backups.record_carried_drill(
-  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb
+  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb, text
 ) returns timestamptz
   language plpgsql security definer set search_path = pg_catalog as $$
 begin
@@ -253,8 +256,11 @@ begin
       and r.actor = session_user
       and date_trunc('milliseconds', r.taken_at) = $4
       and r.at > now() - make_interval(days => (select restore_days from backups.settings))
+  ) or not exists (
+    select from backups.archives a
+    where date_trunc('milliseconds', a.taken_at) = $4 and a.sha256 = $10
   ) then
-    raise exception 'no read of that archive by this login inside the window' using errcode = '42501';
+    raise exception 'no read of that archive, with that digest, by this login inside the window' using errcode = '42501';
   end if;
   insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
     source_major, target_major, tables, timings, actor, ran_on)
@@ -262,9 +268,9 @@ begin
   return (select max(at) from backups.drills where outcome = 'passed');
 end $$;
 revoke execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
-  integer, integer, integer, jsonb) from public;
+  integer, integer, integer, jsonb, text) from public;
 grant execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
-  integer, integer, integer, jsonb) to ops_astro_backup_restore;
+  integer, integer, integer, jsonb, text) to ops_astro_backup_restore;
 create unique index drills_carried_once on backups.drills (archive_taken_at, outcome)
   where ran_on = 'carried archive';
 

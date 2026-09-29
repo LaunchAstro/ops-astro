@@ -59,16 +59,23 @@ export async function drillAsOperator({
   reach = stagingReach,
 }) {
   const carried = archiveFile !== undefined;
+  // The carried archive's digest, as the store recorded it, once it is read.
+  let archiveDigest = null;
+  const readFile = () => {
+    const archive = readCarried(archiveFile);
+    archiveDigest = archive.sha256;
+    return archive;
+  };
   const {
     event: _event,
     at: _at,
     ...result
   } = await drill({
-    fetchArchive: carried ? () => readCarried(archiveFile) : () => fetchLatest(storeUrl, reach),
+    fetchArchive: carried ? readFile : () => fetchLatest(storeUrl, reach),
     privateKey,
     scope,
   });
-  const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null };
+  const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null, archiveDigest };
   const act = {
     action: 'restore drill recorded',
     ...empty,
@@ -77,7 +84,9 @@ export async function drillAsOperator({
   };
   if (carried) {
     // Off the machine the store is out of reach: the receipt is kept and
-    // printed, and `--record` takes it back into the store.
+    // printed, and `--record` takes it back into the store. Until the store has
+    // checked the archive's digest against its own, a restore is not a pass.
+    if (act.outcome === 'passed') act.outcome = 'pending';
     act.lastTestedRestore = null;
     return await recordDeployment(gate, act);
   }
@@ -95,13 +104,16 @@ export async function drillAsOperator({
  * it, into the store. The store takes it once, against its own logged read.
  */
 export async function recordCarried({ gate, storeUrl, receiptFile, reach = stagingReach }) {
-  const receipt = readCarriedReceipt(receiptFile, gate.operator.personId);
+  const carried = readCarriedReceipt(receiptFile, gate.operator.personId);
+  // A pending restore becomes a pass only if the store takes it, which it does
+  // only for an archive whose digest is the one it recorded.
+  const receipt = { ...carried, outcome: carried.outcome === 'pending' ? 'passed' : 'failed' };
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordDrill(storeUrl, receipt.operator, receipt, reach, true);
   } catch {
     throw new Error(
-      'the store did not take the receipt: it has it already, or it never handed out that archive to this login inside the window',
+      'the store did not take the receipt: it has it already, or it never handed out that archive, with that digest, to this login inside the window',
     );
   }
   return await recordDeployment(gate, {

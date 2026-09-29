@@ -83,10 +83,12 @@ clean-host leg), under the same gate: `restore-drill.mjs --export <file>` on
 the machine writes the newest sealed backup and the digest the store recorded
 for it (never the key); `--drill --archive <file>` on the other host checks the
 file against that digest before opening it with the operator's own copy of the
-key, and keeps and prints a receipt that says it ran on a carried archive;
+key, and keeps and prints a receipt that says it ran on a carried archive,
+names the archive's digest and reads `pending`: it is not a passed drill yet;
 `--record <file>` on the machine puts that receipt in the store
-(`backups.record_carried_drill`), once, for the operator who ran it, and only
-for an archive the store handed out to the drill's login.
+(`backups.record_carried_drill`) as a pass, once, for the operator who ran it,
+and only for an archive the store handed out to the drill's login whose digest
+is the one the store recorded, so an archive swapped on the way is refused.
 
 Before staging is prepared, and again after, the owner runs
 `scripts/ops/service-report.mjs` on the machine:

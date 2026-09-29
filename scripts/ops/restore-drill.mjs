@@ -279,8 +279,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       receipt = await drillFromHere(gate, run.archiveFile);
     }
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
-    // A drill exits 1 unless it passed; an export or a record that ran exits 0.
-    process.exitCode = run.mode === 'drill' && receipt.outcome !== 'passed' ? 1 : 0;
+    if (receipt.outcome === 'pending') {
+      process.stderr.write(
+        'restore-drill: restored from a carried archive; its integrity against the store is pending until --record on the machine, and it is not a passed drill until then\n',
+      );
+    }
+    // A drill exits 0 only on a pass, 3 while a carried restore is pending, else
+    // 1; an export or a record that ran exits 0.
+    const exits = { passed: 0, pending: 3 };
+    process.exitCode = run.mode === 'drill' ? (exits[receipt.outcome] ?? 1) : 0;
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 2;
