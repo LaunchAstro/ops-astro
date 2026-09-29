@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
+import { raiseInboxItem } from '../../packages/core-records/src/inbox/items.ts';
 import {
   CLIENT_NOTE,
   DESCRIPTION,
@@ -256,8 +257,12 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
       expect(answer.status, name).toBeGreaterThanOrEqual(400);
       expect(JSON.stringify(answer.body), name).not.toContain(TITLE);
       // Pickup and handback are refused on the person path by design
-      // (`handlers.ts`), before authority; every other write reaches it.
-      if (!/^task\.(pickup|handback)/u.test(name)) {
+      // (`handlers.ts`), before authority. `inbox.seen` passes R4 (the party
+      // opens their own item) and its handler answers an item that is not
+      // theirs as not found. Every other write is refused on authority.
+      if (name === 'inbox.seen') {
+        expect(answer.code, name).toBe('NOT_FOUND');
+      } else if (!/^task\.(pickup|handback)/u.test(name)) {
         expect(answer.code, name).toBe('SCOPE_NOT_GRANTED');
       }
     }
@@ -280,4 +285,43 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     const refusedReads = audited.filter((row) => row.outcome === 'refused').map((r) => r.command);
     expect(refusedReads).toEqual(expect.arrayContaining(['task.read', 'task.board', 'task.queue']));
   }, 30_000);
+
+  it("INB-1 an external party opens their own item on the shared task, and nobody else's", async () => {
+    const raise = async (recipientPersonId: string) =>
+      await world.db.app.withBusiness(world.alpha, (tx) =>
+        raiseInboxItem(tx, {
+          recipientPersonId,
+          subjectRecordId: shared,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        }),
+      );
+    const own = await raise(ext.personId as string);
+    const adas = await raise(world.ada.personId as string);
+    const seen = async (itemId: string) =>
+      await world.db.app.withBusiness(world.alpha, async (tx) =>
+        (
+          await tx.query<{ readonly person_id: string }>(
+            'select person_id from public.inbox_attention where business_id = $1 and item_id = $2',
+            [tx.businessId, itemId],
+          )
+        ).map((row) => row.person_id),
+      );
+
+    const opened = await as(ext, 'inbox.seen', { operationId: randomUUID(), itemId: own });
+    expect(opened.status).toBe(200);
+    expect(await seen(own)).toStrictEqual([ext.personId]);
+
+    const other = await as(ext, 'inbox.seen', { operationId: randomUUID(), itemId: adas });
+    expect(other.code).toBe('NOT_FOUND');
+    expect(JSON.stringify(other.body)).not.toContain(TITLE);
+    expect(await seen(adas)).toStrictEqual([]);
+    // Every other self-scoped write stays refused at R4.
+    const setting = await as(ext, 'notifications.set_channel', {
+      operationId: randomUUID(),
+      channel: 'email',
+      mode: 'off',
+    });
+    expect(setting.code).toBe('SCOPE_NOT_GRANTED');
+  });
 });
