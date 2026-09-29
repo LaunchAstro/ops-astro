@@ -234,7 +234,8 @@ function refuseMalformedIdentifier(
 /**
  * The operands a command writes to a text or jsonb column as the caller sent
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
- * purpose, currency, payload and step, a handback's report and successor.
+ * purpose, currency, payload and step, a handback's report and successor, a
+ * privacy incident's words (C55), and a legal document version's words (C81).
  *
  * Without this check, each of them could reach its insert holding a NUL or an
  * unpaired surrogate, which the column refuses with a raise. The owed refusal
@@ -248,8 +249,10 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'affected',
   'body',
   'currency',
+  'foundBy',
   'note',
   'payload',
   'purpose',
@@ -257,6 +260,7 @@ const FREE_OPERANDS: readonly string[] = [
   'report',
   'step',
   'successor',
+  'whatHappened',
 ];
 
 /**
