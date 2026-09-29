@@ -5,6 +5,7 @@
 // invariant `S0-6 session cookie` and `S0-6 csrf` are in session-cookie.test.ts.
 
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
@@ -66,46 +67,41 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
   isolationOneCookieCases3();
 });
 
+/** The parts of a parsed script element the check reads. */
+type ParsedScript = {
+  getAttribute: (name: string) => string | null;
+  textContent: string | null;
+  outerHTML: string;
+};
+/** jsdom's HTML parser. jsdom ships no types, and @types/jsdom is not a dependency. */
+const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
+  JSDOM: new (html: string) => {
+    window: { document: { querySelectorAll: (selector: 'script') => Iterable<ParsedScript> } };
+  };
+};
+
 /**
  * Every script element on a page, and those that are not an empty same-origin
- * file. It reads each opening tag as the browser does, quoted values whole, so
- * a `>` or a fake `</script >` inside a quoted value neither ends the tag nor
- * reads as a `src`: only a real `src` attribute (the first, as the browser
- * takes it) makes a file, and only a plain path on this origin: no entity,
- * tab, backslash or second slash that the URL parser would turn into another
- * host. A `<script` whose tag never closes counts as inline. It reads what
- * follows the tag, never a pairing with an end tag, so `</script >`,
- * `</script\t>` or an end tag with attributes cannot hide a body: anything but
- * whitespace before `</script` counts as inline.
+ * file. The page is parsed by jsdom, an HTML parser that follows the standard's
+ * tokeniser, and each script element's `src` and text are read from the parsed
+ * document, so no quoting, casing, entity or end-tag quirk can hide a script:
+ * what the parser makes a script is what is checked. A file is only a plain
+ * path on this origin: no entity, tab, backslash or second slash the URL parser
+ * would turn into another host. A `<script` the parser did not turn into a
+ * script element (a tag whose quote never closes) counts as inline too.
  */
 function scriptsOf(html: string) {
-  const inline: string[] = [];
-  let found = 0;
-  for (const start of html.matchAll(/<script(?=[\s/>])/giu)) {
-    found += 1;
-    const tag = /<script(?<attributes>(?:[^>"']|"[^"]*"|'[^']*')*)>/iuy;
-    tag.lastIndex = start.index;
-    const open = tag.exec(html);
-    if (open === null) {
-      inline.push(start[0]);
-      continue;
-    }
-    const after = html.slice(open.index + open[0].length);
-    const src = attributesOf(open.groups?.['attributes'] ?? '').find(([name]) => name === 'src');
-    const sameOrigin = src !== undefined && /^\/[\w.~-][\w.~/-]*$/u.test(src[1]);
-    if (!sameOrigin || !/^\s*<\/script\b/iu.test(after)) inline.push(open[0]);
-  }
-  return { found, inline };
-}
-
-/** An opening tag's attributes in order, names lower-cased, values unquoted. */
-function attributesOf(text: string): [string, string][] {
-  const each =
-    /(?<name>[^\s"'>/=]+)(?:\s*=\s*(?:"(?<dq>[^"]*)"|'(?<sq>[^']*)'|(?<bare>[^\s"'>]+)))?/gu;
-  return [...text.matchAll(each)].map(({ groups }) => [
-    (groups?.['name'] ?? '').toLowerCase(),
-    groups?.['dq'] ?? groups?.['sq'] ?? groups?.['bare'] ?? '',
-  ]);
+  const scripts = [...new JSDOM(html).window.document.querySelectorAll('script')];
+  const inline = scripts
+    .filter((script) => {
+      const src = script.getAttribute('src');
+      const sameOrigin = src !== null && /^\/[\w.~-][\w.~/-]*$/u.test(src);
+      return !sameOrigin || (script.textContent ?? '').trim() !== '';
+    })
+    .map((script) => script.outerHTML);
+  const openings = html.match(/<script(?=[\s/>])/giu)?.length ?? 0;
+  if (openings > scripts.length) inline.push(`${openings - scripts.length} unparsed <script`);
+  return { found: scripts.length, inline };
 }
 
 /** Markup the inline-script check must count as inline, however it is dressed. */
