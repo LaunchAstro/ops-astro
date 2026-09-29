@@ -264,7 +264,9 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
-    } & Envelope);
+    } & Envelope)
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

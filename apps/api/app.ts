@@ -60,6 +60,7 @@ import type {
   executeAgentCommand,
   CommandRefusal,
   executeRead,
+  ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
@@ -115,6 +116,12 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * `model.call` on the agent prefix: the credential broker, when the
+   * deployment configured one. Absent, the route answers that the part the
+   * command rests on has not landed.
+   */
+  readonly executeModelCall?: ModelCallExecutor;
   readonly live?: LiveOptions;
 }
 

@@ -108,7 +108,11 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // One priced model call, made by the lease holder through the credential
+  // broker (AW-01). The grant is the run's delegation, one of the six facts
+  // the broker verifies from rows; no person grant carries it.
+  | 'model.call';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -385,6 +389,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'model.call': { leaseId: 'any', fence: 'any', stepId: 'any', operation: 'any', fields: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -573,6 +578,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // The lease holder's, asked of the lease's task like the heartbeat. The
+  // agent path checks the delegation; the broker then verifies the lease, the
+  // delegation and the reservation again under their locks when it holds the
+  // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
+  declare('model.call', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId', 'stepId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
   }),
 ];
 
