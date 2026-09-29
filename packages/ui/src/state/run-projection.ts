@@ -23,6 +23,8 @@ export interface RunGate {
   readonly expiresAt: string | null;
   readonly expired: boolean;
   readonly payloadDigest: string;
+  /** When the gate was raised (MP-6-2). Absent from a read made before it, which reads as unknown. */
+  readonly raisedAt?: string;
 }
 
 export interface RunVersion {
@@ -35,6 +37,8 @@ export interface RunVersion {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** When the first lease on this version's run was taken; null before any (MP-6-2). */
+  readonly runStartedAt?: string | null;
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];

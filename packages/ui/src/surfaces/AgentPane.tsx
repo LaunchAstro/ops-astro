@@ -40,6 +40,8 @@ export interface AgentPaneProps {
   readonly onCancel: (lineageId: string) => void;
   /** The access ledger's address for one grant, or null while the ledger has no screen. */
   readonly ledgerHref: ((grantId: string) => string) | null;
+  /** The clock the hero's elapsed time reads, in milliseconds; the browser's when absent. */
+  readonly now?: number;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
