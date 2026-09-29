@@ -137,7 +137,7 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
         <Stat label="Clients" value={7} />
       </StatRow>,
     );
-    const term = mounted.find('.stat__term');
+    const term = mounted.find('.stat__label .term');
     expect(term?.getAttribute('tabindex')).toBe('0');
     const described = term?.getAttribute('aria-describedby') ?? '';
     const tip = mounted.find(`#${described}`);
