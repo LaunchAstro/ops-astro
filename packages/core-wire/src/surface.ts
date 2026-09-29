@@ -108,7 +108,12 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
+  // and `seen` stamped on the caller's own attention row.
+  | 'inbox.read'
+  | 'inbox.count'
+  | 'inbox.seen';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -158,8 +163,11 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
+   * - `self`: the caller's own rows, which every signed-in person holds
+   *   without a grant (a self-scoped key such as `preference:write`). The
+   *   operation reaches no row but the caller's, and asks access per row.
    */
-  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -267,6 +275,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const INBOX_COLLECTION = 'inbox';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -281,7 +290,7 @@ function read(
   options: {
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business';
+    readonly authorisedOn?: 'record' | 'business' | 'self';
   } = {},
 ): CommandDeclaration {
   return {
@@ -391,6 +400,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'inbox.seen': { itemId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -579,6 +589,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+
+  // The inbox is one person's: no agent reaches it, and each row answers the
+  // caller about their own items only, with access derived per item.
+  read('inbox.read', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  read('inbox.count', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  declare('inbox.seen', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['itemId'],
   }),
 ];
 

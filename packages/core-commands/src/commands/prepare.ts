@@ -516,7 +516,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -566,13 +566,16 @@ export async function prepareCommand(
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    });
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and
