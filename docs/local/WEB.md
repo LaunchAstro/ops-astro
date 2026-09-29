@@ -685,6 +685,14 @@ places this build does not yet reach it.
   tracking or case, and lists the four exceptions a ruling keeps (strong text
   at the medium weight, the two larger button labels, the run hero's mono
   figure). A stat number keeps one size at every width.
+- Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
+  no chart library: line, column with a dashed line, donut, gauge, score dial,
+  sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
+  charts measure their width with the browser's resize observer and redraw
+  when shown or resized. Line, column and donut charts are one tab stop each;
+  the arrow keys walk the points, and hover or focus shows the value. A
+  second quantity gets its own labelled right-hand axis. No page draws a
+  chart yet; the Executive page (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
