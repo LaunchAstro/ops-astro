@@ -74,6 +74,14 @@ const MADE_UP = `made-up-business-${randomBytes(4).toString('hex')}`;
 const A = { business: randomUUID(), person: randomUUID(), client: randomUUID() };
 const B = { business: randomUUID(), person: randomUUID(), client: randomUUID() };
 const SCOPE: Scope = A;
+// A second pair in A with its own grant, a client A.person's grant over which
+// is revoked, and a person with a grant over A.client but no membership.
+const A2 = {
+  person: randomUUID(),
+  client: randomUUID(),
+  revoked: randomUUID(),
+  outsider: randomUUID(),
+};
 
 const hasDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 if (!hasDocker) console.warn('ci/restore-drill: Docker is not running, so nothing below ran.');
@@ -151,10 +159,25 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       create table public.people (business_id uuid not null, id uuid primary key, name text not null);
       insert into public.people values ('${A.business}', '${A.person}', 'made-up person A'),
         ('${A.business}', '${A.client}', 'made-up client A'), ('${B.business}', '${B.person}', 'made-up person B'),
-        ('${B.business}', '${B.client}', 'made-up client B');
+        ('${B.business}', '${B.client}', 'made-up client B'), ('${A.business}', '${A2.person}', 'made-up person A2'),
+        ('${A.business}', '${A2.client}', 'made-up client A2'), ('${A.business}', '${A2.revoked}', 'made-up client A3'),
+        ('${A.business}', '${A2.outsider}', 'made-up outsider A');
+      create table public.memberships (business_id uuid not null, id uuid primary key default gen_random_uuid(),
+        person_id uuid not null, active boolean not null default true);
+      insert into public.memberships (business_id, person_id) values ('${A.business}', '${A.person}'),
+        ('${A.business}', '${A2.person}'), ('${B.business}', '${B.person}');
+      create table public.grants (business_id uuid not null, id uuid primary key default gen_random_uuid(),
+        subject_kind text not null, subject_id uuid not null, scope_kind text not null, scope_id uuid,
+        action text not null, expires_at timestamptz, revoked_at timestamptz);
+      insert into public.grants (business_id, subject_kind, subject_id, scope_kind, scope_id, action, revoked_at) values
+        ('${A.business}', 'person', '${A.person}', 'party', '${A.client}', 'read', null),
+        ('${A.business}', 'person', '${A2.person}', 'party', '${A2.client}', 'read', null),
+        ('${A.business}', 'person', '${A.person}', 'party', '${A2.revoked}', 'read', now()),
+        ('${A.business}', 'person', '${A2.outsider}', 'party', '${A.client}', 'read', null),
+        ('${B.business}', 'person', '${B.person}', 'party', '${B.client}', 'read', null);
       create table public.tasks (business_id uuid not null, id int primary key, title text);
       insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
-      ${['businesses', 'people', 'tasks'].map(barrier).join('\n')}`;
+      ${['businesses', 'people', 'memberships', 'grants', 'tasks'].map(barrier).join('\n')}`;
     const created = await run(
       ['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'fixture'],
       Buffer.from(sql),
@@ -173,7 +196,7 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       'fixture',
     ]);
     expect(dump.code).toBe(0);
-    const unbar = ['businesses', 'people', 'tasks']
+    const unbar = ['businesses', 'people', 'memberships', 'grants', 'tasks']
       .map(
         (t) =>
           `alter table public.${t} no force row level security; alter table public.${t} disable row level security;`,
@@ -363,7 +386,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         sourceMajor: PRODUCTION_MAJOR,
         targetMajor: PRODUCTION_MAJOR,
         productionMajor: PRODUCTION_MAJOR,
-        tables: 4,
+        tables: 6,
         readAs: 'ops_astro_app',
       });
       const timings = record['timings'] as Record<string, number>;
@@ -430,7 +453,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
           return docker(args, input);
         },
       });
-      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 4 });
+      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 6 });
       // Every statement that reads the copy's tables runs as the tenancy role
       // under the named business; the owner session never reads one.
       const reads = calls.filter(
@@ -446,7 +469,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         );
       }
       // No id or row reaches the record.
-      for (const id of [...Object.values(A), ...Object.values(B)])
+      for (const id of [...Object.values(A), ...Object.values(A2), ...Object.values(B)])
         expect(JSON.stringify(record)).not.toContain(id);
     }, 120_000);
 
@@ -465,6 +488,31 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
       }
     }, 180_000);
+
+    it("accepts a person and client only through the person's current grant over that client", async () => {
+      const { restoreDrill } = await drillModule();
+      const drill = async (scope: Scope): Promise<DrillRecord> =>
+        await restoreDrill({
+          fetchArchive: async () => ({ takenAt, body: sealed }),
+          privateKey: keys.privateKey,
+          scope,
+        });
+      // The second pair passes on its own grant.
+      expect(
+        await drill({ business: A.business, person: A2.person, client: A2.client }),
+      ).toMatchObject({
+        outcome: 'passed',
+      });
+      for (const scope of [
+        { business: A.business, person: A.person, client: A2.client }, // the other pair's client
+        { business: A.business, person: A2.person, client: A.client }, // the other pair's person
+        { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
+        { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
+      ]) {
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
+      }
+    }, 300_000);
 
     it('fails a copy where the business barrier did not survive', async () => {
       const { restoreDrill } = await drillModule();
