@@ -73,11 +73,19 @@ async function copyData(target: string): Promise<string> {
   }
   const user = decodeURIComponent(new URL(serverUrl).username);
   const container = process.env['FIXTURE_PG_CONTAINER'] ?? 'ops-astro-local-pg';
-  const [{ identity } = { identity: '' }] = await server.execute<{ identity: string }>(IDENTITY);
+  // A container's name or id, never a word docker would read as its own option.
+  if (!/^[A-Za-z0-9][\w.-]*$/u.test(container)) {
+    throw new Error(
+      `fixture: FIXTURE_PG_CONTAINER ${JSON.stringify(container)} is not a container name or id`,
+    );
+  }
+  const [row] = await server.execute<{ identity: string | null }>(IDENTITY);
+  const identity = row?.identity ?? '';
+  if (identity === '') throw new Error('fixture: the DATABASE_URL server gave no identity');
   // The container proves it runs DATABASE_URL's server before it creates
   // anything, asking over the socket the copy then uses.
   const script = [
-    '[ "$(psql -U "$1" -d postgres -XAtc "$5")" = "$4" ] || {',
+    '[ -n "$4" ] && [ "$(psql -U "$1" -d postgres -XAtc "$5")" = "$4" ] || {',
     '  printf "fixture: container %s is not the DATABASE_URL server;' +
       ' set FIXTURE_PG_CONTAINER to its container. Nothing was created." "$6" >&2; exit 1; }',
     'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"',
