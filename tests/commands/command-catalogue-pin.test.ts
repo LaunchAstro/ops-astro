@@ -107,6 +107,10 @@ vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (origin
   ...(await original<object>()),
   stampOwnSeen: recorder('stampOwnSeen'),
 }));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -123,6 +127,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
   'inbox.seen': ['itemId'],
+  'preference.save': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -143,6 +148,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.read',
   'inbox.seen',
   'person.list',
+  'preference.read',
+  'preference.save',
   'preset.plan',
   'session.capabilities',
   'settings.read',
@@ -240,6 +247,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -283,6 +291,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -322,7 +331,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-three from an expected revision', () => {
+  it('exempts the same twenty-five from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

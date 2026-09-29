@@ -107,7 +107,10 @@ export type CommandName =
   // and `seen` stamped on the caller's own attention row.
   | 'inbox.read'
   | 'inbox.count'
-  | 'inbox.seen';
+  | 'inbox.seen'
+  // The one preference store (MP-2-11a): the caller's own keys.
+  | 'preference.read'
+  | 'preference.save';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -164,6 +167,13 @@ export interface CommandDeclaration {
    *   operation reaches no row but the caller's, and asks access per row.
    */
   readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
+  /**
+   * Whether an applied attempt, and the replay of one, joins the audit chain.
+   * False only where the capability row says the action is not audited, a
+   * person's own preference (CS-2.8). A refused attempt joins it on every row,
+   * so a probe at someone else's row stays visible.
+   */
+  readonly audited: boolean;
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -254,6 +264,7 @@ function declare(
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
+    readonly audited?: boolean;
   } = {},
 ): CommandDeclaration {
   const waitingOn = options.waitingOn ?? '';
@@ -276,6 +287,7 @@ function declare(
     landed: waitingOn === '',
     waitingOn,
     agent: options.agent ?? 'never',
+    audited: options.audited ?? true,
   };
 }
 
@@ -283,6 +295,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const INBOX_COLLECTION = 'inbox';
+const PREFERENCE_COLLECTION = 'preference';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -313,6 +326,8 @@ function read(
     landed: true,
     waitingOn: '',
     agent: options.agent ?? 'never',
+    // Every read writes its event (`reads/dispatch.ts`, I13).
+    audited: true,
   };
 }
 
@@ -385,6 +400,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
   'inbox.seen': { itemId: 'id' },
+  'preference.save': { preference: 'text', value: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -536,6 +552,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'self',
     untargetedIdentifiers: ['itemId'],
+  }),
+
+  // A person's own preferences (MP-2-11a): the caller's row only, no grant
+  // asked. No agent reaches either row yet (see the pull request's notes).
+  read('preference.read', PREFERENCE_COLLECTION, { authorisedOn: 'self' }),
+  declare('preference.save', 'write', {
+    collection: PREFERENCE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+    audited: false,
   }),
 ];
 

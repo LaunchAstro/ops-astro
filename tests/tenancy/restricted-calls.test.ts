@@ -89,6 +89,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // Nothing in the journey saves a preference (MP-2-11a adds the command).
+  'public.person_preferences': `insert into public.person_preferences
+       (business_id, person_id, key, value)
+     select business_id, id, 'appearance', '"dark"'::jsonb from public.people
+      where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

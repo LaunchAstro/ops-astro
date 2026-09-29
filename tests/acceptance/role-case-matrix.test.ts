@@ -190,8 +190,11 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               caller.name,
               'e-no-grant',
               declaration.name,
-              'not applicable: self-scoped preference:write; another person’s item ' +
-                'is NOT_FOUND in tests/reads/inbox.test.ts',
+              declaration.name === 'inbox.seen'
+                ? 'not applicable: self-scoped preference:write; another person’s item ' +
+                    'is NOT_FOUND in tests/reads/inbox.test.ts'
+                : 'not applicable: self-scoped preference:write reaches the caller’s own ' +
+                    'row only; tests/api/preferences.test.ts',
             );
             continue;
           }

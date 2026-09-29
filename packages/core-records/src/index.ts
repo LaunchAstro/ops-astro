@@ -59,6 +59,14 @@ export {
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
 export {
+  admitsPreference,
+  isPreferenceKey,
+  PREFERENCE_KEYS,
+  readPreferences,
+  savePreference,
+  type PreferenceKey,
+} from './preferences/store.ts';
+export {
   owes,
   raiseInboxItem,
   readInboxItems,

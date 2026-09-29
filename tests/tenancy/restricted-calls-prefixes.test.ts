@@ -100,6 +100,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
   'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
+  // 0033: nothing in the journey saves a preference yet.
+  'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

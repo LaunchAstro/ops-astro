@@ -232,7 +232,13 @@ export type CommandRequest =
       readonly leaseSeconds?: number;
     } & Envelope)
   // The recipient opening their own inbox item (INB-1d).
-  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope);
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // A key of the caller's own preference row (MP-2-11a).
+  | ({
+      readonly command: 'preference.save';
+      readonly preference: string;
+      readonly value: unknown;
+    } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

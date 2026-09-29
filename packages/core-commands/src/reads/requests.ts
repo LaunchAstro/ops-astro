@@ -172,6 +172,8 @@ export interface ReadOperands {
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
   readonly 'inbox.count': NoOperands;
+  /** The caller's own saved preferences (MP-2-11a). */
+  readonly 'preference.read': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -213,4 +215,5 @@ export type ReadResult =
       readonly grants: readonly Capability[];
     }
   | { readonly ok: true; readonly inbox: readonly InboxEntry[] }
-  | { readonly ok: true; readonly owed: number };
+  | { readonly ok: true; readonly owed: number }
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> };

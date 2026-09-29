@@ -221,7 +221,11 @@ export function createPositiveBody(
       // The caller's own inbox (INB-1d): a live grant of any kind, as above.
       case 'inbox.read':
       case 'inbox.count':
+      // The caller's own preferences (MP-2-11a), the same way.
+      case 'preference.read':
         return { body: {} };
+      case 'preference.save':
+        return { body: { preference: 'appearance', value: 'dark' } };
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.

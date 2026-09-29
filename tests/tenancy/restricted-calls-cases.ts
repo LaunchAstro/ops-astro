@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0032: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
+  // 0033: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'reservations task_envelopes'],

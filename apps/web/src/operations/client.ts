@@ -80,6 +80,8 @@ export const READ_NAMES = [
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
   'inbox.count',
+  // The caller's own preferences (MP-2-11a); MP-2-11d draws them.
+  'preference.read',
 ] as const;
 
 /**
