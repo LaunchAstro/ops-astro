@@ -2,7 +2,8 @@
 // S0-1e: the operator gate and the deployment record (ticket S0-1, line A4).
 //
 // The person-only commands, staging preparation (`scripts/ops/operator.mjs
-// prepare`), the promotion step (`scripts/ops/promote.mjs`) and the restore
+// prepare`), the staging deploy (`scripts/ops/deploy.mjs`, `S0-6 operator
+// only`), the promotion step (`scripts/ops/promote.mjs`) and the restore
 // drill (`scripts/ops/restore-drill.mjs --drill`, `S0-3 operator only`), run
 // through one check: a person's own sign-in, in the business named, holding
 // `operations:manage` on the whole business. An agent credential, a call under

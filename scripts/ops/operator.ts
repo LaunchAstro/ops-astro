@@ -2,7 +2,8 @@
 //
 // The operator gate and the deployment record (ticket S0-1, line A4).
 //
-// Staging preparation, the promotion step and the restore drill (S0-3) are a
+// Staging preparation, the staging deploy (S0-6), the promotion step and the
+// restore drill (S0-3) are a
 // person's acts under `operations:manage`, never an agent's and never under a
 // delegation. Each command asks `requireOperator` before they read anything else, and write
 // their record through `recordDeployment` only after they acted. A refusal,
@@ -67,7 +68,7 @@ function refused(why: string): Gate {
   return {
     ok: false,
     reason:
-      `${why}. Staging preparation, the promotion step and the restore drill are a person's acts under ${KEY}, ` +
+      `${why}. Staging preparation, the staging deploy, the promotion step and the restore drill are a person's acts under ${KEY}, ` +
       "never an agent's and never under a delegation: sign in as yourself (OPS_ASTRO_TOKEN) " +
       'in the business OPS_ASTRO_BUSINESS names. Nothing was done.',
   };

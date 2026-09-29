@@ -8,7 +8,8 @@ here deploys it: the first deploy is S0-6, once S0-2's alerts reach the owner.
 it without a YAML parser. It holds staging's own services: its Postgres, on
 the same major as production's managed database (17), and its auth server,
 the same pinned build the local slice runs. The API and the web bundle join
-in S0-6. `x-ops-astro` names what other scripts read: the prefix every
+in S0-6 as app services, run from the image the deploy builds (below).
+`x-ops-astro` names what other scripts read: the prefix every
 staging name carries, the production major and the artefact the promotion
 step selects.
 
@@ -81,6 +82,28 @@ node scripts/ops/service-report.mjs compare before.json after.json
 
 It exits 1 when a live service stopped, restarted, vanished, moved port or
 was reconfigured, and 0 when all are unchanged (`S0-1 services unchanged`).
+
+## The deploy
+
+`scripts/ops/deploy.mjs --version <id> --artefacts <store>` deploys a stored
+build to staging (ticket S0-6). It is a person's act under
+`operations:manage`, asked of the operator gate before anything else, like
+the preparation and the promotion. It takes the artefact the store holds for
+that version, checked as the promotion checks it, and never builds the
+product. It builds one image from that artefact on the pinned base (the
+staging Dockerfile, which arrives with the release artefact in S0-6e; until
+then the deploy stops at its build and records nothing), with nothing from
+the machine mounted, and Compose runs the app services on that image by its
+id. Every other service
+is named by a digest with a row in `docs/supply-chain-pins.md`, and a
+service Compose could build or pull another way is refused (`S0-6 image
+pins`). After Compose is up, each container must be on the image it was named
+by.
+
+The deploy takes the service report's snapshot before and after, and a live
+service that stopped, restarted or changed fails it (`S0-6 services
+unchanged`). Only a deploy that passes both writes `deploy recorded` to the
+operator's record folder: the version, the artefact and the image id.
 
 The promotion refuses while production's API or auth server runs (owner line
 63), so a person stops them first with `scripts/ops/stop-production.mjs`. It
