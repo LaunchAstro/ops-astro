@@ -1,1 +1,365 @@
-{ "comment": ["T4e catalogue: filled by the green commit."], "parts": [] }
+{
+  "comment": [
+    "T4e's catalogue (split section 3.2): each part before T4e, its named invariants, the test files",
+    "that carry them and the part's own commits on the merged line (groups A to E, #173 to #180).",
+    "`keep` is what a revert leaves at the head: tests/ for a T2 or T3 part, so its invariant runs",
+    "against the product without the part; a T4 part is test tooling, so only its invariant files stay.",
+    "T3d2's red-first commit is its proof harness (without it nothing runs), so its revert is its fix",
+    "commit, the hard SIGKILL stops, keeping only the proof file and its runner.",
+    "See tests/ci/self-test/mutations.ts."
+  ],
+  "parts": [
+    {
+      "id": "T2a",
+      "invariants": ["run_progress_read"],
+      "files": ["tests/runtime/run-progress-read.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "fd826b3552b46666bf05c35c19ca4a6dcf1fbd3f",
+        "17de38cb95916e61063316e297b4a93fc150418b",
+        "bea704f9faf5bd29bdee7abcc228cd9fe61f3ddc",
+        "a62191f342c5a1207f835c0c25925a32adc77b70"
+      ]
+    },
+    {
+      "id": "T2b",
+      "invariants": ["worker_boundary"],
+      "files": ["tests/api/t2b-worker.test.ts", "tests/worker/worker-boundary.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "495a16149d4c6747bfb16727922611e9a25e3029",
+        "058d669fbf47164b4d7323cb15d8785674c0a9bb",
+        "bc38ef9628aaf02be96b756e62f064f0e25d5b38",
+        "905a39f49be099e89b1ecc6f59ca54ce79608e7c",
+        "37fe82894606c2405f1fd7c932e3960853adabaf",
+        "59493958cfb6a6f4f499808a165f7dc0003bd23d"
+      ]
+    },
+    {
+      "id": "T2c1",
+      "invariants": ["recheck_inside_dispatch"],
+      "files": ["tests/runtime/t2c1-dispatch.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "4a3260048f053be46d7d16802a4790eee574cbd3",
+        "afbd0ec14f414808d1f2c3b7b31da36f758c76cc",
+        "e60065a3d853bb7319017b4313e874d814b0515b",
+        "556e716ebd239ce2b1b706f45644058e78297732",
+        "4a40bfad9eaa2b83db7fb1903753f46be20e8276",
+        "5e00a4d0a8e58f94462b924e8f799ebf999ac7f9"
+      ]
+    },
+    {
+      "id": "T2c2",
+      "invariants": ["effect_once_with_receipt"],
+      "files": ["tests/runtime/t2c2-effect.test.ts", "tests/api/t2c2-worker.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "ed75270678f0eee2f0b11a0030c21eb5add578e2",
+        "845594f977edda4825070d4a4c7d08331ccbc211",
+        "01818fd9806448c2415a7865d313766cae6178d9",
+        "5029df793f1bbcf999b00759e7efb8a0a0e60834",
+        "12042cc6e0dcb0a94d95ff7ed7d635b52af6e262",
+        "30b7224094c02712e7fb8bc52ecf8292c7f83a73",
+        "00d62cf8027ac249f6ea5333fa334a0879412de6",
+        "3af47238efd2dd19674e0d229db5e86afed6eaa8",
+        "cb7f9c24fc6e0b7c7eaadf2fd5a3a8acc1ae966e",
+        "476ee40eec58cff8c292afed7a07280a6fae9693"
+      ]
+    },
+    {
+      "id": "T2d",
+      "invariants": ["settles_at_observed"],
+      "files": ["tests/runtime/t2d-settle.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "7766d9f7535453b66219b8e361f01ffc5b0a7b19",
+        "31f123ba1c96f037ecf2c9870818258b4f410c55",
+        "2f787336d1932c18210a8c9918aa56d1ac331ac3",
+        "ce08913561b48ad38542b1d5d78360dee97ddcb5",
+        "758e4424f9f19bf52b1ce88153324a5a2da235f3",
+        "1b1c0e5bafb8a0bbd9ca21fe71dc2de2eb454c42",
+        "00374fdee6681a8b19ac3d8588089fe3087740aa",
+        "845bd490d13dcd1a059c4bc4c2c9699753273330",
+        "4024eeb7be4ded81d16e735c91136420b0cd281c",
+        "c8cd56f3277e46121ecc4bccf6e246c62a755ae8"
+      ]
+    },
+    {
+      "id": "T2e",
+      "invariants": ["top_up_is_a_persons"],
+      "files": [
+        "tests/runtime/t2e-top-up.test.ts",
+        "tests/cli/t2e-top-up-surfaces.test.ts",
+        "tests/surfaces/task-top-up.test.tsx"
+      ],
+      "keep": ["tests/"],
+      "commits": [
+        "9bf8d18a2c53a5e42adcd43305e03710e46b8436",
+        "94c9cde4d1e1e64c858d82c5f5657f8a59086ea2",
+        "76119a2dd0f4eca5ce4d0c74aa243237e3b1036e",
+        "d82fbcac4e3536a438a94305b7eda0ae1b002728",
+        "6cbbcdc11cb5a1f79af5c2644dbf09ce6152ca49",
+        "e29404563cf825b0128e3f7e19e04ad22901d26a"
+      ]
+    },
+    {
+      "id": "T2f",
+      "invariants": ["event_visible_under_2s"],
+      "files": ["tests/api/t2f-live-channel.test.ts", "tests/surfaces/t2f-live-task.test.tsx"],
+      "keep": ["tests/"],
+      "commits": [
+        "a89e7ee578700eede6d05bbdc9ebfa9c43580a0c",
+        "48e066e05592e7782464b61632781fc046b3df2b",
+        "bd0954bd9dee004aab41fe864a92f76f0b5e3b04",
+        "648c507a2eba27336497c7bca2609079beaaa132",
+        "02033e6df8a7691b3ee507d24dbf1994407ea567"
+      ]
+    },
+    {
+      "id": "T2g",
+      "invariants": ["journey_parity_cli"],
+      "files": ["tests/cli/t2g-decide-parity.test.ts", "tests/cli/t2g-journey.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "6eb21ad8717b1446064999b1598719f2c259edc4",
+        "cf89e3c37694b5cbc158cce80f791daf63ca4993",
+        "153424684bc29474efd87fa85e908ccb78381fd4",
+        "8bdc3180307d799edda2f7428320954671feabc3",
+        "38c5346f5b247095c57830900b922674866ca7a8",
+        "9f691a87ce9e3d1f7708f6c67c91e7bd9127eb3e",
+        "108145d2239585e878d9c77e6bc92f559a3b07cf",
+        "0633290e4fd7fc4daec989417558449a19b9eece",
+        "0df9d3c7041b00c4d69bcf36371a4855cdd3a8e7",
+        "5b8f37504e170f470a8fa5de934df1c84f25bc95",
+        "054d051de3ca2bf8119173214159090de3869ff6",
+        "c3168cb6735ec03b0a802050fe4a9fcec1400075"
+      ]
+    },
+    {
+      "id": "T2h",
+      "invariants": ["alert_on_transition"],
+      "files": ["tests/runtime/t2h-alerts.test.ts", "tests/api/t2h-alerts-surfaces.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "42c2eb49fe84b32d86df3ea5ba33f31479cfedca",
+        "51095a3a7b5e7243d990afa8267c3c5332f774b7",
+        "c17d8f74adb8428568bed2145257f66cbec6ea72"
+      ]
+    },
+    {
+      "id": "T3a",
+      "invariants": ["revision_loop_keeps_settled"],
+      "files": ["tests/runtime/t3a-revision-loop.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "fef20c01198cd6f945a4d10f296ed33f181ae2dd",
+        "b812676c448466c1caf90704fcfd9973df3bbc8a",
+        "87594819784f31128d75fc9f1f6b1d434d5d7cdd",
+        "9b7840e4d6c8cbab3ad65055c2eebbe27d2a8ba6",
+        "ec9cd9a2fca3e33929819c64e7db47a20d40c6d0",
+        "711b1b2f650bfdd6c70e7cd281455df8ab70ba07",
+        "603d0964cd595cf83946c3b41dde36d0f1673bac",
+        "b5697df5725d0285130d790f70435569ad881150",
+        "e5d70304d90cf2f801a76cf3b8baa036348e079b",
+        "40f277bddddec0054dc6ee1394c1410a82fbb615",
+        "3607a5f6f40f8ddb14b9eefbdc9493f7d5a50983",
+        "87bded28d397b470c12e0e309dd10bd3b4eadd8a",
+        "929e580c8abab64f933a675ac9acfebc1706298c",
+        "0308983b83333b38a665aca79d2ffabb0d1fd30f",
+        "2dbde7283bc4734334038ede64c4926fc0214fe7",
+        "48aa22307c31b3fec4c54b62a4a46a49125e59b2"
+      ]
+    },
+    {
+      "id": "T3b",
+      "invariants": ["unknown_stays_unknown"],
+      "files": [
+        "tests/runtime/t3b-sweeper.test.ts",
+        "tests/runtime/t3b-sweep-worker-and-isolation.test.ts"
+      ],
+      "keep": ["tests/"],
+      "commits": [
+        "f4d6943dd77cc7fb8b70b7b59b4a7e2b6f3bf400",
+        "4535f49b9323ca0e177d878a46a25bdf91972c8c",
+        "0d6975219e7afcdb510ccc809fce85ed2b6389e1",
+        "d467efefba2fe04e3fa9200cf99053f0e9501ee6"
+      ]
+    },
+    {
+      "id": "T3c",
+      "invariants": ["write_off_needs_a_person"],
+      "files": ["tests/runtime/t3c-write-off.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "966cb6c76831d4defe119ad90a2385e93172e93a",
+        "c24f948d8ce53190f49959a2b7a343cf7da249b8"
+      ]
+    },
+    {
+      "id": "T3d1",
+      "invariants": ["reconcile_never_repeats"],
+      "files": ["tests/runtime/t3d1-reconcile.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "4f41852b3a20ec0cc0ff34583136c92df004886a",
+        "b92772177943d50c2b1d28303026e26a181c0cdd",
+        "46ca12fe1b4429233790b56a76ce5c965ed17018",
+        "abaf75306f0fdd55a4bf75425dcea263d0687c84",
+        "cdc7de0c03f1567375b552aa881024fa4c8d5fd1",
+        "e4cde70890945ff319b5d7dc45d8ca2662d3def6"
+      ]
+    },
+    {
+      "id": "T3d2",
+      "invariants": ["apply_after_api_stops", "crash_between_apply_and_settle"],
+      "files": ["tests/acceptance/runtime-proofs.test.tsx"],
+      "keep": ["tests/acceptance/runtime-proofs.test.tsx", "scripts/local/runtime-proofs.sh"],
+      "commits": ["540fb79ada1db3750d81fe87dbdfd9dded436ee2"]
+    },
+    {
+      "id": "T3e1",
+      "invariants": ["drop_is_not_cancel"],
+      "files": ["tests/runtime/t3e1-drops.test.ts", "tests/acceptance/drop-proofs.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "fab65faa9e47e0d2f882d7d0dbcf8197f1bbe9f8",
+        "b8ce5f61d00d10ae698b3856cc7b69a252a989db",
+        "5694c506a87d9d26ab3fd039007e58ce4bb5d064",
+        "56cce686b5344cedc3f4ec1150bcabd93b0b64c3",
+        "2e4a9b5a950d54d10a60f6b24bab0785cff75b22",
+        "844c26931a8f6267cf013a5d0a036c70816107b9",
+        "cab1e153b7dacc59252f1cfd651161e291b710c2"
+      ]
+    },
+    {
+      "id": "T3e2",
+      "invariants": ["one_report_per_outage"],
+      "files": ["tests/runtime/t3e2-outage.test.ts", "tests/acceptance/drop-proofs.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "10d4f7ae4a734501c03d5b695222e2067e36e8cd",
+        "42c43e5270036c279eaf061b592814c5a0953be7",
+        "eec81234511c330da279444c606df718d06ec511",
+        "ac1b131c2de0bf2cf29f01d339ec9c1a8dec38b7",
+        "520c17963495cdb71828b43ffef5046b7fd1e8d1",
+        "b52f94457c24d9e4c8fbc9d5857852512ea883c4",
+        "a4495e2a197fd17dc366fbf84d4ba40b96701446",
+        "b3e6082b3b6f636edfb09d312a6cc5b6df9f0928",
+        "ee86ff966a4e2c9b914b93a0996a0eef77ccf06a",
+        "72c4013c4736fbf31ae740b77fe95ac9b06b6842",
+        "69eecb8b5a6373e218e9daf2cfc93d29f325c1dc",
+        "897dffb34efe0072e965af10c5a33058ceaaa2d2",
+        "1517e2c7ddf810374f2178910aa8f282d828c3b6",
+        "068eaac2a22a65f5db23f33b4fe2bd4244d8bc9e"
+      ]
+    },
+    {
+      "id": "T3f",
+      "invariants": ["expired_lease_money_only"],
+      "files": ["tests/runtime/t3f-expired-lease.test.ts"],
+      "keep": ["tests/"],
+      "commits": [
+        "a840debb87527fa683ddcab312ba6f9c2676997d",
+        "99f4d4930c3bb627ca7023fbcde2092a0cd4b10a",
+        "3e764fe5756df69d1f838ebb607fe7143f316ad9",
+        "e35e994aa002595f461b544fc8c09ef994a1949c",
+        "c21e866784139bd2be24e2937dc1748d2f4b3f7b",
+        "14b9d24f740bf1173cb70b077526f5ed4425aa68"
+      ]
+    },
+    {
+      "id": "T4a",
+      "invariants": ["fixture_shape"],
+      "files": ["tests/fixture/fixture-shape.test.ts"],
+      "keep": ["tests/fixture/fixture-shape.test.ts"],
+      "commits": [
+        "332f7f05ce41a778bf56dbfa8a4b06ee301459dd",
+        "0d2a19ad059b41bcbe74d5d17a76c5281fc4c2e1",
+        "540edfe8d8916778f60f9c8dc5ca46a302e116bb",
+        "1a3dc5e92e6d35b13fd26ce404cee2c3a89149e0",
+        "33dd0d61de37af6eb778932f4b26e315077b9525",
+        "5cb7c8a39ad1ef6d033b5aab830406fd5d5a55ef",
+        "a89783845addd37bfc3620809774a7cab81309cc",
+        "589efaae1b102b10b62bbd7d4465f158e2e58ebe",
+        "8be4fb57559e493054a88b39419fb4f34dd67024"
+      ]
+    },
+    {
+      "id": "T4b1",
+      "invariants": ["journey_twice_same_facts"],
+      "files": ["tests/journey/journey-twice.test.ts"],
+      "keep": ["tests/journey/journey-twice.test.ts"],
+      "commits": [
+        "c8e3a53d12e316dd01256b05bb43d8432b77c723",
+        "2b03849757d645122fc0033e2b34dd0594ac3703",
+        "334de169e245131ffaa3b3634a9aef71ca850f5b",
+        "137277db7f25a7648acc9a4900655c6579d1d64a",
+        "20c2050e37c4c267f897bb707cb426a522b0cfc2",
+        "152e2b0501618f372214ec2303bddd06b6f650b2",
+        "f68706aacbd96a70b87fda892f79e31cdc600c1a",
+        "02ee19ae3e000f22ec684e5d1f6690787e986735",
+        "339bfa21d0ea5a502f201ee9c36816392ac4b9f1",
+        "6e6a27486c00a39ce57e1a62d9deb3f7c90fdb5f",
+        "93faab436af76faa0ab8487c6da2041bb8c91b65",
+        "bcbdac4daa1142f98b9fef1f6b5153672bca1678"
+      ]
+    },
+    {
+      "id": "T4b2",
+      "invariants": ["no_fallback_in_bundle"],
+      "files": ["tests/ci/no-fallback-in-bundle.test.ts"],
+      "keep": ["tests/ci/no-fallback-in-bundle.test.ts"],
+      "commits": [
+        "27e2ab1157bd547874564834eb65f5b8f00a29e5",
+        "57a8119816428241e6b405a04282deae20f6b121",
+        "544eb8f58db58a4c7ab02c07444d7bd71d095e48",
+        "466ac6e3d182e385730629727b00e94ecd8b08e1",
+        "ba0551ca15c9561f553451fcbfbf288a96218ce0",
+        "4cf79fa75672bef8912212e2098af9575861caa2",
+        "be7d33208eb930dc46a01c6b67f8f22d87d91721",
+        "18f515c44e0fe99aa802644e20e3fe68e575a05f"
+      ]
+    },
+    {
+      "id": "T4c",
+      "invariants": ["visual_fails_on_drift"],
+      "files": ["tests/visual/visual-fails-on-drift.test.ts"],
+      "keep": ["tests/visual/visual-fails-on-drift.test.ts"],
+      "commits": [
+        "97f1b1526e12666a063ce5428086afb65a3da5a0",
+        "d35817e03f57f614c82113bf1db428e50ed24f7c",
+        "e754ece0f194299059a1a299f5fec88747f43943",
+        "510ea16471704d6375bda3ff75eecf4fde939757"
+      ]
+    },
+    {
+      "id": "T4d",
+      "invariants": ["bundle_names_the_approval"],
+      "files": ["tests/journey/bundle.test.ts"],
+      "keep": ["tests/journey/bundle.test.ts"],
+      "commits": [
+        "1096cb741974ab086e81503788ac05de8973c1bf",
+        "5c757638343421198a848bacf0a3a4478c24386e",
+        "d9c54248392a4e826e58e7ee6c33e24f16d7aed7",
+        "55d0e003c4bba87215ba26464360f074f83935fd",
+        "6d98a4f0bf2e049f18def78495e54966e0ac48a8",
+        "1b953d1957a53f89a16043992836a984184521f7",
+        "ad9b2428b7949f4381e8f08544771aec16e7b790",
+        "094650112af6b531b68c9ca104e51eda0d6e2f25",
+        "a7c1e67950cbf7c4a2b26e75a0340680c3d9e681",
+        "34552e2af0bcaf2c376de567a06a851cd66480bc",
+        "687d7567f157203eb86eb90d908fdf346d31e7b7",
+        "b657a310f784714edcac4d1dfff5cf8dee92b400",
+        "955a288f30dc5c0d6d23e0f5c9a6b54fc7413669",
+        "9af93d148ca3367bb1d8618586027ce8f9bba0bd",
+        "82fa59e920d336f7910f3bcf5d708ad966b1ff20",
+        "5be1fb13591b1974fd6ac7971003262fb81274fb",
+        "20edc5d5bbd187eb93b4444c9df056641e017da7",
+        "f1731e463694613b9f33edea79d88ed898b6932d",
+        "d6e87589c066334297732d46e1ff48764015d92b",
+        "0e6c1daa46fe226ba53111fc1da09b9037834a0b"
+      ]
+    }
+  ]
+}

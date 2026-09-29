@@ -23,6 +23,7 @@ import {
   classify,
   deleteOneMigration,
   everyInvariantBites,
+  keeps,
   openScratch,
   type Ran,
 } from './self-test/mutations.ts';
@@ -96,9 +97,7 @@ describe('every_invariant_bites: the catalogue', () => {
         for (const path of git(['show', '--no-renames', '--name-only', '--format=', commit])
           .split('\n')
           .filter(Boolean)) {
-          const kept =
-            part.keep === 'tests' ? path.startsWith('tests/') : part.files.includes(path);
-          if (!kept) removed.add(path);
+          if (!keeps(part, path)) removed.add(path);
         }
       }
       expect(removed.size, `${part.id} reverts nothing`).toBeGreaterThan(0);

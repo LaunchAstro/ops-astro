@@ -425,6 +425,22 @@ to remove it. Evidence goes to `.local/journey/<stamp>/` (`cases.jsonl`, the
 run's stderr, `bundle.json`, `bundle.md`). `--only journey` skips the restart
 legs and the named suites, and says so as `unrun`.
 
+`corepack pnpm verify:journey --self-test` is the command proving itself
+(T4e, `every_invariant_bites`). On its own Postgres, instead of the journey,
+it runs `tests/ci/self-test/run.ts`: on a scratch branch in a disposable
+worktree under `.local/self-test/`, it first runs every check unmutated, which
+must be green, then deletes the newest migration (the migration check must name
+it), declares an operation no handler serves (the isolation matrix must fail),
+adds a route with no screen, a duplicate route id and a changed pinned-mockup
+byte (the route registry check, the typecheck's TS1117 and T4c's mockup pin
+must each fail, told apart by name), and reverts each part before T4e, T2a to
+T4d, and reruns its named invariant, which must go red. The parts, their
+invariants and their commits are catalogued in `tests/ci/self-test/parts.json`.
+A mutation that changed nothing, a run in which nothing executed, and a check
+that stayed green each fail the command by name; the last line,
+`every_invariant_bites`, lists them. The worktree and its branch are removed at
+the end.
+
 `corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
 tooling checks and the test suite together, needs `DATABASE_URL` and
 `DATABASE_ADMIN_URL` exported, and reads the staged tree for its public-content
