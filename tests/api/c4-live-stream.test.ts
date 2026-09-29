@@ -317,8 +317,8 @@ describe.skipIf(serverUrl === undefined)(
       carriesOnly(tab, named);
 
       const again = await open([topic(one)], narrow);
-      expect(again.status).toBe(404);
-      expect(again.refusal).toMatchObject({ refused: true });
+      expect(again.status).toBe(403);
+      expect(again.refusal).toMatchObject({ refused: true, code: 'SCOPE_NOT_GRANTED' });
       expect(JSON.stringify(again.refusal)).not.toContain(one);
     });
 

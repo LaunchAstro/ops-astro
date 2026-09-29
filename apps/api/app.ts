@@ -288,11 +288,41 @@ export function createApi(options: ApiOptions): Hono {
     api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
-      const may = async () => await mayWatch(options, context, admitted.businessId);
-      const taskId = await may();
+      const may = async (recordId: string) =>
+        await mayWatch(options, context, admitted.businessId, recordId);
+      const taskId = await may(context.req.param('recordId'));
       if (typeof taskId !== 'string') return refuse(context, taskId);
       return streamSSE(context, async (stream) => {
-        await follow(stream, live, admitted.businessId, taskId, may);
+        await follow(stream, live, admitted.businessId, [{ label: taskId, taskId }], may);
+      });
+    });
+
+    // C4: one stream per tab carries every topic its pages follow. Each topic
+    // is asked about at join as T2f asks about its one task; one refused is
+    // closed alone, all refused is the first refusal (`tests/api/c4-live-stream.test.ts`).
+    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const named = topicsOf(context.req.queries('topic') ?? []);
+      if (named === undefined) {
+        return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
+      }
+      const may = async (recordId: string) =>
+        await mayWatch(options, context, admitted.businessId, recordId);
+      const answers: (string | CommandRefusal)[] = [];
+      // eslint-disable-next-line no-await-in-loop -- one pooled connection at a time, at most MOST_TOPICS.
+      for (const watch of named) answers.push(await may(watch.taskId));
+      const watched = named.filter((_, at) => typeof answers[at] === 'string');
+      const [first] = answers;
+      if (watched.length === 0 && first !== undefined && typeof first !== 'string') {
+        return refuse(context, first);
+      }
+      return streamSSE(context, async (stream) => {
+        for (const watch of named.filter((each) => !watched.includes(each))) {
+          // eslint-disable-next-line no-await-in-loop -- written in the order named.
+          await stream.writeSSE({ event: 'closed', data: watch.label });
+        }
+        await follow(stream, live, admitted.businessId, watched, may);
       });
     });
   }
@@ -310,6 +340,7 @@ async function mayWatch(
   options: ApiOptions,
   context: Context,
   businessId: string,
+  recordId: string,
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (presented === undefined || presented === 'expired') {
@@ -317,54 +348,89 @@ async function mayWatch(
   }
   const read = await options.executeRead(options.database, businessId, presented, {
     read: 'task.execution',
-    recordId: context.req.param('recordId'),
+    recordId,
   });
   if (isCommandRefusal(read)) return read;
   if ('execution' in read) return read.execution.taskId;
   throw new Error('task.execution answered something other than an execution');
 }
 
+/** One followed task, and the name the stream gives it: the caller's own topic. */
+interface Watch {
+  readonly label: string;
+  readonly taskId: string;
+}
+
+const TOPIC = /^task:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
+const MOST_TOPICS = 32;
+const TOPICS = `Name each topic once, as task:<id>, from one to ${String(MOST_TOPICS)}.`;
+
+/** The topics a tab named, or undefined when any is malformed, repeated or too many. */
+function topicsOf(named: readonly string[]): readonly Watch[] | undefined {
+  if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
+  if (new Set(named).size !== named.length) return undefined;
+  const watches = named.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
+  return watches.every((watch): watch is Watch => watch.taskId !== undefined) ? watches : undefined;
+}
+
 const RECHECK_MS = 30_000;
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
- * One open stream: `resync` once subscribed, then each signal once the caller
- * is asked again, and `closed` the first time the answer is no. Signals that
- * arrive while one is pending merge into it, the strongest kept.
+ * One open stream: `resync` for each watched task once subscribed, then each
+ * signal once the caller is asked again, and `closed` the first time the
+ * answer is no. An ended session answers no for every task on the next
+ * check, and the stream ends with its last task. Signals that arrive for a task
+ * while one is pending merge into it, the strongest kept.
  */
 async function follow(
   stream: SSEStreamingApi,
   live: LiveOptions,
   businessId: string,
-  taskId: string,
-  may: () => Promise<string | CommandRefusal>,
+  watches: readonly Watch[],
+  may: (taskId: string) => Promise<string | CommandRefusal>,
 ): Promise<void> {
   const ended = new Promise<void>((resolve) => {
     stream.onAbort(resolve);
   });
-  let pending: LiveSignal | 'check' | null = null;
+  const stops = new Map<Watch, () => void>();
+  const pending = new Map<Watch, LiveSignal | 'check'>();
   let chain = Promise.resolve();
-  const send = async (): Promise<void> => {
-    const signal = pending;
-    pending = null;
-    if (signal === null || stream.aborted) return;
-    if (typeof (await may()) !== 'string') {
-      await stream.writeSSE({ event: 'closed', data: taskId });
-      stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
+  const send = async (watch: Watch): Promise<void> => {
+    const signal = pending.get(watch);
+    pending.delete(watch);
+    if (signal === undefined || stream.aborted || !stops.has(watch)) return;
+    if (typeof (await may(watch.taskId)) !== 'string') {
+      stops.get(watch)?.();
+      stops.delete(watch);
+      await stream.writeSSE({ event: 'closed', data: watch.label });
+      if (stops.size === 0) stream.abort();
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: watch.label });
   };
-  const want = (signal: LiveSignal | 'check'): void => {
-    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
-    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
+  const want = (watch: Watch, signal: LiveSignal | 'check'): void => {
+    const was = pending.get(watch);
+    if (was === undefined)
+      chain = chain.then(async () => await send(watch)).catch(() => stream.abort());
+    if (was === undefined || RANK[signal] > RANK[was]) pending.set(watch, signal);
   };
-  const unsubscribe = live.topics.subscribe(businessId, taskId, want);
-  const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
+  for (const watch of watches) {
+    stops.set(
+      watch,
+      live.topics.subscribe(businessId, watch.taskId, (signal) => want(watch, signal)),
+    );
+  }
+  const timer = setInterval(() => {
+    for (const watch of stops.keys()) want(watch, 'check');
+  }, live.recheckMs ?? RECHECK_MS);
   try {
-    await stream.writeSSE({ event: 'resync', data: taskId });
+    for (const watch of watches) {
+      // eslint-disable-next-line no-await-in-loop -- written in order.
+      await stream.writeSSE({ event: 'resync', data: watch.label });
+    }
     await ended;
   } finally {
     clearInterval(timer);
-    unsubscribe();
+    for (const stop of stops.values()) stop();
   }
 }
 
