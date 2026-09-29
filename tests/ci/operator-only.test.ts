@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // S0-1e: the operator gate and the deployment record (ticket S0-1, line A4).
 //
-// Both person-only commands, staging preparation (`scripts/ops/operator.mjs
-// prepare`) and the promotion step (`scripts/ops/promote.mjs`), run through
-// one check: a person's own sign-in, in the business named, holding
+// The person-only commands, staging preparation (`scripts/ops/operator.mjs
+// prepare`), the promotion step (`scripts/ops/promote.mjs`) and the restore
+// drill (`scripts/ops/restore-drill.mjs --drill`, `S0-3 operator only`), run
+// through one check: a person's own sign-in, in the business named, holding
 // `operations:manage` on the whole business. An agent credential, a call under
 // a delegation, a person without the key, another business's operator and a
 // client-scoped grant are each refused before the command acts: the service
@@ -53,6 +54,7 @@ import {
 
 const OPERATOR = new URL('../../scripts/ops/operator.mjs', import.meta.url).pathname;
 const PROMOTE = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
+const DRILL = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url).pathname;
 const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 ) as { 'x-ops-astro': { artefact: string } };
@@ -134,8 +136,25 @@ const marks = (fake: { calls: string }): Marks => {
 };
 
 type Command = (env: Record<string, string>, at: Marks) => Run;
+/** A private key file holding only the canary: a drill that read it could only leak it. */
+const drillKey = (): string => {
+  const file = join(mkdtempSync(join(scratch, 'key-')), 'restore.key');
+  writeFileSync(file, `${CANARY}\n`);
+  return file;
+};
 const COMMANDS: Record<string, Command> = {
   'staging preparation': (env) => spawn(OPERATOR, ['prepare'], env),
+  // S0-3 operator only: the drill's store, key and scope are all set, so a
+  // drill that skipped the gate would reach for them; a refused one never does.
+  'the restore drill': (env) =>
+    spawn(DRILL, ['--drill'], {
+      RESTORE_STORE_URL: `postgres://drill:${CANARY}@127.0.0.1:1/never`,
+      RESTORE_KEY_FILE: drillKey(),
+      DRILL_BUSINESS_ID: randomUUID(),
+      DRILL_CLIENT_ID: randomUUID(),
+      DRILL_PERSON_ID: randomUUID(),
+      ...env,
+    }),
   'the promotion step': (env, at) =>
     spawn(
       PROMOTE,
@@ -314,7 +333,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
         const result = command(environment(at, fake.path, own), at);
         expect(result.status, result.out).toBe(1);
         expect(result.out).toMatch(/operations:manage/u);
-        expect(result.out).not.toMatch(/db-migrate|promotion recorded|staging prepared/u);
+        expect(result.out).not.toMatch(
+          /db-migrate|promotion recorded|staging prepared|restore drill recorded|"outcome"/u,
+        );
         for (const secret of [CANARY, own['OPS_ASTRO_TOKEN'] ?? CANARY]) {
           expect(result.out).not.toContain(secret);
         }
