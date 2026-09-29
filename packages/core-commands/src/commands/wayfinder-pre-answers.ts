@@ -15,7 +15,6 @@ import { refuseCommand } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { invalid, textOk } from './wayfinder.ts';
-import { completed } from './wayfinder-resolve.ts';
 
 export const REFERENCE_LIMIT = 400;
 /** Any character that breaks a line: CR, LF, NEL and the Unicode line and paragraph separators. */
@@ -107,7 +106,9 @@ export async function refuseUncitable(
       );
     }
   }
-  if (ids.some((id) => !completed(context, found.get(id)))) {
+  const closed = (stateId: string | null | undefined) =>
+    context.spine.states.find((state) => state.id === stateId)?.machineCategory === 'completed';
+  if (ids.some((id) => !closed(found.get(id)))) {
     return invalid(['preAnswers'], ['A cited record is a closed ticket: a recorded decision.']);
   }
   return undefined;
