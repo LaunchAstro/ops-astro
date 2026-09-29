@@ -219,7 +219,8 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
               set prev_hash = repeat('a', 64),
                   hash = public.audit_event_hash(repeat('a', 64), a.business_id, a.seq,
                     a.occurred_at, a.actor_id, a.command, a.operation_id, a.outcome,
-                    a.refusal_code, a.subject_record_id, a.payload_digest, a.attempted)
+                    a.refusal_code, a.subject_record_id, a.payload_digest, a.attempted,
+                    a.origin_conversation_id)
             where a.business_id = $1 and a.seq = $2`,
           [business, target.seq],
         );
@@ -234,7 +235,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
               set prev_hash = $3,
                   hash = public.audit_event_hash($3, a.business_id, a.seq, a.occurred_at,
                     a.actor_id, a.command, a.operation_id, a.outcome, a.refusal_code,
-                    a.subject_record_id, a.payload_digest, a.attempted)
+                    a.subject_record_id, a.payload_digest, a.attempted, a.origin_conversation_id)
             where a.business_id = $1 and a.seq = $2`,
           [business, target.seq, previousHashOf(target.seq)],
         );

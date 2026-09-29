@@ -120,8 +120,9 @@ export async function writeAuditEvent(
   const rows = await tx.query<WrittenAuditEvent>(
     `insert into audit_events
        (business_id, id, actor_id, command, operation_id, outcome, refusal_code,
-        subject_record_id, payload_digest, attempted, seq, prev_hash, hash)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13)
+        subject_record_id, payload_digest, attempted, origin_conversation_id, seq, prev_hash,
+        hash)
+     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11::uuid, $12, $13, $14)
      returning id, seq::text as seq, hash`,
     [
       tx.businessId,
@@ -134,6 +135,7 @@ export async function writeAuditEvent(
       event.subjectRecordId ?? null,
       event.payloadDigest,
       event.attempted === undefined || event.attempted === null ? null : storable(event.attempted),
+      event.originConversationId ?? null,
       event.seq ?? '1',
       event.prevHash ?? null,
       event.hash ?? PLACEHOLDER_HASH,
@@ -203,7 +205,7 @@ export async function verifyAuditChain(tx: TenantQuery): Promise<ChainReport> {
             a.hash,
             public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
               a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-              a.payload_digest, a.attempted) as recomputed,
+              a.payload_digest, a.attempted, a.origin_conversation_id) as recomputed,
             a.prev_hash,
             lag(a.hash) over (order by a.seq) as previous_hash
        from audit_events a
