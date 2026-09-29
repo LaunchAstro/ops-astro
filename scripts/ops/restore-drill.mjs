@@ -49,12 +49,11 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
-import { stagingReach } from './backup-store-reach.mjs';
-import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
-import { RESTORE_ROLE, recordDrill } from './drill-receipt.mjs';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { drillAsOperator as actAsOperator, exportArchive, recordCarried } from './drill-acts.mjs';
+import { requireOperator } from './operator.ts';
 
 export { RECEIPT_FIELDS, recordDrill } from './drill-receipt.mjs';
+export { exportArchive, fetchLatest, recordCarried } from './drill-acts.mjs';
 
 const APP_ROLE = 'ops_astro_app';
 const ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
@@ -80,40 +79,6 @@ export function docker(args, input) {
       resolve({ code: code ?? 1, stdout: Buffer.concat(chunks).toString() }),
     );
     child.stdin.end(input);
-  });
-}
-
-/**
- * The newest backup, read as the restore identity (the store logs the read),
- * with the digest the store recorded when it took it.
- */
-export async function fetchLatest(storeUrl, reach = stagingReach) {
-  const latest = await reach(
-    storeUrl,
-    `set role ${RESTORE_ROLE};
-select json_build_object('takenAt', taken_at, 'sha256', sha256, 'body', encode(body, 'hex'))::text
-  from backups.read_latest();
-`,
-  );
-  if (latest === '') throw new Error('no backup');
-  const row = JSON.parse(latest);
-  return {
-    takenAt: new Date(row.takenAt).toISOString(),
-    sha256: row.sha256,
-    body: Buffer.from(row.body, 'hex'),
-  };
-}
-
-/**
- * `--export`: the newest backup as the store handed it out, into `file` for a
- * drill on another host (carried-archive.mjs). The key is never read here.
- */
-export async function exportArchive({ gate, storeUrl, file, reach = stagingReach }) {
-  const archive = await fetchLatest(storeUrl, reach);
-  writeCarried(file, archive);
-  return await recordDeployment(gate, {
-    action: 'archive exported',
-    archiveTakenAt: archive.takenAt,
   });
 }
 
@@ -252,72 +217,10 @@ export async function restoreDrill({
 }
 
 /**
- * The drill as the operator the gate admitted runs it: the drill, then its
- * receipt in the store, then the operator's record. Returns the receipt.
+ * The drill as the operator the gate admitted runs it (drill-acts.mjs): the
+ * drill, then its receipt; this drill unless a test passes its own.
  */
-export async function drillAsOperator({
-  gate,
-  storeUrl,
-  archiveFile,
-  privateKey,
-  scope,
-  drill = restoreDrill,
-  reach = stagingReach,
-}) {
-  const carried = archiveFile !== undefined;
-  const {
-    event: _event,
-    at: _at,
-    ...result
-  } = await drill({
-    fetchArchive: carried
-      ? async () => readCarried(archiveFile)
-      : () => fetchLatest(storeUrl, reach),
-    privateKey,
-    scope,
-  });
-  const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null };
-  const act = {
-    action: 'restore drill recorded',
-    ...empty,
-    ...result,
-    ranOn: carried ? 'carried archive' : 'staging machine',
-  };
-  if (carried) {
-    // Off the machine the store is out of reach: the receipt is kept and
-    // printed, and `--record` takes it back into the store.
-    act.lastTestedRestore = null;
-    return await recordDeployment(gate, act);
-  }
-  try {
-    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach);
-  } catch {
-    // The store's own message can name its host; the operator is told the step.
-    throw new Error('the drill ran, but its receipt could not be written to the store');
-  }
-  return await recordDeployment(gate, act);
-}
-
-/**
- * `--record`: a carried drill's receipt, brought back by the operator who ran
- * it, into the store. The store takes it once, against its own logged read.
- */
-export async function recordCarried({ gate, storeUrl, receiptFile, reach = stagingReach }) {
-  const receipt = readCarriedReceipt(receiptFile, gate.operator.personId);
-  let lastTestedRestore;
-  try {
-    lastTestedRestore = await recordDrill(storeUrl, receipt.operator, receipt, reach, true);
-  } catch {
-    throw new Error(
-      'the store did not take the receipt: it has it already, or it never handed out that archive to this login inside the window',
-    );
-  }
-  return await recordDeployment(gate, {
-    ...receipt,
-    action: 'carried drill recorded',
-    lastTestedRestore,
-  });
-}
+export const drillAsOperator = (options) => actAsOperator({ drill: restoreDrill, ...options });
 
 const USAGE =
   'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file>';
