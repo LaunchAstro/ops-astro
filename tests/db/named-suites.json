@@ -102,7 +102,8 @@
     "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named.",
     "C1a names search as an invariant (task.search, ticket C1 lines C2 and C3): the viewer's live task:read scopes are a predicate of the statement that finds candidates, so no row of another client's, person's or business's task is returned to the process, not even as a count; red against a planted post-filter build.",
     "C1 names c1-isolation as an invariant (ticket C1, SL05): task.search shows no foreign title, id or count across the three crossings, another business and another client in the same business on the read, and an agent under a live delegation over the real HTTP route; red when the statement's scope is widened.",
-    "C23 names c23-isolation as an invariant (ticket C23, SL05): session.person and session.end cross nothing over the real HTTP route: another business is refused naming nobody and ends nobody, one client's person is answered as themselves and cannot end the other client's person, and an agent under a live delegation is refused both while the person stays signed in."
+    "C23 names c23-isolation as an invariant (ticket C23, SL05): session.person and session.end cross nothing over the real HTTP route: another business is refused naming nobody and ends nobody, one client's person is answered as themselves and cannot end the other client's person, and an agent under a live delegation is refused both while the person stays signed in.",
+    "C23 also names c23-session-end (ticket C23, SL05): session.end and session.person through the envelope on a real database, the sign-out appended to the audit chain in the same transaction, applied and refused events read back, and account:write on the caller's own account only."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -291,7 +292,8 @@
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/reads/search.test.ts",
     "tests/reads/c1-isolation.test.ts",
-    "tests/reads/c23-isolation.test.ts"
+    "tests/reads/c23-isolation.test.ts",
+    "tests/commands/c23-session-end.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
