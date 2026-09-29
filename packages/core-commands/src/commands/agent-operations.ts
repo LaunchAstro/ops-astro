@@ -33,6 +33,7 @@ import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { setScores } from './tasks-scores.ts';
+import { setAdHoc } from './tasks-adhoc.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
@@ -365,33 +366,45 @@ async function serveComment(
   );
 }
 
-async function serveScores(
-  tx: TenantQuery,
-  { request }: AgentCall,
-  _operands: NoOperands,
-  _delegation: Delegation,
-  taskId: string | undefined,
-) {
-  // `authorise` has held the delegation to this task and its `write` action
-  // to the delegating person's live grant. The lock and the revision are the
-  // person envelope's (`prepareCommand`), so the two entries refuse a stale
-  // write in the same words. `fields` is read here, after authority, so an
-  // agent holding nothing is told that before it is told about its body.
-  if (taskId === undefined) return NOT_FOUND();
-  const spine = await readTaskSpine(tx);
-  const target = await lockTask(tx, spine.taskTypeId, taskId);
-  if (target === undefined) return NOT_FOUND();
-  if (expectedRevisionOf(request) !== target.revision) {
-    return refused(refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES));
-  }
-  const fields = request['fields'];
-  if (!isFieldMap(fields)) {
-    return refused(
-      invalid('fields', 'Send fields as an object of marks to values, such as { impact }.'),
-    );
-  }
-  return await setScores(tx, { spine, target }, fields);
-}
+/**
+ * An owned-field write an agent makes on its own task: the three marks
+ * (`task.set_scores`) and the Ad hoc mark (`task.set_adhoc`). One entry, so
+ * the two refuse a stale write, a missing task and a malformed body alike.
+ */
+const serveOwnedWrite =
+  (
+    write: typeof setScores,
+    example: string,
+  ): ((
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+    taskId: string | undefined,
+  ) => ReturnType<typeof setScores>) =>
+  async (tx, { request }, _operands, _delegation, taskId) => {
+    // `authorise` has held the delegation to this task and its `write` action
+    // to the delegating person's live grant. The lock and the revision are the
+    // person envelope's (`prepareCommand`), so the two entries refuse a stale
+    // write in the same words. `fields` is read here, after authority, so an
+    // agent holding nothing is told that before it is told about its body.
+    if (taskId === undefined) return NOT_FOUND();
+    const spine = await readTaskSpine(tx);
+    const target = await lockTask(tx, spine.taskTypeId, taskId);
+    if (target === undefined) return NOT_FOUND();
+    if (expectedRevisionOf(request) !== target.revision) {
+      return refused(
+        refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
+      );
+    }
+    const fields = request['fields'];
+    if (!isFieldMap(fields)) {
+      return refused(
+        invalid('fields', `Send fields as an object of fields to values, such as ${example}.`),
+      );
+    }
+    return await write(tx, { spine, target }, fields);
+  };
 
 async function serveHeartbeat(
   tx: TenantQuery,
@@ -549,7 +562,17 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       subjectTask: 'record',
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
-      serve: serveScores,
+      serve: serveOwnedWrite(setScores, '{ impact }'),
+    }),
+  ],
+  [
+    'task.set_adhoc',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setAdHoc, '{ ad_hoc }'),
     }),
   ],
   [

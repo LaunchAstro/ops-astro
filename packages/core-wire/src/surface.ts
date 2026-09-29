@@ -53,6 +53,7 @@ export type CommandName =
   | 'task.reparent'
   | 'task.move'
   | 'task.set_scores'
+  | 'task.set_adhoc'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
@@ -333,6 +334,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_party': FIELDS,
   'task.set_audience': FIELDS,
   'task.set_scores': FIELDS,
+  'task.set_adhoc': FIELDS,
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
@@ -396,6 +398,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The three marks the rank reads (MP-4-9). `task:write`, as `task.update`
   // asks, and an agent sets them inside its delegation like a comment.
   declare('task.set_scores', 'write', { agent: 'delegated' }),
+  // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
+  // its own task inside its delegation.
+  declare('task.set_adhoc', 'write', { agent: 'delegated' }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),

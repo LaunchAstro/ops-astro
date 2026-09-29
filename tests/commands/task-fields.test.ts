@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
   });
 
   describe('the generic editor cannot perform a transition', () => {
-    // The code each of the fourteen earns, asserted by name rather than by rule,
+    // The code each of the fifteen earns, asserted by name rather than by rule,
     // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
     // Three kinds, and the difference between them is the point: a field an
     // operation owns names that operation, a derived field names nobody
@@ -101,6 +101,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
     // authority rather than a write. `intake_state` on update names
     // `task.triage` (the root's D03 ruling; it is `SOURCE_SPOOFED` on create).
     const EXPECTED: Readonly<Record<string, string>> = {
+      ad_hoc: 'TRANSITION_PROTECTED',
       assignee: 'TRANSITION_PROTECTED',
       client: 'TRANSITION_PROTECTED',
       client_visible: 'TRANSITION_PROTECTED',
@@ -132,7 +133,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
         refusals[field] = isCommandRefusal(refusal) ? refusal.code : 'APPLIED';
       }
       expect(refusals).toStrictEqual(EXPECTED);
-      // Every field the spine calls protected has a case above. A fifteenth
+      // Every field the spine calls protected has a case above. A sixteenth
       // field added to that list with no entry here fails this line.
       expect(Object.keys(EXPECTED).toSorted()).toStrictEqual([...PROTECTED_TASK_FIELDS].toSorted());
     });

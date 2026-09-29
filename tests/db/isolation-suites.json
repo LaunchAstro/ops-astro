@@ -7,6 +7,7 @@
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
-    "tests/reads/task-rank.test.ts"
+    "tests/reads/task-rank.test.ts",
+    "tests/commands/task-adhoc.test.ts"
   ]
 }
