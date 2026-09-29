@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = new URL('../../', import.meta.url);
 
-/** What a comment may not cite, each with an example of what it refuses. */
+/** What a comment may not cite, by the label a failure reports. */
 const CITATIONS: readonly (readonly [string, RegExp])[] = [
   ['a thermo review or recheck', /thermo/iu],
   ['a Sol review', /\bSol\b|\bSOL-[A-Z0-9]/u],
@@ -40,8 +40,9 @@ const cites = (comment: string): string | undefined =>
 /**
  * The comment text on each line of `text`, with its line number: a `//`
  * comment, a line inside or opening a block comment (`/*` in TypeScript and
- * CSS, `{/*` in JSX), or an HTML comment. Code before a trailing `//` is not
- * read, so a string that happens to hold a word in the set is not a comment.
+ * CSS, `{/*` in JSX), an HTML comment, or a SQL `--` line inside a query
+ * string. Code before a trailing `//` is not read, so a string that happens to
+ * hold a word in the set is not a comment.
  */
 function commentLines(text: string): { readonly line: number; readonly comment: string }[] {
   const found: { line: number; comment: string }[] = [];
@@ -52,6 +53,8 @@ function commentLines(text: string): { readonly line: number; readonly comment: 
       comment = line;
       if (line.includes('*/')) inBlock = false;
     } else if (/^\s*\/\//u.test(line)) {
+      comment = line;
+    } else if (/^\s*--\s/u.test(line)) {
       comment = line;
     } else if (/^\s*\{?\/\*/u.test(line)) {
       comment = line;
@@ -111,7 +114,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(cites(comment)).toBeUndefined();
   });
 
-  it('reads line, block, JSX and trailing comments, and not code', () => {
+  it('reads line, block, JSX, trailing and SQL comments, and not code', () => {
     const source = [
       "const lane = 'lane'; // the row's own key",
       '/**',
@@ -120,8 +123,11 @@ describe('a source comment cites no review round, lane or finding id', () => {
       '{/* Sol 6 */}',
       '   revision text in a CSS block',
       "fetch('https://example.test/a//b');",
+      '  sql`select id from tasks',
+      '       -- a trashed task is not handed out',
+      '       where deleted_at is null`; i--;',
     ].join('\n');
-    expect(commentLines(source).map(({ line }) => line)).toEqual([1, 2, 3, 4, 5]);
+    expect(commentLines(source).map(({ line }) => line)).toEqual([1, 2, 3, 4, 5, 9]);
     expect(commentLines(source)[0]?.comment).toBe(" // the row's own key");
   });
 
