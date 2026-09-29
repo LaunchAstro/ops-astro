@@ -19,6 +19,8 @@ import {
   checkMockupTree,
   checkRenderer,
   readPacket,
+  verifyBytes,
+  type Asset,
   type Packet,
 } from './packet.ts';
 
@@ -116,14 +118,23 @@ describe('the pins refuse', () => {
   });
 
   it('a bundled font whose bytes changed, naming the file', () => {
-    expect(() => checkAssets(packet)).not.toThrow();
     const manifest = JSON.parse(readFileSync(`${assetsDir}/assets.json`, 'utf8')) as {
-      assets: { file?: string; sha256?: string }[];
+      assets: Asset[];
     };
     const font = manifest.assets.find((a) => a.file !== undefined);
     if (font?.file === undefined) throw new Error('no bundled font in the manifest');
+    expect(() => verifyBytes(font, Buffer.from('not the font'))).toThrow(font.file);
+  });
+
+  it('an edited asset record', () => {
+    expect(() => checkAssets(packet)).not.toThrow();
+    const manifest = JSON.parse(readFileSync(`${assetsDir}/assets.json`, 'utf8')) as {
+      assets: Asset[];
+    };
+    const font = manifest.assets.find((a) => a.file !== undefined);
+    if (font === undefined) throw new Error('no bundled font in the manifest');
     font.sha256 = '0'.repeat(64);
-    expect(() => checkAssets(packet, manifest)).toThrow(font.file);
+    expect(() => checkAssets(packet, manifest)).toThrow(/asset records/u);
   });
 
   it('lists every width in light and prints dark as undischarged, owned by U04', () => {
