@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The pull request size report.
 //
-// It measures and prints; it never blocks. The owner dropped the 400-line
+// It measures and prints; no size fails it. The owner dropped the 400-line
 // limit on 29 September 2026 (FU-400): the size is reported, not limited.
 // About 400 lines stays a guide for a readable chunk, never a gate, and
 // nothing is split into separate sessions, lanes or review queues to meet
-// it. The script always exits 0, even when it cannot measure, so the
-// required check 'pull request size' keeps its name and never fails a pull
-// request. Waiver labels and the per-file cap are gone; the report stays,
-// for the rate data a reviewer or a planner can use.
+// it. The script exits 0 whatever the size, so the required check 'pull
+// request size' keeps its name and no size fails a pull request. Waiver
+// labels and the per-file cap are gone; the report stays, for the rate data
+// a reviewer or a planner can use. A failure to measure is not a size, and
+// still fails with exit 2 (Sol, review 1 on #143): a green check always
+// carries a report.
 //
 // Test files are listed but never counted, in the total or per file (CQ-16,
 // the owner's process fix of 29 September 2026). A test file is a path under
@@ -33,13 +35,14 @@ import { execFileSync } from 'node:child_process';
 
 const annotate = (level, message) => console.log(`::${level}::${message}`);
 
-// Anything that stops the measuring, a missing revision or a git failure, is
-// a warning and exit 0: the check reports, it never blocks. The message is
-// put on one line so nothing in it can start a workflow command of its own.
+// Anything that stops the measuring, a missing revision, a git failure or a
+// patch that disagrees with the numstat, is an error and exit 2, with no
+// report. The message is put on one line so nothing in it can start a
+// workflow command of its own.
 process.on('uncaughtException', (error) => {
   const message = String(error?.message ?? error).replace(/\s+/gu, ' ');
-  annotate('warning', `pr-size could not measure this pull request: ${message}`);
-  process.exit(0);
+  annotate('error', `pr-size could not measure this pull request: ${message}`);
+  process.exit(2);
 });
 
 const TEST = [/^tests\//u, /(^|\/)[^/]+\.(test|spec)\.[^/]+$/u];
@@ -110,8 +113,8 @@ const diffRecords = (args) => {
 // patch is read in colour because that is the only form git reports moves
 // in; every colour is set here, so no local setting can change the reading.
 // Its file sections come in the same order as the numstat records of the
-// same diff, and each section's line count must equal its record's, or no
-// line is treated as moved rather than guess.
+// same diff, and each section's line count must equal its record's, or the
+// script stops rather than guess.
 const MOVE_COLOURS = { old: 31, new: 32, oldMoved: 35, newMoved: 36, meta: 1 };
 const COLOUR_NAMES = { 31: 'red', 32: 'green', 35: 'magenta', 36: 'cyan', 1: 'bold' };
 const NON_TEST = [
@@ -159,13 +162,8 @@ const movedLines = () => {
   const agree =
     records.length === sections.length &&
     records.every((record, i) => record.changed === sections[i].changed);
-  if (!agree) {
-    annotate(
-      'warning',
-      'pr-size: the coloured patch and the numstat disagree; every changed line is counted.',
-    );
-    return new Map();
-  }
+  if (!agree)
+    throw new Error('the coloured patch and the numstat disagree; cannot count moved lines.');
   return new Map(records.map((record, i) => [record.key, { ...record, moved: sections[i].moved }]));
 };
 
@@ -204,4 +202,4 @@ for (const file of files) {
   );
 }
 for (const test of tests) console.log(`pr-size:   ${test.path} (${test.changed}, test)`);
-console.log('pr-size: the size is reported, not limited; this check never blocks.');
+console.log('pr-size: the size is reported, not limited; no size fails this check.');

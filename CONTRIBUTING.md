@@ -154,8 +154,9 @@ limited (owner, 29 September 2026). About 400 changed lines is a guide for a
 readable chunk, a commit or a pull request, never a gate: smaller chunks are
 easier to review and to diagnose. Nothing is split into separate sessions,
 lanes or review queues to meet a size, and a big change can land as several
-such chunks reviewed together. The check prints the changed lines of non-test code, in total and per file, and
-always passes; no waiver label is needed, and none changes anything. Test
+such chunks reviewed together. The check prints the changed lines of non-test
+code, in total and per file, and passes whatever the size; no waiver label is
+needed, and none changes anything. Only a failure to measure fails it. Test
 files are listed in the report but never count: a path under `tests/`, or a
 file named `*.test.*` or `*.spec.*`. Everything else counts, fixtures and
 scripts outside `tests/` included. Lines git marks as moved between non-test
