@@ -350,7 +350,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     }
   }
 
-  for (const [commandName, command] of Object.entries(COMMANDS)) {
+  Object.entries(COMMANDS).forEach(([commandName, command]) => {
     it(`Sol proof, criterion 4: refused ${commandName} writes no authentication row`, async () => {
       const count = async (): Promise<number> =>
         await db.app.withBusiness(alphaBusiness, async (tx) => {
@@ -370,9 +370,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
       expect(result.status, result.out).toBe(1);
       expect(await count()).toBe(before);
     });
-  }
+  });
 
-  for (const [commandName, command] of Object.entries(COMMANDS)) {
+  Object.entries(COMMANDS).forEach(([commandName, command]) => {
     it(`Sol proof, criterion 4: refused ${commandName} without a record folder writes no authentication row`, async () => {
       const count = async (): Promise<number> =>
         await db.app.withBusiness(alphaBusiness, async (tx) => {
@@ -392,7 +392,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
       expect(result.out).toMatch(/OPS_ASTRO_DEPLOYMENTS/u);
       expect(await count()).toBe(before);
     });
-  }
+  });
 
   it('the operator prepares staging: the one command runs, and one record names the operator', async () => {
     const fake = manager(false);

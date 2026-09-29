@@ -46,14 +46,20 @@ const drillModule = async (): Promise<{
   docker: Docker;
 }> => {
   const path = '../../scripts/ops/restore-drill.mjs';
-  return await import(/* @vite-ignore */ path);
+  return await import(
+    /* @vite-ignore */
+    path
+  );
 };
 const sealModule = async (): Promise<{
   sealArchive: (dump: Buffer, publicKey: string) => Buffer;
   openArchive: (sealed: Buffer, privateKey: string) => Buffer;
 }> => {
   const path = '../../scripts/ops/archive-seal.mjs';
-  return await import(/* @vite-ignore */ path);
+  return await import(
+    /* @vite-ignore */
+    path
+  );
 };
 
 const staging = JSON.parse(
