@@ -170,6 +170,34 @@ describe.skipIf(serverUrl === undefined)('MP-7-11 conversation tabs', () => {
     expect(conversationOf(await read(w.owner, id))['page']).toBeNull();
   });
 
+  it('MP-7-11 add page to context: the database refuses a page outside the product even when the command is gone round', async () => {
+    const id = await started(w, w.owner, { body: 'backstop' });
+    for (const [address, shows] of [
+      ['//elsewhere.example', 'A page'],
+      ['/\\elsewhere.example', 'A page'],
+      ['https://elsewhere.example', 'A page'],
+      ['/settings\\x', 'A page'],
+      ['/settings page', 'A page'],
+      [`/${'a'.repeat(300)}`, 'A page'],
+      ['/settings', 'two\nlines'],
+      ['/settings', null],
+      [null, 'Settings'],
+    ] as const) {
+      // eslint-disable-next-line no-await-in-loop -- one refusal at a time
+      await expect(
+        w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+          await tx.query(
+            `update conversations set page_address = $3, page_shows = $4
+              where business_id = $1 and id = $2`,
+            [tx.businessId, id, address, shows],
+          );
+        }),
+        String(address),
+      ).rejects.toThrow(/conversations_page_/u);
+    }
+    expect(conversationOf(await read(w.owner, id))['page']).toBeNull();
+  });
+
   it('MP-7-11 owner-only conversations: only the owner renames or sets the scope; another person is refused and nothing changes', async () => {
     const title = `Mine-${randomUUID()}`;
     const id = await started(w, w.owner, { body: 'only mine', title });
