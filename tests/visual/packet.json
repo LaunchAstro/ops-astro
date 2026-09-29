@@ -1,0 +1,25 @@
+{
+  "mockup": {
+    "commit": "7066bad7402c97b8a039447ad87f387cd719208c",
+    "tree": "630a205fa08fe0558a2173d55f91a1a07c2ea41d"
+  },
+  "renderer": {
+    "playwright": "1.63.0",
+    "browser": "chromium-headless-shell",
+    "browserRevision": "1243",
+    "browserBuild": "153.0.8010.12",
+    "deviceScaleFactor": 1,
+    "os": "darwin 25.5.0 arm64"
+  },
+  "tolerance": { "channel": 1, "maxRatio": 0.0002, "maxPixels": 100 },
+  "assetsDigest": "8e2ba8800e9fa8ccea828edc3e753c37e86d84bcf63cbdb258379873dff7b25b",
+  "widths": [1480, 900, 390],
+  "height": 900,
+  "themes": { "light": "captured", "dark": "undischarged, owned by U04" },
+  "themeKey": "aa-mock-theme",
+  "clock": "2026-09-26T00:00:00.000Z",
+  "external": {
+    "https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;500&family=Funnel+Display:wght@400;500;600;700&family=Funnel+Sans:wght@400;500;600&display=swap": "bundled fonts",
+    "https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css": "refused: Flaticon UIcons, regular rounded, 2.6.0"
+  }
+}
