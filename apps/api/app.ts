@@ -60,6 +60,8 @@ import type {
   executeAgentCommand,
   CommandRefusal,
   executeRead,
+  admitReads,
+  AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
@@ -122,7 +124,12 @@ export interface ApiOptions {
 export interface LiveOptions {
   readonly topics: LiveTopics;
   readonly recheckMs?: number;
+  /** `reads/execute.ts`'s `admitReads`: the channel's checks, which serve and audit nothing. */
+  readonly admit: ReadAdmitter;
 }
+
+/** The live channel's check: `admitReads`'s signature. */
+export type ReadAdmitter = typeof admitReads;
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */
 export type CommandExecutor = typeof executeCommand;
@@ -288,12 +295,12 @@ export function createApi(options: ApiOptions): Hono {
     api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
-      const may = async (recordId: string) =>
-        await mayWatch(options, context, admitted.businessId, recordId);
-      const taskId = await may(context.req.param('recordId'));
+      const asks = watching(options, live, context, admitted.businessId);
+      const [taskId] = await asks.atDoor([context.req.param('recordId')]);
+      if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
       return streamSSE(context, async (stream) => {
-        await follow(stream, live, admitted.businessId, [{ label: taskId, taskId }], may);
+        await follow(stream, live, [{ label: taskId, taskId }], asks);
       });
     });
 
@@ -307,11 +314,8 @@ export function createApi(options: ApiOptions): Hono {
       if (named === undefined) {
         return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
       }
-      const may = async (recordId: string) =>
-        await mayWatch(options, context, admitted.businessId, recordId);
-      const answers: (string | CommandRefusal)[] = [];
-      // eslint-disable-next-line no-await-in-loop -- one pooled connection at a time, at most MOST_TOPICS.
-      for (const watch of named) answers.push(await may(watch.taskId));
+      const asks = watching(options, live, context, admitted.businessId);
+      const answers = await asks.atDoor(named.map((each) => each.taskId));
       const watched = named.filter((_, at) => typeof answers[at] === 'string');
       const [first] = answers;
       if (watched.length === 0 && first !== undefined && typeof first !== 'string') {
@@ -322,7 +326,7 @@ export function createApi(options: ApiOptions): Hono {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
         }
-        await follow(stream, live, admitted.businessId, watched, may);
+        await follow(stream, live, watched, asks);
       });
     });
   }
@@ -330,29 +334,64 @@ export function createApi(options: ApiOptions): Hono {
   return api;
 }
 
+/** How a stream asks, for its business, whether its caller may still watch a task. */
+interface Watching {
+  readonly businessId: string;
+  /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
+  atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
+  /** Before each delivery and on the recheck: writes nothing. */
+  again(taskId: string): Promise<string | CommandRefusal>;
+}
+
+function watching(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+): Watching {
+  const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
+    const answers = await mayWatch(options, live, context, businessId, taskIds, at);
+    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
+  };
+  return {
+    businessId,
+    atDoor: async (taskIds) => await ask(taskIds, 'door'),
+    async again(taskId) {
+      const [answer] = await ask([taskId], 'recheck');
+      if (answer === undefined) throw new Error('the recheck answered no topic');
+      return answer;
+    },
+  };
+}
+
 /**
- * Whether this caller may watch the task, asked after verifying the bearer
- * again of `task.execution`, the internal activity the channel reports:
- * expiry, a revoked grant and any external reader all refuse.
- * The answer is the task's identifier, the topic.
+ * Whether this caller may watch each task, asked after verifying the bearer
+ * again, of `task.execution`'s own admission, the internal activity the channel
+ * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
+ * task and any external reader all refuse. It serves and audits nothing, since
+ * the channel shows the person no content (C4 live-sync 6). Each answer is the
+ * task's identifier, the topic, or its refusal.
  */
 async function mayWatch(
   options: ApiOptions,
+  live: LiveOptions,
   context: Context,
   businessId: string,
-  recordId: string,
-): Promise<string | CommandRefusal> {
+  taskIds: readonly string[],
+  at: AdmissionAt,
+): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (presented === undefined || presented === 'expired') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
-  const read = await options.executeRead(options.database, businessId, presented, {
-    read: 'task.execution',
-    recordId,
+  const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
+  const admitted = await live.admit(options.database, businessId, presented, requests, at);
+  if (isCommandRefusal(admitted)) return admitted;
+  return admitted.map((answer) => {
+    if (isCommandRefusal(answer)) return answer;
+    if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
+    return answer.recordId;
   });
-  if (isCommandRefusal(read)) return read;
-  if ('execution' in read) return read.execution.taskId;
-  throw new Error('task.execution answered something other than an execution');
 }
 
 /** One followed task, and the name the stream gives it: the caller's own topic. */
@@ -386,9 +425,8 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 async function follow(
   stream: SSEStreamingApi,
   live: LiveOptions,
-  businessId: string,
   watches: readonly Watch[],
-  may: (taskId: string) => Promise<string | CommandRefusal>,
+  asks: Watching,
 ): Promise<void> {
   const ended = new Promise<void>((resolve) => {
     stream.onAbort(resolve);
@@ -400,7 +438,7 @@ async function follow(
     const signal = pending.get(watch);
     pending.delete(watch);
     if (signal === undefined || stream.aborted || !stops.has(watch)) return;
-    if (typeof (await may(watch.taskId)) !== 'string') {
+    if (typeof (await asks.again(watch.taskId)) !== 'string') {
       stops.get(watch)?.();
       stops.delete(watch);
       await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -416,7 +454,7 @@ async function follow(
   for (const watch of watches) {
     stops.set(
       watch,
-      live.topics.subscribe(businessId, watch.taskId, (signal) => want(watch, signal)),
+      live.topics.subscribe(asks.businessId, watch.taskId, (signal) => want(watch, signal)),
     );
   }
   const timer = setInterval(() => {

@@ -56,6 +56,7 @@ export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   withSession,
+  withStanding,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';

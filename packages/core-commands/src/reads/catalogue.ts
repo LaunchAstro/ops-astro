@@ -102,6 +102,12 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
     spine: TaskSpine,
     operands: ReadOperands[K],
   ) => Promise<string | undefined>;
+  /**
+   * The row's own gate, asked after the grant and before `serve`: false is
+   * `NOT_FOUND`. It is apart from `serve` so a check that shows the person
+   * nothing can ask it without serving (`admitRead`).
+   */
+  readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -321,15 +327,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, operands, { spine, recordId }) {
-      // Not there, in another business or trashed: one answer, as `task.read` gives.
-      if (
-        recordId === undefined ||
-        !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId))
-      ) {
-        return refuseNotFound();
-      }
+    // Not there, in another business or trashed: one answer, as `task.read` gives.
+    admits: async (tx, session, { spine, recordId }) =>
+      recordId !== undefined &&
+      isInternalReader(session.roleKey) &&
+      (await liveTask(tx, spine.taskTypeId, recordId)),
+    async serve(tx, _session, operands, { recordId }) {
+      if (recordId === undefined) return refuseNotFound();
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },

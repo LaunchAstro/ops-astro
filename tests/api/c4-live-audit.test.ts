@@ -73,6 +73,37 @@ const touch = async (recordId: string): Promise<void> => {
   });
 };
 
+/** The page's own re-read after an invalidation: one read event and its attempt, no other row. */
+async function rereadWritesOneEvent(
+  token: string,
+  taskId: string,
+  actorId: string,
+  since: Record<string, number>,
+): Promise<void> {
+  const reread = await post(
+    api,
+    `${PREFIX.person}${key}${pathOf('task.read')}`,
+    { read: 'task.read', recordId: taskId },
+    authorised(token),
+  );
+  expect(reread.status).toBe(200);
+  expect(changed(since, await rows())).toEqual({
+    'public.audit_events': 1,
+    'public.authentication_attempts': 1,
+  });
+  const [event] = await s.db.admin.execute<Record<string, unknown>>(
+    `select command, outcome, actor_id, subject_record_id from public.audit_events
+      where business_id = $1 order by seq desc limit 1`,
+    [s.business],
+  );
+  expect(event).toEqual({
+    command: 'task.read',
+    outcome: 'applied',
+    actor_id: actorId,
+    subject_record_id: taskId,
+  });
+}
+
 /** C4 live-sync 6: the channel audits nothing and its rechecks write nothing; a page re-read writes I13's one event */
 async function liveSync6(): Promise<void> {
   const taskId = await createTask(s, `c4a-quiet-${randomUUID()}`);
@@ -100,29 +131,7 @@ async function liveSync6(): Promise<void> {
   await sleep(1_000);
   expect(changed(door, await rows())).toEqual({});
 
-  // The page's own re-read after the invalidation: one read event, no other row.
-  const reread = await post(
-    api,
-    `${PREFIX.person}${key}${pathOf('task.read')}`,
-    { read: 'task.read', recordId: taskId },
-    authorised(token),
-  );
-  expect(reread.status).toBe(200);
-  expect(changed(door, await rows())).toEqual({
-    'public.audit_events': 1,
-    'public.authentication_attempts': 1,
-  });
-  const [event] = await s.db.admin.execute<Record<string, unknown>>(
-    `select command, outcome, actor_id, subject_record_id from public.audit_events
-      where business_id = $1 order by seq desc limit 1`,
-    [s.business],
-  );
-  expect(event).toEqual({
-    command: 'task.read',
-    outcome: 'applied',
-    actor_id: reader.actorId,
-    subject_record_id: taskId,
-  });
+  await rereadWritesOneEvent(token, taskId, reader.actorId, door);
 
   // The recheck really runs: a revoked grant closes the topic with no write to wake it.
   await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, grant));

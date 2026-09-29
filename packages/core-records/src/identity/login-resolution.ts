@@ -105,26 +105,8 @@ export async function resolveLogin(
   tx: TenantQuery,
   presented: VerifiedSubject,
 ): Promise<Session | Refusal> {
-  const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
-  const found = rows[0];
-
-  if (found === undefined || found.person_id === null) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
-  }
-  if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
-  }
-  if (found.actor_id === null) {
-    return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
-  }
-
-  const session: Session = {
-    businessId: tx.businessId,
-    loginId: found.login_id,
-    personId: found.person_id,
-    actorId: found.actor_id,
-    roleKey: found.role_key,
-  };
+  const standing = await standingOf(tx, presented);
+  if ('refused' in standing) return await recordRefusal(tx, presented, standing);
   // The attempt and what it resolved to commit together with whatever the
   // caller goes on to do. I13 asks for every attempt, which includes the ones
   // that succeeded and the ones whose transaction later rolled back — those
@@ -134,11 +116,32 @@ export async function resolveLogin(
     owner: 'person_login',
     presented,
     outcome: 'resolved',
-    loginId: session.loginId,
-    actorId: session.actorId,
-    personId: session.personId,
+    loginId: standing.loginId,
+    actorId: standing.actorId,
+    personId: standing.personId,
   });
-  return session;
+  return standing;
+}
+
+/** Steps 2 to 4 as `resolveLogin` takes them, recording nothing. */
+async function standingOf(tx: TenantQuery, presented: VerifiedSubject): Promise<Session | Refusal> {
+  const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
+  const found = rows[0];
+
+  if (found === undefined || found.person_id === null) {
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+  }
+  if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+  }
+  if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
+  return {
+    businessId: tx.businessId,
+    loginId: found.login_id,
+    personId: found.person_id,
+    actorId: found.actor_id,
+    roleKey: found.role_key,
+  };
 }
 
 // An external party's standing, read under the same snapshot as the mapping.
@@ -203,5 +206,26 @@ export async function withSession<T>(
     const resolved = await resolveLogin(tx, presented);
     if ('refused' in resolved) return resolved;
     return await run(tx, resolved);
+  });
+}
+
+/**
+ * `withSession` for a session already admitted at the door and asked again:
+ * the live channel's recheck of an open stream (C4 live-sync 6). The standing
+ * is resolved the same way, so a lost membership or an inactive actor still
+ * refuses, and nothing is recorded: the attempt was recorded when the stream
+ * was opened, and a row for every recheck would record who kept which task
+ * open rather than who came through the door.
+ */
+export async function withStanding<T>(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  run: (tx: TenantQuery, session: Session) => Promise<T>,
+): Promise<T | Refusal> {
+  return await database.withBusiness(businessId, async (tx) => {
+    const standing = await standingOf(tx, presented);
+    if ('refused' in standing) return standing;
+    return await run(tx, standing);
   });
 }
