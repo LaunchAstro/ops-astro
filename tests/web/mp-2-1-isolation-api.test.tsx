@@ -9,12 +9,15 @@
 // Two businesses, Alpha and Bravo, and four made-up people: one with a grant in
 // both, one in Alpha only, one in Bravo only, and one who is a member of Bravo
 // with no grant there. Only the first is offered a switch, in either direction.
+// And an agent working under a live delegation from an Alpha person: it is
+// offered neither business, because a delegation never lends its person's reach.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { heldAddressOffer } from '../../apps/web/src/held-address.tsx';
-import { createApiFixture, tokenFor, type ApiFixture } from '../api/fixture.ts';
+import { tokenFor, type ApiFixture } from '../api/fixture.ts';
+import { createControls } from '../api/controls-fixture.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import {
   insertActor,
@@ -50,6 +53,7 @@ async function enrolAs(
 describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   let fixture: ApiFixture;
   let api: Hono;
+  let agentSubject: string;
   const subjects = {
     both: `both-${randomUUID()}`,
     alphaOnly: `alpha-only-${randomUUID()}`,
@@ -58,8 +62,14 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   };
 
   beforeAll(async () => {
-    fixture = await createApiFixture('mp_2_1_isolation');
-    api = fixture.compose();
+    const controls = await createControls('mp_2_1_isolation');
+    ({ fixture, api } = controls);
+    // A live delegation: an Alpha person approves a task and the agent picks it up.
+    const task = await controls.createTask('made-up delegated task');
+    const reservation = await controls.approve(await controls.propose(task.id, task.revision));
+    const picked = await controls.pickup(reservation);
+    expect(typeof picked['credential']).toBe('string');
+    agentSubject = fixture.agent.subject;
     const bravo = await insertBusiness(fixture.db.app, 'bravo');
     await enrolAs(fixture.db.app, fixture.business, subjects.both, true);
     await enrolAs(fixture.db.app, bravo, subjects.both, true);
@@ -103,6 +113,11 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
 
   it('names no business to a member who holds no grant there', async () => {
     expect(await offer(subjects.bravoNoGrant, 'bravo', 'alpha')).toEqual({ kind: 'unnamed' });
+  });
+
+  it('names no business to an agent under a live delegation from an Alpha person', async () => {
+    expect(await offer(agentSubject, 'alpha', 'bravo')).toEqual({ kind: 'unnamed' });
+    expect(await offer(agentSubject, 'bravo', 'alpha')).toEqual({ kind: 'unnamed' });
   });
 
   it('names no business for one that does not exist, the same as one the person is not in', async () => {

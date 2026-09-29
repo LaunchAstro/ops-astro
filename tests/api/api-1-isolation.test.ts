@@ -4,8 +4,9 @@
 // command in the catalogue, the CLI and the API answer a caller exactly as the
 // app's own client does, so no surface reads a row, or skips a grant, the app
 // refuses. Two businesses, Alpha and Bravo, and in Alpha two tasks standing for
-// two clients' work, each with one person holding one grant on it alone.
-// Made-up names only.
+// two clients' work, each with one person holding one grant on it alone; and
+// an agent working under a live delegation from another person, which reaches
+// only the task it picked up. Made-up names only.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -44,6 +45,20 @@ function foreign(heard: readonly Heard[], own: Name | null): string[] {
   return [...new Set(named)].filter((name) => name !== own);
 }
 
+/** Refused by the body's shape is not refused by a grant or delegation: these prove nothing. */
+const SHAPE = ['COMMAND_BODY_INVALID', 'FIELD_VALUE_INVALID', 'OPERATION_ID_REQUIRED'];
+
+const detail = (body: Record<string, unknown>): Record<string, unknown> =>
+  body['detail'] as Record<string, unknown>;
+
+/** One answer as text with its keys sorted: the CLI re-serialises what it heard. */
+const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_key, field: unknown) =>
+    field !== null && typeof field === 'object' && !Array.isArray(field)
+      ? Object.fromEntries(Object.entries(field).toSorted(([a], [b]) => a.localeCompare(b)))
+      : field,
+  );
+
 it('Sol proof, criterion 4: a refusal carrying another client record is detected', () => {
   const refused: Heard[] = [
     { status: 403, code: 'SCOPE_NOT_GRANTED', body: { recordId: '<client2 task>' } },
@@ -64,6 +79,11 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   let clientOne: Member;
   let clientTwo: Member;
   let bravoBusinessId: string;
+  /** The agent's own login, and the delegation its pickup minted for one task. */
+  let agentToken: string;
+  let delegation: string;
+  let delegatedTask: string;
+  let lease: { leaseId: unknown; fence: unknown };
   /** Raw id or title to its label, so a leak is named and no record value is printed. */
   const labels = new Map<string, string>();
 
@@ -122,7 +142,52 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
       await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
     });
+    ({ agentToken, delegation, delegatedTask, lease } = await pickUp(alphaToken));
   }, 120_000);
+
+  /** The Alpha person proposes and approves one task, and the agent picks it up. */
+  async function pickUp(personToken: string) {
+    const asPerson = async (path: string, body: Record<string, unknown>) =>
+      (await post(api, `/api/b/alpha${path}`, body, authorised(personToken))).body;
+    const made = await asPerson('/task/create', {
+      operationId: randomUUID(),
+      fields: { title: `made-up delegated ${randomUUID()}` },
+    });
+    const proposed = await asPerson('/task/propose', {
+      operationId: randomUUID(),
+      recordId: made['recordId'],
+      expectedRevision: made['revision'],
+      purpose: 'api_1_isolation',
+      maximumMinor: 2_500,
+      currency: 'AUD',
+      payload: { instruction: 'draft a made-up reply' },
+      step: { kind: 'compose', payload: { tone: 'plain' } },
+    });
+    const decided = await asPerson('/task/decide', {
+      operationId: randomUUID(),
+      gateId: detail(proposed)['gateId'],
+      versionId: detail(proposed)['versionId'],
+      decision: 'approve',
+      note: 'approved for the API-1 delegation crossing',
+    });
+    const token = await tokenFor(fixture.agent.subject);
+    const picked = await post(
+      api,
+      '/api/a/b/alpha/task/pickup',
+      { operationId: randomUUID(), reservationId: detail(decided)['reservationId'] },
+      authorised(token),
+    );
+    if (picked.status !== 200) throw new Error(JSON.stringify(picked));
+    const taskId = String(detail(picked.body)['taskId']);
+    labels.set(taskId, '<delegated task>');
+    const held = detail(picked.body);
+    return {
+      agentToken: token,
+      delegation: String(held['credential']),
+      delegatedTask: taskId,
+      lease: { leaseId: held['leaseId'], fence: held['fence'] },
+    };
+  }
 
   afterAll(async () => await fixture?.drop());
 
@@ -169,6 +234,57 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     return heard;
   }
 
+  /** One command as the agent under its delegation, through the CLI and the API's agent route. */
+  async function asAgent(
+    row: CatalogueRow,
+    businessKey: string,
+    body: Record<string, unknown>,
+  ): Promise<Heard[]> {
+    const heard: Heard[] = [];
+    const recording = async (path: string, init: RequestInit) => {
+      const response = await through(path, init);
+      const parsed = (await response
+        .clone()
+        .json()
+        .catch(() => ({}))) as { code?: unknown } | null;
+      heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
+      return response;
+    };
+    // The agent prefix takes an operation id on every call, reads included.
+    const payload = {
+      ...body,
+      operationId: randomUUID(),
+      ...(row.kind === 'write' && 'recordId' in body ? { expectedRevision: 1 } : {}),
+    };
+    const cli = createCli({
+      businessKey,
+      credential: agentToken,
+      entry: 'agent',
+      delegation,
+      transport: async (path, sent, credential, held) =>
+        await recording(path, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${credential}`,
+            ...(held === undefined ? {} : { 'x-agent-delegation': held }),
+          },
+          body: sent,
+        }),
+    });
+    await cli.run(row.command, payload);
+    await recording(String(row.api.agent).replace(':businessKey', businessKey), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${agentToken}`,
+        'x-agent-delegation': delegation,
+      },
+      body: JSON.stringify(payload),
+    });
+    return heard;
+  }
+
   it('API-1 isolation: business to business, every command answers the same refusal on every surface', async () => {
     for (const row of rows) {
       // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list
@@ -208,6 +324,56 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       expect(new Set(heard.map((one) => JSON.stringify(one))).size, row.command).toBe(1);
       expect(heard[0]?.status, row.command).toBeGreaterThanOrEqual(400);
       expect(foreign(heard, 'client1'), row.command).toEqual([]);
+    }
+  }, 60_000);
+
+  it('API-1 isolation: person to person under a live delegation, the agent reaches only its delegated task', async () => {
+    const agentRows = rows.filter((row) => row.api.agent !== null);
+    const read = agentRows.find((row) => row.command === 'task.read') as CatalogueRow;
+    const own = await asAgent(read, 'alpha', { recordId: delegatedTask });
+    expect(own.map((one) => one.status)).toEqual([200, 200]);
+    expect(JSON.stringify(own[0]?.body)).toContain('<delegated task>');
+    // Each command's own target: a record, a lease, or none. A lease call names its
+    // task through its lease and ignores a record id beside it, so its crossing is a
+    // lease that is not the agent's.
+    const notOwnLease = { leaseId: randomUUID(), fence: lease.fence };
+    const target: Record<string, (record: string) => Record<string, unknown> | null> = {
+      'task.read': (record) => ({ recordId: record }),
+      'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
+      'task.heartbeat': () => ({ ...notOwnLease, leaseSeconds: 60 }),
+      'task.handback': () => ({
+        ...notOwnLease,
+        outcome: 'completed',
+        report: { wrote: 'made-up' },
+      }),
+      'task.pickup': () => ({ reservationId: randomUUID() }),
+      'task.queue': () => null,
+      'session.capabilities': () => null,
+    };
+    expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
+    for (const row of agentRows) {
+      for (const [businessKey, other] of [
+        ['alpha', task.client1],
+        ['alpha', task.client2],
+        ['bravo', task.bravo],
+      ] as const) {
+        const body = target[row.command]?.(other) ?? {};
+        // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list
+        const heard = await asAgent(row, businessKey, body);
+        const where = `${row.command} on ${businessKey}`;
+        expect(heard, where).toHaveLength(2);
+        expect(
+          new Set(heard.map((one) => canonical(one))).size,
+          `${where} ${JSON.stringify(heard)}`,
+        ).toBe(1);
+        expect(foreign(heard, null), where).toEqual([]);
+        if (target[row.command]?.(other) === null && businessKey === 'alpha') {
+          expect(heard[0]?.status, where).toBe(200);
+          continue;
+        }
+        expect(heard[0]?.status, where).toBeGreaterThanOrEqual(400);
+        expect(SHAPE, where).not.toContain(heard[0]?.code);
+      }
     }
   }, 60_000);
 
