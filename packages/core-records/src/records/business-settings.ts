@@ -110,6 +110,18 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     visibilityClass: 'shared',
   },
   {
+    // C80: the one staff account that approves a live website correction, as
+    // a person id. Unset by default, so no correction is approvable until an
+    // administrator names someone through the owning command; owned by an
+    // operation because it decides who must agree before a live effect.
+    key: 'live_correction_approver',
+    label: 'Live correction approver',
+    valueType: 'text',
+    value: null,
+    writeMode: 'operation',
+    owningOperations: ['settings.set_live_correction_approver'],
+  },
+  {
     key: 'retention_window_days',
     label: 'Retention window (days)',
     valueType: 'numeric',

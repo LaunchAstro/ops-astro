@@ -84,7 +84,10 @@ function isCheckViolation(cause: unknown): boolean {
 export async function setBusinessSetting(
   tx: TenantQuery,
   context: CommandContext,
-  command: 'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off',
+  command:
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_live_correction_approver',
   value: unknown,
   expectedRevision?: number,
 ): Promise<HandlerOutcome> {
