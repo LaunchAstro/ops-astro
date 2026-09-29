@@ -24,6 +24,8 @@ import {
   type Availability,
   type AvailabilityChange,
   type DirectThread,
+  type GroupAction,
+  type GroupThread,
   type Teammate,
 } from '../state/team.ts';
 import { follow, type OpenHow } from './gesture.ts';
@@ -44,6 +46,9 @@ export interface TeamPanelProps {
   readonly onMarkRead: (withPerson: string, upTo: string) => void;
   /** Send a direct message: a comment with a two-person audience, through MP-4-5's comment command. */
   readonly onSend: (toPerson: string, body: string) => void;
+  /** The group conversations the reader is a member of, as the comment read returned them (C71-G). */
+  readonly groups: readonly GroupThread[];
+  readonly onGroup: (action: GroupAction) => void;
 }
 
 /** The face says whom it messages and, when they set it, why they are away. */
