@@ -119,7 +119,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['LIABILITY_NOT_UNKNOWN', 409, 'caller'],
 ];
 
-/** The runtime's own twenty-five, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
+/** The runtime's own twenty-six, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
 const RUNTIME = [
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
   'AUTHORITY_LOST',
@@ -156,7 +156,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same twenty-five as the runtime’s own, each under its register status', () => {
+  it('names the same twenty-six as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);
