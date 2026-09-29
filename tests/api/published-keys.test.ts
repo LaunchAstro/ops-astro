@@ -197,6 +197,27 @@ describe('S0-6 published keys only', () => {
     expect(elsewhere.output()).not.toContain('api: listening on');
   });
 
+  it('Sol proof, criterion 6: a hosted issuer cannot use a loopback key set', async () => {
+    const hostedIssuer = 'https://provider.example.test/auth/v1';
+    const elsewhere = await startServer({
+      DATABASE_URL: 'postgres://app:unused@127.0.0.1:1/none',
+      DATABASE_ADMIN_URL: 'postgres://app:unused@127.0.0.1:1/none',
+      GOTRUE_URL: hostedIssuer,
+      SUPABASE_KEY_SET_URL: served.url,
+    });
+    try {
+      if (!elsewhere.output().includes('api: listening on')) {
+        expect(elsewhere.output()).toMatch(/key set|SUPABASE_KEY_SET_URL|issuer/u);
+        return;
+      }
+      const bearer = await signBearer(claims({ iss: hostedIssuer }));
+      const answer = await post(elsewhere.origin, bearer);
+      expect(answer.status).toBe(401);
+    } finally {
+      await elsewhere.stop();
+    }
+  });
+
   it('the adapter hands over the verified subject and nothing else', async () => {
     const verify = createSupabaseVerifier(testSignIn(ISSUER));
     const token = await signBearer(claims({ email: 'mia@alpha.local', role: 'service_role' }));
