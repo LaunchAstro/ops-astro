@@ -231,12 +231,13 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        # Pinned by digest, and recorded in docs/supply-chain-pins.md. The
-        # password is this container's own, it is thrown away with it, and it
+        # Postgres 17, the hosted database's major (S0-7), pinned by digest:
+        # the image staging's database runs, recorded in
+        # docs/supply-chain-pins.md. The password is this container's own, it is thrown away with it, and it
         # reaches nothing outside this job. No repository secret is used here,
         # and none should be: a check that needs a credential to prove a
         # database was reached is proving the wrong thing.
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
         env:
           POSTGRES_PASSWORD: conformance-throwaway
           POSTGRES_DB: conformance
@@ -280,6 +281,42 @@ jobs:
           if [ -z "$added" ]; then echo "upgrade-drill: no migration added; not run"; exit 0; fi
           from=$(git ls-tree --name-only "$BASE_SHA" migrations/ | grep '\.sql$' | sort | tail -1)
           pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)"
+
+  database-lookahead:
+    # S0-7: the same conformance run on Postgres 18, the next major, so a
+    # change that breaks on it shows before the provider moves. It is not a
+    # required check: its failure is reported red on the pull request and
+    # blocks nothing. When the provider offers 18, one ticket moves
+    # production, staging, CI and the restore drill to it together
+    # (docs/supply-chain-pins.md).
+    name: database look-ahead, Postgres 18 (not required)
+    needs: [gate]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run db:conformance
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          OPS_ASTRO_DB_LOOKAHEAD_MAJOR: '18'
 
   licences:
     name: OSI licence allowlist
@@ -394,7 +431,7 @@ jobs:
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
         env:
           POSTGRES_PASSWORD: conformance-throwaway
           POSTGRES_DB: conformance

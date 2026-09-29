@@ -85,7 +85,7 @@ export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 // without its volume is refused too, because B6 reports the volume it kept, and
 // quietly reporting the live one beside someone else's container would be a
 // false line in the results table.
-const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata' };
+const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata-17' };
 const DENIED_PG = new Set(['ops-astro-datafix-pg', 'ops-astro-datafix-pgdata']);
 /** Docker's own shape for container and volume names. */
 const DOCKER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;

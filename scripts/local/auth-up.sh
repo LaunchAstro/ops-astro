@@ -26,8 +26,8 @@ LOCAL="${ROOT}/.local"
 mkdir -p "${LOCAL}"
 
 PG_CONTAINER=ops-astro-local-pg
-PG_IMAGE=postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-PG_VOLUME=ops-astro-local-pgdata
+PG_IMAGE=postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+PG_VOLUME=ops-astro-local-pgdata-17
 PG_PORT=54390
 PG_DATABASE=ops_astro_local
 
@@ -59,7 +59,7 @@ if ! running "${PG_CONTAINER}"; then
       --name "${PG_CONTAINER}" \
       --network "${NETWORK}" \
       -p "127.0.0.1:${PG_PORT}:5432" \
-      -v "${PG_VOLUME}:/var/lib/postgresql" \
+      -v "${PG_VOLUME}:/var/lib/postgresql/data" \
       -e POSTGRES_PASSWORD=ops_astro_local \
       -e POSTGRES_DB="${PG_DATABASE}" \
       "${PG_IMAGE}" >/dev/null

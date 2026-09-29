@@ -12,7 +12,7 @@
 //
 // **What B6 restarts is configuration** (`restartTargetOf` in `harness.mjs`):
 // `B6_PG_CONTAINER` and `B6_PG_VOLUME` name the Postgres pair, defaulting to
-// the live `ops-astro-local-pg` and `ops-astro-local-pgdata`, and the API it
+// the live `ops-astro-local-pg` and `ops-astro-local-pgdata-17`, and the API it
 // starts again listens on `API_URL`'s port. The target is resolved when this
 // module loads, so a refused name stops the run before any case has touched
 // anything.
@@ -54,12 +54,12 @@ const TARGET = restartTargetOf(process.env);
 /** Start the API detached, exactly as `scripts/local/api-up.sh` does, on `API_URL`'s port. */
 const API_UP = `. ./.local/db.env; . ./.local/auth.env; API_PORT=${TARGET.apiPort}; export DATABASE_URL DATABASE_ADMIN_URL GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`;
 
-/** The volume mounted where Postgres 18 keeps its cluster, as `db-up.sh` mounts it. */
+/** The volume mounted where Postgres 17 keeps its cluster, as `db-up.sh` mounts it. */
 const mountedVolume = () =>
   sh(DOCKER, [
     'inspect',
     '-f',
-    '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}',
+    '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}',
     TARGET.container,
   ]).trim();
 

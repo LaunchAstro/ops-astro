@@ -527,7 +527,7 @@ changed without reading the rest:
 
 ### What B6 restarts
 
-B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata` volume by
+B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata-17` volume by
 default, which is the registered run. A stack of your own names its pair, and
 B6 restarts the API on `API_URL`'s port:
 
