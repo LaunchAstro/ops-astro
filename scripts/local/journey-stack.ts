@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '../..');
 export const IMAGE =
   'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
-export const DOCKER = process.env.DOCKER ?? '/usr/local/bin/docker';
+export const DOCKER: string = process.env['DOCKER'] ?? '/usr/local/bin/docker';
 /** The live pair, the lanes' fixed stacks and the other proofs' own ports. */
 const WEB_AND_API = [5190, 5197, 5198, 5199, 8790, 8793, 8796, 8797, 8798, 8799];
 const DENIED = new Set([
@@ -22,7 +22,11 @@ const DENIED = new Set([
   ...Array.from({ length: 14 }, (_, index) => 54390 + index),
 ]);
 
-export function run(command, commandArgs, env = {}) {
+export function run(
+  command: string,
+  commandArgs: readonly string[],
+  env: Readonly<Record<string, string>> = {},
+): { ok: boolean; out: string } {
   const result = spawnSync(command, commandArgs, {
     cwd: ROOT,
     env: { ...process.env, ...env },
@@ -32,8 +36,8 @@ export function run(command, commandArgs, env = {}) {
   return { ok: result.status === 0, out: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }
 
-async function answers(port) {
-  return await new Promise((done) => {
+async function answers(port: number): Promise<boolean> {
+  return await new Promise<boolean>((done) => {
     const socket = createConnection({ host: '127.0.0.1', port });
     socket.once('connect', () => {
       socket.destroy();
@@ -46,8 +50,11 @@ async function answers(port) {
 }
 
 /** Every reason not to start, all of them, before anything is started. */
-export async function refusalsBeforeStarting(ports, container) {
-  const refusals = [];
+export async function refusalsBeforeStarting(
+  ports: Readonly<Record<string, string>>,
+  container: string,
+): Promise<string[]> {
+  const refusals: string[] = [];
   for (const [name, value] of Object.entries(ports)) {
     // Digits only, in range: `0x1F90`, ` 54430` and `70000` are not ports, whatever Number says.
     const port = /^\d{1,5}$/u.test(value) ? Number(value) : 0;
@@ -67,7 +74,13 @@ export async function refusalsBeforeStarting(ports, container) {
 }
 
 /** The container from the pinned digest, the application group role, the migrations. */
-export async function startPostgres({ container, password, port, admin }) {
+export async function startPostgres(options: {
+  readonly container: string;
+  readonly password: string;
+  readonly port: string;
+  readonly admin: string;
+}): Promise<{ ok: boolean; detail: string }> {
+  const { container, password, port, admin } = options;
   const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
   const started = run(DOCKER, ['run', '-d', '--name', container, '-p', publish, ...env, IMAGE]);
@@ -93,7 +106,7 @@ export async function startPostgres({ container, password, port, admin }) {
 }
 
 /** Stop what the run started, by the pids it wrote down; a leading `-` is a process group. */
-export function stopStarted(pidfile, say) {
+export function stopStarted(pidfile: string, say: (line: string) => void): void {
   if (!existsSync(pidfile)) return;
   for (const line of readFileSync(pidfile, 'utf8').split('\n')) {
     const pid = Number(line.split(' ')[0]);
