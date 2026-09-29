@@ -210,8 +210,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 audit read-back', () => {
     ]);
     // Each change and its record committed together.
     expect((await w.entries(task)).map((row) => [row.minutes, row.deleted])).toStrictEqual([
-      [1, false],
+      // A logged entry ends now, so its fifteen minutes started first.
       [15, true],
+      [1, false],
     ]);
   });
 });

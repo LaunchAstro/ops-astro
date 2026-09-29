@@ -102,6 +102,9 @@ const GRANTS_BY_ROLE = {
     // `access:share`, which the key catalogue gives the owner and
     // administrators and never an agent.
     ['access', 'share'],
+    // Time tracking (MP-4-6) asks `time:write`: the owner's and
+    // administrators', and a member's only where granted.
+    ['time', 'write'],
   ],
   member: [
     ['task', 'read'],
