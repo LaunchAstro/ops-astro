@@ -57,13 +57,24 @@ describe('MP-5-6 drag within minimums', () => {
   it('a drag wider takes width from the columns to its right, in proportion to their slack', () => {
     const after = resizeAt(COLUMNS, start, 1, 60);
     expect(after[0]).toBe(400);
-    expect(after[1]).toBeGreaterThanOrEqual(308);
-    expect(after[1]).toBeLessThanOrEqual(310);
+    expect(after[1]).toBe(310);
     expect(sum(after)).toBe(1000);
     // due has 136 of slack, cmt 14, actual 44: due gives the most, cmt the least.
     const given = [200, 50, 100].map((was, index) => was - (after[index + 2] ?? 0));
     expect(given[0]).toBeGreaterThan(given[2] ?? 0);
     expect(given[2]).toBeGreaterThan(given[1] ?? 0);
+  });
+
+  it('the columns give exactly the drag, in whole pixels, however the shares round', () => {
+    const even = [{ min: 10 }, { min: 10 }, { min: 10 }, { min: 10 }];
+    for (const dx of [1, 2, 5, 29, 30]) {
+      const after = resizeAt(even, [100, 20, 20, 20], 0, dx);
+      expect(after[0]).toBe(100 + dx);
+      expect(sum(after)).toBe(160);
+      after.forEach((width) => {
+        expect(Number.isInteger(width)).toBe(true);
+      });
+    }
   });
 
   it('a drag past the room stops with every column to the right at its floor', () => {
