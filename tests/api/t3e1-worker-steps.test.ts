@@ -291,4 +291,37 @@ describe.skipIf(serverUrl === undefined)('T3e1: the worker at each step, answers
     );
     expect(written).toHaveLength(1);
   });
+
+  it('Sol proof, criterion 3: missing comment cannot prove an uncertain provider effect absent', async () => {
+    const { taskId, credential } = await approvedWork();
+    let providerEffects = 0;
+    const provider: Provider = {
+      call: async () => {
+        providerEffects += 1;
+        await Promise.resolve();
+        throw new ProviderFault('connection_lost');
+      },
+    };
+    expect(await workerOn(credential, transport, provider).applyOnce(taskId)).toHaveProperty(
+      'dropped',
+    );
+    expect(providerEffects).toBe(1);
+    expect(await effects(taskId)).toBe(0);
+    const topUp = await asPerson('budget.top_up', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      amountMinor: 2_500,
+      fromMaximumMinor: 2_500,
+    });
+    expect(topUp.status, JSON.stringify(topUp.body)).toBe(200);
+
+    const answered = await fixture.db.app.withBusiness(
+      fixture.business,
+      async (tx) => await reconcileUnknown(tx, registerEffectLookup),
+    );
+    expect(answered).toMatchObject([{ answer: 'unanswered' }]);
+    expect(await holds(taskId)).toMatchObject([
+      { state: 'liability_unknown', held: 'held', held_minor: '2500' },
+    ]);
+  });
 });
