@@ -64,7 +64,7 @@ export type CommandName =
   | 'task.board'
   | 'task.queue'
   | 'task.execution'
-  // The gate engine's pending decisions a person may make (MP-6-1, TR-P-14).
+  // The gate engine's pending decisions a person may make (MP-6-1).
   | 'gate.pending'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is

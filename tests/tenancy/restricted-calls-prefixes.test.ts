@@ -98,6 +98,19 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // The journey records no check (MP-6-1); the row is written with foreign
+  // keys off, as every reference row is.
+  'public.run_checks': {
+    task_id: randomUUID(),
+    run_id: randomUUID(),
+    version_id: randomUUID(),
+    lease_id: randomUUID(),
+    attempt_id: randomUUID(),
+    actor_id: randomUUID(),
+    fence: 1,
+    name: 'restricted calls seed',
+    outcome: 'passed',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

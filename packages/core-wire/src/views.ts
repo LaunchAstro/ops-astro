@@ -372,7 +372,7 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
-/** One gate waiting on a person: `gate.pending`'s row (MP-6-1, TR-P-14). */
+/** One gate waiting on a person: `gate.pending`'s row (MP-6-1). */
 export interface AwaitingReviewView {
   readonly gateId: string;
   readonly versionId: string;
