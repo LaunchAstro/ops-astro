@@ -54,29 +54,29 @@ export interface DirectThread {
   readonly messages: readonly TeamMessage[];
 }
 
+const timeOf = (iso: string): number => Date.parse(iso);
+
 /** Unread is derived from the read marker: others' messages after it. */
 export function unreadOf(thread: DirectThread, me: string): number {
-  void thread;
-  void me;
-  return 0;
+  const read = thread.lastRead === null ? -Infinity : timeOf(thread.lastRead);
+  return thread.messages.filter((m) => m.authorId !== me && timeOf(m.at) > read).length;
 }
 
 /** The Team tab's one figure: every conversation's unread, uncapped. */
 export function teamUnread(threads: readonly DirectThread[], me: string): number {
-  void threads;
-  void me;
-  return 0;
+  return threads.reduce((sum, thread) => sum + unreadOf(thread, me), 0);
 }
 
 /** The newest message's time, the point a read marker moves to. */
 export function newestAt(thread: DirectThread): string | null {
-  void thread;
-  return null;
+  let newest: string | null = null;
+  for (const m of thread.messages) {
+    if (newest === null || timeOf(m.at) > timeOf(newest)) newest = m.at;
+  }
+  return newest;
 }
 
 /** The conversation the panel opens on: the first with anything unread (R36). */
 export function openingThread(threads: readonly DirectThread[], me: string): string | null {
-  void threads;
-  void me;
-  return null;
+  return threads.find((thread) => unreadOf(thread, me) > 0)?.with ?? null;
 }

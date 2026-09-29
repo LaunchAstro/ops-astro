@@ -92,7 +92,9 @@ export function Shell(props: ShellProps): ReactElement {
             className="dock__tab"
             type="button"
             aria-expanded={tab.open}
-            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}`}
+            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${
+              (tab.count ?? 0) > 0 ? `, ${String(tab.count)} unread` : ''
+            }`}
             onClick={() => {
               props.onDockTab(tab.id);
             }}
@@ -101,6 +103,11 @@ export function Shell(props: ShellProps): ReactElement {
                 with redistribution rights is resolved, rather than an emoji,
                 which the design system forbids outright. */}
             <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
+            {(tab.count ?? 0) > 0 ? (
+              <span className="cbadge dock__count" aria-hidden="true">
+                {tab.count}
+              </span>
+            ) : null}
           </button>
         ))}
         {props.panel}
