@@ -62,6 +62,7 @@ import type {
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import type { LiveTopics } from './live.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -114,6 +115,11 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+}
+
+export interface LiveOptions {
+  readonly topics: LiveTopics;
+  readonly recheckMs?: number;
 }
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */

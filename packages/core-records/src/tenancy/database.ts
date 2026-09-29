@@ -195,6 +195,18 @@ export function connect(url: string, options: DatabaseOptions = {}): Database {
   };
 }
 
+export interface Listener extends Connection {
+  listen(
+    channel: string,
+    onPayload: (payload: string) => void,
+    onListening: () => void,
+  ): Promise<void>;
+}
+
+export function connectListener(_url: string, _options: DatabaseOptions = {}): Listener {
+  throw new Error('T2f: the listener is not built yet');
+}
+
 /**
  * The same pool, plus the one thing the application is deliberately denied: a
  * statement on the pool's connection outside any `withBusiness` transaction.
