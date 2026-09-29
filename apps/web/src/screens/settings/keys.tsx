@@ -24,11 +24,12 @@ function when(at: string | null): string {
   return at === null ? 'never' : new Date(at).toLocaleString();
 }
 
-export function KeysPanel(props: { readonly client: OperationsClient }): ReactElement {
-  const { client } = props;
+function useKeys(client: OperationsClient): {
+  readonly listing: Listing;
+  readonly because: string | null;
+  readonly act: (run: () => ReturnType<OperationsClient['mutate']>) => Promise<void>;
+} {
   const [listing, setListing] = useState<Listing>({ state: 'loading' });
-  const [name, setName] = useState('');
-  const [value, setValue] = useState('');
   const [because, setBecause] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
@@ -54,13 +55,73 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
     await load();
   };
 
-  const save = (): void => {
-    const sent = value;
-    // Emptied before the answer: the value is not kept while the request is out.
-    setValue('');
-    void act(async () => await client.mutate('secret.set', { name, value: sent }));
-  };
+  return { listing, because, act };
+}
 
+function KeyRows(props: {
+  readonly secrets: readonly SecretView[];
+  readonly clear: (secret: SecretView) => void;
+}): ReactElement {
+  return (
+    <ul className="stack" data-settings="key-rows">
+      {props.secrets.map((secret) => (
+        <li key={secret.id} data-secret={secret.name} data-state={secret.state}>
+          <span className="sb__k">{secret.name}</span>{' '}
+          <span>{secret.clientId === null ? 'whole business' : `client ${secret.clientId}`}</span>{' '}
+          <strong>{secret.state}</strong> <span>last used {when(secret.lastUsedAt)}</span>{' '}
+          {secret.state === 'set' ? (
+            <button
+              type="button"
+              onClick={() => {
+                props.clear(secret);
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function KeyForm(props: { readonly set: (name: string, value: string) => void }): ReactElement {
+  const [name, setName] = useState('');
+  const [value, setValue] = useState('');
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const sent = value;
+        // Emptied before the answer: the value is not kept while the request is out.
+        setValue('');
+        props.set(name, sent);
+      }}
+    >
+      <label>
+        Name{' '}
+        <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" />
+      </label>{' '}
+      <label>
+        Value{' '}
+        <input
+          type="password"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          autoComplete="off"
+          data-settings="key-value"
+        />
+      </label>{' '}
+      <button type="submit" disabled={name === '' || value === ''}>
+        Set key
+      </button>
+    </form>
+  );
+}
+
+export function KeysPanel(props: { readonly client: OperationsClient }): ReactElement {
+  const { client } = props;
+  const { listing, because, act } = useKeys(client);
   return (
     <section className="sb__sect" data-settings="keys">
       <div className="sb__sh">
@@ -80,63 +141,23 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
         </p>
       ) : null}
       {listing.state === 'shown' ? (
-        <ul className="stack" data-settings="key-rows">
-          {listing.secrets.map((secret) => (
-            <li key={secret.id} data-secret={secret.name} data-state={secret.state}>
-              <span className="sb__k">{secret.name}</span>{' '}
-              <span>
-                {secret.clientId === null ? 'whole business' : `client ${secret.clientId}`}
-              </span>{' '}
-              <strong>{secret.state}</strong> <span>last used {when(secret.lastUsedAt)}</span>{' '}
-              {secret.state === 'set' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void act(
-                      async () => await client.mutate('secret.clear', { secretId: secret.id }),
-                    );
-                  }}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <KeyRows
+          secrets={listing.secrets}
+          clear={(secret) => {
+            void act(async () => await client.mutate('secret.clear', { secretId: secret.id }));
+          }}
+        />
       ) : null}
       {because === null ? null : (
         <p className="field__error" role="alert" data-settings="keys-refusal">
           {because}
         </p>
       )}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          save();
+      <KeyForm
+        set={(name, value) => {
+          void act(async () => await client.mutate('secret.set', { name, value }));
         }}
-      >
-        <label>
-          Name{' '}
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="off"
-          />
-        </label>{' '}
-        <label>
-          Value{' '}
-          <input
-            type="password"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            autoComplete="off"
-            data-settings="key-value"
-          />
-        </label>{' '}
-        <button type="submit" disabled={name === '' || value === ''}>
-          Set key
-        </button>
-      </form>
+      />
     </section>
   );
 }

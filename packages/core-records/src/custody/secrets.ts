@@ -123,10 +123,12 @@ export async function setSecret(
 ): Promise<SecretWritten | SecretStale> {
   const sealed = seal(write.value, write.key);
   const existing = await lockByName(tx, write.name, write.scope);
-  if (existing !== undefined && write.expectedRevision !== undefined) {
-    if (Number(existing.revision) !== write.expectedRevision) {
-      return { stale: true, revision: Number(existing.revision) };
-    }
+  if (
+    existing !== undefined &&
+    write.expectedRevision !== undefined &&
+    Number(existing.revision) !== write.expectedRevision
+  ) {
+    return { stale: true, revision: Number(existing.revision) };
   }
   const rows = await tx.query<{ readonly id: string; readonly revision: string }>(
     `insert into public.custody_secrets
@@ -206,7 +208,7 @@ export async function listSecrets(
       order by name, scope_kind, scope_id nulls first`,
     [whole, parties],
   );
-  return rows.map(toRow);
+  return rows.map((row) => toRow(row));
 }
 
 /**

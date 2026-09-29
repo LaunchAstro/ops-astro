@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable unicorn/prefer-dom-node-dataset -- the owner check reads the attribute the markup writes */
 //
 // C31, the Keys panel: set a key, reload, it shows "set" and no value is on
 // the page; clear it and it shows "not set" (the owner check, in the browser's
@@ -31,7 +32,7 @@ const tick = async (): Promise<void> => {
 function server(): { readonly fetch: typeof globalThis.fetch; readonly sent: string[] } {
   const sent: string[] = [];
   let state: 'set' | 'not set' | null = null;
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const answer = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
     if (at.endsWith('/secret/list')) {
@@ -62,7 +63,9 @@ function server(): { readonly fetch: typeof globalThis.fetch; readonly sent: str
       return json({ recordId: 's-1', revision: 2, detail: { secretId: 's-1', state: 'not set' } });
     }
     return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
-  }) as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL, init?: RequestInit) =>
+    Promise.resolve(answer(url, init))) as typeof globalThis.fetch;
   return { fetch, sent };
 }
 
