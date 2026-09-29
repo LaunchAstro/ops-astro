@@ -101,6 +101,7 @@
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
     "WAYFINDER (SL14) adds wf-1 and wf-2 (the map as a task, its components and client scope, the wayfinder commands, the frontier and summary read models, the three isolation crossings) and wf-1-cli (each WF-1 command through the generated client over the composed API). world.ts is a harness, not a suite.",
     "WF-3 (SL14) adds tests/web/wf-3.test.tsx: the map view mounted over the composed API and the database (the owner check's sections and notes edit with its new version, each decision line linking its ticket, the edit audited in the chain beside its one read event each open, a refusal per key, CLI parity of result and refusal, and the three isolation crossings). wf-3-held.test.tsx is NOT named: the look (W4 #603, MP-1-7) and an agent's reviewable edit (SL09 U18) are todos.",
+    "WF-4 (SL14) adds tests/web/wf-4.test.tsx (the owner check's graduate, block and frontier; the frontier view in the read model's order; moving between the four views keeping the map and its filters; the writes audited in the chain; a refusal per key; CLI parity) and wf-4-isolation.test.tsx (the three crossings). wf-4-held.test.tsx is NOT named: the look (W4, W5, MP-1-7) is a todo.",
     "api-4-changes.test.ts is NOT named: its cases (API-4 changes since) are todos until the C4 live change record lands with SL10 U26, and the runner refuses a skip; it is named at that rebase.",
     "wf-2-inbox.test.ts is NOT named: its one case (the WF-2 decision item) is a held skip until the inbox lands with SL04 U99, and the runner refuses a skip; it is named at that rebase.",
     "AGENT CLI (SL14, API-3) adds api-3 (one case per checklist line through the verb CLI over the composed API), api-3-isolation (the three crossings), api-3-budget (the token budgets over a 40-ticket fixture map) and api-3-process (the real entry as a process). api-3-world.ts is a harness, not a suite.",
@@ -382,6 +383,8 @@
     "tests/cli/api-4.test.ts",
     "tests/cli/api-4-context.test.ts",
     "tests/cli/api-4-context-isolation.test.ts",
-    "tests/web/wf-3.test.tsx"
+    "tests/web/wf-3.test.tsx",
+    "tests/web/wf-4.test.tsx",
+    "tests/web/wf-4-isolation.test.tsx"
   ]
 }
