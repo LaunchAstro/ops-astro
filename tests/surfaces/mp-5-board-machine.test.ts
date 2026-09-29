@@ -152,8 +152,8 @@ describe('MP-5-1 column model', () => {
   it('MP-5-1 tight heads hide the label and centre the icon, mirrored on the cells', () => {
     const wide = layoutColumns(COLUMNS, { viewport: 1480, available: 1200 });
     expect(wide.columns.find((column) => column.key === 'due')?.tight).toBe(false);
-    // At 420 the due column gets under its 80px label width and goes tight.
-    const narrow = layoutColumns(COLUMNS, { viewport: 899, available: 420 });
+    // At 360 the due column gets under its 80px label width and goes tight.
+    const narrow = layoutColumns(COLUMNS, { viewport: 899, available: 360 });
     const due = narrow.columns.find((column) => column.key === 'due');
     expect(due?.tight).toBe(true);
     expect(due?.align).toBe('center');
