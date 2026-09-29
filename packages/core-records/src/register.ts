@@ -49,7 +49,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501 | 502;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 501 | 502;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -340,6 +340,12 @@ const ROWS = [
     code: 'SECOND_FACTOR_INVALID',
     status: 422,
     meaning: 'The code was not accepted by the sign-in provider',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_LOCKED',
+    status: 429,
+    meaning: 'Too many wrong codes in fifteen minutes; the provider is not asked again yet',
     source: 'C59 TR-A2-2',
   },
   {
