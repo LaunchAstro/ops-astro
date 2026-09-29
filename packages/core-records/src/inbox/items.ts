@@ -128,23 +128,11 @@ export async function recordDeliveryAttempt(
   return id;
 }
 
-interface ItemRow {
-  readonly id: string;
-  readonly recipient_person_id: string;
-  readonly subject_record_id: string;
-  readonly reason: InboxReason;
-  readonly fact_kind: InboxFactKind;
-  readonly fact_id: string;
-  readonly owed: boolean;
-  readonly work_state: InboxWorkState;
-  readonly raised_at: Date;
-  readonly closed_at: Date | null;
-  readonly closed_by_person_id: string | null;
-  readonly seen_at: Date | null;
-  readonly last_delivery: DeliveryState | null;
+/** A row as read: the item's axes, and the two facts access is derived from. */
+type ItemRow = Omit<InboxItem, 'access'> & {
   readonly trashed: boolean;
-  readonly client_id: string | null;
-}
+  readonly clientId: string | null;
+};
 
 /**
  * Every item of one recipient, each axis read separately, access derived now.
@@ -156,14 +144,15 @@ export async function readInboxItems(
   recipientPersonId: string,
 ): Promise<readonly InboxItem[]> {
   const rows = await tx.query<ItemRow>(
-    `select i.id, i.recipient_person_id, i.subject_record_id, i.reason, i.fact_kind, i.fact_id,
-            i.owed, i.work_state, i.raised_at, i.closed_at, i.closed_by_person_id,
-            a.seen_at,
+    `select i.id, i.recipient_person_id as "recipientPersonId",
+            i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
+            i.fact_id as "factId", i.owed, i.work_state as "workState", i.raised_at as "raisedAt",
+            i.closed_at as "closedAt", i.closed_by_person_id as "closedByPersonId",
+            a.seen_at as "seenAt",
             (select d.state from public.inbox_delivery_attempts d
               where d.business_id = i.business_id and d.item_id = i.id
-              order by d.observed_at desc, d.id desc limit 1) as last_delivery,
-            r.deleted_at is not null as trashed,
-            r.uuid_7 as client_id
+              order by d.observed_at desc, d.id desc limit 1) as "lastDelivery",
+            r.deleted_at is not null as trashed, r.uuid_7 as "clientId"
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
        left join public.inbox_attention a on a.business_id = i.business_id and a.item_id = i.id
@@ -173,25 +162,10 @@ export async function readInboxItems(
   );
   const subjects = await recipientSubjects(tx, recipientPersonId);
   const items: InboxItem[] = [];
-  for (const row of rows) {
+  for (const { trashed, clientId, ...item } of rows) {
     // oxlint-disable-next-line no-await-in-loop
-    const access = await accessOf(tx, subjects, row);
-    items.push({
-      id: row.id,
-      recipientPersonId: row.recipient_person_id,
-      subjectRecordId: row.subject_record_id,
-      reason: row.reason,
-      factKind: row.fact_kind,
-      factId: row.fact_id,
-      owed: row.owed,
-      workState: row.work_state,
-      raisedAt: row.raised_at,
-      closedAt: row.closed_at,
-      closedByPersonId: row.closed_by_person_id,
-      seenAt: row.seen_at,
-      lastDelivery: row.last_delivery,
-      access,
-    });
+    const access = await accessOf(tx, subjects, item.subjectRecordId, trashed, clientId);
+    items.push({ ...item, access });
   }
   return items;
 }
@@ -217,11 +191,13 @@ async function recipientSubjects(tx: TenantQuery, personId: string): Promise<rea
 async function accessOf(
   tx: TenantQuery,
   subjects: readonly Subject[],
-  row: ItemRow,
+  taskId: string,
+  trashed: boolean,
+  clientId: string | null,
 ): Promise<InboxAccess> {
-  if (row.trashed) return 'gone';
-  const scopes: Scope[] = [{ kind: 'record', id: row.subject_record_id }];
-  if (row.client_id !== null) scopes.push({ kind: 'party', id: row.client_id });
+  if (trashed) return 'gone';
+  const scopes: Scope[] = [{ kind: 'record', id: taskId }];
+  if (clientId !== null) scopes.push({ kind: 'party', id: clientId });
   for (const scope of scopes) {
     // oxlint-disable-next-line no-await-in-loop
     const grants = await effectiveGrants(tx, subjects, {
