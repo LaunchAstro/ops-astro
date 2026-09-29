@@ -1286,7 +1286,12 @@ direct SQL.
   (ours), which the pass's sweep (`sweepLostWorkers`) names when a lease runs
   out with nothing reported.
   A silent run is running until then. The drop appends `dropped` to the run's
-  events and raises one `dropped` alert. An unmarked step ends `dropped`, its
+  events and joins its outage's one report (T3e2, `recovery/outage.ts`, 0039),
+  never an alert per run: drops of one cause in one business join the open
+  report while they arrive within `OUTAGE_WINDOW_SECONDS` (300) of the last,
+  which names the cause, its fault, the window and each run with whether it
+  came back; the next drop after the window closes it and opens another. At
+  most one report is open per business and cause. An unmarked step ends `dropped`, its
   hold released as before, and is reserved again as a new attempt on the same
   run and step, through `reserve` and only on a live lineage whose approval is
   current (T3d1's `resume`), with `reactivated` appended: the next pickup

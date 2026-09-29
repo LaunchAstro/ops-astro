@@ -70,6 +70,8 @@ describe('CQ-8 runtime structure', () => {
       'recovery/drop.ts',
       'recovery/lease-retirement.ts',
       // T3d1: a person's recorded outcome, and the pass's reconciliation phase.
+      // T3e2: one report per outage.
+      'recovery/outage.ts',
       'recovery/outcome.ts',
       'recovery/reconcile.ts',
       // T3b: the reconciliation pass's lease-expiry phase.

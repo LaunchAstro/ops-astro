@@ -501,7 +501,12 @@ raises none. `task.read` carries a task's `alerts`, newest first, to the team
 only, and `task.queue` carries every live task's beside the queue, to the team
 only; an agent's queue carries none. Nothing delivers them. Each is
 `{ id, taskId, kind, waitingReason, causeId, raisedAt }`, one per cause and
-kind (`migrations/0034_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
+beside the alerts, newest first, each
+`{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
+one report per outage per business; a reader outside the team gets none, and
+the task page draws the report naming its task (`tests/runtime/t3e2-outage.test.ts`).
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside

@@ -78,6 +78,12 @@ export {
   type DropCause,
 } from './recovery/drop.ts';
 export {
+  joinOutage,
+  OUTAGE_WINDOW_SECONDS,
+  readOutages,
+  type OutageReport,
+} from './recovery/outage.ts';
+export {
   recordOutcome,
   RECORDED_OUTCOMES,
   type OutcomeRecorded,

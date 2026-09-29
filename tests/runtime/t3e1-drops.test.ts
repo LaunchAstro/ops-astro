@@ -85,6 +85,18 @@ const alerts = async (on: Schedules, taskId: string) =>
     )
   ).map((row) => row.kind);
 
+/** The outage reports that list this task's runs, by cause (T3e2). */
+const toldIn = async (on: Schedules, taskId: string): Promise<readonly string[]> =>
+  (
+    await rows<{ cause: string }>(
+      on,
+      `select r.cause from public.outage_runs o
+         join public.outage_reports r on r.business_id = o.business_id and r.id = o.outage_id
+        where o.business_id = $1 and o.task_id = $2`,
+      [on.business, taskId],
+    )
+  ).map((row) => row.cause);
+
 const sweep = async (on: Schedules) =>
   await on.db.app.withBusiness(on.business, async (tx) => await sweepLostWorkers(tx));
 
@@ -117,7 +129,9 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
     expect(new Set(trail.map((one) => one.run_id)).size).toBe(1);
     expect(trail[1]?.detail).toMatchObject({ cause, fault });
     expect(trail[2]?.detail).toMatchObject({ after: 2, attemptId: second?.id });
-    expect(await alerts(s, w.taskId)).toStrictEqual(['dropped']);
+    // A person is told by the outage report the drop joins, not a per-run alert (T3e2).
+    expect(await alerts(s, w.taskId)).toStrictEqual([]);
+    expect(await toldIn(s, w.taskId)).toStrictEqual([cause]);
 
     // Resumed from its last event, not from zero: the next pickup is position 4.
     const again = await pickup(s, (await reservationOf(second?.id as string)) as string);
@@ -291,6 +305,8 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
       'dropped',
       'reactivated',
     ]);
-    expect(await alerts(s, w.taskId)).toStrictEqual(['dropped']);
+    // A person is told by the outage report the drop joins, not a per-run alert (T3e2).
+    expect(await alerts(s, w.taskId)).toStrictEqual([]);
+    expect(await toldIn(s, w.taskId)).toStrictEqual(['worker_lost']);
   });
 });
