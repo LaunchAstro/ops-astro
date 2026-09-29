@@ -41,7 +41,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { effectAttemptOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
 import { refuseUnstorable, storableText } from './values.ts';
@@ -121,10 +121,25 @@ const EFFECT_FIXES: readonly string[] = [
   'Nothing was written.',
 ];
 
-/** Whether this names an effect whose attempt is not marked dispatched to the author's own lease here. */
-async function effectBeforeDispatch(tx: TenantQuery, on: CommentTarget): Promise<boolean> {
+/**
+ * The refusal an effect identity earns, or `undefined`: the one effect is a
+ * team-only comment, on an attempt marked dispatched to the author's own lease
+ * on this task. Any other identity is an ordinary comment and passes.
+ */
+async function effectRefusal(
+  tx: TenantQuery,
+  on: CommentTarget,
+  audience: string,
+): Promise<CommandRefusal | undefined> {
   const attemptId = effectAttemptOf(on.operationId);
-  if (attemptId === undefined) return false;
+  if (attemptId === undefined) return undefined;
+  if (audience !== 'internal') {
+    return refuseCommand(
+      'AUDIENCE_NOT_PERMITTED',
+      ['audience'],
+      ['The effect is a team-only comment. Send audience as internal.'],
+    );
+  }
   const rows = await tx.query(
     `select 1 from public.attempts att
        join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
@@ -132,7 +147,7 @@ async function effectBeforeDispatch(tx: TenantQuery, on: CommentTarget): Promise
         and l.holder_actor_id = $4 and l.delegation_id is not distinct from $5::uuid`,
     [tx.businessId, attemptId, on.target.id, on.authorActorId, on.delegationId],
   );
-  return rows.length === 0;
+  return rows.length === 0 ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
 }
 
 /**
@@ -181,9 +196,8 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
 
-  if (await effectBeforeDispatch(tx, on)) {
-    return refused(refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES));
-  }
+  const effect = await effectRefusal(tx, on, audience);
+  if (effect !== undefined) return refused(effect);
   const commentId = await writeComment(tx, commentTypeId, {
     taskId: on.target.id,
     authorActorId: on.authorActorId,

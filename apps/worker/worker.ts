@@ -81,9 +81,42 @@ function agentCall(options: WorkerOptions, delegation?: string): Call {
   };
 }
 
-/** Apply the approved proposal on `taskId` once: pick it up, dispatch, the comment, observe. */
-async function applyOnce(options: WorkerOptions, taskId: string): Promise<WorkerOutcome> {
-  // The queue and the pickup are reached before any delegation (`agent-envelope.ts`).
+/** Work this worker picked up and has not yet seen observed: what a later pass resumes. */
+interface Held {
+  readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
+  readonly attemptId: string;
+  readonly credential: string;
+}
+
+/**
+ * Apply the approved proposal on `taskId` once: pick it up, dispatch, the
+ * comment, observe. A pickup leaves the queue, so work picked up and not yet
+ * observed is kept in `held` and the next pass resumes it rather than looking
+ * for it there; dispatch, the effect and observe each replay.
+ */
+async function applyOnce(
+  options: WorkerOptions,
+  held: Map<string, Held>,
+  taskId: string,
+): Promise<WorkerOutcome> {
+  let work = held.get(taskId);
+  if (work === undefined) {
+    const picked = await pickUp(options, taskId);
+    if (!('held' in picked)) return picked;
+    work = picked.held;
+    held.set(taskId, work);
+  }
+  const outcome = await effectOnce(options, taskId, work);
+  // A fault may be a lost answer, so the work is kept; anything else ends it here.
+  if (!('fault' in outcome)) held.delete(taskId);
+  return outcome;
+}
+
+/** The queue and the pickup, reached before any delegation (`agent-envelope.ts`). */
+async function pickUp(
+  options: WorkerOptions,
+  taskId: string,
+): Promise<{ readonly held: Held } | WorkerOutcome> {
   const before = agentCall(options);
   const queued = await before('task.queue', {});
   if (!('body' in queued)) return queued;
@@ -92,19 +125,32 @@ async function applyOnce(options: WorkerOptions, taskId: string): Promise<Worker
   if (work === undefined) return { idle: { taskId } };
   const picked = await before('task.pickup', { reservationId: work['reservationId'] });
   if (!('body' in picked)) return picked;
-  const lease = { leaseId: picked.detail['leaseId'], fence: picked.detail['fence'] };
-  const attemptId = String(picked.detail['attemptId']);
-  const held = agentCall(options, String(picked.detail['credential']));
-  const dispatched = await held('task.dispatch', lease);
+  return {
+    held: {
+      lease: { leaseId: picked.detail['leaseId'], fence: picked.detail['fence'] },
+      attemptId: String(picked.detail['attemptId']),
+      credential: String(picked.detail['credential']),
+    },
+  };
+}
+
+/** Dispatch, the one comment under the attempt's identity, and its observation. */
+async function effectOnce(
+  options: WorkerOptions,
+  taskId: string,
+  { lease, attemptId, credential }: Held,
+): Promise<WorkerOutcome> {
+  const call = agentCall(options, credential);
+  const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
-  const effect = await held('task.comment', {
+  const effect = await call('task.comment', {
     operationId: effectOperationId(attemptId),
     recordId: taskId,
     body: EFFECT_BODY,
     audience: 'internal',
   });
   if (!('body' in effect)) return effect;
-  const observed = await held('task.observe', { ...lease, attemptId });
+  const observed = await call('task.observe', { ...lease, attemptId });
   if (!('body' in observed)) return observed;
   return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
 }
@@ -114,8 +160,9 @@ export function createWorker(options: WorkerOptions): {
   readonly applyOnce: (taskId: string) => Promise<WorkerOutcome>;
 } {
   const call = agentCall(options, options.delegation);
+  const held = new Map<string, Held>();
   return {
-    applyOnce: async (taskId) => await applyOnce(options, taskId),
+    applyOnce: async (taskId) => await applyOnce(options, held, taskId),
     proposeOnce: async () => {
       const capabilities = await call('session.capabilities', {});
       if (!('body' in capabilities)) return capabilities;
