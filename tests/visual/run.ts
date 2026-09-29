@@ -31,6 +31,7 @@ import {
 import {
   checkAssets,
   fetchAssets,
+  readAssets,
   checkMockupTree,
   checkRenderer,
   liveRenderer,
@@ -55,7 +56,7 @@ if (mockupDir === undefined)
   throw new Error('visual: set MOCKUP_DIR to a clone holding the pinned mockup commit');
 
 const packet = readPacket();
-await fetchAssets();
+await fetchAssets(readAssets(), packet);
 checkAssets(packet);
 const tree = checkMockupTree(mockupDir, packet.mockup);
 const catalogue = JSON.parse(readFileSync(`${visualDir}states.json`, 'utf8')) as Catalogue;

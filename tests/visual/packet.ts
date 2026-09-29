@@ -128,7 +128,13 @@ export function verifyBytes(asset: Asset, bytes: Buffer): void {
  * use. The public tree holds no binary file (public-content policy), so the
  * records and licence texts are committed and the bytes are pinned by digest.
  */
-export async function fetchAssets(manifest: { assets: Asset[] } = readAssets()): Promise<void> {
+export async function fetchAssets(
+  manifest: { assets: Asset[] } = readAssets(),
+  packet: Packet = readPacket(),
+): Promise<void> {
+  // The records are checked against the packet before anything is fetched, so
+  // an edited address or file name is refused without a request leaving.
+  checkRecords(packet, manifest);
   const fetchOne = async (asset: Asset, file: string, url: string): Promise<void> => {
     const path = `${fontCache}/${file}`;
     if (existsSync(path)) return verifyBytes(asset, readFileSync(path));
@@ -146,14 +152,19 @@ export async function fetchAssets(manifest: { assets: Asset[] } = readAssets()):
   );
 }
 
-/** The records match the packet, and every cached byte matches its record. */
-export function checkAssets(packet: Packet, manifest: { assets: Asset[] } = readAssets()): void {
+/** The asset records are the ones the packet pins. */
+function checkRecords(packet: Packet, manifest: { assets: Asset[] }): void {
   const digest = sha256(JSON.stringify(manifest.assets));
   if (digest !== packet.assetsDigest) {
     throw new Error(
       `visual: the asset records are ${digest}, the packet pins ${packet.assetsDigest}`,
     );
   }
+}
+
+/** The records match the packet, and every cached byte matches its record. */
+export function checkAssets(packet: Packet, manifest: { assets: Asset[] } = readAssets()): void {
+  checkRecords(packet, manifest);
   for (const asset of manifest.assets) {
     const path = `${fontCache}/${String(asset.file)}`;
     if (asset.file !== undefined && existsSync(path)) verifyBytes(asset, readFileSync(path));
