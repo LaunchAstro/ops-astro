@@ -421,11 +421,77 @@
     transition: none;
   }
 }
+/* -- The sheet tier (MP-3-3), 901 to 1279: the dock is in flow under the
+      content, its tabs on the sheet's top edge; shift stacks panels in one
+      shared height, dragged on the sheet's top edge within [220, window
+      height - 140]. -------------------------------------------------------- */
+.dock[data-mode='sheet'] {
+  position: sticky;
+  inset: auto 0 0;
+  grid-column: 2;
+  grid-row: 2;
+  flex-direction: column;
+  align-items: stretch;
+}
+.dock[data-mode='sheet'] .dock__rail {
+  position: static;
+  order: -1;
+  flex-direction: row;
+  align-self: center;
+  width: auto;
+  padding: var(--s-3) var(--s-3) 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--border);
+  box-shadow: none;
+  transform: none;
+}
+.dock[data-mode='sheet'] .dock__panels {
+  flex-direction: column;
+  height: var(--dock-sheet-h);
+  border-top: 1px solid var(--border);
+  box-shadow: none;
+}
+.dock[data-mode='sheet'] .dpanel,
+.dock[data-mode='phone'] .dpanel {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border-left: 0;
+}
+.dock[data-mode='sheet'] .dpanel + .dpanel {
+  border-top: 1px solid var(--border);
+}
+.dock[data-mode='sheet'] .dpanel__grip,
+.dock[data-mode='phone'] .dpanel__grip {
+  top: -3px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 6px;
+  cursor: row-resize;
+}
+.dock[data-mode='sheet'] .dock__tab[aria-expanded='true']::before {
+  left: 4px;
+  right: 4px;
+  top: auto;
+  bottom: -1px;
+  width: auto;
+  height: 2px;
+}
+
+/* -- The phone strip, 900 and below: the tabs along the bottom edge, on
+      screen at rest (the mockup's D-1), one panel over them, and the page
+      padded so nothing hides under either. Nothing is wider than the
+      window. ---------------------------------------------------------------- */
 @media (width <= 900px) {
   .dock {
     top: auto;
+    right: 0;
+    bottom: 0;
     left: 0;
     flex-direction: column;
+    background: var(--rail-bg);
   }
   .dock__rail {
     position: static;
@@ -453,15 +519,17 @@
     transform: translateX(-50%);
   }
   .dock__panels {
-    height: 560px;
+    height: var(--dock-sheet-h);
     max-height: calc(100dvh - 40px);
   }
   .dpanel {
-    width: 100vw;
+    width: 100%;
   }
-  /* One panel draws on a phone. */
-  .dpanel:not(:last-child) {
-    display: none;
+  .main {
+    padding-bottom: 40px;
+  }
+  .shell:has(.dock[data-mode='phone']:not([data-open='0'])) .main {
+    padding-bottom: calc(var(--dock-sheet-h) + 40px);
   }
   .dock__tab[aria-expanded='true']::before {
     left: 4px;
@@ -470,6 +538,16 @@
     bottom: auto;
     width: auto;
     height: 2px;
+  }
+}
+
+/* Print leaves the dock out, and the shell unwinds to the page alone. */
+@media print {
+  .dock {
+    display: none;
+  }
+  .shell {
+    display: block;
   }
 }
 

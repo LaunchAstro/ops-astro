@@ -14,7 +14,9 @@
 // closes and the caller says so in one line (R39). The mockup drew them below
 // the floor and unequal instead (its D-5).
 //
-// Below 1280 the dock is a sheet under the content, MP-3-3's geometry.
+// Below 1280 the dock is a sheet under the content, and at 900 and below a
+// strip on the bottom edge that draws one panel: MP-3-3's tiers, whose one
+// shared height is `sheetHeight`.
 
 import type { PanelId } from '../panels.ts';
 
@@ -27,6 +29,16 @@ export const CONTENT_FLOOR = 836;
 export const SEAT_FROM = 1440;
 /** Below this the side tier gives way to the sheet. */
 export const SIDE_FROM = 1280;
+/** At this width and below the dock is the phone strip. */
+export const PHONE_TO = 900;
+/** The one sheet height every tier below the side shares, and its clamp. */
+export const SHEET_DEFAULT = 460;
+export const SHEET_FLOOR = 220;
+export const SHEET_GAP = 140;
+
+/** The sheet height held within [220, window height - 140]. */
+export const clampSheet = (height: number, windowHeight: number): number =>
+  Math.max(SHEET_FLOOR, Math.min(Math.round(height), windowHeight - SHEET_GAP));
 
 export interface DockGeometry {
   readonly mode: 'rest' | 'seated' | 'floating' | 'sheet' | 'phone';
@@ -63,6 +75,7 @@ export function dockGeometry(input: {
     groupLeft: viewport - panelWidth * open.length,
     content,
   });
+  if (viewport <= PHONE_TO) return at('phone');
   if (viewport < SIDE_FROM) return at('sheet');
   // One close at most: the side tier holds two panels at the floor at 1280.
   if (open.length > 1 && Math.floor(beside / open.length) < PANEL_FLOOR) {

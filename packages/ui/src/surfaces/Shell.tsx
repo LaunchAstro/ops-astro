@@ -32,6 +32,8 @@ export interface ShellProps {
   readonly dock: DockProps | null;
   /** The dock's grid track: the seated group's width, or 0 while it floats. */
   readonly dockWidth?: number;
+  /** The one sheet height below the side tier, so the page can be padded under it. */
+  readonly dockSheetHeight?: number;
   /** Every click inside the shell, heard after its target's own handlers. */
   readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   readonly children: ReactNode;
@@ -39,10 +41,12 @@ export interface ShellProps {
 
 export function Shell(props: ShellProps): ReactElement {
   const ready = useReadyAfterFirstLayout();
-  const track =
-    props.dockWidth === undefined
-      ? undefined
-      : ({ '--dock-w': `${String(props.dockWidth)}px` } as CSSProperties);
+  const track = {
+    ...(props.dockWidth === undefined ? {} : { '--dock-w': `${String(props.dockWidth)}px` }),
+    ...(props.dockSheetHeight === undefined
+      ? {}
+      : { '--dock-sheet-h': `${String(props.dockSheetHeight)}px` }),
+  } as CSSProperties;
   return (
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- heard, not handled: each door is a button or a link
     <div

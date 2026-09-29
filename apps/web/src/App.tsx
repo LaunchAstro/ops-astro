@@ -252,6 +252,7 @@ export function App(props: AppProps): ReactElement {
       }
       onClick={dock.onDoor}
       dockWidth={layout.geometry.mode === 'seated' ? layout.geometry.groupWidth : 0}
+      dockSheetHeight={layout.sheetHeight}
       // The client face has no dock (R17), and nobody signed out has one.
       dock={
         session === null || at?.page.namespace === 'portal'
@@ -285,7 +286,11 @@ function dockProps(input: {
   readonly screen: Omit<ScreenContext, 'params'>;
 }): DockProps {
   const { registry, dock, layout } = input;
-  const drawn = new Set(layout.geometry.open);
+  // On a phone one panel draws: the one opened last.
+  const last = dock.state.open.at(-1);
+  const drawn = new Set(
+    layout.geometry.mode === 'phone' ? (last === undefined ? [] : [last]) : layout.geometry.open,
+  );
   const tabs = dockTabs({}, registry);
   const byId = (id: string): PanelId | null =>
     isPanelId(id) && tabs.some((tab) => tab.id === id) ? id : null;
@@ -296,7 +301,13 @@ function dockProps(input: {
       count: tab.count,
       open: dock.state.open.includes(tab.id),
     })),
-    layout: { mode: layout.geometry.mode, panelWidth: layout.geometry.panelWidth },
+    layout: {
+      mode: layout.geometry.mode,
+      panelWidth: layout.geometry.panelWidth,
+      sheetHeight: layout.sheetHeight,
+      sheetMax: layout.sheetMax,
+    },
+    onSheetResize: layout.setSheetHeight,
     stamp: layout.stamp,
     onResize: layout.setWidth,
     onResizeEnd: layout.setWidth,

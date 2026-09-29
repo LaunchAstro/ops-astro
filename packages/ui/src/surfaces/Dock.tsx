@@ -11,10 +11,10 @@
 // is measured here is layout: whether the rail sits so near the window's left
 // edge that its callout must open to the right, and where a grip is dragged.
 //
-// The grip sets one width for every panel (MP-3-2). The group is anchored at
-// the right edge, so a pointer moved left by d widens each of n panels by d/n.
-// The keyboard path is the same separator: the arrows step it, shift steps it
-// further, Home resets it. Nothing animates until the first layout is drawn.
+// The grip sets one width for every panel (MP-3-2) and, below the side tier,
+// the sheet's one height (MP-3-3), by pointer or by the same separator's keys:
+// the arrows step it, shift steps it further, Home resets it. Nothing
+// animates until the first layout is drawn.
 
 import {
   useEffect,
@@ -56,11 +56,16 @@ export interface DockLayout {
   readonly mode: 'rest' | 'seated' | 'floating' | 'sheet' | 'phone';
   /** The one width every open panel is drawn at. */
   readonly panelWidth: number;
+  /** Below the side tier: the one sheet height, and the most the window allows. */
+  readonly sheetHeight?: number;
+  readonly sheetMax?: number;
 }
 
 /** The panel floor and default: the grip never offers less, and Home returns to the default. */
 export const DOCK_PANEL_FLOOR = 380;
 export const DOCK_PANEL_DEFAULT = 550;
+export const DOCK_SHEET_FLOOR = 220;
+export const DOCK_SHEET_DEFAULT = 460;
 const STEP = 16;
 const BIG_STEP = 64;
 
@@ -71,6 +76,8 @@ export interface DockProps {
   readonly onResize?: (width: number) => void;
   /** The width the grip was let go at, to keep. */
   readonly onResizeEnd?: (width: number) => void;
+  /** The sheet's one height, while its grip moves and when it is let go. */
+  readonly onSheetResize?: (height: number) => void;
   /** Which walk of the history the panels' scrollTop belongs to; each new walk applies it once. */
   readonly restoreWalk?: number;
   /** A panel's body scrolled. */
@@ -101,12 +108,20 @@ export function Dock(props: DockProps): ReactElement {
   const [dragging, setDragging] = useState(false);
   const anyOpen = props.panels.length > 0;
   const width = props.layout?.panelWidth ?? DOCK_PANEL_DEFAULT;
+  const height = props.layout?.sheetHeight ?? DOCK_SHEET_DEFAULT;
+  // Below the side tier the panels share one height, dragged on the sheet's top edge.
+  const sheet = props.layout?.mode === 'sheet' || props.layout?.mode === 'phone';
   return (
     <div
       className={`dock${flip ? ' dock--tipflip' : ''}`}
       data-open={anyOpen ? String(props.panels.length) : '0'}
       data-mode={props.layout?.mode ?? (anyOpen ? 'floating' : 'rest')}
-      style={{ '--dock-panel-w': `${String(width)}px` } as CSSProperties}
+      style={
+        {
+          '--dock-panel-w': `${String(width)}px`,
+          '--dock-sheet-h': `${String(height)}px`,
+        } as CSSProperties
+      }
       {...(ready ? { 'data-ready': '' } : {})}
       {...(dragging ? { 'data-dragging': '' } : {})}
     >
@@ -117,19 +132,38 @@ export function Dock(props: DockProps): ReactElement {
       )}
       {anyOpen ? (
         <div className="dock__panels">
-          {props.panels.map((panel) => (
+          {props.panels.map((panel, index) => (
             <DockPanelView
               key={panel.id}
               panel={panel}
               dock={props}
               grip={
-                <Grip
-                  width={width}
-                  count={props.panels.length}
-                  onDragging={setDragging}
-                  onResize={props.onResize}
-                  onResizeEnd={props.onResizeEnd}
-                />
+                sheet ? (
+                  index === 0 ? (
+                    <Grip
+                      axis="y"
+                      value={height}
+                      min={DOCK_SHEET_FLOOR}
+                      max={props.layout?.sheetMax}
+                      reset={DOCK_SHEET_DEFAULT}
+                      per={1}
+                      onDragging={setDragging}
+                      onChange={props.onSheetResize}
+                      onCommit={props.onSheetResize}
+                    />
+                  ) : null
+                ) : (
+                  <Grip
+                    axis="x"
+                    value={width}
+                    min={DOCK_PANEL_FLOOR}
+                    reset={DOCK_PANEL_DEFAULT}
+                    per={props.panels.length}
+                    onDragging={setDragging}
+                    onChange={props.onResize}
+                    onCommit={props.onResizeEnd}
+                  />
+                )
               }
             />
           ))}
@@ -205,57 +239,74 @@ export function useReadyAfterFirstLayout(): boolean {
   return ready;
 }
 
+/**
+ * One separator for either measure. Along x it is the panels' one width: the
+ * group is anchored right, so a pointer moved left by d widens each of `per`
+ * panels by d / per, and ArrowLeft widens. Along y it is the sheet's one
+ * height: a pointer moved up by d makes it d taller, and ArrowUp does.
+ */
 function Grip(props: {
-  readonly width: number;
-  readonly count: number;
+  readonly axis: 'x' | 'y';
+  readonly value: number;
+  readonly min: number;
+  readonly max?: number | undefined;
+  readonly reset: number;
+  readonly per: number;
   readonly onDragging: (dragging: boolean) => void;
-  readonly onResize: DockProps['onResize'];
-  readonly onResizeEnd: DockProps['onResizeEnd'];
+  readonly onChange: ((value: number) => void) | undefined;
+  readonly onCommit: ((value: number) => void) | undefined;
 }): ReactElement {
-  const start = useRef<{ readonly x: number; readonly width: number } | null>(null);
-  const at = (clientX: number): number => {
-    const from = start.current ?? { x: clientX, width: props.width };
-    return Math.max(DOCK_PANEL_FLOOR, Math.round(from.width + (from.x - clientX) / props.count));
+  const start = useRef<{ readonly at: number; readonly value: number } | null>(null);
+  const held = (value: number): number =>
+    Math.max(props.min, Math.min(Math.round(value), props.max ?? Number.POSITIVE_INFINITY));
+  const along = (event: PointerEvent<HTMLDivElement>): number =>
+    props.axis === 'x' ? event.clientX : event.clientY;
+  const at = (point: number): number => {
+    const from = start.current ?? { at: point, value: props.value };
+    return held(from.value + (from.at - point) / props.per);
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    start.current = { x: event.clientX, width: props.width };
+    start.current = { at: along(event), value: props.value };
     event.currentTarget.setPointerCapture(event.pointerId);
     props.onDragging(true);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    if (start.current !== null) props.onResize?.(at(event.clientX));
+    if (start.current !== null) props.onChange?.(at(along(event)));
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
     if (start.current === null) return;
-    const width = at(event.clientX);
+    const value = at(along(event));
     start.current = null;
     props.onDragging(false);
-    props.onResizeEnd?.(width);
+    props.onCommit?.(value);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const step = event.shiftKey ? BIG_STEP : STEP;
+    const [grow, shrink] =
+      props.axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
     const next =
-      event.key === 'ArrowLeft'
-        ? props.width + step
-        : event.key === 'ArrowRight'
-          ? props.width - step
+      event.key === grow
+        ? props.value + step
+        : event.key === shrink
+          ? props.value - step
           : event.key === 'Home'
-            ? DOCK_PANEL_DEFAULT
+            ? props.reset
             : null;
     if (next === null) return;
     event.preventDefault();
-    const width = Math.max(DOCK_PANEL_FLOOR, next);
-    props.onResize?.(width);
-    props.onResizeEnd?.(width);
+    const value = held(next);
+    props.onChange?.(value);
+    props.onCommit?.(value);
   };
   return (
     <div
       className="dpanel__grip"
       role="separator"
-      aria-orientation="vertical"
-      aria-label="Panel width"
-      aria-valuenow={props.width}
-      aria-valuemin={DOCK_PANEL_FLOOR}
+      aria-orientation={props.axis === 'x' ? 'vertical' : 'horizontal'}
+      aria-label={props.axis === 'x' ? 'Panel width' : 'Sheet height'}
+      aria-valuenow={props.value}
+      aria-valuemin={props.min}
+      aria-valuemax={props.max}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

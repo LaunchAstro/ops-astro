@@ -37,17 +37,25 @@ function memory(): StorageLike {
   };
 }
 
-/** The body of the first `@media` block whose query is exactly `query`. */
+/** The bodies of every `@media` block whose query is exactly `query`, joined. */
 function media(query: string): string {
-  const start = SHEET.indexOf(`@media ${query} {`);
-  if (start < 0) return '';
-  let depth = 0;
-  for (let index = SHEET.indexOf('{', start); index < SHEET.length; index += 1) {
-    if (SHEET[index] === '{') depth += 1;
-    if (SHEET[index] === '}') depth -= 1;
-    if (depth === 0) return SHEET.slice(start, index);
+  const bodies: string[] = [];
+  let start = SHEET.indexOf(`@media ${query} {`);
+  while (start >= 0) {
+    let depth = 0;
+    let end = SHEET.length;
+    for (let index = SHEET.indexOf('{', start); index < SHEET.length; index += 1) {
+      if (SHEET[index] === '{') depth += 1;
+      if (SHEET[index] === '}') depth -= 1;
+      if (depth === 0) {
+        end = index;
+        break;
+      }
+    }
+    bodies.push(SHEET.slice(start, end));
+    start = SHEET.indexOf(`@media ${query} {`, end);
   }
-  return '';
+  return bodies.join('\n');
 }
 
 const live: Mounted[] = [];
