@@ -98,6 +98,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // A cleared secret, whole with no sealed value (C31, 0032).
+  'public.custody_secrets': {
+    name: 'restricted-calls.seed',
+    scope_kind: 'business',
+    scope_id: null,
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
