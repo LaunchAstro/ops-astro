@@ -11,10 +11,10 @@
 //   node --env-file=<retention env> scripts/ops/backup.mjs expire
 //     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention
 //
-// `run` takes one pg_dump of the product's schemas, in a throwaway container
-// of staging's own pinned Postgres image, and adds it to the store. `expire`
-// deletes every backup past the store's window. What each may do is held by
-// the server (deploy/staging/backup-store.sql); the store writes the receipts.
+// `run` takes one pg_dump of the product's schemas and `auth`, in a throwaway
+// container of staging's own pinned Postgres image, and adds it to the store.
+// `expire` deletes every backup past the store's window. What each may do is
+// held by the server (deploy/staging/backup-store.sql), which writes receipts.
 //
 // Each run prints one JSON line, recorded or failed, and exits 0 or 1. A
 // failed line names the stage and nothing else: an error from pg_dump or the
@@ -27,7 +27,8 @@ import postgres from 'postgres';
 
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
-const SCHEMAS = ['public', 'ops'];
+// The product's schemas and the auth server's sign-in data in the same database.
+const SCHEMAS = ['public', 'ops', 'auth'];
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -54,25 +55,18 @@ export function pgDump(sourceUrl) {
   const args = [
     'run',
     '--rm',
-    '--name',
-    `${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
-    '--network',
-    staging.networks.staging.name,
-    '-e',
-    'PGPASSWORD',
+    `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
+    `--network=${staging.networks.staging.name}`,
+    '--env=PGPASSWORD',
     staging.services.db.image,
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,
     ...SCHEMAS.map((schema) => `--schema=${schema}`),
-    '--host',
-    url.hostname,
-    '--port',
-    url.port || '5432',
-    '--username',
-    decodeURIComponent(url.username),
-    '--dbname',
-    url.pathname.slice(1),
+    `--host=${url.hostname}`,
+    `--port=${url.port || '5432'}`,
+    `--username=${decodeURIComponent(url.username)}`,
+    `--dbname=${url.pathname.slice(1)}`,
   ];
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, {
@@ -89,6 +83,11 @@ export function pgDump(sourceUrl) {
   });
 }
 
+/** A run's record when it fails: the stage only, never an error's text. */
+function failed(event, stage) {
+  return { event, outcome: 'failed', stage, at: new Date().toISOString() };
+}
+
 /** One scheduled backup. Returns the run's record; never throws. */
 export async function runBackup({ dump, storeUrl }) {
   const at = new Date().toISOString();
@@ -96,7 +95,7 @@ export async function runBackup({ dump, storeUrl }) {
   try {
     body = await dump();
   } catch {
-    return { event: 'backup run', outcome: 'failed', stage: 'dump', at };
+    return failed('backup run', 'dump');
   }
   try {
     await asRole(
@@ -105,7 +104,7 @@ export async function runBackup({ dump, storeUrl }) {
       (sql) => sql`insert into backups.archives (body) values (${body})`,
     );
   } catch {
-    return { event: 'backup run', outcome: 'failed', stage: 'store', at };
+    return failed('backup run', 'store');
   }
   return { event: 'backup run', outcome: 'recorded', at, bytes: body.length };
 }
@@ -124,32 +123,38 @@ export async function expireBackups({ storeUrl }) {
     );
     return { event: 'backup expired', outcome: 'recorded', at, count: deleted.count };
   } catch {
-    return { event: 'backup expired', outcome: 'failed', stage: 'store', at };
+    return failed('backup expired', 'store');
   }
 }
 
-function need(name) {
-  const value = process.env[name];
-  if (value === undefined || value === '') throw new Error(`${name} is unset`);
-  return value;
+/** An unset or empty variable reads as unset. */
+function env(name) {
+  return process.env[name] || undefined;
 }
 
 async function main(command) {
   if (command === 'run') {
-    const source = need('BACKUP_SOURCE_URL');
-    return await runBackup({ dump: () => pgDump(source), storeUrl: need('BACKUP_STORE_URL') });
+    const [source, storeUrl] = [env('BACKUP_SOURCE_URL'), env('BACKUP_STORE_URL')];
+    if (source === undefined || storeUrl === undefined) return failed('backup run', 'config');
+    return await runBackup({ dump: () => pgDump(source), storeUrl });
   }
-  if (command === 'expire') return await expireBackups({ storeUrl: need('BACKUP_RETENTION_URL') });
-  throw new Error('usage: backup.mjs run | expire');
+  if (command === 'expire') {
+    const storeUrl = env('BACKUP_RETENTION_URL');
+    if (storeUrl === undefined) return failed('backup expired', 'config');
+    return await expireBackups({ storeUrl });
+  }
+  return undefined;
 }
 
+// A run that cannot start is still a run: it goes to the job's log like any
+// other, so a missing credential is seen where a failed dump would be.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  try {
-    const record = await main(process.argv[2]);
+  const record = await main(process.argv[2]);
+  if (record === undefined) {
+    process.stderr.write('usage: backup.mjs run | expire\n');
+    process.exitCode = 2;
+  } else {
     process.stdout.write(`${JSON.stringify(record)}\n`);
     process.exitCode = record.outcome === 'recorded' ? 0 : 1;
-  } catch (error) {
-    process.stderr.write(`${error.message}\n`);
-    process.exitCode = 2;
   }
 }
