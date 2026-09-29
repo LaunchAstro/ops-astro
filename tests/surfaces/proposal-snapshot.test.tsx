@@ -161,7 +161,7 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

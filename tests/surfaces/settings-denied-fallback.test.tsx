@@ -36,7 +36,7 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
 
 type ReadAnswer = 'rows' | 'denied' | 'unavailable';
 
@@ -135,7 +135,7 @@ const open = async (
         new OperationsClient({
           origin: '',
           businessKey: ADA.businessKey,
-          token: ADA.token,
+          signedIn: true,
           fetch: server.fetch,
         })
       }

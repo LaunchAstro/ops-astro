@@ -7,11 +7,14 @@
 
 export {
   COMMAND_SURFACE,
+  CSRF_HEADER,
   declarationOf,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
   READS,
+  SESSION_COOKIE,
+  SESSION_PATH,
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';

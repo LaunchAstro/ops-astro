@@ -298,6 +298,15 @@ const ROWS = [
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
   },
+  // A browser session request that did not come from this application's own
+  // pages (S0-6c). A 403 and not a 401: the session may be good, and ending it
+  // would let any page on the web sign a person out.
+  {
+    code: 'AUTH_CROSS_SITE',
+    status: 403,
+    meaning: 'A session cookie arrived without the same-origin header',
+    source: 'S0-6 csrf',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

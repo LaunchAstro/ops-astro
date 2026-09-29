@@ -212,7 +212,7 @@ const client = (fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'tok',
+    signedIn: true,
     fetch,
     newOperationId: () => 'op-1',
   });

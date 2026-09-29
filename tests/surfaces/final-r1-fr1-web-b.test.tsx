@@ -90,7 +90,7 @@ function staleServer(): typeof globalThis.fetch {
 
 const settingsScreen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />
@@ -166,6 +166,7 @@ describe('FR1-WEB-B #46: the sign-in failure', () => {
     const page = await mount(
       <SignIn
         gotrueUrl="http://identity.invalid"
+        apiOrigin=""
         fetch={gotrue}
         onSignedIn={() => {}}
         ended={null}

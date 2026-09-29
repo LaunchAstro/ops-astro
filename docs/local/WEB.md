@@ -28,7 +28,15 @@ reports the API as unavailable, which is the intended reading.
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token. The API verifies the signature.
+application never mints or inspects a token. It hands the token straight to
+`POST /api/session`, which verifies it and keeps it as an `HttpOnly` cookie, so
+no script in the page, an injected one included, can read it (S0-6c,
+`docs/local/API.md`, "Who is calling"). Every call the client makes carries
+`x-ops-astro-csrf: 1` for the API's CSRF check, and signing out asks the API to
+clear the cookie. The built page's content policy (`apps/web/index.html`) runs
+only this origin's own script files. The dev server drops it, because fast
+refresh is an inline script. `tests/browser/content-policy.mjs` shows a browser
+refusing a planted script under it.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.

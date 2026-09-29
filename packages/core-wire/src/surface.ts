@@ -502,6 +502,27 @@ export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
  */
 export const DELEGATION_HEADER = 'x-agent-delegation';
 
+/**
+ * Where a browser trades the provider's token for its session cookie, and
+ * `…/end` where it gives the cookie back. Outside both prefixes: it runs no
+ * command and names no business.
+ */
+export const SESSION_PATH = '/api/session';
+
+/**
+ * The browser session's cookie. The API sets it `HttpOnly`, so no script in a
+ * page reads it, and scopes it to the person prefix, so it never reaches the
+ * agent's.
+ */
+export const SESSION_COOKIE = 'ops-astro-session';
+
+/**
+ * The header every browser call carries and the API requires beside the
+ * cookie. A page on another origin cannot add it without a preflight this API
+ * never answers, so a request carrying it came from this application's pages.
+ */
+export const CSRF_HEADER = 'x-ops-astro-csrf';
+
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
