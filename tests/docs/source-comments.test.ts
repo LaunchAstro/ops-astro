@@ -162,6 +162,19 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(commentLines(source).some(({ comment }) => cites(comment) !== undefined)).toBe(true);
   });
 
+  it('Sol proof, criterion 4: rejects inline and multiline review comments', () => {
+    const sources = [
+      'const n = 1;// Final review R1 #10',
+      ['const n = 1; /*', ' * Final review R1 #10', ' */'].join('\n'),
+      ['<!--', 'Final review R1 #10', '-->'].join('\n'),
+    ];
+    expect(
+      sources.map((source) =>
+        commentLines(source).some(({ comment }) => cites(comment) !== undefined),
+      ),
+    ).toEqual([true, true, true]);
+  });
+
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
@@ -172,6 +185,22 @@ describe('a source comment cites no review round, lane or finding id', () => {
       commentLines(readFileSync(new URL(file, root), 'utf8'))
         .filter(({ comment }) =>
           /\breview of the draft\b|\bused to say\b|\bcross-model review found\b/iu.test(comment),
+        )
+        .map(({ line, comment }) => `${file}:${line} ${comment.trim()}`),
+    );
+    expect(histories).toEqual([]);
+  });
+
+  it('Sol proof, criterion 5: remaining source comments state the current rule', () => {
+    const files = [
+      'packages/core-runtime/src/refusals.ts',
+      'packages/core-runtime/src/only.ts',
+      'packages/core-wire/src/surface.ts',
+    ];
+    const histories = files.flatMap((file) =>
+      commentLines(readFileSync(new URL(file, root), 'utf8'))
+        .filter(({ comment }) =>
+          /\bwas claimed that way until\b|\bused to say\b|\bwas once derived\b/iu.test(comment),
         )
         .map(({ line, comment }) => `${file}:${line} ${comment.trim()}`),
     );
