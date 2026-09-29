@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-02: the pinned read, the half of `definitions.ts` a run uses while it
-// works. It runs under the caller's live lease on the run, resolves nothing by
-// name or path when the pin is missing, and hands the bytes back only after
-// their ledger row, the audit copy and the read's one audit event are written.
+// works. It runs under the caller's live lease on the run, held locked while
+// it records, resolves nothing by name or path when the pin is missing, and
+// hands the bytes back only after their ledger row, the audit copy and the
+// read's one audit event are written.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
@@ -16,6 +17,7 @@ import {
   type InstructionSource,
 } from './definitions.ts';
 import { leaseReason } from './lease-ownership.ts';
+import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** The pinned read's one audit event, written by the caller's audit writer. */
@@ -70,13 +72,7 @@ export async function readPinned(
   ) {
     return notOwned();
   }
-  const leases = await tx.query(
-    `select 1 from public.leases
-      where business_id = $1 and id = $2 and run_id = $3 and holder_actor_id = $4
-        and state = 'live' and expires_at > now()`,
-    [tx.businessId, request.leaseId, request.runId, request.holderActorId],
-  );
-  if (leases.length === 0) return notOwned();
+  if (!(await leaseHeld(tx, request))) return notOwned();
   const pins = await tx.query<PinRow>(
     `select ref_kind, path, manifest from public.run_definition_pins
       where business_id = $1 and run_id = $2`,
@@ -97,6 +93,24 @@ export async function readPinned(
   const sequence = await recordRead(tx, request, identity, isEntry, bytes);
   await audit(tx, { runId: request.runId, sequence, ...identity });
   return { ok: true, value: { bytes, identity, sequence, isEntry } };
+}
+
+/**
+ * The caller's lease, taken under the runtime's lock order (class `lease`,
+ * the only lock the read takes) and then read as it stands: a release or an
+ * expiry committed while the read waited on the row is seen, and judged on the
+ * database clock at the moment the lock is held, so the read cannot record
+ * against a lease that ended under it.
+ */
+async function leaseHeld(tx: TenantQuery, request: ReadRequest): Promise<boolean> {
+  await acquire(tx, [{ lockClass: 'lease', id: request.leaseId }]);
+  const leases = await tx.query(
+    `select 1 from public.leases
+      where business_id = $1 and id = $2 and run_id = $3 and holder_actor_id = $4
+        and state = 'live' and expires_at > clock_timestamp()`,
+    [tx.businessId, request.leaseId, request.runId, request.holderActorId],
+  );
+  return leases.length > 0;
 }
 
 async function entryRead(tx: TenantQuery, runId: string): Promise<boolean> {

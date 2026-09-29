@@ -1471,7 +1471,9 @@ for a schedule, event, timer or the system; `DELEGATION_EXCLUDES_ACTIVATION`
 for an agent). `captureManifest` takes the accept-time manifest,
 `pinBootstrapFile` writes the pin from an admitted activation only, and
 `readPinned` is the pinned read. It runs under the caller's live lease on the
-run. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
+run, which it takes `for update` (lock class `lease`, its only lock) and then
+judges on the database clock, so a lease released or expired while the read
+waited is refused and nothing is recorded. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
 and bytes that are not the manifest's are `DEFINITION_DIGEST_MISMATCH`. It
 writes its ledger row, the audit copy and its one audit event before it returns
 the bytes, so a read that cannot be recorded fails the transaction and returns
