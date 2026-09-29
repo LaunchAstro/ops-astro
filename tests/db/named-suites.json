@@ -83,7 +83,8 @@
     "W0-INTEG names t2d-late-effect-and-wrong-client (T2d's review proofs, first filed as sol-t2d-review) as an invariant beside t2d-settle: a concurrent failure leaves no late effect on the settled attempt, and a wrong-client effect identity never waits on that client's step. It opens a database and was unnamed at T2d's own head; main's named-suite manifest refuses that on the integration line.",
     "W0-INTEG's group A lint commit (CQ-12 ratchet) splits four named suites by behaviour, each case unchanged, and names the new files in the same list as the file they came from: cq-2-start-up-keys (from cq-2), task-explicit-null (from task-lifecycle), t2d-settle-isolation (from t2d-settle) and pickup-version-binding (from agent-pickup-payload).",
     "C4 (U26) names c4-change-record as an invariant (the live change record 0036: changes since returns only the tasks stamped after the point, a write open at the point is returned next time, a rolled-back write leaves no stamp, one query, a malformed point refused before any query, two bulk writers in opposite orders both land, the record holds no content; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked).",
-    "C4 (U26) names c4-live-stream as an invariant (one event stream per tab: every topic it names on one stream, each asked about at join and before each delivery; a refused topic closed alone and all refused the first refusal; hostile topic sets refused whole before any read; an ended session closes every topic; two browsers on one task within 1 s at p95; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked)."
+    "C4 (U26) names c4-live-stream as an invariant (one event stream per tab: every topic it names on one stream, each asked about at join and before each delivery; a refused topic closed alone and all refused the first refusal; hostile topic sets refused whole before any read; an ended session closes every topic; two browsers on one task within 1 s at p95; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked).",
+    "C4 (U26) names c4-live-audit as an invariant (live-sync 6: the live channel adds no audit entry and no view record of its own; opening a stream records the login's one authentication attempt however many topics it names; each delivery's check and the per-topic recheck write no row anywhere in the database; a page re-read after an invalidation writes exactly one read event and its own attempt; a revoked grant is still closed by the recheck)."
   ],
   "invariant": [
     "tests/runtime/run-progress-read.test.ts",
@@ -91,6 +92,7 @@
     "tests/api/t2f-live-channel.test.ts",
     "tests/api/c4-change-record.test.ts",
     "tests/api/c4-live-stream.test.ts",
+    "tests/api/c4-live-audit.test.ts",
     "tests/runtime/t2c1-dispatch.test.ts",
     "tests/runtime/t2c1-dispatch-migration.test.ts",
     "tests/runtime/t2c2-effect.test.ts",
