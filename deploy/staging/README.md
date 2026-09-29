@@ -59,6 +59,14 @@ data does not survive a restart.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+The backup store is a database server of its own, `backups`
+(`ops-astro-staging-backups`), on staging's internal network with no port on
+the machine. Its data is on `ops-astro-staging-backups-data`, the one
+persistent volume staging has, so backups and drill receipts outlive a restart
+while staging's own database, memory-backed, does not. S0-1's disk row names
+that volume as its only exception; the store bounds it itself (`S0-3 store
+bounded`).
+
 The restore drill is a person's act under `operations:manage`, asked of the
 operator gate before anything else, like staging preparation and the promotion.
 Each drill it runs, passed or failed, leaves a receipt in the backup store
