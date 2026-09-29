@@ -110,9 +110,20 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
   });
 
   it('Sol proof, criterion 2: the fixture honours requested step and event load', async () => {
+    expect(report.heldBack).toStrictEqual([]);
     expect(await one('select count(*) n from public.planned_steps')).toBe(SMALL.steps);
     expect(await one('select count(*) n from public.run_events')).toBe(SMALL.runEvents);
-    expect(report.heldBack).toStrictEqual([]);
+  });
+
+  it('Sol proof, criterion 2: every fixture step appears in its rendered evidence', async () => {
+    const missing = `select count(*) n from public.planned_steps s
+      join public.evidence_packs e on e.business_id = s.business_id and e.run_id = s.run_id
+      where not exists (
+        select 1 from jsonb_array_elements(e.rendered -> 'steps') shown
+        where (shown ->> 'ordinal')::int = s.ordinal
+          and shown ->> 'kind' = s.kind and shown -> 'payload' = s.payload
+      )`;
+    expect(await one(missing)).toBe(0);
   });
 
   it('gives R4 exactly one grant, scoped to one task', async () => {
