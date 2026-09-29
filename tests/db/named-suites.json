@@ -229,6 +229,7 @@
     "tests/reads/inbox-named.test.ts",
     "tests/cli/inbox-process.test.ts",
     "tests/cli/inbox-three-surfaces.test.ts",
+    "tests/cli/inbox-readback.test.ts",
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
