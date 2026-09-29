@@ -52,7 +52,7 @@ export async function decideOnGate(
   }
   // Escalate names its recipient and nothing else takes one: a field the
   // decision would not honour is refused, never dropped, and a carried `null`
-  // is a carried field (Sol review 1 on #153, criterion 2).
+  // is a carried field.
   const carried = fields.recipientPersonId !== undefined;
   const recipient = fields.recipientPersonId ?? undefined;
   if (decision === 'escalate' ? recipient === undefined : carried) {

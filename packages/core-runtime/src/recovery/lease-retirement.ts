@@ -231,7 +231,7 @@ export async function cancelAndClassify(
       /**
        * Asked under the locks beside `write`. `task.cancel` passes `decide`
        * (T3a, `gate:decide`), so a decide grant that lapses while this waits on
-       * its locks refuses the cancel (Sol review 1 on #153, criterion 3).
+       * its locks refuses the cancel.
        */
       readonly alsoDecide?: boolean;
     };

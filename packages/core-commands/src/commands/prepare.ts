@@ -427,7 +427,7 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
         id,
       ),
   ],
-  // T3a (Sol review 1 on #153, criterion 2): a decision is asked on the task
+  // T3a: a decision is asked on the task
   // its gate belongs to, so a person holding decide on exactly that task
   // reaches the runtime, which asks it again under its locks and, once the
   // gate is escalated, asks business scope. A gate that resolves to nothing

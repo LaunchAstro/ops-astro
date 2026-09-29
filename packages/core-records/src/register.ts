@@ -452,7 +452,7 @@ const ROWS = [
     meaning: 'A later version of the proposal exists',
     source: 'contract 4.4',
     // `decide` on a gate whose version was superseded (T3a; it replaced
-    // L4's `VERSION_SUPERSEDED`).
+    // the earlier `VERSION_SUPERSEDED`).
     runtime: true,
   },
   {
@@ -461,7 +461,7 @@ const ROWS = [
     meaning: 'The proposal reaches past what was authorised',
     source: 'contract 4.3',
     // `propose` past the envelope, the cap or its currency, or with no
-    // positive ceiling (T3a; it replaced L4's `PROPOSAL_OUT_OF_SCOPE`).
+    // positive ceiling (T3a; it replaced the earlier `PROPOSAL_OUT_OF_SCOPE`).
     runtime: true,
   },
   {
