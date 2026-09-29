@@ -84,7 +84,8 @@
     "API-3 read audit (SL14): api-3-read-audit replaces the held TR-S-B3-1 todo (orchestrator decision 29 Sep 2026: I13 wins, every read writes an audit event); it holds each agent CLI read to exactly one audit event, applied or refused, read back from audit_events.",
     "API-4 (SL14) adds api-4: map status (frontier, fog and counts in one call, one query on the read models, current after a write, detail levels, the three isolation crossings); its budget, quota and read-audit lines sit in the api-3 budget, quota and read-audit suites. api-4-context: work this ticket (the whole bundle in one call and one statement, current after a write, detail levels, withheld parts named, the scripted run with zero follow-up reads, and, in api-4-context-isolation, a refusal per key and the three isolation crossings).",
     "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table.",
-    "WF-6 (SL14) adds tests/wayfinder/wf-6.test.ts (every charting pre-answer cites its source and an uncited one is refused; a pre-answer cites only a closed ticket the charter can read; charting resolves nothing; the agent never resolves a grilling ticket it filed; the audit readback and chain; the task:write refusal) wf-6-isolation.test.ts (the three crossings, a cited source withheld from a reader who may not read it) and wf-6-cli.test.ts (map.chart with pre-answers through the generated client, the same result and refusal as the envelope). wf-6-held.test.ts and wf-7-held.test.ts hold todos only and open no database, so they are neither named nor listed."
+    "WF-6 (SL14) adds tests/wayfinder/wf-6.test.ts (every charting pre-answer cites its source and an uncited one is refused; a pre-answer cites only a closed ticket the charter can read; charting resolves nothing; the agent never resolves a grilling ticket it filed; the audit readback and chain; the task:write refusal) wf-6-isolation.test.ts (the three crossings, a cited source withheld from a reader who may not read it) and wf-6-cli.test.ts (map.chart with pre-answers through the generated client, the same result and refusal as the envelope). wf-6-held.test.ts and wf-7-held.test.ts hold todos only and open no database, so they are neither named nor listed.",
+    "API-5 (SL14, U30) adds api-5 (one case per tracker verb through the verb CLI, the owner check flow, the write budget), api-5-audit (each tracker change recorded in the writing transaction and the audit chain; a refusal per key), api-5-isolation (the three crossings over every tracker operation), api-5-quota (burst and calls at once over the tracker operations) and api-5-conformance (the scripted wayfinder run against the local-Markdown tracker and Ops Astro). api-5-contract.test.ts is a pure unit suite (the tracker file against the upstream contract, the spec table and the pinned digests) and must not be named; api-5-tracker.ts and tracker-backends.ts are harnesses."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -319,6 +320,11 @@
     "tests/web/wf-4.test.tsx",
     "tests/web/wf-4-isolation.test.tsx",
     "tests/web/wf-5.test.tsx",
-    "tests/web/wf-5-isolation.test.tsx"
+    "tests/web/wf-5-isolation.test.tsx",
+    "tests/cli/api-5.test.ts",
+    "tests/cli/api-5-audit.test.ts",
+    "tests/cli/api-5-isolation.test.ts",
+    "tests/cli/api-5-quota.test.ts",
+    "tests/cli/api-5-conformance.test.ts"
   ]
 }
