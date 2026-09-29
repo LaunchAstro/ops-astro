@@ -94,10 +94,16 @@ export async function caseN7(run) {
 async function postClaimingSystemOwnedFields(page, taskId, revision) {
   return await page.evaluate(
     async (given) => {
-      // The session cookie goes with it, as with any call from this page.
+      // The session cookie goes with it, as with any call from this page, and
+      // the tab names its person as the client does.
+      const { subject } = JSON.parse(sessionStorage.getItem('ops-astro.session'));
       const response = await window.fetch('/api/b/alpha/task/update', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-ops-astro-csrf': '1' },
+        headers: {
+          'content-type': 'application/json',
+          'x-ops-astro-csrf': '1',
+          'x-ops-astro-subject': subject,
+        },
         body: JSON.stringify({
           operationId: crypto.randomUUID(),
           recordId: given.taskId,
@@ -158,8 +164,8 @@ async function forgedHeadersKeepTheSessionActor(page, taskId) {
   const before = await serverTask(page, taskId);
   const sessionActor = before?.history.at(-1)?.actorId;
   // The page cannot read its session cookie (S0-6c); the test driver can.
-  const token = (await page.context().cookies()).find(
-    (cookie) => cookie.name === 'ops-astro-session',
+  const token = (await page.context().cookies()).find((cookie) =>
+    cookie.name.startsWith('ops-astro-session'),
   )?.value;
   const tampered = await page.request.post(`${API}/api/b/alpha/task/update`, {
     headers: {

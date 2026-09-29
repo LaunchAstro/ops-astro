@@ -62,7 +62,9 @@ async function sessionExpiry(page) {
   // token in the session cookie is no longer one it can vouch for. The page
   // cannot reach the cookie (S0-6c); the test driver replaces it.
   const context = page.context();
-  const held = (await context.cookies()).find((cookie) => cookie.name === 'ops-astro-session');
+  const held = (await context.cookies()).find((cookie) =>
+    cookie.name.startsWith('ops-astro-session'),
+  );
   if (held !== undefined) await context.addCookies([{ ...held, value: UNVERIFIABLE }]);
 
   await page.goto(`${WEB}${address}`, { waitUntil: 'domcontentloaded' });

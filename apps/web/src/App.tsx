@@ -87,8 +87,12 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
-    // The cookie is the credential and only the API can clear it.
-    void signOut({ apiOrigin: props.apiOrigin, fetch: props.fetch });
+    const subject = props.sessions.session?.subject;
+    void signOut({
+      apiOrigin: props.apiOrigin,
+      fetch: props.fetch,
+      ...(subject === undefined ? {} : { subject }),
+    });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
