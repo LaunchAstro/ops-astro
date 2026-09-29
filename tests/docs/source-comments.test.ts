@@ -148,4 +148,41 @@ describe('a source comment cites no review round, lane or finding id', () => {
     }
     expect(found).toEqual([]);
   });
+
+  it('Sol proof, criterion 4: rejects review citations in SQL comments', () => {
+    const source = [
+      'const query = `select id from records',
+      '  -- Final review R1 #10: a trashed task is not handed out.',
+      '  where deleted_at is null`;',
+    ].join('\n');
+    expect(commentLines(source).some(({ comment }) => cites(comment) !== undefined)).toBe(true);
+  });
+
+  it('Sol proof, criterion 4: rejects lane identifiers in source comments', () => {
+    const successor = readFileSync(
+      new URL('packages/core-commands/src/commands/successor.ts', root),
+      'utf8',
+    );
+    const lane = commentLines(successor).find(({ comment }) =>
+      comment.includes("L4's `SuccessorRequest`"),
+    );
+    expect(lane).toBeDefined();
+    expect(cites(lane?.comment ?? '')).toBeDefined();
+  });
+
+  it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
+    const files = [
+      'apps/api/app.ts',
+      'packages/core-commands/src/reads/dispatch.ts',
+      'packages/core-commands/src/commands/register-store.ts',
+    ];
+    const histories = files.flatMap((file) =>
+      commentLines(readFileSync(new URL(file, root), 'utf8'))
+        .filter(({ comment }) =>
+          /\breview of the draft\b|\bused to say\b|\bcross-model review found\b/iu.test(comment),
+        )
+        .map(({ line, comment }) => `${file}:${line} ${comment.trim()}`),
+    );
+    expect(histories).toEqual([]);
+  });
 });
