@@ -35,6 +35,7 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
   revokeGrant,
   subjectsOf,

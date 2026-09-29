@@ -28,6 +28,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
+import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
 
 const RESTORE_ROLE = 'ops_astro_backup_restore';
@@ -161,8 +162,9 @@ export async function restoreDrill({
       // the forced business barrier shows exactly one business: more means the
       // barrier did not survive the restore, and a person or client of another
       // business is not there to find. Within it, the named person must be a
-      // current member holding a current grant over the named client, at party
-      // scope or as the business's manager (Sol's review 3 on #120).
+      // current member holding a live grant over the named client, at party
+      // scope or as the business's manager (Sol's review 3 on #120). Live is
+      // the product's own definition, parent chain included (EFFECTIVE_GRANTS).
       await psql(
         `create role ${APP_ROLE} nologin`,
         `grant usage on schema public to ${APP_ROLE}`,
@@ -174,11 +176,10 @@ export async function restoreDrill({
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
-          `select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
+          `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
              where schemaname in ('public', 'ops')),
              (exists (select from public.memberships where person_id = '${p}' and active)
-             and exists (select from public.grants where subject_kind = 'person' and subject_id = '${p}'
-               and revoked_at is null and coalesce(expires_at > now(), true)
+             and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and (scope_kind = 'party' and scope_id = '${c}' or scope_kind = 'business' and action = 'manage'))
              )::int, (select count(*) from public.businesses),
              (select count(*) from public.people where id in ('${p}', '${c}'))`,
