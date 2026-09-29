@@ -118,6 +118,7 @@ import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
+import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
@@ -652,6 +653,8 @@ function Loaded(props: LoadedProps): ReactElement {
               onSubmit={onFields}
             />
 
+            <DescriptionSection description={task.description} />
+
             <TeamWork steps={STEPS} onOpenPanel={props.onOpenPanel} />
 
             <Comments
@@ -672,6 +675,7 @@ function Loaded(props: LoadedProps): ReactElement {
         }
         agent={
           <>
+            <BriefSection brief={task.agentBrief} />
             <Proposals
               capCurrency={task.capCurrency}
               client={client}
@@ -697,7 +701,6 @@ function Loaded(props: LoadedProps): ReactElement {
               taskKey={task.key}
             />
             <Alerts alerts={task.alerts} />
-
             <Outages state={outages.state} taskId={task.id} />
           </>
         }

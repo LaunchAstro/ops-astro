@@ -301,6 +301,17 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    // The pre-prompt an agent boots on for this task (MP-4-7, CS-4.23,
+    // migration 0035). Unslotted and generic like the description.
+    key: 'agent_brief',
+    label: 'Agent brief',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
 ];
 
 /**

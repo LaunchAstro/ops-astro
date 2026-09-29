@@ -411,7 +411,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
   }),
-  declare('task.update', 'write'),
+  // An agent writes the description and its brief on its own task inside its
+  // delegation (MP-4-7), and no other field: `updateTaskText` refuses the rest.
+  declare('task.update', 'write', { agent: 'delegated' }),
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),

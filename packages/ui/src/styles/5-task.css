@@ -421,3 +421,36 @@
 .tt__more:disabled {
   cursor: default;
 }
+
+/* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).
+   One font rule (R60): the description is sans on every surface, and so is
+   the rendered brief; mono is kept for the brief's markdown field alone. --- */
+.tt__prose {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.md p,
+.md ul,
+.md ol {
+  margin: 0 0 var(--s-2);
+}
+.tf__ta {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-faint);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.tf__ta:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.tf__ta--md {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
