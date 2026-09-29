@@ -77,7 +77,10 @@ export {
   type ClassifyRequest,
   type NonclaimableCause,
   classifyAuthorityLoss,
+  checkAuthorityAt,
+  holdCoveringGrants,
 } from './recovery.ts';
+export { lockedInstant } from './clock.ts';
 export {
   canonicalise,
   chainHash,

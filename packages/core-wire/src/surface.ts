@@ -508,17 +508,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: [],
   }),
-  // Work control is `write` on the task, the authority `task.propose` asks,
-  // and it is asked of that task: a record-scoped writer controls its own
-  // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
-  // and the handler refuses a lineage opened on another task. They take no
+  // Work control is `decide` on the task (T3a, `gate:decide`): stopping or
+  // restarting approved work is a person's decision, never an agent's, and it
+  // is asked of that task. Cancel's runtime also asks `write` under its locks.
+  // Both name the task in `recordId` and the lineage in `lineageId`, and the
+  // handler refuses a lineage opened on another task. They take no
   // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', {
+  declare('task.cancel', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
-  declare('task.restart', 'write', {
+  declare('task.restart', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],

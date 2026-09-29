@@ -1177,8 +1177,11 @@ direct SQL.
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
   commit (`tests/runtime/final-r2-fr2-runtime.test.ts`).
-- **Authority** for `task.cancel` and `task.restart` is `write` on the task
-  named in `recordId`, so a record-scoped writer controls its own lineage
+- **Authority** for `task.cancel` and `task.restart` is `decide` on the task
+  named in `recordId` (T3a), asked again with the grants held for share;
+  cancel's runtime also asks `write` under its locks. A restart closes the
+  task's open envelope, so the new lineage's approval opens its own and the
+  old one keeps its settled spend. A record-scoped decider controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or

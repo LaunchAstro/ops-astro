@@ -184,6 +184,10 @@ describe.skipIf(serverUrl === undefined)('FR2-RUNTIME: final review round 2', ()
     let grantId = '';
     await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
       await grantTo(tx, member, 'read');
+      // T3a: cancel is `decide` on the task, and its runtime still asks
+      // `write` under its locks; a write holder here holds decide beside it,
+      // so the revocation of `write` is what these cases race.
+      if (action === 'write') await grantTo(tx, member, 'decide');
       grantId = await grantTo(tx, member, action);
     });
     return { member, grantId };

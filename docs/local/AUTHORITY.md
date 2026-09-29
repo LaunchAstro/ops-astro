@@ -662,9 +662,11 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
-`task.cancel` and `task.restart` are authorised on the task named in
-`recordId`, so a record-scoped `write` grant is enough (their declarations in
-`core-wire/src/surface.ts`). `task.pickup`, `task.heartbeat` and `task.handback` are
+`task.cancel` and `task.restart` are `decide` on the task named in
+`recordId` (T3a, `gate:decide`): a person's decision, refused to every agent,
+and a record-scoped `decide` grant is enough (their declarations in
+`core-wire/src/surface.ts`). The handler asks `decide` again with the grants
+held for share, and cancel's runtime also asks `write` under its locks. `task.pickup`, `task.heartbeat` and `task.handback` are
 authorised as `write` on the task their reservation or lease belongs to
 (`authorisedOn: 'claim'` in the same declarations), the scope the runtime and
 `grant.revoke` ask. A record-scoped writer works their own lease
