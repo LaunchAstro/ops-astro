@@ -26,7 +26,7 @@ import type { TaskSpine } from '../commands/context.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
   isInternalReader,
-  readBoard,
+  readBoardStamped,
   readSharedTask,
   readTaskDetail,
   resolveTaskId,
@@ -255,7 +255,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A named board is itself a task: one the caller cannot read is refused
       // as `task.read` refuses it, in-tenant (I05).
       if (unreadable(operands.board)) return refuseScope();
-      const tasks = await readBoard(
+      const { tasks, changedAt } = await readBoardStamped(
         tx,
         spine.taskTypeId,
         operands.board,
@@ -266,7 +266,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // narrower collection-wide rule exists. A member reading through record
       // grants is a client login under owner answer 22 and is told no count
       // at all, not a filtered one (SL07-B22-ANSWER).
-      return scope.business ? { ok: true, tasks, withheld: 0 } : { ok: true, tasks };
+      // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
+      return scope.business
+        ? { ok: true, tasks, changedAt, withheld: 0 }
+        : { ok: true, tasks, changedAt };
     },
   },
   'person.list': {

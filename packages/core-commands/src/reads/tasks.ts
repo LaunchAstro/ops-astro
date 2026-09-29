@@ -35,6 +35,8 @@ import { taskCapCurrency } from './task-cap.ts';
 interface TaskRowRead {
   readonly id: string;
   readonly revision: string;
+  /** When the task last changed; the board's freshness stamp (MP-5-7). */
+  readonly updated_at: Date;
   readonly key: string | null;
   readonly title: string | null;
   readonly due: Date | null;
@@ -62,6 +64,7 @@ const STATE_JOIN = `
 const SELECT = `
   select r.id,
          r.revision::text as revision,
+         r.updated_at,
          r.txt_1 as key,
          r.txt_4 as title,
          r.ts_1  as due,
@@ -326,6 +329,20 @@ export async function readBoard(
   board: string | null,
   readable: readonly string[] | null,
 ): Promise<readonly TaskSummary[]> {
+  return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
+}
+
+/**
+ * The board's tasks and when the newest of them last changed (MP-5-7, P-07):
+ * one query, so the stamp comes from exactly the rows served and a newer task
+ * the caller cannot read never moves it. Null when no task is served.
+ */
+export async function readBoardStamped(
+  tx: TenantQuery,
+  taskTypeId: string,
+  board: string | null,
+  readable: readonly string[] | null,
+): Promise<{ readonly tasks: readonly TaskSummary[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
@@ -334,5 +351,9 @@ export async function readBoard(
       order by r.num_2 nulls last, r.created_at`,
     [tx.businessId, taskTypeId, board, readable],
   );
-  return rows.map(summaryOf);
+  let newest: Date | null = null;
+  for (const row of rows) {
+    if (newest === null || row.updated_at > newest) newest = row.updated_at;
+  }
+  return { tasks: rows.map(summaryOf), changedAt: newest?.toISOString() ?? null };
 }
