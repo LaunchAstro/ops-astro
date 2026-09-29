@@ -209,6 +209,7 @@ const person = async (
 
 describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   let db: FreshDatabase;
+  let alphaBusiness = '';
   const subjects = {
     operator: `op-${randomUUID()}`,
     keyless: `kl-${randomUUID()}`,
@@ -221,6 +222,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 's01e' });
     const alpha = await insertBusiness(db.app, 'alpha');
+    alphaBusiness = alpha;
     const beta = await insertBusiness(db.app, 'beta');
     await db.app.withBusiness(alpha, async (tx) => {
       operatorPerson = await person(tx, 'Olive', subjects.operator, { scope: 'business' });
@@ -312,6 +314,28 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
         expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
       });
     }
+  }
+
+  for (const [commandName, command] of Object.entries(COMMANDS)) {
+    it(`Sol proof, criterion 4: refused ${commandName} writes no authentication row`, async () => {
+      const count = async (): Promise<number> =>
+        await db.app.withBusiness(alphaBusiness, async (tx) => {
+          const rows = await tx.query<{ n: number }>(
+            'select count(*)::int as n from authentication_attempts where business_id = $1',
+            [tx.businessId],
+          );
+          return rows[0]!.n;
+        });
+      const before = await count();
+      const fake = manager(false);
+      const at = marks(fake);
+      const result = command(
+        environment(at, fake.path, { OPS_ASTRO_TOKEN: await token(subjects.keyless) }),
+        at,
+      );
+      expect(result.status, result.out).toBe(1);
+      expect(await count()).toBe(before);
+    });
   }
 
   it('the operator prepares staging: the one command runs, and one record names the operator', async () => {
