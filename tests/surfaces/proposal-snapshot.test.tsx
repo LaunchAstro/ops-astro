@@ -149,6 +149,7 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
     stage: null,
     clientSet: false,
     steps: [],
+    time: null,
     comments: [],
     proposals: JSON.parse(JSON.stringify(proposals)) as unknown,
   };

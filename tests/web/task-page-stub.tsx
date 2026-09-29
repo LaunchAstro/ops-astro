@@ -76,6 +76,7 @@ export const task = (over: Readonly<Record<string, unknown>> = {}) => ({
   stage: null,
   clientSet: false,
   steps: [],
+  time: null,
   ...over,
 });
 

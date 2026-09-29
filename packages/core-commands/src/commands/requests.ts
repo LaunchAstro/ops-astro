@@ -236,7 +236,23 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
-    } & Envelope);
+    } & Envelope)
+  // Time tracking (MP-4-6). The person is the session's; a body names only
+  // the task, or the entry, and what to write.
+  | ({ readonly command: 'time.start' | 'time.stop'; readonly taskId: string } & Envelope)
+  | ({
+      readonly command: 'time.log';
+      readonly taskId: string;
+      /** What a person types: "1h 30m", "90m" or "90". */
+      readonly duration: string;
+      readonly note?: string;
+    } & Envelope)
+  | ({
+      readonly command: 'time.set_note';
+      readonly entryId: string;
+      readonly note: string;
+    } & Envelope)
+  | ({ readonly command: 'time.delete'; readonly entryId: string } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

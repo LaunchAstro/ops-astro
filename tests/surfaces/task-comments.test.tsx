@@ -75,6 +75,7 @@ function server(options: { readonly refuseComment?: boolean } = {}) {
     stage: null,
     clientSet: false,
     steps: [],
+    time: null,
     comments: [COMMENT] as (typeof COMMENT)[],
   };
   const posted: Record<string, unknown>[] = [];

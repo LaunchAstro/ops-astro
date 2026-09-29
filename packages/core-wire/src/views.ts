@@ -115,6 +115,34 @@ export interface TaskDetail extends TaskSummary {
    * whose `parent` is this one, and only those the reader may read.
    */
   readonly steps: readonly StepView[];
+  /**
+   * Time on this task (MP-4-6): the reader's own entries and running timer,
+   * and the task's total. Null for an agent, which is sent no one's time.
+   */
+  readonly time: TaskTimeView | null;
+}
+
+/**
+ * A task's time as one person reads it (MP-4-6, RS-VAULT-9: a person sees
+ * their own time, never a leaderboard). `entries` are the reader's own, newest
+ * first; `totalMinutes` is every person's finished minutes on the task, one
+ * number with no names, which the burn bar reads against the estimate.
+ */
+export interface TaskTimeView {
+  readonly entries: readonly TimeEntryView[];
+  readonly running: { readonly entryId: string; readonly startedAt: string } | null;
+  readonly totalMinutes: number;
+}
+
+/** One of the reader's own time entries. `minutes` is null while it runs. */
+export interface TimeEntryView {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly minutes: number | null;
+  readonly note: string;
+  readonly adHoc: boolean;
+  readonly source: 'timer' | 'log';
 }
 
 /**

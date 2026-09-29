@@ -31,6 +31,7 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
+import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -101,6 +102,16 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
   'task.handback': handbackOwnLease,
+
+  // MP-4-6. The person is the session's, so a body names only the task or
+  // the entry, and what to write.
+  'time.start': (tx, context, request) => startTime(tx, context, request.taskId),
+  'time.stop': (tx, context, request) => stopTime(tx, context, request.taskId),
+  'time.log': (tx, context, request) =>
+    logTimeEntry(tx, context, request.taskId, request.duration, request.note),
+  'time.set_note': (tx, context, request) =>
+    setEntryNote(tx, context, request.entryId, request.note),
+  'time.delete': (tx, context, request) => deleteEntry(tx, context, request.entryId),
 };
 
 function writeOwned(

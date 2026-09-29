@@ -99,7 +99,15 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // Time tracking (MP-4-6): a person's own time entries on a task, under
+  // `time:write`. None names the task's revision: a time entry is a row
+  // beside the task, not a write to it.
+  | 'time.start'
+  | 'time.stop'
+  | 'time.log'
+  | 'time.set_note'
+  | 'time.delete';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -258,6 +266,7 @@ const TASK_COLLECTION = 'task';
 const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const TIME_COLLECTION = 'time';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -353,6 +362,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -502,6 +517,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+
+  // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
+  // asked of the business, and the handler then asks `task:read` on the task
+  // the entry is against, so a person times only a task they may read. Each
+  // reaches only the caller's own entries. The key catalogue lets an agent
+  // hold `time:write` inside its delegation; the agent path does not serve
+  // these yet, so it is `never` here until it does.
+  ...(['time.start', 'time.stop', 'time.log'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['taskId'],
+    }),
+  ),
+  ...(['time.set_note', 'time.delete'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['entryId'],
+    }),
+  ),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

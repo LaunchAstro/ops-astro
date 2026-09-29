@@ -33,6 +33,7 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
     stage: null,
     clientSet: false,
     steps: [],
+    time: null,
     comments: [],
     proposals: [],
     ...(fields.capCurrency === undefined ? {} : { capCurrency: fields.capCurrency }),

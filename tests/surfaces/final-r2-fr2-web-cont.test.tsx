@@ -121,6 +121,7 @@ function server(options: ServerOptions = {}) {
     stage: null,
     clientSet: false,
     steps: [],
+    time: null,
     comments: [],
     proposals: (options.lineages ?? []).map(lineageOf),
     // The task cap's currency, which the propose form offers (CQ-7).
