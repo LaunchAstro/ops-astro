@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
+import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
@@ -211,10 +212,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
     };
+    // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
+    // `attemptId` and has its own cell below.
     const targeted = COMMAND_SURFACE.filter(
-      (declaration) =>
-        declaration.targetsExistingRecord ||
-        (declaration.kind === 'read' && declaration.authorisedOn === 'record'),
+      (declaration) => targetKeyOf(declaration) === 'recordId',
     );
     const out: Cell[] = targeted.map((declaration) => {
       const extra = onRecord[declaration.name] ?? {};
@@ -306,11 +307,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 30 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 31 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(30);
-    expect(names).toHaveLength(30);
+    expect(new Set(names).size, 'distinct operations').toBe(31);
+    expect(names).toHaveLength(31);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
