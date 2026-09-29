@@ -36,6 +36,7 @@ import './styles/5-task.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './state/freshness.ts';
 export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
