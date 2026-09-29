@@ -6,12 +6,16 @@
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill
 //     RESTORE_STORE_URL  a login holding ops_astro_backup_restore on the store
 //     RESTORE_KEY_FILE   the operator's private key, held apart from the store
+//     DRILL_BUSINESS_ID, DRILL_CLIENT_ID, DRILL_PERSON_ID  the one scope it reads
 //
 // It takes the newest backup from the store (the store logs the read), opens
 // the seal, starts a throwaway container of the production major with no
-// network, restores into it, checks the result and removes the container. It
-// takes no target: the one database it writes is the one it started, so it
-// cannot reach the managed project or any other server.
+// network, restores the whole backup into it, checks the result and removes
+// the container. It takes no target: the one database it writes is the one it
+// started, so it cannot reach the managed project or any other server. It
+// reads the restored copy only as the tenancy role, under the named business,
+// where row security shows it that business alone, and checks the named
+// person and client there.
 //
 // It stays out of apps/cli, which never opens a database (apps/cli/main.ts:7).
 // Who may run it (`operations:manage`) and where its receipt is kept are S0-3d's.
@@ -27,8 +31,10 @@ import postgres from 'postgres';
 import { openArchive } from './archive-seal.mjs';
 
 const RESTORE_ROLE = 'ops_astro_backup_restore';
-const SCHEMAS = ['public', 'ops'];
+const APP_ROLE = 'ops_astro_app';
+const ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
 const DB = 'drill';
+const AS = ['-U', 'postgres', '-d', DB];
 // Its own path, not the image's volume, so every major takes it.
 const PGDATA = '/var/lib/postgresql/drill';
 
@@ -81,6 +87,7 @@ async function must(result) {
 export async function restoreDrill({
   fetchArchive,
   privateKey,
+  scope,
   docker: run = docker,
   image = staging.services.db.image,
 }) {
@@ -95,9 +102,10 @@ export async function restoreDrill({
     timings: {},
   };
   const name = `${staging['x-ops-astro'].ownPrefix}-drill-${randomBytes(4).toString('hex')}`;
-  const psql = async (text) =>
-    (await must(run(['exec', name, 'psql', '-U', 'postgres', '-d', DB, '-Atc', text]))).trim();
-  let stage;
+  const exec = (args, input) => run(['exec', ...(input ? ['-i'] : []), name, ...args], input);
+  const psql = async (...commands) =>
+    (await must(exec(['psql', ...AS, '-Atq', ...commands.flatMap((c) => ['-c', c])]))).trim();
+  let stage = 'scope';
   const timed = async (step, work) => {
     stage = step;
     const start = performance.now();
@@ -109,6 +117,9 @@ export async function restoreDrill({
   };
   let started = false;
   try {
+    if (![scope?.business, scope?.client, scope?.person].every((id) => ID.test(id ?? ''))) {
+      throw new Error('scope is not three ids');
+    }
     const archive = await timed('fetch', fetchArchive);
     record.archiveTakenAt = archive.takenAt;
     const dump = await timed('open', () => openArchive(archive.body, privateKey));
@@ -141,17 +152,7 @@ export async function restoreDrill({
       for (let i = 0; i < 120 && !ready; i += 1) {
         // Over TCP, not the socket: the image's init server listens on the socket only.
         // oxlint-disable-next-line no-await-in-loop
-        const probe = await run([
-          'exec',
-          name,
-          'pg_isready',
-          '-h',
-          '127.0.0.1',
-          '-U',
-          'postgres',
-          '-d',
-          DB,
-        ]);
+        const probe = await exec(['pg_isready', '-h', '127.0.0.1', ...AS]);
         ready = probe.code === 0;
         // oxlint-disable-next-line no-await-in-loop
         if (!ready) await new Promise((resolve) => setTimeout(resolve, 500));
@@ -161,47 +162,42 @@ export async function restoreDrill({
       if (record.targetMajor !== PRODUCTION_MAJOR) throw new Error('not the production major');
     });
     const expected = await timed('restore', async () => {
-      const listed = await must(run(['exec', '-i', name, 'pg_restore', '--list'], dump));
+      const listed = await must(exec(['pg_restore', '--list'], dump));
       record.sourceMajor = Number(/Dumped from database version: (\d+)/u.exec(listed)?.[1]);
       // The archive makes its own public schema; the empty one would collide.
       await psql('drop schema public');
-      await must(
-        run(
-          [
-            'exec',
-            '-i',
-            name,
-            'pg_restore',
-            '--exit-on-error',
-            '--single-transaction',
-            '--no-owner',
-            '--no-privileges',
-            '-U',
-            'postgres',
-            '-d',
-            DB,
-          ],
-          dump,
-        ),
-      );
+      const flags = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-privileges'];
+      await must(exec(['pg_restore', ...flags, ...AS], dump));
       return [...listed.matchAll(/^\d+; \d+ \d+ TABLE DATA (\S+) (\S+) /gmu)].map(
         ([, schema, table]) => `${schema}.${table}`,
       );
     });
     await timed('check', async () => {
-      const present = new Set(
-        (
-          await psql(
-            `select schemaname || '.' || tablename from pg_tables where schemaname in ('${SCHEMAS.join("', '")}')`,
-          )
-        ).split('\n'),
+      // The owner session grants the tenancy role its reads and reads nothing
+      // itself. Every read runs as that role under the named business, where
+      // the forced business barrier shows exactly one business: more means the
+      // barrier did not survive the restore, and a person or client of another
+      // business is not there to find.
+      await psql(
+        `create role ${APP_ROLE} nologin`,
+        `grant usage on schema public to ${APP_ROLE}`,
+        `grant select on all tables in schema public to ${APP_ROLE}`,
+        `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
-      const migration = await psql('select max(version) from ops.schema_migrations');
-      if (expected.length === 0 || !expected.every((t) => present.has(t)) || migration === '') {
-        throw new Error('restore incomplete');
-      }
+      const [tables = '', businesses, people] = (
+        await psql(
+          `set role ${APP_ROLE}`,
+          `set app.business_id = '${scope.business}'`,
+          `select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
+             where schemaname in ('public', 'ops')), (select count(*) from public.businesses),
+             (select count(*) from public.people where id in ('${scope.person}', '${scope.client}'))`,
+        )
+      ).split('|');
+      const present = new Set(tables.split(','));
+      const whole = expected.length > 0 && expected.every((t) => present.has(t));
+      if (!whole || businesses !== '1' || people !== '2') throw new Error('check failed');
       record.tables = expected.length;
-      record.migration = migration;
+      record.readAs = APP_ROLE;
     });
     record.outcome = 'passed';
   } catch {
@@ -229,7 +225,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     } catch {
       throw new Error('RESTORE_KEY_FILE is unset or unreadable');
     }
-    const record = await restoreDrill({ fetchArchive: () => fetchLatest(storeUrl), privateKey });
+    const scope = {
+      business: process.env.DRILL_BUSINESS_ID,
+      client: process.env.DRILL_CLIENT_ID,
+      person: process.env.DRILL_PERSON_ID,
+    };
+    const record = await restoreDrill({
+      fetchArchive: () => fetchLatest(storeUrl),
+      privateKey,
+      scope,
+    });
     process.stdout.write(`${JSON.stringify(record)}\n`);
     process.exitCode = record.outcome === 'passed' ? 0 : 1;
   } catch (error) {
