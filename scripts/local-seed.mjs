@@ -34,7 +34,7 @@ import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
-import { markMadeUp, productionSigns } from './ops/made-up-only.ts';
+import { guardMadeUp, markMadeUp, productionSigns, SEED_TAG } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -167,7 +167,8 @@ async function businessIdFor(admin, key) {
   if (rows[0]) return rows[0].id;
   const id = randomUUID();
   await admin.execute(
-    'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+    `insert into public.businesses (business_id, id, key, name)
+       select $1, $1, $2, $3 from ${SEED_TAG}`,
     [id, key, key],
   );
   return id;
@@ -412,19 +413,19 @@ if (!adminUrl || !appUrl) {
   process.exit(1);
 }
 
-// Staging holds made-up data only (S0-1). A database showing what a restored
-// production backup brings is refused here, before a row or a file is written.
+// Staging holds made-up data only (S0-1). A database the seed cannot vouch for
+// from its own mark and guard is refused here, before a row or a file is
+// written; the guard is in place before the seed's first write.
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
-const seedPeople = [...CAST, ...(existsSync(usersFile) ? JSON.parse(readFileSync(usersFile)) : [])];
-const names = [...seedPeople.map((member) => member.person), 'Ext Alpha'];
-const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS), confirmed, names);
+const signs = await productionSigns(admin, [], confirmed);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
   console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
   await admin.close();
   process.exit(1);
 }
+await guardMadeUp(admin);
 
 const { users, placeholder } = readUsers();
 if (placeholder) {
@@ -852,13 +853,6 @@ try {
         `through shareRecord (grant ${shared.grantId}, record scope, read)`,
     );
   }
-
-  const counted = await admin.execute(
-    `select (select count(*) from public.records r
-               join public.record_types t on t.id = r.record_type_id
-              where t.key = 'task')::text as tasks`,
-  );
-  console.log(`local-seed: tasks in the database: ${counted[0].tasks} (this script seeds none)`);
 } finally {
   await database.close();
   await admin.close();
