@@ -50,20 +50,27 @@ describe.skipIf(serverUrl === undefined)('installed system fields at the top lev
     const rows = await fixture.db.admin.execute<Record<string, string>>(
       `select (select count(*)::text from public.records where business_id = $1) as records,
               (select coalesce(max(xmin::text::bigint), 0)::text from public.records where business_id = $1) as xmin,
-              (select count(*)::text from public.audit_events where business_id = $1) as audit`,
+              (select count(*)::text from public.audit_events where business_id = $1) as audit,
+              (select coalesce(max(seq), 0)::text from public.audit_events where business_id = $1) as seq`,
       [fixture.business],
     );
     return rows[0] as Record<string, string>;
   };
 
-  const lastAudit = async () => {
-    const rows = await fixture.db.admin.execute<Record<string, unknown>>(
+  /**
+   * The audit rows written after `seq` that carry this call's own attempted
+   * value or operation id. A neighbour's late write carries neither, so it is
+   * never counted as this test's (product issue 56).
+   */
+  const ownAudit = async (seq: string | undefined, attempted: object, operationId: unknown) => [
+    ...(await fixture.db.admin.execute<Record<string, unknown>>(
       `select command, outcome, refusal_code, attempted from public.audit_events
-        where business_id = $1 order by seq desc limit 1`,
-      [fixture.business],
-    );
-    return rows[0];
-  };
+        where business_id = $1 and seq > $2::bigint
+          and (attempted = $3::jsonb or operation_id = $4)
+        order by seq`,
+      [fixture.business, seq, attempted, operationId ?? null],
+    )),
+  ];
 
   /** The task's revision as it is now, so an update's control is never stale. */
   const refresh = async () => {
@@ -114,37 +121,71 @@ describe.skipIf(serverUrl === undefined)('installed system fields at the top lev
     expect(NEWLY_REFUSED).toEqual(expect.arrayContaining(['completed_at', 'key']));
   });
 
+  /**
+   * One refused call with `key` at the top level, and what it wrote. `late`
+   * runs after the call and before the rows are read, which is where another
+   * test's audit write lands when that test ran past its timeout.
+   */
+  const refusedAlone = async (
+    name: CommandName,
+    key: string,
+    late: () => Promise<void> = async () => {},
+  ): Promise<void> => {
+    await refresh();
+    const control = await call(name, bodies[name]!());
+    expect(control.status, JSON.stringify(control.body)).toBe(200);
+    await refresh();
+
+    // Unique per call, a time included, so the audit rows can be told apart by it.
+    const value = key.endsWith('_at')
+      ? new Date(Math.floor(Math.random() * 1e12)).toISOString()
+      : `probe-${randomUUID()}`;
+    const body = { ...bodies[name]!(), [key]: value };
+    const before = await state();
+    const answer = await call(name, body);
+    await late();
+    expect(answer.status).toBe(422);
+    expect(answer.body).toMatchObject({
+      refused: true,
+      code: 'FIELD_NOT_WRITABLE',
+      names: [key],
+    });
+    expect(JSON.stringify(answer.body)).not.toContain(value);
+    const after = await state();
+    expect(after['records']).toBe(before['records']);
+    expect(after['xmin']).toBe(before['xmin']);
+    expect(await ownAudit(before['seq'], { [key]: value }, body['operationId'])).toStrictEqual([
+      {
+        command: name,
+        outcome: 'refused',
+        refusal_code: 'FIELD_NOT_WRITABLE',
+        attempted: { [key]: value },
+      },
+    ]);
+  };
+
   for (const name of Object.keys(bodies) as CommandName[]) {
     for (const key of NEWLY_REFUSED) {
       it(`${name} refuses top-level ${key} FIELD_NOT_WRITABLE and changes nothing`, async () => {
-        await refresh();
-        const control = await call(name, bodies[name]!());
-        expect(control.status, JSON.stringify(control.body)).toBe(200);
-        await refresh();
-
-        const value = key.endsWith('_at') ? '1970-01-01T00:00:00.000Z' : `probe-${randomUUID()}`;
-        const before = await state();
-        const answer = await call(name, { ...bodies[name]!(), [key]: value });
-        expect(answer.status).toBe(422);
-        expect(answer.body).toMatchObject({
-          refused: true,
-          code: 'FIELD_NOT_WRITABLE',
-          names: [key],
-        });
-        expect(JSON.stringify(answer.body)).not.toContain(value);
-        const after = await state();
-        expect(after['records']).toBe(before['records']);
-        expect(after['xmin']).toBe(before['xmin']);
-        expect(Number(after['audit'])).toBe(Number(before['audit']) + 1);
-        expect(await lastAudit()).toStrictEqual({
-          command: name,
-          outcome: 'refused',
-          refusal_code: 'FIELD_NOT_WRITABLE',
-          attempted: { [key]: value },
-        });
+        await refusedAlone(name, key);
       });
     }
   }
+
+  it('CQ-14 audit rows scoped: a late audit write from another test is not counted here', async () => {
+    const audited = async (): Promise<number> => Number((await state())['audit']);
+    const start = await audited();
+    await refusedAlone('task.create', 'completed_at', async () => {
+      const neighbour = await call('task.create', {
+        ...bodies['task.create']!(),
+        key: `neighbour-${randomUUID()}`,
+      });
+      expect(neighbour.status).toBe(422);
+    });
+    // Both refusals and the control landed in the window, so the business
+    // count moved by three; the case above still counted only its own.
+    expect(await audited()).toBe(start + 3);
+  });
 
   it('names every system key a body carries, installed and envelope alike, sorted', async () => {
     const answer = await call('task.create', {

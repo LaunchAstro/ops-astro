@@ -9,7 +9,7 @@
 //    retries; `docs/local/RUNTIME.md`, a lost pickup answered again).
 //  - **R1-SURFACE-39.** `login` at a terminal prompts for the password with
 //    echo off, as `docs/local/CLI.md` reads ("When unset, the first line of
-//    stdin"). The terminal is a pseudo-terminal from `script(1)`.
+//    stdin"). The terminal is a pseudo-terminal from Python's `pty` module.
 //  - **R1-SURFACE-40.** `pnpm cli` prints one JSON value on stdout and nothing
 //    of its own, so it pipes to `jq`; and the check bites when something ahead
 //    of the entry writes a line.
@@ -18,9 +18,10 @@ import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordPid, runCli } from './cli-process-harness.ts';
+import { underTerminal } from './terminal.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -163,24 +164,49 @@ describe('a write with no answer or a fault names the operationId it was sent wi
   }, 30_000);
 });
 
-/**
- * `script(1)` gives the command a pseudo-terminal; its flags differ by platform.
- * `cat` puts a real pipe in front of it: macOS `script` refuses the socket
- * pair Node hands a child as stdin.
- */
-function underTerminal(command: readonly string[]): readonly string[] | undefined {
-  if (!existsSync('/usr/bin/script')) return undefined;
-  if (process.platform === 'darwin') {
-    return ['/bin/sh', '-c', 'cat | exec /usr/bin/script -q /dev/null "$@"', 'sh', ...command];
-  }
-  if (process.platform === 'linux') {
-    const quoted = command.map((part) => `'${part.replaceAll("'", String.raw`'\''`)}'`).join(' ');
-    return ['/bin/sh', '-c', 'cat | exec /usr/bin/script -qec "$1" /dev/null', 'sh', quoted];
-  }
-  return undefined;
-}
-
 const TERMINAL = underTerminal(['node']) !== undefined;
+
+describe.skipIf(!TERMINAL)('CQ-14 fixed interpreter', () => {
+  // Arguments a shell would read as syntax: a substitution, a quote, a command end.
+  const command = [
+    process.execPath,
+    '-e',
+    'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+    '--',
+    '$(echo spliced)',
+    "it's",
+    '"; exit 7',
+  ];
+
+  it('spawns the terminal from a fixed, validated path, never a shell', () => {
+    const argv = underTerminal(command) as readonly string[];
+    const program = argv[0] as string;
+    expect(isAbsolute(program), program).toBe(true);
+    expect(existsSync(program), program).toBe(true);
+    expect(['sh', 'bash', 'dash', 'zsh']).not.toContain(basename(program));
+    expect(argv.slice(-command.length), 'the arguments, each as itself').toStrictEqual(command);
+  });
+
+  it('hands arguments carrying shell syntax to the command verbatim', async () => {
+    const argv = underTerminal(command) as readonly string[];
+    const child = spawn(argv[0] as string, argv.slice(1), {
+      cwd: ROOT,
+      env: { PATH: process.env['PATH'] ?? '' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    recordPid('terminal argv echo', child.pid);
+    let screen = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      screen += chunk.toString('utf8');
+    });
+    child.stdin.end();
+    const code = await new Promise<number | null>((resolve) => {
+      child.once('close', resolve);
+    });
+    expect(code, screen).toBe(0);
+    expect(screen).toContain(JSON.stringify(command.slice(4)));
+  }, 30_000);
+});
 
 // eslint-disable-next-line max-lines-per-function -- one terminal session, read top to bottom
 describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
@@ -210,7 +236,7 @@ describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
-      recordPid('sh script cli login', child.pid);
+      recordPid('terminal cli login', child.pid);
       let screen = '';
       let typed = false;
       child.stdout.on('data', (chunk: Buffer) => {
