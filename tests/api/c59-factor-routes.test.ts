@@ -22,6 +22,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { liveFactor } from '../../packages/core-records/src/identity/second-factor.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   ACCEPTANCE_ISSUER,
   ACCEPTANCE_SECRET,
@@ -86,6 +87,8 @@ describe.skipIf(serverUrl === undefined)(
     let clientB: Member;
     /** A third client, whose factor the path and lockout cases use. */
     let clientC: Member;
+    /** A fourth client, who enrols from two tabs at once. */
+    let clientD: Member;
 
     /** A bearer carrying the assurance a sign-in gave it, signed as GoTrue signs. */
     const tokenFor = async (
@@ -140,9 +143,9 @@ describe.skipIf(serverUrl === undefined)(
         ),
       );
 
-    const build = (timeoutMs?: number, basePath = '') =>
+    const build = (timeoutMs?: number, basePath = '', database: Database = world.db.app) =>
       createApi({
-        database: world.db.app,
+        database,
         verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
         resolveBusiness: async (key: string) => ({ alpha: world.alpha, bravo: world.bravo })[key],
         executeCommand,
@@ -194,6 +197,7 @@ describe.skipIf(serverUrl === undefined)(
       clientA = await shareWithClient(world.db.app, world.alpha, sharer, tasks[0] ?? '');
       clientB = await shareWithClient(world.db.app, world.alpha, sharer, tasks[1] ?? '');
       clientC = await shareWithClient(world.db.app, world.alpha, sharer, tasks[1] ?? '');
+      clientD = await shareWithClient(world.db.app, world.alpha, sharer, tasks[0] ?? '');
     }, 60_000);
 
     afterEach(() => {
@@ -248,6 +252,47 @@ describe.skipIf(serverUrl === undefined)(
       expect(answer.status).toBe(409);
       expect(answer.code).toBe('FACTOR_ALREADY_ENROLLED');
       expect(seen).toEqual([]);
+    });
+
+    it('C59 two enrolments at once: both tabs are answered, and one live factor remains', async () => {
+      // Both requests pass the check before the provider call, and the provider
+      // answers neither until it holds both, so both record steps run together.
+      const held: Array<() => void> = [];
+      let issued = 0;
+      replies['POST /factors'] = (_request, response) => {
+        issued += 1;
+        const id = `factor-race-${issued}`;
+        held.push(() => json(200, { id, type: 'totp', totp: GOOD_TOTP })(_request, response, ''));
+        if (held.length === 2) for (const release of held) release();
+      };
+      // Two connections, as a server with a wider pool has: on one connection
+      // the transactions queue and the race cannot happen.
+      const wide = connect(world.db.appUrl, { source: 'runtime', max: 2 });
+      const token = await fresh(clientD);
+      const via = build(undefined, '', wide);
+      const [first, second] = await Promise.all([
+        act('enrol', token, {}, via),
+        act('enrol', token, {}, via),
+      ]).finally(async () => await wide.close());
+
+      expect([first.status, second.status]).toEqual([200, 200]);
+      const rows = await world.db.app.withBusiness(world.alpha, async (tx) =>
+        tx.query<{ readonly provider_factor_id: string; readonly status: string }>(
+          `select provider_factor_id, status from public.second_factors
+            where person_id = $1 order by enrolled_at, provider_factor_id`,
+          [clientD.personId],
+        ),
+      );
+      // The later record replaces the earlier: one live, the other ended.
+      expect(rows.map((row) => row.status).toSorted()).toEqual(['removed', 'unverified']);
+      expect(new Set(rows.map((row) => row.provider_factor_id))).toEqual(
+        new Set(['factor-race-1', 'factor-race-2']),
+      );
+      expect(await factorOf(clientD.personId)).toMatchObject({ status: 'unverified' });
+      const applied = (await eventsFor('account.factor_enrol')).filter(
+        (event) => event.outcome === 'applied',
+      );
+      expect(applied.length).toBeGreaterThanOrEqual(2);
     });
 
     it('C59 factor change: removing needs the current code, entered for that change', async () => {
