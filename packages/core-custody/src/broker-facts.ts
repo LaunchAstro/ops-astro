@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The six facts of a model call (AW-01), read from rows under the contract's
-// lock order, and the room already committed out of a reservation.
+// The six facts of a model call (AW-01), and the task's client link (C60),
+// read from rows under the contract's lock order, and the room already
+// committed out of a reservation.
 
-import { isUuid, type TenantQuery } from '../../core-records/src/index.ts';
+import { isUuid, slotOf, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
 export interface Facts {
@@ -15,6 +16,8 @@ export interface Facts {
   readonly delegationId: string | null;
   readonly workForPersonId: string | null;
   readonly heldMinor: number;
+  /** The run's task's client link, or null for a task no client is on (C60). */
+  readonly clientId: string | null;
 }
 
 export type Checked =
@@ -32,7 +35,36 @@ interface LeaseRow {
   readonly live: boolean;
 }
 
-/** The lease, first in the lock order. Another business's, a made-up one, someone else's and one of our own under another delegation all read alike. */
+/** The spine's client slot: the party link `task.set_party` writes. */
+const CLIENT_SLOT = slotOf(TASK_SPINE, 'client');
+
+/**
+ * The run's task, first in the lock order (`task` comes before `lease`), held
+ * `for share` so a `task.set_party` cannot move its client while the call is
+ * decided, and answering the task's client link (C60). The lease names the
+ * run and the run its task, read here before the lease's own lock; the run's
+ * task is fixed once written (the application may update a run's state only,
+ * 0033), and the lease's run is compared again under the lease's lock
+ * (`lockFacts`). Unknown to this business answers nothing, refused as a
+ * made-up lease is.
+ */
+async function lockTask(
+  tx: TenantQuery,
+  leaseId: string,
+): Promise<{ readonly runId: string; readonly clientId: string | null } | undefined> {
+  const [task] = await tx.query<{ run_id: string; client: string | null }>(
+    `select run.id as run_id, t.${CLIENT_SLOT}::text as client
+       from public.leases l
+       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
+       join public.records t on t.business_id = run.business_id and t.id = run.task_id
+      where l.business_id = $1 and l.id = $2
+      for share of t`,
+    [tx.businessId, leaseId],
+  );
+  return task === undefined ? undefined : { runId: task.run_id, clientId: task.client };
+}
+
+/** The lease, next in the lock order. Another business's, a made-up one, someone else's and one of our own under another delegation all read alike. */
 async function lockLease(
   tx: TenantQuery,
   caller: ModelCaller,
@@ -56,7 +88,7 @@ async function lockLease(
   return { ok: true, lease };
 }
 
-/** The delegation, second: the person the work is for, or none for a person's own lease. */
+/** The delegation, after the lease: the person the work is for, or none for a person's own lease. */
 async function lockDelegation(
   tx: TenantQuery,
   delegationId: string | null,
@@ -73,7 +105,7 @@ async function lockDelegation(
   return { ok: true, personId: delegation.delegate_person_id };
 }
 
-/** The reservation, third, for the run's approved version, and the step, which must be the run's. */
+/** The reservation, last, for the run's approved version, and the step, which must be the run's. */
 async function lockHeld(
   tx: TenantQuery,
   lease: LeaseRow,
@@ -113,9 +145,10 @@ async function lockHeld(
 }
 
 /**
- * The six facts, read under the contract's lock order (lease, delegation,
- * reservation). Settlement takes the same locks by the call's own rows
- * instead (`lockCall`).
+ * The six facts and the client link, read under the contract's lock order
+ * (task, lease, delegation, reservation). Settlement takes the same locks by
+ * the call's own rows instead (`lockCall`), less the task: what it settles was
+ * already sent.
  */
 export async function lockFacts(
   tx: TenantQuery,
@@ -126,9 +159,14 @@ export async function lockFacts(
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
+  const task = await lockTask(tx, request.leaseId);
+  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;
+  // The task held is the lease's run's: a lease moved to another run between
+  // the two reads is refused, never decided on the other task's client.
+  if (lease.run_id !== task.runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const delegation = await lockDelegation(tx, lease.delegation_id);
   if (!delegation.ok) return delegation;
   const held = await lockHeld(tx, lease, request.stepId);
@@ -144,6 +182,7 @@ export async function lockFacts(
       delegationId: lease.delegation_id,
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,
+      clientId: task.clientId,
     },
   };
 }
