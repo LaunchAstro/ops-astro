@@ -44,7 +44,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  Database,
+  QuotaOptions,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import {
   executeAgentCommand,
@@ -164,6 +168,8 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
