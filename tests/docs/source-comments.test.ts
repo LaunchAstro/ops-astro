@@ -141,16 +141,30 @@ function passages(lines: readonly CommentLine[]): CommentLine[] {
 const DOLLAR_TAG = /^\$(?:[A-Za-z_\u{80}-\u{10FFFF}][A-Za-z0-9_\u{80}-\u{10FFFF}]*)?\$/u;
 
 /**
- * Where the dollar-quoted body opening at `at` ends, or -1 when there is none:
- * no tag at `at`, or a tag never closed by the same tag (case and all). Postgres
- * refuses an unclosed body, so the text after it is read on as SQL rather than
- * skipped as data, and a comment in it is still found.
+ * Where the quoted body opening at `at` ends: `undefined` when none opens
+ * there, and -1 when one opens and is never closed. A body is a value
+ * (`'...'`, with a doubled quote or, in an `E'...'` string, a backslash
+ * escape inside it), an identifier (`"..."`), or a dollar-quoted body closed
+ * by the same tag, case and all.
  */
-function dollarQuoteEnd(sql: string, at: number): number {
-  const tag = DOLLAR_TAG.exec(sql.slice(at))?.[0];
-  if (tag === undefined) return -1;
-  const close = sql.indexOf(tag, at + tag.length);
-  return close < 0 ? -1 : close + tag.length;
+function quoteEnd(sql: string, at: number): number | undefined {
+  const char = sql[at];
+  if (char === '$') {
+    const tag = DOLLAR_TAG.exec(sql.slice(at))?.[0];
+    if (tag === undefined) return undefined;
+    const close = sql.indexOf(tag, at + tag.length);
+    return close < 0 ? -1 : close + tag.length;
+  }
+  if (char !== "'" && char !== '"') return undefined;
+  const escapes = char === "'" && /[Ee]/u.test(sql[at - 1] ?? '');
+  let end = at + 1;
+  while (end < sql.length) {
+    if (escapes && sql[end] === '\\') end += 2;
+    else if (sql[end] === char && sql[end + 1] === char) end += 2;
+    else if (sql[end] === char) return end + 1;
+    else end += 1;
+  }
+  return -1;
 }
 
 /** A stylesheet's block comments; one left open runs to the end of the file. */
@@ -194,29 +208,25 @@ function htmlComments(text: string): (readonly [number, number])[] {
 /**
  * The comments in one piece of SQL, as offsets into the file: `--` to the end
  * of its line anywhere in the text, and `/*` to its matching close, nested as
- * Postgres nests them. A quoted value (`'...'`, a doubled quote inside it, an
- * `E'...'` backslash escape), a quoted identifier (`"..."`) and a
- * dollar-quoted body (`$tag$...$tag$`) are skipped whole, so a `--` or `/*`
- * inside one is data, not a comment.
+ * Postgres nests them. A closed quoted body (`quoteEnd`) is skipped whole,
+ * so a `--` or `/*` inside one is data, not a comment.
+ *
+ * Fail-closed, totally: Postgres refuses a quote that is never closed, so
+ * from the first one the rest of the text is read as plain code. Every
+ * comment marker after it counts, and no later quote or dollar body is
+ * accepted, so nothing past an unclosed opener can hide a comment as data.
  */
 function sqlComments(sql: string, offset: number): (readonly [number, number])[] {
   const spans: (readonly [number, number])[] = [];
   let at = 0;
+  let plain = false;
   while (at < sql.length) {
-    const char = sql[at];
-    const dollarEnd = char === '$' ? dollarQuoteEnd(sql, at) : -1;
-    if (char === "'" || char === '"') {
-      const escapes = char === "'" && /[Ee]/u.test(sql[at - 1] ?? '');
+    const bodyEnd = plain ? undefined : quoteEnd(sql, at);
+    if (bodyEnd === -1) {
+      plain = true;
       at += 1;
-      while (at < sql.length) {
-        if (escapes && sql[at] === '\\') at += 2;
-        else if (sql[at] === char && sql[at + 1] === char) at += 2;
-        else if (sql[at] === char) break;
-        else at += 1;
-      }
-      at += 1;
-    } else if (dollarEnd >= 0) {
-      at = dollarEnd;
+    } else if (bodyEnd !== undefined) {
+      at = bodyEnd;
     } else if (sql.startsWith('--', at)) {
       const newline = sql.indexOf('\n', at);
       const end = newline < 0 ? sql.length : newline;
@@ -420,6 +430,21 @@ describe('a source comment cites no review round, lane or finding id', () => {
     [
       'a SQL comment after a nested tag body closes',
       'const q = sql`select $a$ $b$ x $b$ $a$ -- Sol 6`;',
+    ],
+    ['a block comment after an unclosed tag', 'const q = sql`select $a$ /* Sol 6 */`;'],
+    ['an empty-tag body after an unclosed tag', 'const q = sql`select $a$ $$ -- Sol 6 $$`;'],
+    ['a quoted value after an unclosed tag', "const q = sql`select $a$ '-- Sol 6'`;"],
+    ['a quoted identifier after an unclosed tag', 'const q = sql`select $a$ "-- Sol 6"`;'],
+    ['a comment after an unclosed single quote', "const q = sql`select 'x -- Sol 6`;"],
+    ['a comment after an unclosed quoted identifier', 'const q = sql`select "x -- Sol 6`;'],
+    [
+      'a comment after an E-string whose escape eats its close',
+      "const q = sql`select E'x\\' -- Sol 6`;",
+    ],
+    ['a dollar body after an unclosed single quote', "const q = sql`select 'x $b$ -- Sol 6 $b$`;"],
+    [
+      'a comment on a later line after an unclosed tag',
+      'const q = sql`select $a$\nfrom t\n-- Sol 6\n`;',
     ],
   ])('reads %s', (_, source) => {
     const read = passages(commentLines(source));
