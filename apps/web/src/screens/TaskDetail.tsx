@@ -87,11 +87,18 @@ import type {
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
-import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
+import {
+  ConflictNotice,
+  MovedNotice,
+  TaskHeader,
+  UnsavedBar,
+  changedSince,
+} from './task/Notices.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
@@ -114,6 +121,8 @@ interface DraftBase {
   readonly revision: number;
   readonly title: string;
   readonly due: string;
+  /** The task as the edit began: what changed since is told against it. */
+  readonly task: Task;
 }
 
 /** An unsaved title and due date, and everything needed to settle it safely. */
@@ -140,11 +149,7 @@ interface SaveAttempt {
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const [draft, setDraft] = useState<Draft | null>(null);
-  const {
-    state,
-    reload,
-    held: changed,
-  } = useRead<TaskReadResult>({
+  const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
@@ -152,11 +157,12 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
       hub: hubOf(client),
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
-    paused: draft !== null,
   });
 
-  // **The draft lives above the read.** `RecordState` unmounts `Loaded` while a
-  // read is in flight, and the draft has to outlive that to be settled at all.
+  // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
+  // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
+  // never read over), and any other re-read unmounts it, so the draft has to
+  // outlive that to be settled at all.
   // It is still dropped exactly where it always was: a different task, a
   // different grant, or a read the server denied. A draft that outlived its
   // authority would be stale authorised data left on the screen, which is the
@@ -187,7 +193,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   return (
     <div className="stack">
       <RefreshRow held={held !== null} onRefresh={reload} />
-      <RecordState state={state} subject="task" onRetry={reload}>
+      <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
         {(value) =>
           'sharedTask' in value ? (
             <SharedTaskDetail task={value.sharedTask} />
@@ -197,7 +203,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               grantKey={props.grantKey}
               task={value.task}
               draft={held}
-              changed={changed}
               note={note}
               onDecided={setNote}
               commentRefusal={commentRefusal}
@@ -481,8 +486,6 @@ interface LoadedProps {
   readonly task: Task;
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
-  /** The task changed while the edit was unsaved (C4 live-sync 4). */
-  readonly changed: boolean;
   /** What the server said about the last decision, or nothing. */
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
@@ -511,11 +514,20 @@ interface LoadedProps {
   readonly onChanged: () => void;
 }
 
+/** The names this reader may list, by person. */
+function namesOf(people: { readonly state: ReadState<PersonListResult> }): Map<string, string> {
+  const { state } = people;
+  const persons = state.outcome === 'ready' ? state.value.persons : [];
+  return new Map(persons.map((person) => [person.personId, person.name]));
+}
+
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
-  const [title, setTitle] = useState(props.draft?.title ?? saved.title);
-  const [due, setDue] = useState(props.draft?.due ?? saved.due);
+  // The form shows the draft, else the task as last read: with no draft, a
+  // live re-read that keeps this mounted still shows the newest value.
+  const title = props.draft?.title ?? saved.title;
+  const due = props.draft?.due ?? saved.due;
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
@@ -523,6 +535,7 @@ function Loaded(props: LoadedProps): ReactElement {
     revision: task.revision,
     title: saved.title,
     due: saved.due,
+    task,
   };
   const dirty = props.draft !== null;
 
@@ -534,8 +547,6 @@ function Loaded(props: LoadedProps): ReactElement {
   const edit = (next: { title?: string; due?: string }): void => {
     const nextTitle = next.title ?? title;
     const nextDue = next.due ?? due;
-    setTitle(nextTitle);
-    setDue(nextDue);
     // Typed back to where it started is not an unsaved edit. Holding a draft
     // there would lock the other controls for no reason a person could see.
     props.onDraft(
@@ -578,7 +589,14 @@ function Loaded(props: LoadedProps): ReactElement {
         onDiscard={props.onDiscard}
       />
 
-      <UnsavedBar dirty={dirty} changed={props.changed} busy={busy} onDiscard={props.onDiscard} />
+      <UnsavedBar
+        dirty={dirty}
+        changed={
+          props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
+        }
+        busy={busy}
+        onDiscard={props.onDiscard}
+      />
 
       <Lifecycle
         disabled={busy || dirty}
