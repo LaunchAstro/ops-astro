@@ -20,12 +20,12 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
- * Close every open decision item on a decided gate, naming the person the
- * durable decision names and the decision itself as the operation that closed
- * it. The decider is read from the decision row, never taken from the caller,
- * so there is no clearing without a decision. A replay of the same operation
- * returns its stored answer and never reaches here twice; a second decision on
- * the same gate is refused before it does.
+ * Close every open decision item on a decided gate and about that gate's own
+ * task, naming the person the durable decision names and the decision itself
+ * as the operation that closed it. The decider is read from the decision row,
+ * never taken from the caller, so there is no clearing without a decision. A
+ * replay of the same operation returns its stored answer and never reaches
+ * here twice; a second decision on the same gate is refused before it does.
  */
 export async function clearDecision(
   tx: TenantQuery,
@@ -40,13 +40,20 @@ export async function clearDecision(
   if (decider === undefined) {
     throw new Error('clearDecision: no decision by that identity on this gate');
   }
+  // The gate's own task, through its lineage: an item whose subject is some
+  // other task (another client's, say) is not this decision's, even when its
+  // pointer names this gate.
   const cleared = await tx.query<{ readonly id: string }>(
-    `update public.inbox_items
+    `update public.inbox_items i
         set work_state = 'cleared', closed_at = now(),
             closed_by_person_id = $3, closed_by_operation_id = $4
-      where business_id = $1 and reason = 'decision' and fact_kind = 'gate' and fact_id = $2
-        and work_state = 'open'
-      returning id`,
+       from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where i.business_id = $1 and i.reason = 'decision' and i.fact_kind = 'gate'
+        and i.fact_id = $2 and i.work_state = 'open'
+        and g.business_id = i.business_id and g.id = i.fact_id
+        and i.subject_record_id = l.task_id
+      returning i.id`,
     [tx.businessId, decided.gateId, decider, decided.decisionId],
   );
   return cleared.length;
@@ -66,6 +73,7 @@ export async function withdrawEndedGates(tx: TenantQuery, taskId: string): Promi
       where i.business_id = $1 and i.subject_record_id = $2 and i.reason = 'decision'
         and i.fact_kind = 'gate' and i.work_state = 'open'
         and g.business_id = i.business_id and g.id = i.fact_id
+        and l.task_id = i.subject_record_id
         and (g.state = 'superseded' or (g.state = 'pending' and l.state <> 'live'))
       returning i.id`,
     [tx.businessId, taskId],
