@@ -90,6 +90,7 @@ const boundary = (withBroker: boolean): Hono =>
                 credentialRef: 'replay_key',
                 credentialKind: 'api_key',
                 installation: 'here',
+                ceiling: 1_000,
               },
             ],
             installation: 'here',

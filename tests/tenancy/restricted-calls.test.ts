@@ -27,6 +27,7 @@ import {
   APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
   WORKER_ROLE,
+  BROKER_ROLE,
   APPLICATION_GRANTS,
   OPERATIONS,
   callFor,
@@ -120,11 +121,12 @@ async function roleClasses(
                  when r.rolname = $1 then 'application group'
                  when pg_has_role(r.rolname, $1, 'member') then 'application login'
                  when r.rolname = $2 then 'worker'
+                 when r.rolname = $3 then 'broker'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
        from pg_roles r where r.rolname !~ '^pg_' order by 1`,
-    [APPLICATION_ROLE, WORKER_ROLE],
+    [APPLICATION_ROLE, WORKER_ROLE, BROKER_ROLE],
   );
   const classes: Record<string, string[]> = {};
   for (const row of rows) (classes[row.class] ??= []).push(row.rolname);
@@ -189,6 +191,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['unclassified'] ?? []).toStrictEqual([]);
     expect(classes['application group']).toStrictEqual([APPLICATION_ROLE]);
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
+    expect(classes['broker']).toStrictEqual([BROKER_ROLE]);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -342,19 +345,38 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  describe('the security definer function', () => {
+  describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
+    const definer = (signature: string): CatalogueFunction | undefined =>
+      definers().find((fn) => fn.signature === signature);
 
-    it('is exactly one, a trigger on handback_reports with its search path pinned', () => {
+    // Exactly two, each for a named reason. The append-only trigger refuses
+    // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
+    // AW-01) is the one read across businesses: a provider route's ceiling is
+    // the installation's, which a tenant transaction cannot count under row
+    // security. It answers one number and no id, and only the broker's role
+    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts).
+    it('are exactly two, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'model_route_room(text,integer)',
       ]);
-      const [fn] = definers();
+    });
+
+    it('the first is a trigger on handback_reports', () => {
+      const fn = definer('handback_reports_append_only()');
       expect(fn?.trigger).toBe(true);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
       expect(fn?.firedBy).toStrictEqual([
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
+    });
+
+    it("the second is the fair share's count, fired by nothing and pinned to read every business", () => {
+      const fn = definer('model_route_room(text,integer)');
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
 
     it('fires for the one role that may update or delete a report, and refuses it', async () => {
