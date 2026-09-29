@@ -1,1 +1,82 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+/* The activity ledger (MP-8-4): the pinned mockup's `act__` rules. The day head
+   sticks while its day scrolls under it. */
+
+.act__list {
+  margin-top: var(--s-5);
+}
+.act__day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: var(--s-3) 0 var(--s-2);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.act__row {
+  display: grid;
+  grid-template-columns: 3.2rem 6.5rem 5rem minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.act__t {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.act__kind {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.act__who {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.act__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.act__text {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.act__proj {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-decoration: none;
+}
+.act__proj:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.act__more {
+  margin-top: var(--s-4);
+}
+.act__none {
+  max-width: 60ch;
+  margin: var(--s-5) 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+@media (width <= 640px) {
+  .act__row {
+    grid-template-columns: 3.2rem minmax(0, 1fr);
+  }
+}
