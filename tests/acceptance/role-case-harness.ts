@@ -215,7 +215,9 @@ export async function createHarness(part: string): Promise<Harness> {
     const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
-      ...(targeted || declaration.name === 'task.read' ? { recordId: alphaTask.id } : {}),
+      ...(targeted || (declaration.kind === 'read' && declaration.authorisedOn === 'record')
+        ? { recordId: alphaTask.id }
+        : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),

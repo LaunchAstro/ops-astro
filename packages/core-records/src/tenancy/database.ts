@@ -196,6 +196,35 @@ export function connect(url: string, options: DatabaseOptions = {}): Database {
 }
 
 /**
+ * A session connection that can only listen (T2f): LISTEN is a session verb,
+ * outside `withBusiness`, and this handle sends nothing else. postgres.js
+ * listens again after a reconnect and calls `onListening` each time. Hosted,
+ * it needs a direct or session-mode URL: LISTEN fails through a
+ * transaction-mode pooler.
+ */
+export interface Listener extends Connection {
+  listen(
+    channel: string,
+    onPayload: (payload: string) => void,
+    onListening: () => void,
+  ): Promise<void>;
+}
+
+export function connectListener(url: string, options: DatabaseOptions = {}): Listener {
+  const { sql, log } = open(url, { source: 'listener', ...options });
+
+  return {
+    log,
+    async listen(channel, onPayload, onListening): Promise<void> {
+      await sql.listen(channel, onPayload, onListening);
+    },
+    async close(): Promise<void> {
+      await sql.end();
+    },
+  };
+}
+
+/**
  * The same pool, plus the one thing the application is deliberately denied: a
  * statement on the pool's connection outside any `withBusiness` transaction.
  *

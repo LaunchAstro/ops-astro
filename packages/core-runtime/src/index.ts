@@ -68,6 +68,7 @@ export {
   type HandbackHolder,
 } from './handback.ts';
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
+export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,

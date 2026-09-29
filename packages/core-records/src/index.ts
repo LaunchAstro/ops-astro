@@ -109,10 +109,12 @@ export {
   advisoryLock,
   connect,
   connectAsAdmin,
+  connectListener,
   isBusinessId,
   type AdminConnection,
   type BusinessId,
   type Database,
+  type Listener,
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
