@@ -17,7 +17,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   readAuditEvents,
   verifyAuditChain,

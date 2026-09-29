@@ -19,10 +19,7 @@ import {
   type AdminConnection,
   type Database,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import {
-  APPLICATION_ROLE,
-  type EmptyDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { APPLICATION_ROLE, type EmptyDatabase } from '../support/fresh-database.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 

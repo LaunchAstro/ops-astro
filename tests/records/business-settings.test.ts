@@ -26,7 +26,7 @@ import {
   databaseUrlFromEnvironment,
   type EmptyDatabase,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   applyMigrations,
   readMigrations,

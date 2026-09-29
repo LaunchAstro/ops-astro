@@ -38,7 +38,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertBusiness,
@@ -231,6 +231,8 @@ export interface Answer {
   readonly body: Record<string, unknown>;
   /** The refusal code, or `ok` when the answer was a success. */
   readonly code: string;
+  /** The body exactly as it came back, so a replay can be compared byte for byte. */
+  readonly text: string;
 }
 
 /**
@@ -261,7 +263,7 @@ export async function call(
     parsed = { raw: text };
   }
   const code = parsed['refused'] === true ? String(parsed['code']) : 'ok';
-  return { status: response.status, body: parsed, code };
+  return { status: response.status, body: parsed, code, text };
 }
 
 export const bearer = (token: string): Record<string, string> => ({

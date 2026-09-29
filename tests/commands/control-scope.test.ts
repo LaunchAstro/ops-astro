@@ -14,7 +14,7 @@
 // revision and locking in the declaration; it grants nobody anything wider.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import { createControls, detailOf, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
 

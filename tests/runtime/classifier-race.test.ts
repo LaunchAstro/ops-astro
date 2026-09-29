@@ -36,14 +36,14 @@
 // them before either can read a stale `held`, so that guarded update is
 // defence in depth underneath the locks rather than the thing the locks leave
 // to chance. Making it fire would mean a caller holding an incomplete set,
-// which `LockSet.require` throws on — `review-fixes.test.ts` covers that.
+// which `LockSet.require` throws on — `handback-propose-decide-invariants.test.ts` covers that.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
@@ -222,7 +222,7 @@ interface RacedHold {
  * version row, because the product's own supersession classifies in the same
  * transaction (R8) and would leave nothing to race over; a committed
  * transition with no committed classification is exactly the crash state
- * recovery exists for, and `review-fixes.test.ts` stages a fenced lease the
+ * recovery exists for, and `handback-propose-decide-invariants.test.ts` stages a fenced lease the
  * same way.
  */
 async function racedHold(database: FreshDatabase, fixture: RuntimeFixture): Promise<RacedHold> {

@@ -9,7 +9,7 @@
 // Each refusal names what it read, and nothing moves.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { handbackFootprint, retainedCodes, successorBody } from './handback-footprint.ts';
 import {
   appliedDetail,
@@ -28,7 +28,7 @@ if (serverUrl === undefined) {
   );
 }
 
-describe.skipIf(serverUrl === undefined)('NB1: a successor at the edge of the cap', () => {
+describe.skipIf(serverUrl === undefined)('a successor at the edge of the cap', () => {
   let s: Schedules;
 
   beforeAll(async () => {

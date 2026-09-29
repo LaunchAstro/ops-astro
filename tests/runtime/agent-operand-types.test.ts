@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from '../acceptance/cast.ts';
 import { PROPOSAL } from '../acceptance/role-case-bodies.ts';
 import type { Caller } from '../acceptance/world.ts';

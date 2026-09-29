@@ -190,7 +190,7 @@ export async function trashSubtree<Denied>(
     // deadlock with this walk. The server rolls the victim back whole and the
     // envelope retries it once (register-store.ts, 40P01), and the retry
     // answers from what the winner committed: a nested trash applies without
-    // the winner's batch (final-r3-place.test.ts). Taking the
+    // the winner's batch (placement-case-and-restore.test.ts). Taking the
     // root in this order would not help, since the envelope holds it before
     // the walk runs.
     // eslint-disable-next-line no-await-in-loop

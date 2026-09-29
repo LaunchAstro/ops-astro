@@ -27,7 +27,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Finding } from '../../packages/core-records/src/tenancy/conformance.ts';
 import { domainModelConformance } from '../../packages/core-records/src/records/conformance.ts';

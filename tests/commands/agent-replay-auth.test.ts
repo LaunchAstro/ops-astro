@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { agentWorld, codeOf, detailOf, type AgentWorld } from './agent-fixture.ts';
 

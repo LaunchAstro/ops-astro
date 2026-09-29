@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import { CHAIN_GENESIS } from '../../packages/core-runtime/src/signing.ts';
 import { readTaskProposals } from '../../packages/core-commands/src/reads/proposals.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import {
   approve,

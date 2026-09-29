@@ -72,7 +72,7 @@ export interface AgentCapabilities {
  * share would never carry is authority the party cannot use. Showing it would
  * tell a client it could do the thing and let the 403 say otherwise, which is
  * what this read exists to prevent. The gate's set is not exported, so the one
- * name is repeated here, and `final-r2-fr2-api-capabilities.test.ts` holds the
+ * name is repeated here, and `party-capability-reads.test.ts` holds the
  * two together over HTTP.
  */
 const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment'];

@@ -66,6 +66,7 @@
     "web:up": "bash scripts/local/web-up.sh",
     "verify:slice": "node scripts/local/verify-slice.mjs",
     "test:api": "vitest run tests/api",
+    "test:ten-runs": "node tests/ci/ten-green-runs.mjs",
     "build:web": "pnpm --filter @launchastro/web exec vite build",
     "verify:browser": "node tests/browser/slice-acceptance.mjs",
     "verify:d06-mounted": "node tests/browser/d06-mounted.mjs",

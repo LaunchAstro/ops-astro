@@ -18,7 +18,7 @@ import { composeApi } from '../../apps/api/server.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');

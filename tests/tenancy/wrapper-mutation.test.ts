@@ -35,10 +35,7 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import * as shipped from '../../packages/core-records/src/tenancy/database.ts';
-import {
-  createFreshDatabase,
-  type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import {
   createStatementLog,
   type RecordedStatement,

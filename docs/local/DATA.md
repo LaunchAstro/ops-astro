@@ -148,7 +148,7 @@ then. Stopping the API and GoTrue is the operator's step, as README.md's
 upgrade steps give it, and a script that upgrades must stop them itself before
 `db:migrate`; the runner's check is a backstop, not the stop.
 
-`tests/tenancy/final-r6-runner-guard.test.ts` holds real sessions open against
+`tests/tenancy/migration-runner-guard.test.ts` holds real sessions open against
 databases at 0023 and at the head. It covers the refusal with the application
 login held, with other client sessions held, the ledger and schema unchanged
 after it, the apply once they close, an up-to-date install with the
@@ -308,7 +308,7 @@ Running the conformance set only against the end state misses real states.
 Every installation passes through the state after `0001`, and an install
 last upgraded at an older head stands in one of them. A run of the runner
 cannot stop between two files, because it commits them together. So
-`packages/core-records/src/tenancy/testing/prefix-harness.ts` applies the
+`tests/support/prefix-harness.ts` applies the
 migrations one at a time and, after each, runs the tenancy catalogue, the
 composite-key linter and the default-deny set in
 `packages/core-records/src/tenancy/privileges.ts`.
@@ -327,13 +327,13 @@ without consulting a policy. There is also no `TEMPORARY` on the database for
 it to `PUBLIC` on every new database, and a temporary table outlives the
 transaction on a pooled backend, where the next tenant's unqualified `records`
 finds it before `public.records`, with no row security. So
-`createEmptyDatabase` (`tenancy/testing/fresh-database.ts`), which makes each
+`createEmptyDatabase` (`tests/support/fresh-database.ts`), which makes each
 test database, and `scripts/local/db-up.sh` revoke it where they make the
-database (`tests/tenancy/final-r2-fr2-api-temporary.test.ts`). Since migration
+database (`tests/tenancy/temporary-tables.test.ts`). Since migration
 0031 the migrations revoke it too, on the current database, from `PUBLIC`, the
 group and every login in it, so a database made before that revoke loses it
 when it is migrated (`migrations/0031_upgrade_guards.sql`;
-`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`). A backend that had
+`tests/runtime/upgrade-guards.test.ts`). A backend that had
 already made a temporary table keeps it until it disconnects, so restart the
 API after migrating. The harness also
 names the schemas it found, so
