@@ -250,7 +250,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // three independent bodies: the member picks up approved work as
     // themselves, renews that lease and hands it back. It is driven once per
     // member, when the first of the three comes up in the surface's order.
-    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.handback']);
+    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.check', 'task.handback']);
     const drivenFor = new Set<string>();
     const pairOf = (name: string): string => {
       const declaration = COMMAND_SURFACE.find((each) => each.name === name);
@@ -275,6 +275,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (grants.has(pairOf('task.heartbeat'))) {
         const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
+      }
+      if (grants.has(pairOf('task.check'))) {
+        const checked = await harness.asPerson(
+          'task.check',
+          { ...own, name: 'the member checks', outcome: 'passed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
       }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
@@ -513,12 +522,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        declaration.name === 'task.heartbeat'
-          ? // A heartbeat, like a handback, names its task through the lease
-            // and never through a stray `recordId` (final review R1 #23), so
-            // the sibling is reached by its own lease.
+        declaration.name === 'task.heartbeat' || declaration.name === 'task.check'
+          ? // A heartbeat or a check, like a handback, names its task through
+            // the lease and never through a stray `recordId` (final review R1
+            // #23), so the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
+              ...(declaration.name === 'task.check'
+                ? { name: 'a check on the sibling', outcome: 'passed' }
+                : {}),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
             }
@@ -639,6 +651,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       stale,
       refusal('LEASE_NOT_OWNED'),
     );
+    // A check recorded under its own lease (MP-6-1): the system write the
+    // lease authorises, naming the agent as the actor that performed it.
+    const checked = await harness.asAgent(
+      'task.check',
+      {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        name: 'the agent checks',
+        outcome: 'passed',
+      },
+      credential,
+    );
+    observe('agent-after-pickup', table, 'task.check (own lease)', checked, SUCCESS);
 
     // (j) I07, on one live gate. The decision is excluded from every
     // delegation and checked first in the order, so it is never reported as

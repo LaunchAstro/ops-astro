@@ -20,6 +20,7 @@
 // with its rows as they were, and the ledger does not record 0031.
 
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLICATION_ROLE,
@@ -63,6 +64,14 @@ async function at0028(part: string): Promise<EmptyDatabase> {
   );
   return db;
 }
+
+/** The newest migration in the tree: an upgrade that ran to the end records it. */
+const NEWEST = (
+  readdirSync('migrations')
+    .filter((file) => /^\d{4}_.*\.sql$/u.test(file))
+    .toSorted()
+    .at(-1) ?? ''
+).slice(0, 4);
 
 async function lastApplied(db: EmptyDatabase): Promise<string> {
   const [ledger] = await db.admin.execute<{ readonly last: string }>(
@@ -203,7 +212,7 @@ describe.skipIf(serverUrl === undefined)('TEMPORARY after an upgrade from 0028',
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      expect(await lastApplied(on)).toBe(NEWEST);
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;

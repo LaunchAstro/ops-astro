@@ -47,12 +47,25 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the four tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
  */
 const UNREACHED: Readonly<Record<string, string>> = {
+  // The journey records no check (MP-6-1), so one is written against the
+  // business's own lease, its run, version and attempt, as `recordCheck` does.
+  'public.run_checks': `insert into public.run_checks
+       (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
+        fence, name, outcome)
+     select l.business_id, gen_random_uuid(), l.task_id, run.id, run.version_id, l.id, att.id,
+            l.holder_actor_id, l.fence, 'restricted calls seed', 'passed'
+       from public.leases l
+       join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+       join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+      where l.business_id = $1
+      order by l.id limit 1 returning 1`,
   'public.person_identifiers': `insert into public.person_identifiers
        (business_id, id, person_id, kind, value, observed_value, source_system)
      select business_id, gen_random_uuid(), id, 'email', 'restricted-calls-seed',

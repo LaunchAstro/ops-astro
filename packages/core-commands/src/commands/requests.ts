@@ -229,6 +229,14 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
+    } & Envelope)
+  | ({
+      readonly command: 'task.check';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly name: string;
+      readonly outcome: string;
+      readonly note?: string | null;
     } & Envelope);
 
 /**

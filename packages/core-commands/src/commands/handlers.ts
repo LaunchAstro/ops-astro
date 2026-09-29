@@ -23,6 +23,7 @@ import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
+import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -92,6 +93,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // lease's holder and delegation under its locks.
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
+  'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
 };
 

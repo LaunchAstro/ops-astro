@@ -17,6 +17,7 @@
 
 export {
   checkAuthority,
+  coveredScopes,
   effectiveGrants,
   issueGrant,
   revokeGrant,

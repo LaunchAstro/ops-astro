@@ -63,6 +63,8 @@ export type CommandName =
   | 'task.read'
   | 'task.board'
   | 'task.queue'
+  // The gate engine's pending decisions a person may make (MP-6-1, TR-P-14).
+  | 'gate.pending'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -95,7 +97,10 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // A check the run performed, recorded under its worker lease (MP-6-1,
+  // CS-16.3): a system write whose authority is the live lease, not a grant.
+  | 'task.check';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -344,6 +349,14 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.check': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    name: 'any',
+    outcome: 'any',
+    note: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -407,6 +420,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // reading the queue reserves nothing, and two workers reading it see the
   // same row until one of them picks it up.
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
+  // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
+  // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
+  read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -457,17 +473,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: [],
   }),
-  // Work control is `write` on the task, the authority `task.propose` asks,
-  // and it is asked of that task: a record-scoped writer controls its own
-  // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
-  // and the handler refuses a lineage opened on another task. They take no
-  // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', {
+  // Stopping a run and starting it again are decisions about the run, so both
+  // take `gate:decide` (MP-6-1's permissions, register row FA-TASKS-92): in
+  // the grant model, `decide` on the task, asked of that task. An agent never
+  // holds `decide`. Both name the task in `recordId` and the lineage in
+  // `lineageId`, and the handler refuses a lineage opened on another task.
+  // They take no `expectedRevision` because neither writes the task record. A
+  // restart is also a proposal, so `propose` asks the caller's `write` too.
+  declare('task.cancel', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
-  declare('task.restart', 'write', {
+  declare('task.restart', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
@@ -475,6 +493,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The lease owner's, asked of the lease's task like pickup and handback; the
   // agent path checks the delegation, then the lease.
   declare('task.heartbeat', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // Asked of the lease like heartbeat: the lease holder records the check,
+  // and the row names the holder as the actor that performed it.
+  declare('task.check', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],

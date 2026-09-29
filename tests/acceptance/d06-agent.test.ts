@@ -4,7 +4,7 @@
 //
 // The agent's own operations are `AGENT_SURFACE`, and each has a real positive
 // control here: the queue before any pickup, a pickup of a freshly approved
-// reservation, and a read, a comment, a heartbeat, the capabilities read and a
+// reservation, and a read, a comment, a heartbeat, a check, the capabilities read and a
 // handback under the credential that pickup handed out. Each is sent once
 // valid, then again with every classified system-owned field, and the contract
 // outcome is asserted: `FIELD_NOT_WRITABLE` naming the field, every other table
@@ -49,6 +49,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.read',
   'task.comment',
   'task.heartbeat',
+  'task.check',
   'task.pickup',
   'task.handback',
 ];
@@ -145,6 +146,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     }
     if (name === 'task.heartbeat') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
+    }
+    if (name === 'task.check') {
+      const check = { name: 'the agent checks', outcome: 'passed' };
+      return {
+        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...check },
+        credential,
+      };
     }
     const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };

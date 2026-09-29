@@ -35,6 +35,9 @@ describe.skipIf(serverUrl === undefined)('controls authorised on their own targe
       const scope = { kind: 'record' as const, id: own.id };
       await grantTo(tx, writer, 'read', scope);
       await grantTo(tx, writer, 'write', scope);
+      // Cancel and restart take `decide` since MP-6-1 (`gate:decide`), asked of
+      // the task as `write` was, so the task-scoped holder has both.
+      await grantTo(tx, writer, 'decide', scope);
       await grantTo(tx, writer, 'manage', scope);
     });
   }, 120_000);

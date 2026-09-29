@@ -37,6 +37,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
   ['task.queue', {}],
+  ['gate.pending', {}],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
@@ -55,6 +56,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.decide': ['gateId', 'gate'],
   'task.board': ['board', 'board'],
   'task.heartbeat': ['leaseId', 'agent'],
+  'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
 };

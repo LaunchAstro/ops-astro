@@ -32,6 +32,13 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+export {
+  CHECK_OUTCOMES,
+  recordCheck,
+  type CheckOutcome,
+  type CheckRequest,
+  type RecordedCheck,
+} from './checks.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

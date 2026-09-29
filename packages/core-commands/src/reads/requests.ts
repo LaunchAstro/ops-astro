@@ -30,6 +30,7 @@ import type {
   PersonListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -61,6 +62,8 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * What a preset would do to this business's model, computed without doing
    * any of it. It is a read because it writes nothing — including on success,
@@ -114,6 +117,7 @@ export type ReadResult =
   | TaskBoardResult
   | PersonListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | CapabilitiesResult;

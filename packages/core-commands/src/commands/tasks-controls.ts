@@ -4,8 +4,9 @@
 // runtime functions that own them.
 //
 // Cancel and restart name the task and the lineage on it. The envelope has
-// already asked the declaration's `write` on tasks, the work-control authority
-// `task.propose` asks; here the task is found in this business and the lineage
+// already asked the declaration's `decide` on tasks (`gate:decide`, MP-6-1);
+// a restart's proposal asks `write` as well. Here the task is found in this
+// business and the lineage
 // is checked against it, so authority on one task never reaches a lineage on
 // another (R3's rule, the one `propose` enforces). Neither writes the task
 // record, which is why neither takes an `expectedRevision`.
@@ -107,7 +108,7 @@ export async function cancelOnTask(
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'reachable');
   if (isOutcome(found)) return found;
 
-  // The envelope's write check runs before any lock, so the runtime holds
+  // The envelope's decide check runs before any lock, so the runtime holds
   // the grant and reads it again under its locks.
   const result = await cancelAndClassify(tx, {
     lineageId: found.lineageId,

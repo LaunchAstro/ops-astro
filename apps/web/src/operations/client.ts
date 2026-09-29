@@ -75,6 +75,7 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  'gate.pending',
 ] as const;
 
 /**

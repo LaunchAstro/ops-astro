@@ -89,11 +89,11 @@ describe('RUNTIME.md on grants judged at the locked instant', () => {
     );
   });
 
-  it('says task.cancel holds its grants before the runtime set and re-reads write', () => {
+  it('says task.cancel holds its grants before the runtime set and re-reads decide', () => {
     const cancel = bodyOf(read(`${RUNTIME_SRC}/recovery/lease-retirement.ts`), 'cancelAndClassify');
     expect(cancel.indexOf('holdCoveringGrants(')).toBeGreaterThan(0);
     expect(cancel.indexOf('holdCoveringGrants(')).toBeLessThan(cancel.indexOf('lockRediscovered('));
-    expect(cancel).toMatch(/checkAuthorityAt\([\s\S]{0,200}?action: 'write'/u);
+    expect(cancel).toMatch(/checkAuthorityAt\([\s\S]{0,200}?action: 'decide'/u);
     expect(runtime).toMatch(/`task\.cancel` holds the canceller's covering grants for share/u);
   });
 });

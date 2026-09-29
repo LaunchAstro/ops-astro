@@ -7,7 +7,7 @@
 // through `now()`, the transaction's start, so a grant that lapsed while the
 // decision waited on the cap still approved.
 //
-// R2-RUNTIME-5. `task.cancel` checked write once, before its locks, and held
+// R2-RUNTIME-5. `task.cancel` checked its grant (`decide` since MP-6-1) once, before its locks, and held
 // no grant, so a revocation that committed while it waited did not stop it.
 //
 // R2-RUNTIME-7. `task.decide` approved a gate on a trashed task, holding
@@ -239,7 +239,7 @@ describe.skipIf(serverUrl === undefined)(
       }, 60_000);
     });
 
-    describe('task.cancel and a revocation of the canceller’s write', () => {
+    describe('task.cancel and a revocation of the canceller’s decide', () => {
       async function pendingLineage(title: string) {
         const task = await c.createTask(title);
         const proposal = await c.propose(task.id, task.revision);
@@ -258,7 +258,7 @@ describe.skipIf(serverUrl === undefined)(
 
       it('a revocation that locks the grant first is seen under the locks: SCOPE_NOT_GRANTED', async () => {
         const { task, proposal, runId } = await pendingLineage('revoked while the cancel waits');
-        const { member, grantId } = await holderOf('write');
+        const { member, grantId } = await holderOf('decide');
         const blocker = hold(owner, async (sql) => {
           await sql`select 1 from public.grants where id = ${grantId} for update`;
           await sql`select 1 from public.planned_runs where id = ${runId} for update`;
@@ -288,7 +288,7 @@ describe.skipIf(serverUrl === undefined)(
         const { task, proposal, runId } = await pendingLineage(
           'cancelled while a revocation arrives',
         );
-        const { member, grantId } = await holderOf('write');
+        const { member, grantId } = await holderOf('decide');
         const blocker = hold(owner, async (sql) => {
           await sql`select 1 from public.planned_runs where id = ${runId} for update`;
         });

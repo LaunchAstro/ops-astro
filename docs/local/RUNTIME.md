@@ -1177,8 +1177,10 @@ direct SQL.
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
   commit (`tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`).
-- **Authority** for `task.cancel` and `task.restart` is `write` on the task
-  named in `recordId`, so a record-scoped writer controls its own lineage
+- **Authority** for `task.cancel` and `task.restart` is `decide` on the task
+  named in `recordId` (the catalogue's `gate:decide`, MP-6-1: stopping and
+  starting a run are decisions about it, and an agent never holds `decide`),
+  so a record-scoped decider controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or

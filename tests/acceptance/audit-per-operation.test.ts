@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 35 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 37 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 35. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 37. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those three are a case of their own below.
@@ -59,7 +59,23 @@ interface Cell {
 }
 
 const READ_NAMES: ReadonlySet<CommandName> = new Set(READS);
-const LEASE_WORK: readonly CommandName[] = ['task.pickup', 'task.handback', 'task.heartbeat'];
+const LEASE_WORK: readonly CommandName[] = [
+  'task.pickup',
+  'task.handback',
+  'task.heartbeat',
+  'task.check',
+];
+
+/** A lease operation's body: a handback settles, a check names itself, a heartbeat is the lease. */
+function leaseBodyFor(
+  name: CommandName,
+  lease: { readonly leaseId: string; readonly fence: number },
+  settle: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (name === 'task.handback') return { ...lease, ...settle };
+  if (name === 'task.check') return { ...lease, name: 'a check for the audit', outcome: 'passed' };
+  return lease;
+}
 
 /** A domain-state digest without `handback_reports`, for I08's retained handback report. */
 const besideReports = (state: Readonly<Record<string, string>>): Record<string, string> =>
@@ -169,12 +185,13 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return agentCell(agent, name, { reservationId }, undefined, null);
       }
       case 'task.heartbeat':
+      case 'task.check':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(ada, agent, `work for ${name}`);
         const lease = { leaseId: p.leaseId, fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a draft for the audit' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body = leaseBodyFor(name, lease, settle);
         return agentCell(agent, name, body, p.credential, null);
       }
       case 'grant.revoke': {
@@ -220,10 +237,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
       }
       case 'task.heartbeat':
+      case 'task.check':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body = leaseBodyFor(name, lease, settle);
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
       default: {
@@ -248,12 +266,13 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           'RESERVATION_NOT_CLAIMABLE',
         );
       case 'task.heartbeat':
+      case 'task.check':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);
         const lease = { leaseId: randomUUID(), fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body = leaseBodyFor(name, lease, settle);
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
       default:
@@ -322,12 +341,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 35 exported operations both ways', () => {
+  it('covered all 37 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(35);
+    expect(names).toHaveLength(37);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 35.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 37.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
@@ -409,6 +428,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       ['task.read', 'read'],
       ['task.comment', 'comment'],
       ['task.heartbeat', 'write'],
+      ['task.check', 'write'],
       ['task.handback', 'write'],
     ];
 
@@ -431,6 +451,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
             audience: 'internal',
           },
           'task.heartbeat': lease,
+          'task.check': { ...lease, name: 'a narrowed check', outcome: 'passed' },
         };
         const bodyFor = (): Record<string, unknown> =>
           bodies[name] ?? { ...lease, outcome: 'completed', report: { wrote: 'a narrowed draft' } };

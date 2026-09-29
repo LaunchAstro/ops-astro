@@ -219,7 +219,8 @@ export async function cancelAndClassify(
     readonly lineageId: string;
     readonly reason: string;
     /**
-     * The person's write on the task (T5), held and re-read under the locks.
+     * The person's decide on the task (`gate:decide`, MP-6-1), held and
+     * re-read under the locks.
      * A recovery caller acting for no person passes none, and keeps the path
      * it had.
      */
@@ -278,7 +279,7 @@ export async function cancelAndClassify(
       )
     ).map((row) => row.id);
 
-  // The envelope checks write before any lock.
+  // The envelope checks decide before any lock.
   // Held for share before the runtime set, as decide and pickup hold theirs:
   // a revocation that locked first is seen by the re-check below, and one
   // that comes second waits for this cancellation to commit.
@@ -314,7 +315,7 @@ export async function cancelAndClassify(
       authority.subjects,
       {
         collection: authority.collection,
-        action: 'write',
+        action: 'decide',
         scope: { kind: 'record', id: authority.taskId },
       },
       await lockedInstant(tx),
@@ -322,8 +323,8 @@ export async function cancelAndClassify(
     if (!current.ok) {
       return refuse(
         'SCOPE_NOT_GRANTED',
-        'the write grant this cancellation rested on ended before it could be recorded',
-        'A person with write authority on this task cancels its work.',
+        'the decide grant this cancellation rested on ended before it could be recorded',
+        'A person with decide authority on this task cancels its work.',
       );
     }
   }

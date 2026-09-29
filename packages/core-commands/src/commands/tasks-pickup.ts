@@ -204,7 +204,13 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
     brief: picked.brief,
     expectedVersions: picked.expectedVersions,
     budgetEnvelope: picked.budgetEnvelope,
-    permittedOperations: ['task.read', 'task.comment', 'task.heartbeat', 'task.handback'],
+    permittedOperations: [
+      'task.read',
+      'task.comment',
+      'task.heartbeat',
+      'task.check',
+      'task.handback',
+    ],
     excludedOperations: exclusionsFor(picked.claimant),
     handbackShape: handbackShapeFor(picked),
   };

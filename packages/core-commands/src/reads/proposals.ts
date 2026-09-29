@@ -114,6 +114,16 @@ interface ReservationRow {
   readonly attempt_observed: boolean | null;
 }
 
+interface CheckRow {
+  readonly version_id: string;
+  readonly id: string;
+  readonly name: string;
+  readonly outcome: string;
+  readonly note: string | null;
+  readonly actor_id: string;
+  readonly created_at: string;
+}
+
 /** The task's lineages that have a version: the scope of the read. */
 const LINEAGES = `select distinct ver.lineage_id
        from public.proposal_lineages lin
@@ -174,6 +184,14 @@ const RESERVATIONS = `select row_number() over (order by res.created_at, res.id)
       where res.business_id = $1
         and run.lineage_id in (select lineage_id from lineages)`;
 
+const CHECKS = `select row_number() over (order by ck.created_at, ck.id) as ordinal,
+            ck.version_id, ck.id, ck.name, ck.outcome, ck.note, ck.actor_id, ck.created_at
+       from public.run_checks ck
+       join public.proposal_versions ver
+         on ver.business_id = ck.business_id and ver.id = ck.version_id
+      where ck.business_id = $1
+        and ver.lineage_id in (select lineage_id from lineages)`;
+
 /**
  * Every proposal on one task, newest lineage first.
  *
@@ -196,13 +214,14 @@ export async function readTaskProposals(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS },
+      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS },
       parameter: taskId,
     },
     signingKey,
   );
   const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
   const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
+  const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
   const decisions = snapshot.decisions;
   if (versions.length === 0) return [];
 
@@ -214,7 +233,7 @@ export async function readTaskProposals(
     return {
       lineageId,
       state: first?.lineage_state ?? 'unknown',
-      versions: rows.map(asVersion),
+      versions: rows.map((row) => asVersion(row, checks)),
       decisions: decisions
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => ({
@@ -264,7 +283,7 @@ export async function readTaskProposals(
   });
 }
 
-function asVersion(row: VersionRow): ProposalVersionView {
+function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {
   return {
     versionId: row.version_id,
     version: Number(row.version),
@@ -295,6 +314,16 @@ function asVersion(row: VersionRow): ProposalVersionView {
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
           },
+    checks: checks
+      .filter((check) => check.version_id === row.version_id)
+      .map((check) => ({
+        id: check.id,
+        name: check.name,
+        outcome: check.outcome,
+        note: check.note,
+        performedByActorId: check.actor_id,
+        recordedAt: isoTime(check.created_at),
+      })),
   };
 }
 

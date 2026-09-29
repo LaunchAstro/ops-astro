@@ -208,6 +208,9 @@ export function createPositiveBody(
       case 'task.board':
         return { body: { board: null } };
       case 'task.queue':
+      // The pending gates the admin may decide: the admin holds `decide` on
+      // the whole business, so the list answers.
+      case 'gate.pending':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:
       // `settings.read` because `business_settings` has no revision column to
@@ -265,6 +268,12 @@ export function createPositiveBody(
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
+      case 'task.check':
+        // A check recorded under the person's own lease (MP-6-1). The agent's
+        // check under its delegation is in the agent journey.
+        return {
+          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
+        };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }
