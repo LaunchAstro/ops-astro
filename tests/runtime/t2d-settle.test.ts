@@ -176,7 +176,7 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     expect(await receiptOf(w.attemptId)).toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('Sol proof, criterion 2: a settled failed attempt cannot apply its effect afterwards', async () => {
+  it('a settled failed attempt cannot apply its effect afterwards', async () => {
     const w = await work();
     await dispatched(w);
     appliedDetail(await observeOf(w, { usage: PRICED, outcome: 'failed' }), 'task.observe');
@@ -257,7 +257,7 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     expect(await money(w)).toMatchObject({ actual: '1800', envelope_actual: '1800' });
   });
 
-  it('Sol proof, criterion 3: a populated foreign envelope and a wrong client stay isolated', async () => {
+  it('a populated foreign envelope and a wrong client stay isolated', async () => {
     const bravo = await cq8World(s).party('t2d-bravo');
     const others = async () =>
       await rows(
