@@ -1,0 +1,47 @@
+{
+  "assets": [
+    {
+      "name": "Funnel Display",
+      "kind": "font",
+      "file": "fonts/FunnelDisplay-wght.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/funneldisplay/FunnelDisplay%5Bwght%5D.ttf",
+      "sha256": "b4151c9c4b7b07eb74320096b4ff4156cca8821f5adfab34af9fd9a2d6c1179d",
+      "weight": "300 800",
+      "licence": "OFL-1.1",
+      "licenceFile": "fonts/OFL-Funnel.txt",
+      "source": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/funneldisplay",
+      "permittedUse": "SIL Open Font License 1.1: use, bundle and redistribute with software, licence text kept beside the font, not sold on its own"
+    },
+    {
+      "name": "Funnel Sans",
+      "kind": "font",
+      "file": "fonts/FunnelSans-wght.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/funnelsans/FunnelSans%5Bwght%5D.ttf",
+      "sha256": "652c9834434bc01835c4e75a73d3c7e42ff2e4beb261cc851cb911e889af6a77",
+      "weight": "300 800",
+      "licence": "OFL-1.1",
+      "licenceFile": "fonts/OFL-Funnel.txt",
+      "source": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/funnelsans",
+      "permittedUse": "SIL Open Font License 1.1: use, bundle and redistribute with software, licence text kept beside the font, not sold on its own"
+    },
+    {
+      "name": "Chivo Mono",
+      "kind": "font",
+      "file": "fonts/ChivoMono-wght.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/chivomono/ChivoMono%5Bwght%5D.ttf",
+      "sha256": "725256f30b7b1b25dd001a96ff8d4a23773197bb886cd847a97ff8eabc9c1d9d",
+      "weight": "100 900",
+      "licence": "OFL-1.1",
+      "licenceFile": "fonts/OFL-ChivoMono.txt",
+      "source": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/chivomono",
+      "permittedUse": "SIL Open Font License 1.1: use, bundle and redistribute with software, licence text kept beside the font, not sold on its own"
+    },
+    {
+      "name": "Flaticon UIcons, regular rounded, 2.6.0",
+      "kind": "icons",
+      "licence": "LicenseRef-Flaticon",
+      "source": "https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css",
+      "refused": "the vendor's own licence, not an open one; it grants use with attribution, not redistribution of the font inside an AGPL-3.0-only work (the icon-set question, issue 32). Not bundled: both sides draw no icon glyph"
+    }
+  ]
+}
