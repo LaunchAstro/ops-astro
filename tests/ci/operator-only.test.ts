@@ -237,18 +237,66 @@ const person = async (
 
 // ---- the table, over a real database ---------------------------------------
 
-describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
-  let db: FreshDatabase;
-  let alphaBusiness = '';
-  const subjects = {
-    operator: `op-${randomUUID()}`,
-    keyless: `kl-${randomUUID()}`,
-    client: `cl-${randomUUID()}`,
-    agent: `ag-${randomUUID()}`,
-    betaOperator: `bo-${randomUUID()}`,
-  };
-  let operatorPerson = '';
+let db: FreshDatabase;
 
+let alphaBusiness = '';
+
+const subjects = {
+  operator: `op-${randomUUID()}`,
+  keyless: `kl-${randomUUID()}`,
+  client: `cl-${randomUUID()}`,
+  agent: `ag-${randomUUID()}`,
+  betaOperator: `bo-${randomUUID()}`,
+};
+
+let operatorPerson = '';
+
+const adminUrl = (): string => {
+  const url = new URL(serverUrl as string);
+  url.pathname = `/${db.name}`;
+  return url.toString();
+};
+
+const environment = (at: Marks, path: string, own: Record<string, string>) => ({
+  PATH: path,
+  OPS_ASTRO_BUSINESS: 'alpha',
+  OPS_ASTRO_DEPLOYMENTS: at.records,
+  DATABASE_URL: db.appUrl,
+  DATABASE_ADMIN_URL: adminUrl(),
+  SUPABASE_KEY_SET_URL: keySetUrl,
+  GOTRUE_URL: ISSUER,
+  ...own,
+});
+
+const CALLERS: Record<string, () => Promise<Record<string, string>>> = {
+  'an agent credential': async () => ({ OPS_ASTRO_TOKEN: await token(subjects.agent) }),
+  'an agent credential, flagged as one': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.agent),
+    OPS_ASTRO_AGENT: '1',
+  }),
+  "the operator's own sign-in under a delegation": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator),
+    OPS_ASTRO_DELEGATION: CANARY,
+  }),
+  "the operator's own sign-in with a saved delegation": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator),
+    OPS_ASTRO_DELEGATION_FILE: join(scratch, 'delegation'),
+  }),
+  'a person without the key (operations:read only)': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.keyless),
+  }),
+  'a person holding the key for one client only': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.client),
+  }),
+  "another business's operator": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.betaOperator),
+  }),
+  'a forged sign-in': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator, true),
+  }),
+};
+
+describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   beforeAll(async () => {
     keySet = await serveTestKeySetApart();
     keySetUrl = keySet.url;
@@ -284,50 +332,16 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     rmSync(scratch, { recursive: true, force: true });
   });
 
-  const adminUrl = (): string => {
-    const url = new URL(serverUrl as string);
-    url.pathname = `/${db.name}`;
-    return url.toString();
-  };
-  const environment = (at: Marks, path: string, own: Record<string, string>) => ({
-    PATH: path,
-    OPS_ASTRO_BUSINESS: 'alpha',
-    OPS_ASTRO_DEPLOYMENTS: at.records,
-    DATABASE_URL: db.appUrl,
-    DATABASE_ADMIN_URL: adminUrl(),
-    SUPABASE_KEY_SET_URL: keySetUrl,
-    GOTRUE_URL: ISSUER,
-    ...own,
-  });
+  operatorOnlyCases1();
+  operatorOnlyCases2();
+  operatorOnlyCases3();
+  operatorOnlyCases4();
+  operatorOnlyCases5();
+  operatorOnlyCases6();
+  operatorOnlyCases7();
+});
 
-  const CALLERS: Record<string, () => Promise<Record<string, string>>> = {
-    'an agent credential': async () => ({ OPS_ASTRO_TOKEN: await token(subjects.agent) }),
-    'an agent credential, flagged as one': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.agent),
-      OPS_ASTRO_AGENT: '1',
-    }),
-    "the operator's own sign-in under a delegation": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator),
-      OPS_ASTRO_DELEGATION: CANARY,
-    }),
-    "the operator's own sign-in with a saved delegation": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator),
-      OPS_ASTRO_DELEGATION_FILE: join(scratch, 'delegation'),
-    }),
-    'a person without the key (operations:read only)': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.keyless),
-    }),
-    'a person holding the key for one client only': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.client),
-    }),
-    "another business's operator": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.betaOperator),
-    }),
-    'a forged sign-in': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator, true),
-    }),
-  };
-
+function operatorOnlyCases1() {
   for (const [commandName, command] of Object.entries(COMMANDS)) {
     for (const [callerName, caller] of Object.entries(CALLERS)) {
       it(`${commandName}, run by ${callerName}: refused before it acts, and writes nothing`, async () => {
@@ -371,7 +385,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
       expect(await count()).toBe(before);
     });
   });
+}
 
+function operatorOnlyCases2() {
   Object.entries(COMMANDS).forEach(([commandName, command]) => {
     it(`Sol proof, criterion 4: refused ${commandName} without a record folder writes no authentication row`, async () => {
       const count = async (): Promise<number> =>
@@ -416,7 +432,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(records[0]).not.toContain(signIn);
     expect(result.out).not.toContain(signIn);
   });
+}
 
+function operatorOnlyCases3() {
   it('a record folder that is not named refuses the operator before the command acts', async () => {
     const fake = manager(false);
     const at = marks(fake);
@@ -461,7 +479,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(result.out).toMatch(/docker:prod-api is running/u);
     expect(await count()).toBe(before);
   });
+}
 
+function operatorOnlyCases4() {
   it("a completed act records the operator's sign-in once, after the act", async () => {
     const count = async (): Promise<number> =>
       await db.app.withBusiness(alphaBusiness, async (tx) => {
@@ -500,7 +520,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(typo.out).toMatch(/--dryrun is not an argument/u);
     expect(readdirSync(at.records)).toEqual([]);
   });
+}
 
+function operatorOnlyCases5() {
   it('Sol proof, criterion 14: a saved stopped report cannot bypass a live running API', async () => {
     // Carried from #109 (4ef3113) with the operator's sign-in added: the gate
     // now answers first, so the proof runs past it to the bypass it tests.
@@ -540,7 +562,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(result.out).not.toMatch(/db-migrate|ECONNREFUSED/iu);
     expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
   });
+}
 
+function operatorOnlyCases6() {
   it('the operator deploys a stored build to staging: one record names the version, the image and the operator', async () => {
     const fake = manager(false);
     const at = marks(fake);
@@ -591,7 +615,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(records[0]).not.toContain(signIn);
     expect(result.out).not.toContain(signIn);
   }, 60_000);
+}
 
+function operatorOnlyCases7() {
   it('the operator promotes a stopped app: migrated, pointed, started, and one record names the operator', async () => {
     const fake = manager(false);
     const at = marks(fake);
@@ -635,4 +661,4 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     });
     expect(records[0]).not.toContain(signIn);
   }, 60_000);
-});
+}

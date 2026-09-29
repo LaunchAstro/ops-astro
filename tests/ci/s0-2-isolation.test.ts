@@ -129,6 +129,11 @@ function world() {
 }
 
 describe('S0-2 isolation', () => {
+  isolationCases1();
+  isolationCases2();
+});
+
+function isolationCases1() {
   it('business to business: one business’s cross-scope refusals never bring another’s alert closer', async () => {
     const w = world();
     await times(9, async () => {
@@ -171,7 +176,9 @@ describe('S0-2 isolation', () => {
     w.alerts.observe({ kind: 'export', business: ALPHA, who: 'c1', items: 2000 });
     expect(await w.raised()).toEqual(['export-volume']);
   });
+}
 
+function isolationCases2() {
   it('client to client, through the door: the records each read hands out count per business and reader', async () => {
     const w = world();
     await times(2, async () => {
@@ -218,4 +225,4 @@ describe('S0-2 isolation', () => {
     for (const name of NAMES.slice(2)) expect(sent.includes(name), 'a scope name').toBe(false);
     expect(w.databaseUses()).toBe(0);
   });
-});
+}

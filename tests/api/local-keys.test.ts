@@ -81,6 +81,11 @@ function sandboxCheckout(): { readonly root: string; readonly calls: string; run
 }
 
 describe('S0-6 local keys', () => {
+  localKeysCases1();
+  localKeysCases2();
+});
+
+function localKeysCases1() {
   it('the fixtures sign with a test key pair and read a static key set, with no network', async () => {
     const network = vi.fn(async () => await Promise.reject(new Error('no network in tests')));
     vi.stubGlobal('fetch', network);
@@ -120,7 +125,9 @@ describe('S0-6 local keys', () => {
     const verdict = await verify(token);
     expect(verdict).toMatchObject({ outcome: 'verified', claims: { role: 'service_role' } });
   });
+}
 
+function localKeysCases2() {
   describe('auth-up.sh', () => {
     let sandbox: ReturnType<typeof sandboxCheckout>;
     let status: number;
@@ -166,7 +173,7 @@ describe('S0-6 local keys', () => {
       expect(readFileSync(keyFile(), 'utf8')).toBe(written);
     });
   });
-});
+}
 
 describe('S0-6 signing-key canary', () => {
   it('the local signer refuses a key file it cannot use without repeating any of it', async () => {

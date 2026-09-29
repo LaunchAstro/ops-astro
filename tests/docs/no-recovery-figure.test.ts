@@ -72,6 +72,11 @@ function productText(): readonly string[] {
 }
 
 describe('S0-3 no recovery figure', () => {
+  noRecoveryFigureCases1();
+  noRecoveryFigureCases2();
+});
+
+function noRecoveryFigureCases1() {
   it('finds the figures written to be found', () => {
     for (const planted of [
       'Recovery time objective: 4 hours.',
@@ -108,7 +113,9 @@ describe('S0-3 no recovery figure', () => {
     const planted = 'Our RTO is four hours.';
     expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });
+}
 
+function noRecoveryFigureCases2() {
   it('passes sentences that quote no recovery figure', () => {
     for (const neutral of [
       'Publish no recovery-point or recovery-time figure until a restore has been rehearsed.',
@@ -131,4 +138,4 @@ describe('S0-3 no recovery figure', () => {
     );
     expect(quoted).toStrictEqual([]);
   });
-});
+}

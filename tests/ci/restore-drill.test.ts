@@ -14,7 +14,7 @@
 // only the private key, held apart from the store, opens it; the drill restores
 // from the sealed artefact and refuses a plain dump. (The store's half, write
 // only for the backup identity and every read logged, is in
-// tests/db/backup-identity.test.ts under the same name.)
+// tests/db/backup-store-restore.test.ts under the same name.)
 //
 // `S0-3 drill scope` (Sol's review 2, criterion 4, as the orchestrator ruled):
 // the backup and the restored copy stay whole, and the drill reads the copy
@@ -276,17 +276,21 @@ async function drillContainers(): Promise<string> {
   return listed.stdout.toString().trim();
 }
 
-describe.skipIf(!hasDocker)('the restore drill', () => {
-  const keys = generateKeyPairSync('rsa', {
-    modulusLength: 3072,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  });
-  const takenAt = '2026-09-29T02:00:00.000Z';
-  let dump: Buffer;
-  let sealed: Buffer;
-  let unbarred: Buffer;
+const keys = generateKeyPairSync('rsa', {
+  modulusLength: 3072,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
 
+const takenAt = '2026-09-29T02:00:00.000Z';
+
+let dump: Buffer;
+
+let sealed: Buffer;
+
+let unbarred: Buffer;
+
+describe.skipIf(!hasDocker)('the restore drill', () => {
   beforeAll(async () => {
     ({ dump, unbarred } = await fixtureDump());
     sealed = (await sealModule()).sealArchive(dump, keys.publicKey);
@@ -296,6 +300,13 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
     expect(await drillContainers()).toBe('');
   });
 
+  theRestoreDrillCases1();
+  theRestoreDrillCases2();
+  theRestoreDrillCases3();
+  theRestoreDrillCases4();
+});
+
+function theRestoreDrillCases1() {
   describe('S0-3 backup encryption', () => {
     it('seals the dump so the stored bytes carry none of it, and only the private key opens it', async () => {
       const { sealArchive, openArchive } = await sealModule();
@@ -346,66 +357,84 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       expect(calls).toEqual([]);
     }, 180_000);
   });
+}
 
+function theRestoreDrillCases2() {
   describe('S0-3 bad archive red', () => {
-    it('fails an archive cut after sealing, and starts no container', async () => {
-      const { restoreDrill } = await drillModule();
-      const record = await restoreDrill({
-        fetchArchive: async () => ({
-          takenAt,
-          body: sealed.subarray(0, Math.floor(sealed.length / 2)),
-        }),
-        privateKey: keys.privateKey,
-        scope: SCOPE,
-      });
-      expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'open' });
-    });
+    badArchiveRedCases1();
+    badArchiveRedCases2();
+  });
+}
 
-    it('fails a sealed archive whose dump was cut before sealing, and leaves nothing running', async () => {
-      const { restoreDrill } = await drillModule();
-      const { sealArchive } = await sealModule();
-      const cut = sealArchive(dump.subarray(0, dump.length - 4096), keys.publicKey);
-      const record = await restoreDrill({
-        fetchArchive: async () => ({ takenAt, body: cut }),
-        privateKey: keys.privateKey,
-        scope: SCOPE,
-      });
-      expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'restore' });
-      expect(Object.keys(record).toSorted()).toEqual(
-        [
-          'archiveTakenAt',
-          'at',
-          'event',
-          'outcome',
-          'productionMajor',
-          'sourceMajor',
-          'stage',
-          'target',
-          'targetMajor',
-          'timings',
-        ].toSorted(),
-      );
-      expect(await drillContainers()).toBe('');
-    }, 120_000);
-
-    it('fails when the archive cannot be fetched, naming the stage and nothing else', async () => {
-      const { restoreDrill } = await drillModule();
-      const canary = `canary-${randomBytes(6).toString('hex')}`;
-      const record = await restoreDrill({
-        fetchArchive: async () => {
-          throw new Error(`password ${canary} rejected at /var/lib/ops-keys/restore.pem`);
-        },
-        privateKey: keys.privateKey,
-        scope: SCOPE,
-      });
-      expect(record).toMatchObject({ outcome: 'failed', stage: 'fetch' });
-      expect(JSON.stringify(record)).not.toContain(canary);
-      expect(JSON.stringify(record)).not.toContain('/var/lib/');
+function badArchiveRedCases1() {
+  it('fails an archive cut after sealing, and starts no container', async () => {
+    const { restoreDrill } = await drillModule();
+    const record = await restoreDrill({
+      fetchArchive: async () => ({
+        takenAt,
+        body: sealed.subarray(0, Math.floor(sealed.length / 2)),
+      }),
+      privateKey: keys.privateKey,
+      scope: SCOPE,
     });
+    expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'open' });
   });
 
+  it('fails a sealed archive whose dump was cut before sealing, and leaves nothing running', async () => {
+    const { restoreDrill } = await drillModule();
+    const { sealArchive } = await sealModule();
+    const cut = sealArchive(dump.subarray(0, dump.length - 4096), keys.publicKey);
+    const record = await restoreDrill({
+      fetchArchive: async () => ({ takenAt, body: cut }),
+      privateKey: keys.privateKey,
+      scope: SCOPE,
+    });
+    expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'restore' });
+    expect(Object.keys(record).toSorted()).toEqual(
+      [
+        'archiveTakenAt',
+        'at',
+        'event',
+        'outcome',
+        'productionMajor',
+        'sourceMajor',
+        'stage',
+        'target',
+        'targetMajor',
+        'timings',
+      ].toSorted(),
+    );
+    expect(await drillContainers()).toBe('');
+  }, 120_000);
+}
+
+function badArchiveRedCases2() {
+  it('fails when the archive cannot be fetched, naming the stage and nothing else', async () => {
+    const { restoreDrill } = await drillModule();
+    const canary = `canary-${randomBytes(6).toString('hex')}`;
+    const record = await restoreDrill({
+      fetchArchive: async () => {
+        throw new Error(`password ${canary} rejected at /var/lib/ops-keys/restore.pem`);
+      },
+      privateKey: keys.privateKey,
+      scope: SCOPE,
+    });
+    expect(record).toMatchObject({ outcome: 'failed', stage: 'fetch' });
+    expect(JSON.stringify(record)).not.toContain(canary);
+    expect(JSON.stringify(record)).not.toContain('/var/lib/');
+  });
+}
+
+function theRestoreDrillCases3() {
   describe('S0-3 drill target', () => {
-    it('restores only into its own networkless container of the production major, and records both majors', async () => {
+    drillTargetCases1();
+    drillTargetCases2();
+  });
+}
+
+function drillTargetCases1() {
+  // prettier-ignore
+  it('restores only into its own networkless container of the production major, and records both majors', async () => {
       const { restoreDrill, docker } = await drillModule();
       const calls: string[][] = [];
       const record = await restoreDrill({
@@ -450,192 +479,214 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       // target to point anywhere else.
       expect(calls.flat().join(' ')).not.toMatch(/postgres(ql)?:\/\/|--host|supabase/iu);
     }, 120_000);
+}
 
-    it('refuses an image of another major before restoring anything', async () => {
-      const { restoreDrill } = await drillModule();
-      const record = await restoreDrill({
-        fetchArchive: async () => ({ takenAt, body: sealed }),
-        privateKey: keys.privateKey,
-        scope: SCOPE,
-        image: OTHER_MAJOR_IMAGE,
-      });
-      expect(record).toMatchObject({
-        outcome: 'failed',
-        stage: 'target',
-        productionMajor: PRODUCTION_MAJOR,
-      });
-      expect(record['targetMajor']).not.toBe(PRODUCTION_MAJOR);
-      expect(record['tables']).toBeUndefined();
-    }, 120_000);
-
-    it('takes no target from its command line or environment', () => {
-      const source = readFileSync(
-        new URL('../../scripts/ops/restore-drill.mjs', import.meta.url),
-        'utf8',
-      );
-      expect(source).not.toMatch(/DATABASE_URL|SUPABASE|--host|PGHOST/u);
-      expect(source).toMatch(/--network none /u);
+function drillTargetCases2() {
+  it('refuses an image of another major before restoring anything', async () => {
+    const { restoreDrill } = await drillModule();
+    const record = await restoreDrill({
+      fetchArchive: async () => ({ takenAt, body: sealed }),
+      privateKey: keys.privateKey,
+      scope: SCOPE,
+      image: OTHER_MAJOR_IMAGE,
     });
-  });
+    expect(record).toMatchObject({
+      outcome: 'failed',
+      stage: 'target',
+      productionMajor: PRODUCTION_MAJOR,
+    });
+    expect(record['targetMajor']).not.toBe(PRODUCTION_MAJOR);
+    expect(record['tables']).toBeUndefined();
+  }, 120_000);
 
+  it('takes no target from its command line or environment', () => {
+    const source = readFileSync(
+      new URL('../../scripts/ops/restore-drill.mjs', import.meta.url),
+      'utf8',
+    );
+    expect(source).not.toMatch(/DATABASE_URL|SUPABASE|--host|PGHOST/u);
+    expect(source).toMatch(/--network none /u);
+  });
+}
+
+function theRestoreDrillCases4() {
   describe('S0-3 drill scope', () => {
-    it('reads the restored copy only as the tenancy role, under the named business', async () => {
-      const { restoreDrill, docker } = await drillModule();
-      const calls: string[][] = [];
+    drillScopeCases1();
+    drillScopeCases2();
+    drillScopeCases3();
+    drillScopeCases4();
+    drillScopeCases5();
+    drillScopeCases6();
+  });
+}
+
+function drillScopeCases1() {
+  it('reads the restored copy only as the tenancy role, under the named business', async () => {
+    const { restoreDrill, docker } = await drillModule();
+    const calls: string[][] = [];
+    const record = await restoreDrill({
+      fetchArchive: async () => ({ takenAt, body: sealed }),
+      privateKey: keys.privateKey,
+      scope: SCOPE,
+      docker: (args, input) => {
+        calls.push(args);
+        return docker(args, input);
+      },
+    });
+    expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 7 });
+    // Every statement that reads the copy's tables runs as the tenancy role
+    // under the named business; the owner session never reads one.
+    const reads = calls.filter(
+      (c) => c.includes('psql') && /from (public|ops)\./u.test(c.join(' ')),
+    );
+    expect(reads.length).toBeGreaterThan(0);
+    for (const call of reads) {
+      const text = call.join(' ');
+      expect(text).toContain('set role ops_astro_app');
+      expect(text).toContain(`set app.business_id = '${A.business}'`);
+      expect(text.indexOf('set role ops_astro_app')).toBeLessThan(
+        text.search(/from (public|ops)\./u),
+      );
+    }
+    // No id or row reaches the record.
+    for (const id of [...Object.values(A), ...Object.values(A2), ...Object.values(B)])
+      expect(JSON.stringify(record)).not.toContain(id);
+  }, 120_000);
+}
+
+function drillScopeCases2() {
+  it('fails a person or a client of another business named under this one', async () => {
+    const { restoreDrill } = await drillModule();
+    for (const scope of [
+      { ...A, person: B.person },
+      { ...A, client: B.client },
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop
       const record = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
-        scope: SCOPE,
-        docker: (args, input) => {
-          calls.push(args);
-          return docker(args, input);
-        },
-      });
-      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 7 });
-      // Every statement that reads the copy's tables runs as the tenancy role
-      // under the named business; the owner session never reads one.
-      const reads = calls.filter(
-        (c) => c.includes('psql') && /from (public|ops)\./u.test(c.join(' ')),
-      );
-      expect(reads.length).toBeGreaterThan(0);
-      for (const call of reads) {
-        const text = call.join(' ');
-        expect(text).toContain('set role ops_astro_app');
-        expect(text).toContain(`set app.business_id = '${A.business}'`);
-        expect(text.indexOf('set role ops_astro_app')).toBeLessThan(
-          text.search(/from (public|ops)\./u),
-        );
-      }
-      // No id or row reaches the record.
-      for (const id of [...Object.values(A), ...Object.values(A2), ...Object.values(B)])
-        expect(JSON.stringify(record)).not.toContain(id);
-    }, 120_000);
-
-    it('fails a person or a client of another business named under this one', async () => {
-      const { restoreDrill } = await drillModule();
-      for (const scope of [
-        { ...A, person: B.person },
-        { ...A, client: B.client },
-      ]) {
-        // oxlint-disable-next-line no-await-in-loop
-        const record = await restoreDrill({
-          fetchArchive: async () => ({ takenAt, body: sealed }),
-          privateKey: keys.privateKey,
-          scope,
-        });
-        expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
-      }
-    }, 180_000);
-
-    it("accepts a person and client only through the person's current grant over that client", async () => {
-      const { restoreDrill } = await drillModule();
-      const drill = async (scope: Scope): Promise<DrillRecord> =>
-        await restoreDrill({
-          fetchArchive: async () => ({ takenAt, body: sealed }),
-          privateKey: keys.privateKey,
-          scope,
-        });
-      // The second pair passes on its own grant, and the people manager on the owning relationship.
-      expect(
-        await drill({ business: A.business, person: A2.manager, client: A2.client }),
-      ).toMatchObject({
-        outcome: 'passed',
-      });
-      expect(
-        await drill({ business: A.business, person: A2.person, client: A2.client }),
-      ).toMatchObject({
-        outcome: 'passed',
-      });
-      for (const scope of [
-        { business: A.business, person: A.person, client: A2.client }, // the other pair's client
-        { business: A.business, person: A2.person, client: A.client }, // the other pair's person
-        { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
-        { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
-        { business: A.business, person: A.person, client: A2.derived }, // its granter's grant revoked
-        { business: A.business, person: A.person, client: A2.wrongAction }, // a comment grant
-        { business: A.business, person: A.person, client: A2.wrongCollection }, // another collection's read
-        { business: A.business, person: A2.taskManager, client: A.client }, // a manager of another collection
-      ]) {
-        // oxlint-disable-next-line no-await-in-loop
-        expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
-      }
-    }, 300_000);
-
-    it('S0-3 isolation: three crossings, each failed at the check, beside the one that passes', async () => {
-      const { restoreDrill } = await drillModule();
-      const drill = async (scope: Scope): Promise<DrillRecord> =>
-        await restoreDrill({
-          fetchArchive: async () => ({ takenAt, body: sealed }),
-          privateKey: keys.privateKey,
-          scope,
-        });
-      expect(await drill(A)).toMatchObject({ outcome: 'passed' });
-      const crossings: Record<string, Scope> = {
-        'another business': { ...A, client: B.client },
-        'another client in the same business': { ...A, client: A2.client },
-        'another person under a live delegation': { ...A, person: AGENT },
-      };
-      for (const [name, scope] of Object.entries(crossings)) {
-        // oxlint-disable-next-line no-await-in-loop
-        const record = await drill(scope);
-        expect(record, name).toMatchObject({ outcome: 'failed', stage: 'check' });
-        expect(record, name).not.toHaveProperty('tables');
-      }
-    }, 300_000);
-
-    it('S0-3 canary: no record content, name or id reaches a passed or a failed receipt', async () => {
-      const { restoreDrill } = await drillModule();
-      const records = [];
-      for (const scope of [A, { ...A, client: B.client }]) {
-        // oxlint-disable-next-line no-await-in-loop
-        const record = await restoreDrill({
-          fetchArchive: async () => ({ takenAt, body: sealed }),
-          privateKey: keys.privateKey,
-          scope,
-        });
-        records.push(record);
-      }
-      expect(records.map((r) => r.outcome)).toStrictEqual(['passed', 'failed']);
-      const text = JSON.stringify(records);
-      for (const planted of [
-        MADE_UP,
-        'made-up',
-        AGENT,
-        ROOT,
-        ...Object.values(A),
-        ...Object.values(A2),
-        ...Object.values(B),
-      ]) {
-        expect(text).not.toContain(planted);
-      }
-      expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/var\/|\/tmp\//u);
-    }, 180_000);
-
-    it('fails a copy where the business barrier did not survive', async () => {
-      const { restoreDrill } = await drillModule();
-      const { sealArchive } = await sealModule();
-      const record = await restoreDrill({
-        fetchArchive: async () => ({ takenAt, body: sealArchive(unbarred, keys.publicKey) }),
-        privateKey: keys.privateKey,
-        scope: SCOPE,
+        scope,
       });
       expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
-    }, 120_000);
+    }
+  }, 180_000);
+}
 
-    it('refuses a scope that is not three ids before starting anything', async () => {
-      const { restoreDrill, docker } = await drillModule();
-      const calls: string[][] = [];
+function drillScopeCases3() {
+  it("accepts a person and client only through the person's current grant over that client", async () => {
+    const { restoreDrill } = await drillModule();
+    const drill = async (scope: Scope): Promise<DrillRecord> =>
+      await restoreDrill({
+        fetchArchive: async () => ({ takenAt, body: sealed }),
+        privateKey: keys.privateKey,
+        scope,
+      });
+    // The second pair passes on its own grant, and the people manager on the owning relationship.
+    expect(
+      await drill({ business: A.business, person: A2.manager, client: A2.client }),
+    ).toMatchObject({
+      outcome: 'passed',
+    });
+    expect(
+      await drill({ business: A.business, person: A2.person, client: A2.client }),
+    ).toMatchObject({
+      outcome: 'passed',
+    });
+    for (const scope of [
+      { business: A.business, person: A.person, client: A2.client }, // the other pair's client
+      { business: A.business, person: A2.person, client: A.client }, // the other pair's person
+      { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
+      { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
+      { business: A.business, person: A.person, client: A2.derived }, // its granter's grant revoked
+      { business: A.business, person: A.person, client: A2.wrongAction }, // a comment grant
+      { business: A.business, person: A.person, client: A2.wrongCollection }, // another collection's read
+      { business: A.business, person: A2.taskManager, client: A.client }, // a manager of another collection
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
+    }
+  }, 300_000);
+}
+
+function drillScopeCases4() {
+  it('S0-3 isolation: three crossings, each failed at the check, beside the one that passes', async () => {
+    const { restoreDrill } = await drillModule();
+    const drill = async (scope: Scope): Promise<DrillRecord> =>
+      await restoreDrill({
+        fetchArchive: async () => ({ takenAt, body: sealed }),
+        privateKey: keys.privateKey,
+        scope,
+      });
+    expect(await drill(A)).toMatchObject({ outcome: 'passed' });
+    const crossings: Record<string, Scope> = {
+      'another business': { ...A, client: B.client },
+      'another client in the same business': { ...A, client: A2.client },
+      'another person under a live delegation': { ...A, person: AGENT },
+    };
+    for (const [name, scope] of Object.entries(crossings)) {
+      // oxlint-disable-next-line no-await-in-loop
+      const record = await drill(scope);
+      expect(record, name).toMatchObject({ outcome: 'failed', stage: 'check' });
+      expect(record, name).not.toHaveProperty('tables');
+    }
+  }, 300_000);
+}
+
+function drillScopeCases5() {
+  it('S0-3 canary: no record content, name or id reaches a passed or a failed receipt', async () => {
+    const { restoreDrill } = await drillModule();
+    const records = [];
+    for (const scope of [A, { ...A, client: B.client }]) {
+      // oxlint-disable-next-line no-await-in-loop
       const record = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
-        scope: { ...A, person: "x' or true --" },
-        docker: (args, input) => {
-          calls.push(args);
-          return docker(args, input);
-        },
+        scope,
       });
-      expect(record).toMatchObject({ outcome: 'failed', stage: 'scope' });
-      expect(calls).toEqual([]);
+      records.push(record);
+    }
+    expect(records.map((r) => r.outcome)).toStrictEqual(['passed', 'failed']);
+    const text = JSON.stringify(records);
+    for (const planted of [
+      MADE_UP,
+      'made-up',
+      AGENT,
+      ROOT,
+      ...Object.values(A),
+      ...Object.values(A2),
+      ...Object.values(B),
+    ]) {
+      expect(text).not.toContain(planted);
+    }
+    expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/var\/|\/tmp\//u);
+  }, 180_000);
+
+  it('fails a copy where the business barrier did not survive', async () => {
+    const { restoreDrill } = await drillModule();
+    const { sealArchive } = await sealModule();
+    const record = await restoreDrill({
+      fetchArchive: async () => ({ takenAt, body: sealArchive(unbarred, keys.publicKey) }),
+      privateKey: keys.privateKey,
+      scope: SCOPE,
     });
+    expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
+  }, 120_000);
+}
+
+function drillScopeCases6() {
+  it('refuses a scope that is not three ids before starting anything', async () => {
+    const { restoreDrill, docker } = await drillModule();
+    const calls: string[][] = [];
+    const record = await restoreDrill({
+      fetchArchive: async () => ({ takenAt, body: sealed }),
+      privateKey: keys.privateKey,
+      scope: { ...A, person: "x' or true --" },
+      docker: (args, input) => {
+        calls.push(args);
+        return docker(args, input);
+      },
+    });
+    expect(record).toMatchObject({ outcome: 'failed', stage: 'scope' });
+    expect(calls).toEqual([]);
   });
-});
+}

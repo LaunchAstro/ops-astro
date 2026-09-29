@@ -35,6 +35,11 @@ function answering(status: number) {
 }
 
 describe('S0-3 heartbeat', () => {
+  heartbeatCases1();
+  heartbeatCases2();
+});
+
+function heartbeatCases1() {
   it('pings the address once, following no redirect and with a time limit, and says sent', async () => {
     const { ping } = await heartbeat();
     const { get, asked } = answering(200);
@@ -81,7 +86,9 @@ describe('S0-3 heartbeat', () => {
     }
     expect(asked).toStrictEqual([]);
   });
+}
 
+function heartbeatCases2() {
   it('answers in a word, so the address and its token never reach a record', async () => {
     const { ping } = await heartbeat();
     for (const status of [200, 500]) {
@@ -104,4 +111,4 @@ describe('S0-3 heartbeat', () => {
     expect(title).toMatch(/restore/iu);
     expect(text.split('\n')).toHaveLength(3);
   });
-});
+}

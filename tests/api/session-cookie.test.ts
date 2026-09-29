@@ -114,6 +114,13 @@ function memoryStorage(): StorageLike & { readonly all: () => string } {
 }
 
 describe('S0-6 session cookie', () => {
+  sessionCookieCases1();
+  sessionCookieCases2();
+  sessionCookieCases3();
+  sessionCookieCases4();
+});
+
+function sessionCookieCases1() {
   it('the API trades a verified ES256 token for a Secure, HttpOnly, SameSite=Lax cookie', async () => {
     const { api } = build();
     const token = await bearerFor();
@@ -158,7 +165,9 @@ describe('S0-6 session cookie', () => {
     expect(answer.status).toBe(200);
     expect(executeRead.mock.calls[0]?.[2]).toEqual({ provider: 'supabase', subject: 'mia' });
   });
+}
 
+function sessionCookieCases2() {
   it('signing out clears the named sign-in’s cookie; naming none, or no id this API issues, clears none', async () => {
     const { api } = build();
     const unnamed = await post(api, `${SESSION_PATH}/end`, SAME_ORIGIN);
@@ -205,7 +214,9 @@ describe('S0-6 session cookie', () => {
     expect(storage.all()).not.toContain(token);
     expect(storage.all()).not.toMatch(/token/iu);
   });
+}
 
+function sessionCookieCases3() {
   it('a slow sign-out never brings back a person who has signed out since', async () => {
     let cookie: string | null = 'a';
     const written: (string | null)[] = [];
@@ -250,7 +261,9 @@ describe('S0-6 session cookie', () => {
     // Only C's sign-in wrote again: B, who signed out, never came back.
     expect(written).toEqual(['c']);
   });
+}
 
+function sessionCookieCases4() {
   it('signing out asks the API to clear the cookie', async () => {
     const urls: string[] = [];
     const fetch = (async (url: string) => {
@@ -260,9 +273,14 @@ describe('S0-6 session cookie', () => {
     await signOut({ apiOrigin: '', fetch });
     expect(urls).toEqual([`${SESSION_PATH}/end`]);
   });
-});
+}
 
 describe('S0-6 csrf', () => {
+  csrfCases1();
+  csrfCases2();
+});
+
+function csrfCases1() {
   it('a cookie-carried request without the same-origin header is refused before anything runs', async () => {
     const { api, executeCommand } = build();
     const token = await bearerFor();
@@ -305,7 +323,9 @@ describe('S0-6 csrf', () => {
     expect(answer.status).toBe(200);
     expect(executeCommand).toHaveBeenCalledOnce();
   });
+}
 
+function csrfCases2() {
   it('the browser client sends the header on every call and never a bearer', async () => {
     const headers: Record<string, string>[] = [];
     const fetch = (async (_url: string, init?: RequestInit) => {
@@ -326,7 +346,7 @@ describe('S0-6 csrf', () => {
       expect(sent['authorization']).toBeUndefined();
     }
   });
-});
+}
 
 /** One sign-in: its token and the id the API gives its tab. */
 async function signInOf(who: string, jti?: string) {
@@ -352,6 +372,12 @@ async function fromTab(
 }
 
 describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
+  isolationOneCookieCases1();
+  isolationOneCookieCases2();
+  isolationOneCookieCases3();
+});
+
+function isolationOneCookieCases1() {
   it('person crossover: a tab signed in as ada reads only as ada, never on mia’s cookie', async () => {
     const [ada, mia] = await Promise.all([signInOf('ada'), signInOf('mia')]);
     // Ada's own session is not in this browser: she is asked to sign in again.
@@ -386,7 +412,9 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
     expect(await nowhere.answer.json()).toMatchObject({ code: 'AUTH_NO_MEMBERSHIP' });
     expect(nowhere.executeRead).not.toHaveBeenCalled();
   });
+}
 
+function isolationOneCookieCases2() {
   it('Sol review 2, through the real API: an old tab’s late sign-out cannot clear a new tab’s session', async () => {
     /** One browser: the old tab signs out, a new sign-in lands first, then the old answer. */
     const race = async (old: string, fresh: string) => {
@@ -431,7 +459,9 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
       { oldGone: true, status: 200 },
     ]);
   });
+}
 
+function isolationOneCookieCases3() {
   it('a tab that kept a session from before it had an id is refused, not trusted', async () => {
     const unnamed = await fromTab(undefined, [await signInOf('mia')]);
     expect(unnamed.answer.status).toBe(403);
@@ -459,7 +489,7 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
       'a'.repeat(32),
     ]);
   });
-});
+}
 
 describe('S0-6 content policy', () => {
   const page = readFileSync(join(ROOT, 'apps/web/index.html'), 'utf8');

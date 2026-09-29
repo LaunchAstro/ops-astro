@@ -67,6 +67,16 @@ async function bearer(subject: string): Promise<string> {
 const made = (code: string) => new postgres.PostgresError({ code, message: 'm' } as never);
 
 describe('S0-2 canary', () => {
+  canaryCases1();
+  canaryCases2();
+  canaryCases3();
+  canaryCases4();
+  canaryCases5();
+  canaryCases6();
+  canaryCases7();
+});
+
+function canaryCases1() {
   it('Sol proof, criterion 4: a manufactured database error cannot log a planted code', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
@@ -108,7 +118,9 @@ describe('S0-2 canary', () => {
     // A listed code on anything but the driver's error is not a database code.
     expect(faultCode(Object.assign(new Error('m'), { code: '22P02' }))).toBe('Error');
   });
+}
 
+function canaryCases2() {
   it('a canary in every field of a fault (name, code, message, stack, constraint, detail, cause) reaches no log, sink or response', async () => {
     const PLANT = 'QZCANARYQZ';
     const planted = Object.assign(new Error(`${PLANT} in the message`), {
@@ -155,7 +167,9 @@ describe('S0-2 canary', () => {
     await check(planted, 'api: unhandled fault unknown (reference');
     await check(genuine, 'api: unhandled fault 22P02 (reference');
   });
+}
 
+function canaryCases3() {
   it('Sol proof, criterion 4: a five-character planted fault code never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
@@ -178,7 +192,9 @@ describe('S0-2 canary', () => {
     expect(events).toHaveLength(1);
     expect(logged.join('\n').includes('K7QXZ'), 'the planted secret').toBe(false);
   });
+}
 
+function canaryCases4() {
   it('a fault whose code and constraint carry planted words logs as unknown, never the plant', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
@@ -205,7 +221,9 @@ describe('S0-2 canary', () => {
     expect(log.includes('api: unhandled fault Error (reference'), 'the standard class').toBe(true);
     expect(/planted|PLANTED/u.test(log), 'a planted word').toBe(false);
   });
+}
 
+function canaryCases5() {
   it('Sol proof, criterion 4: an identifier-shaped planted error name never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
@@ -229,7 +247,9 @@ describe('S0-2 canary', () => {
     expect(events).toHaveLength(1);
     expect(logged.join('\n').includes('CanarySecretLettersOnly'), 'the planted secret').toBe(false);
   });
+}
 
+function canaryCases6() {
   it('a fault carrying a planted secret and record content reaches the sink without either', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
@@ -259,7 +279,9 @@ describe('S0-2 canary', () => {
       expect(place.includes('Juniper'), 'the planted content').toBe(false);
     }
   });
+}
 
+function canaryCases7() {
   it('refusals of a subject that is the planted secret raise an alert that does not carry it', async () => {
     const { app, events, alerts } = served(() => Promise.reject(new Error('unused')));
     await times(10, async () => {
@@ -280,4 +302,4 @@ describe('S0-2 canary', () => {
     expect(JSON.stringify(events).includes('S02CANARY'), 'the planted secret').toBe(false);
     expect(JSON.stringify(events).includes('Juniper'), 'the planted content').toBe(false);
   });
-});
+}

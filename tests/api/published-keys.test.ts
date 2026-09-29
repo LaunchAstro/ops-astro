@@ -137,11 +137,13 @@ async function post(origin: string, token: string) {
   return { status: response.status, text };
 }
 
-describe('S0-6 published keys only', () => {
-  let served: ServedKeySet;
-  let started: Started;
-  let unused: number;
+let served: ServedKeySet;
 
+let started: Started;
+
+let unused: number;
+
+describe('S0-6 published keys only', () => {
   beforeAll(async () => {
     served = await serveTestKeySet();
     unused = await freePort();
@@ -160,6 +162,11 @@ describe('S0-6 published keys only', () => {
     await served.close();
   });
 
+  publishedKeysOnlyCases1();
+  publishedKeysOnlyCases2();
+});
+
+function publishedKeysOnlyCases1() {
   it('starts with no shared secret in its environment', () => {
     expect(started.output()).toContain('api: listening on');
   });
@@ -196,7 +203,9 @@ describe('S0-6 published keys only', () => {
     expect(elsewhere.output()).toContain('SUPABASE_KEY_SET_URL may name a loopback key set only');
     expect(elsewhere.output()).not.toContain('api: listening on');
   });
+}
 
+function publishedKeysOnlyCases2() {
   it('Sol proof, criterion 6: a hosted issuer cannot use a loopback key set', async () => {
     const hostedIssuer = 'https://provider.example.test/auth/v1';
     const elsewhere = await startServer({
@@ -226,7 +235,7 @@ describe('S0-6 published keys only', () => {
       subject: 'mia',
     });
   });
-});
+}
 
 describe('S0-6 signing-key canary', () => {
   it('a key set carrying private material is refused by reason, and the material reaches no answer or log', async () => {

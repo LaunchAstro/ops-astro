@@ -82,10 +82,63 @@ if (serverUrl === undefined) {
   console.warn('S0-1 no production data: DATABASE_URL is unset, so nothing below ran.');
 }
 
-describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
-  let db: FreshDatabase;
-  let adminUrl: string;
+let db: FreshDatabase;
 
+let adminUrl: string;
+
+const reset = async (): Promise<void> => {
+  await db.admin.execute('drop event trigger if exists ops_astro_made_up_guard');
+  await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
+  await db.admin.execute('delete from public.records');
+  await db.admin.execute('delete from public.record_types');
+  await db.admin.execute('delete from public.people');
+  await db.admin.execute('delete from public.businesses');
+  await db.admin.execute('delete from auth.users');
+  const [unmark] = await db.admin.execute<{ statement: string }>(
+    "select format('comment on database %I is null', current_database()) as statement",
+  );
+  await db.admin.execute(unmark!.statement);
+  // Emptied tables give their pages back, so an emptied database is a new one.
+  for (const table of ['public.records', 'public.record_types', 'public.people'])
+    // oxlint-disable-next-line no-await-in-loop
+    await db.admin.execute(`vacuum ${table}`);
+  await db.admin.execute('vacuum public.businesses');
+  await db.admin.execute('vacuum auth.users');
+};
+
+const business = async (key: string): Promise<string> => {
+  const id = randomUUID();
+  await db.admin.execute(
+    'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+    [id, key, `${key} Pty Ltd`],
+  );
+  return id;
+};
+
+const address = (email: string): Promise<unknown> =>
+  db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [randomUUID(), email]);
+
+const seed = (confirm = false) => {
+  const usersFileBefore = existsSync(USERS_FILE);
+  const result = spawnSync(process.execPath, [SEED], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DATABASE_ADMIN_URL: adminUrl,
+      DATABASE_URL: db.appUrl,
+      LOCAL_SEED_MADE_UP: confirm ? 'confirm' : '',
+    },
+  });
+  expect(existsSync(USERS_FILE), 'the refused seed wrote its users file').toBe(usersFileBefore);
+  return { status: result.status, out: `${result.stdout}${result.stderr}` };
+};
+
+const keys = async (): Promise<string[]> =>
+  (await db.admin.execute<{ key: string }>('select key from public.businesses order by key')).map(
+    (row) => row.key,
+  );
+
+describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 's01a' });
     const url = new URL(serverUrl!);
@@ -99,54 +152,17 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await db?.drop();
   });
 
-  const reset = async (): Promise<void> => {
-    await db.admin.execute('drop event trigger if exists ops_astro_made_up_guard');
-    await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
-    await db.admin.execute('delete from public.records');
-    await db.admin.execute('delete from public.record_types');
-    await db.admin.execute('delete from public.people');
-    await db.admin.execute('delete from public.businesses');
-    await db.admin.execute('delete from auth.users');
-    const [unmark] = await db.admin.execute<{ statement: string }>(
-      "select format('comment on database %I is null', current_database()) as statement",
-    );
-    await db.admin.execute(unmark!.statement);
-    // Emptied tables give their pages back, so an emptied database is a new one.
-    for (const table of ['public.records', 'public.record_types', 'public.people'])
-      // oxlint-disable-next-line no-await-in-loop
-      await db.admin.execute(`vacuum ${table}`);
-    await db.admin.execute('vacuum public.businesses');
-    await db.admin.execute('vacuum auth.users');
-  };
-  const business = async (key: string): Promise<string> => {
-    const id = randomUUID();
-    await db.admin.execute(
-      'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
-      [id, key, `${key} Pty Ltd`],
-    );
-    return id;
-  };
-  const address = (email: string): Promise<unknown> =>
-    db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [randomUUID(), email]);
-  const seed = (confirm = false) => {
-    const usersFileBefore = existsSync(USERS_FILE);
-    const result = spawnSync(process.execPath, [SEED], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        DATABASE_ADMIN_URL: adminUrl,
-        DATABASE_URL: db.appUrl,
-        LOCAL_SEED_MADE_UP: confirm ? 'confirm' : '',
-      },
-    });
-    expect(existsSync(USERS_FILE), 'the refused seed wrote its users file').toBe(usersFileBefore);
-    return { status: result.status, out: `${result.stdout}${result.stderr}` };
-  };
-  const keys = async (): Promise<string[]> =>
-    (await db.admin.execute<{ key: string }>('select key from public.businesses order by key')).map(
-      (row) => row.key,
-    );
+  noProductionDataCases1();
+  noProductionDataCases2();
+  noProductionDataCases3();
+  noProductionDataCases4();
+  noProductionDataCases5();
+  noProductionDataCases6();
+  noProductionDataCases7();
+  noProductionDataCases8();
+});
 
+function noProductionDataCases1() {
   it('S0-1 no production data: a business the seed does not make is refused before any write', async () => {
     await reset();
     await business('harbour-freight-canary');
@@ -191,7 +207,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await business('charlie');
     expect(await productionSigns(db.admin, MADE_UP)).toHaveLength(2);
   });
+}
 
+function noProductionDataCases2() {
   it('S0-1 no production data: a person confirms a new database once, never one holding rows', async () => {
     await reset();
     expect(await productionSigns(db.admin, MADE_UP)).toEqual(['it carries no made-up mark']);
@@ -224,7 +242,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
       ]);
     }
   });
+}
 
+function noProductionDataCases3() {
   it('S0-1 no production data: planted record content is refused by the seed and never printed', async () => {
     await reset();
     const businessId = await business('alpha');
@@ -263,7 +283,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     });
     expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
   });
+}
 
+function noProductionDataCases4() {
   it('S0-1 no production data: the check reads no tenant row, only the mark, the guard and the catalogue', async () => {
     await reset();
     await markMadeUp(db.admin, [await business('alpha')]);
@@ -280,7 +302,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
       /(?:from|join)\s+(?:public|auth)\.\w+|\b(?:public|auth)\.(?:businesses|people|records|users)\b/u,
     );
   });
+}
 
+function noProductionDataCases5() {
   it('S0-1 no production data: a guard switched off, dropped or bypassed is refused', async () => {
     const guarded = async (): Promise<string> => {
       await reset();
@@ -324,7 +348,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
       await db.admin.execute('drop table public.s01a_loaded');
     }
   });
+}
 
+function noProductionDataCases6() {
   it('S0-1 no production data: a row landing between the check and the guard is refused', async () => {
     await reset();
     let planted = false;
@@ -366,7 +392,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
       await db.admin.execute('drop table public.s01a_later');
     }
   });
+}
 
+function noProductionDataCases7() {
   it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
     await reset();
     const businessId = randomUUID();
@@ -402,7 +430,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     );
     expect(await productionSigns(db.admin, MADE_UP, true)).not.toEqual([]);
   });
+}
 
+function noProductionDataCases8() {
   it('Sol proof, criterion 9: confirmation cannot override a mismatched made-up mark', async () => {
     await reset();
     const originalId = await business('alpha');
@@ -446,4 +476,4 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     );
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
-});
+}

@@ -60,6 +60,11 @@ function plan(env: Record<string, string>, args: readonly string[] = []): Plan {
 }
 
 describe('S0-2 uptime check off the machine for staging and production', () => {
+  uptimeCheckOffCases1();
+  uptimeCheckOffCases2();
+});
+
+function uptimeCheckOffCases1() {
   it('staging alone: its web page, its API health and its backup heartbeat, and the sink’s own health', () => {
     const { monitors } = plan(BASE);
     expect(monitors.map((m) => [m.environment ?? '-', m.watch, m.type, m.url ?? '-'])).toEqual([
@@ -82,7 +87,9 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
       'heartbeat',
     ]);
   });
+}
 
+function uptimeCheckOffCases2() {
   it('an address the off-box watcher could not reach is refused, by name and without the value', () => {
     for (const url of [
       'http://staging.example.test/',
@@ -124,7 +131,7 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
     expect(monitors[1]?.message).toBe(plainAlert('api-down', 'staging').text);
     expect(monitors[1]?.name).toBe(plainAlert('api-down', 'staging').title);
   });
-});
+}
 
 describe('S0-2 alerts go by email, at once, to the owner and the second operator', () => {
   it('the watcher and the sink each mail exactly the two operators, by their own mail', () => {
@@ -147,13 +154,21 @@ describe('S0-2 alerts go by email, at once, to the owner and the second operator
 });
 
 describe('S0-2 test alert reaches both operators on a test channel', () => {
+  testAlertReachesCases1();
+  testAlertReachesCases2();
+  testAlertReachesCases3();
+});
+
+function testAlertReachesCases1() {
   it('the test channel sends everything to the agreed test address and nowhere else', () => {
     const result = plan({ ...BASE, OPS_ALERT_TEST_EMAIL: TEST }, ['--test']);
     expect(result.recipients).toEqual([TEST]);
     expect(result.sink.recipients).toEqual([TEST]);
     expect(run(['plan', '--test'], BASE).stderr).toContain('OPS_ALERT_TEST_EMAIL');
   });
+}
 
+function testAlertReachesCases2() {
   it('a test alert goes to the error sink in plain words, and the DSN is not printed', async () => {
     const received: { url: string; auth: string; body: Record<string, unknown> }[] = [];
     const server = createServer((request: IncomingMessage, response) => {
@@ -207,7 +222,9 @@ describe('S0-2 test alert reaches both operators on a test channel', () => {
       });
     }
   });
+}
 
+function testAlertReachesCases3() {
   it('without a sink or an environment the test alert is refused by name', () => {
     const result = run(['test'], { OPS_ENVIRONMENT: 'staging' });
     expect(result.status).toBe(1);
@@ -216,4 +233,4 @@ describe('S0-2 test alert reaches both operators on a test channel', () => {
       'OPS_ENVIRONMENT',
     );
   });
-});
+}
