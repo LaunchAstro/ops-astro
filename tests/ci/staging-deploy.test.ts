@@ -62,7 +62,7 @@ const withImages = (images: Record<string, unknown>): StagingDefinition => ({
 
 /** A snapshot as the service report prints it. */
 const snapshot = (services: readonly Record<string, unknown>[]): string =>
-  JSON.stringify({ taken: new Date().toISOString(), services });
+  JSON.stringify({ taken: '2026-09-29T00:00:00.000Z', services });
 const live = {
   manager: 'docker',
   name: 'prod-api',
