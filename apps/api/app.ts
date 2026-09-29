@@ -59,6 +59,7 @@ import {
   verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
 import {
+  readServiceHealth,
   settleAccessEndings,
   type FactorProvider,
   type HealthSources,
@@ -274,6 +275,14 @@ export function createApi(options: ApiOptions): Hono {
         read: name,
       });
       if (isCommandRefusal(read)) return refuse(context, read);
+      // C34: the operations view's service-health section, read only after
+      // the grant check above let the caller in, and outside the serving
+      // transaction, so a refused caller asks no source and no source call
+      // holds a transaction open.
+      if (name === 'operations.read') {
+        const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
+        return context.json({ ...read, serviceHealth }, 200);
+      }
       return context.json(read, 200);
     }
 

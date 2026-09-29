@@ -57,6 +57,7 @@ import {
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { createLangfuseHealth } from './health/tracing.ts';
 import { createGoTrueLogins } from './auth/logins.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import {
@@ -147,6 +148,8 @@ export interface ApiConfig {
   readonly issuer: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
+  /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
+  readonly tracingUrl?: string;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -215,6 +218,11 @@ export function composeApi(config: ApiConfig): ComposedApi {
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.issuer }),
       logins,
+      // C34: tracing where switched on; the watcher and error sink are C29's.
+      health:
+        config.tracingUrl === undefined
+          ? {}
+          : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
     }),
   );
 
@@ -300,6 +308,7 @@ async function main(): Promise<void> {
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const secret = environment['SUPABASE_JWT_SECRET'];
   const issuer = environment['GOTRUE_URL'];
+  const tracingUrl = environment['LANGFUSE_HOST'];
 
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
@@ -334,6 +343,7 @@ async function main(): Promise<void> {
     secret: secret as string,
     issuer: issuer as string,
     keys,
+    ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
