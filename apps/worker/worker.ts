@@ -199,6 +199,12 @@ async function effectOnce(
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
+  // Sol review 3: the provider start is made durable before the call, so a
+  // worker lost after it is known to have reached a provider that may have
+  // acted, and its missing comment proves nothing. A lost answer here is a
+  // fault, and the provider is not called until the start is recorded.
+  const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
+  if (!('body' in starting)) return starting;
   try {
     await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
   } catch (fault) {

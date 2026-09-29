@@ -1289,9 +1289,14 @@ direct SQL.
   so a missing one cannot prove a reached provider did nothing and the pass
   leaves it unanswered; a registered comment still proves it happened. A lost
   hand-back answer is sent again under its first identity, never the provider
-  call. And `worker_lost`
-  (ours), which the pass's sweep (`sweepLostWorkers`) names when a lease runs
-  out with nothing reported.
+  call. Before the call the worker records its provider start
+  (`task.heartbeat` with `providerStarting: true`, `attempts.provider_started_at`,
+  under the lease lock, only on its marked, dispatched attempt), so the start
+  is durable before anything may act. And `worker_lost` (ours), which the
+  pass's sweep (`sweepLostWorkers`) names when a lease runs out with nothing
+  reported: with a provider start recorded the register cannot answer either,
+  and a person records what happened; with none, the missing comment is
+  still an answer and the work comes back by itself.
   A silent run is running until then. The drop appends `dropped` to the run's
   events and joins its outage's one report, marked back once its step is
   reserved again (on the drop, on the pass's absence proof or on a person's

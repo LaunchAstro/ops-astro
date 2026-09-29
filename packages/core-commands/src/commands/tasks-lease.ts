@@ -58,6 +58,8 @@ export interface RenewalFields {
   readonly leaseId: unknown;
   readonly fence: unknown;
   readonly leaseSeconds?: unknown;
+  /** T3e1, Sol review 3: `true` records that the provider is about to be called. */
+  readonly providerStarting?: unknown;
 }
 
 /**
@@ -72,6 +74,7 @@ export async function renewLease(
     readonly leaseId: string;
     readonly fence: number;
     readonly renewSeconds: number;
+    readonly providerStarting?: boolean;
   }) => ReturnType<typeof heartbeat>,
 ): Promise<HandlerOutcome> {
   const seconds = readLeaseSeconds(fields, DEFAULT_RENEWAL_SECONDS, MAXIMUM_RENEWAL_SECONDS);
@@ -81,6 +84,16 @@ export async function renewLease(
       refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
     );
   }
+  // Present means `true`: anything else is refused by name, never read as absent.
+  if (fields.providerStarting !== undefined && fields.providerStarting !== true) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['providerStarting'],
+        ['Send providerStarting as true, or leave it out.'],
+      ),
+    );
+  }
   if (!isIdentifier(fields.leaseId)) {
     return refused(refuseCommand('LEASE_NOT_OWNED', [], NOT_THIS_CALLERS_LEASE));
   }
@@ -88,6 +101,7 @@ export async function renewLease(
     leaseId: fields.leaseId,
     fence: fields.fence,
     renewSeconds: seconds,
+    ...(fields.providerStarting === true ? { providerStarting: true } : {}),
   });
   if (!result.ok) return refused(result.refusal);
   return applied(result.value.taskId, null, {

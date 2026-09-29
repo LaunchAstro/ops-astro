@@ -20,6 +20,15 @@
 
 alter table public.attempts add column drop_cause text;
 
+-- Sol review 3 on #154: the worker records that it is starting its provider,
+-- once the step is marked and before the call, so a worker lost after it is
+-- known to have reached a provider that may have acted. Written once, only on
+-- a marked attempt.
+alter table public.attempts add column provider_started_at timestamptz;
+
+alter table public.attempts add constraint attempts_provider_started_marked
+  check (provider_started_at is null or dispatch_marker);
+
 alter table public.attempts add constraint attempts_drop_cause_known
   check (drop_cause is null
          or drop_cause in ('provider_unavailable', 'connection_lost', 'worker_lost'));
