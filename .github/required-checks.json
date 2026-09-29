@@ -15,6 +15,7 @@
     { "context": "database conformance", "integration_id": 15368 },
     { "context": "dependency audit", "integration_id": 15368 },
     { "context": "static analysis", "integration_id": 15368 },
-    { "context": "isolation tests", "integration_id": 15368 }
+    { "context": "isolation tests", "integration_id": 15368 },
+    { "context": "command parity", "integration_id": 15368 }
   ]
 }
