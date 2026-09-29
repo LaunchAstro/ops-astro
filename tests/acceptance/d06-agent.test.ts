@@ -55,6 +55,9 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   // sets on its own task inside its delegation.
   'task.set_scores',
   'task.set_adhoc',
+  // The description and the brief (MP-4-7), the two texts an agent writes
+  // through `task.update` on its own task.
+  'task.update',
   'task.heartbeat',
   'task.pickup',
   'task.handback',
@@ -168,14 +171,19 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'task.edit_comment' || name === 'task.delete_comment') {
       return { body: { operationId, ...(await ownCommentChange(name, held)) }, credential };
     }
-    if (name === 'task.set_scores' || name === 'task.set_adhoc') {
+    if (name === 'task.set_scores' || name === 'task.set_adhoc' || name === 'task.update') {
       // Read, not carried: each control moves the task's revision.
       const rows = await harness.world.db.admin.execute<{ readonly revision: string }>(
         `select revision::text as revision from public.records where id = $1`,
         [held.taskId],
       );
       const expectedRevision = Number(rows[0]?.revision ?? '0');
-      const fields = name === 'task.set_scores' ? { impact: 5 } : { ad_hoc: true };
+      const fields =
+        name === 'task.set_scores'
+          ? { impact: 5 }
+          : name === 'task.set_adhoc'
+            ? { ad_hoc: true }
+            : { agent_brief: 'the agent’s brief' };
       const body = { recordId: held.taskId, expectedRevision, fields };
       return { body: { operationId, ...body }, credential };
     }
