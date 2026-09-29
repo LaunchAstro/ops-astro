@@ -295,4 +295,30 @@ live('S0-3 store reach, live', () => {
   it('an archive over the cap is refused (53400) part way through, and the store keeps nothing of it', async () => {
     await overTheCap({ reach: await reachOn(names('staging')), logins, keys, asAdmin, scratch });
   }, 300_000);
+
+  it('Sol proof, criterion 14: a refused upload completion leaves no archive or challenge fingerprint in the store log', async () => {
+    const archiveDigest = 'a'.repeat(64);
+    const challengeDigest = 'b'.repeat(64);
+    expect(
+      asAdmin('update backups.settings set max_bytes = (select bytes from backups.stored) + 100')
+        .status,
+    ).toBe(0);
+    const reach = await reachOn(names('staging'));
+    await expect(
+      reach(
+        logins['ops_astro_backup'] ?? '',
+        `set role ops_astro_backup;
+begin;
+select backups.add_part(0, decode('01', 'hex'));
+select backups.complete_archive(2, '${archiveDigest}', '${challengeDigest}');
+`,
+      ),
+    ).rejects.toThrow();
+    const seen = docker(['logs', '--tail', '50', names('backups')]);
+    expect(seen.status).toBe(0);
+    const logged = seen.out;
+    expect(logged).toMatch(/ERROR|STATEMENT/u);
+    expect(logged).not.toContain(archiveDigest);
+    expect(logged).not.toContain(challengeDigest);
+  });
 });

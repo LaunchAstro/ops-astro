@@ -98,6 +98,7 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
   operatingCases3();
 
   operatingCases4();
+  operatingCases5();
 });
 
 function operatingCases1() {
@@ -191,6 +192,20 @@ function operatingCases3() {
 }
 
 function operatingCases4() {
+  it('Sol proof, criterion 4: another business manager cannot choose the operating business for export', async () => {
+    const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
+    const store = plantedStore(sealArchive(Buffer.from('another-business-record'), keys.publicKey));
+    const file = join(mkdtempSync(join(scratch, 'sol-override-')), 'archive.sealed');
+    const { env, records } = await signedIn(subjects.betaOperator, 'beta');
+    env['OPS_ASTRO_OPERATING_BUSINESS'] = 'beta';
+    const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
+    const run = await runDrillCommand(['--export', file], { environment: env, reach: store.reach });
+    expect(run.refused).toBeDefined();
+    expect(store.reached()).toBe(0);
+    expect(existsSync(file) || existsSync(`${file}.json`)).toBe(false);
+    expect(readdirSync(records)).toStrictEqual([]);
+  });
+
   it('with no operating business configured, every drill mode is refused before any lookup', async () => {
     const signIn = await token(subjects.operator);
     for (const [name, command] of drillModes) {
@@ -205,5 +220,23 @@ function operatingCases4() {
       expect(result.out).toMatch(/OPS_ASTRO_OPERATING_BUSINESS is not set/u);
       expect(readdirSync(at.records)).toStrictEqual([]);
     }
+  });
+}
+
+function operatingCases5() {
+  it('Sol proof, criterion 4: another business cannot appoint itself as the operating business', async () => {
+    const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
+    const plant = `alpha-record-${randomUUID()}`;
+    const store = plantedStore(sealArchive(Buffer.from(plant), keys.publicKey));
+    const file = join(mkdtempSync(join(scratch, 'export-')), 'archive.sealed');
+    const { env, records } = await signedIn(subjects.betaOperator, 'beta');
+    env['OPS_ASTRO_OPERATING_BUSINESS'] = 'beta';
+    const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
+    const run = await runDrillCommand(['--export', file], { environment: env, reach: store.reach });
+    expect(run.refused).toBeDefined();
+    expect(store.reached()).toBe(0);
+    expect(existsSync(file)).toBe(false);
+    expect(readdirSync(records)).toStrictEqual([]);
+    expect(JSON.stringify(run)).not.toContain(plant);
   });
 }

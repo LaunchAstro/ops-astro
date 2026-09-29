@@ -337,6 +337,28 @@ function theRestoreDrillCases1() {
       expect(() => openArchive(tampered, keys.privateKey)).toThrow();
     });
 
+    it('Sol proof, criterion 13: the restore challenge cannot be extracted from an export without restoring it', async () => {
+      const { openArchive } = await sealModule();
+      const opened = openArchive(sealed, keys.privateKey);
+      const extracted = await run(
+        [
+          'run',
+          '--rm',
+          '-i',
+          '--network',
+          'none',
+          IMAGE,
+          'pg_restore',
+          '--data-only',
+          '--file',
+          '-',
+        ],
+        opened,
+      );
+      expect(extracted.code).toBe(0);
+      expect(extracted.stdout.toString()).not.toContain(CHALLENGE);
+    }, 180_000);
+
     it('restores from the sealed artefact, and refuses a plain dump before starting anything', async () => {
       const { restoreDrill, docker } = await drillModule();
       const passed = await restoreDrill({
@@ -763,6 +785,28 @@ async function carriedRestore(
 
 function carriedRestoreCases() {
   describe('S0-3e carried drill, real restore', () => {
+    it('Sol proof, criterion 13: a decrypted dump cannot reveal the restore challenge without a restore', async () => {
+      const plaintext = (await sealModule()).openArchive(sealed, keys.privateKey);
+      const extracted = await run(
+        [
+          'run',
+          '--rm',
+          '-i',
+          '--network',
+          'none',
+          IMAGE,
+          'pg_restore',
+          '--data-only',
+          '--schema=ops',
+          '--table=restore_challenge',
+          '--file=-',
+        ],
+        plaintext,
+      );
+      expect(extracted.code).toBe(0);
+      expect(extracted.stdout.includes(Buffer.from(CHALLENGE))).toBe(false);
+    }, 180_000);
+
     it('a carried archive goes through every real stage in a throwaway container, and the challenge read back from the restored database is kept beside it, never in the receipt or log', async () => {
       const { kept, receipt, log } = await carriedRestore(SCOPE);
       expect(receipt).toMatchObject({

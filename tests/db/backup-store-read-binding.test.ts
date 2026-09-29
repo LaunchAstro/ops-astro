@@ -4,7 +4,7 @@
 // Every part the store hands out leaves a receipt; a read of one archive never
 // attests another taken in the same transaction, at the same time.
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   serverUrl,
@@ -16,6 +16,7 @@ import {
   restoreLogin,
   backupStoreHooks,
   store,
+  addArchive,
 } from './backup-identity.fixture.ts';
 
 const countReadReceipts = async (): Promise<number> => {
@@ -31,6 +32,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
   readBindingCases1();
 
   readBindingCases2();
+  readBindingCases3();
 });
 
 function readBindingCases1() {
@@ -90,6 +92,34 @@ function readBindingCases2() {
         reader,
         'select backups.record_carried_drill($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
         ['passed', null, randomUUID(), latest?.taken_at, 17, 17, 17, 1, { fetch: 1 }, otherDigest],
+      );
+      expect(code).toBe('42501');
+    } finally {
+      await reader.end();
+    }
+  });
+}
+
+function readBindingCases3() {
+  it('Sol proof, criterion 13: an on-machine pass without the restored challenge is refused', async () => {
+    const challenge = randomBytes(32).toString('hex');
+    const challengeSha256 = createHash('sha256').update(challenge).digest('hex');
+    const writer = await asRole(backupLogin.url, BACKUP);
+    try {
+      await addArchive(writer, Buffer.from([3]), false, challengeSha256);
+    } finally {
+      await writer.end();
+    }
+    const reader = await asRole(restoreLogin.url, RESTORE);
+    try {
+      const { rows } = await reader.query<{ taken_at: Date }>(
+        'select taken_at from backups.read_latest()',
+      );
+      expect(rows[0]).toBeDefined();
+      const code = await attempt(
+        reader,
+        'select backups.record_drill($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        ['passed', null, randomUUID(), rows[0]?.taken_at, 17, 17, 17, 1, { fetch: 1 }],
       );
       expect(code).toBe('42501');
     } finally {

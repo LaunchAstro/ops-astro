@@ -10,7 +10,8 @@
 // S0-3 (S0-3e). The shared fixture is backup-identity.fixture.ts.
 
 import { randomBytes } from 'node:crypto';
-import { rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   serverUrl,
@@ -24,15 +25,19 @@ import {
   restoreLogin,
   addArchive,
   backupStoreHooks,
+  hostReach,
   seal,
 } from './backup-identity.fixture.ts';
 import {
   carriedBack,
   carriedReceipt,
   copied,
+  drillModule,
   drills,
   exportedFile,
+  gateOf,
   operator,
+  pendingReceipt,
   record,
   scratch,
   sha,
@@ -120,6 +125,39 @@ function challengeCases2() {
     } finally {
       await reader.end();
     }
+    expect(await drills()).toHaveLength(before);
+  });
+
+  it('Sol proof, criterion 13: decrypting an export without restoring it cannot produce a passed drill', async () => {
+    const before = (await drills()).length;
+    const challenge = randomBytes(32).toString('hex');
+    const body = (await seal()).sealArchive(
+      Buffer.from(`restore challenge ${challenge}\n`),
+      keys.publicKey,
+    );
+    const job = await asRole(backupLogin.url, BACKUP);
+    try {
+      await addArchive(job, body, false, sha(challenge));
+    } finally {
+      await job.end();
+    }
+    const file = join(mkdtempSync(join(scratch, 'sol-decrypt-')), 'archive.sealed');
+    await (
+      await drillModule()
+    ).exportArchive({
+      gate: gateOf(operator),
+      storeUrl: restoreLogin.url,
+      file,
+      reach: hostReach,
+    });
+    const plaintext = (await seal()).openArchive(readFileSync(file), keys.privateKey).toString();
+    const extracted = /restore challenge ([0-9a-f]{64})/u.exec(plaintext)?.[1];
+    expect(extracted).toBe(challenge);
+    writeFileSync(`${file}.challenge`, `${extracted}\n`, { mode: 0o600 });
+    const facts = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { takenAt: string };
+    await expect(
+      record(operator, carriedBack(pendingReceipt(facts.takenAt)), file),
+    ).rejects.toThrow();
     expect(await drills()).toHaveLength(before);
   });
 }
