@@ -1,0 +1,94 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The Team panel (MP-7-10): the pinned mockup's `tmc__` rules. Buttons are the
+   kit's `btn`, the empty line is `dp__empty`, both placed, never restyled.
+   Away is a dashed ring and the word Away, never a coloured dot. */
+
+.tmc {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.tmc__me {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  color: var(--text-2);
+  font-size: 0.8rem;
+}
+.tmc__why {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.tmc__strip {
+  display: flex;
+  flex: none;
+  gap: var(--s-3);
+  overflow-x: auto;
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.tmc__p {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem;
+  color: var(--text-muted);
+}
+.tmc__face {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.tmc__av {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+.tmc__n {
+  color: inherit;
+  font-size: 0.6875rem;
+  text-decoration: none;
+}
+.tmc__n:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.tmc__door::before {
+  content: ' \2197';
+}
+.tmc__away {
+  font-size: 0.625rem;
+}
+.tmc__p.is-on .tmc__av {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tmc__p.is-on .tmc__n {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.tmc__p--away .tmc__av {
+  border-style: dashed;
+}
+.tmc__conv {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}

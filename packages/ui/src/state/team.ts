@@ -28,6 +28,5 @@ export type AvailabilityChange =
 
 /** Everyone in the strip: the reader's teammates, never the reader. */
 export function teammatesOf(people: readonly Teammate[], me: string): readonly Teammate[] {
-  void me;
-  return people;
+  return people.filter((person) => person.personId !== me);
 }
