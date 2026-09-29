@@ -408,10 +408,14 @@ specification's section 10.2, each measured with a pass or fail beside it and
 never re-set (a missed budget does not fail the command), and writes the
 evidence bundle, `bundle.json` and `bundle.md`: the revision, the environment,
 every case line, the approval the journey applied (the digest of the decision
-row's exact payload, its identifiers shown and its note withheld, since a note
-is a person's words and may be a client's), the budgets, the crash points the
-restart legs recorded and the open completion items with their owner. A run
-with no decision writes no bundle, and nothing in it claims acceptance. The
+row's exact payload, its identifiers shown), the budgets with the machine's load
+beside each, the crash points the restart legs recorded and the open completion
+items with their owner. Whatever a person wrote (a note, a body, a title) is
+carried only as a digest, wherever it arrives: in the approval, in a case line
+that quotes an answer or a failed comparison, or anywhere else
+(`scripts/local/journey-withhold.ts`). The end-to-end budget is timed only when
+the journey ran to its end. A run with no decision writes no bundle, and nothing
+in it claims acceptance. The
 database is kept for inspection unless `--remove`, and the last line says how
 to remove it. Evidence goes to `.local/journey/<stamp>/` (`cases.jsonl`, the
 run's stderr, `bundle.json`, `bundle.md`). `--only journey` skips the restart
