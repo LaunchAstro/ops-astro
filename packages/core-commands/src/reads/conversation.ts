@@ -115,6 +115,30 @@ const wrapUpView = (row: WrapUpRow): WrapUpView => ({
   leftOpenText: leftOpenText(row.left_open),
 });
 
+/** The body, oldest first. */
+async function messagesOf(
+  tx: TenantQuery,
+  conversationId: string,
+): Promise<readonly ConversationMessageView[]> {
+  const rows = await tx.query<{
+    id: string;
+    role: 'person' | 'agent';
+    body: string;
+    created_at: Date;
+  }>(
+    `select id, role, body, created_at from conversation_messages
+      where business_id = $1 and conversation_id = $2
+      order by created_at, id`,
+    [tx.businessId, conversationId],
+  );
+  return rows.map((message) => ({
+    id: message.id,
+    role: message.role,
+    body: message.body,
+    createdAt: message.created_at.toISOString(),
+  }));
+}
+
 async function served(tx: TenantQuery, conversationId: string): Promise<ConversationReadResult> {
   const rows = await tx.query<ConversationRow>(
     `select id, title, subject, scope_kind, scope_record_id, created_at, last_activity_at,
@@ -124,22 +148,7 @@ async function served(tx: TenantQuery, conversationId: string): Promise<Conversa
   );
   const row = rows[0];
   if (row === undefined) throw new Error('conversation.read: the conversation went between reads');
-  const messages =
-    row.body_purged_at === null
-      ? (
-          await tx.query<{ id: string; role: 'person' | 'agent'; body: string; created_at: Date }>(
-            `select id, role, body, created_at from conversation_messages
-              where business_id = $1 and conversation_id = $2
-              order by created_at, id`,
-            [tx.businessId, conversationId],
-          )
-        ).map((message): ConversationMessageView => ({
-          id: message.id,
-          role: message.role,
-          body: message.body,
-          createdAt: message.created_at.toISOString(),
-        }))
-      : null;
+  const messages = row.body_purged_at === null ? await messagesOf(tx, conversationId) : null;
   const wrapUps = await tx.query<WrapUpRow>(
     `select version, created_at, written_by_operation, code_revision, definition_version,
             request_quotation, items, left_open

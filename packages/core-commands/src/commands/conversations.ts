@@ -21,7 +21,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
 const BODY_LIMIT = 20_000;
 const TITLE_LIMIT = 120;
@@ -77,25 +77,31 @@ async function citable(tx: TenantQuery, context: CommandContext, scope: Scope): 
   return readable.ok;
 }
 
-export async function startConversation(
-  tx: TenantQuery,
-  context: CommandContext,
+/** The first message's fields, refused by name; undefined when they will do. */
+function startRefusal(
   fields: StartFields,
-): Promise<HandlerOutcome> {
-  const scope = scopeOf(fields.scope);
+  scope: Scope | null | undefined,
+): CommandRefusal | undefined {
   const invalid = [
     ...(bounded(fields.body, BODY_LIMIT) ? [] : ['body']),
     ...(optionalBounded(fields.title, TITLE_LIMIT) ? [] : ['title']),
     ...(optionalBounded(fields.subject, SUBJECT_LIMIT) ? [] : ['subject']),
     ...(scope === undefined ? ['scope'] : []),
   ];
-  if (invalid.length > 0) {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', invalid, [
-        `Send the first message as body, 1 to ${BODY_LIMIT} characters; a title of at most ${TITLE_LIMIT} and a subject of at most ${SUBJECT_LIMIT} if any; and a scope as {"kind":"task","id":<task id>} or nothing.`,
-      ]),
-    );
-  }
+  if (invalid.length === 0) return undefined;
+  return refuseCommand('FIELD_VALUE_INVALID', invalid, [
+    `Send the first message as body, 1 to ${BODY_LIMIT} characters; a title of at most ${TITLE_LIMIT} and a subject of at most ${SUBJECT_LIMIT} if any; and a scope as {"kind":"task","id":<task id>} or nothing.`,
+  ]);
+}
+
+export async function startConversation(
+  tx: TenantQuery,
+  context: CommandContext,
+  fields: StartFields,
+): Promise<HandlerOutcome> {
+  const scope = scopeOf(fields.scope);
+  const invalid = startRefusal(fields, scope);
+  if (invalid !== undefined) return refused(invalid);
   if (scope && !(await citable(tx, context, scope))) return refused(refuseNotFound(['scope']));
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;

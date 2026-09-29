@@ -23,7 +23,6 @@
 // honest: an operation added to the surface cannot be skipped here quietly,
 // because being skipped is a thrown error rather than an absent row.
 
-import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
@@ -184,17 +183,4 @@ export async function ownUnknownAttempt(context: BodyContext): Promise<Record<st
     throw new Error(`matrix: observe answered ${observed.code}, not the unknown hold`);
   }
   return { recordId: taskId, attemptId: applied.attemptId };
-}
-
-/** A conversation the caller just started, for the operations that name one (AW-03). */
-export async function ownConversation(context: BodyContext): Promise<string> {
-  const started = await context.asPerson('conversation.start', {
-    operationId: randomUUID(),
-    body: 'a conversation to name',
-  });
-  const detail = started.body['detail'] as Record<string, unknown> | undefined;
-  if (started.status !== 200 || typeof detail?.['conversationId'] !== 'string') {
-    throw new Error(`matrix: conversation.start answered ${String(started.status)}`);
-  }
-  return detail['conversationId'];
 }

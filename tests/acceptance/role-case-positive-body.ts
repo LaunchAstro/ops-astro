@@ -19,8 +19,8 @@ import {
   ownLease,
   ownAppliedEffect,
   ownUnknownAttempt,
-  ownConversation,
 } from './role-case-bodies.ts';
+import { ownConversation } from './foreign-conversation.ts';
 
 export function createPositiveBody(
   context: BodyContext,
