@@ -121,7 +121,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
       ' * a thermo review',
       ' */',
       '{/* Sol 6 */}',
-      '   revision text in a CSS block',
+      'plain text after the block has closed',
       "fetch('https://example.test/a//b');",
       '  sql`select id from tasks',
       '       -- a trashed task is not handed out',
