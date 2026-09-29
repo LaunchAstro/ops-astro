@@ -225,3 +225,220 @@ td[data-tight] {
   line-height: 1;
   color: var(--text);
 }
+
+/* ── The command bar (MP-5-7, B-04, B-05, B-25, B-26, P-07) ─────────────── */
+
+.cbd__funnelw {
+  position: relative;
+}
+
+.cbd__funnel.is-on {
+  background: var(--surface-2);
+}
+
+/* The corner badge: how many filters are on that no chip on the bar shows. */
+.cbd__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* Display-gated by `hidden`, never moved out of view. */
+.cbd__menu[hidden] {
+  display: none;
+}
+
+.cbd__menu {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(22rem, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.cbd__menuq {
+  display: flex;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 4px var(--s-3);
+}
+
+.cbd__menuq:focus-within {
+  border-color: var(--accent);
+}
+
+.cbd__menuq input {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.cbd__menuq input:focus {
+  outline: none;
+}
+
+.cbd__menugrp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cbd__menuk,
+.cbd__flabel {
+  flex: 0 0 100%;
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+}
+
+.cbd__facet {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__facet[aria-pressed='true'] {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.cbd__menuempty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.cbd__lnk {
+  align-self: flex-start;
+  font: inherit;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* At 390 the menu spans the whole bar, which sits inside the page's 16px
+   gutter, instead of hanging off the funnel toward the screen's edge (D-22). */
+@media (max-width: 480px) {
+  .cbd__cmd {
+    position: relative;
+  }
+
+  .cbd__funnelw {
+    position: static;
+  }
+
+  .cbd__menu {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
+/* The freshness stamp (P-07): a stamp, not a control. The board stays live,
+   so there is no Sync button; the short words are for narrow bars. */
+.cbd__fresh {
+  margin-left: auto;
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.cbd__freshs {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .cbd__freshl {
+    display: none;
+  }
+
+  .cbd__freshs {
+    display: inline;
+  }
+}
+
+/* The chip row's ladder (B-25): full words, then each chip's words capped at
+   96, 72, 56 and 44px (clipped, like every cell), then icons only; the chip
+   keeps its name as its label. */
+.cbd__presi {
+  display: none;
+}
+
+.cbd__filters[data-tier]:not([data-tier='words'], [data-tier='icons']) .cbd__presetw {
+  display: inline-block;
+  max-width: var(--catw);
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.cbd__filters[data-tier='icons'] .cbd__presetw {
+  display: none;
+}
+
+.cbd__filters[data-tier='icons'] .cbd__presi {
+  display: inline;
+}
+
+/* The sticky stack (B-26): the chip row under the chrome, the heads under the
+   chip row. Each offset is measured by whoever draws the element: the shell
+   publishes --chrome-h, the board --catbar-h. The grounds are opaque so rows
+   never show through. Below 900 the chip row scrolls away. */
+@media not all and (max-width: 900px) {
+  .cbd__filters {
+    position: sticky;
+    top: var(--chrome-h, 0px);
+    z-index: 12;
+    background: var(--paper);
+  }
+}
+
+/* Heads stick only where the table fits its card: a scroll container would
+   pin them to itself, so the wrap clips instead of scrolling there. Below
+   1279 the table can overflow and scrolls, and the heads do not stick. */
+@media (min-width: 1279px) {
+  .cbd__wrap {
+    overflow-x: clip;
+  }
+
+  .cbd__tbl thead th {
+    position: sticky;
+    top: calc(var(--chrome-h, 0px) + var(--catbar-h, 0px));
+    z-index: 11;
+    background: var(--paper);
+  }
+}

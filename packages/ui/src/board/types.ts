@@ -75,6 +75,8 @@ export interface Facet<Row> {
 export interface Preset {
   readonly id: string;
   readonly label: string;
+  /** The glyph its chip keeps when the chip row is down to icons (B-25). */
+  readonly icon?: string;
   readonly facetIds: readonly string[];
 }
 
