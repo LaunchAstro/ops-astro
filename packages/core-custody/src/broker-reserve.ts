@@ -90,7 +90,10 @@ export interface ReservedCall {
   readonly reservedMinor: number;
 }
 
-/** A reserve refusal carries the register's shape, made where the broker decides (CQ-5). */
+/**
+ * A reserve refusal carries the register's shape, made where the broker
+ * decides, so the command layer answers with it unchanged.
+ */
 export type ReserveRefusal = Extract<ModelCallResult, { code: BrokerRefusal }> & {
   readonly refusal: CommandRefusal;
 };
