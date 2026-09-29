@@ -56,7 +56,7 @@ export interface FixtureReport {
       readonly task: string;
     }[];
   };
-  /** SPEC 10.1 rows this base cannot reach through a command (see `shape.ts`). */
+  /** SPEC 10.1 rows this base cannot hold yet (run events wait on T2a's table). */
   readonly heldBack: readonly string[];
 }
 
@@ -193,6 +193,65 @@ async function seedRuntime(db: Seedable, t: Tenant, shape: FixtureShape, rest: r
   }
 }
 
+/** Each run's share of the events: one holds `heldRunShare`, the rest split evenly. */
+function eventTargets(shape: FixtureShape, runs: number): number[] {
+  const held = Math.round(shape.runEvents * shape.heldRunShare);
+  const rest = shape.runEvents - held;
+  const each = Array.from(
+    { length: runs - 1 },
+    (_, i) => Math.floor(rest / (runs - 1)) + (i < rest % (runs - 1) ? 1 : 0),
+  );
+  return [held, ...each];
+}
+
+/**
+ * The records layer, on the admin connection: the steps past each version's
+ * one and the events past each run's command-written pair, which no command
+ * writes (see `shape.ts`). Returns what it could not seed.
+ */
+async function seedLoad(db: Seedable, t: Tenant, shape: FixtureShape): Promise<string[]> {
+  const runs = (
+    await db.admin.execute<{ run: string }>(
+      'select run_id::text run from public.attempts where business_id = $1 order by run_id',
+      [t.id],
+    )
+  ).map((row) => row.run);
+  const [made] = await db.admin.execute<{ n: string }>(
+    'select count(*)::text n from public.planned_steps where business_id = $1',
+    [t.id],
+  );
+  const extra = shape.steps - Number(made?.n);
+  if (extra < 0 || runs.length === 0) refused('shape', 'STEPS_BELOW_THE_COMMANDS');
+  await db.admin.execute(
+    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
+     select $1, gen_random_uuid(), x.run, 1 + row_number() over (partition by x.run order by x.n),
+            'compose', '{}'::jsonb
+       from unnest($2::uuid[]) with ordinality x(run, n)`,
+    [t.id, Array.from({ length: extra }, (_, i) => runs[i % runs.length])],
+  );
+  const [table] = await db.admin.execute<{ present: boolean }>(
+    `select to_regclass('public.run_events') is not null present`,
+  );
+  if (table?.present !== true) return ['run events: T2a (#97) is not on this base'];
+  const targets = eventTargets(shape, runs.length).map((n) => n - 2);
+  if (targets.some((n) => n < 0)) refused('shape', 'EVENTS_BELOW_THE_COMMANDS');
+  await db.admin.execute(
+    `insert into public.run_events
+       (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
+     select e.business_id, gen_random_uuid(), e.run_id, e.task_id, e.top + g,
+            case when g % 2 = 1 then 'claimed' else 'handed_back' end,
+            e.lease_id, e.attempt_id, e.actor_id, '{"seeded":"fixture"}'::jsonb
+       from (select business_id, run_id, task_id, lease_id, attempt_id, actor_id,
+                    max(position) top
+               from public.run_events where business_id = $1
+              group by business_id, run_id, task_id, lease_id, attempt_id, actor_id) e
+       join unnest($2::uuid[], $3::int[]) x(run, extra) on x.run = e.run_id
+      cross join lateral generate_series(1, x.extra) g`,
+    [t.id, runs, targets],
+  );
+  return [];
+}
+
 export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<FixtureReport> {
   const started = performance.now();
   await refuseUnlessEmpty(db);
@@ -207,6 +266,7 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
     bravoTasks.push(await create(db, bravo, `B ${String(i)}`));
   await seedThreads(db, alpha, shape, tree.rest);
   await seedRuntime(db, alpha, shape, tree.rest);
+  const heldBack = await seedLoad(db, alpha, shape);
   await onTask(db, alpha, tree.early, { command: 'task.trash' });
   await onTask(db, alpha, tree.root, { command: 'task.trash' });
   const recordGrantTask = tree.rest.at(-1) ?? refused('grant', 'NO_TASK');
@@ -241,6 +301,6 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
       clients,
     },
     seedMs: Math.round(performance.now() - started),
-    heldBack: ['1,200 steps', '6,000 run events', 'one run held at 1,500 events'],
+    heldBack,
   };
 }

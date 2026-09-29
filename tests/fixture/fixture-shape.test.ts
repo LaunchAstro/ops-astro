@@ -180,10 +180,13 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
     expect(await one('select count(*) n from public.records')).toBe(before);
   });
 
-  it('picks up and hands back each run, and records its progress (red until T2a)', async () => {
+  it('picks up and hands back each run, records its progress and holds one long run (red until T2a)', async () => {
     expect(await one('select count(*) n from public.attempts')).toBe(SMALL.runs);
     const present = `select (to_regclass('public.run_events') is not null)::int n`;
     expect(await one(present), 'run_events absent: T2a is not on this base').toBe(1);
-    expect(await one('select count(*) n from public.run_events')).toBe(SMALL.runs * 2);
+    const written = `select count(*) n from public.run_events where detail ->> 'seeded' is null`;
+    expect(await one(written)).toBe(SMALL.runs * 2);
+    const perRun = await counts('select count(*) n from public.run_events group by run_id');
+    expect(perRun).toContain(Math.round(SMALL.runEvents * SMALL.heldRunShare));
   });
 });
