@@ -10,7 +10,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { FLOOR_MS, followLive } from '../../apps/web/src/data/live.ts';
+import { FLOOR_MS, createLiveHub } from '../../apps/web/src/data/live.ts';
 import { mount } from './mount.tsx';
 
 const TASK = {
@@ -57,7 +57,7 @@ function server() {
   const fetch = (async (url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    if (at.includes('/live/task/')) {
+    if (at.includes('/live?')) {
       joins.push(at);
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -88,7 +88,7 @@ function server() {
     reads,
     joins,
     send: (event: string) =>
-      stream?.enqueue(encoder.encode(`event: ${event}\ndata: ${TASK.id}\n\n`)),
+      stream?.enqueue(encoder.encode(`event: ${event}\ndata: task:${TASK.id}\n\n`)),
     close: () => stream?.close(),
     deny: () => {
       denied = true;
@@ -117,7 +117,7 @@ describe('T2f the live task page', () => {
       () => api.joins.length === 1 && view.find('#task-title') !== null,
       Date.now() + 2_000,
     );
-    expect(api.joins[0]).toBe(`/api/b/alpha/live/task/${TASK.id}`);
+    expect(api.joins[0]).toBe(`/api/b/alpha/live?topic=task%3A${TASK.id}`);
 
     api.task.title = 'Picked up by the worker';
     const sent = Date.now();
@@ -221,10 +221,9 @@ describe('T2f floor', () => {
     vi.useFakeTimers();
     let visible = true;
     const changes: number[] = [];
-    const stop = followLive(
-      () => Promise.resolve(null),
+    const stop = createLiveHub(() => Promise.resolve(null), { visible: () => visible }).follow(
+      'task:one',
       () => changes.push(Date.now()),
-      { visible: () => visible },
     );
     await vi.advanceTimersByTimeAsync(FLOOR_MS - 1);
     expect(changes).toHaveLength(0);
@@ -247,14 +246,13 @@ describe('T2f floor', () => {
       },
     });
     const changes: number[] = [];
-    const stop = followLive(
-      () => Promise.resolve(body),
+    const stop = createLiveHub(() => Promise.resolve(body), { visible: () => visible }).follow(
+      `task:${TASK.id}`,
       () => changes.push(Date.now()),
-      { visible: () => visible },
     );
     await pause();
     await act(async () => {
-      controller?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: ${TASK.id}\n\n`));
+      controller?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: task:${TASK.id}\n\n`));
       await pause();
     });
     expect(changes).toHaveLength(0);

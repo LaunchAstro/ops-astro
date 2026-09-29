@@ -88,6 +88,7 @@ import type {
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { hubOf } from '../data/live.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
@@ -145,7 +146,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
-    live: (signal) => client.openLive(props.taskKey, signal),
+    live: {
+      hub: hubOf(client),
+      topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
+    },
     paused: draft !== null,
   });
 

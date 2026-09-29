@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import { followLive } from './live.ts';
+import type { LiveHub } from './live.ts';
 import type { CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
@@ -23,10 +23,11 @@ export interface UseReadOptions<T> {
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
   /**
-   * The live channel for what this read shows (T2f). While `paused` (an unsaved
-   * edit) a change is held until the pause ends; `closed` is read at once.
+   * The live topic for what this read shows (C4), named from its last answer
+   * and followed on the tab's one stream. While `paused` (an unsaved edit) a
+   * change is held until the pause ends; `closed` is read at once.
    */
-  readonly live?: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>;
+  readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
   readonly paused?: boolean;
 }
 
@@ -78,22 +79,25 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.
   }, [grantKey, ...options.deps]);
 
-  const liveRef = useRef(options.live);
-  liveRef.current = options.live;
+  // The last answer's topic, kept while a re-read is in flight or denied, so a
+  // revoked page still hears the channel that tells it so.
+  const topicRef = useRef<string | undefined>(undefined);
+  if (state.outcome === 'ready' || state.outcome === 'empty') {
+    topicRef.current = options.live?.topic(state.value);
+  }
+  const topic = topicRef.current;
+  const hub = options.live?.hub;
   const pausedRef = useRef(false);
   pausedRef.current = options.paused === true;
   const heldRef = useRef(false);
-  const hasLive = options.live !== undefined;
 
   useEffect(() => {
-    const open = liveRef.current;
-    if (open === undefined) return;
-    return followLive(open, (change) => {
+    if (hub === undefined || topic === undefined) return;
+    return hub.follow(topic, (change) => {
       if (pausedRef.current && change === 'changed') heldRef.current = true;
       else reload();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the caller's list, plus the grant.
-  }, [reload, hasLive, ...options.deps]);
+  }, [hub, topic, reload]);
 
   useEffect(() => {
     if (options.paused === true || !heldRef.current) return;

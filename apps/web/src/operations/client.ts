@@ -169,13 +169,14 @@ export class OperationsClient {
     return this.#post<CommandOutcome>(name, payload);
   }
 
-  /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
+  /** One live stream naming every topic (C4), or nothing if the join is refused or unreachable. */
   async openLive(
-    recordId: string,
+    topics: readonly string[],
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
     const { origin, businessKey, token } = this.#options;
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
+    const query = topics.map((topic) => `topic=${encodeURIComponent(topic)}`).join('&');
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live?${query}`;
     const headers: Record<string, string> =
       token === null ? {} : { authorization: `Bearer ${token}` };
     try {
