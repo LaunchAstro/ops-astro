@@ -28,7 +28,9 @@ import { useCommand } from '../../records/use-command.ts';
 import { briefFacts } from './brief-facts.ts';
 import { Markdown } from './Markdown.tsx';
 
-const blank = (text: string | null): boolean => text === null || text.trim() === '';
+// Undefined too: a task read from a server that predates the brief carries no
+// `agentBrief`, and that is no brief, not a page that cannot draw.
+const blank = (text: string | null | undefined): boolean => (text ?? '').trim() === '';
 
 /** The Team side's description on the page (TT-01). */
 export function DescriptionSection(props: { readonly description: string | null }): ReactElement {
@@ -100,14 +102,22 @@ interface FieldShape {
   readonly placeholder?: string;
 }
 
-function TextField(props: TextFieldProps & { readonly shape: FieldShape }): ReactElement {
-  const { shape } = props;
+interface TextEdit {
+  readonly text: string;
+  readonly because: string | null;
+  readonly busy: boolean;
+  readonly onChange: (text: string) => void;
+  readonly save: () => void;
+  readonly onKey: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+}
+
+/** One field's text, its save through `task.update`, and its keys. */
+function useTextEdit(props: TextFieldProps, key: FieldShape['key']): TextEdit {
   // What the server holds as far as this field knows: the value it was read
   // with, then each text it has stored, so a save is never sent twice.
   const [saved, setSaved] = useState(props.value ?? '');
   const [text, setText] = useState(saved);
   const command = useCommand();
-  const id = `task-${shape.voice}`;
 
   const save = (): void => {
     if (text === saved || (blank(text) && blank(saved))) return;
@@ -118,7 +128,7 @@ function TextField(props: TextFieldProps & { readonly shape: FieldShape }): Reac
           command: 'task.update',
           recordId: props.recordId,
           expectedRevision: props.revision,
-          fields: { [shape.key]: blank(text) ? null : text },
+          fields: { [key]: blank(text) ? null : text },
         }),
       (settlement) => {
         if (settlement.kind !== 'ok') return;
@@ -138,6 +148,13 @@ function TextField(props: TextFieldProps & { readonly shape: FieldShape }): Reac
     }
   };
 
+  return { text, because: command.because, busy: command.busy, onChange: setText, save, onKey };
+}
+
+function TextField(props: TextFieldProps & { readonly shape: FieldShape }): ReactElement {
+  const { shape } = props;
+  const edit = useTextEdit(props, shape.key);
+  const id = `task-${shape.voice}`;
   return (
     <div className="field">
       <label className="tf__k" htmlFor={id}>
@@ -149,17 +166,17 @@ function TextField(props: TextFieldProps & { readonly shape: FieldShape }): Reac
         data-writing={shape.voice}
         rows={shape.rows}
         placeholder={shape.placeholder}
-        disabled={command.busy}
-        value={text}
+        disabled={edit.busy}
+        value={edit.text}
         onChange={(event) => {
-          setText(event.target.value);
+          edit.onChange(event.target.value);
         }}
-        onBlur={save}
-        onKeyDown={onKey}
+        onBlur={edit.save}
+        onKeyDown={edit.onKey}
       />
-      {command.because === null ? null : (
+      {edit.because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">
-          {command.because}
+          {edit.because}
         </p>
       )}
     </div>
