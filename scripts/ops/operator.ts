@@ -191,20 +191,51 @@ export async function requireOperator(environment: Environment = process.env): P
 }
 
 /**
+ * The key of the installation's operating business, read as the database's
+ * owner from the one row the installation wrote (migration 0034,
+ * `ops.operating_business`), or undefined when none was written. Nothing the
+ * caller's environment names takes its place.
+ */
+async function operatingBusiness(adminUrl: string): Promise<string | undefined> {
+  const admin = connectAsAdmin(adminUrl, { source: 'admin' });
+  try {
+    const rows = await admin.execute<{ key: string }>(
+      'select b.key from ops.operating_business o join public.businesses b on b.id = o.operating_business',
+    );
+    return rows.length === 1 ? rows[0]?.key : undefined;
+  } finally {
+    await admin.close();
+  }
+}
+
+/**
  * The installation's appointed operator, or why not: a person holding
- * `operations:manage` over the whole of the operating business the
- * installation names (OPS_ASTRO_OPERATING_BUSINESS, from its own drill
- * environment), for acts over the whole database, such as the restore drill
- * and its carried archive. Any other business is refused before any lookup,
- * with a reason that names neither business, so its manager learns nothing.
+ * `operations:manage` over the whole of the installation's operating
+ * business, for acts over the whole database, such as the restore drill and
+ * its carried archive. The operating business is installation state, the one
+ * row written at installation, read here from the installation's own
+ * database; the caller supplies no part of it. Any other business is refused
+ * before its sign-in is looked at, with a reason that names neither
+ * business, so its manager learns nothing.
  */
 export async function requireOperatingOperator(
   environment: Environment = process.env,
 ): Promise<Gate> {
-  const operating = environment['OPS_ASTRO_OPERATING_BUSINESS'] ?? '';
-  if (operating === '') {
+  const adminUrl = environment['DATABASE_ADMIN_URL'] ?? '';
+  if (adminUrl === '') {
     return refused(
-      'OPS_ASTRO_OPERATING_BUSINESS is not set, so the installation has no operating business to check against',
+      "the installation's operating business is read from the installation's own database, and none is named",
+    );
+  }
+  let operating: string | undefined;
+  try {
+    operating = await operatingBusiness(adminUrl);
+  } catch {
+    return refused("the installation's operating business could not be read");
+  }
+  if (operating === undefined) {
+    return refused(
+      'the installation has no operating business: it is written once, at installation, from the restore runbook',
     );
   }
   if ((environment['OPS_ASTRO_BUSINESS'] ?? '') !== operating) {

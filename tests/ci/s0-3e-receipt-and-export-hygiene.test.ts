@@ -156,7 +156,6 @@ function exportHygieneCases4() {
       business: 'made-up',
       operator,
       ranOn: 'carried archive',
-      archiveDigest: 'ab'.repeat(32),
     };
     const receiptFile = join(folder('receipt'), 'carried.json');
     writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);

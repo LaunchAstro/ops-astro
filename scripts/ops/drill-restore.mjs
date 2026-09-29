@@ -27,27 +27,6 @@ const staging = JSON.parse(
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 
 /**
- * The restore challenge the job wrote before this dump (migration 0034), read
- * back from the restored copy as the tenancy role, like every read here:
- * evidence only a restore gives. It goes on `record` off its own fields, so no
- * receipt, line or log can carry it. A dump from before the challenge has none.
- */
-async function keepChallenge(psql, business, record) {
-  const kept = await psql(`select to_regclass('ops.restore_challenge') is not null`);
-  if (kept !== 't') return;
-  await psql(
-    `grant usage on schema ops to ${APP_ROLE}`,
-    `grant select on ops.restore_challenge to ${APP_ROLE}`,
-  );
-  const challenge = await psql(
-    `set role ${APP_ROLE}`,
-    `set app.business_id = '${business}'`,
-    'select challenge from ops.restore_challenge',
-  );
-  Object.defineProperty(record, 'challenge', { value: challenge, enumerable: false });
-}
-
-/**
  * Restores the archive `fetchArchive(file)` writes into `file` (or answers as
  * `body`) into a container of `image` and checks it. Returns the drill's record; never throws. `image` defaults to
  * staging's pinned Postgres, the major production gets.
@@ -174,7 +153,6 @@ export async function restoreDrill({
         throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;
-      await keepChallenge(psql, scope.business, record);
     });
     record.outcome = 'passed';
   } catch {

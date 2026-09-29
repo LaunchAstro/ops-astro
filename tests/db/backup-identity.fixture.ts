@@ -9,6 +9,7 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
+import { operator } from './backup-drill-records.fixture.ts';
 import {
   createEmptyDatabase,
   createFreshDatabase,
@@ -106,8 +107,9 @@ if (serverUrl === undefined) {
 export async function loginIn(
   db: EmptyDatabase,
   role: string,
+  suffix: string = SUFFIX[role] ?? 'xx',
 ): Promise<{ url: string; name: string }> {
-  const name = `${db.name}_${SUFFIX[role] ?? 'xx'}`;
+  const name = `${db.name}_${suffix}`;
   const password = randomBytes(18).toString('base64url');
   await db.admin.execute(
     `create role "${name}" login password '${password}' nosuperuser nocreatedb nocreaterole nobypassrls noinherit in role ${role}`,
@@ -120,45 +122,9 @@ export async function loginIn(
   return { url: url.toString(), name };
 }
 
-/**
- * The store reached from the machine, for the policy suites here. It runs the
- * same scripts the job and the drill send through psql on staging's network
- * (scripts/ops/backup-store-reach.mjs) over one session, and answers what
- * `psql -At` prints: each row's one value, a line each.
- */
-export async function hostReach(
-  url: string,
-  script: string | Iterable<string> | AsyncIterable<string>,
-  onLine?: (line: string) => unknown,
-): Promise<string> {
-  let text = '';
-  if (typeof script === 'string') text = script;
-  else for await (const piece of script) text += piece;
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
-  let printed: string;
-  try {
-    // A last statement with psql's `\bind 'v' ... \g` (backup-store-reach.mjs
-    // `bound`) runs as psql runs it: its values as bound parameters.
-    const [, before = '', statement = text, args = ''] =
-      /^([\s\S]*\n)?([^\n]*) \\bind((?: '[^']*')*) \\g\n?$/u.exec(text) ?? [];
-    if (before.trim() !== '') await sql.unsafe(before);
-    const values = [...args.matchAll(/'([^']*)'/gu)].map(([, v]) => v ?? '');
-    const results = [await sql.unsafe(statement, values)].flat() as Record<string, unknown>[][];
-    printed = results
-      .flat()
-      .map((row) => String(Object.values(row)[0] ?? ''))
-      .join('\n');
-  } finally {
-    await sql.end();
-  }
-  if (onLine === undefined) return printed;
-  for (const line of printed === '' ? [] : printed.split('\n')) {
-    // oxlint-disable-next-line no-await-in-loop -- a line at a time, as psql prints them
-    await onLine(line);
-  }
-  return '';
-}
+import { hostReach } from './backup-host-reach.fixture.ts';
 
+export { hostReach };
 export { addArchive, PART } from './backup-archive.fixture.ts';
 
 /** One session, so `set role` and `begin` hold for every statement after them. */
@@ -221,6 +187,13 @@ export let store: EmptyDatabase;
 export let backupLogin: { url: string; name: string };
 export let retentionLogin: { url: string; name: string };
 export let restoreLogin: { url: string; name: string };
+/**
+ * The appointed operator's own store login: a member of the restore identity
+ * that the installation appointed as `operator` (backup-drill-records.fixture.ts)
+ * in the operating business `made-up`, so a pass is recorded only through it.
+ */
+export let operatorLogin: { url: string; name: string };
+export const OPERATING_BUSINESS = 'made-up';
 
 export async function receipts(): Promise<{ action: string; archive_id: string; bytes: string }[]> {
   return [
@@ -249,12 +222,21 @@ export function backupStoreHooks(): void {
     backupLogin = await loginIn(store, BACKUP);
     retentionLogin = await loginIn(store, RETENTION);
     restoreLogin = await loginIn(store, RESTORE);
+    operatorLogin = await loginIn(store, RESTORE, 'op');
+    // Installation, as the store's admin does it from the restore runbook.
+    await store.admin.execute('insert into backups.installation (operating_business) values ($1)', [
+      OPERATING_BUSINESS,
+    ]);
+    await store.admin.execute('insert into backups.appointed (login, person) values ($1, $2)', [
+      operatorLogin.name,
+      operator,
+    ]);
   }, 120_000);
 
   afterAll(async () => {
     await dropLogins(
       store,
-      [backupLogin?.name, retentionLogin?.name, restoreLogin?.name].filter(
+      [backupLogin?.name, retentionLogin?.name, restoreLogin?.name, operatorLogin?.name].filter(
         (n): n is string => n !== undefined,
       ),
     );

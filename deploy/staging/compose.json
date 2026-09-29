@@ -117,7 +117,9 @@
         "-c",
         "ssl_cert_file=/etc/ops-astro-tls/server.crt",
         "-c",
-        "ssl_key_file=/etc/ops-astro-tls/server.key"
+        "ssl_key_file=/etc/ops-astro-tls/server.key",
+        "-c",
+        "log_min_error_statement=panic"
       ],
       "volumes": [
         "ops-astro-staging-backups-data:/var/lib/postgresql/data",

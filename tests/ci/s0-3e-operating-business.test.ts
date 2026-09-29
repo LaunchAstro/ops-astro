@@ -27,6 +27,7 @@ import {
   environment,
   operatorOnlyHooks,
   serverUrl,
+  type OperatorOnlyState,
   subjects,
   token,
 } from './operator-only.fixture.ts';
@@ -50,6 +51,7 @@ const load = async <T>(path: string): Promise<T> =>
   )) as T;
 
 const TAKEN = '2026-09-29T02:00:00.000Z';
+let state: OperatorOnlyState;
 const digestOf = (body: Buffer): string => createHash('sha256').update(body).digest('hex');
 
 /** A store holding one sealed archive of `dump`, answering as the real one does; it counts each reach. */
@@ -87,7 +89,9 @@ const drillModes = Object.entries(COMMANDS).filter(([name]) =>
 );
 
 describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => {
-  operatorOnlyHooks(() => {});
+  operatorOnlyHooks((shared) => {
+    state = shared;
+  });
 
   operatingCases1();
 
@@ -99,6 +103,8 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
 
   operatingCases4();
   operatingCases5();
+  operatingCases6();
+  operatingCases7();
 });
 
 function operatingCases1() {
@@ -192,7 +198,7 @@ function operatingCases3() {
 }
 
 function operatingCases4() {
-  it('Sol proof, criterion 4: another business manager cannot choose the operating business for export', async () => {
+  it('another business manager cannot choose the operating business for export', async () => {
     const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
     const store = plantedStore(sealArchive(Buffer.from('another-business-record'), keys.publicKey));
     const file = join(mkdtempSync(join(scratch, 'sol-override-')), 'archive.sealed');
@@ -205,26 +211,73 @@ function operatingCases4() {
     expect(existsSync(file) || existsSync(`${file}.json`)).toBe(false);
     expect(readdirSync(records)).toStrictEqual([]);
   });
+}
 
-  it('with no operating business configured, every drill mode is refused before any lookup', async () => {
+function operatingCases6() {
+  it('with no operating business written at installation, every drill mode is refused before its sign-in is looked at', async () => {
     const signIn = await token(subjects.operator);
-    for (const [name, command] of drillModes) {
-      const at = marks(manager(false));
-      const env = environment(at, process.env['PATH'] ?? '', {
-        OPS_ASTRO_TOKEN: signIn,
-        OPS_ASTRO_OPERATING_BUSINESS: '',
-        RESTORE_KEY_FILE: drillKey(),
-      });
-      const result = command(env, at);
-      expect(result.status, `${name}: ${result.out}`).toBe(1);
-      expect(result.out).toMatch(/OPS_ASTRO_OPERATING_BUSINESS is not set/u);
-      expect(readdirSync(at.records)).toStrictEqual([]);
+    const admin = state.db.admin;
+    await admin.execute(
+      'alter table ops.operating_business disable trigger operating_business_fixed',
+    );
+    await admin.execute('delete from ops.operating_business');
+    try {
+      for (const [name, command] of drillModes) {
+        const at = marks(manager(false));
+        const env = environment(at, process.env['PATH'] ?? '', {
+          OPS_ASTRO_TOKEN: signIn,
+          // A value the operator's environment sets appoints nothing.
+          OPS_ASTRO_OPERATING_BUSINESS: 'alpha',
+          RESTORE_KEY_FILE: drillKey(),
+        });
+        const result = command(env, at);
+        expect(result.status, `${name}: ${result.out}`).toBe(1);
+        expect(result.out).toMatch(/the installation has no operating business/u);
+        expect(readdirSync(at.records)).toStrictEqual([]);
+      }
+    } finally {
+      await admin.execute('insert into ops.operating_business (operating_business) values ($1)', [
+        state.alphaBusiness,
+      ]);
+      await admin.execute(
+        'alter table ops.operating_business enable trigger operating_business_fixed',
+      );
     }
   });
 }
 
+function operatingCases7() {
+  it('the operating business is installation state: the tenancy role can neither read nor write it, and once written it is never changed or removed', async () => {
+    const tenancy = state.db.app;
+    for (const statement of [
+      'select operating_business from ops.operating_business',
+      'insert into ops.operating_business (operating_business) select id from public.businesses',
+      'update ops.operating_business set written_at = now()',
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop -- one refusal after the other
+      await expect(
+        tenancy.withBusiness(state.alphaBusiness as never, async (tx) => await tx.query(statement)),
+        statement,
+      ).rejects.toMatchObject({ code: '42501' });
+    }
+    const admin = state.db.admin;
+    for (const statement of [
+      'update ops.operating_business set operating_business = operating_business',
+      'delete from ops.operating_business',
+      'truncate ops.operating_business',
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop -- one refusal after the other
+      await expect(admin.execute(statement), statement).rejects.toMatchObject({ code: '42501' });
+    }
+    const rows = await admin.execute<{ n: number }>(
+      'select count(*)::int as n from ops.operating_business',
+    );
+    expect(rows[0]?.n).toBe(1);
+  });
+}
+
 function operatingCases5() {
-  it('Sol proof, criterion 4: another business cannot appoint itself as the operating business', async () => {
+  it('another business cannot appoint itself as the operating business', async () => {
     const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
     const plant = `alpha-record-${randomUUID()}`;
     const store = plantedStore(sealArchive(Buffer.from(plant), keys.publicKey));

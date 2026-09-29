@@ -9,14 +9,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { closeSync, openSync, unlinkSync, writeSync } from 'node:fs';
 import { stagingReach, value } from './backup-store-reach.mjs';
-import {
-  forgetChallenge,
-  readCarried,
-  readCarriedReceipt,
-  readChallenge,
-  writeCarried,
-  writeChallenge,
-} from './carried-archive.mjs';
+import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
 
@@ -110,9 +103,11 @@ export async function exportArchive({ gate, storeUrl, file, reach = stagingReach
 
 /**
  * The drill as the operator the gate admitted runs it: the drill, then its
- * receipt in the store, then the operator's record. Returns the receipt. The
- * restore challenge the drill read back never enters the receipt or the
- * record; a carried drill keeps it beside its archive for `--record`.
+ * receipt in the store, then the operator's record. Returns the receipt. On
+ * the machine a pass goes to the store as this operator's own act, with the
+ * business, the id of the archive the drill fetched and the whole digest it
+ * computed of it, bound and never printed; the store takes it only through
+ * the store login the installation appointed as this person.
  */
 export async function drillAsOperator({
   gate,
@@ -124,15 +119,15 @@ export async function drillAsOperator({
   reach = stagingReach,
 }) {
   const carried = archiveFile !== undefined;
+  let fetched = {};
   const {
     event: _event,
     at: _at,
-    challenge,
     ...result
   } = await drill({
     fetchArchive: carried
       ? (into) => readCarried(archiveFile, into)
-      : (into) => fetchLatest(storeUrl, into, reach),
+      : async (into) => (fetched = await fetchLatest(storeUrl, into, reach)),
     privateKey,
     scope,
   });
@@ -145,17 +140,18 @@ export async function drillAsOperator({
   };
   if (carried) {
     // Off the machine the store is out of reach: the receipt is kept and
-    // printed, and `--record` takes it back into the store with the archive
-    // and the challenge. Until the store has checked both, it is not a pass.
-    if (act.outcome === 'passed') {
-      act.outcome = 'pending';
-      writeChallenge(archiveFile, challenge);
-    }
+    // printed, and `--record` takes it back into the store with the archive.
+    // Until the operator records it there, it is not a pass.
+    if (act.outcome === 'passed') act.outcome = 'pending';
     act.lastTestedRestore = null;
     return await recordDeployment(gate, act);
   }
   try {
-    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach);
+    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach, {
+      business: gate.operator.business,
+      archiveId: fetched.archiveId ?? null,
+      digest: fetched.sha256 ?? null,
+    });
   } catch {
     // The store's own message can name its host; the operator is told the step.
     throw new Error('the drill ran, but its receipt could not be written to the store');
@@ -166,10 +162,11 @@ export async function drillAsOperator({
 /**
  * `--record`: a carried drill's receipt, brought back by the operator who ran
  * it, in the business it ran in, with the archive it restored. The archive's
- * digest is computed here from the file itself, and a pending restore brings
- * the challenge its drill read back; both go to the store as bound
- * parameters, never printed. The store takes it once. What is recorded and
- * returned is the outcome and the store's answer, never the receipt's fields.
+ * digest is computed here from the file itself and goes to the store as a
+ * bound parameter, never printed, with the archive's id and the business.
+ * The store takes it once, and a pass only as the appointed operator's own
+ * act. What is recorded and returned is the outcome and the store's answer,
+ * never the receipt's fields.
  */
 export async function recordCarried({
   gate,
@@ -183,29 +180,21 @@ export async function recordCarried({
     throw new Error('--record needs the archive the drill restored: --archive <file>');
   }
   const { archiveId, sha256: digest } = readCarried(archiveFile);
-  const pending = carried.outcome === 'pending';
-  const challenge = pending ? readChallenge(archiveFile) : null;
-  if (pending && challenge === null) {
-    throw new Error(
-      'no restore challenge beside the archive: only a drill that restored it keeps one, and without it there is no pass',
-    );
-  }
-  const outcome = pending ? 'passed' : 'failed';
+  const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
       storeUrl,
       carried.operator,
       { ...carried, outcome },
-      { archiveId, digest, challenge },
+      { archiveId, digest, business: gate.operator.business },
       reach,
     );
   } catch {
     throw new Error(
-      'the store did not take the receipt: it has it already, or it never handed out that archive, with that digest and challenge, to this login inside the window',
+      "the store did not take the receipt: it has it already, it never handed out that archive, with that digest, to this login inside the window, or this login is not the installation's appointed operator",
     );
   }
-  forgetChallenge(archiveFile);
   return await recordDeployment(gate, {
     action: 'carried drill recorded',
     outcome,

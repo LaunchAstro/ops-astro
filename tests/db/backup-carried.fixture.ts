@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The S0-3e carried-archive DB suites' shared parts (backup-carried-drill.test.ts,
-// backup-carried-challenge.test.ts): the drill's module, an admitted gate, the
+// backup-carried-attest.test.ts): the drill's module, an admitted gate, the
 // store's drills, a receipt carried back, --record, and a new backup exported
-// with its restore challenge beside it, as a drill that restored it keeps it.
+// by the appointed operator's own store login.
 
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -15,12 +15,13 @@ import {
   asRole,
   store,
   backupLogin,
-  restoreLogin,
+  operatorLogin,
+  OPERATING_BUSINESS,
   addArchive,
   hostReach,
   seal,
 } from './backup-identity.fixture.ts';
-import { passed } from './backup-drill-records.fixture.ts';
+import { operator, passed } from './backup-drill-records.fixture.ts';
 
 export type Receipt = Record<string, unknown>;
 export type Act = (options: Record<string, unknown>) => Promise<Receipt>;
@@ -34,10 +35,10 @@ export const drillModule = async (): Promise<DrillModule> => {
 };
 
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-3e-db-'));
-export const operator: string = randomUUID();
+export { operator };
 export const gateOf = (personId: string): Receipt => ({
   ok: true,
-  operator: { personId, business: 'made-up' },
+  operator: { personId, business: OPERATING_BUSINESS },
   records: mkdtempSync(join(scratch, 'records-')),
   recordSignIn: () => Promise.resolve(),
 });
@@ -55,17 +56,22 @@ export const carriedBack = (receipt: Receipt, change: Receipt = {}): string => {
   return file;
 };
 
-/** `--record`, as the person `personId`, of `receiptFile`, with the archive `archiveFile`. */
+/**
+ * `--record`, as the person `personId`, of `receiptFile`, with the archive
+ * `archiveFile`, through the store login `storeUrl` (the appointed
+ * operator's own, unless a case says otherwise).
+ */
 export const record = async (
   personId: string,
   receiptFile: string,
   archiveFile: string = exported,
+  storeUrl: string = operatorLogin.url,
 ): Promise<Receipt> =>
   await (
     await drillModule()
   ).recordCarried({
     gate: gateOf(personId),
-    storeUrl: restoreLogin.url,
+    storeUrl,
     receiptFile,
     archiveFile,
     reach: hostReach,
@@ -79,7 +85,7 @@ export const pendingReceipt = (takenAt: string): Receipt => ({
   at: new Date().toISOString(),
   archiveTakenAt: takenAt,
   lastTestedRestore: null,
-  business: 'made-up',
+  business: OPERATING_BUSINESS,
   operator,
   ranOn: 'carried archive',
 });
@@ -101,16 +107,15 @@ let exported = '';
 export const exportedFile = (): string => exported;
 
 /**
- * A new sealed backup in the store, completed with its restore challenge's
- * sha256 as the job completes one, exported; beside the export, the challenge
- * as a drill that restored it keeps it. Answers the receipt that drill prints.
+ * A new sealed backup in the store, exported by the appointed operator's own
+ * store login, as `--export` on the machine. Answers the receipt a drill that
+ * restored it prints.
  */
 export async function carriedReceipt(): Promise<Receipt> {
   const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
-  const challenge = randomBytes(32).toString('hex');
   const job = await asRole(backupLogin.url, BACKUP);
   try {
-    await addArchive(job, body, false, sha(challenge));
+    await addArchive(job, body);
   } finally {
     await job.end();
   }
@@ -118,16 +123,14 @@ export async function carriedReceipt(): Promise<Receipt> {
   exported = file;
   await (
     await drillModule()
-  ).exportArchive({ gate: gateOf(operator), storeUrl: restoreLogin.url, file, reach: hostReach });
-  writeFileSync(`${file}.challenge`, `${challenge}\n`, { mode: 0o600 });
+  ).exportArchive({ gate: gateOf(operator), storeUrl: operatorLogin.url, file, reach: hostReach });
   const takenAt = (JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { takenAt: string }).takenAt;
   return pendingReceipt(takenAt);
 }
 
 /**
  * The exported file with its sealed backup swapped: another dump sealed to the
- * same (public) backup key, its own digest, the real time and id, and the real
- * challenge beside it.
+ * same (public) backup key, its own digest, and the real time and id.
  */
 export async function swapped(): Promise<string> {
   const { sealArchive } = await seal();
@@ -143,6 +146,5 @@ export async function swapped(): Promise<string> {
     `${file}.json`,
     `${JSON.stringify({ ...held, sha256: digestOf(body), bytes: body.length })}\n`,
   );
-  copyFileSync(`${exported}.challenge`, `${file}.challenge`);
   return file;
 }
