@@ -110,7 +110,9 @@ describe('MP-1-7', () => {
     for (const line of dark)
       expect(line).toMatch(/^pending .+@\d+-dark: waiting for the dark theme/u);
   });
+});
 
+describe('MP-1-7', () => {
   it('MP-1-7 renderer pinned: a capture from a different browser mode is refused until it is measured', () => {
     const pinned = packet.renderer;
     expect(() => checkRenderer(packet, { ...pinned })).not.toThrow();
