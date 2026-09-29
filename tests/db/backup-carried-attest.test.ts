@@ -101,6 +101,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
     attestCases2();
 
     attestCases3();
+    attestCases4();
   });
 });
 
@@ -205,6 +206,54 @@ function attestCases2() {
     } finally {
       await reader.end();
     }
+    expect(await drills()).toHaveLength(before);
+  });
+}
+
+function attestCases4() {
+  it('Sol proof, criterion 13: a carried receipt cannot attest another exported archive with the same timestamp', async () => {
+    const before = (await drills()).length;
+    const first = await exported('-- first archive\n', operatorLogin.url);
+    await store.admin.execute(
+      "update backups.archives set taken_at = date_trunc('milliseconds', taken_at) where id = $1",
+      [first.archiveId],
+    );
+    const writer = await asRole(backupLogin.url, BACKUP);
+    try {
+      await addArchive(
+        writer,
+        (await seal()).sealArchive(Buffer.from('-- second archive\n'), keys.publicKey),
+      );
+    } finally {
+      await writer.end();
+    }
+    const [secondRow] = await store.admin.execute<{ id: string }>(
+      'select id::text from backups.archives where id <> $1 order by taken_at desc, id desc limit 1',
+      [first.archiveId],
+    );
+    expect(secondRow).toBeDefined();
+    await store.admin.execute(
+      "update backups.archives set taken_at = (select taken_at from backups.archives where id = $1) + interval '500 microseconds' where id = $2",
+      [first.archiveId, secondRow?.id],
+    );
+    const secondFile = join(mkdtempSync(join(scratch, 'sol-same-time-')), 'archive.sealed');
+    await (
+      await drillModule()
+    ).exportArchive({
+      gate: gateOf(operator),
+      storeUrl: operatorLogin.url,
+      file: secondFile,
+      reach: hostReach,
+    });
+    const second = JSON.parse(readFileSync(`${secondFile}.json`, 'utf8')) as {
+      archiveId: string;
+      takenAt: string;
+    };
+    expect(second.archiveId).toBe(secondRow?.id);
+    expect(second.takenAt).toBe(first.takenAt);
+    await expect(
+      record(operator, carriedBack(pendingReceipt(first.takenAt)), secondFile),
+    ).rejects.toThrow();
     expect(await drills()).toHaveLength(before);
   });
 }
