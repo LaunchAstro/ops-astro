@@ -96,6 +96,18 @@ export type Registered<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly code: CatalogueRefusalCode; readonly fields: readonly string[] };
 
+/** Each custody entry belongs to one provider host; a borrowed credential goes there and nowhere else. */
+export const CREDENTIAL_HOSTS: Readonly<Record<'source_control' | 'hosting', string>> = {
+  source_control: 'api.github.com',
+  hosting: 'api.vercel.com',
+};
+
+export function credentialHostMatches(connector: ConnectorDefinition): boolean {
+  return (
+    connector.credential === 'none' || CREDENTIAL_HOSTS[connector.credential] === connector.host
+  );
+}
+
 export function connectorRelease(connector: ConnectorDefinition): string {
   return `sha256:${payloadDigest(connector)}`;
 }
@@ -190,6 +202,9 @@ export function registerOperation(candidate: unknown): Registered<OperationDecla
   const release = isRecord(connector) ? `sha256:${payloadDigest(connector)}` : undefined;
   if (release !== declaration['connector_release']) {
     return { ok: false, code: 'CONNECTOR_RELEASE_MISMATCH', fields: ['connector_release'] };
+  }
+  if (!credentialHostMatches(connector as unknown as ConnectorDefinition)) {
+    return { ok: false, code: 'OPERATION_DECLARATION_INVALID', fields: ['credential_tier'] };
   }
   const registered = declaration as unknown as OperationDeclaration;
   const capture = registered.credential_tier === 'none';

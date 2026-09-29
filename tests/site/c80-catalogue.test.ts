@@ -130,6 +130,19 @@ describe('C80 twelve declarations', () => {
     expect(connectorRelease(candidate.connector)).toBe(candidate.declaration.connector_release);
   });
 
+  it('refuses a connector whose credential belongs to another host, even with a matching release', () => {
+    const candidate = registration('site.publish');
+    const connector = { ...candidate.connector, host: 'api.vercel.com' };
+    const crossed = {
+      connector,
+      declaration: { ...candidate.declaration, connector_release: connectorRelease(connector) },
+    };
+    expect(registerOperation(crossed)).toMatchObject({
+      code: 'OPERATION_DECLARATION_INVALID',
+      fields: ['credential_tier'],
+    });
+  });
+
   it('keeps publish at R2 and accepted only, and capture with no credential at all', () => {
     const publish = registration('site.publish').declaration;
     expect(publish.reversibility_strategy).toBe('R2');

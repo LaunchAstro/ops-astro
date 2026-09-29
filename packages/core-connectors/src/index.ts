@@ -9,6 +9,7 @@
 // lease calls it after the gate.
 
 export {
+  CREDENTIAL_HOSTS,
   DECLARATION_NAMES,
   connectorRelease,
   registerOperation,
