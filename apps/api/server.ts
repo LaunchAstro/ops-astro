@@ -51,7 +51,12 @@ import {
   executeCommand,
   executeRead as readExecutor,
 } from '../../packages/core-commands/src/index.ts';
-import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import {
+  CRASH_POINT_VARIABLE,
+  crashSeamProblem,
+  runtimeKeys,
+  withRuntimeKeys,
+} from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
@@ -262,6 +267,17 @@ export function composeApi(config: ApiConfig): ComposedApi {
 }
 
 async function main(): Promise<void> {
+  // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
+  const seam = crashSeamProblem(process.env);
+  if (seam !== undefined) {
+    console.error(`api: ${seam}`);
+    process.exit(1);
+  }
+  if ((process.env[CRASH_POINT_VARIABLE] ?? '') !== '') {
+    console.warn(
+      `api: CRASH SEAM ARMED at ${String(process.env[CRASH_POINT_VARIABLE])} (test mode)`,
+    );
+  }
   const environment = localEnvironment();
   const port = Number(environment['API_PORT'] ?? 8790);
   const databaseUrl = environment['DATABASE_URL'];

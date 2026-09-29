@@ -62,7 +62,8 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts';
 import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
-import { asCallerVisible, refuseCommand } from './refusal.ts';
+import { asCallerVisible, isCommandRefusal, refuseCommand } from './refusal.ts';
+import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
 import { enter, retryOnce, settle } from './envelope.ts';
 import { isRefused } from './outcome.ts';
@@ -121,7 +122,7 @@ export async function executeAgentCommand(
   // retry. A second retryable failure of any kind propagates. There is no
   // `onFinalFailure` here: an agent attempt that raised is answered by the
   // fault alone.
-  return await retryOnce(
+  const result = await retryOnce(
     async () =>
       await database.withBusiness(businessId, async (tx) => {
         const session = await resolveAgentLogin(tx, presented);
@@ -133,6 +134,9 @@ export async function executeAgentCommand(
         return await runAgentCommand(tx, { session, credential, request });
       }),
   );
+  // Committed: the lost-response gap before the worker reads this (T2c1).
+  await crashPointAfterCommit(request.command, !isCommandRefusal(result), process.env);
+  return result;
 }
 
 /**
@@ -157,7 +161,7 @@ export function agentAnswer(
 }
 
 const OUTSIDE_FIXES: readonly string[] = [
-  'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, propose, heartbeat, handback and its capabilities.',
+  'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, propose, heartbeat, dispatch, handback and its capabilities.',
   'Every other operation belongs to a person.',
 ];
 

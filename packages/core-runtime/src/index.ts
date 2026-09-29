@@ -7,9 +7,8 @@
 // `task.handback` against these names, so a later rearrangement inside this
 // package is not a change to what L3 imports.
 //
-// Two things are deliberately absent. There is no dispatch, worker or provider
-// export — no path here makes a call, and `planned_steps.dispatched_at` is a
-// constraint keeping it that way. And `RuntimeRefusalCode` is exported as this
+// Dispatch marks a step (T2c1, `dispatch.ts`); no path here applies an effect
+// or makes a provider call. And `RuntimeRefusalCode` is exported as this
 // package's own type rather than added to `commands/register.ts`: that file is
 // L3's, and a module reaching into the command surface to register its own
 // codes is the coupling the register exists to prevent. `SUGGESTED_STATUS`
@@ -33,6 +32,8 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

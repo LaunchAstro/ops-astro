@@ -599,6 +599,30 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
+  // T2c1, the dispatch transaction's recheck of the effect-time facts
+  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
+  // and state moved under it, so nothing was dispatched.
+  {
+    code: 'AUTHORITY_LOST',
+    status: 409,
+    meaning: 'The authority behind the work was lost before its effect was dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'DECISION_STALE',
+    status: 409,
+    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'EFFECT_NOT_RECONCILABLE',
+    status: 409,
+    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */

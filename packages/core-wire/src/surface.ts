@@ -102,7 +102,9 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // The lease holder marks its step dispatched before any effect (T2c1).
+  | 'task.dispatch';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -369,6 +371,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -508,6 +511,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The lease owner's, asked of the lease's task like pickup and handback; the
   // agent path checks the delegation, then the lease.
   declare('task.heartbeat', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The lease owner's too, asked as heartbeat is; the runtime rechecks the
+  // four effect-time facts under its own locks.
+  declare('task.dispatch', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],

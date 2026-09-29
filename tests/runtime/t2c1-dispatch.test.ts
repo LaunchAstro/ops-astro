@@ -16,13 +16,14 @@
 // caller does not own and changes nothing there, and a dispatch never waits
 // on another business's step.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
@@ -85,7 +86,7 @@ async function leased(
       collection: TASK_COLLECTION,
       proposedByActorId: fixture.decider.actorId,
       subjects: subjectsOf(fixture.decider),
-      purpose: 'synthetic_comment',
+      purpose: `t2c1_${randomUUID().slice(0, 8)}`,
       maximumMinor: 2_500,
       currency: 'AUD',
       payload: { change: 'a team-only comment' },
@@ -131,6 +132,7 @@ async function leased(
         fence: picked.value.fence,
         holderActorId: fixture.agentActorId,
         delegationId,
+        collection: TASK_COLLECTION,
       },
     };
   });
@@ -162,6 +164,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   let db: FreshDatabase;
   let fixture: RuntimeFixture;
   let other: RuntimeFixture;
+  // A second connection: the first is `max: 1`, and the races hold one transaction open.
+  let rival: Database;
 
   const run = async (on: RuntimeFixture, request: DispatchRequest) =>
     await db.app.withBusiness(on.businessId, async (tx) => await dispatch(tx, request));
@@ -170,9 +174,13 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     db = await createFreshDatabase({ part: 't2c1dispatch' });
     fixture = await buildFixture(db.app, 't2c1-alpha');
     other = await buildFixture(db.app, 't2c1-beta');
+    rival = connect(db.appUrl, { max: 1, source: 't2c1-rival' });
   }, 120_000);
 
-  afterAll(async () => await db?.drop());
+  afterAll(async () => {
+    await rival?.close();
+    await db?.drop();
+  });
 
   it('enumerates the four effect-time facts in code, and declares the synthetic effect replayable', () => {
     expect([...EFFECT_TIME_FACTS].toSorted()).toStrictEqual(
@@ -212,7 +220,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   it('recheck_inside_dispatch: a revocation in flight is seen, and the dispatch is refused AUTHORITY_LOST', async () => {
     const work = await leased(db.app, fixture);
     const { held, release } = gate();
-    const revoking = db.app.withBusiness(fixture.businessId, async (tx) => {
+    const revoking = rival.withBusiness(fixture.businessId, async (tx) => {
       await tx.query(
         `update public.grants set revoked_at = now()
           where business_id = $1 and subject_id = $2 and action = 'write'`,
@@ -223,7 +231,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     // The revocation holds the grant row before the dispatch starts.
     await delay(100);
     const dispatching = run(fixture, work.request);
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    // Bounded, so a dispatch that never waits on the grant is answered by the assertions below.
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       // eslint-disable-next-line no-await-in-loop
       const rows = await db.admin.execute<{ readonly waiting: string }>(
         `select count(*)::text as waiting from pg_stat_activity
@@ -247,7 +256,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
         [fixture.businessId, fixture.decider.personId],
       );
     }
-  });
+  }, 20_000);
 
   it.each([
     [
@@ -320,7 +329,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     const theirs = await leased(db.app, other);
     const mine = await leased(db.app, fixture);
     const { held, release } = gate();
-    const locking = db.app.withBusiness(other.businessId, async (tx) => {
+    const locking = rival.withBusiness(other.businessId, async (tx) => {
       await tx.query(
         `select 1 from public.planned_steps s join public.attempts a
             on a.business_id = s.business_id and a.step_id = s.id

@@ -12,6 +12,7 @@
 // constraints read the same as on a fresh database. The worker role holds
 // nothing on either table, new columns included.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createEmptyDatabase,
@@ -59,7 +60,7 @@ async function work(
       collection: TASK_COLLECTION,
       proposedByActorId: fixture.decider.actorId,
       subjects: subjectsOf(fixture.decider),
-      purpose: 'synthetic_comment',
+      purpose: `t2c1_${randomUUID().slice(0, 8)}`,
       maximumMinor: 2_000,
       currency: 'AUD',
       payload: { change: 'a comment' },
