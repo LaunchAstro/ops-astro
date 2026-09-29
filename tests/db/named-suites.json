@@ -74,7 +74,8 @@
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
     "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named.",
-    "C1a names search as an invariant (task.search, ticket C1 lines C2 and C3): the viewer's live task:read scopes are a predicate of the statement that finds candidates, so no row of another client's, person's or business's task is returned to the process, not even as a count; red against a planted post-filter build."
+    "C1a names search as an invariant (task.search, ticket C1 lines C2 and C3): the viewer's live task:read scopes are a predicate of the statement that finds candidates, so no row of another client's, person's or business's task is returned to the process, not even as a count; red against a planted post-filter build.",
+    "C1 names c1-isolation as an invariant (ticket C1, SL05): task.search shows no foreign title, id or count across the three crossings, another business and another client in the same business on the read, and an agent under a live delegation over the real HTTP route; red when the statement's scope is widened."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -220,7 +221,8 @@
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
     "tests/tenancy/final-r6-runner-guard.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
-    "tests/reads/search.test.ts"
+    "tests/reads/search.test.ts",
+    "tests/reads/c1-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

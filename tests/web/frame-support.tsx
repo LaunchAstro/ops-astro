@@ -57,13 +57,19 @@ export async function follow(view: Mounted, selector: string): Promise<MouseEven
 export async function press(
   target: EventTarget,
   key: string,
-  options: { readonly shiftKey?: boolean } = {},
+  options: {
+    readonly shiftKey?: boolean;
+    readonly metaKey?: boolean;
+    readonly ctrlKey?: boolean;
+  } = {},
 ): Promise<KeyboardEvent> {
   const event = new KeyboardEvent('keydown', {
     key,
     bubbles: true,
     cancelable: true,
     shiftKey: options.shiftKey ?? false,
+    metaKey: options.metaKey ?? false,
+    ctrlKey: options.ctrlKey ?? false,
   });
   await act(async () => {
     target.dispatchEvent(event);

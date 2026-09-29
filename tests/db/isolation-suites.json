@@ -8,6 +8,7 @@
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
-    "tests/reads/search.test.ts"
+    "tests/reads/search.test.ts",
+    "tests/reads/c1-isolation.test.ts"
   ]
 }
