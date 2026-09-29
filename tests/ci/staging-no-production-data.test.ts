@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // S0-1a: staging's database holds made-up data only, so the seed refuses a
-// database that carries anything a production backup would bring: a business
-// the seed does not make, or a sign-in address that is not a made-up one. The
-// refusal comes before the seed writes a row or a file, and it names counts,
-// never the rows it found.
+// database it cannot vouch for from its own mark and guard: no mark, a write
+// the seed and the application did not make, a sign-in that is not a made-up
+// address, or a guard switched off. It decides from that metadata, never from
+// a tenant's rows, and the refusal comes before the seed writes a row or a
+// file, naming no row.
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -53,6 +54,25 @@ it('Sol proof, criterion 4: business-to-business and person-to-person rows are n
   expect(crossBoundaryReads).toEqual([]);
 });
 
+it('Sol proof, criterion 4: marked preflight preserves business-to-business, client-to-client and person-to-person separation', async () => {
+  const statements: string[] = [];
+  const owner: OwnerQuery = {
+    execute<Row>(statement: string): Promise<readonly Row[]> {
+      statements.push(statement);
+      if (statement.includes('shobj_description'))
+        return Promise.resolve([
+          { mark: 'ops-astro made-up data; businesses: ; people: ' },
+        ] as Row[]);
+      return Promise.resolve([{ yes: statement.includes('to_regclass') }] as Row[]);
+    },
+  };
+  await productionSigns(owner, ['alpha']);
+  const crossBoundaryReads = statements.filter((statement) =>
+    /(?:from|join) public\.(?:businesses|people|records)\b|from auth\.users\b/u.test(statement),
+  );
+  expect(crossBoundaryReads).toEqual([]);
+});
+
 if (serverUrl === undefined) {
   console.warn('S0-1 no production data: DATABASE_URL is unset, so nothing below ran.');
 }
@@ -75,6 +95,8 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   });
 
   const reset = async (): Promise<void> => {
+    await db.admin.execute('drop event trigger if exists ops_astro_made_up_guard');
+    await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
     await db.admin.execute('delete from public.records');
     await db.admin.execute('delete from public.record_types');
     await db.admin.execute('delete from public.people');
@@ -84,6 +106,12 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
       "select format('comment on database %I is null', current_database()) as statement",
     );
     await db.admin.execute(unmark!.statement);
+    // Emptied tables give their pages back, so an emptied database is a new one.
+    for (const table of ['public.records', 'public.record_types', 'public.people'])
+      // oxlint-disable-next-line no-await-in-loop
+      await db.admin.execute(`vacuum ${table}`);
+    await db.admin.execute('vacuum public.businesses');
+    await db.admin.execute('vacuum auth.users');
   };
   const business = async (key: string): Promise<string> => {
     const id = randomUUID();
@@ -129,10 +157,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
 
   it('S0-1 no production data: a real sign-in address is refused before any write', async () => {
     await reset();
-    await business('alpha');
+    await markMadeUp(db.admin, [await business('alpha')]);
     await address('ada@alpha.local');
     await address('owner.canary@example.net');
-    // Confirmed, so the check reaches the sign-ins; unconfirmed it stops at the mark.
     const result = seed(true);
     expect(result.status, result.out).toBe(1);
     expect(result.out).toMatch(/it holds a sign-in that is not a made-up address/u);
@@ -160,15 +187,13 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     expect(await productionSigns(db.admin, MADE_UP)).toHaveLength(2);
   });
 
-  it('S0-1 no production data: a person confirms an unmarked made-up database once', async () => {
+  it('S0-1 no production data: a person confirms a new database once, never one holding rows', async () => {
     await reset();
-    await business('alpha');
-    await business('bravo');
     expect(await productionSigns(db.admin, MADE_UP)).toEqual(['it carries no made-up mark']);
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([]);
     await business('harbour-freight-canary');
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([
-      'it holds a business the seed did not make',
+      'it carries no made-up mark and is not a new database',
     ]);
   });
 
@@ -216,20 +241,102 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     expect(result.out).not.toContain(businessId);
   });
 
-  it('S0-1 no production data: task records people made in a marked database pass', async () => {
+  it('S0-1 no production data: records people make through the application pass', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
-    const typeId = randomUUID();
-    await db.admin.execute(
-      'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
-      [businessId, typeId, 'task', 'Task'],
-    );
-    await db.admin.execute(
-      'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
-      [businessId, randomUUID(), typeId, { title: 'a made-up task' }],
-    );
+    await db.app.withBusiness(businessId as never, async (tx) => {
+      const typeId = randomUUID();
+      await tx.query(
+        'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
+        [businessId, typeId, 'task', 'Task'],
+      );
+      await tx.query(
+        'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
+        [businessId, randomUUID(), typeId, { title: 'a made-up task' }],
+      );
+    });
     expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
+  });
+
+  it('S0-1 no production data: the check reads no tenant row, only the mark, the guard and the catalogue', async () => {
+    await reset();
+    await markMadeUp(db.admin, [await business('alpha')]);
+    const statements: string[] = [];
+    const watched: OwnerQuery = {
+      execute: (text, parameters) => {
+        statements.push(text);
+        return db.admin.execute(text, parameters);
+      },
+    };
+    expect(await productionSigns(watched, MADE_UP)).toEqual([]);
+    expect(await productionSigns(watched, MADE_UP, true)).toEqual([]);
+    expect(statements.join('\n')).not.toMatch(
+      /(?:from|join)\s+(?:public|auth)\.\w+|\b(?:public|auth)\.(?:businesses|people|records|users)\b/u,
+    );
+  });
+
+  it('S0-1 no production data: a guard switched off, dropped or bypassed is refused', async () => {
+    const guarded = async (): Promise<string> => {
+      await reset();
+      const businessId = await business('alpha');
+      await markMadeUp(db.admin, [businessId]);
+      expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
+      return businessId;
+    };
+    // pg_restore --disable-triggers, then the guard switched back on.
+    await guarded();
+    await db.admin.execute('alter table public.people disable trigger all');
+    await db.admin.execute('alter table public.people enable trigger all');
+    expect(await productionSigns(db.admin, MADE_UP)).toContain('a made-up guard was switched off');
+    // A superuser in replica mode, where ordinary triggers do not fire.
+    let businessId = await guarded();
+    // One statement, so the setting and the write share a transaction on the pool.
+    await db.admin.execute(
+      `insert into public.people (business_id, id, display_name)
+         select $1, $2, $3 from (select set_config('session_replication_role', 'replica', true)) r`,
+      [businessId, randomUUID(), 'Replica Person Canary'],
+    );
+    expect(await productionSigns(db.admin, MADE_UP)).toContain(
+      'it holds a person the seed did not make',
+    );
+    // A guard dropped, or the watch removed.
+    await guarded();
+    await db.admin.execute('drop trigger ops_astro_made_up_guard on public.records');
+    expect(await productionSigns(db.admin, MADE_UP)).toContain('a table has no made-up guard');
+    await guarded();
+    await db.admin.execute('drop event trigger ops_astro_made_up_guard');
+    expect(await productionSigns(db.admin, MADE_UP)).toContain('a table has no made-up guard');
+    // A tenant table filled as it is made is never vouched for.
+    businessId = await guarded();
+    await db.admin.execute(
+      `create table public.s01a_loaded as select $1::uuid as business_id, 'Loaded canary' as note`,
+      [businessId],
+    );
+    try {
+      expect(await productionSigns(db.admin, MADE_UP)).toContain('a table has no made-up guard');
+    } finally {
+      await db.admin.execute('drop table public.s01a_loaded');
+    }
+  });
+
+  it('S0-1 no production data: a table made after the mark is guarded from its first row', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    await db.admin.execute('create table public.s01a_later (business_id uuid, note text)');
+    try {
+      expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
+      await db.admin.execute('insert into public.s01a_later values ($1, $2)', [
+        businessId,
+        'Later private canary',
+      ]);
+      expect(await productionSigns(db.admin, MADE_UP)).toEqual([
+        'it holds a record the seed cannot vouch for',
+      ]);
+    } finally {
+      await db.admin.execute('drop table public.s01a_later');
+    }
   });
 
   it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
@@ -292,6 +399,22 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await db.admin.execute(
       'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
       [businessId, randomUUID(), typeId, { title: 'Private customer canary' }],
+    );
+    expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
+  });
+
+  it('Sol proof, criterion 9: a marked task type rejects restored private record content', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const typeId = randomUUID();
+    await db.admin.execute(
+      'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
+      [businessId, typeId, 'task', 'Task'],
+    );
+    await db.admin.execute(
+      'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
+      [businessId, randomUUID(), typeId, { title: 'Restored private customer canary' }],
     );
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
