@@ -168,13 +168,22 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
       expect(answer.status, JSON.stringify(body).slice(0, 120)).toBe(422);
       expect(answer.code).toBe('FIELD_VALUE_INVALID');
     }
+    // Inside the five minutes' drift the handler allows, judged on the
+    // database's clock as the table's own check is, the record is made and
+    // no constraint error (which would carry the words) is thrown instead.
+    const nearEdge = await record(
+      incident({ foundAt: new Date(Date.now() + 4 * 60_000).toISOString() }),
+    );
+    expect(nearEdge.status).toBe(200);
+    expect(await incidentRows(harness.world.alpha)).toEqual([{ n: (before[0]?.n ?? 0) + 1 }]);
     // A field the command does not declare is refused at the boundary.
     const undeclared = await record(incident({ status: 'closed' }));
     expect({ status: undeclared.status, code: undeclared.code }).toEqual({
       status: 400,
       code: 'COMMAND_BODY_INVALID',
     });
-    expect(await incidentRows(harness.world.alpha)).toEqual(before);
+    // Only the near-edge incident was recorded.
+    expect(await incidentRows(harness.world.alpha)).toEqual([{ n: (before[0]?.n ?? 0) + 1 }]);
   });
 
   it('C55 refusal privacy:manage: a holder of operations:read alone, a member and a client are refused, and nothing is recorded', async () => {
