@@ -78,6 +78,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe('INB-1f the board moves live on the page', () => {
   it('INB-1 board live (page): one stream per tab; an invalidate re-reads the board and an inbox signal the inbox and its count', async () => {
     const api = server();

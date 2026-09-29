@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world and its open tabs, and the cases that share them */
 //
 // INB-1f, the board moves live, against a real database and the real
 // composition root.
@@ -131,6 +132,7 @@ const inboxSignals = (tab: Tab): number => tab.heard.filter((one) => one.event =
 describe.skipIf(serverUrl === undefined)(
   'INB-1f the board moves live on one stream per tab',
   { timeout: 30_000 },
+  // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
   () => {
     let s: Schedules;
     let key: string;
@@ -237,6 +239,7 @@ describe.skipIf(serverUrl === undefined)(
       await within(2_000, () => named(tab, worked) > seen, 'the agent’s pickup');
     });
 
+    // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
     it('INB-1 isolation (the live board stream): another business, another client and a person under a live delegation hear nothing and are refused', async () => {
       const world = cq8World(s);
       const mine = await createTask(s, `inb1f-mine-${randomUUID()}`);

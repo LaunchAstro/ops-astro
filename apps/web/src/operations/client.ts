@@ -174,8 +174,17 @@ export class OperationsClient {
     recordId: string,
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
+    return await this.#openStream(`/live/task/${encodeURIComponent(recordId)}`, signal);
+  }
+
+  /** The board's one stream for the tab (INB-1f), or nothing if refused or unreachable. */
+  async openBoardLive(signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
+    return await this.#openStream('/live', signal);
+  }
+
+  async #openStream(path: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
     const { origin, businessKey, token } = this.#options;
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}${path}`;
     const headers: Record<string, string> =
       token === null ? {} : { authorization: `Bearer ${token}` };
     try {

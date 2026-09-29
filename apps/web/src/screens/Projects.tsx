@@ -18,6 +18,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
@@ -60,6 +61,8 @@ export function Projects(props: ProjectsProps): ReactElement {
     isEmpty: (value) => value.tasks.length === 0,
     deps: [],
   });
+  // INB-1f: one stream for the tab, shared by the board and the inbox panels.
+  const followInbox = useBoardLive(client, props.grantKey, reload);
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -116,7 +119,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   return (
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
-      <Inbox client={client} grantKey={props.grantKey} />
+      <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       <form className="taskform projects__create" onSubmit={onCreate}>
         <div className="field">
           <label className="tf__k" htmlFor="create-title">

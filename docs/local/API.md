@@ -1257,6 +1257,22 @@ read in the same transaction, so the item stores none of them. A gone entry
 carries its own identity and axes and nothing of the task. The board screen
 draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
+The board screen follows one event stream per tab (INB-1f),
+`GET <person prefix><business>/live`, beside T2f's `/live/task/:recordId`
+and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
+join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
+never an external reader or an agent, holding a live grant. It sends `resync`
+on connect and after the listener reconnects, `invalidate` whose data is a
+task's identifier only when the caller may read that task now (asked per event
+as T2f asks `task.execution`), `inbox` with no data when the caller's own items
+change, and `closed` the first time the join is refused again (at every
+recheck, 30 seconds by default, and before each batch). The inbox topic is
+`business:inbox:person`, sent at commit by migration 0043's trigger on
+`inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
+person's streams in that business. The page re-reads the board on
+`invalidate` and the inbox list and count on `inbox`; while the stream is
+down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
+
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.
 Every other role is given `externalCommentProjection`'s answer, which is the
