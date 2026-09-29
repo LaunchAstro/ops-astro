@@ -76,21 +76,23 @@ containers these names (`S0-1 gated stop`).
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
 (UptimeRobot, off the machine) checks each environment's web page, API health
 and backup heartbeat, and the error sink's health; the error sink (GlitchTip)
-takes the API's errors and its security alerts (repeated failed sign-ins, a
-permission, grant or custody change, a failed secret scan, a burst of
-cross-scope refusals, repeated webhook signature failures, unusual export
-volume). Each mails the owner and the second operator at once,
+takes the API's errors and its security alerts. The API raises repeated
+failed sign-ins, a burst of cross-scope refusals, a grant or delegation
+revoked, and unusual download volume (the records its reads hand out, per
+reader, 5,000 an hour to start); `scripts/secrets-scan.mjs` raises a failed
+secret scan. Webhook signature failures, custody changes and exports raise
+theirs once those features exist. Each mails the owner and the second operator at once,
 from its own mail, in the plain words of `apps/api/alerts/catalogue.ts`. The
 addresses are private, set in the environment at run time:
 
-| Variable                                                   | Read by                    | Holds                                                                     |
-| ---------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------- |
-| `OPS_ALERT_OWNER_EMAIL`, `OPS_ALERT_SECOND_OPERATOR_EMAIL` | `alerts.mjs plan`          | the two alert addresses                                                   |
-| `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`   | the test address agreed before case R8's proof                            |
-| `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`          | the public https addresses watched; production's from the first promotion |
-| `OPS_ERROR_SINK_DSN`                                       | the API, `alerts.mjs`      | the sink's DSN; unset, the API runs with no sink                          |
-| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, `alerts.mjs test` | `staging` or `production`; the build stamp                                |
+| Variable                                                   | Read by                                | Holds                                                                     |
+| ---------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
+| `OPS_ALERT_OWNER_EMAIL`, `OPS_ALERT_SECOND_OPERATOR_EMAIL` | `alerts.mjs plan`                      | the two alert addresses                                                   |
+| `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`               | the test address agreed before case R8's proof                            |
+| `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                      | the public https addresses watched; production's from the first promotion |
+| `OPS_ERROR_SINK_DSN`                                       | the API, `alerts.mjs`, the secret scan | the sink's DSN; unset, the API runs with no sink                          |
+| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, `alerts.mjs test`             | `staging` or `production`; the build stamp                                |
 
-`node scripts/ops/alerts.mjs plan` prints the checks and recipients to set up
-in both services (`--test`: all mail to the test address). `node
+`node scripts/ops/alerts.mjs plan` prints the checks, each with its name and
+its alert message in plain words, and the recipients to set up in both services (`--test`: all mail to the test address). `node
 scripts/ops/alerts.mjs test` sends a test alert through the sink.

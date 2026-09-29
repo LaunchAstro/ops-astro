@@ -32,6 +32,7 @@ interface Monitor {
   readonly type: string;
   readonly url?: string;
   readonly name: string;
+  readonly message: string;
 }
 interface Plan {
   readonly channel: string;
@@ -108,8 +109,13 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
   it('each monitor is named in plain words after what it is, never where it is', () => {
     const { monitors } = plan({ ...BASE, OPS_WATCH_PRODUCTION_URL: 'https://ops.example.test' });
     for (const monitor of monitors) {
-      for (const pattern of NOT_PLAIN) expect(monitor.name, monitor.watch).not.toMatch(pattern);
+      for (const pattern of NOT_PLAIN) {
+        expect(monitor.name, monitor.watch).not.toMatch(pattern);
+        expect(monitor.message, monitor.watch).not.toMatch(pattern);
+      }
+      expect(monitor.message.split('\n')[0]).toBe(`What broke: ${monitor.name}.`);
     }
+    expect(monitors[1]?.message).toBe(plainAlert('api-down', 'staging').text);
     expect(monitors[1]?.name).toBe(plainAlert('api-down', 'staging').title);
   });
 });

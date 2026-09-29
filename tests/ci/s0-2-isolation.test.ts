@@ -60,7 +60,11 @@ function world() {
     verify,
     resolveBusiness: (key) =>
       Promise.resolve(({ alpha: ALPHA, beta: BETA } as Record<string, string>)[key]),
-    executeRead: (() => Promise.resolve({ code: 'ok' })) as unknown as ReadExecutor,
+    // A read that hands out as many tasks as the body asks for.
+    executeRead: ((_db: unknown, _business: unknown, _presented: unknown, request: unknown) => {
+      const size = Number((request as { size?: number }).size ?? 0);
+      return Promise.resolve({ ok: true, tasks: Array.from({ length: size }, () => ({})) });
+    }) as unknown as ReadExecutor,
     executeCommand,
     // The agent's envelope refuses the same way; the delegation names the person it acts for.
     executeAgentCommand: ((_db, _business, _presented, _delegation, request) =>
@@ -84,6 +88,17 @@ function world() {
     );
     return response.status;
   }
+  /** A read by `who`, handed `size` records. */
+  async function read(business: string, who: string, size: number) {
+    const response = await api.fetch(
+      new Request(`http://api.test${PREFIX.person}${business}${pathOf('task.board')}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-subject': who },
+        body: JSON.stringify({ size }),
+      }),
+    );
+    return response.status;
+  }
   /** An agent acting for `person` under a live delegation. */
   async function asDelegate(business: string, agent: string, person: string, answer: string) {
     const response = await api.fetch(
@@ -101,6 +116,7 @@ function world() {
   }
   return {
     call,
+    read,
     asDelegate,
     events,
     alerts,
@@ -148,11 +164,23 @@ describe('S0-2 isolation', () => {
 
   it('client to client: one client’s exports never count towards another’s, in the same business or not', async () => {
     const w = world();
-    w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 150 });
-    w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c2', items: 150 });
-    w.alerts.observe({ kind: 'export', business: BETA, client: 'c1', items: 150 });
+    w.alerts.observe({ kind: 'export', business: ALPHA, who: 'c1', items: 3000 });
+    w.alerts.observe({ kind: 'export', business: ALPHA, who: 'c2', items: 3000 });
+    w.alerts.observe({ kind: 'export', business: BETA, who: 'c1', items: 3000 });
     expect(await w.raised()).toEqual([]);
-    w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 50 });
+    w.alerts.observe({ kind: 'export', business: ALPHA, who: 'c1', items: 2000 });
+    expect(await w.raised()).toEqual(['export-volume']);
+  });
+
+  it('client to client, through the door: the records each read hands out count per business and reader', async () => {
+    const w = world();
+    await times(2, async () => {
+      expect(await w.read('alpha', 'c1', 2400)).toBe(200);
+      expect(await w.read('alpha', 'c2', 2400)).toBe(200);
+      expect(await w.read('beta', 'c1', 2400)).toBe(200);
+    });
+    expect(await w.raised()).toEqual([]);
+    expect(await w.read('alpha', 'c1', 200)).toBe(200);
     expect(await w.raised()).toEqual(['export-volume']);
   });
 
@@ -179,7 +207,7 @@ describe('S0-2 isolation', () => {
     const w = world();
     await times(10, async () => await w.call('alpha', 'mia', 'task.update', 'SCOPE_NOT_GRANTED'));
     await times(5, async () => await w.call('beta', 'noah', 'task.update', 'AUTH_UNKNOWN_LOGIN'));
-    w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 500 });
+    w.alerts.observe({ kind: 'export', business: ALPHA, who: 'c1', items: 20000 });
     await w.call('beta', 'noah', 'grant.revoke');
     expect(await w.raised()).toHaveLength(4);
     // The random event id and the time are left out: a short name can occur in hex by chance.
