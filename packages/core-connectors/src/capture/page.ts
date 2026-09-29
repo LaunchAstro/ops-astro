@@ -49,8 +49,14 @@ export function visibleText(html: string): string {
   return decodeEntities(stripped).replaceAll(/\s+/gu, ' ').trim();
 }
 
-function attribute(tag: string, name: string): string | undefined {
-  const found = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu').exec(tag);
+// One literal pattern per attribute read, so no expression is built from a string.
+const ATTRIBUTES = {
+  rel: /\srel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu,
+  href: /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu,
+} as const;
+
+function attribute(tag: string, name: keyof typeof ATTRIBUTES): string | undefined {
+  const found = ATTRIBUTES[name].exec(tag);
   return found === null ? undefined : (found[1] ?? found[2] ?? found[3]);
 }
 
