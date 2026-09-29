@@ -70,7 +70,7 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -90,6 +90,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
   },
+  // 0032: nothing in the journey raises an inbox item yet (INB-1b does).
+  'public.inbox_items': {
+    recipient_person_id: randomUUID(),
+    subject_record_id: randomUUID(),
+    reason: 'assignment',
+    fact_kind: 'record',
+    fact_id: randomUUID(),
+  },
+  'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
+  'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
