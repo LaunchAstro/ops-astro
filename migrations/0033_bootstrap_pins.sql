@@ -24,7 +24,8 @@
 -- Nothing here is ever rewritten. The application group may insert and read
 -- a pin and a ledger row and may never update or delete one; it may insert an
 -- audit copy and may never read, update or delete one. The worker and broker
--- roles hold nothing on any of them. The number is placed by the rebase onto
+-- roles hold nothing on any of them. The run they belong to keeps its
+-- version, task and lineage: the application may update its state alone. The number is placed by the rebase onto
 -- main (build-ahead).
 
 create table public.run_definition_pins (
@@ -178,3 +179,11 @@ create policy authority_bootstrap_bytes on public.bootstrap_bytes
 
 -- Insert only: a run role keeps the copy and can never read it back.
 grant insert on public.bootstrap_bytes to ops_astro_app;
+
+-- A historical run is never rewritten: the run a pin and its reads are
+-- attached to keeps its version, task and lineage. 0010 granted update on the
+-- whole run; the application moves a run's state (pickup, handback, lease
+-- retirement) and nothing else, so update is taken back and granted on
+-- `state` alone. A `for update` on the run still needs no more than this.
+revoke update on public.planned_runs from ops_astro_app;
+grant update (state) on public.planned_runs to ops_astro_app;
