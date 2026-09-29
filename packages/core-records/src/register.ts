@@ -304,7 +304,7 @@ const ROWS = [
     code: 'QUOTA_EXCEEDED',
     status: 429,
     meaning: 'A request or concurrency quota is used up; send again later',
-    source: 'API-3 TR-SEC-4',
+    source: 'API-3 quota',
   },
 
   // Delegation and lease, T1's pickup and handback. No table yet.

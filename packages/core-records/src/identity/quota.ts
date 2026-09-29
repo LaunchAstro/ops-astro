@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Quotas (API-3, TR-SEC-4), in one place: requests in a window and calls at
+// Quotas (API-3), in one place: requests in a window and calls at
 // once, each per credential, per person and per business, and the page size a
 // list read may ask for. `QUOTAS` is the whole table; nothing else holds a
 // number for any of them.
@@ -119,7 +119,9 @@ export function createQuotaGate(options: QuotaOptions = {}): QuotaGate {
         if (refused !== undefined) return { ok: false, refusal: refused };
       }
       for (const [, key] of keys) {
-        windows.set(key, [...recent(key, at), at]);
+        const log = recent(key, at);
+        log.push(at);
+        windows.set(key, log);
         inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
       }
       return {
