@@ -84,6 +84,8 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   let delegation: string;
   let delegatedTask: string;
   let lease: { leaseId: unknown; fence: unknown };
+  let attemptedForeignLeaseId = '';
+  let attemptedForeignReservationId = '';
   /** Raw id or title to its label, so a leak is named and no record value is printed. */
   const labels = new Map<string, string>();
 
@@ -337,6 +339,8 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     // task through its lease and ignores a record id beside it, so its crossing is a
     // lease that is not the agent's.
     const notOwnLease = { leaseId: randomUUID(), fence: lease.fence };
+    attemptedForeignLeaseId = notOwnLease.leaseId;
+    attemptedForeignReservationId = randomUUID();
     const target: Record<string, (record: string) => Record<string, unknown> | null> = {
       'task.read': (record) => ({ recordId: record }),
       'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
@@ -346,7 +350,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
         outcome: 'completed',
         report: { wrote: 'made-up' },
       }),
-      'task.pickup': () => ({ reservationId: randomUUID() }),
+      'task.pickup': () => ({ reservationId: attemptedForeignReservationId }),
       'task.queue': () => null,
       'session.capabilities': () => null,
     };
@@ -376,6 +380,33 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       }
     }
   }, 60_000);
+
+  it("Sol proof, criterion API-1 4: agent crossings use another person's live lease and held reservation", async () => {
+    const leases = await fixture.db.admin.execute<{ person_id: string }>(
+      `select authorised_by_person_id::text as person_id
+         from public.leases where business_id = $1 and id = $2 and state = 'live'`,
+      [fixture.business, attemptedForeignLeaseId],
+    );
+    expect
+      .soft(leases[0]?.person_id, 'the heartbeat and handback target must be a live lease')
+      .toBeDefined();
+    expect(leases[0]?.person_id).not.toBe(fixture.member.personId);
+
+    const reservations = await fixture.db.admin.execute<{ person_id: string }>(
+      `select d.decided_by_person_id::text as person_id
+         from public.reservations r
+         join public.gate_decisions d on d.business_id = r.business_id and d.version_id = r.version_id
+        where r.business_id = $1 and r.id = $2 and r.state = 'held' and r.lease_id is null`,
+      [fixture.business, attemptedForeignReservationId],
+    );
+    expect
+      .soft(
+        reservations[0]?.person_id,
+        "the pickup target must be another person's held reservation",
+      )
+      .toBeDefined();
+    expect(reservations[0]?.person_id).not.toBe(fixture.member.personId);
+  });
 
   it('API-1 isolation: a successful read carrying the other client record is caught', async () => {
     const row = rows.find((one) => one.command === 'task.read') as CatalogueRow;
