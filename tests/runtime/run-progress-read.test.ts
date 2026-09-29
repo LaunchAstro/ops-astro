@@ -22,8 +22,7 @@ import {
 } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { insertBusiness } from '../identity/fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
   asAgent,
@@ -305,23 +304,23 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
     expect(none).toMatchObject({ outcome: 'no-run', runs: [], events: [], sourceRevision: 0 });
   });
 
-  it('T2 isolation (T2a): another business, an unseen client and a person without the grant each get denied, never []', async () => {
+  it('T2 isolation (T2a): another business, each client and a person without the grant each get denied, never []', async () => {
     const work = await liveWork(s, `t2a-isolation-${randomUUID()}`, 1_000);
     const sibling = await liveWork(s, `t2a-sibling-${randomUUID()}`, 1_000);
+    const world = cq8World(s);
 
-    // Another business, holding read on its own tasks, naming this one.
-    const other = (await insertBusiness(s.db.app, `t2a-other-${randomUUID()}`)) as BusinessId;
-    await installSpine(s.db.app, other);
-    const outsider = await enrol(s.db.app, other, 't2a-other-reader');
-    await s.db.app.withBusiness(other, async (tx) => await grantTo(tx, outsider, 'read'));
-    const foreign = await readAs(outsider, { recordId: work.taskId }, other);
+    // Another business with two clients, one shared task each; its member
+    // holds read on its own tasks and names this business's task.
+    const other = await world.party('t2a-other');
+    const [otherFirst, otherSecond] = other.tasks;
+    if (otherFirst === undefined || otherSecond === undefined) throw new Error('party: two tasks');
+    const foreign = await readAs(other.member, { recordId: work.taskId }, other.id);
 
-    // A client shared on this task only: the execution is internal work, so
-    // neither this task nor the sibling it never saw is answered.
+    // Two clients here, one grant each: the execution is internal work, so a
+    // client is answered neither on its own task nor on the other client's.
     await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
-    const client = await cq8World(s).client(s.business, s.decider, 't2a-client', work.taskId);
-    const ownShared = await readAs(client, { recordId: work.taskId });
-    const unseen = await readAs(client, { recordId: sibling.taskId });
+    const first = await world.client(s.business, s.decider, 't2a-client-1', work.taskId);
+    const second = await world.client(s.business, s.decider, 't2a-client-2', sibling.taskId);
 
     // A person whose read is on the sibling only.
     const narrow = await enrol(s.db.app, s.business, 't2a-narrow');
@@ -329,27 +328,41 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
       s.business,
       async (tx) => await grantTo(tx, narrow, 'read', { kind: 'record', id: sibling.taskId }),
     );
-    const narrowed = await readAs(narrow, { recordId: work.taskId });
     expect(
       executionOf(await readAs(narrow, { recordId: sibling.taskId }), 'narrow own').outcome,
     ).toBe('ready');
 
+    const here = (who: Member, recordId: string) => readAs(who, { recordId });
+    const there = (who: Member, recordId: string) => readAs(who, { recordId }, other.id);
     const cases = [
-      ['another business', foreign, 'NOT_FOUND'],
-      ['fabricated task', await readAs(s.decider, { recordId: randomUUID() }), 'NOT_FOUND'],
-      ['client on its shared task', ownShared, 'NOT_FOUND'],
-      ['unseen client', unseen, 'NOT_FOUND'],
-      ['no grant', await readAs(stranger, { recordId: work.taskId }), 'SCOPE_NOT_GRANTED'],
-      ['record grant elsewhere', narrowed, 'SCOPE_NOT_GRANTED'],
+      ['another business', foreign, 'NOT_FOUND', work.taskId],
+      ['fabricated task', await here(s.decider, randomUUID()), 'NOT_FOUND', work.taskId],
+      ['client on its shared task', await here(first, work.taskId), 'NOT_FOUND', work.taskId],
+      ['client to client', await here(first, sibling.taskId), 'NOT_FOUND', sibling.taskId],
+      ['client to client, back', await here(second, work.taskId), 'NOT_FOUND', work.taskId],
+      [
+        'client to client, other business',
+        await there(otherFirst.client, otherSecond.id),
+        'NOT_FOUND',
+        otherSecond.id,
+      ],
+      [
+        'client to client, other business, back',
+        await there(otherSecond.client, otherFirst.id),
+        'NOT_FOUND',
+        otherFirst.id,
+      ],
+      ['no grant', await here(stranger, work.taskId), 'SCOPE_NOT_GRANTED', work.taskId],
+      ['record grant elsewhere', await here(narrow, work.taskId), 'SCOPE_NOT_GRANTED', work.taskId],
     ] as const;
-    for (const [name, answer, code] of cases) {
+    for (const [name, answer, code, hidden] of cases) {
       expect(isCommandRefusal(answer), name).toBe(true);
       expect(codeOf(answer as never), name).toBe(code);
-      expect(JSON.stringify(answer), name).not.toContain(work.taskId);
+      expect(JSON.stringify(answer), name).not.toContain(hidden);
     }
     // The foreign business's own view of run_events holds nothing of this one's.
     const seen = await s.db.app.withBusiness(
-      other,
+      other.id,
       async (tx) =>
         await tx.query<{ readonly n: string }>('select count(*)::text as n from public.run_events'),
     );
