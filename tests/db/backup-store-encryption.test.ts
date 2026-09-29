@@ -25,6 +25,7 @@ import {
   receipts,
   archiveIds,
   backupStoreHooks,
+  hostReach,
 } from './backup-identity.fixture.ts';
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
@@ -47,6 +48,7 @@ function backupEncryptionCases1() {
     const recorded = await runBackup({
       dump: async () => Buffer.from('PGDMP rollback proof'),
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
     });
     expect(recorded['outcome']).toBe('recorded');
@@ -75,6 +77,7 @@ function backupEncryptionCases2() {
     const ok = await runBackup({
       dump: async () => dump,
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
     });
     expect(ok).toMatchObject({ outcome: 'recorded' });
@@ -88,7 +91,11 @@ function backupEncryptionCases2() {
     ).toBe(true);
 
     const before = await archiveIds();
-    const unsealed = await runBackup({ dump: async () => dump, storeUrl: backupLogin.url });
+    const unsealed = await runBackup({
+      dump: async () => dump,
+      storeUrl: backupLogin.url,
+      reach: hostReach,
+    });
     expect(unsealed).toMatchObject({ outcome: 'failed', stage: 'seal' });
     expect(await archiveIds()).toStrictEqual(before);
   });
@@ -101,7 +108,7 @@ function backupEncryptionCases3() {
     );
     const before = (await receipts()).length;
     const { fetchLatest } = await drill();
-    const fetched = await fetchLatest(restoreLogin.url);
+    const fetched = await fetchLatest(restoreLogin.url, hostReach);
     expect(fetched.takenAt).toBe(newest?.taken_at.toISOString());
     const logged = await receipts();
     expect(logged.length).toBe(before + 1);
