@@ -258,6 +258,19 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     }
   }, 20_000);
 
+  it('Sol proof, criterion 2: a settled delegation cannot dispatch while its lease is live', async () => {
+    const work = await leased(db.app, fixture);
+    await db.admin.execute(
+      `update public.delegations set settled_at = now()
+        where business_id = $1 and id = $2`,
+      [fixture.businessId, work.delegationId],
+    );
+    const answer = await run(fixture, work.request);
+    expect(answer.ok).toBe(false);
+    if (!answer.ok) expect(answer.refusal.code).toBe('AUTHORITY_LOST');
+    expect(await marks(db, work.attemptId)).toMatchObject(UNMARKED);
+  });
+
   it.each([
     [
       'authority',
