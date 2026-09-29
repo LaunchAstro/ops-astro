@@ -78,8 +78,8 @@ const NO_COMMENTS: ReadonlySet<string> = new Set(['json', 'gitkeep']);
  * comments come from the parser (vite's `parseSync`, which is oxc), so a
  * `//` or `/*` inside a string, a template or a regex is never read, and a
  * comment after code, with or without a space, always is. Two kinds the
- * parser does not report are read by pattern: a SQL `--` line, which sits
- * inside a query template, and an HTML comment. A stylesheet's comments are
+ * parser does not report are read here: SQL comments inside query text
+ * (`queryComments`), and an HTML comment, by pattern. A stylesheet's comments are
  * its block comments. `errors` is what the parser could not read, or the
  * format itself when this check has no reader for it.
  */
@@ -94,9 +94,7 @@ function readComments(
     const parsed = parseSync(file, text, { lang: LANGS[extension as keyof typeof LANGS] });
     errors = parsed.errors;
     for (const { start, end } of parsed.comments) spans.push([start, end]);
-    for (const sql of text.matchAll(/^[ \t]*--\s.*$/gmu)) {
-      spans.push([sql.index, sql.index + sql[0].length]);
-    }
+    spans.push(...queryComments(parsed.program));
   } else if (STYLES.has(extension)) {
     for (const block of text.matchAll(/\/\*[\s\S]*?\*\//gu)) {
       spans.push([block.index, block.index + block[0].length]);
@@ -136,6 +134,88 @@ function passages(lines: readonly CommentLine[]): CommentLine[] {
     previous = line;
   }
   return found;
+}
+
+/**
+ * The comments in one piece of SQL, as offsets into the file: `--` to the end
+ * of its line anywhere in the text, and `/*` to its matching close, nested as
+ * Postgres nests them. A quoted value (`'...'`, a doubled quote inside it, an
+ * `E'...'` backslash escape), a quoted identifier (`"..."`) and a
+ * dollar-quoted body (`$tag$...$tag$`) are skipped whole, so a `--` or `/*`
+ * inside one is data, not a comment.
+ */
+function sqlComments(sql: string, offset: number): (readonly [number, number])[] {
+  const spans: (readonly [number, number])[] = [];
+  let at = 0;
+  while (at < sql.length) {
+    const char = sql[at];
+    if (char === "'" || char === '"') {
+      const escapes = char === "'" && /[Ee]/u.test(sql[at - 1] ?? '');
+      at += 1;
+      while (at < sql.length) {
+        if (escapes && sql[at] === '\\') at += 2;
+        else if (sql[at] === char && sql[at + 1] === char) at += 2;
+        else if (sql[at] === char) break;
+        else at += 1;
+      }
+      at += 1;
+    } else if (char === '$' && /^\$[A-Za-z_]*\$/u.test(sql.slice(at))) {
+      const tag = /^\$[A-Za-z_]*\$/u.exec(sql.slice(at))?.[0] ?? '$$';
+      const close = sql.indexOf(tag, at + tag.length);
+      at = close < 0 ? sql.length : close + tag.length;
+    } else if (sql.startsWith('--', at)) {
+      const newline = sql.indexOf('\n', at);
+      const end = newline < 0 ? sql.length : newline;
+      spans.push([offset + at, offset + end]);
+      at = end;
+    } else if (sql.startsWith('/*', at)) {
+      let depth = 1;
+      let end = at + 2;
+      while (end < sql.length && depth > 0) {
+        if (sql.startsWith('/*', end)) [depth, end] = [depth + 1, end + 2];
+        else if (sql.startsWith('*/', end)) [depth, end] = [depth - 1, end + 2];
+        else end += 1;
+      }
+      spans.push([offset + at, offset + end]);
+      at = end;
+    } else {
+      at += 1;
+    }
+  }
+  return spans;
+}
+
+/** A string literal's value that reads as a SQL statement. */
+const SQL_STATEMENT =
+  /^\s*(?:select|insert|update|delete|with|set|lock|create|alter|drop|grant|revoke|begin|commit|truncate|comment)\b/iu;
+
+/**
+ * SQL comments in a parsed script: every template literal's text (a query
+ * template, tagged or not, is one), and every string literal that reads as a
+ * SQL statement. Each piece of text is lexed on its own, between the
+ * template's `${...}` holes.
+ */
+function queryComments(program: unknown): (readonly [number, number])[] {
+  const spans: (readonly [number, number])[] = [];
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return;
+    const each = node as { type?: unknown; start?: number; value?: unknown; raw?: unknown };
+    if (each.type === 'TemplateElement' && typeof each.start === 'number') {
+      const { raw } = each.value as { raw: string };
+      spans.push(...sqlComments(raw, each.start + 1));
+    } else if (
+      each.type === 'Literal' &&
+      typeof each.value === 'string' &&
+      typeof each.raw === 'string' &&
+      typeof each.start === 'number' &&
+      SQL_STATEMENT.test(each.value)
+    ) {
+      spans.push(...sqlComments(each.raw.slice(1, -1), each.start + 1));
+    }
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(program);
+  return spans;
 }
 
 /** The comment text on each line of `text`, with its line number. */
@@ -243,6 +323,15 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ['a JSX comment nested in markup', 'const v = <div><span>{/* lane L4 */}</span></div>;'],
     ['a lower-case reviewer name', '// as sol asked'],
     ['a tab inside a SQL comment', 'const q = sql`select 1\n\t--\tF4. revoked\n`;'],
+    ['a SQL comment after a tab', 'const q = sql`select 1\t--\tSol 6`;'],
+    ['a nested SQL block comment', 'const q = sql`select /* outer /* inner */ Sol 6 */ 1`;'],
+    ['an upper-case SQL comment', 'const q = sql`SELECT 1 -- FINAL REVIEW R1 #10`;'],
+    ['a SQL comment after a quoted dash pair', "const q = sql`select '--', 1 -- Sol 6`;"],
+    ['a SQL comment after a doubled quote', "const q = sql`select 'it''s' -- lane L4`;"],
+    ['a SQL comment after an E-string escape', "const q = sql`select E'it\\'s' -- thermo`;"],
+    ['a SQL comment after a dollar-quoted body', 'const q = sql`select $$ -- data $$ -- thermo`;'],
+    ['a SQL comment after an interpolation', 'const q = sql`select ${columns} -- Sol 6`;'],
+    ['a SQL comment in a plain string query', "tx.query('select 1 -- Sol 6');"],
   ])('reads %s', (_, source) => {
     const read = passages(commentLines(source));
     expect(read.some(({ comment }) => cites(comment) !== undefined)).toBe(true);
@@ -250,7 +339,14 @@ describe('a source comment cites no review round, lane or finding id', () => {
 
   it.each([
     ['a citation inside a string', "const s = '// Sol 6 AUTHORITY-4';"],
-    ['a citation inside a template', 'const s = `/* thermo review */`;'],
+    [
+      'a dash pair or block inside quoted SQL values',
+      'const q = sql`select \'-- Sol 6\' as a, "/* thermo */" as b`;',
+    ],
+    ['a dollar-quoted SQL body', 'const q = sql`select $body$ -- Sol 6 $body$`;'],
+    ['an escaped quote in a SQL E-string', "const q = sql`select E'it\\'s -- Sol 6'`;"],
+    ['a doubled quote in a SQL value', "const q = sql`select 'it''s -- Sol 6'`;"],
+    ['a flag in a plain string that is not SQL', "const flag = '--lane L4';"],
     ['a citation inside a regex', 'const r = /Sol 6|thermo/u;'],
   ])('does not read %s', (_, source) => {
     expect(commentLines(source)).toEqual([]);
