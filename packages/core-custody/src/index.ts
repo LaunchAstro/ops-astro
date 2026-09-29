@@ -24,3 +24,18 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
+export {
+  callModel,
+  promptCopyRegistered,
+  registerPromptCopy,
+  sweepModelCalls,
+  type AuditNote,
+  type Broker,
+  type BrokerRefusal,
+  type BrokerRoute,
+  type ModelCaller,
+  type ModelCallField,
+  type ModelCallRequest,
+  type ModelCallResult,
+  type ProviderAdapter,
+} from './broker.ts';

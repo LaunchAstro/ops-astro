@@ -33,6 +33,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'handback_reports operations'],
+  // AW-01: the model-call ledger, and the copy register, which is append only.
+  ['siu', 'model_calls'],
+  ['si', 'copy_registrations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'reservations task_envelopes'],

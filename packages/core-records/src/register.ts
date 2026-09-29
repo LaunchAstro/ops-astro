@@ -598,6 +598,77 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
+  // The broker's model call (AW-01, `core-custody/src/broker.ts`). The six
+  // facts are verified against rows under lock; everything after them is
+  // recorded as a step of the run.
+  {
+    code: 'DECISION_STALE',
+    status: 409,
+    meaning: 'The approved version the call relies on no longer holds its reservation',
+    source: 'AW-01',
+  },
+  {
+    code: 'AUTHORITY_LOST',
+    status: 403,
+    meaning: "The run's delegation is revoked, settled or expired",
+    source: 'AW-01',
+  },
+  {
+    code: 'OPERATION_NOT_CATALOGUED',
+    status: 403,
+    meaning: 'The operation is not in the reviewed catalogue, whatever the grant',
+    source: 'AW-01',
+  },
+  {
+    code: 'EFFECT_NOT_RECONCILABLE',
+    status: 409,
+    meaning: 'The operation declares no answer that proves nothing happened',
+    source: 'AW-01',
+  },
+  // Owner line 72: the product has no local-model route yet, so the call waits
+  // on one. 501, because what it rests on is not built.
+  {
+    code: 'LOCAL_MODEL_REQUIRED',
+    status: 501,
+    meaning: 'Personal information stays out of cloud AI until a local model exists',
+    source: 'AW-01, owner line 72',
+  },
+  {
+    code: 'SUBSCRIPTION_UNATTENDED',
+    status: 403,
+    meaning: "A subscription carries only a person's own attended work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_OTHER_TENANT',
+    status: 403,
+    meaning: "A subscription never carries another installation's tenant",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_NOT_OWN_WORK',
+    status: 403,
+    meaning: "A subscription never carries another person's work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'RATE_LIMITED',
+    status: 409,
+    meaning: "The operation's ceiling on calls in flight is reached; wait and ask again",
+    source: 'AW-01',
+  },
+  {
+    code: 'COPY_NOT_REGISTERED',
+    status: 409,
+    meaning: 'A copy of business content was not registered before it was made',
+    source: 'AW-01',
+  },
+  {
+    code: 'LIABILITY_UNKNOWN',
+    status: 409,
+    meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
+    source: 'AW-01, O6, O9',
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */

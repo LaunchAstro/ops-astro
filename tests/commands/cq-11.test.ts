@@ -91,14 +91,15 @@ describe('CQ-11 the tree', () => {
     }
   });
 
-  it('CQ-11 contractNine and the two empty package directories are gone, and ARCHITECTURE.md says when they are created', () => {
+  it('CQ-11 contractNine is gone, and the two packages exist only once the ticket that builds them has (AW-01)', () => {
     expect(carrying('contractNine')).toStrictEqual([]);
-    expect(existsSync('packages/core-connectors')).toBe(false);
-    expect(existsSync('packages/core-custody')).toBe(false);
     const architecture = readFileSync('ARCHITECTURE.md', 'utf8');
     for (const name of ['core-custody', 'core-connectors']) {
+      // No empty directory standing in for a package: it holds source, or it is not there.
+      expect(existsSync(`packages/${name}/src/index.ts`), name).toBe(true);
+      expect(existsSync(`packages/${name}/.gitkeep`), name).toBe(false);
       const row = architecture.split('\n').find((line) => line.includes(`packages/${name}`));
-      expect(row, name).toContain('The package is created by the ticket that builds it.');
+      expect(row, name).toContain('(AW-01), with tests.');
     }
   });
 
