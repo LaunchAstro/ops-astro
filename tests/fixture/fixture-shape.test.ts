@@ -16,11 +16,11 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 import { seedFixture, type FixtureReport } from './generate.ts';
-import { FIXTURE_SHAPE, type FixtureShape } from './shape.ts';
+import { FIXTURE_SHAPE } from './shape.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const SMALL: FixtureShape = {
+const SMALL = {
   ...FIXTURE_SHAPE,
   tasksA: 90,
   tasksB: 9,
@@ -31,6 +31,8 @@ const SMALL: FixtureShape = {
   trash: { batch: 10, earlier: 3 },
   lineages: { total: 8, twoVersions: 3, threeVersions: 1 },
   runs: 3,
+  steps: 20,
+  runEvents: 60,
 };
 
 const TASKS = `select r.* from public.records r join public.record_types t
@@ -84,6 +86,10 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
     expect(report.slots.assigned).toBeLessThan(report.slots.total);
   });
 
+  it('Sol proof, criterion 2: the fixture occupies exactly 24 of 38 task slots', () => {
+    expect(report.slots).toStrictEqual({ assigned: 24, total: 38 });
+  });
+
   it('trashes one subtree in one batch, after part of it went in an earlier one', async () => {
     const batches = `select count(*) n from public.records where trash_batch_id is not null
       group by trash_batch_id order by count(*) desc`;
@@ -96,6 +102,12 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
     const { total, twoVersions, threeVersions } = SMALL.lineages;
     const single = total - twoVersions - threeVersions + SMALL.runs;
     expect(await counts(lengths)).toStrictEqual([single, twoVersions, threeVersions]);
+  });
+
+  it('Sol proof, criterion 2: the fixture honours requested step and event load', async () => {
+    expect(await one('select count(*) n from public.planned_steps')).toBe(SMALL.steps);
+    expect(await one('select count(*) n from public.run_events')).toBe(SMALL.runEvents);
+    expect(report.heldBack).toStrictEqual([]);
   });
 
   it('gives R4 exactly one grant, scoped to one task', async () => {
