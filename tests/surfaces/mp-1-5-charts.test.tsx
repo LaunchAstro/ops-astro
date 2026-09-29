@@ -6,7 +6,8 @@
 // enters a point, the keyboard tabs onto the chart and moves along it. Width is
 // measured through the ResizeObserver the browser gives; jsdom has none, so a
 // stand-in records the observers and the test reports sizes through them. The
-// visual match at 1480, 900 and 390 is MP-1-7's harness and is `todo`.
+// visual match at 1480, 900 and 390 runs on MP-1-7's harness and is `todo`
+// until the pages it names and T4b1's signed-in fixture exist.
 
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
@@ -128,7 +129,7 @@ const texts = (selector: string): readonly string[] =>
 
 describe('MP-1-5 chart primitives', () => {
   it.todo(
-    'MP-1-5 visual match: matches mockup /dashboard/executive/, /connections/site-health/ and /clients/:client/workbench/search-seo/ at 1480, 900 and 390, light and dark (MP-1-7)',
+    "MP-1-5 visual match: matches mockup /dashboard/executive/, /connections/site-health/ and /clients/:client/workbench/search-seo/ at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those pages, MP-14-3 and the workbench slices, and T4b1's signed-in fixture)",
   );
 
   it('MP-1-5 no chart library: line, column with dashed line, donut with centre label, semicircle gauge with target, score dial with its bands, sparkline and true-scale funnel', async () => {

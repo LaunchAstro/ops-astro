@@ -3,7 +3,8 @@
 //
 // MP-1-6: the not-connected and unavailable treatments, the freshness marker
 // as an indicator, and the pink mark kept for sample data only (R56, CS-1.4).
-// One test per supporting checklist line; the visual match waits for MP-1-7.
+// One test per supporting checklist line; the visual match waits for the
+// pages it names and T4b1's signed-in fixture (the harness, MP-1-7, is here).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -176,5 +177,5 @@ it('MP-1-6 shown in its own unit on the component gallery', () => {
 });
 
 it.todo(
-  'MP-1-6 visual match: /clients/:client/account/ and an unconnected workbench tab at 1480, 900 and 390, light and dark (MP-1-7 harness)',
+  "MP-1-6 visual match: /clients/:client/account/ and an unconnected workbench tab at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those pages, MP-12-7 and the workbench slices, and T4b1's signed-in fixture)",
 );

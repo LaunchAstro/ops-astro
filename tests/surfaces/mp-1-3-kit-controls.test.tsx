@@ -7,7 +7,8 @@
 // controls are driven the way a person drives them (a click, a key), and the
 // sheet is read for the rules the catalogue rules on: one focus ring (DR-1),
 // the outline disabled primary (DR-22), the segmented control's hover (SHELL
-// I8). The visual match and the three-width captures wait for MP-1-7.
+// I8). The visual match and the three-width captures run on MP-1-7's harness
+// over the gallery, which asks for a session: they wait on T4b1's fixture.
 
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
@@ -317,5 +318,5 @@ it('MP-1-3 checkbox, switch and disclosure', async () => {
 });
 
 it.todo(
-  'MP-1-3 visual match and the gallery captured at three widths in both themes, hover, focus and the open select (MP-1-7 harness)',
+  "MP-1-3 visual match and the gallery captured at three widths in both themes, hover, focus and the open select (MP-1-7 harness; waits on T4b1's signed-in fixture, the gallery asks for a session)",
 );

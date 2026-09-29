@@ -363,4 +363,8 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
       expect(recoloured.line).toContain(name);
     }
   });
+
+  it.todo(
+    "MP-1-1 visual match: /dashboard/ against the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on the Dashboard page, MP-14-1 in U50, and T4b1's signed-in fixture)",
+  );
 });

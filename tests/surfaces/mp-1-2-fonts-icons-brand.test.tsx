@@ -7,7 +7,8 @@
 // are the rights holder's own SVGs. Every bundled asset is named, with its
 // licence, in `packages/ui/assets/licences.json`, and these tests hold that
 // record against what is actually installed and committed, both ways. The
-// visual match needs MP-1-7's width-and-theme harness and is `todo` until then.
+// visual match runs on MP-1-7's width-and-theme harness over the gallery, which
+// asks for a session, so it is `todo` until T4b1's signed-in fixture.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -270,5 +271,5 @@ it('MP-1-2 WEB.md points to the licence records, not to #32', () => {
 });
 
 it.todo(
-  'MP-1-2 visual match: type and icon specimens at 1480, 900 and 390, light and dark (MP-1-7 harness)',
+  "MP-1-2 visual match: type and icon specimens at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on T4b1's signed-in fixture, the gallery asks for a session)",
 );
