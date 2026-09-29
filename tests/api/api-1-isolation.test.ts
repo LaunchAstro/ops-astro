@@ -30,16 +30,22 @@ interface Heard {
 
 type Name = 'client1' | 'client2' | 'bravo';
 
-/** Every record a successful answer names, other than the caller's own. */
+/** Every record any answer names, refusals included, other than the caller's own. */
 function foreign(heard: readonly Heard[], own: Name | null): string[] {
   const named = heard
-    .filter((one) => one.status < 300)
     .flatMap((one) =>
       Array.from(JSON.stringify(one.body).matchAll(/<(client1|client2|bravo) (?:task|title)>/gu)),
     )
     .map((match) => match[1] as string);
   return [...new Set(named)].filter((name) => name !== own);
 }
+
+it('Sol proof, criterion 4: a refusal carrying another client record is detected', () => {
+  const refused: Heard[] = [
+    { status: 403, code: 'SCOPE_NOT_GRANTED', body: { recordId: '<client2 task>' } },
+  ];
+  expect(foreign(refused, 'client1')).toEqual(['client2']);
+});
 
 describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   let fixture: ApiFixture;
