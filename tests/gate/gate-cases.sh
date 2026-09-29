@@ -25,10 +25,15 @@ FAILED=0
 pass() { printf '  PASS  %s\n' "$1"; PASSED=$((PASSED + 1)); }
 fail() { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; FAILED=$((FAILED + 1)); }
 
+# Every case folder lives under one scratch folder, removed however the run
+# ends, so an interrupted or failing run leaves nothing in the temp folder.
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gate-cases.XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 # A throwaway repository with the gate installed. Never the real one.
 new_repo() {
   local dir
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   mkdir -p "$dir/scripts/gate" "$dir/tests/gate"
   cp "$GATE_DIR"/* "$dir/scripts/gate/" 2>/dev/null
   cp "$REPO_ROOT/tests/gate/canary.txt" "$dir/tests/gate/" 2>/dev/null

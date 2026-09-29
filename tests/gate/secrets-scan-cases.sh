@@ -27,6 +27,11 @@ FAILED=0
 pass() { printf '  PASS  %s\n' "$1"; PASSED=$((PASSED + 1)); }
 fail() { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; FAILED=$((FAILED + 1)); }
 
+# Every case folder lives under one scratch folder, removed however the run
+# ends, so an interrupted or failing run leaves nothing in the temp folder.
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/secrets-scan-cases.XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "harness: gitleaks is not on PATH; these cases cannot run" >&2
   exit 1
@@ -36,7 +41,7 @@ fi
 # the cases test the rules this repository ships and not a copy of them.
 new_repo() {
   local dir
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   mkdir -p "$dir/scripts"
   cp "$SCANNER" "$dir/scripts/secrets-scan.mjs"
   cp "$REPO_ROOT/.gitleaks.toml" "$dir/.gitleaks.toml"
@@ -100,7 +105,7 @@ fi
 rm -rf "$dir"
 
 # O. A list of nothing is a scanner that has stopped scanning.
-dir="$(mktemp -d)"
+dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
 git -C "$dir" init -q -b main
 cp "$SCANNER" "$dir/secrets-scan.mjs"
 cp "$REPO_ROOT/.gitleaks.toml" "$dir/.gitleaks.toml"

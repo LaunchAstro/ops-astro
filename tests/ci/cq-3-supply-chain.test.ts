@@ -5,13 +5,21 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
@@ -27,7 +35,12 @@ type Command = Parameters<typeof executeCommand>[4];
 
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
-const scratch = () => mkdtempSync(join(tmpdir(), 'cq3-'));
+/** A temp folder removed when the test that made it finishes, pass or fail. */
+const scratch = () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cq3-'));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+};
 const WANT = { minimumReleaseAge: String(7 * 24 * 60), trustPolicy: 'no-downgrade' };
 const CANARY = `cq3-canary-${randomUUID()}`;
 const PLANTED = { NODE_AUTH_TOKEN: CANARY, NPM_TOKEN: CANARY, CQ3_CANARY_SECRET: CANARY };

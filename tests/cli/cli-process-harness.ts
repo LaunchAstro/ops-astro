@@ -101,6 +101,7 @@ export async function serveApi(world: World): Promise<ServedApi> {
   }
   if (exited || !(await health(origin))) {
     child.kill('SIGKILL');
+    rmSync(keys, { recursive: true, force: true });
     throw new Error(`cli-process: the API did not answer on ${origin}`);
   }
   return {
