@@ -165,6 +165,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
+  // 0038 (C58): no journey here signs out.
+  'public.ended_sessions': {
+    person_id: randomUUID(),
+    session_id: randomUUID(),
+    reason: 'sign_out',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

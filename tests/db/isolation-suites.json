@@ -24,6 +24,7 @@
     "tests/api/api-2-agent-credential.test.ts",
     "tests/api/api-2-agent-credential-revoke.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
-    "tests/authority/c58-end-access.test.ts"
+    "tests/authority/c58-end-access.test.ts",
+    "tests/api/c58-sessions.test.ts"
   ]
 }

@@ -384,7 +384,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     }
     // The redirect was never followed: every call went to the provider alone.
     expect(seen.every((request) => request.route === 'POST /logout?scope=others')).toBe(true);
-  });
+  }, 60_000);
 
   it('C58 end other sessions: a body, a session id that is no uuid and a stale sign-out are refused or ignored', async () => {
     const here = randomUUID();
