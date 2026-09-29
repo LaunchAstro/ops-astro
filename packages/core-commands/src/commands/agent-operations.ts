@@ -30,6 +30,7 @@ import {
 import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from './tasks-pickup.ts';
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { checkLease } from './tasks-check.ts';
+import { reviseLease } from './run-revise.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
@@ -467,6 +468,29 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             name: request['name'],
             outcome: request['outcome'],
             note: request['note'],
+          },
+          agentClaimant(session.actorId),
+          delegation.id,
+        ),
+    }),
+  ],
+  [
+    'run.revise_state',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request }, _operands, delegation) =>
+        await reviseLease(
+          tx,
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            step: request['step'],
+            valid: request['valid'],
+            unknowns: request['unknowns'],
+            stale: request['stale'],
           },
           agentClaimant(session.actorId),
           delegation.id,

@@ -106,6 +106,18 @@ adds `run:write` only where the delegating person holds it at the locked
 instant, and a person without it still delegates the task's pairs. The pairs
 are fixed at mint (`delegations_pairs_are_fixed`).
 
+`run:write` has one command, `run.revise_state` (MP-6-2, CS-16.4), asked of
+the run's lease like `task.check`. Its call is checked on the exact pair at
+call time, and again under the lease and delegation locks at the instant the
+revision is written (`reviseState`, `core-runtime/src/state-revisions.ts`): the
+delegation still carries the pair and its delegating person still holds
+`run:write` on the task. A grant revoked before that instant writes nothing;
+one revoked after it is ordered after the revision, which it does not undo.
+Losing `run:write` narrows run calls without ending the lease:
+`grant.revoke`'s authority-loss cascade judges the claim collection's pairs
+only, so it takes no lock on a delegation for its `run:write`, and the instant
+that judges a revision is the recheck's own.
+
 `delegations_pairs_never_decide` (0034) is the same rule as a constraint: a
 delegation carrying `decide` cannot be written at all. `authority/index.ts`
 exports no decide path either, so I07 is held three times: by the schema, by

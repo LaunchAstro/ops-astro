@@ -239,6 +239,15 @@ export type CommandRequest =
       readonly note?: string | null;
     } & Envelope)
   | ({
+      readonly command: 'run.revise_state';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly step?: unknown;
+      readonly valid: unknown;
+      readonly unknowns: unknown;
+      readonly stale: unknown;
+    } & Envelope)
+  | ({
       readonly command: 'conversation.start';
       readonly body: unknown;
       readonly title?: unknown;

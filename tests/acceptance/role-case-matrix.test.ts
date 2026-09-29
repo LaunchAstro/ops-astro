@@ -525,14 +525,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        declaration.name === 'task.heartbeat' || declaration.name === 'task.check'
-          ? // A heartbeat or a check, like a handback, names its task through
-            // the lease and never through a stray `recordId` (final review R1
-            // #23), so the sibling is reached by its own lease.
+        declaration.name === 'task.heartbeat' ||
+          declaration.name === 'task.check' ||
+          declaration.name === 'run.revise_state'
+          ? // A heartbeat, a check or a revision, like a handback, names its
+            // task through the lease and never through a stray `recordId`
+            // (final review R1 #23), so the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
               ...(declaration.name === 'task.check'
                 ? { name: 'a check on the sibling', outcome: 'passed' }
+                : {}),
+              ...(declaration.name === 'run.revise_state'
+                ? { valid: [], unknowns: [], stale: [] }
                 : {}),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],

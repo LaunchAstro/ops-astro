@@ -134,9 +134,10 @@ export async function revisionsWorld(name: string): Promise<RevisionsWorld> {
     revisionsOn: async (taskId) => {
       const read = await c.asPerson('task.read', { recordId: taskId });
       expect(read.status).toBe(200);
-      const [proposal] = read.body['proposals'] as readonly {
-        versions: readonly { revisions: readonly RevisionRead[] }[];
-      }[];
+      const { proposals } = read.body['task'] as {
+        proposals: readonly { versions: readonly { revisions: readonly RevisionRead[] }[] }[];
+      };
+      const [proposal] = proposals;
       return (proposal?.versions ?? []).flatMap((version) => version.revisions);
     },
   };

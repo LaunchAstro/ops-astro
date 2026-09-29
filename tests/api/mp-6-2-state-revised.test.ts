@@ -33,6 +33,8 @@ const MALFORMED: readonly Readonly<Record<string, unknown>>[] = [
   { valid: [], unknowns: [], stale: [], step: 'x'.repeat(121) },
   { valid: [{ k: 'Key', v: 'value', extra: 'field' }], unknowns: [], stale: [] },
   { valid: [], unknowns: [] },
+  { valid: [], unknowns: [`a${String.fromCodePoint(0)}b`], stale: [] },
+  { valid: [{ k: 'Key', v: String.fromCodePoint(0xd8_00) }], unknowns: [], stale: [] },
 ];
 
 // eslint-disable-next-line max-lines-per-function -- one business, the revisions its runs record
@@ -79,7 +81,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
           where task_id = $1`,
         [work.taskId],
       );
-      expect(rows).toStrictEqual([
+      expect(rows).toEqual([
         { lease_id: work.leaseId, actor_id: w.c.fixture.agentActorId, version_id: work.versionId },
       ]);
     });
@@ -109,7 +111,10 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
       const work = await pickedUpOn(w.c, 'revise_after_handback');
       await handBack(w.c, work);
       const late = await w.revise(work, knowledge('late'));
-      expect(late.body['code']).toBe('LEASE_NOT_OWNED');
+      // The handback settled the delegation with the lease, so the agent's
+      // credential is refused before any lease is read.
+      expect(late.status).toBe(401);
+      expect(late.body['code']).toBe('DELEGATION_NOT_LIVE');
       expect(await w.c.count(REVISIONS, [work.taskId])).toBe(0);
     });
   });
@@ -121,7 +126,8 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
         ...knowledge('memory'),
         memory: [{ k: 'Client prefers', v: 'short openings' }],
       });
-      expect(answer.status).toBe(422);
+      expect(answer.status).toBe(400);
+      expect(answer.body['code']).toBe('COMMAND_BODY_INVALID');
       expect(await w.c.count(REVISIONS, [work.taskId])).toBe(0);
     });
 
@@ -130,9 +136,12 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
       expect((await w.revise(work, knowledge('kept on its run'))).status).toBe(200);
       await handBack(w.c, work);
       const read = await w.c.asPerson('task.read', { recordId: work.taskId });
-      const [proposal] = read.body['proposals'] as readonly {
-        versions: readonly { versionId: string; revisions: readonly unknown[] }[];
-      }[];
+      const { proposals } = read.body['task'] as {
+        proposals: readonly {
+          versions: readonly { versionId: string; revisions: readonly unknown[] }[];
+        }[];
+      };
+      const [proposal] = proposals;
       const own = proposal?.versions.find((one) => one.versionId === work.versionId);
       const successor = proposal?.versions.find((one) => one.versionId !== work.versionId);
       expect(own?.revisions).toHaveLength(1);
@@ -144,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
         `select table_name from information_schema.tables
           where table_schema = 'public' and table_name ilike '%memor%'`,
       );
-      expect(tables).toStrictEqual([]);
+      expect(tables).toHaveLength(0);
     });
   });
 

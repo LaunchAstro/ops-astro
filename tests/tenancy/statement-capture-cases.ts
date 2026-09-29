@@ -358,6 +358,20 @@ export const AGENT_PATH_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       credential: String(picked['credential']),
     };
   },
+  'run.revise_state': async (harness) => {
+    const picked = await pickedUp(harness);
+    return {
+      prefix: 'agent',
+      body: {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        valid: [{ k: 'Known', v: 'the agent revises' }],
+        unknowns: [],
+        stale: [],
+      },
+      credential: String(picked['credential']),
+    };
+  },
   'task.handback': async (harness) => {
     const picked = await pickedUp(harness);
     return {

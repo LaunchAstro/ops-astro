@@ -57,7 +57,11 @@ import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts'
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection } from './verified-decisions.ts';
 import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
-import type { ProposalVersionView, ProposalView } from '../../../core-wire/src/index.ts';
+import type {
+  ProposalVersionView,
+  ProposalView,
+  RevisionView,
+} from '../../../core-wire/src/index.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -124,6 +128,18 @@ interface CheckRow {
   readonly name: string;
   readonly outcome: string;
   readonly note: string | null;
+  readonly actor_id: string;
+  readonly created_at: string;
+}
+
+interface RevisionRow {
+  readonly version_id: string;
+  readonly id: string;
+  readonly revision: number;
+  readonly step: string | null;
+  readonly valid: RevisionView['valid'];
+  readonly unknowns: RevisionView['unknowns'];
+  readonly stale: RevisionView['stale'];
   readonly actor_id: string;
   readonly created_at: string;
 }
@@ -201,6 +217,16 @@ const CHECKS = `select row_number() over (order by ck.created_at, ck.id) as ordi
       where ck.business_id = $1
         and ver.lineage_id in (select lineage_id from lineages)`;
 
+/** What each version's run recorded it knows (MP-6-2), oldest revision first. */
+const REVISIONS = `select row_number() over (order by rev.run_id, rev.revision) as ordinal,
+            rev.version_id, rev.id, rev.revision, rev.step, rev.valid, rev.unknowns, rev.stale,
+            rev.actor_id, rev.created_at
+       from public.run_state_revisions rev
+       join public.proposal_versions ver
+         on ver.business_id = rev.business_id and ver.id = rev.version_id
+      where rev.business_id = $1
+        and ver.lineage_id in (select lineage_id from lineages)`;
+
 /**
  * Every proposal on one task, newest lineage first.
  *
@@ -223,7 +249,13 @@ export async function readTaskProposals(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS, scopes: SCOPES },
+      rows: {
+        versions: VERSIONS,
+        reservations: RESERVATIONS,
+        checks: CHECKS,
+        revisions: REVISIONS,
+        scopes: SCOPES,
+      },
       parameter: taskId,
     },
     signingKey,
@@ -231,6 +263,7 @@ export async function readTaskProposals(
   const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
   const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
   const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
+  const revisions = (snapshot.rows['revisions'] ?? []) as readonly RevisionRow[];
   const scopes = (snapshot.rows['scopes'] ?? []) as readonly ScopeRow[];
   const decisions = snapshot.decisions;
   if (versions.length === 0) return [];
@@ -243,7 +276,7 @@ export async function readTaskProposals(
     return {
       lineageId,
       state: first?.lineage_state ?? 'unknown',
-      versions: rows.map((row) => asVersion(row, checks)),
+      versions: rows.map((row) => asVersion(row, checks, revisions)),
       decisions: decisions
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => ({
@@ -294,7 +327,11 @@ export async function readTaskProposals(
   });
 }
 
-function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {
+function asVersion(
+  row: VersionRow,
+  checks: readonly CheckRow[],
+  revisions: readonly RevisionRow[],
+): ProposalVersionView {
   return {
     versionId: row.version_id,
     version: Number(row.version),
@@ -337,8 +374,23 @@ function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersio
         performedByActorId: check.actor_id,
         recordedAt: isoTime(check.created_at),
       })),
-    revisions: [],
+    revisions: revisionsOf(revisions, row.version_id),
   };
+}
+
+function revisionsOf(rows: readonly RevisionRow[], versionId: string): readonly RevisionView[] {
+  return rows
+    .filter((row) => row.version_id === versionId)
+    .map((row) => ({
+      id: row.id,
+      version: Number(row.revision),
+      step: row.step,
+      valid: row.valid,
+      unknowns: row.unknowns,
+      stale: row.stale,
+      revisedByActorId: row.actor_id,
+      revisedAt: isoTime(row.created_at),
+    }));
 }
 
 /**

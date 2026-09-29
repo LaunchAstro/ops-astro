@@ -355,6 +355,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const byLease: readonly [CommandName, Body][] = [
         ['task.heartbeat', {}],
         ['task.check', { name: NOBODY, outcome: 'passed' }],
+        ['run.revise_state', { valid: [{ k: NOBODY, v: NOBODY }], unknowns: [], stale: [] }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
       ];
       for (const [op, extra] of byLease) {

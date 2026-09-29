@@ -78,7 +78,8 @@
     "MP-6-4 (SL12) names mp-6-4-scope (the machine-set stamp, the snapshot line, the granted scope facts, and a person's edits never changing the stamp) as conformance, and mp-6-4-isolation (the scope across another business, another client in the same business, whose grant on its own task never reaches the other's stamp, and another person's work under a live delegation) as an invariant, listed in isolation-suites.json too.",
     "AW-03 (SL12) names aw-03-address (address_outlives_the_body, the ticket's invariant, and AW-03 purge real: the purge, item 8 from records and the address after a real purge through the API and the command line) and aw-03-isolation (AW-03 isolation across another business, another client in the same business and another person under a live delegation, with AW-03 client, AW-03 revoked and AW-03 canary) as invariants, the isolation suite listed in isolation-suites.json too.",
     "MP-6-2 (SL12) names mp-6-2-agent-page (the hero's run start and gate raised time as stored, and the page adding no audit event beyond task.read's own, test 'MP-6-2 no audit event beyond task.read’s own') as conformance, and mp-6-2-isolation (the page's facts across another business, another client in the same business and another person's work under a live delegation, with a canary in the agent's check name) as an invariant, listed in isolation-suites.json too.",
-    "SL12-B-2 (ORCH25-SL12B-RUN, ORCH25-SL12B-PAIRS) names delegation-pairs (a delegation stores exactly the pairs checked at mint, pickup mints run:write only where the delegating person holds it, a later-gained run:read or run:comment never widens a live delegation, the pairs fixed at mint) and delegation-pairs-upgrade (0008 product rows migrate to their exact pairs, compared call by call on checkDelegatedAuthority) as conformance, and run-write-isolation (run:write across another business, another client in the same business and another person's work under a live delegation, with a canary, and a person without run:write who cannot delegate it) as an invariant, listed in isolation-suites.json too."
+    "SL12-B-2 (ORCH25-SL12B-RUN, ORCH25-SL12B-PAIRS) names delegation-pairs (a delegation stores exactly the pairs checked at mint, pickup mints run:write only where the delegating person holds it, a later-gained run:read or run:comment never widens a live delegation, the pairs fixed at mint) and delegation-pairs-upgrade (0008 product rows migrate to their exact pairs, compared call by call on checkDelegatedAuthority) as conformance, and run-write-isolation (run:write across another business, another client in the same business and another person's work under a live delegation, with a canary, and a person without run:write who cannot delegate it) as an invariant, listed in isolation-suites.json too.",
+    "SL12-B-3 (MP-6-2, CS-16.4) names mp-6-2-state-revised (each state revision kept as a version under the run's lease with the lease holder as actor, malformed knowledge refused, two at once numbered v and v+1, no memory activating, and no audit event beyond run.revise_state's own) as conformance, and mp-6-2-revisions-isolation (run:write refused to an agent without the pair, a person without the grant and a delegating person who lost it, and the revisions across another business, another client in the same business and another person's work under a live delegation, with a canary in every line) as an invariant, listed in isolation-suites.json too."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -228,7 +229,8 @@
     "tests/api/aw-03-address.test.ts",
     "tests/api/aw-03-isolation.test.ts",
     "tests/api/mp-6-2-isolation.test.ts",
-    "tests/api/run-write-isolation.test.ts"
+    "tests/api/run-write-isolation.test.ts",
+    "tests/api/mp-6-2-revisions-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -305,6 +307,7 @@
     "tests/api/mp-6-4-scope.test.ts",
     "tests/api/mp-6-2-agent-page.test.ts",
     "tests/identity/delegation-pairs.test.ts",
-    "tests/runtime/delegation-pairs-upgrade.test.ts"
+    "tests/runtime/delegation-pairs-upgrade.test.ts",
+    "tests/api/mp-6-2-state-revised.test.ts"
   ]
 }

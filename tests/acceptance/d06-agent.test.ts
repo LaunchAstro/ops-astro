@@ -50,6 +50,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.comment',
   'task.heartbeat',
   'task.check',
+  'run.revise_state',
   'task.pickup',
   'task.handback',
 ];
@@ -151,6 +152,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const check = { name: 'the agent checks', outcome: 'passed' };
       return {
         body: { operationId, leaseId: held.leaseId, fence: held.fence, ...check },
+        credential,
+      };
+    }
+    if (name === 'run.revise_state') {
+      const knows = { valid: [{ k: 'Known', v: 'the agent revises' }], unknowns: [], stale: [] };
+      return {
+        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...knows },
         credential,
       };
     }

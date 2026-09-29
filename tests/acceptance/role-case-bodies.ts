@@ -275,6 +275,16 @@ export function createPositiveBody(
         return {
           body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
         };
+      case 'run.revise_state':
+        // Under the person's own lease (MP-6-2); the agent's is in the agent journey.
+        return {
+          body: {
+            ...(await ownLease(context)),
+            valid: [{ k: 'Known', v: 'the admin revises' }],
+            unknowns: [],
+            stale: [],
+          },
+        };
       // AW-03. The admin holds `conversation:write`, so starts one of their own;
       // the message and the read name a conversation the admin just started.
       case 'conversation.start':

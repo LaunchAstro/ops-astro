@@ -39,6 +39,14 @@ export {
   type CheckRequest,
   type RecordedCheck,
 } from './checks.ts';
+export {
+  reviseState,
+  type Knowledge,
+  type KnownFact,
+  type RecordedRevision,
+  type RevisionRequest,
+  type StaleInput,
+} from './state-revisions.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

@@ -107,6 +107,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-check.ts', async (origi
   ...(await original<object>()),
   checkOwnLease: recorder('checkOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/run-revise.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseOwnLease: recorder('reviseOwnLease'),
+}));
 vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
@@ -119,6 +123,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (or
 }));
 
 const PINNED_RUNTIME_SHAPED = {
+  'run.revise_state': 'leaseId',
   'task.check': 'leaseId',
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
@@ -130,6 +135,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'conversation.start': [],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'run.revise_state': ['leaseId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -153,6 +159,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'grant.revoke',
   'person.list',
   'preset.plan',
+  'run.revise_state',
   'session.capabilities',
   'settings.read',
   'settings.set_client_sign_off',
@@ -173,6 +180,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'run.revise_state',
   'session.capabilities',
   'task.check',
   'task.comment',
@@ -257,6 +265,15 @@ const REQUESTS: readonly CommandRequest[] = [
     name: 'spelling',
     outcome: 'passed',
   },
+  {
+    command: 'run.revise_state',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 4,
+    valid: [],
+    unknowns: [],
+    stale: [],
+  },
   { command: 'conversation.start', operationId: 'op', body: 'hello', subject: 's' },
   { command: 'conversation.message', operationId: 'op', conversationId: 'c', body: 'again' },
 ];
@@ -302,6 +319,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
   'task.check': ['checkOwnLease', 'request'],
+  'run.revise_state': ['reviseOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
   'conversation.message': ['messageConversation', 'request'],
 };
@@ -328,7 +346,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same four commands', () => {
+  it('shapes the same runtime identifier for the same five commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -343,13 +361,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-five from an expected revision', () => {
+  it('exempts the same twenty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same nine, two of them before a pickup', () => {
+  it('lets an agent reach the same ten, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

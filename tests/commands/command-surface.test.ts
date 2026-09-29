@@ -77,10 +77,11 @@ describe('the surface as a table', () => {
     // revocation writes, and the authority it asks is still on tasks. `gate`
     // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
     // asked with `decide` on tasks. `conversation` is a person's conversation
-    // with the agent (AW-03), its writes and its read at its address.
+    // with the agent (AW-03), its writes and its read at its address. `run` is
+    // the run's own state (MP-6-2), `run:write` under the run's lease.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|gate|conversation)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|gate|conversation|run)\/[a-z_]+$/u.test(
           path,
         ),
       ),

@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 40 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 41 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 40. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 41. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those three are a case of their own below.
@@ -74,6 +74,7 @@ function leaseBodyFor(
 ): Readonly<Record<string, unknown>> {
   if (name === 'task.handback') return { ...lease, ...settle };
   if (name === 'task.check') return { ...lease, name: 'a check for the audit', outcome: 'passed' };
+  if (name === 'run.revise_state') return { ...lease, valid: [], unknowns: [], stale: [] };
   return lease;
 }
 
@@ -186,6 +187,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       }
       case 'task.heartbeat':
       case 'task.check':
+      case 'run.revise_state':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(ada, agent, `work for ${name}`);
@@ -238,6 +240,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       }
       case 'task.heartbeat':
       case 'task.check':
+      case 'run.revise_state':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
@@ -267,6 +270,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         );
       case 'task.heartbeat':
       case 'task.check':
+      case 'run.revise_state':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);
@@ -341,12 +345,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 40 exported operations both ways', () => {
+  it('covered all 41 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(40);
+    expect(names).toHaveLength(41);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 40.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 41.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

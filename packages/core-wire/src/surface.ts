@@ -101,6 +101,9 @@ export type CommandName =
   // A check the run performed, recorded under its worker lease (MP-6-1,
   // CS-16.3): a system write whose authority is the live lease, not a grant.
   | 'task.check'
+  // What the run knows so far, revised under its worker lease (MP-6-2,
+  // CS-16.4): `run:write`, the one command in the run collection.
+  | 'run.revise_state'
   // A person's conversation with the agent (AW-03): minted at its first
   // message, its owner's alone, and read at its address after the body purges.
   | 'conversation.start'
@@ -363,6 +366,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     outcome: 'any',
     note: 'any',
   },
+  'run.revise_state': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    step: 'any',
+    valid: 'any',
+    unknowns: 'any',
+    stale: 'any',
+  },
   'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
   'conversation.message': { conversationId: 'any', body: 'any' },
 };
@@ -528,6 +540,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // Asked of the lease like heartbeat: the lease holder records the check,
   // and the row names the holder as the actor that performed it.
   declare('task.check', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // Asked of the lease like a check, as `run:write` on the lease's task
+  // (ORCH25-SL12B-RUN): the delegation must carry that exact pair, and the
+  // runtime re-checks it under the lease lock.
+  declare('run.revise_state', 'write', {
+    collection: 'run',
     targetsExistingRecord: false,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],

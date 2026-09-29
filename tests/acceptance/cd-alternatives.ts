@@ -60,6 +60,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.board': ['board', 'board'],
   'task.heartbeat': ['leaseId', 'agent'],
   'task.check': ['leaseId', 'agent'],
+  'run.revise_state': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'conversation.message': ['conversationId', 'conversation'],

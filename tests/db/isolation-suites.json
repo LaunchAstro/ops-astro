@@ -11,6 +11,7 @@
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",
     "tests/api/mp-6-2-isolation.test.ts",
-    "tests/api/run-write-isolation.test.ts"
+    "tests/api/run-write-isolation.test.ts",
+    "tests/api/mp-6-2-revisions-isolation.test.ts"
   ]
 }

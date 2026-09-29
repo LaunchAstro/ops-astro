@@ -24,6 +24,7 @@ import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { checkOwnLease } from './tasks-check.ts';
+import { reviseOwnLease } from './run-revise.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -95,6 +96,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
   'task.check': checkOwnLease,
+  'run.revise_state': reviseOwnLease,
   'task.handback': handbackOwnLease,
 
   // AW-03: the conversation's first message mints it; later ones are its owner's.
