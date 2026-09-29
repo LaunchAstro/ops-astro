@@ -17,7 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
-import { fontCache, readAssets, type Packet } from './packet.ts';
+import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
 export type State = {
   id: string;
@@ -92,6 +92,23 @@ function serveMockup(
     blobs.set(path, bytes);
   }
   return route.fulfill({ body: bytes, contentType: typeOf(path) });
+}
+
+/** The browser context one capture draws in: the packet's viewport at one width, in one theme. */
+export function contextOptions(
+  packet: Packet,
+  width: number,
+  _theme: Theme,
+): BrowserContextOptions {
+  return {
+    viewport: { width, height: packet.height },
+    deviceScaleFactor: 1,
+    colorScheme: 'light',
+    reducedMotion: 'reduce',
+    locale: 'en-AU',
+    timezoneId: 'Australia/Brisbane',
+    serviceWorkers: 'block',
+  };
 }
 
 /**

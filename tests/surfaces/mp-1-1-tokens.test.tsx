@@ -4,17 +4,26 @@
 //
 // The token sets are read through `scripts/token-diff.mjs`, the same resolver
 // the diff runs, so the tests and the script cannot disagree about what a token
-// resolves to. The visual legs (the width-and-theme captures and the dark
-// planted-drift test) need MP-1-7's harness and are `todo` until it lands.
+// resolves to. The visual legs run on MP-1-7's width-and-theme harness
+// (`tests/visual`), which captures dark from here, where the dark theme lands:
+// these tests hold the harness's dark report and planted drift in the required
+// checks, and `node tests/visual/run.ts --prove-drift` runs the same drift in
+// the pinned renderer against the pinned mockup. The app's own /dashboard/
+// match waits on the page (MP-14-1) and T4b1's signed-in fixture.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PNG } from 'pngjs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { contextOptions, type Catalogue } from '../visual/capture.ts';
+import { comparePng } from '../visual/compare.ts';
+import { readPacket, themesOf } from '../visual/packet.ts';
+import { builtPages, report, type PageShot } from '../visual/report.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = `${root}scripts/token-diff.mjs`;
@@ -226,9 +235,135 @@ describe('MP-1-1 tokens', () => {
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Assistant</span>');
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Clients</span>');
   });
+});
 
-  it.todo('MP-1-1 harness captures: /dashboard/ at 1480, 900 and 390, light and dark (MP-1-7)');
-  it.todo(
-    'MP-1-1 dark harness bites: a two-pixel shift or one dark colour fails the capture (MP-1-7)',
+type Rgb = readonly [number, number, number];
+
+/** A linear-light channel as an sRGB byte. */
+const encode = (x: number): number =>
+  Math.round(
+    255 * Math.min(1, Math.max(0, x <= 0.003_130_8 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055)),
   );
+
+/** A resolved colour token as sRGB bytes: `#rrggbb` or `oklch(L C H)`. */
+function rgbOf(value: string | undefined): Rgb {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(value ?? '');
+  if (hex !== null) return [1, 2, 3].map((i) => Number.parseInt(hex[i] ?? '', 16)) as never;
+  const lch = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/u.exec(value ?? '');
+  if (lch === null) throw new Error(`not a plain colour: ${String(value)}`);
+  const [l, c, h] = [Number(lch[1]), Number(lch[2]), (Number(lch[3]) * Math.PI) / 180];
+  const [a, b] = [c * Math.cos(h), c * Math.sin(h)];
+  const lms = [
+    (l + 0.396_337_777_4 * a + 0.215_803_757_3 * b) ** 3,
+    (l - 0.105_561_345_8 * a - 0.063_854_172_8 * b) ** 3,
+    (l - 0.089_484_177_5 * a - 1.291_485_548 * b) ** 3,
+  ] as const;
+  const linear = [
+    4.076_741_662_1 * lms[0] - 3.307_711_591_3 * lms[1] + 0.230_969_929_2 * lms[2],
+    -1.268_438_004_6 * lms[0] + 2.609_757_401_1 * lms[1] - 0.341_319_396_5 * lms[2],
+    -0.004_196_086_3 * lms[0] - 0.703_418_614_7 * lms[1] + 1.707_614_701 * lms[2],
+  ];
+  return linear.map(encode) as never;
+}
+
+/** A capture as wide as the viewport on the theme's ground, one control drawn in a token colour. */
+function capture(width: number, ground: Rgb, control: { x: number; colour: Rgb }): Buffer {
+  const height = 80;
+  const png = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const inside = x >= control.x && x < control.x + 60 && y >= 20 && y < 50;
+      const [r, g, b] = inside ? control.colour : ground;
+      const i = (y * width + x) * 4;
+      png.data[i] = r;
+      png.data[i + 1] = g;
+      png.data[i + 2] = b;
+      png.data[i + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+const catalogue = (): Catalogue => JSON.parse(read(`${root}tests/visual/states.json`)) as Catalogue;
+
+describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
+  it('MP-1-1 harness captures: every built page and the mockup /dashboard/ in light and dark at 1480, 900 and 390', () => {
+    const packet = readPacket();
+    // Dark is captured from here, where the dark theme lands; no longer pending.
+    expect(packet.themes.dark).toBe('captured');
+    expect(themesOf(packet)).toEqual(['light', 'dark']);
+    for (const width of [1480, 900, 390]) expect(packet.widths).toContain(width);
+
+    // The browser draws each side in the theme it captures.
+    expect(contextOptions(packet, 390, 'dark')).toMatchObject({
+      colorScheme: 'dark',
+      viewport: { width: 390, height: packet.height },
+    });
+    expect(contextOptions(packet, 1480, 'light')).toMatchObject({ colorScheme: 'light' });
+
+    // The mockup's Dashboard is a harness state, drawn from its pinned source page.
+    const dashboard = catalogue().states.find((state) => state.id === 'dashboard');
+    expect(dashboard).toMatchObject({ mockup: '/route-home/', regions: { page: 'viewport' } });
+    expect(dashboard?.app).toMatch(/MP-14-1.*T4b1/u);
+
+    // Every built page has a light and a dark picture at every width.
+    const shots: PageShot[] = builtPages().flatMap((page) =>
+      packet.widths.flatMap((width) =>
+        themesOf(packet).map((theme) => ({
+          page,
+          width,
+          theme,
+          picture: `${page}@${width}-${theme}.page.png`,
+          overflow: 0,
+        })),
+      ),
+    );
+    const all = report(packet, builtPages(), shots);
+    expect(all.failed).toBe(0);
+    expect(all.lines.filter((line) => line.startsWith('pending'))).toEqual([]);
+    for (const page of builtPages())
+      for (const width of [1480, 900, 390])
+        expect(all.lines).toContain(
+          `ok ${page}@${width}-dark: ${page}@${width}-dark.page.png; no sideways scroll`,
+        );
+
+    // A missing dark picture, and a dark page that scrolls sideways, each fail by name.
+    const planted = shots.filter(
+      (s) => !(s.page === 'agency:sign-in' && s.width === 390 && s.theme === 'dark'),
+    );
+    const wide = planted.find(
+      (s) => s.page === 'agency:gallery' && s.width === 900 && s.theme === 'dark',
+    );
+    if (wide !== undefined) wide.overflow = 8;
+    const bad = report(packet, builtPages(), planted);
+    expect(bad.failed).toBe(2);
+    expect(bad.lines).toContain('FAIL agency:sign-in@390-dark: no picture');
+    expect(bad.lines).toContain('FAIL agency:gallery@900-dark: scrolls sideways by 8 px');
+  });
+
+  it('MP-1-1 dark harness bites: a two-pixel shift or one dark colour fails the dark capture, naming it', () => {
+    const packet = readPacket();
+    expect(themesOf(packet)).toContain('dark');
+    const { state, token } = catalogue().drift;
+    const sets = resolved();
+    // The dark capture is not the light one (product issue 62): its ground and
+    // the drift token both take their dark values.
+    expect(sets.dark['--bg']).not.toBe(sets.light['--bg']);
+    expect(sets.dark[token]).not.toBe(sets.light[token]);
+    const ground = rgbOf(sets.dark['--bg']);
+    const colour = rgbOf(sets.dark[token]);
+    // One dark colour moved a little towards black, as the harness's drift does.
+    const changed = colour.map((c) => Math.round(c * 0.96)) as unknown as Rgb;
+    for (const width of packet.widths) {
+      const name = `${state}@${width}-dark#gatebox`;
+      const base = capture(width, ground, { x: 40, colour });
+      expect(comparePng(name, base, capture(width, ground, { x: 40, colour })).pass).toBe(true);
+      const shifted = comparePng(name, base, capture(width, ground, { x: 42, colour }));
+      expect(shifted).toMatchObject({ capture: name, pass: false });
+      expect(shifted.line).toContain(name);
+      const recoloured = comparePng(name, base, capture(width, ground, { x: 40, colour: changed }));
+      expect(recoloured).toMatchObject({ capture: name, pass: false });
+      expect(recoloured.line).toContain(name);
+    }
+  });
 });

@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { PNG } from 'pngjs';
-import type { Packet } from './packet.ts';
+import type { Packet, Theme } from './packet.ts';
 
 // Read at run time: the web app's own types sit outside this program (`tsconfig.web.json`).
 const registry = new URL('../../apps/web/src/routes.ts', import.meta.url).href;
@@ -21,6 +21,8 @@ const { ROUTES } = (await import(registry)) as {
 export type PageShot = {
   page: string;
   width: number;
+  /** The theme it was drawn in; light when not given (a light-only capture). */
+  theme?: Theme | undefined;
   /** The picture file's path; null when nothing was captured. */
   picture: string | null;
   overflow: number;
