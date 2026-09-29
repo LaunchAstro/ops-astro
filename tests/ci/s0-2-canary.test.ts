@@ -89,8 +89,9 @@ describe('S0-2 canary', () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.level).toBe('error');
     for (const place of [JSON.stringify(events), logged.join('\n'), answered]) {
-      expect(place).not.toContain('S02CANARY');
-      expect(place).not.toContain('Juniper');
+      // Booleans, so a failure message never prints what it found.
+      expect(place.includes('S02CANARY'), 'the planted secret').toBe(false);
+      expect(place.includes('Juniper'), 'the planted content').toBe(false);
     }
   });
 
@@ -111,7 +112,7 @@ describe('S0-2 canary', () => {
     });
     await alerts.settled();
     expect(events.map((e) => e.tags['alert'])).toEqual(['cross-scope-burst']);
-    expect(JSON.stringify(events)).not.toContain('S02CANARY');
-    expect(JSON.stringify(events)).not.toContain('Juniper');
+    expect(JSON.stringify(events).includes('S02CANARY'), 'the planted secret').toBe(false);
+    expect(JSON.stringify(events).includes('Juniper'), 'the planted content').toBe(false);
   });
 });

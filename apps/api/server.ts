@@ -165,7 +165,7 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
-  /** The error sink (ticket S0-2); absent without one. */
+  /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
 }
 
@@ -245,6 +245,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeCommand,
       executeAgentCommand,
       ...(config.live === undefined ? {} : { live: config.live }),
+      ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
 

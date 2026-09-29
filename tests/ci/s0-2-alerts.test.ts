@@ -12,6 +12,7 @@ import {
   createAlerts,
   dsnTransport,
   errorEvent,
+  sinkFrom,
   type SinkEvent,
 } from '../../apps/api/alerts/sink.ts';
 import { NOT_PLAIN } from './s0-2-plain.ts';
@@ -93,7 +94,7 @@ describe('S0-2 errors land in the error sink', () => {
       environment: 'staging',
       release: 'abcdef012345',
     });
-    expect(JSON.stringify(event)).not.toContain('planted');
+    expect(JSON.stringify(event).includes('planted'), 'the message').toBe(false);
   });
 
   it('a message that forges a frame line cannot put its content in a frame', async () => {
@@ -103,7 +104,7 @@ describe('S0-2 errors land in the error sink', () => {
     const cause = new Error(`first line\n${forged}`);
     await alerts.fault(cause);
     expect(cause.stack).toContain('Juniper');
-    expect(JSON.stringify(sink.events)).not.toContain('Juniper');
+    expect(JSON.stringify(sink.events).includes('Juniper'), 'forged content').toBe(false);
     expect(sink.events[0]?.exception?.values[0]?.stacktrace.frames.length).toBeGreaterThan(0);
   });
 
@@ -128,7 +129,28 @@ describe('S0-2 errors land in the error sink', () => {
     expect(calls[0]?.url).toBe('https://example.test/api/7/store/');
     const headers = new Headers(calls[0]?.init.headers);
     expect(headers.get('x-sentry-auth')).toContain('sentry_key=publickey');
-    expect(String(calls[0]?.init.body)).not.toContain('publickey');
+    expect(String(calls[0]?.init.body).includes('publickey'), 'the key').toBe(false);
+  });
+
+  it('a malformed setting is refused by name, never skipped', () => {
+    const dsn = 'https://publickey@example.test/7';
+    expect(sinkFrom({})).toBeUndefined();
+    expect(sinkFrom({ OPS_ERROR_SINK_DSN: dsn, OPS_ENVIRONMENT: 'staging' })?.where).toBe(
+      'staging',
+    );
+    for (const where of [undefined, '', 'Staging', 'prod']) {
+      expect(() => sinkFrom({ OPS_ERROR_SINK_DSN: dsn, OPS_ENVIRONMENT: where })).toThrow(
+        /^OPS_ENVIRONMENT/u,
+      );
+    }
+    for (const release of ['v1.2.3', 'ABCDEF012345', 'abcdef012345 ', 'abcdef01234']) {
+      const environment = {
+        OPS_ERROR_SINK_DSN: dsn,
+        OPS_ENVIRONMENT: 'staging',
+        OPS_RELEASE: release,
+      };
+      expect(() => sinkFrom(environment), release).toThrow(/^OPS_RELEASE/u);
+    }
   });
 
   it('a DSN that is not one is refused by name, never echoed', () => {

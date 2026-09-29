@@ -10,12 +10,17 @@
 // scope it came from; one business's refusals never bring another's alert
 // closer, and one person's failed sign-ins never bring another's.
 import { describe, expect, it } from 'vitest';
-import { createApi, type CommandExecutor, type ReadExecutor } from '../../apps/api/app.ts';
+import {
+  createApi,
+  type AgentExecutor,
+  type CommandExecutor,
+  type ReadExecutor,
+} from '../../apps/api/app.ts';
 import type { Verifier } from '../../apps/api/auth/supabase.ts';
 import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import { refuseCommand } from '../../packages/core-commands/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
-import { PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import { DELEGATION_HEADER, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
 import { times } from './s0-2-plain.ts';
 
 const ALPHA = '11111111-1111-4111-8111-111111111111';
@@ -57,6 +62,9 @@ function world() {
       Promise.resolve(({ alpha: ALPHA, beta: BETA } as Record<string, string>)[key]),
     executeRead: (() => Promise.resolve({ code: 'ok' })) as unknown as ReadExecutor,
     executeCommand,
+    // The agent's envelope refuses the same way; the delegation names the person it acts for.
+    executeAgentCommand: ((_db, _business, _presented, _delegation, request) =>
+      executeCommand(_db, _business, _presented, 'api', request as never)) as AgentExecutor,
     observe: alerts.observe,
   });
   async function call(
@@ -76,8 +84,24 @@ function world() {
     );
     return response.status;
   }
+  /** An agent acting for `person` under a live delegation. */
+  async function asDelegate(business: string, agent: string, person: string, answer: string) {
+    const response = await api.fetch(
+      new Request(`http://api.test${PREFIX.agent}${business}${pathOf('task.update')}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject': agent,
+          [DELEGATION_HEADER]: `delegation-for-${person}`,
+        },
+        body: JSON.stringify({ answer, operationId: 'op' }),
+      }),
+    );
+    return response.status;
+  }
   return {
     call,
+    asDelegate,
     events,
     alerts,
     databaseUses: () => databaseUses,
@@ -122,14 +146,25 @@ describe('S0-2 isolation', () => {
     expect(await w.raised()).toEqual(['sign-in-failures']);
   });
 
-  it('client to client: one client’s exports never count towards another’s volume', async () => {
+  it('client to client: one client’s exports never count towards another’s, in the same business or not', async () => {
     const w = world();
     w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 150 });
-    w.alerts.observe({ kind: 'export', business: BETA, client: 'c2', items: 150 });
+    w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c2', items: 150 });
     w.alerts.observe({ kind: 'export', business: BETA, client: 'c1', items: 150 });
     expect(await w.raised()).toEqual([]);
     w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 50 });
     expect(await w.raised()).toEqual(['export-volume']);
+  });
+
+  it('person to delegate: an agent under a live delegation is counted apart from the person it acts for', async () => {
+    const w = world();
+    await times(9, async () => {
+      expect(await w.call('alpha', 'mia', 'task.update', 'SCOPE_NOT_GRANTED')).toBe(403);
+      expect(await w.asDelegate('alpha', 'agent-one', 'mia', 'SCOPE_NOT_GRANTED')).toBe(403);
+    });
+    expect(await w.raised()).toEqual([]);
+    expect(await w.asDelegate('alpha', 'agent-one', 'mia', 'SCOPE_NOT_GRANTED')).toBe(403);
+    expect(await w.raised()).toEqual(['cross-scope-burst']);
   });
 
   it('a grant revoked in one business raises its alert; a refused revoke raises none', async () => {
@@ -147,9 +182,12 @@ describe('S0-2 isolation', () => {
     w.alerts.observe({ kind: 'export', business: ALPHA, client: 'c1', items: 500 });
     await w.call('beta', 'noah', 'grant.revoke');
     expect(await w.raised()).toHaveLength(4);
-    const sent = JSON.stringify(w.events);
-    for (const name of NAMES) expect(sent).not.toContain(`"${name}"`);
-    for (const name of NAMES.slice(2)) expect(sent).not.toContain(name);
+    // The random event id and the time are left out: a short name can occur in hex by chance.
+    const sent = JSON.stringify(
+      w.events.map(({ message, tags, level }) => ({ message, tags, level })),
+    );
+    for (const name of NAMES) expect(sent.includes(`"${name}"`), 'a scope name').toBe(false);
+    for (const name of NAMES.slice(2)) expect(sent.includes(name), 'a scope name').toBe(false);
     expect(w.databaseUses()).toBe(0);
   });
 });

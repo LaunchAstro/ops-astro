@@ -43,6 +43,9 @@ interface Plan {
 function run(args: readonly string[], env: Record<string, string>) {
   const result = spawnSync(process.execPath, [SCRIPT, ...args], {
     encoding: 'utf8',
+    // Bounded: a run that wrongly reached the in-process fake sink would otherwise
+    // block it (spawnSync holds this event loop) until fetch gave up.
+    timeout: 10_000,
     env: { PATH: process.env['PATH'] ?? '', ...env },
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -82,6 +85,17 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
       'https://192.168.1.20/',
       'https://172.20.0.4/',
       'https://m5.local/',
+      'https://m5.LOCAL./',
+      'https://LOCALHOST/',
+      'https://localhost./',
+      'https://2130706433/',
+      'https://0x7f.0.0.1/',
+      'https://[::1]/',
+      'https://[::ffff:127.0.0.1]/',
+      'https://169.254.169.254/',
+      'https://100.64.0.1/',
+      'https://db.internal/',
+      'HTTP://staging.example.test/',
       'not a url',
     ]) {
       const result = run(['plan'], { ...BASE, OPS_WATCH_STAGING_URL: url });
@@ -115,7 +129,7 @@ describe('S0-2 alerts go by email, at once, to the owner and the second operator
       expect(missing.stderr).toContain(name);
       const bad = run(['plan'], { ...BASE, [name]: 'sk_live_planted' });
       expect(bad.status).toBe(1);
-      expect(bad.stderr).not.toContain('planted');
+      expect(bad.stderr.includes('planted'), 'the value').toBe(false);
     }
   });
 });
@@ -148,6 +162,14 @@ describe('S0-2 test alert reaches both operators on a test channel', () => {
     const { port } = server.address() as AddressInfo;
     const dsn = `http://fakekey@127.0.0.1:${port}/5`;
     try {
+      // Check first, then act: a refused run sends nothing to the sink.
+      const refused = { OPS_ERROR_SINK_DSN: dsn };
+      for (const where of ['', 'prod']) {
+        expect(run(['test'], { ...refused, OPS_ENVIRONMENT: where }).status).toBe(1);
+      }
+      const badRelease = { ...refused, OPS_ENVIRONMENT: 'staging', OPS_RELEASE: 'v1' };
+      expect(run(['test'], badRelease).status).toBe(1);
+      expect(received).toHaveLength(0);
       const env = {
         PATH: process.env['PATH'] ?? '',
         OPS_ERROR_SINK_DSN: dsn,
@@ -158,7 +180,7 @@ describe('S0-2 test alert reaches both operators on a test channel', () => {
       });
       const result = { status: 0, out: stdout + stderr };
       expect(result.status).toBe(0);
-      expect(result.out).not.toContain('fakekey');
+      expect(result.out.includes('fakekey'), 'the key').toBe(false);
       expect(received).toHaveLength(1);
       expect(received[0]?.url).toBe('/api/5/store/');
       expect(received[0]?.auth).toContain('sentry_key=fakekey');
