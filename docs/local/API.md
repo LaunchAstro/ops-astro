@@ -445,6 +445,12 @@ read or counted. The Projects board's Review mode draws these rows and counts
 them. `tests/reads/mp-5-12-board-review.test.ts` holds the count and the three
 crossings.
 
+Every admitted answer also carries `viewer` (MP-5-12): the caller's own person
+id, taken from the session, which the Projects board's viewer preset narrows
+to. It is never another person's identifier, and no refusal carries it. The
+same suite holds it for a collection reader, a record-scoped reader and
+another business's member.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off
