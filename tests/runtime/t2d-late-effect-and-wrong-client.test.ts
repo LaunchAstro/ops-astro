@@ -29,6 +29,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       await s?.db.drop();
     });
 
+    // The approved proof body keeps its bytes (issue #174): one line runs past
+    // the print width at this indent, so prettier leaves this test as written.
+    // prettier-ignore
     it('a concurrent failure cannot leave a late effect on the settled attempt', async () => {
       const w = await work();
       await dispatched(w);
@@ -103,8 +106,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
             setTimeout(resolve, 25);
           });
         }
-        if (!staged)
-          throw new Error('the observation neither finished nor queued behind the effect');
+        if (!staged) throw new Error('the observation neither finished nor queued behind the effect');
       } catch (cause) {
         failure = cause;
       } finally {
