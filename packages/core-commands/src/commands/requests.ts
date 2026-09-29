@@ -230,7 +230,9 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
-    } & Envelope);
+    } & Envelope)
+  // The recipient opening their own inbox item (INB-1d).
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

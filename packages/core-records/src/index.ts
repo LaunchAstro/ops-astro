@@ -62,6 +62,7 @@ export {
   owes,
   raiseInboxItem,
   readInboxItems,
+  stampSeen,
   recordDeliveryAttempt,
   taskAccess,
   type DeliveryChannel,

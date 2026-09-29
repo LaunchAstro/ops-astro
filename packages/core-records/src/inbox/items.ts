@@ -128,6 +128,31 @@ export async function recordDeliveryAttempt(
   return id;
 }
 
+/**
+ * Stamp `seen` on the recipient's own attention row (INB-1d). The row is
+ * written only for an item whose recipient is `personId`, so nobody stamps
+ * another person's item; a second stamp keeps the first. Nothing on the item
+ * moves: seen leaves it open and counted. False when the item is not theirs.
+ */
+export async function stampSeen(
+  tx: TenantQuery,
+  personId: string,
+  itemId: string,
+): Promise<boolean> {
+  const mine = await tx.query<{ readonly id: string }>(
+    `select id from public.inbox_items
+      where business_id = $1 and id = $2 and recipient_person_id = $3`,
+    [tx.businessId, itemId, personId],
+  );
+  if (mine.length === 0) return false;
+  await tx.query(
+    `insert into public.inbox_attention (business_id, item_id, person_id)
+     values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
+    [tx.businessId, itemId, personId],
+  );
+  return true;
+}
+
 /** A row as read: the item's axes, and the two facts access is derived from. */
 type ItemRow = Omit<InboxItem, 'access'> & {
   readonly trashed: boolean;

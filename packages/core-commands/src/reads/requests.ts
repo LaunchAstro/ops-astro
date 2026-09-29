@@ -29,6 +29,7 @@ import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
 import type { SettingView } from './settings.ts';
 import type { Capability } from './capabilities.ts';
+import type { InboxEntry } from './inbox.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -167,6 +168,10 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** The caller's own inbox items, each with its access derived now (INB-1d). */
+  readonly 'inbox.read': NoOperands;
+  /** The caller's owed count: the counted entries of `inbox.read`. */
+  readonly 'inbox.count': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -206,4 +211,6 @@ export type ReadResult =
       readonly personId: string;
       readonly businessKey: string;
       readonly grants: readonly Capability[];
-    };
+    }
+  | { readonly ok: true; readonly inbox: readonly InboxEntry[] }
+  | { readonly ok: true; readonly owed: number };

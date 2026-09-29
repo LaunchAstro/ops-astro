@@ -200,7 +200,7 @@ async function serveRead<K extends ReadName>(
     subjectRecordId: recordId ?? null,
   });
 
-  if (row.authority !== 'holds-any-grant') {
+  if (row.authority !== 'holds-any-grant' && row.authority !== 'self') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).

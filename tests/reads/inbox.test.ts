@@ -110,11 +110,13 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
     );
     return { id, rev: Number(set?.revision) };
   };
-  const attention = async (itemId: string): Promise<readonly { person_id: string }[]> =>
-    await w.fixture.db.admin.execute<{ person_id: string }>(
-      `select person_id from public.inbox_attention where item_id = $1`,
-      [itemId],
-    );
+  const attention = async (itemId: string): Promise<readonly string[]> =>
+    (
+      await w.fixture.db.admin.execute<{ person_id: string }>(
+        `select person_id from public.inbox_attention where item_id = $1`,
+        [itemId],
+      )
+    ).map((row) => row.person_id);
   const stored = async (itemId: string): Promise<string | undefined> =>
     (
       await w.fixture.db.admin.execute<{ work_state: string }>(
@@ -162,6 +164,8 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
 
   it('INB-1 withheld: access lost after raising withholds the item at the next read, and withheld is not gone', async () => {
     const t = await task('withhold me');
+    // Dee keeps a grant elsewhere: a caller holding none is refused outright.
+    await grantRead(dee, { kind: 'record', id: (await task('dee elsewhere')).id });
     const grant = await grantRead(dee, { kind: 'record', id: t.id });
     const item = await raise(dee.personId, t.id);
     expect(await entry(deeToken, item)).toMatchObject({
@@ -248,7 +252,7 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
 
     ok(await seen(item, w.reviewerToken));
     ok(await seen(item, w.reviewerToken));
-    expect(await attention(item)).toStrictEqual([{ person_id: w.reviewer.personId }]);
+    expect(await attention(item)).toStrictEqual([w.reviewer.personId]);
   });
 
   describe('INB-1 isolation over the read, the count and the stamp', () => {
