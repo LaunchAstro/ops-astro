@@ -352,6 +352,17 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
         (n): n is string => n !== undefined,
       ),
     );
+    // The store made the restore role; it goes with the store, so no run leaves
+    // it on a shared cluster. Another run's store still granting to it keeps it
+    // (2BP01), and that run drops it.
+    const cleanup = new Client(serverUrl ?? '');
+    try {
+      await cleanup.query(`drop role if exists ${RESTORE}`);
+    } catch (error) {
+      if ((error as { code?: string }).code !== '2BP01') throw error;
+    } finally {
+      await cleanup.end();
+    }
   });
 
   describe('S0-3 identity scope', () => {
