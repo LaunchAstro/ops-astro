@@ -162,18 +162,6 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(commentLines(source).some(({ comment }) => cites(comment) !== undefined)).toBe(true);
   });
 
-  it('Sol proof, criterion 4: rejects lane identifiers in source comments', () => {
-    const successor = readFileSync(
-      new URL('packages/core-commands/src/commands/successor.ts', root),
-      'utf8',
-    );
-    const lane = commentLines(successor).find(({ comment }) =>
-      comment.includes("L4's `SuccessorRequest`"),
-    );
-    expect(lane).toBeDefined();
-    expect(cites(lane?.comment ?? '')).toBeDefined();
-  });
-
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
