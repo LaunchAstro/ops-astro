@@ -32,6 +32,13 @@ export interface DockModel {
   readonly change: (next: (state: DockState) => DockState) => void;
   /** Every click inside the application, for the doors into the dock. */
   readonly onDoor: (event: ReactMouseEvent<HTMLElement>) => void;
+  /** MP-3-5 stub. */
+  readonly history: {
+    readonly canBack: boolean;
+    readonly canForward: boolean;
+    readonly back: () => void;
+    readonly forward: () => void;
+  };
 }
 
 export function useDock(
@@ -113,5 +120,10 @@ export function useDock(
     [change, registry],
   );
 
-  return { state: current.state, change, onDoor };
+  return {
+    state: current.state,
+    change,
+    onDoor,
+    history: { canBack: false, canForward: false, back: () => undefined, forward: () => undefined },
+  };
 }
