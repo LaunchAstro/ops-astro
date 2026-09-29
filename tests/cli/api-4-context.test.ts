@@ -6,10 +6,10 @@
 // far, what blocks it and what it blocks, its acceptance checks, its linked
 // documents and its recent thread, in one call and one statement, current in
 // the writing transaction. A part the caller may not read is left out and
-// named as withheld. *Changes since* is held (LEANS-ON SL10 U26, the slice
-// handback).
+// named as withheld. The refusal per key and the three isolation crossings
+// are in api-4-context-isolation.test.ts. *Changes since* is held (LEANS-ON
+// SL10 U26, the slice handback).
 
-import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readTicketContext } from '../../packages/core-commands/src/reads/ticket-context.ts';
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
@@ -198,8 +198,10 @@ describe.skipIf(serverUrl === undefined)('API-4 work this ticket', () => {
     expect(full.ticket['id']).toBe(b);
     expect(full.blockedBy[0]?.['id']).toBe(tickets['a']);
     expect(full.thread).toHaveLength(6);
-    // Standard names things by key and title, and carries the latest five comments.
-    expect(standard.ticket['id']).toBeUndefined();
+    // Standard keeps the ticket's own id (writes take it), names the tickets
+    // around it by key and title, and carries the latest five comments.
+    expect(standard.ticket['id']).toBe(b);
+    expect(standard.blockedBy[0]?.['id']).toBeUndefined();
     expect(standard.blockedBy[0]?.['key']).toBeTypeOf('string');
     expect(standard.thread).toHaveLength(5);
     // Brief: names and state, no description and no thread bodies.
@@ -258,7 +260,7 @@ describe.skipIf(serverUrl === undefined)('API-4 work this ticket', () => {
       const noted = await cli.run(
         'task',
         'comment',
-        String(bundle.ticket['key']),
+        String(bundle.ticket['id']),
         '--revision',
         String(bundle.ticket['revision']),
         '--text',
@@ -268,7 +270,7 @@ describe.skipIf(serverUrl === undefined)('API-4 work this ticket', () => {
       const done = await cli.run(
         'task',
         'resolve',
-        String(bundle.ticket['key']),
+        String(bundle.ticket['id']),
         '--revision',
         revisionIn(noted),
         '--answer',
@@ -291,55 +293,5 @@ describe.skipIf(serverUrl === undefined)('API-4 work this ticket', () => {
     expect(status.exit, status.out).toBe(0);
     const shown = JSON.parse(status.out) as { open: number; closed: number };
     expect([shown.open, shown.closed]).toStrictEqual([0, types.length]);
-  });
-
-  it('API-4 a refusal per key: work this ticket asks task:read', async () => {
-    const { tickets } = await chartedMap('refused ctx');
-    const stranger = await w.person(await w.member('ctx-stranger', ['comment']));
-    const refused = await stranger.run('task', 'context', tickets['b'] as string);
-    expect(refused.exit).toBe(1);
-    expect(refused.out).toContain('task:read');
-    expect(refused.out).not.toContain('refused ctx');
-  });
-
-  it('API-4 isolation: work this ticket', async () => {
-    const mapA = (await chartedMap('canary-ctx-A')).map;
-    const { map: mapB, tickets: onB } = await chartedMap('canary-ctx-B');
-    must(
-      await w.as(lead, {
-        command: 'map.scope',
-        recordId: mapB,
-        expectedRevision: await w.revisionOf(mapB),
-        client: randomUUID(),
-      }),
-      'scope',
-    );
-    const b = onB['b'] as string;
-    const clean = (what: string, out: string) => {
-      for (const canary of ['canary-ctx-B', mapB, b]) expect(out, what).not.toContain(canary);
-    };
-
-    // 1. Another business: bravo's person on bravo's key reaches nothing of alpha's.
-    const bea = await w.person(await w.outsider('ctx-bea'), `${w.key}-bravo`);
-    const crossed = await bea.run('task', 'context', b);
-    expect(crossed.exit).toBe(1);
-    expect(crossed.out).toContain('NOT_FOUND');
-    clean('bravo', crossed.out);
-
-    // 2. Another client in the same business: a person granted only map A.
-    const scoped = await w.member('ctx-scoped-a', ['read'], { kind: 'record', id: mapA });
-    const scopedCli = await w.person(scoped);
-    const other = await scopedCli.run('task', 'context', b);
-    expect(other.exit).toBe(1);
-    expect(other.out).toContain('SCOPE_NOT_GRANTED');
-    clean('other client', other.out);
-
-    // 3. A person under a live delegation: the agent reaches no bundle
-    // (LEANS-ON SL09 U18, the agent credential narrowed from a person's grants).
-    const picked = await w.pickUp(await w.decider('ctx-delegator'), 'context agent task');
-    const agent = await w.agent(picked.credential);
-    const delegated = await agent.run('task', 'context', b);
-    expect(delegated.exit).toBe(1);
-    clean('delegated', delegated.out);
   });
 });
