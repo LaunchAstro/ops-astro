@@ -408,7 +408,7 @@ has the interface and the tests.
 
 ## The reads
 
-Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 `packages/core-commands/src/reads/`. Three of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
@@ -417,8 +417,9 @@ Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
 
-The other four, `task.queue`, `preset.plan`, `settings.read` and
-`session.capabilities`, are listed with their answers under "Reads" in
+The other five, `task.queue`, `preset.plan`, `settings.read`,
+`session.capabilities` and `access.read` (Settings ▸ Access, C32, under
+`access:manage`), are listed with their answers under "Reads" in
 [API.md](API.md#reads).
 
 On the person prefix a read carries no `operation_id` and no
