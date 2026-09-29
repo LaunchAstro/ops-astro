@@ -33,6 +33,11 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/App.tsx': "threads that fetch to the product's own API, same origin",
   'apps/web/src/screens/SignIn.tsx': "threads that fetch to the product's own sign-in route",
   'apps/cli/main.ts': "the command line calls the product's own API",
+  // Main's core after the slice's base (rebase onto 8eba5e6):
+  'apps/cli/client.ts':
+    "the command line's and the worker's one transport to the product's own API (T2b)",
+  'apps/api/identity.ts':
+    'runs the local git once at process start to read its own checkout (T4); no network',
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
