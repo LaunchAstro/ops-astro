@@ -12,10 +12,11 @@ in S0-6. `x-ops-astro` names what other scripts read: the prefix every
 staging name carries, the production major and the artefact the promotion
 step selects.
 
-Everything staging owns is named `ops-astro-staging*`: containers, networks
-and volume. Every credential and every port is a `${STAGING_*}` placeholder,
-and Compose refuses to start with one unset. The values and the machine's layout (ports, service names, data paths)
-live in the private staging runbook, never in this repository.
+Everything staging owns is named `ops-astro-staging*`: containers, network
+and volume. Every credential is a `${STAGING_*}` placeholder, and Compose
+refuses to start with one unset. The values and the machine's layout (ports,
+service names, data paths) live in the private staging runbook, never in this
+repository.
 
 ## Containment and limits
 
@@ -23,13 +24,12 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
 `S0-1 containment` and `S0-1 resource limits` in
 `tests/ci/staging-containment.test.ts`):
 
-- The database and the auth server sit on the `staging` network, which is
-  internal: it has no route out, so the machine, its other containers, the
-  cloud metadata address, private addresses and the internet are all
-  unreachable from inside.
-- Internal networks cannot publish ports, so `edge` is the one way in: a
-  pinned HAProxy that forwards two loopback ports to the database and the auth
-  server and nothing else. It holds no credential and no data.
+- Every service sits on the `staging` network, which is internal: it has no
+  route out, so the machine, its other containers, the cloud metadata
+  address, private addresses and the internet are all unreachable from
+  inside. No service publishes a port. Operators reach staging through its own
+  network only: `docker compose exec`, or a one-off `docker compose run` for
+  the runbook's seed and migrate steps.
 - No service mounts a path from the machine, reads an env file or secret from
   it, joins the host's network or namespaces, or gains a capability. Every
   root filesystem is read-only.

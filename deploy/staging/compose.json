@@ -89,48 +89,12 @@
           "max-file": "3"
         }
       }
-    },
-    "edge": {
-      "container_name": "ops-astro-staging-edge",
-      "image": "haproxy:3.2-alpine@sha256:1aca32ee932b96d2a75f1882909325839dd23c138ba9c6fd26e4d88179f30f13",
-      "entrypoint": [
-        "/bin/sh",
-        "-c",
-        "printf '%s' \"$$EDGE_CONFIG\" > /tmp/haproxy.cfg && exec haproxy -f /tmp/haproxy.cfg"
-      ],
-      "environment": {
-        "EDGE_CONFIG": "global\n  maxconn 256\n  log stdout format raw local0\ndefaults\n  mode tcp\n  timeout connect 5s\n  timeout client 1h\n  timeout server 1h\n  default-server init-addr libc,none resolvers docker\nresolvers docker\n  parse-resolv-conf\nlisten db\n  bind :5432\n  server db db:5432\nlisten auth\n  bind :9999\n  server auth auth:9999\n"
-      },
-      "ports": [
-        "127.0.0.1:${STAGING_DB_PORT:?set from the staging runbook}:5432",
-        "127.0.0.1:${STAGING_AUTH_PORT:?set from the staging runbook}:9999"
-      ],
-      "networks": ["staging", "edge"],
-      "restart": "unless-stopped",
-      "read_only": true,
-      "cap_drop": ["ALL"],
-      "security_opt": ["no-new-privileges:true"],
-      "tmpfs": ["/tmp:size=1m,uid=99,gid=99"],
-      "cpus": "0.25",
-      "mem_limit": "64m",
-      "memswap_limit": "64m",
-      "pids_limit": 50,
-      "logging": {
-        "driver": "json-file",
-        "options": {
-          "max-size": "10m",
-          "max-file": "3"
-        }
-      }
     }
   },
   "networks": {
     "staging": {
       "name": "ops-astro-staging",
       "internal": true
-    },
-    "edge": {
-      "name": "ops-astro-staging-edge"
     }
   },
   "volumes": {

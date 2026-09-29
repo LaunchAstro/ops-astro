@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+const CANARY = 'canary-5b19e2d7c4-production-secret';
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 
 type Service = {
@@ -44,8 +45,6 @@ type Definition = {
 };
 const load = (): Definition => JSON.parse(readFileSync(DEFINITION, 'utf8')) as Definition;
 
-const EDGE = 'edge';
-const inside = (def: Definition) => Object.keys(def.services).filter((name) => name !== EDGE);
 const bytes = (size: string): number => {
   const match = /^(?<n>\d+(?:\.\d+)?)(?<unit>[kmg]?)b?$/iu.exec(size.trim());
   if (!match) return Number.NaN;
@@ -96,41 +95,24 @@ const REFUSALS: Row[] = [
     remove: (def) => delete def.networks['staging']!.internal,
   },
   {
-    name: 'every service but the edge on the staging network alone',
+    name: 'every service on internal networks alone: no bridge route out',
     check: (def) =>
-      each(def, inside(def), (s) =>
-        JSON.stringify(s.networks) === '["staging"]' ? null : `networks ${String(s.networks)}`,
-      ),
-    remove: (def) => def.services['db']!.networks!.push(EDGE),
-  },
-  {
-    name: 'no port published but the edge, and the edge on loopback only',
-    check: (def) => [
-      ...each(def, inside(def), (s) => (s.ports === undefined ? null : 'publishes a port')),
-      ...each(def, [EDGE], (s) =>
-        (s.ports ?? []).length > 0 && (s.ports ?? []).every((p) => p.startsWith('127.0.0.1:'))
+      each(def, all(def), (s) => {
+        const out = (s.networks ?? []).filter((n) => def.networks[n]?.internal !== true);
+        return (s.networks ?? []).length > 0 && out.length === 0
           ? null
-          : `ports ${String(s.ports)}`,
-      ),
-    ],
+          : `networks ${String(s.networks)}`;
+      }),
     remove: (def) => {
-      def.services['db']!.ports = ['127.0.0.1:${STAGING_DB_PORT:?x}:5432'];
+      def.networks['outside'] = { name: 'ops-astro-staging-outside' };
+      def.services['auth']!.networks!.push('outside');
     },
   },
   {
-    name: 'the edge forwards to staging db and auth only, holds no credential and no volume',
-    check: (def) =>
-      each(def, [EDGE], (s) => {
-        const config = s.environment?.['EDGE_CONFIG'] ?? '';
-        const servers = [...config.matchAll(/^\s*server\s+\S+\s+(\S+)/gmu)].map((m) => m[1]);
-        if (JSON.stringify(servers) !== '["db:5432","auth:9999"]') return `forwards to ${servers}`;
-        if (Object.keys(s.environment ?? {}).join() !== 'EDGE_CONFIG') return 'extra environment';
-        if (s.volumes !== undefined) return 'mounts a volume';
-        return JSON.stringify(s.networks?.toSorted()) === '["edge","staging"]' ? null : 'networks';
-      }),
+    name: 'no port published: staging is reached through its own network, never the machine',
+    check: (def) => each(def, all(def), (s) => (s.ports === undefined ? null : 'publishes a port')),
     remove: (def) => {
-      const env = def.services[EDGE]!.environment!;
-      env['EDGE_CONFIG'] = `${env['EDGE_CONFIG']}  server host host.docker.internal:5432\n`;
+      def.services['db']!.ports = ['127.0.0.1:${STAGING_DB_PORT:?x}:5432'];
     },
   },
   {
@@ -189,7 +171,7 @@ const LIMITS: Row[] = [
     name: 'CPU',
     check: (def) =>
       each(def, all(def), (s) => (Number(s.cpus) > 0 && Number(s.cpus) <= 2 ? null : 'cpus')),
-    remove: (def) => delete def.services['edge']!.cpus,
+    remove: (def) => delete def.services['auth']!.cpus,
   },
   {
     name: 'memory, with no swap beyond it',
@@ -290,7 +272,6 @@ live('S0-1 containment and resource limits, live', () => {
   const prod = `${project}-production`;
   const names = (suffix: string) => `${project}-${suffix}`;
   let env: NodeJS.ProcessEnv = process.env;
-  let stagingPort = 0;
   let prodPort = 0;
   const compose = (args: string[]) =>
     docker(['compose', '-p', project, '-f', DEFINITION, '-f', override, ...args], env);
@@ -303,13 +284,11 @@ live('S0-1 containment and resource limits, live', () => {
   };
 
   beforeAll(async () => {
-    [stagingPort, prodPort] = [await freePort(), await freePort()];
+    prodPort = await freePort();
     env = {
       ...process.env,
       STAGING_DB_ADMIN_USER: 'probe',
       STAGING_DB_ADMIN_PASSWORD: 'probe-only',
-      STAGING_DB_PORT: String(stagingPort),
-      STAGING_AUTH_PORT: String(await freePort()),
       STAGING_AUTH_URL: 'http://127.0.0.1',
       STAGING_SITE_URL: 'http://127.0.0.1',
       STAGING_AUTH_DATABASE_URL: 'postgres://unused',
@@ -321,12 +300,13 @@ live('S0-1 containment and resource limits, live', () => {
         services: Object.fromEntries(
           Object.keys(load().services).map((s) => [s, { container_name: names(s) }]),
         ),
-        networks: { staging: { name: names('staging') }, edge: { name: names('edge') } },
+        networks: { staging: { name: names('staging') } },
         volumes: { 'ops-astro-staging-pgdata': { name: names('pgdata') } },
       }),
     );
     // The stand-in production service: the same image, none of staging's limits,
     // on an ordinary network and a loopback port, the way a live service runs.
+    // Its password is a canary that must never be found inside staging.
     const image = load().services['db']!.image!;
     expect(docker(['network', 'create', prod]).status).toBe(0);
     const started = docker([
@@ -339,7 +319,7 @@ live('S0-1 containment and resource limits, live', () => {
       '-p',
       `127.0.0.1:${prodPort}:5432`,
       '-e',
-      'POSTGRES_PASSWORD=stand-in',
+      `POSTGRES_PASSWORD=${CANARY}`,
       '--health-cmd',
       'pg_isready -h 127.0.0.1 -U postgres',
       '--health-interval',
@@ -347,7 +327,7 @@ live('S0-1 containment and resource limits, live', () => {
       image,
     ]);
     expect(started.status, started.out).toBe(0);
-    const up = compose(['up', '-d', '--wait', 'db', EDGE]);
+    const up = compose(['up', '-d', '--wait', 'db']);
     expect(up.status, up.out).toBe(0);
     await settle(prodPort, 60);
     await productionGreen();
@@ -360,8 +340,39 @@ live('S0-1 containment and resource limits, live', () => {
     rmSync(scratch, { recursive: true, force: true });
   }, 120_000);
 
-  it('the way in works: the edge reaches staging db from loopback', async () => {
-    expect(await postgresAnswers(stagingPort)).toBe(true);
+  it("the way in is staging's own network, never a port on the machine", () => {
+    // The runbook's seed and migrate steps run as one-off containers here.
+    const image = load().services['db']!.image!;
+    const reach = docker([
+      'run',
+      '--rm',
+      '--network',
+      names('staging'),
+      image,
+      'pg_isready',
+      '-h',
+      'db',
+    ]);
+    expect(reach.status, reach.out).toBe(0);
+    expect(docker(['port', names('db')]).out).toBe('');
+  });
+
+  it('every service, as Docker creates it, carries its confinement and limits', () => {
+    const create = compose(['create', 'auth']);
+    expect(create.status, create.out).toBe(0);
+    const format =
+      '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +
+      '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}} {{.HostConfig.PidsLimit}} ' +
+      '{{json .HostConfig.SecurityOpt}} {{range $n, $_ := .NetworkSettings.Networks}}{{$n}}{{end}}';
+    for (const [name, s] of Object.entries(load().services)) {
+      const memory = bytes(s.mem_limit!);
+      expect(docker(['inspect', names(name), '--format', format]).out, name).toBe(
+        `true ["ALL"] ${Number(s.cpus) * 1e9} ${memory} ${memory} ${s.pids_limit} ` +
+          `["no-new-privileges:true"] ${names('staging')}`,
+      );
+    }
+    const internal = docker(['network', 'inspect', names('staging'), '--format', '{{.Internal}}']);
+    expect(internal.out).toBe('true');
   });
 
   it('S0-1 containment: from inside staging, each target is refused', () => {
@@ -401,6 +412,17 @@ live('S0-1 containment and resource limits, live', () => {
       expect(probe(['exec', `${project}-db`], target), `${what} (${target})`).not.toBe(0);
     expect(inStaging('test -e /var/run/docker.sock').status, 'docker socket').not.toBe(0);
     expect(inStaging('touch /escape').out).toMatch(/Read-only file system/u);
+
+    // Production's files and credentials: a planted file on the machine and the
+    // stand-in's password are nowhere inside staging, on disk or in a process.
+    writeFileSync(join(scratch, 'production.env'), `PASSWORD=${CANARY}\n`);
+    const search = inStaging(
+      `grep -rsl '${CANARY}' /etc /home /mnt /opt /root /run /srv /tmp /usr/local /var /proc/[0-9]*/environ 2>/dev/null; echo searched`,
+    );
+    expect(search.out).toBe('searched');
+    // The same search inside production finds it, so the search is not blind.
+    const control = docker(['exec', prod, 'sh', '-c', `grep -sl '${CANARY}' /proc/self/environ`]);
+    expect(control.out).toBe('/proc/self/environ');
   }, 120_000);
 
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
@@ -452,7 +474,7 @@ live('S0-1 containment and resource limits, live', () => {
     await productionGreen();
 
     // Staging itself rode every limit out: no container of it was restarted.
-    for (const service of ['db', EDGE])
+    for (const service of ['db'])
       expect(docker(['inspect', names(service), '--format', '{{.RestartCount}}']).out).toBe('0');
   }, 240_000);
 });
