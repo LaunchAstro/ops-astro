@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
+import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
@@ -211,12 +212,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
     };
+    // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
+    // `attemptId` and has its own cell below.
     const targeted = COMMAND_SURFACE.filter(
-      (declaration) => declaration.targetsExistingRecord || declaration.name === 'task.read',
+      (declaration) => targetKeyOf(declaration) === 'recordId',
     );
     const out: Cell[] = targeted.map((declaration) => {
       const extra = onRecord[declaration.name] ?? {};
-      const revision = declaration.name === 'task.read' ? {} : { expectedRevision: 1 };
+      const revision = declaration.kind === 'read' ? {} : { expectedRevision: 1 };
       return {
         op: declaration.name,
         operand: 'recordId',
@@ -265,6 +268,12 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       recordId: own.task.id,
       lineageId,
     }));
+    byAda('task.receipt', 'attemptId', f.picked.attemptId, (attemptId) => ({ attemptId }));
+    byAda('budget.top_up', 'recordId', f.proposal.task.id, (recordId) => ({
+      recordId,
+      amountMinor: 100,
+      fromMaximumMinor: 0,
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -281,6 +290,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     };
     const byLease: readonly [CommandName, Body][] = [
       ['task.heartbeat', {}],
+      ['task.dispatch', {}],
+      ['task.observe', { attemptId: randomUUID() }],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
     ];
     for (const [op, extra] of byLease) {
@@ -296,11 +307,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 26 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 31 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(26);
-    expect(names).toHaveLength(26);
+    expect(new Set(names).size, 'distinct operations').toBe(31);
+    expect(names).toHaveLength(31);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

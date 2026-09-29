@@ -167,8 +167,12 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
     },
     {
       name: 'settling actual_minor a second time',
-      statements: () => [attempt('actual_minor = 0'), attempt('actual_minor = 1')],
-      message: /attempt .* is already settled at 0/u,
+      // Since 0034 an actual is positive and only on a settled attempt (T2d).
+      statements: () => [
+        attempt(`state = 'settled', actual_minor = 1`),
+        attempt('actual_minor = 2'),
+      ],
+      message: /attempt .* is already settled at 1/u,
     },
     {
       name: 'recording an outcome a second time',
@@ -193,8 +197,11 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
     },
   ];
 
+  // Each role's cases sit in two blocks under one title, so every case keeps
+  // its full name: the trigger refusals, then the deletes and the controls.
   for (const role of ['application', 'owner'] as const) {
-    describe(`as the ${role === 'owner' ? 'owner' : 'application role'}`, () => {
+    const roleTitle = `as the ${role === 'owner' ? 'owner' : 'application role'}`;
+    describe(roleTitle, () => {
       for (const refusal of refusals) {
         it(`refuses ${refusal.name} with restrict_violation`, async () => {
           const before = await rows();
@@ -222,7 +229,9 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
         );
         expect(await rows()).toStrictEqual(before);
       });
+    });
 
+    describe(roleTitle, () => {
       it('refuses deleting an attempt', async () => {
         const before = await rows();
         await expect(
@@ -246,9 +255,9 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
         await expect(
           asRole(role, [
             version('superseded_at = now()'),
-            attempt('actual_minor = 0'),
+            attempt(`state = 'settled', actual_minor = 1`),
             attempt(`outcome = 'completed'`),
-            attempt(`dispatch_marker = true, observed = true, state = 'quarantined'`),
+            attempt(`dispatch_marker = true, observed = true`),
           ]),
         ).rejects.toThrow('ROLLBACK: every statement was accepted');
       });

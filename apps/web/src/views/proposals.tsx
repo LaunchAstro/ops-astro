@@ -82,10 +82,11 @@ import type { OperationsClient } from '../operations/client.ts';
 import type {
   ProposalVersionView as ProposalVersion,
   ProposalView as ProposalLineage,
+  TaskEnvelope,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 import { Chain, money, Reservations, stored } from './proposal-record.tsx';
-import { Propose, type ProposeDraft } from './propose-form.tsx';
+import { Propose, TopUp, type ProposeDraft, type TopUpNote } from './propose-form.tsx';
 
 /** What a refused decision left behind, held above the read that follows it. */
 export interface DecisionNote {
@@ -114,6 +115,11 @@ export interface ProposalsProps {
   readonly client: OperationsClient;
   /** Absent means the answer carried no projection at all. Not the same as none. */
   readonly proposals: readonly ProposalLineage[] | undefined;
+  /** The task's open envelope, or null when the read carried none (T2e). */
+  readonly envelope: TaskEnvelope | null;
+  /** The last top-up's answer, held above the read that follows it (T2e). */
+  readonly topUpNote: TopUpNote | null;
+  readonly onTopUpNote: (note: TopUpNote | null) => void;
   readonly recordId: string;
   /** The revision the page holds; a proposal is offered against it. */
   readonly revision: number;
@@ -139,32 +145,17 @@ export function Proposals(props: ProposalsProps): ReactElement {
         <span className="sbact__meta">{countWord(props.proposals)}</span>
       </div>
 
-      {props.proposals === undefined ? (
-        // The answer did not carry the projection. Drawing "no proposals" here
-        // would be this screen reporting an absence it never established.
-        <p className="card__sub" data-proposals="not-carried">
-          This task read carried no proposal projection, so what has been proposed on this task is
-          not known here. It is not that there is nothing: it is that nothing was read.
-        </p>
-      ) : props.proposals.length === 0 ? (
-        <div data-proposals="none">
-          <PaneEmpty say="Nothing has been proposed on this one yet." />
-        </div>
-      ) : (
-        <div className="stack" data-proposals="list">
-          {at === 'section' ? <Refusal note={props.note} /> : null}
-          {props.proposals.map((lineage) => (
-            <Lineage
-              client={props.client}
-              key={lineage.lineageId}
-              lineage={lineage}
-              note={props.note}
-              noteAt={at}
-              onChanged={props.onChanged}
-              onDecided={props.onDecided}
-            />
-          ))}
-        </div>
+      <ProposalList {...props} at={at} />
+
+      {props.envelope === null ? null : (
+        <TopUp
+          client={props.client}
+          envelope={props.envelope}
+          note={props.topUpNote}
+          onNote={props.onTopUpNote}
+          onChanged={props.onChanged}
+          recordId={props.recordId}
+        />
       )}
 
       <Propose
@@ -179,6 +170,38 @@ export function Proposals(props: ProposalsProps): ReactElement {
         revision={props.revision}
       />
     </section>
+  );
+}
+
+/** The lineages the answer carried, or why there are none to draw. */
+function ProposalList(props: ProposalsProps & { readonly at: NoteAt | null }): ReactElement {
+  const { at } = props;
+  return props.proposals === undefined ? (
+    // The answer did not carry the projection. Drawing "no proposals" here
+    // would be this screen reporting an absence it never established.
+    <p className="card__sub" data-proposals="not-carried">
+      This task read carried no proposal projection, so what has been proposed on this task is not
+      known here. It is not that there is nothing: it is that nothing was read.
+    </p>
+  ) : props.proposals.length === 0 ? (
+    <div data-proposals="none">
+      <PaneEmpty say="Nothing has been proposed on this one yet." />
+    </div>
+  ) : (
+    <div className="stack" data-proposals="list">
+      {at === 'section' ? <Refusal note={props.note} /> : null}
+      {props.proposals.map((lineage) => (
+        <Lineage
+          client={props.client}
+          key={lineage.lineageId}
+          lineage={lineage}
+          note={props.note}
+          noteAt={at}
+          onChanged={props.onChanged}
+          onDecided={props.onDecided}
+        />
+      ))}
+    </div>
   );
 }
 

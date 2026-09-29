@@ -95,15 +95,20 @@ describe('migration 0031 in the docs', () => {
   });
 });
 
+const MIGRATION_0030 = read('migrations/0030_gate_pack_bound_to_version.sql');
+
+/** The RUNTIME.md paragraph on the 0030 trigger and the locks it takes. */
+function paragraph0030(): string {
+  const found = read('docs/local/RUNTIME.md')
+    .split('\n\n')
+    .find((each) => each.startsWith('Since migration 0030 its evidence pack is bound'));
+  if (found === undefined) throw new Error('RUNTIME.md has no 0030 paragraph');
+  return folded(found);
+}
+
 describe('RUNTIME.md on the 0030 trigger', () => {
-  const migration = read('migrations/0030_gate_pack_bound_to_version.sql');
-  const paragraph = (): string => {
-    const found = read('docs/local/RUNTIME.md')
-      .split('\n\n')
-      .find((each) => each.startsWith('Since migration 0030 its evidence pack is bound'));
-    if (found === undefined) throw new Error('RUNTIME.md has no 0030 paragraph');
-    return folded(found);
-  };
+  const migration = MIGRATION_0030;
+  const paragraph = paragraph0030;
 
   it('fires on a changed version of a gate not pending or named by a decision', () => {
     expect(folded(migration)).toContain(
@@ -125,6 +130,11 @@ describe('RUNTIME.md on the 0030 trigger', () => {
     expect(text).toContain('An expired gate is stored as `pending`');
     expect(text).toContain('an undecided gate past its expiry is not covered');
   });
+});
+
+describe('RUNTIME.md on the locks 0030 takes', () => {
+  const migration = MIGRATION_0030;
+  const paragraph = paragraph0030;
 
   it('names the lock 0030 takes before its check', () => {
     const lock = migration.indexOf('lock table public.gates in share row exclusive mode;');

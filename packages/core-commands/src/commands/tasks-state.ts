@@ -36,11 +36,12 @@ import type {
   TenantQuery,
   FieldDefinition,
   MachineCategory,
+  RefusalCode,
 } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseUpdateOperands } from './operands.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
@@ -125,6 +126,15 @@ function writerOf(field: FieldDefinition): readonly string[] {
   return field.owningOperation.split(' ');
 }
 
+/** A refusal as a handler answers it, for the checks that carry no attempted values. */
+function refuse(code: RefusalCode, names: readonly string[], fixes: readonly string[]): Refused {
+  return refused(refuseCommand(code, names, fixes));
+}
+
+/** The lifecycle does not move this way from the state the task is in. */
+const notPermitted = (from: string, fixes: readonly string[]): Refused =>
+  refuse('TRANSITION_NOT_PERMITTED', [from], fixes);
+
 /**
  * Move the lifecycle, and let the stamp follow.
  *
@@ -150,64 +160,45 @@ export async function setState(
     category === 'unstarted' &&
     (typeof reason !== 'string' || reason.trim() === '' || reason.length > REASON_LIMIT)
   ) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['reason'],
-        [`Say why the task is reopened, in 1 to ${String(REASON_LIMIT)} characters.`],
-      ),
+    return refuse(
+      'FIELD_VALUE_INVALID',
+      ['reason'],
+      [`Say why the task is reopened, in 1 to ${String(REASON_LIMIT)} characters.`],
     );
   }
 
   const current = context.spine.states.find((state) => state.id === target.data['state']);
   if (current?.machineCategory === category) {
-    return refused(
-      refuseCommand(
-        'TRANSITION_NOT_PERMITTED',
-        [current.key],
-        [
-          `This task is already ${category}. There is nothing for this command to change.`,
-          'A repeat with the same operation_id replays; a new identity is a new request.',
-        ],
-      ),
-    );
+    return notPermitted(current.key, [
+      `This task is already ${category}. There is nothing for this command to change.`,
+      'A repeat with the same operation_id replays; a new identity is a new request.',
+    ]);
   }
   // Only task.reopen clears the completion stamp
   // (SPEC 14.1, DATA.md), and it takes a reason; start on a completed task
   // would clear it with neither.
   if (category === 'started' && current?.machineCategory === 'completed') {
-    return refused(
-      refuseCommand(
-        'TRANSITION_NOT_PERMITTED',
-        [current.key],
-        ['A completed task is reopened first.', 'Call task.reopen with a reason.'],
-      ),
-    );
+    return notPermitted(current.key, [
+      'A completed task is reopened first.',
+      'Call task.reopen with a reason.',
+    ]);
   }
   if (category === 'unstarted' && current?.machineCategory !== 'completed') {
-    return refused(
-      refuseCommand(
-        'TRANSITION_NOT_PERMITTED',
-        [current?.key ?? 'no state'],
-        [
-          'Only a completed task can be reopened.',
-          'Call task.start to pick up a task that has not been completed.',
-        ],
-      ),
-    );
+    return notPermitted(current?.key ?? 'no state', [
+      'Only a completed task can be reopened.',
+      'Call task.start to pick up a task that has not been completed.',
+    ]);
   }
 
   const state = context.spine.states.find((candidate) => candidate.machineCategory === category);
   if (state === undefined) {
-    return refused(
-      refuseCommand(
-        'NOT_FOUND',
-        [category],
-        [
-          `This installation seeds no state in the ${category} category.`,
-          'Seed one, or use a state whose category this installation carries.',
-        ],
-      ),
+    return refuse(
+      'NOT_FOUND',
+      [category],
+      [
+        `This installation seeds no state in the ${category} category.`,
+        'Seed one, or use a state whose category this installation carries.',
+      ],
     );
   }
 
@@ -248,22 +239,18 @@ export async function writeOwnedFields(
   const keys = Object.keys(fields).toSorted();
 
   if (keys.length === 0) {
-    return refused(
-      refuseCommand(
-        'FIELD_UNKNOWN',
-        [],
-        [`${command} writes the fields it owns, and this payload named none of them.`],
-      ),
+    return refuse(
+      'FIELD_UNKNOWN',
+      [],
+      [`${command} writes the fields it owns, and this payload named none of them.`],
     );
   }
 
   const unknown = keys.filter((key) => !live.has(key));
   if (unknown.length > 0) {
-    return refused(
-      refuseCommand('FIELD_UNKNOWN', unknown, [
-        'This record type has no such field, or the field was deactivated.',
-      ]),
-    );
+    return refuse('FIELD_UNKNOWN', unknown, [
+      'This record type has no such field, or the field was deactivated.',
+    ]);
   }
 
   const derived = keys.filter((key) => live.get(key)?.writeMode === 'system');
@@ -306,7 +293,7 @@ export async function writeOwnedFields(
   );
   const written = rows[0];
   if (written === undefined) {
-    return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
+    return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
   }
   return applied(target.id, Number(written.revision), { changed: keys });
 }

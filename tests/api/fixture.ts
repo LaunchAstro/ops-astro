@@ -27,6 +27,7 @@ import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
+import type { ServedIdentity } from '../../apps/api/identity.ts';
 import { runtimeKeys, type RuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 
 /**
@@ -68,7 +69,7 @@ export interface ApiFixture {
    */
   readonly environment: GateEnvironment;
   /** A composition root from `composeApi`: a fresh boundary, resolver cache and keys. */
-  compose(keys?: Partial<RuntimeKeys>): Hono;
+  compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity): Hono;
   drop(): Promise<void>;
 }
 
@@ -189,7 +190,7 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
     agent,
     agentActorId,
     environment,
-    compose(keys?: Partial<RuntimeKeys>): Hono {
+    compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity): Hono {
       // The keys go in as values, as `server.ts` hands over the ones it read.
       return composeApi({
         keys: { ...runtimeKeys({ ...environment }), ...keys },
@@ -198,6 +199,7 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
         secret: SECRET,
         issuer: ISSUER,
         executeRead,
+        ...(identity === undefined ? {} : { identity }),
       }).app;
     },
     async drop(): Promise<void> {

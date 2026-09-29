@@ -93,6 +93,27 @@ module.exports = {
       },
     },
     {
+      name: 'worker-holds-no-database',
+      severity: 'error',
+      comment:
+        'The worker is a client of the API and never connects (T2b, spike RN-04): neither it ' +
+        'nor the command-line client it posts through imports a database package, the API or ' +
+        'a Postgres driver. tests/worker/worker-boundary.test.ts walks the whole graph.',
+      from: { path: '^apps/(worker/|cli/client\\.ts$)' },
+      to: {
+        path: ['^packages/core-(records|runtime|commands)/', '^apps/api/', '(^|/)(postgres|pg)/'],
+      },
+    },
+    {
+      name: 'shippable-never-reaches-tests',
+      severity: 'error',
+      comment:
+        'Test fixtures, the declining usage reporter first (specification 12.3), are for a ' +
+        'test build only. Nothing under apps/ or packages/ imports from tests/.',
+      from: { path: '^(apps|packages)/' },
+      to: { path: '^tests/' },
+    },
+    {
       name: 'no-unresolvable',
       severity: 'error',
       comment: 'An import that does not resolve is a module that was never read.',

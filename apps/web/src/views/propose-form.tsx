@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The propose form on a task page. `proposals.tsx` holds the section and says
-// why the form keeps its draft and its refusal above the read.
+// The propose form and the envelope's top-up (T2e) on a task page.
+// `proposals.tsx` holds the section and says why the form keeps its draft and
+// its refusal above the read.
 
-import type { FormEvent, ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../operations/client.ts';
+import type { TaskEnvelope } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
+import { money } from './proposal-record.tsx';
 
 interface ProposeProps {
   readonly client: OperationsClient;
@@ -284,4 +287,95 @@ function ProposeFields(props: {
 /** Dollars as the server's minor units, rounded rather than truncated. */
 function minorOf(amount: string): number {
   return Math.round(Number(amount) * 100);
+}
+
+/** The envelope and its top-up (T2e), of the maximum drawn here so a moved envelope is refused. */
+/** A first approval waiting on a second person, or a refusal as the server said it. */
+export interface TopUpNote {
+  readonly kind: 'awaiting' | 'refusal';
+  readonly said: string;
+}
+
+const AWAITING =
+  'Your approval is recorded. Above the four-eyes threshold a second person approves it too.';
+
+export function TopUp(props: {
+  readonly client: OperationsClient;
+  readonly envelope: TaskEnvelope;
+  readonly recordId: string;
+  readonly note: TopUpNote | null;
+  readonly onNote: (note: TopUpNote | null) => void;
+  readonly onChanged: () => void;
+}): ReactElement {
+  const { envelope, note } = props;
+  const command = useCommand();
+  const [amount, setAmount] = useState('');
+  const submit = (): void => {
+    if (command.locked || minorOf(amount) <= 0) return;
+    command.run(
+      () =>
+        props.client.mutate('budget.top_up', {
+          recordId: props.recordId,
+          amountMinor: minorOf(amount),
+          fromMaximumMinor: envelope.maximumMinor,
+        }),
+      (settlement) => {
+        // Held above the read: the reread below unmounts this control.
+        if (settlement.kind !== 'ok') props.onNote({ kind: 'refusal', said: settlement.because });
+        else if (settlement.value.detail?.['state'] === 'awaiting_second_approver') {
+          props.onNote({ kind: 'awaiting', said: AWAITING });
+        } else props.onNote(null);
+        if (settlement.kind === 'ok') setAmount('');
+        props.onChanged();
+      },
+    );
+  };
+  return (
+    <div className="sbact" data-top-up="section">
+      <div className="sb__sh">
+        <span className="sb__k">Budget for this task</span>
+      </div>
+      <p className="card__sub" data-top-up="envelope">
+        approved {money(envelope.maximumMinor, envelope.currency)} · held{' '}
+        {money(envelope.heldMinor, '')} · spent {money(envelope.actualMinor, '')}
+      </p>
+      {note === null ? null : (
+        <p
+          className={note.kind === 'refusal' ? 'field__error' : 'card__sub'}
+          data-top-up={note.kind}
+          {...(note.kind === 'refusal' ? { role: 'alert' } : {})}
+        >
+          {note.said}
+        </p>
+      )}
+      <div className="field">
+        <label className="tf__k" htmlFor="top-up-amount">
+          Top up by ({envelope.currency})
+        </label>
+        <input
+          className="input"
+          disabled={command.locked}
+          id="top-up-amount"
+          min="0"
+          step="0.01"
+          type="number"
+          onChange={(event) => {
+            setAmount(event.target.value);
+          }}
+          value={amount}
+        />
+      </div>
+      <div className="btnrow">
+        <button
+          className="btn"
+          data-top-up="submit"
+          disabled={command.locked}
+          onClick={submit}
+          type="button"
+        >
+          {command.busy ? 'Approving…' : 'Approve top-up'}
+        </button>
+      </div>
+    </div>
+  );
 }

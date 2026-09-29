@@ -29,12 +29,16 @@ import {
 } from './tasks-handback.ts';
 import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from './tasks-pickup.ts';
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
+import { dispatchLease } from './tasks-dispatch.ts';
+import { observeLease } from './tasks-observe.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
+import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
+  expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
   SYSTEM_OWNED_FIXES,
@@ -333,7 +337,7 @@ async function serveComment(
   tx: TenantQuery,
   { session, request, declaration }: AgentCall,
   _operands: NoOperands,
-  _delegation: Delegation,
+  delegation: Delegation,
   taskId: string | undefined,
 ) {
   // The agent's own picked-up task: `authorise` has already held the
@@ -355,10 +359,45 @@ async function serveComment(
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,
+      operationId: String(request['operationId']),
+      delegationId: delegation.id,
     },
     request['body'],
     request['audience'],
     request['commentType'],
+  );
+}
+
+/**
+ * A proposal on the agent's own task (T2b). `authorise` has held the purpose
+ * scope to this record and `task:write` to the delegating person's live grant.
+ * The proposal is the agent's, by its own actor; the runtime's check under its
+ * locks asks the delegating person's grants, the ceiling the delegation
+ * narrows, never a grant of the agent's, which holds none. The task is only
+ * read here: the runtime locks it in its own order, after cap and envelope.
+ */
+async function servePropose(
+  tx: TenantQuery,
+  { session, request, declaration }: AgentCall,
+  _operands: NoOperands,
+  delegation: Delegation,
+  taskId: string | undefined,
+) {
+  if (taskId === undefined) return NOT_FOUND();
+  const spine = await readTaskSpine(tx);
+  const target = await lockTask(tx, spine.taskTypeId, taskId, { forUpdate: false });
+  if (target === undefined) return NOT_FOUND();
+  const fields = { ...request, expectedRevision: expectedRevisionOf(request) };
+  return await proposeFor(
+    tx,
+    {
+      target,
+      collection: declaration.collection,
+      taskTypeId: spine.taskTypeId,
+      actorId: session.actorId,
+      subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
+    },
+    fields as unknown as ProposeFields,
   );
 }
 
@@ -453,6 +492,51 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   [
+    'task.dispatch',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      // The delegation `authorise` resolved; the runtime locks it and rechecks it.
+      serve: async (tx, { session, request, declaration }, _operands, delegation) =>
+        await dispatchLease(
+          tx,
+          { leaseId: request['leaseId'], fence: request['fence'] },
+          {
+            actorId: session.actorId,
+            delegationId: delegation.id,
+            collection: declaration.collection,
+          },
+        ),
+    }),
+  ],
+  [
+    'task.observe',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request, declaration }, _operands, delegation) =>
+        await observeLease(
+          tx,
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            attemptId: request['attemptId'],
+            usage: request['usage'],
+            outcome: request['outcome'],
+          },
+          {
+            actorId: session.actorId,
+            delegationId: delegation.id,
+            collection: declaration.collection,
+          },
+        ),
+    }),
+  ],
+  [
     'task.read',
     row({
       authority: 'record',
@@ -501,6 +585,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // record (`prepare.ts`, `lockTask`), so this one does too.
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveComment,
+    }),
+  ],
+  [
+    'task.propose',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: servePropose,
     }),
   ],
   [

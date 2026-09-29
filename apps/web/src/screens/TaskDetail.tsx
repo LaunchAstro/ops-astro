@@ -90,7 +90,7 @@ import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
-import type { ProposeDraft } from '../views/propose-form.tsx';
+import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
@@ -136,10 +136,13 @@ interface SaveAttempt {
 
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
+  const [draft, setDraft] = useState<Draft | null>(null);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
+    live: (signal) => client.openLive(props.taskKey, signal),
+    paused: draft !== null,
   });
 
   // **The draft lives above the read.** `RecordState` unmounts `Loaded` while a
@@ -149,7 +152,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // authority would be stale authorised data left on the screen, which is the
   // thing that must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
-  const [draft, setDraft] = useState<Draft | null>(null);
   if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
     setDraft(null);
   }
@@ -170,39 +172,11 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [moved, setMoved] = useHeld<string>(identity, denied);
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
+  const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
 
   return (
     <div className="stack">
-      {/*
-        Refresh sits outside the read's own region on purpose. Inside it, the
-        loading rendering replaces the controls, so a person waiting on a slow
-        read has nothing to press and the screen can never have two reads in
-        flight. Out here it stays pressable while a read is running, which is
-        what makes the ordering rule observable in the product rather than only
-        in a unit test: press it twice and the answers may come back in either
-        order, and the older one must not win.
-
-        It is disabled while an edit is unsaved. A refresh is the moment a draft
-        and the server's values would have to be reconciled, and this screen
-        does not reconcile them — the person does, with the Save or Discard
-        choice the form is showing them.
-      */}
-      <div className="btnrow">
-        <button
-          className="btn"
-          type="button"
-          data-refresh="task"
-          disabled={held !== null}
-          onClick={reload}
-        >
-          Refresh
-        </button>
-        {held === null ? null : (
-          <span className="sbact__meta" data-draft-resolve="why">
-            Save or discard your unsaved changes before refreshing.
-          </span>
-        )}
-      </div>
+      <RefreshRow held={held !== null} onRefresh={reload} />
       <RecordState state={state} subject="task" onRetry={reload}>
         {(value) =>
           'sharedTask' in value ? (
@@ -225,6 +199,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onCommentDraft={setCommentDraft}
               proposeDraft={proposeDraft}
               onProposeDraft={setProposeDraft}
+              topUpNote={topUpNote}
+              onTopUpNote={setTopUpNote}
               onAttempt={(attempt) => {
                 setDraft((current) =>
                   current !== null && current.identity === identity
@@ -288,6 +264,47 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
  * rules the draft follows: it is an answer about one record read under one
  * authority, and it must not outlive either.
  */
+/** The task page's Refresh, and why it waits while an edit is unsaved. */
+function RefreshRow(props: {
+  readonly held: boolean;
+  readonly onRefresh: () => void;
+}): ReactElement {
+  return (
+    <>
+      {/*
+      Refresh sits outside the read's own region on purpose. Inside it, the
+      loading rendering replaces the controls, so a person waiting on a slow
+      read has nothing to press and the screen can never have two reads in
+      flight. Out here it stays pressable while a read is running, which is
+      what makes the ordering rule observable in the product rather than only
+      in a unit test: press it twice and the answers may come back in either
+      order, and the older one must not win.
+  
+      It is disabled while an edit is unsaved. A refresh is the moment a draft
+      and the server's values would have to be reconciled, and this screen
+      does not reconcile them — the person does, with the Save or Discard
+      choice the form is showing them.
+    */}
+      <div className="btnrow">
+        <button
+          className="btn"
+          type="button"
+          data-refresh="task"
+          disabled={props.held}
+          onClick={props.onRefresh}
+        >
+          Refresh
+        </button>
+        {props.held ? (
+          <span className="sbact__meta" data-draft-resolve="why">
+            Save or discard your unsaved changes before refreshing.
+          </span>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 function useHeld<T>(
   identity: string,
   denied: boolean,
@@ -470,6 +487,9 @@ interface LoadedProps {
   readonly onCommentDraft: (next: CommentDraft | null) => void;
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
+  /** The last top-up's answer, held so a reread keeps it (T2e). */
+  readonly topUpNote: TopUpNote | null;
+  readonly onTopUpNote: (note: TopUpNote | null) => void;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -588,6 +608,9 @@ function Loaded(props: LoadedProps): ReactElement {
         proposeDraft={props.proposeDraft}
         onProposeDraft={props.onProposeDraft}
         proposals={task.proposals}
+        envelope={task.envelope ?? null}
+        topUpNote={props.topUpNote}
+        onTopUpNote={props.onTopUpNote}
         recordId={task.id}
         revision={task.revision}
       />

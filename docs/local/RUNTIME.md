@@ -68,7 +68,7 @@ gate, whatever the gate's state; the second rule covers a decided gate whose
 state was reset to `pending`. So a decided or superseded gate keeps its version.
 An expired gate is stored as `pending`: no runtime path writes the state
 `expired`, which the read derives from `expires_at`
-(`packages/core-commands/src/reads/proposals.ts:248-249`). So an undecided gate
+(`packages/core-commands/src/reads/proposals.ts:103-104`). So an undecided gate
 past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the
@@ -1292,7 +1292,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:772-783`). With neither setting present, the
+  rewrites it (`local-seed.mjs:775-786`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1344,8 +1344,9 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`
-  is still `.gitkeep`.
+- **No sweeper and no write-off.** The worker (`apps/worker/`, T2b), effect
+  activation (T2c1, T2c2) and the top-up (T2e, `topUp` in `budget.ts`) are
+  built.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

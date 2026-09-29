@@ -50,43 +50,52 @@ export function Reservations(props: {
         <span className="sb__k">Money set aside</span>
       </div>
       {props.reservations.map((reservation) => (
-        <div
-          className="sbact__row"
-          data-reservation-id={reservation.id}
-          data-reservation-state={reservation.state}
-          key={reservation.id}
-        >
-          <span className="sb__state">{reservation.state}</span>
-          <span className="sbact__meta">
-            {/* Held and actual are two different numbers and both are drawn: a
-                reservation that held more than the work spent is the ordinary
-                case, and one number cannot say which of the two it is. */}
-            held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, '')} ·
-            spent{' '}
-            {reservation.actualMinor === null ? 'not reported' : money(reservation.actualMinor, '')}
-            {reservation.classifiedCause === null ? null : ` · ${reservation.classifiedCause}`}
-          </span>
-          {reservation.lease === null ? (
-            <span className="sbact__meta" data-lease="none">
-              no lease
-            </span>
-          ) : (
-            <span className="sbact__meta" data-lease-state={reservation.lease.state}>
-              lease {reservation.lease.state}, fence {reservation.lease.fence}
-              {reservation.lease.expiresAt === null ? '' : `, until ${reservation.lease.expiresAt}`}
-            </span>
-          )}
-          {reservation.attempt === null ? (
-            <span className="sbact__meta" data-attempt="none">
-              no attempt
-            </span>
-          ) : (
-            <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
-              attempt {reservation.attempt.state}
-            </span>
-          )}
-        </div>
+        <ReservationRow key={reservation.id} reservation={reservation} />
       ))}
+    </div>
+  );
+}
+
+/** One reservation: what it held, what it spent, and its lease and attempt. */
+function ReservationRow(props: { readonly reservation: ProposalReservation }): ReactElement {
+  const { reservation } = props;
+  return (
+    <div
+      className="sbact__row"
+      data-reservation-id={reservation.id}
+      data-reservation-state={reservation.state}
+    >
+      <span className="sb__state">{reservation.state}</span>
+      <span className="sbact__meta">
+        {/* Held and actual are two different numbers and both are drawn: a
+            reservation that held more than the work spent is the ordinary
+            case, and one number cannot say which of the two it is. */}
+        held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, '')} · spent{' '}
+        {reservation.actualMinor === null ? 'not reported' : money(reservation.actualMinor, '')}
+        {reservation.releasedMinor === undefined || reservation.releasedMinor === null
+          ? null
+          : ` · released ${money(reservation.releasedMinor, '')}`}
+        {reservation.classifiedCause === null ? null : ` · ${reservation.classifiedCause}`}
+      </span>
+      {reservation.lease === null ? (
+        <span className="sbact__meta" data-lease="none">
+          no lease
+        </span>
+      ) : (
+        <span className="sbact__meta" data-lease-state={reservation.lease.state}>
+          lease {reservation.lease.state}, fence {reservation.lease.fence}
+          {reservation.lease.expiresAt === null ? '' : `, until ${reservation.lease.expiresAt}`}
+        </span>
+      )}
+      {reservation.attempt === null ? (
+        <span className="sbact__meta" data-attempt="none">
+          no attempt
+        </span>
+      ) : (
+        <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
+          attempt {reservation.attempt.state}
+        </span>
+      )}
     </div>
   );
 }

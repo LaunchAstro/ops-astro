@@ -95,6 +95,9 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // A top-up is a money decision on `billing` (T2e, the permission
+    // catalogue's `billing:decide`): the owner and administrators hold it.
+    ['billing', 'decide'],
   ],
   member: [
     ['task', 'read'],
@@ -484,9 +487,9 @@ function ensureGateKey() {
   return { id, secret, fresh: true };
 }
 
-/** One agent actor, its login and the mapping, all idempotent by lookup. */
-async function seedAgent(tx, agent) {
-  const actorId = await ensure(
+/** The agent's actor, found through its login's subject or inserted. */
+function ensureAgentActor(tx, agent) {
+  return ensure(
     tx,
     async () => {
       const rows = await tx.query(
@@ -508,6 +511,11 @@ async function seedAgent(tx, agent) {
       return id;
     },
   );
+}
+
+/** One agent actor, its login and the mapping, all idempotent by lookup. */
+async function seedAgent(tx, agent) {
+  const actorId = await ensureAgentActor(tx, agent);
   const loginId = await ensure(
     tx,
     async () => {

@@ -87,6 +87,18 @@ export interface TaskDetail extends TaskSummary {
    * not read the task is told nothing about the cap.
    */
   readonly capCurrency: string | null;
+  /** The task's open envelope, which a top-up raises (T2e); null when none is open. */
+  readonly envelope: TaskEnvelope | null;
+}
+
+/** An open envelope as the task read carries it (T2e). */
+export interface TaskEnvelope {
+  readonly id: string;
+  readonly capId: string;
+  readonly currency: string;
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  readonly actualMinor: number;
 }
 
 /**
@@ -175,6 +187,8 @@ export interface ReservationView {
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
+  /** What settling at the observed cost gave back to the cap (T2d); `null` until settled. */
+  readonly releasedMinor: number | null;
   readonly classifiedCause: string | null;
   readonly leaseId: string | null;
   readonly lease: LeaseView | null;

@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
+import { followLive } from './live.ts';
 import type { CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
@@ -21,6 +22,12 @@ export interface UseReadOptions<T> {
   readonly isEmpty?: (value: T) => boolean;
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
+  /**
+   * The live channel for what this read shows (T2f). While `paused` (an unsaved
+   * edit) a change is held until the pause ends; `closed` is read at once.
+   */
+  readonly live?: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>;
+  readonly paused?: boolean;
 }
 
 export interface UseReadResult<T> {
@@ -70,6 +77,29 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.
   }, [grantKey, ...options.deps]);
+
+  const liveRef = useRef(options.live);
+  liveRef.current = options.live;
+  const pausedRef = useRef(false);
+  pausedRef.current = options.paused === true;
+  const heldRef = useRef(false);
+  const hasLive = options.live !== undefined;
+
+  useEffect(() => {
+    const open = liveRef.current;
+    if (open === undefined) return;
+    return followLive(open, (change) => {
+      if (pausedRef.current && change === 'changed') heldRef.current = true;
+      else reload();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the caller's list, plus the grant.
+  }, [reload, hasLive, ...options.deps]);
+
+  useEffect(() => {
+    if (options.paused === true || !heldRef.current) return;
+    heldRef.current = false;
+    reload();
+  }, [options.paused, reload]);
 
   return { state, reload };
 }

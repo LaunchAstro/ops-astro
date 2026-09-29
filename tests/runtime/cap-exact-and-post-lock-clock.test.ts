@@ -82,6 +82,17 @@ async function proposeWith(
   return appliedDetail(await asPerson(s, body), 'task.propose');
 }
 
+/** The total committed under the schedule's cap, as exact text. */
+async function committedUnder(s: Schedules): Promise<string> {
+  const found = await rows<{ readonly n: string }>(
+    s,
+    `select coalesce(sum(held_minor + actual_minor), 0)::text as n
+       from public.task_envelopes where business_id = $1 and cap_id = $2`,
+    [s.business, s.capId],
+  );
+  return found[0]?.n ?? '';
+}
+
 describe.skipIf(serverUrl === undefined)('the cap currency binds the first envelope', () => {
   let s: Schedules;
 
@@ -134,15 +145,7 @@ describe.skipIf(serverUrl === undefined)('a cap above 2^53 is compared exactly',
     await s?.db.drop();
   });
 
-  async function committed(): Promise<string> {
-    const found = await rows<{ readonly n: string }>(
-      s,
-      `select coalesce(sum(held_minor + actual_minor), 0)::text as n
-         from public.task_envelopes where business_id = $1 and cap_id = $2`,
-      [s.business, s.capId],
-    );
-    return found[0]?.n ?? '';
-  }
+  const committed = async (): Promise<string> => await committedUnder(s);
 
   it('fills the cap exactly and refuses one more unit as exhausted', async () => {
     const first = await proposeWith(s, 'the largest safe hold', {

@@ -98,6 +98,14 @@ vi.mock('../../packages/core-commands/src/commands/tasks-lease.ts', async (origi
   ...(await original<object>()),
   heartbeatOwnLease: recorder('heartbeatOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-dispatch.ts', async (original) => ({
+  ...(await original<object>()),
+  dispatchOwnLease: recorder('dispatchOwnLease'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-observe.ts', async (original) => ({
+  ...(await original<object>()),
+  observeOwnLease: recorder('observeOwnLease'),
+}));
 vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
@@ -108,14 +116,21 @@ vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (or
   cancelOnTask: recorder('cancelOnTask'),
   restartOnTask: recorder('restartOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-top-up.ts', async (original) => ({
+  ...(await original<object>()),
+  topUpOnTask: recorder('topUpOnTask'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
+  'task.dispatch': 'leaseId',
+  'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'budget.top_up': ['recordId'],
   'delegation.revoke': [],
   'grant.revoke': [],
   'settings.set_client_sign_off': [],
@@ -125,6 +140,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
+  'task.dispatch': ['leaseId'],
+  'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
@@ -132,6 +149,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'budget.top_up',
   'delegation.revoke',
   'grant.revoke',
   'person.list',
@@ -144,12 +162,16 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.cancel',
   'task.create',
   'task.decide',
+  'task.dispatch',
+  'task.execution',
   'task.handback',
   'task.heartbeat',
+  'task.observe',
   'task.pickup',
   'task.purge',
   'task.queue',
   'task.read',
+  'task.receipt',
   'task.restart',
   'task.restore',
 ];
@@ -158,9 +180,12 @@ const PINNED_AGENT_SURFACE = [
   'session.capabilities',
   'task.comment',
   'task.decide',
+  'task.dispatch',
   'task.handback',
   'task.heartbeat',
+  'task.observe',
   'task.pickup',
+  'task.propose',
   'task.queue',
   'task.read',
 ];
@@ -230,6 +255,15 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
+  { command: 'task.dispatch', operationId: 'op', leaseId: 'l', fence: 4 },
+  { command: 'task.observe', operationId: 'op', leaseId: 'l', fence: 4, attemptId: 'at' },
+  {
+    command: 'budget.top_up',
+    operationId: 'op',
+    recordId: 'r',
+    amountMinor: 7,
+    fromMaximumMinor: 8,
+  },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -238,7 +272,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
@@ -272,6 +306,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.cancel': ['cancelOnTask', 'request'],
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
+  'task.dispatch': ['dispatchOwnLease', 'request'],
+  'task.observe': ['observeOwnLease', 'request'],
+  'budget.top_up': ['topUpOnTask', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -311,19 +348,21 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty from an expected revision', () => {
+  it('exempts the same twenty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eight, two of them before a pickup', () => {
+  it('lets an agent reach the same eleven, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
     expect([...BEFORE_PICKUP].toSorted()).toStrictEqual(PINNED_BEFORE_PICKUP);
   });
+});
 
+describe('the per-command requests and handlers at 06ab232', () => {
   it('pins a request for every write in the surface', () => {
     const writes = COMMAND_SURFACE.filter((command) => command.kind === 'write').map(
       (command) => command.name,

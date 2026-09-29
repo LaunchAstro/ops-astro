@@ -161,16 +161,7 @@ export class AuthorisedRead<T> {
    * drop rather than infer it from a screen that did not change.
    */
   accept(generation: number, result: CallResult<T>, grantKey: string): boolean {
-    // Retired: its holder has moved on to another grant or another record, and
-    // a result arriving now belongs to a screen that no longer exists.
-    if (this.#disposed) return false;
-    // Stale: something newer has already been asked for, or a denial has
-    // raised the floor above this response's generation.
-    if (generation <= this.#floor) return false;
-    if (generation < this.#generation) return false;
-    // A different grant entirely. The answer is about somebody else's
-    // authority and has no home in this projection.
-    if (grantKey !== this.#options.grantKey) return false;
+    if (!this.#admits(generation, grantKey)) return false;
 
     if (isRefusal(result)) {
       // Denial invalidates. The value goes, and the floor rises to this
@@ -211,6 +202,20 @@ export class AuthorisedRead<T> {
       grantKey: this.#options.grantKey,
     });
     return true;
+  }
+
+  /** Whether a result for this generation and grant may enter at all. */
+  #admits(generation: number, grantKey: string): boolean {
+    // Retired: its holder has moved on to another grant or another record, and
+    // a result arriving now belongs to a screen that no longer exists.
+    if (this.#disposed) return false;
+    // Stale: something newer has already been asked for, or a denial has
+    // raised the floor above this response's generation.
+    if (generation <= this.#floor) return false;
+    if (generation < this.#generation) return false;
+    // A different grant entirely. The answer is about somebody else's
+    // authority and has no home in this projection.
+    return grantKey === this.#options.grantKey;
   }
 
   #publish(state: ReadState<T>): void {

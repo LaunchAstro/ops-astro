@@ -13,6 +13,14 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
+import {
+  CLIENT_NOTE,
+  DESCRIPTION,
+  seedRecords,
+  SIBLING_TITLE,
+  TEAM_NOTE,
+  TITLE,
+} from './external-party-records.ts';
 import { createPositiveBody } from './role-case-bodies.ts';
 import {
   bearer,
@@ -25,12 +33,6 @@ import {
   type Caller,
   type World,
 } from './world.ts';
-
-const TITLE = 'Quarterly retainer: draft for review';
-const DESCRIPTION = 'internal: client is behind on two invoices';
-const TEAM_NOTE = 'team only: do not tell the client about the margin';
-const CLIENT_NOTE = 'Hello, the draft is ready for your review.';
-const SIBLING_TITLE = 'Sibling task the client must never learn about';
 
 describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () => {
   let world: World;
@@ -59,32 +61,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     world = await createWorld('r4_external');
     ext = await enrolExternal(world);
 
-    const made = await as(world.ada, 'task.create', {
-      operationId: randomUUID(),
-      fields: { title: TITLE, description: DESCRIPTION },
-    });
-    expect(made.code).toBe('ok');
-    shared = String(made.body['recordId']);
-    for (const comment of [
-      { body: TEAM_NOTE, audience: 'internal' },
-      { body: CLIENT_NOTE, audience: 'client', commentType: 'client' },
-    ]) {
-      // eslint-disable-next-line no-await-in-loop -- the revision moves with each one
-      const expectedRevision = await revisionOf(shared);
-      // eslint-disable-next-line no-await-in-loop
-      const written = await as(world.ada, 'task.comment', {
-        operationId: randomUUID(),
-        recordId: shared,
-        expectedRevision,
-        ...comment,
-      });
-      expect(written.code).toBe('ok');
-    }
-    const other = await as(world.ada, 'task.create', {
-      operationId: randomUUID(),
-      fields: { title: SIBLING_TITLE },
-    });
-    sibling = String(other.body['recordId']);
+    ({ shared, sibling } = await seedRecords(world, as, revisionOf));
   });
 
   afterAll(async () => {

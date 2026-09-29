@@ -66,10 +66,6 @@ const THROUGH_0025 = (version: string): boolean => version.slice(0, 4) <= '0025'
 /** The three this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0026', '0027', '0028'];
 
-const FIRST_HEAD_NO_ACTUAL = {
-  code: '23514',
-  constraint_name: 'reservations_first_head_no_actual',
-};
 const ACTUAL_POSITIVE = { code: '23514', constraint_name: 'reservations_actual_positive' };
 const KEY_GLOBAL = { code: '23505', constraint_name: 'businesses_key_global_idx' };
 const NO_DELETE = { code: '42501' };
@@ -259,13 +255,20 @@ describe.skipIf(serverUrl === undefined).each([
     it.each([
       ['a zero actual', 0, ACTUAL_POSITIVE],
       ['a negative actual', -5, ACTUAL_POSITIVE],
-      ['a positive actual', 500, FIRST_HEAD_NO_ACTUAL],
     ] as const)('refuses settling a held reservation on %s', async (_label, actual, refusal) => {
       const { reservationId } = await heldReservation(built.db.app, fixture);
       const before = await reservationState(built.db, reservationId);
       expect(before).toBe('held 5000 null');
       await expect(settle(actual)(reservationId)).rejects.toMatchObject(refusal);
       expect(await reservationState(built.db, reservationId)).toBe(before);
+    });
+
+    // T2d: 0034 lifts the first rule with the owner's acceptance (27 September
+    // 2026), so at the head a positive actual within the hold commits.
+    it('commits a positive actual once 0034 has lifted the first rule', async () => {
+      const { reservationId } = await heldReservation(built.db.app, fixture);
+      await settle(500)(reservationId);
+      expect(await reservationState(built.db, reservationId)).toBe('actual 5000 500');
     });
 
     it('still lets a held reservation be quarantined (control)', async () => {
@@ -286,7 +289,7 @@ describe.skipIf(serverUrl === undefined).each([
       try {
         await applyMigrations(db.admin, onDisk);
         await db.admin.execute(
-          'alter table public.reservations drop constraint reservations_first_head_no_actual',
+          'alter table public.reservations drop constraint if exists reservations_first_head_no_actual',
         );
         const own = await buildFixture(db.app, 'fr1m-actual');
         for (const actual of [0, -5]) {
@@ -396,35 +399,38 @@ describe.skipIf(serverUrl === undefined).each([
   });
 });
 
+/** Each row a 0025 database may hold that a later rule forbids, and where the upgrade stops. */
+const REFUSED_UPGRADES = [
+  [
+    'an actual reservation',
+    async (db: EmptyDatabase) => {
+      const own = await buildFixture(db.app, 'refused-actual');
+      const { reservationId } = await heldReservation(db.app, own);
+      // At 0025 nothing in storage stops it; only the handback did.
+      await asApp(
+        db.app,
+        own,
+        `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
+          where business_id = $1 and id = $2`,
+        [own.businessId, reservationId],
+      );
+    },
+    /reservations_first_head_no_actual/u,
+    '0025',
+  ],
+  [
+    'two businesses under one key',
+    async (db: EmptyDatabase) => {
+      await buildFixture(db.app, 'refused-shared');
+      await insertBusiness(db.app, 'refused-shared');
+    },
+    /businesses_key_global_idx/u,
+    '0025',
+  ],
+] as const;
+
 describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new rule forbids', () => {
-  it.each([
-    [
-      'an actual reservation',
-      async (db: EmptyDatabase) => {
-        const own = await buildFixture(db.app, 'refused-actual');
-        const { reservationId } = await heldReservation(db.app, own);
-        // At 0025 nothing in storage stops it; only the handback did.
-        await asApp(
-          db.app,
-          own,
-          `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
-            where business_id = $1 and id = $2`,
-          [own.businessId, reservationId],
-        );
-      },
-      /reservations_first_head_no_actual/u,
-      '0025',
-    ],
-    [
-      'two businesses under one key',
-      async (db: EmptyDatabase) => {
-        await buildFixture(db.app, 'refused-shared');
-        await insertBusiness(db.app, 'refused-shared');
-      },
-      /businesses_key_global_idx/u,
-      '0025',
-    ],
-  ] as const)(
+  it.each(REFUSED_UPGRADES)(
     'refuses the upgrade for %s, stopping before the rule with the rows untouched',
     async (_label, write, message, stopsAt) => {
       const db = await createEmptyDatabase({ part: 'fr1mrefused' });

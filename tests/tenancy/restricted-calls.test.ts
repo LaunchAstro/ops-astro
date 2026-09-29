@@ -346,7 +346,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
     });
+  });
 
+  describe('the security definer function', () => {
     it('fires for the one role that may update or delete a report, and refuses it', async () => {
       // The permitted caller path. The application group was granted select
       // and insert only, so the owner is the only role whose update or delete

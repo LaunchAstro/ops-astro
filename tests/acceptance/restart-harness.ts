@@ -346,7 +346,8 @@ async function lineageOf(world: World, versionId: string): Promise<string> {
   return String(rows[0]?.id);
 }
 
-export async function walkTheOtherLineages(world: World): Promise<Lineages> {
+/** A proposal on a new task that nobody decides, answering its gate. */
+async function proposeUndecided(world: World): Promise<string> {
   const created = await asAda(world, world.api, '/task/create', {
     operationId: randomUUID(),
     fields: { title: `a proposal nobody decides ${randomUUID()}` },
@@ -363,7 +364,11 @@ export async function walkTheOtherLineages(world: World): Promise<Lineages> {
     step: { kind: 'compose', payload: {} },
   });
   expect(pending.code, 'propose, left undecided').toBe('ok');
-  const pendingGateId = String((pending.body['detail'] as Record<string, string>)['gateId']);
+  return String((pending.body['detail'] as Record<string, string>)['gateId']);
+}
+
+export async function walkTheOtherLineages(world: World): Promise<Lineages> {
+  const pendingGateId = await proposeUndecided(world);
 
   const toCancel = await walkTheJourney(world, { pickup: false });
   const cancelledLineageId = await lineageOf(world, toCancel.versionId);
@@ -399,6 +404,13 @@ export async function walkTheOtherLineages(world: World): Promise<Lineages> {
   };
 }
 
+/** The `id` column of a query over alpha's rows. */
+async function idsIn(world: World, sql: string): Promise<readonly string[]> {
+  return (await world.db.admin.execute<{ readonly id: string }>(sql, [world.alpha])).map(
+    (row) => row.id,
+  );
+}
+
 /**
  * Every identity the journey minted, read straight out of the database.
  *
@@ -407,10 +419,7 @@ export async function walkTheOtherLineages(world: World): Promise<Lineages> {
  * agree with itself.
  */
 export async function identities(world: World): Promise<Record<string, readonly string[]>> {
-  const rows = async (sql: string): Promise<readonly string[]> =>
-    (await world.db.admin.execute<{ readonly id: string }>(sql, [world.alpha])).map(
-      (row) => row.id,
-    );
+  const rows = async (sql: string): Promise<readonly string[]> => await idsIn(world, sql);
   // Identity and state together, as `id:state`: an identifier kept while its
   // state moved (a pending gate approved, a cancelled lineage made live, a
   // settled delegation made live again) is the silent resumption W06 names,

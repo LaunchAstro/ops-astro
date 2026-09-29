@@ -77,7 +77,9 @@ describe('the session store over storage that throws or holds junk', () => {
     again.clear();
     expect([...storage.held.keys()]).toEqual([]);
   });
+});
 
+describe('a JSON slot over storage that throws or holds junk', () => {
   it('a slot reads null for missing, malformed and rejected values, and swallows a throw', () => {
     const storage = map({ bad: '[', array: '[1]' });
     expect(jsonSlot(storage, 'missing', isRecord).read()).toBeNull();

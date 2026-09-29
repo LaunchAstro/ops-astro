@@ -577,10 +577,12 @@ const ROWS = [
     source: 'L4 RUNTIME.md R2',
     runtime: true,
   },
-  // This head dispatches nothing, so it has no observed expenditure to settle
-  // (R6). The body is well formed and the caller is allowed; the field itself is
-  // one this head cannot honestly accept. Retrying with a null actual is the fix,
-  // and no state has to move first, so it is a 422 rather than a 409.
+  // A hand-back never settles spend (R6). Since T2d the observed cost settles
+  // through `task.observe`, priced from the synthetic book, and hand-back keeps
+  // refusing a reported actual: the body is well formed and the caller is
+  // allowed, but the field is one hand-back cannot honestly accept. Retrying
+  // with a null actual is the fix, and no state has to move first, so it is a
+  // 422 rather than a 409.
   {
     code: 'ACTUAL_EXPENDITURE_UNSUPPORTED',
     status: 422,
@@ -596,6 +598,46 @@ const ROWS = [
     status: 409,
     meaning: 'The successor the handback proposes falls outside the purpose it was held under',
     source: 'L4 RUNTIME.md',
+    runtime: true,
+  },
+  // T2c1, the dispatch transaction's recheck of the effect-time facts
+  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
+  // and state moved under it, so nothing was dispatched.
+  {
+    code: 'AUTHORITY_LOST',
+    status: 409,
+    meaning: 'The authority behind the work was lost before its effect was dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'DECISION_STALE',
+    status: 409,
+    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'EFFECT_NOT_RECONCILABLE',
+    status: 409,
+    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  // T2c2: an effect is applied only after its dispatch mark, and observed only
+  // once the operation register holds it (`core-runtime/src/observe.ts`).
+  {
+    code: 'EFFECT_NOT_DISPATCHED',
+    status: 409,
+    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
+    source: 'T2 T2c2',
+  },
+  {
+    code: 'EFFECT_NOT_OBSERVED',
+    status: 409,
+    meaning:
+      'The operation register holds no applied effect for this attempt, so nothing is observed',
+    source: 'T2 T2c2',
     runtime: true,
   },
 ] as const;
@@ -701,14 +743,14 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  *
  * Why each is unreachable is written beside its row below.
  *
- * Three budget codes are not on the list. Only one of them is produced:
- * `BUDGET_EXHAUSTED` is what the enforcing path returns when an attempt would
- * cross a ceiling a person approved (`core-runtime/src/budget.ts`).
- * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` belong to the gated money
- * decisions, a top-up and a write-off, which are deferred, so nothing in
- * `apps/` or `packages/` returns either code. They are registered,
- * unproduced and not on this list, so this list is not every code nothing
- * produces.
+ * Three budget codes are not on the list. `BUDGET_EXHAUSTED` is what the
+ * enforcing path returns when an attempt would cross a ceiling a person
+ * approved (`core-runtime/src/budget.ts`). `GATE_NOT_APPROVED` and
+ * `FOUR_EYES_REQUIRED` belong to the gated money decisions, a top-up and a
+ * write-off. The top-up (T2e, `core-runtime/src/budget.ts`) produces
+ * `FOUR_EYES_REQUIRED`; the write-off is deferred, so nothing in `apps/` or
+ * `packages/` returns `GATE_NOT_APPROVED`. It is registered, unproduced and
+ * not on this list, so this list is not every code nothing produces.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the

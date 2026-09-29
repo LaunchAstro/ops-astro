@@ -41,6 +41,7 @@ import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -160,7 +161,7 @@ export interface PickedUpByPerson extends PickedUpCommon {
 }
 
 export const DECLARED_INCOMPLETENESS: readonly string[] = [
-  'No step is dispatched: this head exports no effect dispatch and no provider adapter.',
+  'Dispatch marks the step; this head applies no effect through it and has no provider adapter.',
   'The attempt is synthetic and names no provider or model.',
   'Handback records a local outcome. It settles no provider usage.',
 ];
@@ -270,7 +271,7 @@ export async function pickup(
   if (!authorised.ok) return authorised;
   const delegation = authorised.value;
 
-  const lease = await writeLease(tx, request, found, claimed.value, delegation, expiresAt);
+  const lease = await writeLease(tx, request, found, claimed.value, delegation, expiresAt, locks);
   return await answer(tx, request, found, claimed.value, lease, delegation);
 }
 
@@ -567,7 +568,10 @@ interface NewLease {
   readonly expiresAt: Date;
 }
 
-/** Write the lease at the task's next fence, and bind the hold, attempt and run to it once. */
+/**
+ * Write the lease at the task's next fence, bind the hold, attempt and run to
+ * it once, and record the claim as the run's progress (T2a).
+ */
 async function writeLease(
   tx: TenantQuery,
   request: PickupRequest,
@@ -575,6 +579,7 @@ async function writeLease(
   claimed: { readonly reservationId: string; readonly attemptId: string },
   delegation: MintedDelegation | undefined,
   expiresAt: Date,
+  locks: LockSet,
 ): Promise<NewLease> {
   const fence = await nextFence(tx, found.task_id);
   const holderActorId = request.claimant === 'person' ? request.actorId : request.agentActorId;
@@ -612,7 +617,31 @@ async function writeLease(
     `update public.planned_runs set state = 'claimed' where business_id = $1 and id = $2`,
     [tx.businessId, found.run_id],
   );
-  return { leaseId, fence, holderActorId, expiresAt };
+  const lease = { leaseId, fence, holderActorId, expiresAt };
+  await appendRunEvent(tx, claimedEvent(request, found, claimed, lease), locks);
+  return lease;
+}
+
+/** The claim as the run's progress: handles only, never the delegation's credential. */
+function claimedEvent(
+  request: PickupRequest,
+  found: Found,
+  claimed: { readonly reservationId: string; readonly attemptId: string },
+  lease: NewLease,
+): RunEvent {
+  return {
+    kind: 'claimed',
+    taskId: found.task_id,
+    runId: found.run_id,
+    leaseId: lease.leaseId,
+    attemptId: claimed.attemptId,
+    actorId: lease.holderActorId,
+    detail: {
+      claimant: request.claimant,
+      fence: lease.fence,
+      reservationId: claimed.reservationId,
+    },
+  };
 }
 
 /** The claim's handles and brief, as the holder is handed them. */

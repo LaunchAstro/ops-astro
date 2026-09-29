@@ -90,7 +90,7 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${T}/trash.ts`, 'restoreBatch', /order by id\s+for share/u],
   [`${E}/business-settings.ts`, 'writeBusinessSetting', /isSafeInteger\(write\.expectedRevision/u],
   [`${E}/business-settings.ts`, 'writeBusinessSetting', "['expectedRevision']"],
-  [`${C}/tasks-propose.ts`, 'proposeOnTask', 'deleted_at !== null) return refused(refuseNotFound'],
+  [`${C}/tasks-propose.ts`, 'proposeFor', 'deleted_at !== null) return refused(refuseNotFound'],
   [`${R}/propose.ts`, 'refuseBeyondBudget', /currency !== cap\.currency\)\s+\{\s+return refuse\(/u],
   [`${C}/prepare.ts`, '', "'task.propose': { optional: ['lineageId'] },"],
   [`${C}/prepare.ts`, 'refuseMistypedIdentifier', "refuseCommand('FIELD_VALUE_INVALID'"],
@@ -240,9 +240,11 @@ describe('API.md operands and codes derived from the code', () => {
     const paragraph = paragraphWith('`FREE_OPERANDS`');
     for (const operand of free) expect(paragraph, operand).toContain(`\`${operand}\``);
   });
+});
 
+describe('API.md operands and codes derived from the code', () => {
   it('names every code proposeOnTask answers through a command, and not the unreached one', () => {
-    const codes = new Set([...codesIn(fn(`${C}/tasks-propose.ts`, 'proposeOnTask')), 'NOT_FOUND']);
+    const codes = new Set([...codesIn(fn(`${C}/tasks-propose.ts`, 'proposeFor')), 'NOT_FOUND']);
     // Unreached: `prepareCommand` refuses a mistyped `lineageId` first (CODE above).
     codes.delete('COMMAND_BODY_INVALID');
     const cell = refusals('task.propose', '/task/propose');

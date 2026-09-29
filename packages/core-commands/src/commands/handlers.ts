@@ -23,10 +23,13 @@ import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
+import { dispatchOwnLease } from './tasks-dispatch.ts';
+import { observeOwnLease } from './tasks-observe.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
+import { topUpOnTask } from './budget-top-up.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -66,7 +69,14 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.purge': (tx, context, request) => purgeTasks(tx, context, request.olderThanDays),
 
   'task.comment': (tx, context, request) =>
-    commentOnTask(tx, context, request.body, request.audience, request.commentType),
+    commentOnTask(
+      tx,
+      context,
+      request.operationId,
+      request.body,
+      request.audience,
+      request.commentType,
+    ),
 
   // The revision travels with the rest of the envelope rather than as a
   // field of the settings payload, and goes to the settings write as sent,
@@ -92,7 +102,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // lease's holder and delegation under its locks.
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
+  'task.dispatch': dispatchOwnLease,
+  'task.observe': observeOwnLease,
   'task.handback': handbackOwnLease,
+
+  // T2e. A person's money decision; no agent route reaches it.
+  'budget.top_up': topUpOnTask,
 };
 
 function writeOwned(

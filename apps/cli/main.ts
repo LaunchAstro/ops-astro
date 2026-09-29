@@ -29,10 +29,10 @@ import {
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import {
   accepts,
   createCli,
+  httpTransport,
   isRefusal,
   isWrite,
   unknownVerb,
@@ -305,23 +305,16 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       credential,
       entry: agent ? 'agent' : 'person',
       ...(delegation === undefined ? {} : { delegation }),
-      transport: async (path, sent, bearer, held) =>
-        await fetch(`${api}${path}`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${bearer}`,
-            ...(held === undefined ? {} : { [DELEGATION_HEADER]: held }),
-          },
-          body: sent,
-        }),
+      transport: httpTransport(api),
     });
 
     let answer: CliAnswer;
     try {
       answer = await cli.run(verb, request);
-    } catch (cause) {
-      io.err(`cli: no answer from ${api}: ${(cause as Error).message}`);
+    } catch {
+      // Never the failure's own text: it can carry the request, and the
+      // request carries the bearer and the delegation (T2 canary token).
+      io.err(`cli: no answer from ${api}`);
       replayHint();
       return EXIT.transport;
     }

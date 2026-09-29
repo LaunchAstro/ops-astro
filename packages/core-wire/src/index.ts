@@ -9,6 +9,8 @@
 export {
   COMMAND_SURFACE,
   declarationOf,
+  effectAttemptOf,
+  effectOperationId,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
@@ -51,6 +53,7 @@ export type {
   SharedTaskView,
   TaskBoardResult,
   TaskDetail,
+  TaskEnvelope,
   TaskReadResult,
   TaskStateView,
   TaskSummary,

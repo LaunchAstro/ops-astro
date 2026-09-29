@@ -63,6 +63,7 @@ export type CommandName =
   | 'task.read'
   | 'task.board'
   | 'task.queue'
+  | 'task.execution'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -95,7 +96,15 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // The lease holder marks its step dispatched before any effect (T2c1).
+  | 'task.dispatch'
+  // The lease holder observes its applied effect, and a person reads the
+  // receipt citing the decision it came from (T2c2).
+  | 'task.observe'
+  | 'task.receipt'
+  // A person raises a task's envelope, two people above the band (T2e).
+  | 'budget.top_up';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -253,6 +262,7 @@ function declare(
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const BILLING_COLLECTION = 'billing';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -344,6 +354,17 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  // Minor units, of the maximum the person saw; no standing ceiling (Q168).
+  'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
+  'task.observe': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    attemptId: 'any',
+    usage: 'any',
+    outcome: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -357,7 +378,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.comment', 'comment', { agent: 'delegated' }),
   // The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
-  declare('task.propose', 'write', { targetLock: 'runtime' }),
+  declare('task.propose', 'write', { targetLock: 'runtime', agent: 'delegated' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
   declare('task.decide', 'decide', {
@@ -407,6 +428,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // reading the queue reserves nothing, and two workers reading it see the
   // same row until one of them picks it up.
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
+  // One task's runs and their progress events (T2a), after `read` on that task.
+  read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -481,6 +504,35 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  // The lease owner's too, asked as heartbeat is; the runtime rechecks the
+  // four effect-time facts under its own locks.
+  declare('task.dispatch', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The effect's token is the attempt its dispatch answered; the runtime reads
+  // the operation register for the effect under the lease's own locks (T2c2).
+  declare('task.observe', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId', 'attemptId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // What an observed effect came from, asked on the attempt and checked on
+  // its task; it names no operation to reverse it (T2c2).
+  read('task.receipt', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `billing:decide` on the task (T2e). No agent route serves it, so a
+  // delegated agent is refused `DELEGATION_EXCLUDES_OPERATION` everywhere.
+  declare('budget.top_up', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId'],
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -533,6 +585,21 @@ export const CONTRACT_NINE: readonly CommandName[] = [
   'task.pickup',
   'task.handback',
 ];
+
+/**
+ * The operation identity of an attempt's one effect, derived from the attempt
+ * so a retry replays it and "did it happen?" is the register's answer (T2c2).
+ * The worker and the server derive it here, from one spelling.
+ */
+export function effectOperationId(attemptId: string): string {
+  return `effect:${attemptId}`;
+}
+
+/** The attempt an effect identity names, or `undefined` for any other identity. */
+export function effectAttemptOf(operationId: string): string | undefined {
+  const found = /^effect:([0-9a-f-]{36})$/u.exec(operationId);
+  return found?.[1];
+}
 
 /** The path the HTTP boundary and the command line both derive from the name. */
 export function pathOf(name: CommandName): string {

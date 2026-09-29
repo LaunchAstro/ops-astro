@@ -20,6 +20,7 @@
 // with its rows as they were, and the ledger does not record 0031.
 
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLICATION_ROLE,
@@ -203,7 +204,12 @@ describe.skipIf(serverUrl === undefined)('TEMPORARY after an upgrade from 0028',
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      // Every migration on disk, whichever is the head, not 0031 by name.
+      const head = readdirSync('migrations')
+        .filter((f) => f.endsWith('.sql'))
+        .toSorted()
+        .at(-1);
+      expect(await lastApplied(on)).toBe(head?.slice(0, 4));
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;
@@ -347,6 +353,15 @@ describe.skipIf(serverUrl === undefined)('an over-ceiling total admitted at 0028
     },
     120_000,
   );
+});
+
+describe.skipIf(serverUrl === undefined)('an over-ceiling total admitted at 0028', () => {
+  let db: EmptyDatabase | undefined;
+
+  afterEach(async () => {
+    await db?.drop();
+    db = undefined;
+  });
 
   it('upgrades a valid 0028 database, a cap filled to exactly its ceiling, with rows unchanged', async () => {
     db = await at0028('guardcapok');

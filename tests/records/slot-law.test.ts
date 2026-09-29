@@ -87,7 +87,11 @@ describe.skipIf(serverUrl === undefined)('slot_law', () => {
     await db?.drop();
   });
 
-  describe('a write lands in the slot in the same statement', () => {
+  // A write landing in its slot sits in two blocks under one title, so every
+  // case keeps its full name.
+  const writeLands = 'a write lands in the slot in the same statement';
+
+  describe(writeLands, () => {
     it('projects every slotted value on insert, and returns it from the insert itself', async () => {
       const stateId = crypto.randomUUID();
       await db.app.withBusiness(businessId, async (tx) => {
@@ -116,7 +120,9 @@ describe.skipIf(serverUrl === undefined)('slot_law', () => {
         expect(row['revision']).toBe('1');
       });
     });
+  });
 
+  describe(writeLands, () => {
     it('is immediately filterable on the slot it just wrote', async () => {
       await db.app.withBusiness(businessId, async (tx) => {
         await insertRecord(tx, typeId, { title: 'findable at once' });

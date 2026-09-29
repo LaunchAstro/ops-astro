@@ -35,6 +35,7 @@ import type {
   EntryPoint,
 } from '../../../core-records/src/index.ts';
 import { declarationOf } from '../../../core-wire/src/index.ts';
+import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAuditEvent } from './audit.ts';
@@ -195,13 +196,20 @@ export async function executeCommand(
   // Typed callers and unchecked bodies alike: either is parsed against its row.
   request: CommandRequest | UncheckedRequest,
 ): Promise<CommandResult> {
-  return await retryOnce(
+  const result = await retryOnce(
     async () => await callOnce(database, businessId, presented, entryPoint, request),
     // Only when the fault is actually being handed to the caller. A review
     // found the earlier order leaving a `failed` event beside the `applied`
     // one every time a retry won, which reads as two attempts.
     async (cause) => await recordFailure(database, businessId, presented, request, cause),
   );
+  // Committed: the crash seam's one place on this entry (T2c1), inert unless a test names it.
+  await crashPointAfterCommit(
+    request.command,
+    isCommandRefusal(result) ? undefined : result.detail,
+    process.env,
+  );
+  return result;
 }
 
 /**

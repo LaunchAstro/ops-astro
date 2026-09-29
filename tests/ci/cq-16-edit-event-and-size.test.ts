@@ -81,7 +81,9 @@ describe('CQ-16 edited runs review evidence only', () => {
     expect(/^name: (.*)$/mu.exec(edit)?.[1]).not.toBe(/^name: (.*)$/mu.exec(read(CI))?.[1]);
     expect(top(edit, 'concurrency')).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
   });
+});
 
+describe('CQ-16 edited runs review evidence only: what the edit run judges', () => {
   it('CQ-16 edited runs review evidence only: both runs read the description as it stands, and judge it last', () => {
     const block = job(read(REVIEW), CHECK);
     // The event's copy of the body is the body when the run was queued. A code run that

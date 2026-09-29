@@ -24,6 +24,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { isLoopback, readIdentity } from '../api/identity.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -41,7 +42,7 @@ function moduleGraphManifest(): Plugin {
         if (info === null) continue;
         modules[relative(id)] = info.importedIds
           .filter((imported) => imported.startsWith(root))
-          .map(relative);
+          .map((target) => relative(target));
       }
       this.emitFile({
         type: 'asset',
@@ -62,6 +63,29 @@ function moduleGraphManifest(): Plugin {
   };
 }
 
+/**
+ * The dev server's own identity, read on every request because Vite serves an
+ * edit without a restart (T2b, spike RN-03). `/api/identity` beside it is the
+ * API's, through the proxy, so a check compares the two process ids. Loopback
+ * only, as the API's route is.
+ */
+function servedIdentity(): Plugin {
+  return {
+    name: 'ops-astro-served-identity',
+    configureServer(server) {
+      server.middlewares.use('/__identity', (request, response) => {
+        if (!isLoopback(request.socket.remoteAddress)) {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify(readIdentity(root)));
+      });
+    },
+  };
+}
+
 const relative = (id: string): string => id.slice(root.length).replace(/\?.*$/u, '');
 
 const apiTarget = process.env['API_ORIGIN'] ?? 'http://127.0.0.1:8790';
@@ -69,7 +93,7 @@ const port = Number(process.env['WEB_PORT'] ?? '5190');
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  plugins: [react(), moduleGraphManifest()],
+  plugins: [react(), moduleGraphManifest(), servedIdentity()],
   resolve: {
     alias: {
       '@launchastro/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),

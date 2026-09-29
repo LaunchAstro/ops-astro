@@ -210,10 +210,13 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the login', () => {
     });
   });
 
-  describe('what the schema refuses, so the resolver never has to', () => {
-    const write = async (businessId: string, statement: string, values: readonly unknown[]) =>
-      await db.app.withBusiness(businessId, (tx) => tx.query(statement, values));
+  // What the schema refuses sits in two blocks under one title, so every case
+  // keeps its full name; both write through `write`.
+  const schemaRefuses = 'what the schema refuses, so the resolver never has to';
+  const write = async (businessId: string, statement: string, values: readonly unknown[]) =>
+    await db.app.withBusiness(businessId, (tx) => tx.query(statement, values));
 
+  describe(schemaRefuses, () => {
     it('refuses a second active mapping for one login', async () => {
       const attempt = db.app.withBusiness(alpha, async (tx) => {
         const login = await tx.query<{ readonly id: string }>(
@@ -235,7 +238,9 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the login', () => {
         ),
       ).rejects.toThrow(/actors_person_kind_carries_a_person/u);
     });
+  });
 
+  describe(schemaRefuses, () => {
     it('refuses a merge of a person into themselves', async () => {
       const attempt = db.app.withBusiness(alpha, async (tx) => {
         const actor = await tx.query<{ readonly id: string }>(

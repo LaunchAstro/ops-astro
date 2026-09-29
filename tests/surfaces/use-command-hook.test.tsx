@@ -61,6 +61,8 @@ const state = (page: { find: (selector: string) => Element | null }) => {
   };
 };
 
+// Two blocks under one title, so every case keeps its full name: the states
+// before and through an authority refusal, then the other refusals.
 describe('useCommand', () => {
   it('starts open, with nothing to say', async () => {
     const page = await mount(<Probe replies={[]} />);
@@ -90,7 +92,9 @@ describe('useCommand', () => {
     expect(state(page)).toMatchObject({ closed: 'true', locked: 'true', because: '' });
     await page.unmount();
   });
+});
 
+describe('useCommand', () => {
   it('carries a stale refusal as the conflict, and reset clears it', async () => {
     const page = await mount(<Probe replies={[refusal('VERSION_STALE')]} />);
     await page.click('[data-press]');

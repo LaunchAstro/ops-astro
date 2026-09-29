@@ -24,16 +24,24 @@
 // because being skipped is a thrown error rather than an absent row.
 
 import { randomUUID } from 'node:crypto';
-import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
+import {
+  effectOperationId,
+  type CommandDeclaration,
+  type CommandName,
+} from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
-/** The proposal every case that needs a gate proposes, spelled once. */
+/**
+ * The proposal every case that needs a gate proposes, spelled once. Its step is
+ * the worker's replayable synthetic one, so the work it approves can be
+ * dispatched (T2c1); a kind declaring no reconcile mode is refused there.
+ */
 export const PROPOSAL = {
   purpose: 'draft_the_reply',
   maximumMinor: 3_000,
   currency: 'AUD',
   payload: { instruction: 'draft a reply' },
-  step: { kind: 'compose', payload: {} },
+  step: { kind: 'synthetic_comment', payload: {} },
 } as const;
 
 /** A proposal on `task`, answering with the lineage it opened. */
@@ -95,14 +103,64 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
   return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
 }
 
-/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
-async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+/** A task whose plan the context's person approved: an envelope to top up (T2e). */
+async function approvedTaskId(context: BodyContext): Promise<string> {
+  const task = await context.freshTask('a task whose envelope is topped up');
+  const proposed = await context.asPerson('task.propose', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    ...PROPOSAL,
+  });
+  if (proposed.code !== 'ok') throw new Error(`matrix: propose refused ${proposed.code}`);
+  const detail = proposed.body['detail'] as Record<string, string>;
+  const decided = await context.asPerson('task.decide', {
+    gateId: detail['gateId'],
+    versionId: detail['versionId'],
+    decision: 'approve',
+    note: 'approved so its envelope can be topped up',
+  });
+  if (decided.code !== 'ok') throw new Error(`matrix: decide refused ${decided.code}`);
+  return task.id;
+}
+
+/** The context's person's own pickup of fresh approved work (EX-01), as its answer's detail. */
+async function ownPickup(context: BodyContext): Promise<Record<string, unknown>> {
   const picked = await context.asPerson('task.pickup', {
     reservationId: await approvedReservationId(context),
   });
   if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
-  const detail = picked.body['detail'] as Record<string, unknown>;
+  return picked.body['detail'] as Record<string, unknown>;
+}
+
+/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+  const detail = await ownPickup(context);
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+}
+
+/**
+ * The person's own lease with its step dispatched and its one effect applied
+ * under the attempt's operation identity (T2c2): what `task.observe` takes.
+ */
+export async function ownAppliedEffect(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number; attemptId: string }> {
+  const detail = await ownPickup(context);
+  const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+  const attemptId = String(detail['attemptId']);
+  const taskId = String(detail['taskId']);
+  const marked = await context.asPerson('task.dispatch', lease);
+  if (marked.code !== 'ok') throw new Error(`matrix: dispatch refused ${marked.code}`);
+  const read = await context.asPerson('task.read', { recordId: taskId });
+  const effect = await context.asPerson('task.comment', {
+    operationId: effectOperationId(attemptId),
+    recordId: taskId,
+    expectedRevision: (read.body['task'] as { revision: number }).revision,
+    body: 'the synthetic effect',
+    audience: 'internal',
+  });
+  if (effect.code !== 'ok') throw new Error(`matrix: effect refused ${effect.code}`);
+  return { ...lease, attemptId };
 }
 
 export function createPositiveBody(
@@ -204,6 +262,7 @@ export function createPositiveBody(
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
       case 'task.read':
+      case 'task.execution':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
@@ -225,6 +284,16 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'budget.top_up':
+        // The admin approved the plan and holds billing, so a top-up under
+        // the band is hers alone (T2e).
+        return {
+          body: {
+            recordId: await approvedTaskId(context),
+            amountMinor: 100,
+            fromMaximumMinor: PROPOSAL.maximumMinor,
+          },
+        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
@@ -265,6 +334,19 @@ export function createPositiveBody(
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
+      case 'task.dispatch':
+        // The person marks their own lease's step dispatched (T2c1).
+        return { body: await ownLease(context) };
+      case 'task.observe':
+        // The person observes the effect they applied on their own lease (T2c2).
+        return { body: await ownAppliedEffect(context) };
+      case 'task.receipt': {
+        // The receipt of an effect the person applied and observed (T2c2).
+        const applied = await ownAppliedEffect(context);
+        const observed = await context.asPerson('task.observe', applied);
+        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
+        return { body: { attemptId: applied.attemptId } };
+      }
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

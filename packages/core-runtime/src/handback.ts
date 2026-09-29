@@ -51,6 +51,7 @@ import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 /**
  * The bounded successor a handback may ask for. Bounded is the whole point: a
@@ -183,6 +184,7 @@ interface Discovered {
   readonly run_id: string;
   readonly reservation_id: string;
   readonly delegation_id: string | null;
+  readonly holder_actor_id: string;
   readonly envelope_id: string;
   readonly lineage_id: string;
   readonly cap_id: string;
@@ -229,7 +231,7 @@ export async function handback(
 /** Find: the lease and every row its settlement touches, acquiring nothing. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Discovered | undefined> {
   const discovered = await tx.query<Discovered>(
-    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id,
+    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id, l.holder_actor_id,
             res.envelope_id, run.lineage_id, env.cap_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
@@ -404,8 +406,8 @@ interface Settled {
  * near it (R4).
  *
  * R7. The marker is read under the locks and decides whether the attempt's
- * disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
- * requires a marked or observed attempt to sit in `quarantined`, so writing
+ * disposition may move at all. `attempts_marker_in_owning_state` (0033)
+ * admits no marker in `handed_back`, so writing
  * `handed_back` over it would abort the transaction before the classifier
  * could run. A marked attempt is left to the classifier, which quarantines it
  * and keeps the full hold for the recorded reconciliation owner.
@@ -452,7 +454,26 @@ async function settle(
     { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
     locks,
   );
-  return { reportId, attemptId: attempt.id, classification };
+  const settled = { reportId, attemptId: attempt.id, classification };
+  await appendRunEvent(tx, handedBackEvent(request, found, settled), locks);
+  return settled;
+}
+
+/** The settlement as the run's progress (T2a), citing the report, never its body. */
+function handedBackEvent(request: HandbackRequest, found: Discovered, settled: Settled): RunEvent {
+  return {
+    kind: 'handed_back',
+    taskId: found.task_id,
+    runId: found.run_id,
+    leaseId: request.leaseId,
+    attemptId: settled.attemptId,
+    actorId: found.holder_actor_id,
+    detail: {
+      outcome: request.outcome,
+      reportId: settled.reportId,
+      reservationState: settled.classification.state,
+    },
+  };
 }
 
 type Successor = {
