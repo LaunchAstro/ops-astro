@@ -177,19 +177,16 @@ export async function servedIdentity(page, label) {
  * One checklist row's served line, matched against the version stamp (S0-1,
  * line C8; product issue 57).
  *
- * I10, R4 and N6 each open a page of their own, so this opens one beside them,
- * against the same server and signed in the same way, prints `servedIdentity`'s
- * lines and then the build line, and records a row of its own. The stamp the
- * page shows, the one its served entry document carries and the one expected
- * must all agree: the checkout's, or `EXPECT_BUILD` for a run against a built
- * artefact. A page with no stamp is a red row.
+ * Called by I10, R4 and N6 on the page each one exercises, once it has drawn:
+ * it prints `servedIdentity`'s lines and then the build line, and records a
+ * row of its own. The stamp that page shows, the one its served entry document
+ * carries and the one expected must all agree: the checkout's, or
+ * `EXPECT_BUILD` for a run against a built artefact. A page with no stamp is a
+ * red row. It never throws into the row that called it.
  */
-export async function servedBuild(browser, row) {
+export async function servedBuild(page, row) {
   const label = `${row.toLowerCase()}-served`;
-  const context = await browser.newContext({ viewport: VIEWPORT });
-  const page = await context.newPage();
   try {
-    await signIn(page, 'ada@alpha.local', 'alpha');
     const identity = await servedIdentity(page, label);
     const shown = await page
       .locator(BUILD_SELECTOR)
@@ -204,7 +201,7 @@ export async function servedBuild(browser, row) {
     console.log(verdict.line);
     record({
       case: `S0-1 served build ${row}`,
-      action: 'the served line against the version stamp',
+      action: 'the served line against the version stamp, on the page the row exercises',
       observed: verdict.line,
       ok: verdict.ok,
     });
@@ -212,13 +209,11 @@ export async function servedBuild(browser, row) {
   } catch (error) {
     record({
       case: `S0-1 served build ${row}`,
-      action: 'the served line against the version stamp',
+      action: 'the served line against the version stamp, on the page the row exercises',
       observed: `threw: ${String(error).slice(0, 300)}`,
       ok: false,
     });
     return null;
-  } finally {
-    await context.close();
   }
 }
 

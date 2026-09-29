@@ -89,28 +89,29 @@ describe('S0-1 served build', () => {
     expect(stampInDocument('<meta name="ops-astro-build" content="latest">')).toBeUndefined();
   });
 
-  it('rows I10, R4 and N6 print the served line against the stamp before each runs', () => {
-    const entry = source('tests/browser/slice-acceptance.mjs');
-    for (const [row, group] of [
-      ['I10', 'casesI10OpenPage(run)'],
-      ['R4', 'casesR4SharedPage(run)'],
-      ['N6', 'casesN6(run)'],
+  it('rows I10, R4 and N6 check the build on the page each one exercises', () => {
+    for (const [row, path, group] of [
+      ['I10', 'tests/browser/i10-open-page.mjs', 'casesI10OpenPage'],
+      ['R4', 'tests/browser/r4-shared-page.mjs', 'casesR4SharedPage'],
+      ['N6', 'tests/browser/cases-n6-n7.mjs', 'casesN6'],
     ] as const) {
-      const served = entry.indexOf(`await servedBuild(browser, '${row}')`);
-      const runs = entry.indexOf(group);
-      expect(served, `${row} prints its served line`).toBeGreaterThan(-1);
-      expect(runs, `${row}'s group runs`).toBeGreaterThan(served);
-      // Nothing but the row's own group sits between its served line and it.
-      expect(entry.slice(served, runs)).not.toMatch(/await cases/u);
+      const file = source(path);
+      const at = file.indexOf(`export async function ${group}(`);
+      expect(at, `${group} exists`).toBeGreaterThan(-1);
+      const body = file.slice(at, file.indexOf('\n}\n', at));
+      expect(body, `${row} checks its own page`).toContain(`await servedBuild(page, '${row}')`);
     }
+    // No row checks a page of its own making instead.
+    expect(source('tests/browser/slice-acceptance.mjs')).not.toContain('servedBuild');
   });
 
-  it('the harness row calls servedIdentity, applies the verdict and records the row', () => {
+  it('the harness row calls servedIdentity on the page it is given and records the row', () => {
     const harness = source('tests/browser/harness.mjs');
-    const at = harness.indexOf('export async function servedBuild(');
+    const at = harness.indexOf('export async function servedBuild(page, row)');
     expect(at).toBeGreaterThan(-1);
     const body = harness.slice(at, harness.indexOf('\n}\n', at));
-    expect(body).toContain('await servedIdentity(page');
+    expect(body).toContain('await servedIdentity(page, label)');
+    expect(body).not.toMatch(/newContext|newPage|signIn\(/u);
     expect(body).toContain('servedBuildVerdict(');
     expect(body).toMatch(/record\(\{\s*case: `S0-1 served build \$\{row\}`/u);
   });
