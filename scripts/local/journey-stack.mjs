@@ -48,10 +48,14 @@ async function answers(port) {
 /** Every reason not to start, all of them, before anything is started. */
 export async function refusalsBeforeStarting(ports, container) {
   const refusals = [];
-  for (const [name, port] of Object.entries(ports)) {
-    if (DENIED.has(port)) refusals.push(`${name} port ${String(port)} belongs to another stack`);
+  for (const [name, value] of Object.entries(ports)) {
+    // Digits only, in range: `0x1F90`, ` 54430` and `70000` are not ports, whatever Number says.
+    const port = /^\d{1,5}$/u.test(value) ? Number(value) : 0;
+    const label = name.replaceAll(/[A-Z]/gu, (letter) => ` ${letter.toLowerCase()}`);
+    if (port < 1 || port > 65_535) refusals.push(`${label} port ${value} is not a port number`);
+    else if (DENIED.has(port)) refusals.push(`${label} port ${value} belongs to another stack`);
     // eslint-disable-next-line no-await-in-loop -- one probe at a time
-    else if (await answers(port)) refusals.push(`${name} port ${String(port)} is already in use`);
+    else if (await answers(port)) refusals.push(`${label} port ${value} is already in use`);
   }
   if (!run(DOCKER, ['image', 'inspect', IMAGE]).ok) {
     refusals.push(`the pinned image is not on this machine and this command never pulls: ${IMAGE}`);
@@ -64,7 +68,7 @@ export async function refusalsBeforeStarting(ports, container) {
 
 /** The container from the pinned digest, the application group role, the migrations. */
 export async function startPostgres({ container, password, port, admin }) {
-  const publish = `127.0.0.1:${String(port)}:5432`;
+  const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
   const started = run(DOCKER, ['run', '-d', '--name', container, '-p', publish, ...env, IMAGE]);
   if (!started.ok) return { ok: false, detail: started.out.trim() };
@@ -84,7 +88,7 @@ export async function startPostgres({ container, password, port, admin }) {
   const role = run(DOCKER, [...psql, ...sql]);
   const migrated = run(process.execPath, ['scripts/db-migrate.mjs'], { DATABASE_ADMIN_URL: admin });
   const last = migrated.out.trim().split('\n').at(-1) ?? '';
-  const detail = `${container} on 127.0.0.1:${String(port)}; ${role.ok ? last : role.out.trim()}`;
+  const detail = `${container} on 127.0.0.1:${port}; ${role.ok ? last : role.out.trim()}`;
   return { ok: role.ok && migrated.ok, detail };
 }
 
