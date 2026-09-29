@@ -38,6 +38,8 @@
 // reservation rows in that order (`core-custody/src/broker-facts.ts`), then its
 // ceiling key per business and operation, then its route's key, which every
 // business shares (`broker-reserve.ts`), last.
+// The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
+// through `acquire`, before it writes its ledger row.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements
