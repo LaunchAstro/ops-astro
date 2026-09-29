@@ -195,6 +195,7 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
         })),
       },
       delegationId: delegation.delegation.id,
+      credentialInAudit: JSON.stringify(agentAudit).includes(delegation.credential),
     };
   }
 
@@ -235,6 +236,9 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
     // The agent is refused and its refusal names the exact delegation.
     expect(cli.facts.agent.ok).toBe(false);
     expect(cli.facts.agent.attempted).toMatchObject({ delegationId: cli.delegationId });
+    // By id, never by credential: the canary is the credential itself.
+    expect(cli.credentialInAudit).toBe(false);
+    expect(app.credentialInAudit).toBe(false);
     expect({ ...app.facts, agent: { ...app.facts.agent, attempted: null } }).toEqual({
       ...cli.facts,
       agent: { ...cli.facts.agent, attempted: null },
