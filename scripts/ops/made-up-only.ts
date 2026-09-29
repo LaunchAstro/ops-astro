@@ -158,6 +158,7 @@ const INSTALL = [
         execute format('alter table %s enable always trigger ${GUARD}', target::regclass);
       end if;
     end $$`,
+  `revoke all on all functions in schema ops_astro_made_up from public`,
   `drop event trigger if exists ${GUARD}`,
   `create event trigger ${GUARD} on ddl_command_end
     when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch()`,
@@ -188,6 +189,18 @@ export async function markMadeUp(
   );
   if (row === undefined) throw new Error('made-up-only: no mark statement');
   await admin.execute(row.statement);
+}
+
+/**
+ * The seed's admission: judge, guard, then judge again before the first write.
+ * A row that lands between the first judgement and the guard is seen by the
+ * second, since the seed has written nothing yet; one after it is noted.
+ */
+export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promise<string[]> {
+  const signs = await productionSigns(admin, [], confirmed);
+  if (signs.length > 0) return signs;
+  await guardMadeUp(admin);
+  return [];
 }
 
 /**
