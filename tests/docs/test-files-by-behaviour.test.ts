@@ -328,6 +328,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  * belongs in `tests/`.
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
+  [
+    'apps/api/presence.ts',
+    "C2's presence book (U26), until the live stream's join and mark wire it (slice SL10)",
+  ],
   ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
   [
     'apps/worker/main.ts',
