@@ -195,6 +195,17 @@ describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
     expect(d.raised).toEqual([]);
   });
 
+  it('S0-2 security: a scope cannot be spelt from another, whatever characters a key carries', () => {
+    const d = detectorFor();
+    for (let i = 0; i < 4; i += 1) {
+      d.observe({ kind: 'sign-in-failed', business: 'alpha\u0000mia', person: 'x' });
+    }
+    d.observe({ kind: 'sign-in-failed', business: 'alpha', person: 'mia\u0000x' });
+    d.observe({ kind: 'sign-in-failed', business: 'alpha","mia', person: 'x' });
+    d.observe({ kind: 'sign-in-failed', business: 'alpha\u0001mia', person: 'x' });
+    expect(d.raised).toEqual([]);
+  });
+
   it('S0-2 security: a permission, grant or custody change raises an alert at once', () => {
     const d = detectorFor();
     d.observe({ kind: 'authority-changed', ...alpha });
