@@ -43,7 +43,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  Database,
+  QuotaOptions,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type ReadExecutor } from './app.ts';
 import {
   executeAgentCommand,
@@ -149,6 +153,8 @@ export interface ApiConfig {
    * to reach the fault branch.
    */
   readonly executeRead?: ReadExecutor;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
