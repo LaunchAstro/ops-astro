@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T4b1's separation, the three crossings the T4 isolation line names, each
+// T4b1's separation, the crossings the T4 isolation line names, each
 // with a positive control so a refusal cannot be a login that works for
 // nothing:
 //
@@ -8,6 +8,9 @@
 //     each pass's task; bravo holds a canary task no pass answer may carry;
 //   - client to client in one business: an external party of alpha holding a
 //     share on one alpha task (their client's) asks for each pass's task;
+//   - person to person in one business: noah, a member of alpha whose only
+//     grant is a share of that same other task, asks for each pass's task,
+//     beside his own read of the shared one (Sol, review 1 on #164);
 //   - person to person under a live delegation: the agent, under a live
 //     delegation scoped to that shared task, asks for each pass's task.
 //
@@ -28,7 +31,7 @@ export interface Cast {
   readonly shared: { readonly id: string; readonly delegation: string };
 }
 
-/** Bravo's canary, alpha's external party with one shared task, the agent's delegation on it. */
+/** Bravo's canary, one alpha task shared with the external party and with noah, the agent's delegation on it. */
 export async function castSeparation(context: PassContext): Promise<Cast> {
   const { world } = context;
   const title = `Bravo canary ${randomUUID()}`;
@@ -44,9 +47,12 @@ export async function castSeparation(context: PassContext): Promise<Cast> {
   holdSecret(external.token);
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     const sharer = { personId: world.ada.personId as string, actorId: world.ada.actorId as string };
-    const request = { collection: 'task', recordId: shared, personId: external.personId as string };
-    const decided = await shareRecord(tx, sharer, request);
-    if (!decided.ok) throw new Error('separation cast: the share was refused');
+    for (const personId of [external.personId, world.noah.personId]) {
+      const request = { collection: 'task', recordId: shared, personId: personId as string };
+      // eslint-disable-next-line no-await-in-loop -- one share at a time, in one transaction
+      const decided = await shareRecord(tx, sharer, request);
+      if (!decided.ok) throw new Error('separation cast: a share was refused');
+    }
   });
   return {
     canary: { id: String(canary.body['recordId']), title },
@@ -82,8 +88,16 @@ export async function crossings(
   const controls = {
     external: await external('task.read', { recordId: cast.shared.id }),
     agent: await asAgent(context, cast, cast.shared.id),
+    person: await personOn(
+      'app',
+      context,
+      world.noah.token,
+    )('task.read', {
+      recordId: cast.shared.id,
+    }),
   };
   if (controls.external.outcome !== 'ok') leaks.push(`control: ext ${controls.external.text}`);
+  if (controls.person.outcome !== 'ok') leaks.push(`control: noah ${controls.person.text}`);
   if (!controls.agent.ok) leaks.push(`control: agent ${controls.agent.text}`);
   const each = async (pass: PassResult): Promise<void> => {
     const asked = { recordId: pass.taskId };
@@ -91,13 +105,15 @@ export async function crossings(
     const answers = {
       business: await foreign('task.read', asked),
       client: await personOn(pass.surface, context, cast.external.token)('task.read', asked),
+      person: await personOn(pass.surface, context, world.noah.token)('task.read', asked),
     };
     const agent = await asAgent(context, cast, pass.taskId);
     for (const [crossing, answer] of Object.entries(answers)) {
       if (answer.outcome !== 'refused') leaks.push(`${pass.surface} ${crossing}: ${answer.text}`);
     }
     if (agent.ok) leaks.push(`${pass.surface} delegation: ${agent.text}`);
-    for (const text of [answers.business.text, answers.client.text, agent.text]) {
+    const texts = [answers.business.text, answers.client.text, answers.person.text, agent.text];
+    for (const text of texts) {
       if (text.includes(pass.taskId) || text.includes(context.title)) {
         leaks.push(`${pass.surface}: a refusal names the task: ${text}`);
       }

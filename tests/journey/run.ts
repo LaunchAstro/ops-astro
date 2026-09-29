@@ -175,11 +175,11 @@ async function passCases(context: PassContext): Promise<PassResult[]> {
     compared.ok,
     compared.ok ? same : compared.failures.join(' | '),
   );
-  await check('separation: business, client and delegation crossings refused', async () => {
+  await check('separation: business, client, person and delegation crossings refused', async () => {
     const leaks = await crossings(context, cast, passes);
     if (passes.length < 2) leaks.push('a pass did not run');
     if (leaks.length > 0) throw new Error(leaks.join(' | '));
-    return 'bravo, an external party of alpha and the agent under another task delegation each refused both passes tasks beside a positive control; no answer carries the canary';
+    return 'bravo, an external party of alpha, noah (same business, a grant elsewhere) and the agent under another task delegation each refused both passes tasks beside a positive control; no answer carries the canary';
   });
   return passes;
 }
