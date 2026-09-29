@@ -51,6 +51,7 @@ export type {
   SettingView,
   SharedTaskRead,
   SharedTaskView,
+  StepView,
   TaskBoardResult,
   TaskDetail,
   TaskReadResult,

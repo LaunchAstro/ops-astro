@@ -110,6 +110,27 @@ export interface TaskDetail extends TaskSummary {
    * says so; the client's name waits on the client model.
    */
   readonly clientSet: boolean;
+  /**
+   * The task's subtasks (MP-4-4, CS-15.19), in their order: each a full task
+   * whose `parent` is this one, and only those the reader may read.
+   */
+  readonly steps: readonly StepView[];
+}
+
+/**
+ * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
+ * category; `archived` says when and why a step left the count without being
+ * done (MP-4-15), and is null for a live one.
+ */
+export interface StepView {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+  readonly state: TaskStateView | null;
+  readonly done: boolean;
+  readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly assignee: PersonView | null;
+  readonly revision: number;
 }
 
 /** A task's board as the crumb draws it: its title, or that it is withheld. */

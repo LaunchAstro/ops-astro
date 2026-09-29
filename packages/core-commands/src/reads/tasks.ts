@@ -272,6 +272,7 @@ export async function readTaskDetail(
     board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
     stage: row.stage,
     clientSet: row.client_set,
+    steps: [],
   };
 }
 
