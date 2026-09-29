@@ -34,11 +34,14 @@ alter table public.delegations
 
 -- Only pairs the grant model knows: a collection key, one of its six
 -- delegable actions, no null and at least one pair. The whole list is matched
--- as one string because a check constraint cannot read a subquery.
+-- as one string because a check constraint cannot read a subquery, so no pair
+-- may hold whitespace: 'task:read task:write' as one element would otherwise
+-- read as two.
 alter table public.delegations
   add constraint delegations_pairs_known check (
     cardinality(pairs) > 0
     and array_position(pairs, null) is null
+    and array_to_string(pairs, '') !~ '\s'
     and array_to_string(pairs, ' ') ~
       '^[a-z][a-z0-9_]{0,62}:(read|comment|write|assign|share|manage)( [a-z][a-z0-9_]{0,62}:(read|comment|write|assign|share|manage))*$'
   );

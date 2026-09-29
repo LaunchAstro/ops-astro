@@ -146,6 +146,35 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
     expect(rows.map((row) => row.pairs)).toStrictEqual([['task:read']]);
   });
 
+  it('refuses a malformed pair on delegations_pairs_known', async () => {
+    // Hostile shapes a joined-string check could read as well formed: a
+    // separator inside one pair, a tab, a case change, an empty half, an empty
+    // pair, a null, and no pair at all.
+    const hostile: readonly (readonly (string | null)[])[] = [
+      ['task:read task:write'],
+      ['task:read\ttask:write'],
+      ['task:Read'],
+      ['task:'],
+      [':read'],
+      ['task:read', ''],
+      ['task:read', null],
+      [],
+    ];
+    for (const [index, pairs] of hostile.entries()) {
+      // oxlint-disable-next-line no-await-in-loop
+      const refused = await sqlRefusal(
+        db.app.withBusiness(
+          business,
+          async (tx) => await insertDelegation(tx, `hostile_${String(index)}`, pairs as string[]),
+        ),
+      );
+      expect([pairs, refused]).toStrictEqual([
+        pairs,
+        { code: '23514', constraint: 'delegations_pairs_known', column: null },
+      ]);
+    }
+  });
+
   it('refuses decide on delegations_pairs_never_decide alone, by insert and by update', async () => {
     // The owner lifts `delegations_pairs_known` and the fixed-at-mint trigger
     // inside one transaction, the statements run as the application role, and
