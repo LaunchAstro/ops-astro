@@ -18,15 +18,18 @@ import { eachGalleryView, entryPicture, WIDTHS } from '../visual/gallery-views.t
 
 export const UNITS = ['DS-COMP-27', 'DS-COMP-28', 'DS-COMP-29', 'DS-COMP-40'] as const;
 
-/** Each of the seven shapes: the gallery state it is drawn in, and what draws it. */
+/**
+ * Each of the seven shapes: the gallery state it is drawn in, and its marks,
+ * the elements that draw the data (never the SVG or stage around them).
+ */
 export const SHAPES = {
   line: ['DS-COMP-27', 'Line', 'svg .chart__line'],
   column: ['DS-COMP-27', 'Column with dashed line', 'svg .chart__bar'],
   donut: ['DS-COMP-28', 'Donut with centre label', 'svg .chart__slice'],
   gauge: ['DS-COMP-28', 'Gauge with target', 'svg .chart__target'],
-  dial: ['DS-COMP-28', 'Score dials, three bands', '.dial svg'],
-  sparkline: ['DS-COMP-29', 'Sparkline', 'svg.spark'],
-  funnel: ['DS-COMP-40', 'True-scale funnel', '.funnel__step'],
+  dial: ['DS-COMP-28', 'Score dials, three bands', '.dial svg .chart__ring'],
+  sparkline: ['DS-COMP-29', 'Sparkline', 'svg.spark .chart__line'],
+  funnel: ['DS-COMP-40', 'True-scale funnel', '.funnel__step .funnel__bg'],
 } as const;
 
 type Box = { left: number; right: number; width: number; height: number };
@@ -64,10 +67,24 @@ function read(
   const units: Record<string, Box> = {};
   for (const unit of ['DS-COMP-27', 'DS-COMP-28', 'DS-COMP-29', 'DS-COMP-40'])
     units[unit] = boxOf(document.querySelector(`[data-catalogue-id="${unit}"]`));
+  // A shape counts only the marks drawn at a size, and its box spans them all.
   const drawn: Record<string, Box & { count: number }> = {};
   for (const [shape, [unit, label, selector]] of Object.entries(shapes)) {
-    const found = state(unit, label)?.querySelectorAll(selector) ?? [];
-    drawn[shape] = { ...boxOf(found[0]), count: found.length };
+    const found = [...(state(unit, label)?.querySelectorAll(selector) ?? [])]
+      .map(boxOf)
+      .filter((box) => box.width * box.height > 0);
+    const left = Math.min(...found.map((box) => box.left));
+    const right = Math.max(...found.map((box) => box.right));
+    drawn[shape] =
+      found.length === 0
+        ? { ...boxOf(undefined), count: 0 }
+        : {
+            left,
+            right,
+            width: right - left,
+            height: Math.max(...found.map((box) => box.height)),
+            count: found.length,
+          };
   }
   const columnLine = state('DS-COMP-27', 'Column with dashed line')?.querySelector('.chart__line');
   const axis = document.querySelector('[data-catalogue-id="DS-COMP-27"] text.chart__axis');
