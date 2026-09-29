@@ -36,6 +36,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -55,6 +56,7 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
+  resolveLogin,
   withSession,
   type Session,
   type VerifiedSubject,

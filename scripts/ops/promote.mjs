@@ -17,9 +17,16 @@
 // A promotion reads the live service manager, never a saved report: a report
 // file handed in could say stopped while the API runs, so the report's file
 // flags are refused here, and so is any argument the step does not know.
+//
+// A real run is a person's act under `operations:manage` (S0-1e): the operator
+// gate (`operator.ts`) answers before any argument is read and before the
+// service manager is asked, and the deployment record is written only once
+// production serves the artefact. A dry run reads only the store and changes
+// nothing, so CI runs it with no sign-in and it writes no record.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { renameSync, rmSync, symlinkSync } from 'node:fs';
+import { recordDeployment, requireOperator } from './operator.ts';
 import { parseService, promote } from './promotion.ts';
 
 const REPORT = new URL('./service-report.mjs', import.meta.url).pathname;
@@ -33,9 +40,16 @@ function usage(message) {
 const VALUED = new Set(['--version', '--artefacts', '--line', '--api', '--auth', '--current']);
 const SAVED_REPORT = new Set(['--docker-inspect', '--launchctl']);
 
+const args = process.argv.slice(2);
+// No valued argument takes a value starting `--`, so this is the flag itself.
+const gate = args.includes('--dry-run') ? null : await requireOperator();
+if (gate && !gate.ok) {
+  console.error(`promote: REFUSED: ${gate.reason}`);
+  process.exit(1);
+}
+
 const given = new Map();
 let dryRun = false;
-const args = process.argv.slice(2);
 for (let at = 0; at < args.length; at += 1) {
   const arg = args[at];
   if (arg === '--dry-run') dryRun = true;
@@ -113,4 +127,4 @@ console.log(
     ? `promote: dry run: would promote ${outcome.artefactPath}; nothing asked of the machine, nothing changed`
     : `promote: production now serves ${outcome.artefactPath}`,
 );
-console.log(JSON.stringify(outcome.record));
+console.log(JSON.stringify(gate ? await recordDeployment(gate, outcome.record) : outcome.record));
