@@ -57,6 +57,8 @@ export interface AssistantPanelProps {
   readonly chats: readonly AssistantChat[];
   readonly selected: string;
   readonly offer: AssistantOffer;
+  /** The selected tab's own address (C36), once its conversation has started. */
+  readonly address?: string | null;
   readonly citation: AssistantCitation | null;
   readonly draft: string;
   readonly onSelect: (key: string) => void;

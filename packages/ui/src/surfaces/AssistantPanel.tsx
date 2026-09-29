@@ -109,6 +109,27 @@ function Head(props: {
   );
 }
 
+/** Where this tab lives (its own address, once started) and what the ask came from. */
+function Provenance(props: {
+  readonly address: string | null;
+  readonly citation: AssistantPanelProps['citation'];
+}): ReactElement {
+  return (
+    <>
+      {props.address === null ? null : (
+        <a className="aip__address" data-assistant="address" href={props.address}>
+          Open at its address
+        </a>
+      )}
+      {props.citation === null ? null : (
+        <p className="aip__cited" data-assistant="citation" data-ask-row={props.citation.row}>
+          Asked from {props.citation.label}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function AssistantPanel(props: AssistantPanelProps): ReactElement {
   const chat = props.chats.find((each) => each.key === props.selected);
   const sendable = !(props.offer.models.length === 0 && props.offer.waiting !== null);
@@ -134,11 +155,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
           {props.offer.waiting}
         </p>
       )}
-      {props.citation === null ? null : (
-        <p className="aip__cited" data-assistant="citation" data-ask-row={props.citation.row}>
-          Asked from {props.citation.label}
-        </p>
-      )}
+      <Provenance address={props.address ?? null} citation={props.citation} />
       <Transcript messages={chat?.messages ?? NO_MESSAGES} />
       <Asker
         // A new draft, or another tab, starts the field again.

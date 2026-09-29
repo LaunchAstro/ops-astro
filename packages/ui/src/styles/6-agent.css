@@ -373,3 +373,36 @@
   font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
 }
+
+/* C36: a conversation at its own address, and the drawer's link to it. */
+.aip__address {
+  padding: var(--s-2) var(--s-5) 0;
+  font-size: var(--text-overline);
+}
+.convrec {
+  display: grid;
+  gap: var(--s-4);
+  max-width: 72ch;
+  padding: var(--s-5);
+}
+.convrec__subject,
+.convrec__note,
+.convrec__who {
+  color: var(--text-muted);
+}
+.convrec__log {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.convrec__msg p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.convrec__request {
+  margin: 0;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--border);
+}
