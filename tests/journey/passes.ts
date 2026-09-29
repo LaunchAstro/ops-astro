@@ -21,6 +21,7 @@ import { httpTransport } from '../../apps/cli/client.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import type { World } from '../acceptance/world.ts';
+import { runCli } from '../cli/cli-process-harness.ts';
 import { readFacts, type JourneyFacts } from './facts.ts';
 
 export type Surface = 'app' | 'cli';
@@ -80,9 +81,16 @@ export function appPerson(origin: string, businessKey: string, token: string): P
   };
 }
 
-/** One command-line process per call, against the served API: not built yet. */
-export function cliPerson(_api: string, _businessKey: string, _token: string): Person {
-  return async () => await Promise.reject(new Error('journey: the command-line leg is not built'));
+/** One command-line process per call, against the served API. */
+export function cliPerson(api: string, businessKey: string, token: string): Person {
+  return async (name, body) => {
+    const run = await runCli([name, '--business', businessKey, '--json', JSON.stringify(body)], {
+      OPS_ASTRO_TOKEN: token,
+      OPS_ASTRO_API_URL: api,
+    });
+    const outcome = run.code === 0 ? 'ok' : run.code === 1 ? 'refused' : 'fault';
+    return answerOf(outcome, run.json ?? { stdout: run.stdout, stderr: run.stderr });
+  };
 }
 
 export function personOn(
