@@ -21,6 +21,7 @@ import {
   type World,
 } from './world.ts';
 
+// eslint-disable-next-line max-lines-per-function -- one served world, and the case that shares it
 describe.skipIf(serverUrl === undefined)('R4: the external party and their own inbox item', () => {
   let world: World;
   let ext: Caller;
