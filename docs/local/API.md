@@ -1204,6 +1204,23 @@ whole hold and resumes the work on a new hold; it happened spends the whole
 hold; it happened differently spends it and reopens the work. A retry under the
 same `operationId` replays the stored answer.
 
+### `budget.write_off` (T3c)
+
+`POST /api/b/<key>/budget/write_off` with `recordId` (the task), `attemptId`,
+`amountMinor` (whole minor units from 0 to the hold: the reserved maximum, a
+lesser figure the evidence shows, or nothing) and `reason` (a written reason,
+up to 2,000 characters). It asks `decide` on `billing` for the task, and no
+agent route serves it (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held
+`liability_unknown` takes one; any other is `LIABILITY_NOT_UNKNOWN`. A positive
+amount settles the hold at that figure, with the attempt's outcome left
+`unknown`; nothing abandons it under the cause `written_off`. The envelope
+gives the whole hold back either way; no attempt, hold or envelope row is
+added and no work moves. When the hold is above the business's four-eyes
+band, the first holder's call answers `awaiting_second_approver` and moves
+nothing; a different live holder naming the same attempt and amount applies
+it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
+`operationId` replays the stored answer.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
@@ -1269,12 +1286,12 @@ rather than keeping a copy; the two are told apart by the key.
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
 business fact every member works against, and changing one is an authority
-change. The four-eyes band is stored and shown, and no first-slice operation
-applies it yet. `settings.set_four_eyes_threshold` writes it
-(`commands/settings-write.ts`), `settings.read` returns it. The band's consumers,
-top-up (S2-04) and write-off (S2-10), are deferred (ROOT-FBFREEZE-RULINGS §3).
-`task.decide` produces `FOUR_EYES_REQUIRED` without the band since T2g: the
-person a task is assigned to may not decide its gate. The seed gives
+change. The four-eyes band is stored and shown. `settings.set_four_eyes_threshold` writes it
+(`commands/settings-write.ts`) and `settings.read` returns it. Its consumers
+are the top-up (`budget.top_up`, T2e) and the write-off (`budget.write_off`,
+T3c), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
+`FOUR_EYES_REQUIRED` without the band since T2g: the person a task is assigned
+to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
 **`settings.read` carries a `revision` on every setting.** It is the number

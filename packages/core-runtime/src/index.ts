@@ -77,6 +77,7 @@ export {
   type OutcomeRecorded,
   type RecordedOutcome,
 } from './recovery/outcome.ts';
+export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,

@@ -86,7 +86,8 @@
     "T2h names t2h-alerts, t2h-alerts-migration and t2h-alerts-surfaces as invariants (alert_on_transition: settling, failing, a cost above the hold, a hand-back that settles, fails or leaves a successor, and a cancellation each raise exactly one alert, shown by task.read and task.queue and the same through the API and the command line; pickup, dispatch, the effect, an unpriced observe, proposing and approving raise none; another business, a client of another task, the task's own client and a member with no grant see none. Migration 0036 on a fresh database and on one seeded at 0035 then upgraded: rows unchanged, the same catalogue, nothing added to the gate engine's tables, one alert per transition, update and delete refused as the application role, the worker holding nothing).",
     "T3b names t3b-sweeper as an invariant (unknown_stays_unknown: driven by the declining reporter handed in at construction, a dispatched attempt whose lease runs out is held liability_unknown at its full maximum, and the sweep, the restart replay and every timer past every window leave it so; the sweep releases in full, by amount, a hold never marked whose lease ran out, never one awaiting pickup or under a live lease, races dispatch with one winner, holds a marked step unknown without asking the register, keeps quarantine for legacy rows, leaves a first-slice database unchanged or classified by name; the API pass runs each configured business in its own transaction; separations business to business, client to client and person to person). t3b-shipped-graph is a pure unit suite and is not named.",
     "T3d1 names t3d1-reconcile as an invariant (reconcile_never_repeats: the pass's reconciliation phase asks the operation register about a step the sweep held unknown; presence proved settles once, by the book's amount, with the effect counter at 1; absence proved keeps the old hold for a person, fences the old identity and resumes a new attempt on its own hold and identity through T2c1's recheck; a woken worker's old-identity apply is refused and audited and its late observe moves no money; no answer leaves the step for a person; the pass replays recorded transitions and a duplicated wake-up does nothing; budget.record_outcome records one of three outcomes under billing:decide, replayed by operation identity, never an agent's; migration 0037; separations business to business, client to client and person to person).",
-    "T3d1 Fix 1 names t3d1-outcome-stops as an invariant (Sol review 1 on #146, criterion 2: a person's happened outcome stops the replacement the pass reserved, in the same transaction under the same locks: its hold released, its lease ended, its delegation revoked, never dispatched; a lost response replays with nothing moved; happened racing the replacement's dispatch on two backends has exactly one winner; a replacement that already dispatched refuses happened with nothing moved)."
+    "T3d1 Fix 1 names t3d1-outcome-stops as an invariant (Sol review 1 on #146, criterion 2: a person's happened outcome stops the replacement the pass reserved, in the same transaction under the same locks: its hold released, its lease ended, its delegation revoked, never dispatched; a lost response replays with nothing moved; happened racing the replacement's dispatch on two backends has exactly one winner; a replacement that already dispatched refuses happened with nothing moved).",
+    "T3c names t3c-write-off and t3c-write-off-isolation as invariants (write_off_needs_a_person: budget.write_off with no person, no amount or no written reason is refused and moves nothing; a person holding billing:decide closes the unknown hold at the reserved maximum, a lesser figure or nothing, and the money tables gain no row; above T2e's stored four-eyes band a different live holder names the same figure; a lost response replays by operation identity; absence proved resumes the work while the first hold stays unknown until written off, O6; two people at once, and a write-off racing a recorded outcome, have one winner; separations business to business, client to client, task to task and person to person; T3 no machine path: the runtime write-off has one caller), and t3c-write-off-surfaces as conformance (the agent under its delegation and a member without billing:decide refused alike on the command line, both HTTP prefixes and the in-process entries; the holder applied on each)."
   ],
   "invariant": [
     "tests/runtime/run-progress-read.test.ts",
@@ -254,7 +255,9 @@
     "tests/tenancy/migration-runner-guard.test.ts",
     "tests/runtime/t3b-sweeper.test.ts",
     "tests/runtime/t3d1-reconcile.test.ts",
-    "tests/runtime/t3d1-outcome-stops.test.ts"
+    "tests/runtime/t3d1-outcome-stops.test.ts",
+    "tests/runtime/t3c-write-off.test.ts",
+    "tests/runtime/t3c-write-off-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -330,6 +333,7 @@
     "tests/cli/t2c1-dispatch-surfaces.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
     "tests/api/t2c2-worker.test.ts",
-    "tests/cli/t2e-top-up-surfaces.test.ts"
+    "tests/cli/t2e-top-up-surfaces.test.ts",
+    "tests/cli/t3c-write-off-surfaces.test.ts"
   ]
 }

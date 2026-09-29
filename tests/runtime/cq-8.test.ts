@@ -72,6 +72,8 @@ describe('CQ-8 runtime structure', () => {
       'recovery/reconcile.ts',
       // T3b: the reconciliation pass's lease-expiry phase.
       'recovery/sweep.ts',
+      // T3c: a person's write-off of an unknown hold.
+      'recovery/write-off.ts',
     ]);
     for (const file of [...parts, join(RUNTIME, 'recovery.ts')]) {
       expect(readFileSync(file, 'utf8').split('\n').length, file).toBeLessThanOrEqual(600);

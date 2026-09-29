@@ -82,9 +82,9 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
     );
     // A person who decides plans but holds no budget permission.
     expect(codeOf(await as(gateOnly, writeOffBody(w, 0)))).toBe('SCOPE_NOT_GRANTED');
-    // No amount, and amounts that are not one.
+    // No amount (the wire's exact operand refuses it), and amounts that are not one.
     const { amountMinor: _none, ...noAmount } = writeOffBody(w, 0);
-    expect(codeOf(await as(s.decider, noAmount))).toBe('COMMAND_BODY_INVALID');
+    expect(codeOf(await as(s.decider, noAmount))).toBe('FIELD_VALUE_INVALID');
     for (const amount of [-1, 1.5, '1000', null, MAXIMUM + 1]) {
       // eslint-disable-next-line no-await-in-loop
       const code = codeOf(await as(s.decider, writeOffBody(w, amount)));
@@ -154,7 +154,7 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
 
   it('O6: absence proved resumes the work, and the first hold stays unknown until a person writes it off', async () => {
     const w = await h.unknownStep({ applied: false, room: true });
-    const [answered] = await h.reconcile();
+    const answered = (await h.reconcile()).find((one) => one.attemptId === w.attemptId);
     expect(answered?.answer).toBe('absent');
     const replacement = await h.replacement(w);
     expect(replacement).toBeDefined();

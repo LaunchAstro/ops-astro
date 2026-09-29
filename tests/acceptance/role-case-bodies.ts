@@ -325,6 +325,15 @@ export function createPositiveBody(
         // The admin holds billing, so any unknown attempt on the business's
         // tasks is hers to record (O8, T3d1).
         return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
+      case 'budget.write_off':
+        // The same unknown hold, closed at nothing with a reason (T3c).
+        return {
+          body: {
+            ...(await ownUnknownAttempt(context)),
+            amountMinor: 0,
+            reason: 'The matrix writes its own unknown hold off.',
+          },
+        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

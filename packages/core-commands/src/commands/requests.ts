@@ -255,6 +255,13 @@ export type CommandRequest =
       readonly recordId: unknown;
       readonly attemptId: unknown;
       readonly outcome: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.write_off';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly amountMinor: unknown;
+      readonly reason: unknown;
     } & Envelope);
 
 /**
