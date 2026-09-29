@@ -157,7 +157,10 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     .filter(({ path, text }) => /<MockRegion\b/u.test(text) && !path.endsWith('blocks.tsx'))
     .map((s) => s.path)
     .toSorted();
-  expect(users).toEqual(['packages/ui/src/kit/gallery.tsx', 'packages/ui/src/kit/treatments.tsx']);
+  expect(users).toEqual([
+    'packages/ui/src/kit/gallery-blocks-and-composites.tsx',
+    'packages/ui/src/kit/treatments.tsx',
+  ]);
 });
 
 it('MP-1-6 shown in its own unit on the component gallery', () => {
