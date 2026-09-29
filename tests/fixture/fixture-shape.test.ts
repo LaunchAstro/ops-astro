@@ -91,7 +91,7 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
     expect(report.slots.assigned).toBeLessThan(report.slots.total);
   });
 
-  it('Sol proof, criterion 2: the fixture occupies exactly 24 of 38 task slots', () => {
+  it('the fixture occupies exactly 24 of 38 task slots', () => {
     expect(report.slots).toStrictEqual({ assigned: 24, total: 38 });
   });
 
@@ -109,13 +109,13 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
     expect(await counts(lengths)).toStrictEqual([single, twoVersions, threeVersions]);
   });
 
-  it('Sol proof, criterion 2: the fixture honours requested step and event load', async () => {
+  it('the fixture honours requested step and event load', async () => {
     expect(report.heldBack).toStrictEqual([]);
     expect(await one('select count(*) n from public.planned_steps')).toBe(SMALL.steps);
     expect(await one('select count(*) n from public.run_events')).toBe(SMALL.runEvents);
   });
 
-  it('Sol proof, criterion 2: every fixture step appears in its rendered evidence', async () => {
+  it('every fixture step appears in its rendered evidence', async () => {
     const missing = `select count(*) n from public.planned_steps s
       join public.evidence_packs e on e.business_id = s.business_id and e.run_id = s.run_id
       where not exists (

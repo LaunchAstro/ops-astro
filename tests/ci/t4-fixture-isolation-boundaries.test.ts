@@ -3,7 +3,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 3: T4 isolation names and exercises every client-data boundary', () => {
+it('T4 isolation names and exercises every client-data boundary', () => {
   const suites = readdirSync('tests/fixture')
     .filter((name) => name.endsWith('.test.ts') && !name.startsWith('sol-'))
     .map((name) => readFileSync(`tests/fixture/${name}`, 'utf8'))

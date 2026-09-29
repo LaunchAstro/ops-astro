@@ -19,7 +19,7 @@ afterAll(() => {
 });
 
 it.skipIf(serverUrl === undefined)(
-  'Sol proof, criterion 2: building a snapshot completes and leaves a cloneable template',
+  'building a snapshot completes and leaves a cloneable template',
   async () => {
     const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
     const databases = async () =>
@@ -65,7 +65,7 @@ it.skipIf(serverUrl === undefined)(
 );
 
 it.skipIf(serverUrl === undefined)(
-  'Sol proof, criterion 2: clone works while a reader is connected to the template',
+  'clone works while a reader is connected to the template',
   async () => {
     const hash = createHash('sha256');
     const sources = [
@@ -110,7 +110,7 @@ it.skipIf(serverUrl === undefined)(
 );
 
 it.skipIf(serverUrl === undefined)(
-  'Sol proof, criterion 3: both fixture clone paths deny temporary tables to the application role',
+  'both fixture clone paths deny temporary tables to the application role',
   async () => {
     const hash = createHash('sha256');
     const sources = [
