@@ -4,7 +4,7 @@
 // capture's own pool, no provider credential, no private network, and the
 // hard denies checked on the resolved address at every redirect. Pages
 // outside the agency's own stay refused until three other-company
-// adversarial reviews of the pool are recorded closed (D17-14, TR-P-1).
+// adversarial reviews of the pool are recorded closed (D17-14).
 
 import { isIP } from 'node:net';
 import { isDeniedAddress, type Resolver, type Transport } from './transport.ts';
