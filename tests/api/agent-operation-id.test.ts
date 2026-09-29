@@ -44,30 +44,32 @@ const NOT_A_STRING = [
   ['an absent field', {}],
 ] as const;
 
+let fixture: ApiFixture;
+
+let api: Hono;
+
+let token: string;
+
+async function registered(): Promise<number> {
+  const rows = await fixture.db.admin.execute<{ n: string }>(
+    'select count(*)::text as n from public.operations where business_id = $1',
+    [fixture.business],
+  );
+  return Number(rows[0]?.n);
+}
+
+async function send(app: Hono, body: object): Promise<{ status: number; body: unknown }> {
+  const response = await app.fetch(
+    new Request(`http://api.test${PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authorised(token) },
+      body: JSON.stringify(body),
+    }),
+  );
+  return { status: response.status, body: await response.json() };
+}
+
 describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId as sent', () => {
-  let fixture: ApiFixture;
-  let api: Hono;
-  let token: string;
-
-  async function registered(): Promise<number> {
-    const rows = await fixture.db.admin.execute<{ n: string }>(
-      'select count(*)::text as n from public.operations where business_id = $1',
-      [fixture.business],
-    );
-    return Number(rows[0]?.n);
-  }
-
-  async function send(app: Hono, body: object): Promise<{ status: number; body: unknown }> {
-    const response = await app.fetch(
-      new Request(`http://api.test${PATH}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...authorised(token) },
-        body: JSON.stringify(body),
-      }),
-    );
-    return { status: response.status, body: await response.json() };
-  }
-
   beforeAll(async () => {
     fixture = await createApiFixture('api_agent_operation_id');
     api = fixture.compose();
@@ -78,6 +80,10 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
     await fixture?.drop();
   });
 
+  theAgentBoundaryCases();
+});
+
+function theAgentBoundaryCases() {
   NOT_A_STRING.forEach(([label, body]) => {
     it(`${label} is OPERATION_ID_REQUIRED 422 and registers nothing`, async () => {
       const before = await registered();
@@ -121,4 +127,4 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
     const answer = await send(api, { operationId: `queue-${randomUUID()}` });
     expect(answer.status).toBe(200);
   });
-});
+}

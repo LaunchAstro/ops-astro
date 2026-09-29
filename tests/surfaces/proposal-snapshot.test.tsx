@@ -165,14 +165,18 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
   });
 }
 
-describe.skipIf(serverUrl === undefined)('decision controls from one coherent read', () => {
-  let world: World | undefined;
+let world: World | undefined;
 
+describe.skipIf(serverUrl === undefined)('decision controls from one coherent read', () => {
   afterEach(async () => {
     await world?.close();
     world = undefined;
   });
 
+  decisionControlsFromCases();
+});
+
+function decisionControlsFromCases() {
   it('draws no decision control for the decided view and enabled ones for the pending view', async () => {
     world = await createWorld('psnapui');
     const current = world;
@@ -223,4 +227,4 @@ describe.skipIf(serverUrl === undefined)('decision controls from one coherent re
     expect(offered.find('[data-decide="closed"]')).toBeNull();
     await offered.unmount();
   }, 120_000);
-});
+}

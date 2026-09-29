@@ -97,15 +97,20 @@ async function party(fixture: ApiFixture, api: Hono, key: string): Promise<Party
   return { id, key, title, read, member: token, client: await tokenFor(subject) };
 }
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and request body', () => {
-  let fixture: ApiFixture;
-  let api: Hono;
-  let bravo: Party;
-  let charlie: Party;
-  const token = { member: '', agent: '' };
-  const counts = async (business: string) =>
-    (await fixture.db.admin.execute<Counts>(COUNTS, [business]))[0] as Counts;
+let fixture: ApiFixture;
 
+let api: Hono;
+
+let bravo: Party;
+
+let charlie: Party;
+
+const token = { member: '', agent: '' };
+
+const counts = async (business: string) =>
+  (await fixture.db.admin.execute<Counts>(COUNTS, [business]))[0] as Counts;
+
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and request body', () => {
   beforeAll(async () => {
     fixture = await createApiFixture('cq1');
     api = fixture.compose();
@@ -117,6 +122,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
 
   afterAll(async () => await fixture?.drop());
 
+  cq1SignCases1();
+  cq1SignCases2();
+  cq1SignCases3();
+});
+
+function cq1SignCases1() {
   ['/api/b/alpha/task/create', '/api/a/b/alpha/task/queue'].forEach((path) => {
     CASES.forEach(([name, bearer, code]) => {
       it(`${name} (${path})`, async () => {
@@ -147,7 +158,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
       });
     }
   }
+}
 
+function cq1SignCases2() {
   it('CQ-1 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
     const both = [bravo, charlie];
     const sees = async (p: Party, who: string, body: string) => {
@@ -170,7 +183,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     const after = await Promise.all(watched.map((id) => counts(id)));
     expect(after).toStrictEqual(before.map((c, i) => (i < 2 ? plus(c, delta) : c)));
   });
+}
 
+function cq1SignCases3() {
   it('CQ-1 token canary: a planted token and secret reach no log, trace, refusal or stored row', async () => {
     const canary = `cq1-canary-${randomUUID()}`;
     const planted = await signBearer(claims({ aud: 'anon', canary }));
@@ -211,4 +226,4 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     const found = advisories.map((a) => `${a['module_name']} ${a['severity']}`);
     expect(found.filter((l) => /hono.* (moderate|high|critical)$/u.test(l))).toStrictEqual([]);
   }, 120_000);
-});
+}

@@ -147,6 +147,11 @@ const taskPage = async (client: OperationsClient): Promise<Mounted> => {
 };
 
 describe('the task page, pinned whole', () => {
+  theTaskPageCases1();
+  theTaskPageCases2();
+});
+
+function theTaskPageCases1() {
   for (const [name, gate] of [
     ['pending', { state: 'pending', expired: false }],
     ['decided', { state: 'approved', expired: false }],
@@ -185,7 +190,9 @@ describe('the task page, pinned whole', () => {
     expect(page.host.innerHTML).toMatchSnapshot('conflict');
     await page.unmount();
   });
+}
 
+function theTaskPageCases2() {
   it('after a lifecycle write refused', async () => {
     const client = taskServer(
       { state: 'pending', expired: false },
@@ -209,7 +216,7 @@ describe('the task page, pinned whole', () => {
     expect(page.host.innerHTML).toMatchSnapshot();
     await page.unmount();
   });
-});
+}
 
 describe('the board, pinned whole', () => {
   it('draws a task in every machine category and one with no state', async () => {

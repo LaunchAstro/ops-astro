@@ -131,6 +131,12 @@ describe('the settings screen writes by exact revision', () => {
     window.sessionStorage.clear();
   });
 
+  theSettingsScreenCases1();
+  theSettingsScreenCases2();
+  theSettingsScreenCases3();
+});
+
+function theSettingsScreenCases1() {
   it('sends the revision the read carried', async () => {
     const api = server({ revision: 7 });
     const page = await mount(screen(api.fetch));
@@ -176,7 +182,9 @@ describe('the settings screen writes by exact revision', () => {
     expect(writesOf(api)).toHaveLength(1);
     await page.unmount();
   });
+}
 
+function theSettingsScreenCases2() {
   it('overwrites only on a second explicit press, against the reread revision', async () => {
     const api = server({ revision: 7, stale: true });
     const page = await mount(screen(api.fetch));
@@ -198,7 +206,9 @@ describe('the settings screen writes by exact revision', () => {
     expect(page.find('[data-settings="four-eyes-value"]')?.textContent).toContain('1200');
     await page.unmount();
   });
+}
 
+function theSettingsScreenCases3() {
   it('a press made before the reread lands writes nothing, then writes against the reread (O7)', async () => {
     const api = server({ revision: 7, stale: true });
     // Every read after the first write is held until the test lets it through.
@@ -237,4 +247,4 @@ describe('the settings screen writes by exact revision', () => {
     expect(again[1]?.body['expectedRevision']).toBe(8);
     await page.unmount();
   });
-});
+}
