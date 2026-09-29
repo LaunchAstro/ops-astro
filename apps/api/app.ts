@@ -65,6 +65,7 @@ import type {
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
+import type { LivePresence } from './live-presence.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -126,6 +127,8 @@ export interface LiveOptions {
   readonly recheckMs?: number;
   /** `reads/execute.ts`'s `admitReads`: the channel's checks, which serve and audit nothing. */
   readonly admit: ReadAdmitter;
+  /** C2: who else is on each watched task; absent, the stream carries no presence. */
+  readonly presence?: LivePresence;
 }
 
 /** The live channel's check: `admitReads`'s signature. */
