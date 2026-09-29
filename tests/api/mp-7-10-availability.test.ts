@@ -77,8 +77,13 @@ const written = async (business = s.business) => {
   }>('select person_id, state, reason from public.person_availability where business_id = $1', [
     business,
   ]);
-  const events = await s.db.admin.execute<{ actor_id: string; outcome: string; hash: string }>(
-    `select actor_id, outcome, hash from public.audit_events
+  const events = await s.db.admin.execute<{
+    actor_id: string;
+    outcome: string;
+    refusal_code: string | null;
+    hash: string;
+  }>(
+    `select actor_id, outcome, refusal_code, hash from public.audit_events
       where business_id = $1 and command = 'availability.set' order by seq`,
     [business],
   );
@@ -132,7 +137,7 @@ async function recorded(): Promise<void> {
   expect(events.at(-1)?.hash).toMatch(/^[0-9a-f]{64}$/u);
 }
 
-/** MP-7-10 availability set refuses undeclared fields, a bad state and an over-long reason, writing nothing */
+/** MP-7-10 availability set refuses undeclared fields, a bad state and an over-long reason, writing no row and auditing each refusal */
 async function refusals(): Promise<void> {
   const me = await teammate();
   const before = await written();
@@ -152,7 +157,18 @@ async function refusals(): Promise<void> {
   }
   const agent = await post(api, `${PREFIX.agent}${key}/account/availability`, { state: 'away' });
   expect(agent.status).toBe(404);
-  expect(await written()).toEqual(before);
+  // No row; each refusal of a signed-in person is audited, refused, with its code (I13).
+  const after = await written();
+  expect(after.rows).toEqual(before.rows);
+  expect(
+    after.events.slice(before.events.length).map((e) => [e.actor_id, e.outcome, e.refusal_code]),
+  ).toEqual(
+    bodies.map(([, status]) => [
+      me.actorId,
+      'refused',
+      status === 400 ? 'COMMAND_BODY_INVALID' : 'FIELD_VALUE_INVALID',
+    ]),
+  );
 }
 
 /** Another business: refused at our key, and its own list names nobody of ours. */
@@ -197,6 +213,11 @@ async function notStaff(me: Member, world: Cq8World, taskId: string): Promise<vo
   );
   expect((await teamList(guest)).status).toBe(404);
   expect((await setAvailability(guest, { state: 'away' })).status).toBe(404);
+  expect((await written()).events.at(-1)).toMatchObject({
+    actor_id: guest.actorId,
+    outcome: 'refused',
+    refusal_code: 'NOT_FOUND',
+  });
   expect(listed(await teamList(me)).map((person) => person.personId)).not.toContain(guest.personId);
 }
 
@@ -251,7 +272,7 @@ describe.skipIf(serverUrl === undefined)('MP-7-10 availability and the team list
     recorded,
   );
   it(
-    'MP-7-10 availability set refuses undeclared fields, a bad state and an over-long reason, writing nothing',
+    'MP-7-10 availability set refuses undeclared fields, a bad state and an over-long reason, writing no row and auditing each refusal',
     refusals,
   );
   it(
