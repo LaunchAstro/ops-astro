@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The worker's composition root and its one job so far (T2b): propose one
-// versioned synthetic change to the task its delegation is for.
+// The worker's composition root and its two jobs: propose one versioned
+// synthetic change to the task its delegation is for (T2b), and once a person
+// approves it, apply it once (T2c2): pick the work up, dispatch the step, write
+// the one team-only comment under the operation identity derived from the
+// attempt, and observe it. Each step retried after a lost answer presents the
+// same identity, so it replays rather than repeats.
 //
 // It is a client of the API and nothing more (spike RN-04). It talks through
 // the command line's own agent entry (`apps/cli/client.ts`), holds an agent
@@ -11,6 +15,7 @@
 // `session.capabilities`, never chosen here.
 
 import { randomUUID } from 'node:crypto';
+import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
 import type { UsageReporter } from './usage.ts';
 
@@ -34,6 +39,15 @@ export type WorkerOutcome =
         readonly gateId: string;
       };
     }
+  | {
+      readonly applied: {
+        readonly taskId: string;
+        readonly attemptId: string;
+        readonly commentId: string;
+      };
+    }
+  /** Nothing approved and unpicked on the task: done already, or not yet approved. */
+  | { readonly idle: { readonly taskId: string } }
   | { readonly refused: { readonly code: string; readonly names: readonly string[] } }
   | { readonly fault: { readonly status: number } };
 
@@ -42,21 +56,66 @@ interface Answered {
   readonly detail: Record<string, unknown>;
 }
 
-export function createWorker(options: WorkerOptions): {
-  readonly proposeOnce: () => Promise<WorkerOutcome>;
-} {
+/** The effect's text: a note to the team, and nothing leaves the app. */
+export const EFFECT_BODY =
+  'Synthetic change applied: a team-only comment. This demonstration changes nothing outside the app.';
+
+type Call = (verb: string, body: object) => Promise<Answered | WorkerOutcome>;
+
+/**
+ * One agent call, under `delegation` when there is one. Every call carries an
+ * operation id, reads included (`agent-envelope.ts`), and an answer lost in
+ * transit is asked for once more under the same id, so it replays.
+ */
+function agentCall(options: WorkerOptions, delegation?: string): Call {
   const cli = createCli({
     entry: 'agent',
     businessKey: encodeURIComponent(options.businessKey),
     credential: options.credential,
-    delegation: options.delegation,
+    ...(delegation === undefined ? {} : { delegation }),
     transport: options.transport,
   });
-  // Every agent call carries an operation id, reads included (`agent-envelope.ts`).
-  const call = async (verb: string, body: object): Promise<Answered | WorkerOutcome> =>
-    settle(await cli.run(verb, { operationId: randomUUID(), ...body }));
+  return async (verb, body) => {
+    const sent = { operationId: randomUUID(), ...body };
+    return settle(await cli.run(verb, sent).catch(async () => await cli.run(verb, sent)));
+  };
+}
 
+/** Apply the approved proposal on `taskId` once: pick it up, dispatch, the comment, observe. */
+async function applyOnce(options: WorkerOptions, taskId: string): Promise<WorkerOutcome> {
+  // The queue and the pickup are reached before any delegation (`agent-envelope.ts`).
+  const before = agentCall(options);
+  const queued = await before('task.queue', {});
+  if (!('body' in queued)) return queued;
+  const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
+  const work = entries.find((entry) => entry['taskId'] === taskId);
+  if (work === undefined) return { idle: { taskId } };
+  const picked = await before('task.pickup', { reservationId: work['reservationId'] });
+  if (!('body' in picked)) return picked;
+  const lease = { leaseId: picked.detail['leaseId'], fence: picked.detail['fence'] };
+  const attemptId = String(picked.detail['attemptId']);
+  const held = agentCall(options, String(picked.detail['credential']));
+  const dispatched = await held('task.dispatch', lease);
+  if (!('body' in dispatched)) return dispatched;
+  const effect = await held('task.comment', {
+    operationId: effectOperationId(attemptId),
+    recordId: taskId,
+    body: EFFECT_BODY,
+    audience: 'internal',
+  });
+  if (!('body' in effect)) return effect;
+  const observed = await held('task.observe', { ...lease, attemptId });
+  if (!('body' in observed)) return observed;
+  return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
+}
+
+export function createWorker(options: WorkerOptions): {
+  readonly proposeOnce: () => Promise<WorkerOutcome>;
+  readonly applyOnce: (taskId: string) => Promise<WorkerOutcome>;
+} {
+  const call = agentCall(options, options.delegation);
   return {
+    applyOnce: async (taskId) => await applyOnce(options, taskId),
     proposeOnce: async () => {
       const capabilities = await call('session.capabilities', {});
       if (!('body' in capabilities)) return capabilities;

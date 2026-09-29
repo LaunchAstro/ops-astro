@@ -6,7 +6,8 @@
 // (`apps/cli/main.ts`): the API's address, the business key, the agent's own
 // login bearer and the one delegation it acts under. Nothing here reads a
 // database address, and nothing prints a credential. Without `--once` it polls
-// the API until its one proposal is made, then exits; `--once` tries once.
+// the API until its one proposal is made, then until a person's approval lets it
+// apply that proposal once (T2c2), then exits; `--once` tries once.
 
 import { httpTransport } from '../cli/client.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
@@ -33,18 +34,23 @@ export async function main(
     reporter: SYNTHETIC_USAGE,
   });
   const interval = Number(env['OPS_ASTRO_WORKER_INTERVAL_MS'] ?? 5_000);
+  let proposedOn: string | undefined;
   for (;;) {
     let outcome: Awaited<ReturnType<typeof worker.proposeOnce>> | undefined;
     try {
       // oxlint-disable-next-line no-await-in-loop -- one poll at a time, by design
-      outcome = await worker.proposeOnce();
+      outcome = await (proposedOn === undefined
+        ? worker.proposeOnce()
+        : worker.applyOnce(proposedOn));
     } catch (cause) {
       process.stderr.write(`worker: no answer from ${api}: ${(cause as Error).message}\n`);
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
-    if (argv.includes('--once') || (outcome !== undefined && 'proposed' in outcome)) {
+    if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;
+    const settled = outcome !== undefined && 'applied' in outcome;
+    if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;
-      if ('proposed' in outcome) return EXIT.ok;
+      if ('proposed' in outcome || 'applied' in outcome || 'idle' in outcome) return EXIT.ok;
       return 'refused' in outcome ? EXIT.refused : EXIT.fault;
     }
     // oxlint-disable-next-line no-await-in-loop -- the poll interval

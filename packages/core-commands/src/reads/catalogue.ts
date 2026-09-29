@@ -32,6 +32,7 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
+import { RECEIPT_READ } from './receipts.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -329,6 +330,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, ...capabilities };
     },
   },
+  'task.receipt': RECEIPT_READ,
 };
 
 /** Whether `board` names a live task in the caller's business: `task.move`'s own check. */

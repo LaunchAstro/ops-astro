@@ -29,6 +29,7 @@ import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
 import type { SettingView } from './settings.ts';
 import type { Capability } from './capabilities.ts';
+import type { Receipt } from '../../../core-runtime/src/index.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -167,6 +168,8 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** What an observed effect came from, asked on its attempt (T2c2). */
+  readonly 'task.receipt': { readonly attemptId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -195,6 +198,7 @@ export type ReadResult =
   | { readonly ok: true; readonly queue: readonly QueuedWork[] }
   | { readonly ok: true; readonly plan: PresetPlan }
   | { readonly ok: true; readonly settings: readonly SettingView[] }
+  | { readonly ok: true; readonly receipt: Receipt }
   /**
    * The capability answer is flat: `personId`, `businessKey` and `grants` sit
    * beside `ok` rather than under a `capabilities` object, because that is the

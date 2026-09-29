@@ -24,6 +24,13 @@
 // The author is the acting actor and the posting time is the server's. Neither
 // is a payload field: a comment whose author or time a caller can choose is
 // not evidence of anything, which is why both are `system` on the spine.
+//
+// **The one local effect (T2c2).** A worker's effect is a team-only comment
+// written here under the operation identity derived from its attempt
+// (`effectOperationId`), so a retry replays it and the register answers
+// whether it happened. That identity is accepted only once the attempt's step
+// is marked dispatched to this caller's own lease: no effect before its
+// dispatch, whichever entry sends it.
 
 import { writeComment } from '../../../core-records/src/index.ts';
 import type {
@@ -33,7 +40,7 @@ import type {
   EntryPoint,
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
-import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
+import { effectAttemptOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnlanded } from './pending.ts';
@@ -60,6 +67,7 @@ const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
+  operationId: string,
   body: unknown,
   audience: unknown,
   commentType: unknown,
@@ -77,6 +85,8 @@ export async function commentOnTask(
       authorActorId: context.session.actorId,
       entryPoint: context.entryPoint,
       audiences: context.session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES,
+      operationId,
+      delegationId: null,
     },
     body,
     audience,
@@ -100,6 +110,29 @@ export interface CommentTarget {
    * refusal an unknown audience gets.
    */
   readonly audiences: ReadonlySet<string>;
+  /** The request's identity: an effect's names the attempt it applies (T2c2). */
+  readonly operationId: string;
+  /** The delegation the author acts under, or `null` for a person. */
+  readonly delegationId: string | null;
+}
+
+const EFFECT_FIXES: readonly string[] = [
+  'Dispatch the step under your own lease first; its answer names the attempt.',
+  'Nothing was written.',
+];
+
+/** Whether this names an effect whose attempt is not marked dispatched to the author's own lease here. */
+async function effectBeforeDispatch(tx: TenantQuery, on: CommentTarget): Promise<boolean> {
+  const attemptId = effectAttemptOf(on.operationId);
+  if (attemptId === undefined) return false;
+  const rows = await tx.query(
+    `select 1 from public.attempts att
+       join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
+      where att.business_id = $1 and att.id = $2 and att.dispatch_marker and l.task_id = $3
+        and l.holder_actor_id = $4 and l.delegation_id is not distinct from $5::uuid`,
+    [tx.businessId, attemptId, on.target.id, on.authorActorId, on.delegationId],
+  );
+  return rows.length === 0;
 }
 
 /**
@@ -148,6 +181,9 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
 
+  if (await effectBeforeDispatch(tx, on)) {
+    return refused(refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES));
+  }
   const commentId = await writeComment(tx, commentTypeId, {
     taskId: on.target.id,
     authorActorId: on.authorActorId,

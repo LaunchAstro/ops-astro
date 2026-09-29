@@ -233,6 +233,12 @@ export type CommandRequest =
       readonly command: 'task.dispatch';
       readonly leaseId: string;
       readonly fence: number;
+    } & Envelope)
+  | ({
+      readonly command: 'task.observe';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly attemptId: string;
     } & Envelope);
 
 /**
