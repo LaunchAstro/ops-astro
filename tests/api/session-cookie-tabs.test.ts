@@ -161,7 +161,7 @@ describe('S0-6 content policy', () => {
     }
   });
 
-  it('Sol proof, criterion 6: a quoted greater-than and fake close cannot hide an inline script', () => {
+  it('a quoted greater-than and fake close cannot hide an inline script', () => {
     const planted = `<script data-x=' src="/a.js" > </script >'>window.planted = 1;</script>`;
     expect(scriptsOf(planted).inline).not.toEqual([]);
   });
