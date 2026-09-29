@@ -27,7 +27,17 @@ export interface FactorSession {
   readonly expiresIn: number;
 }
 
-/** The provider's three second-factor calls, made with the person's own token. */
+/** A person's other sessions ended (C58): how many here, and whether the provider confirmed. */
+export interface SessionsEnded {
+  readonly ended: number;
+  readonly signedOutAtProvider: boolean;
+}
+
+/**
+ * The provider's calls made with the person's own token: the three
+ * second-factor calls, and signing out (C58), of this session (`local`) or of
+ * every other (`others`), which revokes those sessions' refresh tokens.
+ */
 export interface FactorProvider {
   enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
   verify(
@@ -36,6 +46,7 @@ export interface FactorProvider {
     code: string,
   ): Promise<ProviderAnswer<FactorSession>>;
   remove(accessToken: string, factorId: string): Promise<ProviderAnswer<void>>;
+  signOut(accessToken: string, scope: 'local' | 'others'): Promise<ProviderAnswer<void>>;
 }
 
 const CODE_FIXES: readonly string[] = [

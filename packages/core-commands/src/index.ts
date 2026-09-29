@@ -30,7 +30,14 @@ export {
   type IssuedFactor,
   type ProviderAnswer,
   type ProviderFault,
+  type SessionsEnded,
 } from './commands/account-factor-provider.ts';
+export {
+  endOtherSessions,
+  listOwnSessions,
+  signOutSession,
+  type SessionView,
+} from './commands/account-sessions.ts';
 export {
   ACCESS_ENDING_CLAIM_SECONDS,
   settleAccessEndings,

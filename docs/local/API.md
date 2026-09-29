@@ -134,8 +134,8 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 `currency`, `payload` and `step`, a handback's `report` and `successor`, a
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
-`where`, `trainsOnIt` and `contract`, and a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, holding U+0000 or an unpaired surrogate, in any string or key, are
+`where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
+`purpose`, `disclosures`, `retention` and `deletion`, and a client's `name`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -241,6 +241,14 @@ one second past the limit, with no first-sign-in time, or with one more than a
 minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
 served.
+
+A session is GoTrue's `session_id` claim, read by the verifier only when it is
+a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
+person has ended (signed out of, ended from another session, or ended by a
+factor change) is refused at login resolution from that commit,
+`AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
+token's own `exp` says (`ended_sessions`, 0038). The provider's sign-out, which
+revokes the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
@@ -1094,7 +1102,7 @@ exactly the one task it was minted for.
 | Answer                          | Status | When                                                                                                                                                                                                                                                     |
 | ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit (C58)                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                    |
 | `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
 | `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
 | `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
@@ -1484,11 +1492,11 @@ served only when the composition root passes a `factors` provider
 (`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
 bearer). Each writes one audit event, applied or refused, named by the act.
 
-| Route                    | Body                   | Answer                                               | Refusals                                                                                                                                                                       |
-| ------------------------ | ---------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once      | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                        |
-| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
-| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true }`                                  | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                  |
+| Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                       |
+| ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                        |
+| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
+| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                  |
 
 Five wrong codes in fifteen minutes, counted from the person's own refused
 attempts in the audit chain, answer `SECOND_FACTOR_LOCKED` 429 on `verify` and
@@ -1504,6 +1512,34 @@ earlier unverified one, and one live factor remains.
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
 The authenticator secret is in the enrol answer and nowhere else: not a log,
 not an audit event, not the `second_factors` row.
+
+A factor change (the first good code completing an enrolment, or a removal)
+ends the person's other sessions (C58): here, in the change's own
+transaction, then at GoTrue with `POST /logout?scope=others` and the `aal2`
+session the code has just raised, the one kept. `otherSessions` is
+`{ ended, signedOutAtProvider }`. A later code on a verified factor is a
+step-up and ends nothing. A password change is made in the browser straight
+with GoTrue; the sign-in surface ends the other sessions after it with the
+route below.
+
+A person's own sessions have three more routes beside these, on the person
+prefix only, each with the body `{}` (anything else is `COMMAND_BODY_INVALID`
+400). The list is the distinct sessions this business has served the person
+in the last 12 hours, less the ended ones (GoTrue gives a person no list of
+their own); nobody else's is ever read.
+
+| Route                          | Answer                                                                                      | Served at                        | Audit event                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------- |
+| `/account/sessions/list`       | `{ sessions: [{ sessionId, current, firstSeenAt, lastSeenAt }] }`, newest first, at most 50 | a full sign-in                   | none (a read of one's own)    |
+| `/account/sessions/end-others` | `{ ended, signedOutAtProvider }`                                                            | a full sign-in                   | `account.sessions_end_others` |
+| `/account/sessions/sign-out`   | `{ ended, signedOutAtProvider }`                                                            | any sign-in, before the code too | `account.sign_out`            |
+
+Ending is recorded first, with its audit event, so the ended sessions are
+refused from the commit. Then GoTrue's `POST /logout` is asked, with
+`scope=others` or `scope=local` and the person's own bearer. Only a 204 with an
+empty body counts as done; a 200, any body, a refusal, a redirect (never
+followed), an oversized or slow answer is `signedOutAtProvider: false`, the
+local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 

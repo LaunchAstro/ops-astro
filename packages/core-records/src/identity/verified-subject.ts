@@ -34,4 +34,10 @@ export interface VerifiedSubject {
   readonly provider: string;
   readonly subject: string;
   readonly assurance?: Assurance;
+  /**
+   * The provider's session this token belongs to (C58), a UUID, or absent
+   * when the token names none. A refresh keeps it, so ending a session here
+   * ends every token it has minted and will mint.
+   */
+  readonly sessionId?: string;
 }

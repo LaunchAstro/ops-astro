@@ -49,11 +49,14 @@ import type {
 } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  endOtherSessions,
   enrolSecondFactor,
+  listOwnSessions,
   isCommandRefusal,
   isReadName,
   refuseCommand,
   removeSecondFactor,
+  signOutSession,
   verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -437,21 +440,28 @@ function mountPublicLegal(api: Hono, options: ApiOptions): void {
 
 /**
  * The person's own second factor (C59): `account/factor/enrol`, `verify` and
- * `remove`, through the same door as every person route. The bearer goes to
- * the provider as the person's own; the body is the code and nothing else.
+ * `remove`; and their own sessions (C58): `account/sessions/list`,
+ * `end-others` and `sign-out`. Each goes through the same door as every
+ * person route. The bearer goes to the provider as the person's own; the body
+ * is the code, or nothing.
  */
 function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
   const routes = new Hono();
+  type Caller = Parameters<typeof enrolSecondFactor>[0];
   const acts = {
-    enrol: async (caller: Parameters<typeof enrolSecondFactor>[0]) =>
-      await enrolSecondFactor(caller, factors),
-    verify: async (caller: Parameters<typeof enrolSecondFactor>[0], body: unknown) =>
+    'factor/enrol': async (caller: Caller) => await enrolSecondFactor(caller, factors),
+    'factor/verify': async (caller: Caller, body: unknown) =>
       await verifySecondFactor(caller, body, factors),
-    remove: async (caller: Parameters<typeof enrolSecondFactor>[0], body: unknown) =>
+    'factor/remove': async (caller: Caller, body: unknown) =>
       await removeSecondFactor(caller, body, factors),
+    'sessions/list': async (caller: Caller, body: unknown) => await listOwnSessions(caller, body),
+    'sessions/end-others': async (caller: Caller, body: unknown) =>
+      await endOtherSessions(caller, body, factors),
+    'sessions/sign-out': async (caller: Caller, body: unknown) =>
+      await signOutSession(caller, body, factors),
   } as const;
   for (const [name, act] of Object.entries(acts)) {
-    routes.post(`/account/factor/${name}`, async (context) => {
+    routes.post(`/account/${name}`, async (context) => {
       const admitted = await admit(options, context, PERSON);
       if (admitted instanceof Response) return admitted;
       const accessToken = bearerOf(context.req.header('authorization'));
