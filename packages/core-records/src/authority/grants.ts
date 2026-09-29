@@ -83,7 +83,7 @@ export function subjectsOf(session: Session): readonly Subject[] {
 // The depth guard is not decoration. `parent_grant_id` sits under the same
 // UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
 // unbounded recursive term that meets a cycle does not return.
-const EFFECTIVE = `
+export const EFFECTIVE = `
   with recursive effective as (
     select g.*, 1 as depth
       from public.grants g
