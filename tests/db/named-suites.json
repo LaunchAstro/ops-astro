@@ -73,7 +73,7 @@
     "FR5-0030 adds two cases to final-r3r-0030-upgrade-race (SOL-R3R2-1): a real propose on a database at 0029, held between its evidence pack and its gate (a first version) or between superseding the old gate and its pack (a successor), while 0030 starts as the runner applies it. Both must commit, with 0030 recorded, its pack key validated and the gate on its own version's pack. Unedited, 0030 deadlocked with the first; locking evidence_packs before gates deadlocks with the second; 0030 now locks proposal_versions first.",
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
-    "MP-4-9a names task-scores: the MP-4-9 marks command invariant (the three marks, their range in the command and in 0032, task:write, the audit, and the API, command line and agent entries)."
+    "MP-4-9a names task-scores: the MP-4-9 marks command invariant (the three marks, their range in the command and in 0032, task:write, the audit, and the API, command line and agent entries), and Sol's review 1 proof on #141 beside it."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -218,7 +218,8 @@
     "tests/runtime/final-r3r-0030-upgrade-race.test.ts",
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
     "tests/tenancy/final-r6-runner-guard.test.ts",
-    "tests/commands/task-scores.test.ts"
+    "tests/commands/task-scores.test.ts",
+    "tests/commands/sol-proof-mp-4-9a.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
