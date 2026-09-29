@@ -59,4 +59,18 @@ export interface RowActions {
   readonly onOpen?: (row: ProjectRow) => void;
   /** The hover box's timer; drawn only when the page can start one. */
   readonly onStartTimer?: (row: ProjectRow) => void;
+  /** The people the assignee editor offers (MP-5-10); none, no assignee editor. */
+  readonly people?: readonly PersonOption[];
+  /** The assignee chosen in place: a person's id, or null to leave it unassigned. */
+  readonly onAssign?: (row: ProjectRow, person: string | null) => void;
+  /** The due date chosen in place, as a calendar day (`YYYY-MM-DD`), or null to clear it. */
+  readonly onDue?: (row: ProjectRow, due: string | null) => void;
+  /** The stage chosen in place. */
+  readonly onStage?: (row: ProjectRow, stage: string) => void;
+}
+
+/** One person the assignee editor offers. */
+export interface PersonOption {
+  readonly id: string;
+  readonly name: string;
 }
