@@ -30,6 +30,7 @@ const PINNED_SHAPE = {
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
+  'task.ledger': { spine: true, subject: false, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
 };
@@ -40,11 +41,12 @@ const PINNED_IDENTIFIERS = {
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
+  'task.ledger': [],
   'task.queue': [],
   'task.read': ['recordId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.read'];
+const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.ledger', 'task.read'];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -75,6 +77,12 @@ const plan = (name: string) => ({
   names: [name],
   fixes: [`Send ${name} as a non-empty string.`],
 });
+/** None of the bodies names a zone, so the ledger refuses each for that first. */
+const LEDGER_ZONE = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['timeZone'],
+  fixes: ['Send timeZone as a zone name the server knows, such as Australia/Brisbane.'],
+};
 const PLAN_FIELDS = {
   code: 'FIELD_VALUE_INVALID',
   names: ['fields'],
@@ -110,6 +118,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
     PLAN_FIELDS,
   ],
+  'task.ledger': BODIES.map(() => LEDGER_ZONE),
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
@@ -125,7 +134,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same seven reads', () => {
+  it('names the same eight reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -133,7 +142,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same two', () => {
+  it('tells an outsider NOT_FOUND on the same three', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

@@ -207,6 +207,8 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      case 'task.ledger':
+        return { body: { timeZone: 'UTC' } };
       case 'task.queue':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:

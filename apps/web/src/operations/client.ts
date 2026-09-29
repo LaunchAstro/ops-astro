@@ -75,6 +75,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // The activity ledger (MP-8-4), a read from the day it was declared.
+  'task.ledger',
 ] as const;
 
 /**

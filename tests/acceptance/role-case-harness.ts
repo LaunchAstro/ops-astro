@@ -218,6 +218,7 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(targeted || declaration.name === 'task.read' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
+      ...(declaration.name === 'task.ledger' ? { timeZone: 'UTC' } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),

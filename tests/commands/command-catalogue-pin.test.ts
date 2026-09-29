@@ -146,6 +146,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.decide',
   'task.handback',
   'task.heartbeat',
+  'task.ledger',
   'task.pickup',
   'task.purge',
   'task.queue',
@@ -311,7 +312,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty from an expected revision', () => {
+  it('exempts the same twenty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
