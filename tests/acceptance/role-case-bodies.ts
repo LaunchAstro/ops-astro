@@ -218,6 +218,8 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
+      // `access:manage`, which the fixture admin holds on every collection.
+      case 'access.read':
         return { body: {} };
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
