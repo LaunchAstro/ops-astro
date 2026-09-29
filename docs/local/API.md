@@ -25,7 +25,9 @@ node scripts/local/verify-slice.mjs
 
 `auth-up.sh` starts Postgres itself if it is not already up, with the same
 container name, pinned digest, port and volume `db-up.sh` uses, so the two
-converge whichever runs first. Neither script touches the Hub's `supabase_*`
+converge whichever runs first. Like `db-up.sh`, it replaces a container on
+another image or volume (one made before the local database moved to
+Postgres 17) and keeps every volume. Neither script touches the Hub's `supabase_*`
 containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
