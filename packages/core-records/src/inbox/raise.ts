@@ -8,7 +8,7 @@
 // Each recipient comes from a fact the transition already holds: decide
 // grants on the task for a decision, the person who authorised the lease for
 // a settled run, the new assignee, the people a comment names, the task's
-// managers for an incident. Nobody is told of their own assignment or
+// managers for a quarantined hold (an incident). Nobody is told of their own assignment or
 // mention. A decision goes to every holder, the proposer included, because
 // authority and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off.
@@ -102,27 +102,42 @@ export async function raiseAssignment(
 }
 
 /**
- * An incident on a task (CS-16.8). The incident record is C55's; its creating
- * transition calls this in its own transaction. Everyone holding `task:manage`
- * on the task is raised one item pointing at the incident record.
+ * An incident (CS-16.8): a hold a transition classified `quarantined`. Its
+ * attempt carries a dispatch marker or an observation, so what the work did is
+ * unknown and its full hold stays retained until a person reconciles it.
+ * Cancel, revocation and handback each classify holds in their own
+ * transaction and pass them all here; everyone holding `task:manage` on the
+ * task is raised one item on the quarantined run.
  */
 export async function raiseIncident(
   tx: TenantQuery,
-  incident: { readonly taskId: string; readonly incidentId: string },
+  classified: readonly { readonly reservationId: string; readonly state: string }[],
 ): Promise<void> {
-  const holders = await grantHolders(tx, {
-    collection: 'task',
-    action: 'manage',
-    scope: { kind: 'record', id: incident.taskId },
-  });
-  for (const person of holders) {
+  const quarantined = classified.filter((hold) => hold.state === 'quarantined');
+  if (quarantined.length === 0) return;
+  const runs = await tx.query<{ readonly taskId: string; readonly runId: string }>(
+    `select distinct p.task_id as "taskId", p.id as "runId"
+       from public.reservations r
+       join public.planned_runs p on p.business_id = r.business_id and p.id = r.run_id
+      where r.business_id = $1 and r.id = any($2::uuid[])`,
+    [tx.businessId, quarantined.map((hold) => hold.reservationId)],
+  );
+  for (const run of runs) {
     // oxlint-disable-next-line no-await-in-loop
-    await raiseInboxItem(tx, {
-      recipientPersonId: person,
-      subjectRecordId: incident.taskId,
-      reason: 'incident',
-      fact: { kind: 'record', id: incident.incidentId },
+    const holders = await grantHolders(tx, {
+      collection: 'task',
+      action: 'manage',
+      scope: { kind: 'record', id: run.taskId },
     });
+    for (const person of holders) {
+      // oxlint-disable-next-line no-await-in-loop
+      await raiseInboxItem(tx, {
+        recipientPersonId: person,
+        subjectRecordId: run.taskId,
+        reason: 'incident',
+        fact: { kind: 'planned_run', id: run.runId },
+      });
+    }
   }
 }
 
@@ -134,6 +149,11 @@ export interface Mentioned {
   readonly readable: boolean;
   /** Staff, as opposed to an outside party with no membership. */
   readonly member: boolean;
+  /**
+   * An outside party holding a live login here: a paid client, since a person
+   * grants that login and a free contact has none (client portal, CS-16.8).
+   */
+  readonly paidClient: boolean;
 }
 
 /**
@@ -147,11 +167,19 @@ export async function readMentions(
   comment: { readonly taskId: string; readonly audience: string },
   personIds: readonly string[],
 ): Promise<readonly Mentioned[]> {
-  const people = await tx.query<{ readonly id: string; name: string; member: boolean }>(
+  const people = await tx.query<{
+    readonly id: string;
+    name: string;
+    member: boolean;
+    login: boolean;
+  }>(
     `select p.id, p.display_name as name,
             exists (select 1 from public.memberships m
                      where m.business_id = p.business_id and m.person_id = p.id and m.active)
-              as member
+              as member,
+            exists (select 1 from public.person_logins l
+                     where l.business_id = p.business_id and l.person_id = p.id and l.active)
+              as login
        from public.people p where p.business_id = $1 and p.id = any($2::uuid[])`,
     [tx.businessId, personIds],
   );
@@ -168,6 +196,7 @@ export async function readMentions(
       label: person?.name ?? personId,
       readable,
       member: person?.member ?? false,
+      paidClient: person !== undefined && !person.member && person.login,
     });
   }
   return named;
@@ -186,7 +215,6 @@ export async function raiseMentions(
     readonly commentId: string;
     readonly audience: string;
     readonly authorActorId: string;
-    readonly paidClient: boolean;
   },
   named: readonly Mentioned[],
 ): Promise<void> {
@@ -197,7 +225,7 @@ export async function raiseMentions(
   const author = authors[0]?.person_id ?? null;
   for (const person of named) {
     if (person.personId === author) continue;
-    const toClient = comment.audience === 'client' && comment.paidClient;
+    const toClient = comment.audience === 'client' && person.paidClient;
     if (!person.member && !toClient) continue;
     // oxlint-disable-next-line no-await-in-loop
     await raiseInboxItem(tx, {
