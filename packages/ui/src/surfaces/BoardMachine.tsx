@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The board machine drawn (U09, DS-COMP-16 and DS-COMP-17): the command bar
-// (search, undo, redo, Clear all), the chip row (presets, modes and a tag chip
-// for every filter the row cannot show), the reading line, and the table laid
-// out by the width model with sortable, keyboard-operable heads. A mode swaps
-// the table for its own surface over the same rows.
+// The board machine drawn (U09 and U13, DS-COMP-16 and DS-COMP-17): the
+// command bar (search, the funnel menu of every filter, Reset columns, undo,
+// redo, Clear all and the freshness stamp), the chip row (presets, modes and a
+// tag chip for every filter the row cannot show), the reading line, and the
+// table laid out by the width model with sortable, keyboard-operable heads and
+// resize grips. A mode swaps the table for its own surface over the same rows.
+// The command bar is drawn into the page's title row when the page hands one
+// over, and leaves it whenever the board is not the panel showing (D-03). The
+// chip row and the heads stick under the chrome; the board publishes the chip
+// row's height as `--catbar-h` for the heads' offset.
 //
 // It draws only the rows it is handed, which are the rows the viewer may
 // read; the withheld count arrives as a number and is only ever printed.
@@ -13,10 +18,28 @@
 // widths (MP-5-6) go through the history too, but not into the address: they
 // are the person's own, handed out through `onWidths` for the one store.
 
-import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Empty } from '../primitives/Absence.tsx';
 import { layoutColumns } from '../board/columns.ts';
 import { GRIP_STEP, GRIP_STEP_LARGE, widthsAfterDrag } from '../board/widths.ts';
+import {
+  FUNNEL_FIRST,
+  fitChipRow,
+  freshness,
+  funnelMenu,
+  hiddenFilters,
+  rankFacets,
+  type ChipTier,
+} from '../board/funnel.ts';
 import { narrowRows, presetCount, readingLine } from '../board/filters.ts';
 import { initialMachine, reduceBoard } from '../board/machine.ts';
 import { sortRows } from '../board/sort.ts';
@@ -218,6 +241,57 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
     if (widths !== null) dispatch({ type: 'resize', key, widths });
   };
 
+  // The funnel menu (MP-5-7): open, its "Find a filter…" text, and Show all.
+  // All three are the menu's own and never the view's: they narrow controls.
+  const [menu, setMenu] = useState({ open: false, q: '', all: false });
+  const funnel = useRef<HTMLButtonElement>(null);
+  const funnelWrap = useRef<HTMLDivElement>(null);
+  const find = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!menu.open) return undefined;
+    find.current?.focus();
+    const onDown = (event: Event): void => {
+      const target = event.target;
+      if (target instanceof Node && funnelWrap.current?.contains(target) === true) return;
+      setMenu((current) => ({ ...current, open: false }));
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+    };
+  }, [menu.open]);
+
+  // The chip row fits by its ladder after every draw, and its height is
+  // published for the heads' sticky offset. Both write the row's own element
+  // and never its width, so nothing here can move what it measured.
+  const chipRow = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = chipRow.current;
+    const root = card.current;
+    if (row === null || root === null) return;
+    const apply = (tier: ChipTier): void => {
+      row.setAttribute('data-tier', String(tier));
+      if (typeof tier === 'number') row.style.setProperty('--catw', `${String(tier)}px`);
+      else row.style.removeProperty('--catw');
+    };
+    const chips = row.querySelectorAll('.cbd__preset');
+    const first = row.firstElementChild;
+    const last = chips.item(chips.length - 1);
+    if (first === null || chips.length === 0) apply('words');
+    else {
+      apply(
+        fitChipRow((tier) => {
+          apply(tier);
+          return last.getBoundingClientRect().top < first.getBoundingClientRect().bottom;
+        }),
+      );
+    }
+    const height = `${String(Math.round(row.getBoundingClientRect().height))}px`;
+    if (root.style.getPropertyValue('--catbar-h') !== height) {
+      root.style.setProperty('--catbar-h', height);
+    }
+  });
+
   const narrowed = narrowRows(props.rows, view, props.facets, props.hay);
   const sorted = sortRows(narrowed, view.sort, props.columns);
   const presets = props.presets ?? [];
@@ -230,80 +304,192 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const last = machine.history.past.at(-1);
   const next = machine.history.future.at(-1);
   const rest = view.ids.length === 0 && view.text.length === 0;
+  const hidden = hiddenFilters(view, presets);
+  const funnelLabel =
+    hidden === 0 ? 'Filters' : `Filters, ${String(hidden)} on that this bar does not show`;
+  const listing = funnelMenu(rankFacets(props.rows, props.facets), menu.q, menu.all);
+  const stamp = freshness(props.changedAt ?? null, props.now ?? new Date());
+
+  const command = (
+    <div className="cbd__cmd">
+      <BoardSearch
+        facets={props.facets}
+        names={props.rows.map(props.name)}
+        noun={props.noun}
+        have={view}
+        onCommit={(raw) => {
+          dispatch({ type: 'commit', raw });
+        }}
+        onTake={(item) => {
+          if (item.facetId !== undefined) dispatch({ type: 'take', facetId: item.facetId });
+          else if (item.text !== undefined) dispatch({ type: 'phrase', text: item.text });
+        }}
+        onDropLast={() => {
+          dispatch({ type: 'dropLast' });
+        }}
+      />
+      <div
+        className="cbd__funnelw"
+        ref={funnelWrap}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !menu.open) return;
+          event.stopPropagation();
+          setMenu((current) => ({ ...current, open: false }));
+          funnel.current?.focus();
+        }}
+      >
+        <button
+          className={`cbd__ico cbd__funnel${menu.open ? ' is-on' : ''}`}
+          data-funnel=""
+          type="button"
+          ref={funnel}
+          aria-expanded={menu.open}
+          aria-controls="cbd-menu"
+          aria-label={funnelLabel}
+          title={funnelLabel}
+          onClick={() => {
+            setMenu((current) => ({ ...current, open: !current.open }));
+          }}
+        >
+          ⏷
+          {hidden === 0 ? null : (
+            <span className="cbd__badge" data-badge="" aria-hidden="true">
+              {hidden}
+            </span>
+          )}
+        </button>
+        <div
+          className="cbd__menu"
+          id="cbd-menu"
+          role="group"
+          aria-label="Filters"
+          hidden={!menu.open}
+        >
+          <div className="cbd__menuhd">
+            <span className="cbd__flabel">Filters</span>
+          </div>
+          <label className="cbd__menuq">
+            <input
+              id="cbd-menu-q"
+              ref={find}
+              type="text"
+              placeholder="Find a filter…"
+              autoComplete="off"
+              aria-label="Find a filter by name"
+              value={menu.q}
+              onChange={(event) => {
+                const q = event.target.value;
+                setMenu((current) => ({ ...current, q }));
+              }}
+            />
+          </label>
+          {listing.groups.map((group) => (
+            <div className="cbd__menugrp" key={group.kind}>
+              <span className="cbd__menuk">{group.kind}</span>
+              {group.facets.map((one) => (
+                <button
+                  className="cbd__facet"
+                  key={one.id}
+                  type="button"
+                  data-add={one.id}
+                  data-count={one.count}
+                  aria-pressed={view.ids.includes(one.id)}
+                  title={`${String(one.count)} ${props.noun}s${STACK_TIP}`}
+                  onClick={(event) => {
+                    dispatch({ type: 'press', id: one.id, stack: event.shiftKey });
+                  }}
+                >
+                  {one.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          {listing.shown === 0 && menu.q.trim() !== '' ? (
+            <p className="cbd__menuempty">No filter matches “{menu.q.trim()}”.</p>
+          ) : null}
+          {listing.more > 0 || (menu.all && listing.shown > FUNNEL_FIRST) ? (
+            <button
+              className="cbd__lnk"
+              type="button"
+              data-showall=""
+              aria-expanded={menu.all}
+              onClick={() => {
+                setMenu((current) => ({ ...current, all: !current.all }));
+              }}
+            >
+              {menu.all ? 'Show fewer filters' : `Show all filters (${String(listing.more)} more)`}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {view.widths === null ? null : (
+        <button
+          className="cbd__ico"
+          data-reset=""
+          type="button"
+          title="Reset columns"
+          aria-label="Reset columns"
+          onClick={() => {
+            dispatch({ type: 'resetWidths' });
+          }}
+        >
+          ↔
+        </button>
+      )}
+      <button
+        className="cbd__ico"
+        data-undo=""
+        type="button"
+        disabled={last === undefined}
+        title={last === undefined ? 'Nothing to undo' : `Undo ${last.label}`}
+        aria-label={last === undefined ? 'Nothing to undo' : `Undo ${last.label}`}
+        onClick={() => {
+          dispatch({ type: 'undo' });
+        }}
+      >
+        ↶
+      </button>
+      <button
+        className="cbd__ico"
+        data-redo=""
+        type="button"
+        disabled={next === undefined}
+        title={next === undefined ? 'Nothing to redo' : `Redo ${next.label}`}
+        aria-label={next === undefined ? 'Nothing to redo' : `Redo ${next.label}`}
+        onClick={() => {
+          dispatch({ type: 'redo' });
+        }}
+      >
+        ↷
+      </button>
+      <button
+        className="btn btn--primary btn--sm cbd__clear"
+        type="button"
+        disabled={rest}
+        title={rest ? 'Nothing to clear' : 'Drop every filter and search term'}
+        onClick={() => {
+          dispatch({ type: 'clear' });
+        }}
+      >
+        Clear all
+      </button>
+      {stamp === null ? null : (
+        <span className="cbd__fresh" data-freshness="" title={props.changedAt ?? undefined}>
+          <span className="cbd__freshl">{stamp.long}</span>
+          <span className="cbd__freshs" aria-hidden="true">
+            {stamp.short}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+  const bar = props.hidden === true ? null : props.bar ? createPortal(command, props.bar) : command;
 
   return (
-    <div className="cbd" data-board="" ref={card}>
-      <div className="cbd__cmd">
-        <BoardSearch
-          facets={props.facets}
-          names={props.rows.map(props.name)}
-          noun={props.noun}
-          have={view}
-          onCommit={(raw) => {
-            dispatch({ type: 'commit', raw });
-          }}
-          onTake={(item) => {
-            if (item.facetId !== undefined) dispatch({ type: 'take', facetId: item.facetId });
-            else if (item.text !== undefined) dispatch({ type: 'phrase', text: item.text });
-          }}
-          onDropLast={() => {
-            dispatch({ type: 'dropLast' });
-          }}
-        />
-        {view.widths === null ? null : (
-          <button
-            className="cbd__ico"
-            data-reset=""
-            type="button"
-            title="Reset columns"
-            aria-label="Reset columns"
-            onClick={() => {
-              dispatch({ type: 'resetWidths' });
-            }}
-          >
-            ↔
-          </button>
-        )}
-        <button
-          className="cbd__ico"
-          data-undo=""
-          type="button"
-          disabled={last === undefined}
-          title={last === undefined ? 'Nothing to undo' : `Undo ${last.label}`}
-          aria-label={last === undefined ? 'Nothing to undo' : `Undo ${last.label}`}
-          onClick={() => {
-            dispatch({ type: 'undo' });
-          }}
-        >
-          ↶
-        </button>
-        <button
-          className="cbd__ico"
-          data-redo=""
-          type="button"
-          disabled={next === undefined}
-          title={next === undefined ? 'Nothing to redo' : `Redo ${next.label}`}
-          aria-label={next === undefined ? 'Nothing to redo' : `Redo ${next.label}`}
-          onClick={() => {
-            dispatch({ type: 'redo' });
-          }}
-        >
-          ↷
-        </button>
-        <button
-          className="btn btn--primary btn--sm cbd__clear"
-          type="button"
-          disabled={rest}
-          title={rest ? 'Nothing to clear' : 'Drop every filter and search term'}
-          onClick={() => {
-            dispatch({ type: 'clear' });
-          }}
-        >
-          Clear all
-        </button>
-      </div>
+    <div className="cbd" data-board="" ref={card} hidden={props.hidden === true}>
+      {bar}
 
-      <div className="cbd__filters">
+      <div className="cbd__filters" ref={chipRow}>
         {presets.map((preset) => (
           <PresetChip
             key={preset.id}
@@ -396,11 +582,15 @@ function PresetChip(props: {
       data-preset={props.preset.id}
       type="button"
       aria-pressed={props.on}
+      aria-label={props.preset.label}
       title={`${props.preset.label}${STACK_TIP}`}
       onClick={(event) => {
         props.onPress(event.shiftKey);
       }}
     >
+      <span className="cbd__presi" data-icon={props.preset.icon} aria-hidden="true">
+        {GLYPH[props.preset.icon ?? ''] ?? props.preset.label.charAt(0)}
+      </span>
       <span className="cbd__presetw">{props.preset.label}</span>
       <span className="cbd__count">{props.count}</span>
     </button>

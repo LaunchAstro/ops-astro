@@ -239,9 +239,10 @@ describe('MP-5-7 on the gallery fixture', () => {
     expect(board.find('[data-funnel] [data-badge]')).toBeNull();
     // A filter from the menu and a typed word have no chip of their own.
     await board.click('[data-funnel]');
-    const overdue = board.find('#cbd-menu [data-add="due:overdue"]');
+    await board.click('#cbd-menu [data-showall]');
+    const category = board.find('#cbd-menu [data-add^="category:"]');
     await act(async () => {
-      overdue?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+      category?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
     });
     await board.type('[data-board-search]', 'zebra');
     await key(board.find('[data-board-search]') as Element, { key: 'Enter' });
