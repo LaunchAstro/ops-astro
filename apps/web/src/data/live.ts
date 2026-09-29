@@ -8,6 +8,8 @@
 // refused or unreachable, becoming visible and coming back online (LIVE-SYNC.md,
 // "The decision"). `closed`, a revocation, re-reads even a hidden page and
 // leaves that topic off the stream until its last follower has gone.
+// A page no topic reaches, an agency-wide rollup, follows `rollup-floor.ts`
+// instead: every 30 s while visible, at once on return, no timer while hidden.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
@@ -190,14 +192,4 @@ export function hubOf(client: { openLive: OpenTopics }): LiveHub {
     createLiveHub(async (topics, signal) => await client.openLive(topics, signal));
   hubs.set(client, hub);
   return hub;
-}
-
-/** The floor for pages no topic reaches (C4 CS-1.2): agency-wide rollups. */
-export interface RollupFloor {
-  /** Re-read on the floor until the returned function is called. */
-  follow(onRefresh: () => void): () => void;
-}
-
-export function createRollupFloor(_options: HubOptions = {}): RollupFloor {
-  return { follow: () => () => {} };
 }

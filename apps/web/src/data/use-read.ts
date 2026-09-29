@@ -12,7 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import type { LiveHub, RollupFloor } from './live.ts';
+import type { LiveHub } from './live.ts';
+import type { RollupFloor } from './rollup-floor.ts';
 import type { CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
@@ -100,6 +101,9 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
       else reload();
     });
   }, [hub, topic, reload]);
+
+  const { rollup } = options;
+  useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
   useEffect(() => {
     if (options.paused === true || !heldRef.current) return;
