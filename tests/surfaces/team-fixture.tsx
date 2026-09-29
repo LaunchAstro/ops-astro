@@ -6,6 +6,8 @@
 import type {
   AvailabilityChange,
   DirectThread,
+  GroupAction,
+  GroupThread,
   OpenHow,
   TeamMessage,
   TeamPanelProps,
@@ -79,12 +81,13 @@ export interface Calls {
   readonly availability: AvailabilityChange[];
   readonly marks: [string, string][];
   readonly sends: [string, string][];
+  readonly groups: GroupAction[];
 }
 
 export function props(
   over: Partial<TeamPanelProps> = {},
 ): TeamPanelProps & { readonly calls: Calls } {
-  const calls: Calls = { work: [], availability: [], marks: [], sends: [] };
+  const calls: Calls = { work: [], availability: [], marks: [], sends: [], groups: [] };
   return {
     people: PEOPLE,
     me: ME,
@@ -94,6 +97,8 @@ export function props(
     threads: [],
     onMarkRead: (withPerson, upTo) => calls.marks.push([withPerson, upTo]),
     onSend: (to, body) => calls.sends.push([to, body]),
+    groups: [],
+    onGroup: (action) => calls.groups.push(action),
     ...over,
     calls,
   };
@@ -101,3 +106,26 @@ export function props(
 
 export const chip = (m: Mounted, id: string): Element | null =>
   m.host.querySelector(`[data-person="${id}"]`);
+
+/** Launch: Remy, Cath and the reader; read to 10:00, one of Cath's after it. The reader started it. */
+export const LAUNCH: GroupThread = {
+  id: 'g-launch',
+  name: 'Meridian launch',
+  members: ['p-remy', ME, 'p-cath'],
+  canManage: true,
+  lastRead: '2026-09-28T10:00:00Z',
+  messages: [
+    message('g1', 'p-remy', '2026-09-28T09:50:00Z'),
+    message('g2', 'p-cath', '2026-09-28T10:20:00Z', 'Proofs are up'),
+  ],
+};
+
+/** Studio: Len started it, the reader cannot manage it; nothing unread. */
+export const STUDIO: GroupThread = {
+  id: 'g-studio',
+  name: 'Studio',
+  members: ['p-len', ME, 'p-remy'],
+  canManage: false,
+  lastRead: '2026-09-28T09:00:00Z',
+  messages: [message('s1', 'p-len', '2026-09-28T08:30:00Z')],
+};
