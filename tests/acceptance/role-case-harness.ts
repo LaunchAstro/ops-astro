@@ -25,6 +25,7 @@ import {
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
+import { READ_CATALOGUE, isReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
 import {
   agentPath,
   bearer,
@@ -48,6 +49,19 @@ import { PROPOSAL, createPositiveBody, type Prepared, type Task } from './role-c
  */
 export const pairFor = (declaration: CommandDeclaration): string =>
   `${declaration.name === 'preset.plan' ? 'task' : declaration.collection}:${declaration.action}`;
+
+/**
+ * The field a declaration names its subject in: `recordId` on a targeted
+ * command, and on a record-scoped read the identifier its catalogue row takes.
+ * `task.receipt` names its task through `attemptId`, and a `recordId` beside
+ * it is refused `COMMAND_BODY_INVALID` before authority, so a case that sent
+ * one would measure that refusal instead of its own.
+ */
+export function targetKeyOf(declaration: CommandDeclaration): string | undefined {
+  if (declaration.targetsExistingRecord) return 'recordId';
+  if (declaration.kind !== 'read' || declaration.authorisedOn !== 'record') return undefined;
+  return isReadName(declaration.name) ? READ_CATALOGUE[declaration.name].identifiers[0] : undefined;
+}
 
 export interface Harness {
   readonly world: World;
@@ -205,7 +219,7 @@ export async function createHarness(part: string): Promise<Harness> {
    * The least a caller can send and still be asking the operation its own
    * question, for the cases whose answer arrives before the body is read.
    *
-   * `recordId` is sent only where the declaration targets a record, because
+   * `recordId` is sent only where the declaration names a record by it, because
    * `prepare.ts` refuses an identifier on a command that has no use for one —
    * `COMMAND_BODY_INVALID`, and before the authority check — so a body that was
    * uniform across the table would have measured that refusal rather than the
@@ -215,9 +229,7 @@ export async function createHarness(part: string): Promise<Harness> {
     const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
-      ...(targeted || (declaration.kind === 'read' && declaration.authorisedOn === 'record')
-        ? { recordId: alphaTask.id }
-        : {}),
+      ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),

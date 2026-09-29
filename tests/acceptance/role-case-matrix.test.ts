@@ -44,7 +44,7 @@ import {
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
-import { createHarness, type Harness } from './role-case-harness.ts';
+import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 
@@ -115,9 +115,10 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     );
     expect(targeted.length).toBeGreaterThan(0);
     for (const declaration of targeted) {
+      // Each in the field the declaration names its subject by (`targetKeyOf`).
       const shape = (recordId: string): Record<string, unknown> => ({
         ...harness.probeBody(declaration),
-        recordId,
+        [targetKeyOf(declaration) ?? 'recordId']: recordId,
         // One operation identity per call, so neither answer is the register
         // replaying the other.
         operationId: randomUUID(),
