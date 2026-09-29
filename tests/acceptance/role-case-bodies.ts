@@ -24,6 +24,7 @@
 // because being skipped is a thrown error rather than an absent row.
 
 import { randomUUID } from 'node:crypto';
+import { commentChangeBody } from './role-case-comment-bodies.ts';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
@@ -69,11 +70,7 @@ export interface BodyContext {
    * only needs the body shape, and the share is refused on authority anyway.
    */
   clientTask?(title: string): Promise<Task>;
-  /**
-   * A comment written by `author` (the admin when absent) on a fresh task,
-   * which is what `task.edit_comment` and `task.delete_comment` need to
-   * succeed: only its author changes a comment (MP-4-5).
-   */
+  /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
   ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
 }
 
@@ -158,21 +155,8 @@ export function createPositiveBody(
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
       case 'task.edit_comment':
-      case 'task.delete_comment': {
-        if (context.ownComment === undefined) {
-          return { body: { ...(await target()), commentId: randomUUID(), body: 'changed' } };
-        }
-        const own = await context.ownComment(author);
-        const words = declaration.name === 'task.edit_comment' ? { body: 'changed' } : {};
-        return {
-          body: {
-            recordId: own.id,
-            expectedRevision: own.revision,
-            commentId: own.commentId,
-            ...words,
-          },
-        };
-      }
+      case 'task.delete_comment':
+        return { body: await commentChangeBody(context, declaration.name, author) };
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.triage':

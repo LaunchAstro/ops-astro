@@ -15,10 +15,10 @@ import {
   COMMENT_SPINE,
   COMMENT_TYPE_KEY,
   externalCommentProjection,
-  readTaskComments,
   writeComment,
   type StoredComment,
 } from '../../packages/core-records/src/tasks/comments.ts';
+import { readTaskComments } from '../../packages/core-records/src/tasks/comment-thread.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { domainModelConformance } from '../../packages/core-records/src/records/conformance.ts';
 import { readFieldDefinitions } from '../../packages/core-records/src/records/field-store.ts';

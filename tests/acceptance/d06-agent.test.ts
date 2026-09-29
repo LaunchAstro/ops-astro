@@ -131,6 +131,21 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     return live;
   }
 
+  /** A comment the agent writes on its own task, and the body that changes it (MP-4-5). */
+  async function ownCommentChange(
+    name: CommandName,
+    held: Pickup,
+  ): Promise<Record<string, unknown>> {
+    const written = await harness.asAgent(
+      'task.comment',
+      { operationId: randomUUID(), recordId: held.taskId, body: 'to change', audience: 'internal' },
+      held.credential,
+    );
+    const detail = written.body['detail'] as Record<string, unknown> | undefined;
+    const words = name === 'task.edit_comment' ? { body: 'changed' } : {};
+    return { recordId: held.taskId, commentId: detail?.['commentId'], ...words };
+  }
+
   /** A valid body for one agent operation, and the credential it travels with. */
   async function positive(
     name: CommandName,
@@ -151,20 +166,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, ...body }, credential };
     }
     if (name === 'task.edit_comment' || name === 'task.delete_comment') {
-      const written = await harness.asAgent(
-        'task.comment',
-        {
-          operationId: randomUUID(),
-          recordId: held.taskId,
-          body: 'to change',
-          audience: 'internal',
-        },
-        credential,
-      );
-      const commentId = written.body['detail'] as Record<string, unknown> | undefined;
-      const body = { recordId: held.taskId, commentId: commentId?.['commentId'] };
-      const words = name === 'task.edit_comment' ? { body: 'changed' } : {};
-      return { body: { operationId, ...body, ...words }, credential };
+      return { body: { operationId, ...(await ownCommentChange(name, held)) }, credential };
     }
     if (name === 'task.set_scores' || name === 'task.set_adhoc') {
       // Read, not carried: each control moves the task's revision.
