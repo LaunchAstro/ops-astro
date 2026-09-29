@@ -562,6 +562,13 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(commentLines(source)).toEqual([]);
   });
 
+  it('Sol proof, criterion 4: unclosed outer dollar tags cannot hide citations', () => {
+    const source = 'const q = sql`select $a$ $b$ -- Sol 6 $b$`;';
+    expect(passages(commentLines(source)).some(({ comment }) => cites(comment) !== undefined)).toBe(
+      true,
+    );
+  });
+
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
