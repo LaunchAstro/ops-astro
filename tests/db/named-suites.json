@@ -101,7 +101,8 @@
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
     "MP-6-1 (SL12) names mp-6-1-checks (check provenance under the worker lease, check recorded, a check racing a handback), mp-6-1-controls (gate before effect, records, and gate:decide on cancel and restart) as conformance, leaves mp-6-1-preferences.test.ts deliberately unnamed (its three tests skip until preference.save is on the command surface, SL05's MP-2-11a, and the runner refuses a skip; it joins the conformance list when the store lands), and mp-6-1-isolation (the awaiting-review read and the checks across another business, another client in the same business and another person's work under a live delegation) as an invariant, listed in isolation-suites.json too.",
     "MP-6-4 (SL12) names mp-6-4-scope (the machine-set stamp, the snapshot line, the granted scope facts, and a person's edits never changing the stamp) as conformance, and mp-6-4-isolation (the scope across another business, another client in the same business, whose grant on its own task never reaches the other's stamp, and another person's work under a live delegation) as an invariant, listed in isolation-suites.json too.",
-    "AW-03 (SL12) names aw-03-address (address_outlives_the_body, the ticket's invariant, and AW-03 purge real: the purge, item 8 from records and the address after a real purge through the API and the command line) and aw-03-isolation (AW-03 isolation across another business, another client in the same business and another person under a live delegation, with AW-03 client, AW-03 revoked and AW-03 canary) as invariants, the isolation suite listed in isolation-suites.json too."
+    "AW-03 (SL12) names aw-03-address (address_outlives_the_body, the ticket's invariant, and AW-03 purge real: the purge, item 8 from records and the address after a real purge through the API and the command line) and aw-03-isolation (AW-03 isolation across another business, another client in the same business and another person under a live delegation, with AW-03 client, AW-03 revoked and AW-03 canary) as invariants, the isolation suite listed in isolation-suites.json too.",
+    "AW-03 (SL12, session 4) names aw-03-races (a message racing the purge and the wrap-up, two purges and two idle passes at once, a pass and a purge dying mid-write) and aw-03-sweep (the idle sweep: wrap-up at quiet, purge in a later pass, open work held, a failed idle write under a lock timeout, an unreadable window, a retried pass asking for the same purge) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -371,6 +372,8 @@
     "tests/cli/t3f-two-workers.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
     "tests/api/mp-6-1-controls.test.ts",
-    "tests/api/mp-6-4-scope.test.ts"
+    "tests/api/mp-6-4-scope.test.ts",
+    "tests/api/aw-03-races.test.ts",
+    "tests/api/aw-03-sweep.test.ts"
   ]
 }

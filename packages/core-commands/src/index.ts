@@ -27,3 +27,9 @@ export {
   type WrapUpOutcome,
   type WrapUpRequest,
 } from './commands/conversation-lifecycle.ts';
+export {
+  sweepConversations,
+  sweepPurgeOperationId,
+  type SweepReport,
+  type SweepRequest,
+} from './commands/conversation-sweep.ts';
