@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import type { LiveHub } from './live.ts';
+import type { LiveHub, RollupFloor } from './live.ts';
 import type { CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
@@ -29,6 +29,8 @@ export interface UseReadOptions<T> {
    */
   readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
   readonly paused?: boolean;
+  /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
+  readonly rollup?: RollupFloor;
 }
 
 export interface UseReadResult<T> {
