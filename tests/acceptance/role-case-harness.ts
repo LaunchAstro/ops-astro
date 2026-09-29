@@ -36,6 +36,7 @@ import {
   type World,
 } from './world.ts';
 import { PROPOSAL, createPositiveBody, type Prepared, type Task } from './role-case-bodies.ts';
+import { seedLiveCorrection } from './c80-bodies.ts';
 
 /**
  * The grant pair a declaration is actually checked against.
@@ -312,6 +313,9 @@ export async function createHarness(part: string): Promise<Harness> {
     positiveBody: createPositiveBody({
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
+      adminPersonId: world.ada.personId as string,
+      seedCorrection: async () =>
+        await seedLiveCorrection(world.db.app, world.alpha, alphaTask.id, world.mia),
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
     }),

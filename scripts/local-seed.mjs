@@ -95,6 +95,13 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // C80: a live correction is asked for as run work and approved as a gate
+    // decision (the permission key catalogue's `run:write` and `gate:decide`),
+    // and an administrator is whom the catalogue names for both. Only the
+    // configured approver passes an approval, so the grant alone approves nothing.
+    ['run', 'read'],
+    ['run', 'write'],
+    ['gate', 'decide'],
   ],
   member: [
     ['task', 'read'],

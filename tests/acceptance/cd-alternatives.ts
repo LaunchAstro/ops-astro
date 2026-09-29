@@ -21,10 +21,11 @@ export const CASE = {
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
 } as const;
 
 /**
- * The nine operations that name no identifier, each with a minimal valid body.
+ * The ten operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -36,6 +37,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_live_correction_approver', { value: null }],
   ['task.queue', {}],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
@@ -43,7 +45,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
 ];
 
-/** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twelve identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -57,6 +59,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.heartbeat': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
+  'live_correction.request': ['taskId', 'liveCorrection'],
+  'live_correction.decide': ['correctionId', 'liveCorrection'],
 };
 
 /**

@@ -146,3 +146,21 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
     expect(JSON.stringify(refused)).toBe(JSON.stringify(absent));
   });
 });
+
+describe.skipIf(serverUrl === undefined)('C80 malformed operands', () => {
+  it('refuses a party or task that is not an identifier, and writes nothing', async () => {
+    const count = async () =>
+      (
+        await w.world.db.admin.execute<{ readonly n: string }>(
+          'select count(*)::text as n from public.live_corrections',
+          [],
+        )
+      )[0]?.n;
+    const before = await count();
+    for (const overrides of [{ partyId: 'not-an-id' }, { taskId: 7 }, { word: null }]) {
+      // oxlint-disable-next-line no-await-in-loop -- one refusal at a time
+      expect(codeOf(await w.request(w.ava, overrides))).toBe('FIELD_VALUE_INVALID');
+    }
+    expect(await count()).toBe(before);
+  });
+});

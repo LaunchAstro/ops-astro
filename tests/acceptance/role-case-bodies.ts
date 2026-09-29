@@ -23,6 +23,7 @@
 // honest: an operation added to the surface cannot be skipped here quietly,
 // because being skipped is a thrown error rather than an absent row.
 
+import { C80_REQUEST } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
@@ -61,6 +62,10 @@ export interface BodyContext {
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
+  /** The admin the positive calls run as: C80's configured approver. */
+  readonly adminPersonId: string;
+  /** A live correction another member requested, for C80's approval (never the admin's own). */
+  seedCorrection(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
 }
@@ -225,6 +230,22 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_live_correction_approver':
+        return { body: { value: context.assigneePersonId } };
+      case 'live_correction.request': {
+        const task = await context.freshTask('a task a live correction is worked under');
+        return { body: { ...C80_REQUEST, partyId: randomUUID(), taskId: task.id } };
+      }
+      case 'live_correction.decide': {
+        // Another member's request, and the admin named as the approver just
+        // before: the requester never approves, and only the configured one does.
+        const correction = await context.seedCorrection();
+        const named = await context.asPerson('settings.set_live_correction_approver', {
+          value: context.adminPersonId,
+        });
+        if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
+        return { body: { ...correction, decision: 'approve' } };
+      }
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -75,7 +75,30 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.records a
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+  // C80's two tables: the journey requests no live correction. The receipt
+  // follows the correction, on a lease the journey left in the same business.
+  'public.live_corrections': `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
+        version_id, version_digest)
+     select p.business_id, gen_random_uuid(), gen_random_uuid(), r.id, a.id, p.id,
+            'src/pages/about.md', 'friendly', 'welcoming', 'https://agency.example/about/',
+            'sha256:seed', 'rev-1', 'seam-seed', gen_random_uuid(), 'sha256:seed'
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
+  'public.live_correction_receipts': `insert into public.live_correction_receipts
+       (business_id, id, correction_id, lease_id, fence, step, outcome, observations)
+     select c.business_id, gen_random_uuid(), c.id, coalesce(l.id, gen_random_uuid()),
+            coalesce(l.fence, 1), 'publish', 'live', '{}'::jsonb
+       from public.live_corrections c
+       left join lateral (select id, fence from public.leases
+                           where business_id = c.business_id order by id limit 1) l on true
+      where c.business_id = $1 order by c.id limit 1 returning 1`,
 };
+
+const OWNER_ONLY: ReadonlySet<string> = new Set(['public.live_correction_receipts']);
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
 class RolledBack extends Error {
@@ -135,8 +158,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     await walkTheJourney(world);
     for (const business of [world.alpha, world.bravo]) {
       for (const [table, text] of Object.entries(UNREACHED)) {
-        // oxlint-disable-next-line no-await-in-loop
-        const seeded = await world.db.admin.execute(text, [business]);
+        // A receipt names a lease, and only the journey's business holds one:
+        // the other's is written with foreign keys off, as the prefix suite writes.
+        const seeded = OWNER_ONLY.has(table)
+          ? // oxlint-disable-next-line no-await-in-loop
+            await world.db.admin.transaction(async (execute) => {
+              await execute('set local session_replication_role = replica');
+              return await execute(text, [business]);
+            })
+          : // oxlint-disable-next-line no-await-in-loop
+            await world.db.admin.execute(text, [business]);
         if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
       }
     }

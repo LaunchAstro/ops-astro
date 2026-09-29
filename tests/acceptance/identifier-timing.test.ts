@@ -18,6 +18,7 @@
 // Postgres, so the time measured is the handler, the tenancy wrapper and the
 // database lookups the two forms would differ in. It is not network timing.
 
+import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -192,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 26 cells: the 16 record-targeted operations, then the 10 with their own operand. */
+  /** The 28 cells: the 16 record-targeted operations, then the 12 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -249,6 +250,29 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...decision }),
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
+    // C80: a correction of bravo's, and a request worked under bravo's task.
+    const theirs = await seedLiveCorrection(w.h.world.db.app, w.h.world.bravo, f.task.id, f.admin);
+    out.push({
+      op: 'live_correction.decide',
+      operand: 'correctionId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ ...theirs, decision: 'approve' }),
+      fabricated: () => ({
+        correctionId: randomUUID(),
+        versionId: randomUUID(),
+        decision: 'approve',
+      }),
+    });
+    const request = { ...C80_REQUEST, partyId: randomUUID() };
+    out.push({
+      op: 'live_correction.request',
+      operand: 'taskId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ ...request, taskId: f.task.id }),
+      fabricated: () => ({ ...request, taskId: randomUUID() }),
+    });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
@@ -296,15 +320,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 26 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 28 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(26);
-    expect(names).toHaveLength(26);
+    expect(new Set(names).size, 'distinct operations').toBe(28);
+    expect(names).toHaveLength(28);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the ten target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

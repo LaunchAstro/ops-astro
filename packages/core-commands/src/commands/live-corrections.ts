@@ -21,6 +21,7 @@ import {
   insertLiveCorrection,
   RUN_COLLECTION,
   isActiveMember,
+  isUuid,
   lockConfiguredApprover,
   lockCoveredCorrection,
   subjectsOf,
@@ -146,26 +147,28 @@ export async function requestLiveCorrection(
   request: Of<'live_correction.request'>,
 ): Promise<HandlerOutcome> {
   const { session } = context;
+  const operands = typedOperands(request);
+  if ('refusal' in operands) return operands;
   // The task the correction is worked under is one the caller can read, and
   // one they cannot is answered as a task that is not there.
   const readable = await checkAuthority(tx, subjectsOf(session), {
     collection: 'task',
     action: 'read',
-    scope: { kind: 'record', id: request.taskId },
+    scope: { kind: 'record', id: operands.taskId },
   });
   if (!readable.ok) return refused(TASK_ABSENT);
   return await storeRequest(
     tx,
     context.spine.taskTypeId,
     { actorId: session.actorId, personId: session.personId, delegationId: null },
-    request,
+    operands,
   );
 }
 
-export async function approveLiveCorrection(
+export async function decideLiveCorrection(
   tx: TenantQuery,
   context: CommandContext,
-  request: Of<'live_correction.approve'>,
+  request: Of<'live_correction.decide'>,
 ): Promise<HandlerOutcome> {
   if (request.decision !== 'approve' && request.decision !== 'reject') {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['decision'], DECISION_FIXES));
@@ -211,17 +214,40 @@ const OPERAND_NAMES = [
   'after',
 ] as const;
 
-/** The agent row's operands: every one a string, or the refusal naming those that are not. */
+/**
+ * The agent row's operands, taken as sent: their shape is judged after the
+ * delegation (`requestAsAgent`), so a caller holding nothing is told that
+ * first, as every agent row answers.
+ */
 export function requestOperands(
   request: Readonly<Record<string, unknown>>,
-): RequestOperands | ReturnType<typeof refused> {
-  const wrong = OPERAND_NAMES.filter((name) => typeof request[name] !== 'string');
-  if (wrong.length > 0) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', wrong, ['Send each operand as text.']));
-  }
-  return Object.fromEntries(OPERAND_NAMES.map((name) => [name, request[name]])) as RequestOperands;
+): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(OPERAND_NAMES.map((name) => [name, request[name]]));
 }
 
+function typedOperands(
+  operands: Readonly<Record<string, unknown>>,
+): RequestOperands | ReturnType<typeof refused> {
+  const wrong = OPERAND_NAMES.filter((name) =>
+    name === 'partyId' || name === 'taskId'
+      ? !isUuid(operands[name])
+      : typeof operands[name] !== 'string',
+  );
+  if (wrong.length > 0) {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', wrong, [
+        'Send partyId and taskId as identifiers, and the rest as text.',
+      ]),
+    );
+  }
+  return operands as unknown as RequestOperands;
+}
+
+const OUT_OF_PURPOSE = refuseCommand(
+  'DELEGATION_OUT_OF_PURPOSE',
+  ['taskId'],
+  ['A delegation reaches only the task it was minted for.'],
+);
 const OUTSIDE_DELEGATION = refuseCommand(
   'DELEGATION_EXCLUDES_OPERATION',
   ['live_correction.request'],
@@ -239,14 +265,17 @@ const OUTSIDE_DELEGATION = refuseCommand(
 export async function requestAsAgent(
   tx: TenantQuery,
   agentActorId: string,
-  operands: RequestOperands,
+  sent: Readonly<Record<string, unknown>>,
   delegation: Delegation,
 ): Promise<HandlerOutcome> {
+  // Another task than the delegation's is outside its purpose, whatever it
+  // carries; then the delegation must carry run:write at all.
+  if (delegation.purposeScope.id !== sent['taskId']) return refused(OUT_OF_PURPOSE);
   const carries =
     delegation.collections.includes(RUN_COLLECTION) && delegation.actions.includes('write');
-  if (!carries || delegation.purposeScope.id !== operands.taskId) {
-    return refused(OUTSIDE_DELEGATION);
-  }
+  if (!carries) return refused(OUTSIDE_DELEGATION);
+  const operands = typedOperands(sent);
+  if ('refusal' in operands) return operands;
   const covered = await checkAuthority(tx, [{ kind: 'person', id: delegation.delegatePersonId }], {
     collection: RUN_COLLECTION,
     action: 'write',

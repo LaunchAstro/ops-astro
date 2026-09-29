@@ -17,6 +17,7 @@
 // asserted on its own code. The last case is the target-free operations, for
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
+import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -282,6 +283,32 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('task.decide', 'gateId', ada, 'NOT_FOUND', {
         foreign: { gateId, versionId, ...decision },
         fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.liveCorrection,
+    async () => {
+      // A correction of bravo's and a fabricated one; a request worked under
+      // bravo's task and under a fabricated one. Each pair answers alike.
+      const { world } = w.h;
+      const decision = { decision: 'approve' };
+      const theirs = await seedLiveCorrection(
+        world.db.app,
+        world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      await refuses('live_correction.decide', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { ...theirs, ...decision },
+        fabricated: { correctionId: randomUUID(), versionId: randomUUID(), ...decision },
+      });
+      const request = { ...C80_REQUEST, partyId: randomUUID() };
+      await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
+        foreign: { ...request, taskId: w.foreign.task.id },
+        fabricated: { ...request, taskId: randomUUID() },
       });
     },
     120_000,

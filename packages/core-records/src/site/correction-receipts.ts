@@ -2,7 +2,7 @@
 //
 // C80's `receipt written`: the observed publish or revert result and its
 // receipt, in one transaction under a live worker lease on the correction's
-// task (TR-S-R4-10). If the receipt cannot be written, the state does not move.
+// task. If the receipt cannot be written, the state does not move.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';

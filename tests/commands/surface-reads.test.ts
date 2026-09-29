@@ -83,6 +83,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
         'client_sign_off_required',
         'conversation_window_days',
         'four_eyes_threshold',
+        'live_correction_approver',
         'retention_window_days',
       ]);
       const band = result.settings.find((setting) => setting.key === 'four_eyes_threshold');
