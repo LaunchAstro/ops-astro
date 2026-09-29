@@ -32,6 +32,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { approveLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -97,6 +98,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
 
+  'live_correction.request': requestLiveCorrection,
+  'live_correction.approve': approveLiveCorrection,
+  'settings.set_live_correction_approver': setting,
+
   // EX-01. A person picks up, renews and hands back as themselves, on a
   // lease that carries no delegation; the agent does the same on its own
   // entry point in `agent-envelope.ts`, with the delegation its pickup
@@ -129,7 +134,11 @@ function writeOwned(
 function setting(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off'>,
+  request: RequestOf<
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_live_correction_approver'
+  >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }

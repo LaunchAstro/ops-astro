@@ -108,7 +108,16 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // C80, the first controlled live website correction. The request is run
+  // work an agent may ask for inside its delegation; the approval is a person's
+  // decision on the exact version; the approver is a setting a named command
+  // owns, like the two above, because it decides who must agree before a live
+  // effect. The publish, the revert and `receipt written` are system writes
+  // under the worker lease, so none of them is a row here.
+  | 'live_correction.request'
+  | 'live_correction.approve'
+  | 'settings.set_live_correction_approver';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -267,6 +276,8 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const RUN_COLLECTION = 'run';
+const GATE_COLLECTION = 'gate';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -385,6 +396,19 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'live_correction.request': {
+    partyId: 'id',
+    taskId: 'id',
+    path: 'text',
+    word: 'text',
+    replacement: 'text',
+    pageUrl: 'text',
+    baseRevision: 'text',
+    before: 'text',
+    after: 'text',
+  },
+  'live_correction.approve': { correctionId: 'id', versionId: 'id', decision: 'text' },
+  'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -573,6 +597,32 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+
+  // C80. Both are asked at the correction's party (`prepare.ts`,
+  // TARGET_LOOKUPS): the request at the party it names, the approval at the
+  // party of the correction it names, so a party-scoped grant on one client's
+  // site reaches no other client's correction. The request is `run:write`, in
+  // an agent's reach inside its delegation; the approval is `gate:decide`,
+  // never an agent's (contract 2.3 to 2.6), and only the configured approver
+  // who is not the requester passes the handler.
+  declare('live_correction.request', 'write', {
+    collection: RUN_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['partyId', 'taskId'],
+    agent: 'delegated',
+  }),
+  declare('live_correction.approve', 'decide', {
+    collection: GATE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['correctionId', 'versionId'],
+  }),
+  declare('settings.set_live_correction_approver', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
   }),
 ];
 
