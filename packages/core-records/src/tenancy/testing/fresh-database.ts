@@ -113,6 +113,19 @@ export async function createEmptyDatabase(
   const restrictedPassword = randomBytes(24).toString('base64url');
   const log = createStatementLog();
 
+  // The database before its roles, which cannot go while it still exists.
+  const dropStatements = [
+    `drop database if exists ${identifier(name)} with (force)`,
+    `drop role if exists ${identifier(loginRole)}`,
+    `drop role if exists ${identifier(restrictedRole)}`,
+  ];
+  const dropAll = async (database: AdminConnection): Promise<void> => {
+    for (const statement of dropStatements) {
+      // eslint-disable-next-line no-await-in-loop -- in order
+      await database.execute(statement);
+    }
+  };
+
   const server = connectAsAdmin(serverUrl, { source: 'harness', log });
   try {
     // The group role is cluster-wide and shared; the login roles are this
@@ -145,6 +158,11 @@ export async function createEmptyDatabase(
     await server.execute(
       `grant connect on database ${identifier(name)} to ${identifier(restrictedRole)}`,
     );
+  } catch (error) {
+    // Nobody holds a handle on a database whose creation threw, so it would
+    // stay on the server for good (issue #103).
+    await dropAll(server);
+    throw error;
   } finally {
     await server.close();
   }
@@ -182,9 +200,7 @@ export async function createEmptyDatabase(
       await admin.close();
       const cleanup = connectAsAdmin(serverUrl, { source: 'harness', log });
       try {
-        await cleanup.execute(`drop database if exists ${identifier(name)} with (force)`);
-        await cleanup.execute(`drop role if exists ${identifier(loginRole)}`);
-        await cleanup.execute(`drop role if exists ${identifier(restrictedRole)}`);
+        await dropAll(cleanup);
       } finally {
         await cleanup.close();
       }
@@ -196,6 +212,12 @@ export async function createFreshDatabase(
   options: FreshDatabaseOptions = {},
 ): Promise<FreshDatabase> {
   const empty = await createEmptyDatabase(options);
-  const migration = await migrate(empty.admin, options.migrationsDirectory ?? 'migrations');
-  return { ...empty, migration };
+  try {
+    const migration = await migrate(empty.admin, options.migrationsDirectory ?? 'migrations');
+    return { ...empty, migration };
+  } catch (error) {
+    // As above: a caller whose `createFreshDatabase` threw has nothing to drop.
+    await empty.drop();
+    throw error;
+  }
 }
