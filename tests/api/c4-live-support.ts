@@ -7,7 +7,7 @@ import { expect } from 'vitest';
 import type { Hono } from 'hono';
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/index.ts';
-import { executeRead } from '../../packages/core-commands/src/index.ts';
+import { admitReads, executeRead } from '../../packages/core-commands/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { LiveTopics } from '../../apps/api/live.ts';
@@ -178,7 +178,7 @@ export function hostileTopicSets(real: string): readonly (readonly string[])[] {
   ];
 }
 
-/** The composition root with the live channel mounted, counting every read it makes. */
+/** The composition root with the live channel mounted, counting every read and every channel check. */
 export function liveApi(
   s: Schedules,
   pool: Database,
@@ -195,6 +195,13 @@ export function liveApi(
       onRead();
       return await executeRead(...args);
     },
-    live: { topics, recheckMs: 200 },
+    live: {
+      topics,
+      recheckMs: 200,
+      admit: async (...args) => {
+        onRead();
+        return await admitReads(...args);
+      },
+    },
   }).app;
 }
