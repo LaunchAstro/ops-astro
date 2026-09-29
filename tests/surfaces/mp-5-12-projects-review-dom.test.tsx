@@ -82,7 +82,11 @@ const open = async (props: Partial<Parameters<typeof ProjectsBoard>[0]> = {}): P
 };
 
 const drawn = (board: Mounted): readonly string[] =>
-  board.all('tbody tr[data-row]').map((each) => each.getAttribute('data-row') ?? '');
+  board.all('tbody tr[data-row]').map((each) => (each as HTMLElement).dataset['row'] ?? '');
+
+/** One element by selector (the host's own query, not an array search). */
+const one = (board: Mounted, selector: string): Element | null =>
+  board.host.querySelector(selector);
 
 const VIEWER = `.cbd__preset--viewer`;
 const REVIEW = `.cbd__mode[data-mode="review"]`;
@@ -90,21 +94,21 @@ const REVIEW = `.cbd__mode[data-mode="review"]`;
 describe('MP-5-12 the viewer preset is on by default for the signed-in person', () => {
   it('opens on the viewer’s own tasks, the chip on and named for them', async () => {
     const board = await open();
-    expect(board.find(VIEWER)?.classList.contains('is-on')).toBe(true);
-    expect(board.find(VIEWER)?.textContent).toContain('Sam Reed');
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(true);
+    expect(one(board, VIEWER)?.textContent).toContain('Sam Reed');
     expect(drawn(board)).toStrictEqual(['m1', 'm2']);
   });
 
   it('a plain click on it alone clears it, and every task shows', async () => {
     const board = await open();
     await board.click(VIEWER);
-    expect(board.find(VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
     expect(drawn(board)).toStrictEqual(['m1', 'm2', 'a1', 'a2']);
   });
 
   it('is off at load on a client’s board', async () => {
     const board = await open({ viewerOn: false });
-    expect(board.find(VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
     expect(drawn(board)).toHaveLength(4);
   });
 });
@@ -134,11 +138,11 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
 describe('MP-5-12 Review mode drops assignee filters', () => {
   it('carries the live count, and narrows to the tasks waiting on the viewer with the viewer preset dropped', async () => {
     const board = await open();
-    expect(board.find(`${REVIEW} .cbd__count`)?.textContent).toBe('2');
-    expect(board.find(REVIEW)?.getAttribute('title')).toBe('2 waiting on your gate');
+    expect(one(board, `${REVIEW} .cbd__count`)?.textContent).toBe('2');
+    expect(one(board, REVIEW)?.getAttribute('title')).toBe('2 waiting on your gate');
     await board.click(REVIEW);
-    expect(board.find(REVIEW)?.getAttribute('aria-pressed')).toBe('true');
-    expect(board.find(VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(one(board, REVIEW)?.getAttribute('aria-pressed')).toBe('true');
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
     expect(drawn(board)).toStrictEqual(['m2', 'a1']);
     await board.click(REVIEW);
     expect(drawn(board)).toStrictEqual(['m1', 'm2', 'a1', 'a2']);
@@ -146,8 +150,8 @@ describe('MP-5-12 Review mode drops assignee filters', () => {
 
   it('with nothing waiting it says so, and the queue draws empty', async () => {
     const board = await open({ rows: ROWS.filter((each) => !each.awaitingDecision) });
-    expect(board.find(`${REVIEW} .cbd__count`)?.textContent).toBe('0');
-    expect(board.find(REVIEW)?.getAttribute('title')).toBe('Nothing waiting on your gate');
+    expect(one(board, `${REVIEW} .cbd__count`)?.textContent).toBe('0');
+    expect(one(board, REVIEW)?.getAttribute('title')).toBe('Nothing waiting on your gate');
     await board.click(REVIEW);
     expect(drawn(board)).toStrictEqual([]);
     expect(board.text()).toContain('Nothing is waiting for your decision.');
@@ -199,9 +203,9 @@ describe('MP-5-12 drawn from task.board through the Projects screen', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
     mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
     await settle();
-    expect(mounted.find(VIEWER)?.classList.contains('is-on')).toBe(true);
+    expect(one(mounted, VIEWER)?.classList.contains('is-on')).toBe(true);
     expect(drawn(mounted)).toStrictEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
-    expect(mounted.find(`${REVIEW} .cbd__count`)?.textContent).toBe('2');
+    expect(one(mounted, `${REVIEW} .cbd__count`)?.textContent).toBe('2');
     await mounted.click(REVIEW);
     expect(drawn(mounted)).toStrictEqual([
       'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
