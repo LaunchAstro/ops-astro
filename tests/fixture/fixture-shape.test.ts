@@ -9,12 +9,17 @@
 // Data separation: two businesses, each with its own people and two clients;
 // no person, grant or record crosses between them.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { seedFixture, type FixtureReport } from './generate.ts';
 import { FIXTURE_SHAPE } from './shape.ts';
 
@@ -130,6 +135,43 @@ describe.skipIf(serverUrl === undefined)('T4a fixture_shape', () => {
        left join public.records r on r.id = g.scope_id and r.business_id = g.business_id
       where p.id is null or (g.scope_kind = 'record' and r.id is null)`;
     expect(await one(crossing)).toBe(0);
+  });
+
+  const readAs = async (business: BusinessId, who: VerifiedSubject, recordId: string) => {
+    const answer = await executeRead(db.app, business, who, { read: 'task.read', recordId });
+    return isCommandRefusal(answer) ? answer.code : 'read';
+  };
+
+  it('T4 isolation: business to business', async () => {
+    const { alpha, bravo, bravoLead, clients } = report.callers;
+    const [alphaShared, bravoShared] = clients;
+    expect(await readAs(bravo, bravoLead, bravoShared?.task ?? '')).toBe('read');
+    expect(await readAs(bravo, bravoLead, alphaShared?.task ?? '')).toBe('NOT_FOUND');
+    expect(await readAs(alpha, bravoLead, alphaShared?.task ?? '')).not.toBe('read');
+  });
+
+  it('T4 isolation: client to client', async () => {
+    const { clients } = report.callers;
+    const reads = clients.flatMap((reader) => [
+      readAs(reader.business, reader.presented, reader.task),
+      ...clients
+        .filter((other) => other !== reader)
+        .flatMap((other) => [
+          readAs(reader.business, reader.presented, other.task),
+          readAs(other.business, reader.presented, other.task),
+        ]),
+    ]);
+    const own = [true, ...Array.from({ length: 2 * (clients.length - 1) }, () => false)];
+    const seen = (await Promise.all(reads)).map((answer) => answer === 'read');
+    expect(seen).toStrictEqual(clients.flatMap(() => own));
+  });
+
+  it('T4 isolation: person to person', async () => {
+    const { alpha, r4, clients } = report.callers;
+    expect(await readAs(alpha, r4, report.recordGrantTask)).toBe('read');
+    const sibling = await readAs(alpha, r4, clients[0]?.task ?? '');
+    expect(sibling).not.toBe('read');
+    expect(sibling).toBe(await readAs(alpha, r4, randomUUID()));
   });
 
   it('refuses a database it already seeded, and writes nothing', async () => {
