@@ -9,7 +9,7 @@
 // visual match at 1480, 900 and 390 runs on MP-1-7's harness and is `todo`
 // until the pages it names and T4b1's signed-in fixture exist.
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
 import { act, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -135,7 +135,10 @@ describe('MP-1-5 chart primitives', () => {
 
   it('MP-1-5 no chart library: line, column with dashed line, donut with centre label, semicircle gauge with target, score dial with its bands, sparkline and true-scale funnel', async () => {
     // Nothing but React and the kit is imported, and no manifest names a chart package.
-    const source = read(`${root}packages/ui/src/kit/charts.tsx`);
+    const kit = `${root}packages/ui/src/kit/`;
+    const files = readdirSync(kit).filter((name) => /^charts?[-.]/u.test(name));
+    expect(files.length).toBeGreaterThan(1);
+    const source = files.map((name) => read(`${kit}${name}`)).join('\n');
     const imports = [...source.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gmu)].map((m) => m[1]);
     for (const from of imports) expect(from, from).toMatch(/^(react|\.\.?\/)/u);
     const library =
