@@ -26,7 +26,8 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { authorised, createBusinessResolver, post, SECRET, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
+import { authorised, createBusinessResolver, post, tokenFor } from '../api/fixture.ts';
 import { ISSUER } from '../api/fixture.ts';
 import { agentPath, createControls, type Controls } from '../api/controls-fixture.ts';
 
@@ -43,7 +44,7 @@ describe.skipIf(serverUrl === undefined)('cancel losing to a handback on one lin
     second = connect(c.fixture.db.appUrl, { source: 'runtime' });
     secondApi = createApi({
       database: second,
-      verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+      verify: createSupabaseVerifier(testSignIn(ISSUER)),
       resolveBusiness: createBusinessResolver(c.fixture.db.admin),
       executeCommand,
       executeRead,

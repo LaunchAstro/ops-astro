@@ -72,7 +72,11 @@ export type KeySetVerifier = (token: string) => Promise<KeySetVerdict>;
 
 type Refused = Extract<KeySetVerdict, { outcome: 'refused' }>['reason'];
 type Checks = Parameters<typeof verify>[2];
-type KeySet = ReadonlyMap<string, webcrypto.CryptoKey>;
+// The key type `crypto.subtle` itself returns, so the same line typechecks
+// under Node's declarations and under the DOM's (the web program imports this
+// file through the sign-in adapter).
+type ImportedKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
+type KeySet = ReadonlyMap<string, ImportedKey>;
 type Loaded = KeySet | KeySetRefusal['reason'];
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -111,9 +115,7 @@ export function createKeySetVerifier(options: KeySetVerifierOptions): KeySetVeri
     else cached = { keys: loaded, at: started };
   }
 
-  async function keyFor(
-    kid: string,
-  ): Promise<webcrypto.CryptoKey | 'unknown_key' | 'key_set_unavailable'> {
+  async function keyFor(kid: string): Promise<ImportedKey | 'unknown_key' | 'key_set_unavailable'> {
     const known = fresh()?.get(kid);
     if (known !== undefined) return known;
     const mayFetch = lastAttempt === undefined || Date.now() - lastAttempt >= KEY_SET_COOLDOWN_MS;
@@ -166,7 +168,7 @@ type Attempt =
   | { readonly ok: true; readonly claims: Readonly<Record<string, unknown>> }
   | { readonly ok: false; readonly error: string };
 
-async function attempt(token: string, key: webcrypto.CryptoKey, checks: Checks): Promise<Attempt> {
+async function attempt(token: string, key: ImportedKey, checks: Checks): Promise<Attempt> {
   try {
     return { ok: true, claims: (await verify(token, key, checks)) as Record<string, unknown> };
   } catch (cause) {
@@ -277,7 +279,7 @@ async function parseKeySet(body: Uint8Array): Promise<Loaded> {
   const claimed = entries.filter((key) => key['alg'] === 'ES256');
   if (!claimed.every((key) => isUsable(key))) return 'shape';
 
-  const usable = new Map<string, webcrypto.CryptoKey>();
+  const usable = new Map<string, ImportedKey>();
   const imports = claimed.map(async (key) => {
     const imported = await crypto.subtle.importKey(
       'jwk',

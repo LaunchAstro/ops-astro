@@ -124,6 +124,9 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
     mkdirSync(join(root, 'scripts'));
     mkdirSync(join(root, '.local'));
     copyFileSync(join(repo, 'scripts/local-seed.mjs'), join(root, 'scripts/local-seed.mjs'));
+    mkdirSync(join(root, 'scripts/local'));
+    const signer = 'scripts/local/signing-key.mjs';
+    copyFileSync(join(repo, signer), join(root, signer));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
     symlinkSync(join(repo, 'node_modules'), join(root, 'node_modules'));
 

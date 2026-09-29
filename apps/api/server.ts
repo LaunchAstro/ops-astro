@@ -9,7 +9,7 @@
 // one file rather than spread across the modules that use them.
 //
 // The file is two halves. `composeApi` is the wiring and nothing else: given
-// the connections and the secret it builds the served app, fault mapping
+// the connections and the key set's address it builds the served app, fault mapping
 // included, and touches no environment, socket or process. `main` reads the
 // environment, runs restart recovery, calls `composeApi` and listens, and runs
 // only when this file is the process's entry, so a test imports the same
@@ -53,7 +53,7 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
-import { createSupabaseVerifier } from './auth/supabase.ts';
+import { createSupabaseVerifier, type SupabaseVerifierOptions } from './auth/supabase.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -102,7 +102,7 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // connection string and it has no business in either of theirs.
     ...readEnvFile(join(ROOT, '.local', 'gate.env')),
     // The delegation credential keyring, in a gitignored file of its own for
-    // the same reason, and never the gate key or the JWT secret.
+    // the same reason, and never the gate key.
     ...(keyFileNamed ? {} : readEnvFile(join(ROOT, '.local', 'delegation.env'))),
     // The deployment's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
     // Deployment configuration rather than a secret, in a file of its own so the
@@ -155,10 +155,12 @@ export interface ApiConfig {
   readonly database: Database;
   /** The owner's connection, used for the business key and `/api/health` only. */
   readonly admin: AdminConnection;
-  /** The HS256 secret the Supabase adapter verifies bearers with. */
-  readonly secret: string;
-  /** The issuer every bearer must name: the GoTrue URL, `GOTRUE_URL`. */
-  readonly issuer: string;
+  /**
+   * Where bearers are checked: the issuer every one must name and the
+   * provider's published key set. Public keys only; the API holds nothing
+   * that can make a sign-in token.
+   */
+  readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
@@ -218,7 +220,13 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
-      verify: createSupabaseVerifier({ secret: config.secret, issuer: config.issuer }),
+      verify: createSupabaseVerifier({
+        ...config.signIn,
+        // The reason alone: an answer the provider sent is never repeated.
+        onRefusal: ({ reason }) => {
+          console.error(`api: the sign-in key set answer was refused (${reason})`);
+        },
+      }),
       resolveBusiness,
       executeRead,
       executeCommand,
@@ -248,14 +256,14 @@ async function main(): Promise<void> {
   const port = Number(environment['API_PORT'] ?? 8790);
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
-  const secret = environment['SUPABASE_JWT_SECRET'];
   const issuer = environment['GOTRUE_URL'];
 
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
-    ['SUPABASE_JWT_SECRET', secret],
     ['GOTRUE_URL', issuer],
+    // S0-6b red stub: still demanded until the next commit.
+    ['SUPABASE_JWT_SECRET', environment['SUPABASE_JWT_SECRET']],
   ] as const) {
     if (value === undefined || value === '') {
       console.error(`api: ${name} is not set. Run scripts/local/db-up.sh and auth-up.sh first.`);
@@ -281,8 +289,7 @@ async function main(): Promise<void> {
   const { app, resolveBusiness } = composeApi({
     database,
     admin,
-    secret: secret as string,
-    issuer: issuer as string,
+    signIn: { issuer: issuer as string, keySetUrl: keySetUrlOf(environment, issuer as string) },
     keys,
   });
 
@@ -316,6 +323,17 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/**
+ * The provider's published key set: under its own address, as both the local
+ * GoTrue and a hosted project publish it, unless `SUPABASE_KEY_SET_URL` names
+ * another. The verifier accepts only TLS or loopback, and only a
+ * `/.well-known/jwks.json` path, whichever it is.
+ */
+function keySetUrlOf(environment: Readonly<Record<string, string | undefined>>, issuer: string) {
+  const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
+  return named === '' ? `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json` : named;
 }
 
 const RETRY =

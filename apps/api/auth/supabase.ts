@@ -13,22 +13,24 @@
 // what this function reads and the signature is all it reads.
 //
 // **A bad token and a missing token are the same answer.** Forged, unsigned
-// (`alg: none`), signed with the wrong secret, for another audience or issuer,
-// missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
-// `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
-// which of their guesses was closer. The one exception is a bearer whose
-// signature verifies against this secret and whose `exp` has passed: it
-// returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
-// `Verified` and `signatureVerifies`).
+// (`alg: none`), signed with a key the provider has not published, for another
+// audience or issuer, missing a `sub`, or absent: all of them return nothing,
+// and the boundary turns nothing into one `AUTH_UNKNOWN_LOGIN`. Distinguishing
+// them tells an unauthenticated caller which of their guesses was closer. The
+// one exception is a bearer whose signature verifies against a published key
+// and whose `exp` has passed: it returns `'expired'`, which the boundary
+// answers `AUTH_SESSION_EXPIRED` (see `Verified`).
 //
-// **It verifies; it does not decode.** `hono/jwt` checks the HS256 signature,
-// `exp`, audience and issuer against the secret GoTrue was started with. There is no
-// path through this file that reads a claim out of an unverified token, which
-// is the failure mode a hand-rolled base64 split invites.
+// **It verifies; it does not decode.** The key-set verifier (`jwks.ts`) checks
+// the ES256 signature against the provider's published public keys, and `exp`,
+// audience and issuer with it. The API holds nothing that can make a sign-in
+// token (LF-4). There is no path through this file that reads a claim out of an
+// unverified token, which is the failure mode a hand-rolled base64 split
+// invites.
 
 import type { Context } from 'hono';
-import { verify } from 'hono/jwt';
 import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
+import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -37,10 +39,13 @@ export const SUPABASE_PROVIDER = 'supabase';
 export const SUPABASE_AUDIENCE = 'authenticated';
 
 export interface SupabaseVerifierOptions {
-  /** The HS256 secret the local GoTrue signs with, from `.local/auth.env`. */
-  readonly secret: string;
   /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
   readonly issuer: string;
+  /** The provider's published key set, `…/.well-known/jwks.json`. */
+  readonly keySetUrl: string;
+  readonly fetch?: KeySetFetch;
+  /** Told each refused answer from the provider, by reason only. */
+  readonly onRefusal?: (refusal: KeySetRefusal) => void;
 }
 
 /**
@@ -51,7 +56,7 @@ export interface SupabaseVerifierOptions {
  * for every other failure: a missing, forged, unsigned or subject-less token
  * all answer the same, because telling them apart tells an unauthenticated
  * caller which guess was closer. An expired token is not a guess. Its
- * signature verifies against this deployment's secret, so whoever sent it held
+ * signature verifies against a key the provider published, so whoever sent it held
  * a real credential this server issued a session for, and they learn nothing
  * from being told it has run out that they could not already prove. What they
  * gain is the difference between a door they can open and one they cannot:
@@ -60,22 +65,24 @@ export interface SupabaseVerifierOptions {
  */
 export type Verified = VerifiedSubject | 'expired';
 
-type Checks = Parameters<typeof verify>[2];
-
 export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
 /**
  * Build the verifier the API is constructed with.
  *
- * It is a factory taking the secret rather than a module reading the
- * environment, for the reason the draft's boundary gives about its own
+ * It is a factory taking the key set's address rather than a module reading
+ * the environment, for the reason the draft's boundary gives about its own
  * authentication seam: what an operator can set, an operator can set by
- * accident. The composition root supplies the secret once.
+ * accident. The composition root supplies it once.
  */
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
-  const { secret, issuer } = options;
-  if (secret === '') throw new Error('createSupabaseVerifier: the JWT secret is empty');
-  const expected = { alg: 'HS256', aud: SUPABASE_AUDIENCE, iss: issuer } as const;
+  const verifyToken = createKeySetVerifier({
+    keySetUrl: options.keySetUrl,
+    issuer: options.issuer,
+    audience: SUPABASE_AUDIENCE,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.onRefusal === undefined ? {} : { onRefusal: options.onRefusal }),
+  });
 
   return async function verifySupabaseToken(
     request: Context['req'],
@@ -83,23 +90,15 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const token = bearerOf(request.header('authorization'));
     if (token === undefined) return undefined;
 
-    let claims: Record<string, unknown>;
-    try {
-      // HS256 named explicitly: passing the algorithm rather than reading it
-      // from the token's own header is what stops a token that nominates
-      // `none` from verifying against no key at all. `exp`, `aud` and `iss` too.
-      claims = (await verify(token, secret, expected)) as Record<string, unknown>;
-    } catch (cause) {
-      // The algorithm is still named when verifying rather than read from the
-      // token's own header, so a token nominating `alg: none` verifies against
-      // no key at all and lands here like any other forgery. Only a signature
-      // that did verify can be reported as expired.
-      const expired =
-        isExpiry(cause) && (await signatureVerifies(token, secret, { ...expected, exp: false }));
-      return expired ? 'expired' : undefined;
-    }
+    // ES256 pinned, the key chosen by `kid` from the published set, and only
+    // a signature that verified can be reported as expired (`jwks.ts`).
+    // S0-6b red stub: nothing verifies until the next commit.
+    if (token !== '') return undefined;
+    const verdict = await verifyToken(token);
+    if (verdict.outcome === 'expired') return 'expired';
+    if (verdict.outcome === 'refused') return undefined;
 
-    const subject = claims['sub'];
+    const subject = verdict.claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
     // Only `sub` crosses. The token's `email`, `role`, `app_metadata` and
@@ -108,39 +107,6 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // transaction, not a claim a token can assert.
     return { provider: SUPABASE_PROVIDER, subject };
   };
-}
-
-/**
- * Whether Hono's verifier rejected a token for its `exp` rather than its
- * signature.
- *
- * `hono/jwt` throws a named error for expiry. It is matched by name rather
- * than by class so that a version bump changing the class hierarchy degrades
- * to "not expired" — which is `AUTH_UNKNOWN_LOGIN`, the stricter answer —
- * instead of reporting a forgery as an ended session.
- */
-function isExpiry(cause: unknown): boolean {
-  return cause instanceof Error && cause.name === 'JwtTokenExpired';
-}
-
-/**
- * Whether a token Hono called expired is signed by this deployment's secret.
- *
- * **Hono's name for the error is not proof of the signature.** `hono/jwt`
- * 4.13.9 checks `exp`, `iss` and `aud` before the signature (`utils/jwt/jwt.js`
- * `verify`), so a forged or unsigned bearer with a past `exp` throws
- * `JwtTokenExpired` too. It is verified again with the expiry check off and
- * everything else the first call checked still on: HS256 named, `nbf`, `iat`,
- * `aud` and `iss` checked. Only a bearer that passes is `AUTH_SESSION_EXPIRED`; the
- * rest are `AUTH_UNKNOWN_LOGIN` (API.md admission step 1).
- */
-async function signatureVerifies(token: string, secret: string, checks: Checks): Promise<boolean> {
-  try {
-    await verify(token, secret, checks);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
