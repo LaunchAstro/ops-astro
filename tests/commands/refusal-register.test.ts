@@ -103,7 +103,6 @@ describe('the refusal register', () => {
       // `DELEGATION_WIDENS` came off when the approver's task write was revoked
       // between approval and pickup (`tests/commands/delegation-widens.test.ts`).
       'EVIDENCE_MISMATCH',
-      'GATE_PENDING',
       'LEASE_EXPIRED',
       'PROPOSAL_SCOPE_EXCEEDED',
       'PROPOSAL_SUPERSEDED',

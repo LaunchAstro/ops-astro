@@ -26,6 +26,7 @@
 // where that sentence is enforced from both sides.
 
 import {
+  gatePending,
   readFieldDefinitions,
   isLive,
   isRecordsRefusal,
@@ -38,6 +39,7 @@ import type {
   MachineCategory,
   RefusalCode,
 } from '../../../core-records/src/index.ts';
+import { acquire } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseUpdateOperands } from './operands.ts';
@@ -190,6 +192,15 @@ export async function setState(
     ]);
   }
 
+  // Contract 4.3: a task is not completed while an approval gate on it is
+  // open. A gate past its deadline is not open (`task.read` shows it expired).
+  // Asked under the task lock, which `propose` takes before it raises a gate
+  // and `decide` before it closes one, so neither can move under this read.
+  if (category === 'completed') {
+    await acquire(tx, [{ lockClass: 'task', id: target.id }]);
+    if (await openGateOn(tx, target.id)) return refused(gatePending());
+  }
+
   const state = context.spine.states.find((candidate) => candidate.machineCategory === category);
   if (state === undefined) {
     return refuse(
@@ -296,4 +307,17 @@ export async function writeOwnedFields(
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
   }
   return applied(target.id, Number(written.revision), { changed: keys });
+}
+
+/** Whether a pending gate before its deadline sits on any lineage of this task. */
+async function openGateOn(tx: TenantQuery, taskId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly open: boolean }>(
+    `select exists (
+       select 1 from public.gates g
+         join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+        where g.business_id = $1 and l.task_id = $2 and g.state = 'pending'
+          and g.expires_at > now()) as open`,
+    [tx.businessId, taskId],
+  );
+  return rows[0]?.open === true;
 }

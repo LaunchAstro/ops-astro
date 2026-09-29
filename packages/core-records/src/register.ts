@@ -463,6 +463,7 @@ const ROWS = [
     status: 409,
     meaning: 'The gate needs a second approver',
     source: 'contract 4.4',
+    runtime: true,
   },
 
   // Budget, T1k. For the runtime, the envelope cannot hold the accepted maximum.
@@ -733,6 +734,55 @@ export function refuseCommand<C extends RefusalCode>(
   return { refused: true, code, names, fixes };
 }
 
+/**
+ * The gate codes' production constructors (T2g, build plan section 5), so each
+ * producer raises its code one way and a test can name the constructor.
+ */
+
+/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
+export function gatePending(): CommandRefusal<'GATE_PENDING'> {
+  return refuseCommand(
+    'GATE_PENDING',
+    [],
+    [
+      'An approval gate on this task is still open, so the task is not complete.',
+      'Decide the gate, or let it expire, then complete the task.',
+    ],
+  );
+}
+
+/** A second decision on a gate that carries one (G03). */
+export function gateAlreadyDecided(
+  gateId: string,
+  state: string,
+): CommandRefusal<'GATE_ALREADY_DECIDED'> {
+  return refuseCommand(
+    'GATE_ALREADY_DECIDED',
+    [],
+    [
+      `gate ${gateId} is ${state}`,
+      'Read the decision that was recorded. A second decision on one version is never taken.',
+    ],
+  );
+}
+
+/** A comment in an audience this caller may not write in. */
+export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
+  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
+}
+
+/** The task's assignee asked to decide its own gate: another person decides. */
+export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
+  return refuseCommand(
+    'FOUR_EYES_REQUIRED',
+    [],
+    [
+      'The task is assigned to you, so its gate is decided by someone else.',
+      'Ask another person who holds the decision grant on this task.',
+    ],
+  );
+}
+
 /** The discriminant every result is read through. */
 export function isCommandRefusal(value: object): value is CommandRefusal {
   return 'refused' in value && value.refused === true;
@@ -747,10 +797,11 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * enforcing path returns when an attempt would cross a ceiling a person
  * approved (`core-runtime/src/budget.ts`). `GATE_NOT_APPROVED` and
  * `FOUR_EYES_REQUIRED` belong to the gated money decisions, a top-up and a
- * write-off. The top-up (T2e, `core-runtime/src/budget.ts`) produces
- * `FOUR_EYES_REQUIRED`; the write-off is deferred, so nothing in `apps/` or
- * `packages/` returns `GATE_NOT_APPROVED`. It is registered, unproduced and
- * not on this list, so this list is not every code nothing produces.
+ * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
+ * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
+ * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
+ * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
+ * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the
@@ -793,9 +844,9 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXPIRED',
   'DELEGATION_REVOKED',
-  // T2 spellings the runtime did not adopt. It raises `GATE_ALREADY_DECIDED`
-  // where these say pending and superseded, and nothing produces these two.
-  'GATE_PENDING',
+  // A T2 spelling the runtime did not adopt: it raises `GATE_ALREADY_DECIDED`
+  // where this says superseded. `GATE_PENDING` left the list with T2g, which
+  // raises it on completing a task whose gate is open.
   'PROPOSAL_SUPERSEDED',
   'PROPOSAL_SCOPE_EXCEEDED',
   'TASK_NOT_PICKABLE',

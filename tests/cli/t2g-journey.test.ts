@@ -42,6 +42,9 @@ interface Answer {
 const detail = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] ?? {}) as Record<string, unknown>;
 
+/** A placeholder until a promise hands over its resolver. */
+const noop = (): void => undefined;
+
 describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
   let world: World;
   let api: ServedApi | undefined;
@@ -167,7 +170,8 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
     );
 
     const receiptBody = (receipt.body['receipt'] ?? {}) as Record<string, unknown>;
-    const events = (execution.body['events'] ?? []) as { kind: string }[];
+    const run = (execution.body['execution'] ?? {}) as Record<string, unknown>;
+    const events = (run['events'] ?? []) as { kind: string }[];
     return {
       facts: {
         agent: { ok: agentRun.code === 0, attempted: agentAudit[0]?.attempted },
@@ -184,7 +188,7 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
             (receiptBody['version'] as Record<string, unknown> | undefined)?.['id'] === versionId,
           settled: receiptBody['settledMinor'] ?? null,
         },
-        execution: { outcome: execution.body['outcome'], kinds: events.map((e) => e.kind) },
+        execution: { outcome: run['outcome'], kinds: events.map((e) => e.kind) },
         decisions: decisions.map((row) => ({
           decision: row.decision,
           byMia: row.person === world.mia.personId && row.actor === world.mia.actorId,
@@ -236,5 +240,74 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
       agent: { ...cli.facts.agent, attempted: null },
     });
     expect(app.facts.agent.attempted).toMatchObject({ delegationId: app.delegationId });
+  });
+
+  it('four eyes under the task lock: a reassignment held open while the new assignee decides is waited for, then refused', async () => {
+    const created = await step(
+      'app',
+      'task.create',
+      { fields: { title: 't2g race' } },
+      world.ada.token,
+    );
+    const taskId = String(created.body['recordId']);
+    const proposed = await step(
+      'app',
+      'task.propose',
+      {
+        recordId: taskId,
+        expectedRevision: created.body['revision'],
+        purpose: `t2g_${randomUUID().slice(0, 8)}`,
+        maximumMinor: 2_000,
+        currency: 'AUD',
+        payload: { change: 'a team-only comment' },
+        step: { kind: 'synthetic_comment', payload: {} },
+      },
+      world.ada.token,
+    );
+    const gate = detail(proposed);
+
+    let release = noop;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let updated = noop;
+    const holding = new Promise<void>((resolve) => {
+      updated = resolve;
+    });
+    // Mia becomes the assignee in a transaction that stays open on the task's row.
+    const holder = world.db.app.withBusiness(world.alpha, async (tx) => {
+      const moved = await tx.query(
+        `update public.records set data = jsonb_set(data, '{assignee}', to_jsonb($2::text))
+          where business_id = $1 and id = $3 returning uuid_2`,
+        [world.alpha, world.mia.personId, taskId],
+      );
+      expect(moved).toHaveLength(1);
+      updated();
+      await released;
+    });
+    await holding;
+
+    let settled = false;
+    const deciding = step(
+      'app',
+      'task.decide',
+      { gateId: gate['gateId'], versionId: gate['versionId'], decision: 'approve', note: 'race' },
+      world.mia.token,
+    ).finally(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 750);
+    });
+    expect(settled, 'the decision waits for the reassignment').toBe(false);
+    release();
+    await holder;
+
+    expect((await deciding).code).toBe('FOUR_EYES_REQUIRED');
+    const written = await world.db.admin.execute(
+      'select 1 from public.gate_decisions where business_id = $1 and gate_id = $2',
+      [world.alpha, gate['gateId']],
+    );
+    expect(written).toHaveLength(0);
   });
 });

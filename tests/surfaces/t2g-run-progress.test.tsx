@@ -113,13 +113,15 @@ function open(execution: Execution) {
 const answer = (outcome: string, runs: unknown[] = [], events: unknown[] = []) =>
   json({
     ok: true,
-    outcome,
-    taskId: TASK.id,
-    sourceRevision: events.length,
-    complete: true,
-    next: null,
-    runs,
-    events,
+    execution: {
+      outcome,
+      taskId: TASK.id,
+      sourceRevision: events.length,
+      complete: true,
+      next: null,
+      runs,
+      events,
+    },
   });
 
 const drawn = async (execution: Execution): Promise<string | null> => {
