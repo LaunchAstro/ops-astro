@@ -10,7 +10,7 @@
 // `apps/web/dist` on a loopback port of its own and closes it.
 
 import { readFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, get } from 'node:http';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -58,6 +58,20 @@ await new Promise((resolve) => {
 });
 const origin = `http://127.0.0.1:${String(server.address().port)}`;
 
+// The page server hands out files under `dist` only: a path that climbs out
+// of it is refused.
+const status = (path) =>
+  new Promise((resolve, reject) => {
+    get({ host: '127.0.0.1', port: server.address().port, path }, (response) => {
+      response.resume();
+      resolve(response.statusCode);
+    }).on('error', reject);
+  });
+const climbed = [
+  await status('/../../../package.json'),
+  await status('/assets/../../../../package.json'),
+];
+
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
@@ -79,9 +93,11 @@ try {
     ['a planted inline handler does not run', !ran.handler],
     ['a planted outside script does not run', !ran.outside],
     ['the browser reports the refusals', refused.length >= 2],
+    ['a path outside the built page is not served', climbed.every((code) => code === 404)],
   ];
   for (const [line, held] of rows) console.log(`${held ? 'PASS' : 'FAIL'}  ${line}`);
   console.log(`refusals reported: ${String(refused.length)}`);
+  console.log(`outside paths answered: ${climbed.join(', ')}`);
   process.exitCode = rows.every(([, held]) => held) ? 0 : 1;
 } finally {
   await browser.close();
