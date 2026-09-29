@@ -134,7 +134,14 @@ export type CommandName =
   // a definition version `automation:manage`, neither an agent's.
   | 'automation.registry'
   | 'activation.change'
-  | 'definition.release';
+  | 'definition.release'
+  // Adoption, rollback, revocation and turning off (C52-A): each
+  // `automation:manage`, never an agent's. A rollback is an adoption of the
+  // version before; revoking an approval is its own act.
+  | 'activation.adopt'
+  | 'activation.roll_back'
+  | 'activation.turn_off'
+  | 'approval.revoke';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -433,6 +440,10 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     operations: 'any',
     modes: 'any',
   },
+  'activation.adopt': { activationId: 'id', versionId: 'id', expectedRevision: 'any' },
+  'activation.roll_back': { activationId: 'id', expectedRevision: 'any' },
+  'activation.turn_off': { activationId: 'id', expectedRevision: 'any' },
+  'approval.revoke': { approvalId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -632,6 +643,28 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: AUTOMATION_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['definitionId'],
+  }),
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking are `automation:manage`, business-wide, never an agent's.
+  declare('activation.adopt', 'manage', {
+    collection: AUTOMATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId', 'versionId'],
+  }),
+  declare('activation.roll_back', 'manage', {
+    collection: AUTOMATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('activation.turn_off', 'manage', {
+    collection: AUTOMATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('approval.revoke', 'manage', {
+    collection: AUTOMATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['approvalId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

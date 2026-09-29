@@ -60,6 +60,7 @@ export type {
   AutomationDefinitionView,
   DefinitionVersionView,
   ActivationView,
+  StandingApprovalView,
   ConnectionView,
   GrantView,
   NightStepView,
