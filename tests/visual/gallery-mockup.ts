@@ -42,8 +42,8 @@ import {
   type Theme,
 } from './packet.ts';
 
-/** The mockup's sample client (its routes.json `sampleClient`). */
-const CLIENT = 'meridian-dental';
+/** Any client: a canonical pattern's `:client` takes one segment, and the mockup's pages are static. */
+const CLIENT = 'sample-client';
 const INVOICES = `/clients/${CLIENT}/account/`;
 const WORKBENCH = `/clients/${CLIENT}/workbench/`;
 
