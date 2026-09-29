@@ -107,14 +107,15 @@ describe("MP-5-11 groups in the status vocabulary's order (not first-seen), draw
 });
 
 describe('MP-5-11 waiting reasons after the heading, drawn', () => {
-  it('draws the group’s reasons after its heading, each once', async () => {
+  it('draws the group’s reasons after its heading, each once, as its rows are drawn', async () => {
     const board = await open();
     const waiting = board
       .all('tbody tr.cbd__grp')
       .find((tr) => tr.textContent.startsWith('Waiting on client'));
     const heading = waiting?.querySelector('.cbd__grpb');
     expect(heading?.firstChild?.textContent).toBe('Waiting on client');
-    expect(heading?.querySelector('.cbd__grpr')?.textContent).toBe('client reply · approval');
+    // Both rows are unranked, so the work order keeps them as handed in.
+    expect(heading?.querySelector('.cbd__grpr')?.textContent).toBe('approval · client reply');
   });
 
   it('says nothing after a heading whose rows have no reason', async () => {

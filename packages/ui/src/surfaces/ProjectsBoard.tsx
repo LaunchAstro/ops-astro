@@ -4,12 +4,14 @@
 // the nine columns and their cells. It opens on the work order, the arrow
 // under Rank (P-20), and the rows it is handed are already in that order, so
 // the sort's third press, the board's own order, is the work order too. The
-// Client column drops when one client is shown (P-23).
+// Client column drops when one client is shown (P-23). The rows gather under
+// their statuses in the workflow's order, each banner with its waiting
+// reasons (MP-5-11).
 
 import { useMemo, useState, type ReactElement } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
 import { projectCell } from './ProjectCell.tsx';
-import { projectColumns, type ProjectRow } from '../board/projects.ts';
+import { groupReason, projectColumns, statusOrder, type ProjectRow } from '../board/projects.ts';
 import { clientFiltersIn, projectFacets } from '../board/project-facets.ts';
 import { sortRows } from '../board/sort.ts';
 
@@ -52,14 +54,14 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     [props.rows, props.stages],
   );
   const facets = useMemo(() => projectFacets(props.rows, now), [props.rows, now]);
-  const statuses = useMemo(() => [...new Set(rows.map((row) => row.status))], [rows]);
+  const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
       rows={rows}
       withheld={props.withheld ?? 0}
       columns={columns}
       facets={facets}
-      groups={{ order: statuses, of: (row) => row.status }}
+      groups={{ order: statuses, of: (row) => row.status, reason: groupReason }}
       rowKey={(row) => row.id}
       cell={(row, key) => projectCell(row, key, { now, href: props.href })}
       hay={(row) => `${row.name} ${row.client ?? ''} ${row.assignee?.name ?? ''}`}
