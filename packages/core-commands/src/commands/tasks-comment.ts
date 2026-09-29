@@ -130,17 +130,20 @@ export async function commentOnTask(
  */
 async function replyParent(
   tx: TenantQuery,
+  on: CommentTarget,
   commentTypeId: string,
-  taskId: string,
   parentId: unknown,
   audience: string,
 ): Promise<string | null | HandlerOutcome> {
   if (parentId === undefined || parentId === null) return null;
   const message =
     typeof parentId === 'string'
-      ? await lockComment(tx, commentTypeId, taskId, parentId)
+      ? await lockComment(tx, commentTypeId, on.target.id, parentId)
       : undefined;
-  if (message === undefined || message.parentId !== null) {
+  // A message in an audience this caller may not write in (an internal note,
+  // to a client's person or an agent) is answered as one that is not there,
+  // so a reply cannot be used to learn that a note it cannot see exists.
+  if (message === undefined || message.parentId !== null || !on.audiences.has(message.audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['parentId'], PARENT_FIXES));
   }
   if (message.audience !== audience) {
@@ -281,7 +284,7 @@ export async function writeTaskComment(
 
   const effect = await effectRefusal(tx, on, audience);
   if (effect !== undefined) return refused(effect);
-  const parent = await replyParent(tx, commentTypeId, on.target.id, parentId, audience);
+  const parent = await replyParent(tx, on, commentTypeId, parentId, audience);
   if (typeof parent === 'object' && parent !== null) return parent;
 
   const commentId = await writeComment(tx, commentTypeId, {

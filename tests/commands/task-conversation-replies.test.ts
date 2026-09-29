@@ -90,6 +90,20 @@ describe.skipIf(serverUrl === undefined)('MP-4-5 replies', () => {
   });
 });
 
+describe.skipIf(serverUrl === undefined)('MP-4-5 reply one level, a note out of reach', () => {
+  it('MP-4-5 reply one level: a note the caller cannot write in is answered as absent', async () => {
+    const note = commentIdOf(await post(who.decider, ids['a'] ?? '', 'internal', 'team only'));
+    const before = await who.world.commentsOn(ids['a'] ?? '');
+    // One of the client's people, naming an internal note's id: told the
+    // same as for an id that is not there, never that it is a note.
+    const probe = await post(who.clientPerson, ids['a'] ?? '', 'client', 'reply', note);
+    const absent = await post(who.clientPerson, ids['a'] ?? '', 'client', 'reply', randomUUID());
+    expect(codeOf(probe)).toBe('FIELD_VALUE_INVALID');
+    expect(JSON.stringify(probe)).toStrictEqual(JSON.stringify(absent));
+    expect(await who.world.commentsOn(ids['a'] ?? '')).toBe(before);
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('MP-4-5 own rows only', () => {
   it('MP-4-5 own rows only: the author edits and deletes; a colleague is refused and changes nothing', async () => {
     const mine = commentIdOf(await post(who.decider, ids['a'] ?? '', 'internal', 'my words'));
