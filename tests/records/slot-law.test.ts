@@ -23,7 +23,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { validateView } from '../../packages/core-records/src/records/views.ts';
+import { validateView } from '../support/saved-views.ts';
 import type { FieldDefinition } from '../../packages/core-records/src/records/fields.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
 

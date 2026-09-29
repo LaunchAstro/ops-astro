@@ -7,19 +7,35 @@
 // checklist lines. Product source holds no module that only tests import.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseSync } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
 import { gitHistory } from '../support/git-history.ts';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
-const tracked = (...paths: string[]): string[] =>
-  execFileSync('git', ['ls-files', ...paths], { cwd: root, encoding: 'utf8' })
-    .split('\n')
-    .filter(Boolean);
+/**
+ * The files under `paths`: git's list in a clone, and the tree itself in a
+ * source export, which has no index to ask.
+ */
+function tracked(...paths: string[]): string[] {
+  if (gitHistory(root) !== 'none') {
+    return execFileSync('git', ['ls-files', ...paths], { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  }
+  return paths
+    .flatMap((path) =>
+      readdirSync(join(root, path), { recursive: true, encoding: 'utf8' }).map((file) =>
+        join(path, file),
+      ),
+    )
+    .filter((file) => !file.split('/').includes('node_modules') && /\.[a-z]+$/u.test(file))
+    .toSorted();
+}
 
 /**
  * A file name that files a test by the review round that found a defect. A
@@ -42,15 +58,58 @@ const REVIEW_IDS: readonly (readonly [string, RegExp])[] = [
 const citesReview = (title: string): string | undefined =>
   REVIEW_IDS.find(([, pattern]) => pattern.test(title))?.[0];
 
-/** Every `describe`, `it` or `test` title in `text`, with its line. */
-function titles(text: string): { readonly line: number; readonly title: string }[] {
-  const call =
-    /\b(?:describe|it|test)(?:\.(?:skipIf|runIf|each|only|skip|todo|concurrent|sequential)(?:\((?:[^()]|\([^()]*\))*\))?)*\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/gsu;
-  return [...text.matchAll(call)].map((match) => ({
-    line: text.slice(0, match.index).split('\n').length,
-    title: match[2] ?? '',
-  }));
+type Node = Record<string, unknown>;
+
+/** The name a call chain starts from: `it` for `it`, `it.each([...])` and `describe.skipIf(x)`. */
+function chainRoot(node: unknown): string | undefined {
+  const n = node as Node | null;
+  if (n?.['type'] === 'Identifier') return n['name'] as string;
+  if (n?.['type'] === 'MemberExpression') return chainRoot(n['object']);
+  if (n?.['type'] === 'CallExpression') return chainRoot(n['callee']);
+  return undefined;
 }
+
+/** A string literal or template's text, with each `${...}` kept as written. */
+function literalText(node: unknown): string | undefined {
+  const n = node as Node | undefined;
+  if (n?.['type'] === 'Literal' && typeof n['value'] === 'string') return n['value'];
+  if (n?.['type'] === 'TemplateLiteral') {
+    return (n['quasis'] as Node[])
+      .map((quasi) => (quasi['value'] as { cooked: string }).cooked)
+      .join('${}');
+  }
+  return undefined;
+}
+
+/**
+ * Every `describe`, `it` or `test` title in `text`, with its line, read from
+ * the parsed calls: a string that only holds `it('...` is not a call.
+ */
+function titles(file: string, text: string): { readonly line: number; readonly title: string }[] {
+  const lang = file.endsWith('.tsx') ? 'tsx' : /\.m?js$/u.test(file) ? 'js' : 'ts';
+  const found: { line: number; title: string }[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (node === null || typeof node !== 'object') return;
+    const n = node as Node;
+    if (n['type'] === 'CallExpression' && TITLED.has(chainRoot(n['callee']) ?? '')) {
+      const title = literalText((n['arguments'] as unknown[])[0]);
+      if (title !== undefined) {
+        found.push({ line: text.slice(0, n['start'] as number).split('\n').length, title });
+      }
+    }
+    for (const value of Object.values(n)) visit(value);
+  };
+  const parsed = parseSync(file, text, { lang });
+  if (parsed.errors.length > 0) throw new Error(`${file} does not parse`);
+  visit(parsed.program);
+  return found;
+}
+
+const TITLED = new Set(['describe', 'it', 'test']);
 
 const testFiles = (): string[] =>
   tracked('tests', 'packages', 'apps').filter((file) => /\.test\.(?:ts|tsx|mjs)$/u.test(file));
@@ -99,17 +158,32 @@ describe('test files named by what they prove', () => {
     expect(citesReview(title)).toBeUndefined();
   });
 
+  it('reads a title after a string that holds a call', () => {
+    const source = [
+      'const tail = suite.slice(suite.indexOf("it(\'CQ-8 isolation:"));',
+      "it('Sol proof, criterion 10: a guard', () => {});",
+      'describe.skipIf(skip)(`on a ${kind} database`, () => {});',
+    ].join('\n');
+    expect(titles('a.test.ts', source)).toEqual([
+      { line: 2, title: 'Sol proof, criterion 10: a guard' },
+      { line: 3, title: 'on a ${} database' },
+    ]);
+  });
+
   it('no test file name contains final-r, review-fixes or a round number, and no test title cites a review id', () => {
     const files = testFiles();
     expect(files.length).toBeGreaterThan(200);
     const named = tracked('tests').filter((file) => ROUND_NAME.test(file));
     const cited: string[] = [];
+    let seen = 0;
     for (const file of files) {
-      for (const { line, title } of titles(readFileSync(join(root, file), 'utf8'))) {
+      for (const { line, title } of titles(file, readFileSync(join(root, file), 'utf8'))) {
+        seen += 1;
         const citation = citesReview(title);
         if (citation !== undefined) cited.push(`${file}:${line} ${citation}: ${title}`);
       }
     }
+    expect(seen).toBeGreaterThan(2000);
     expect({ named, cited }).toEqual({ named: [], cited: [] });
   });
 });
@@ -151,10 +225,6 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
   [
     'packages/core-records/src/tenancy/privileges.ts',
     "the tenancy wrapper's default-deny conformance check, part of that protected component",
-  ],
-  [
-    'packages/core-records/src/records/views.ts',
-    'the saved-view validator, before saved views have a command',
   ],
 ]);
 
@@ -226,14 +296,15 @@ describe('the docs history test in a clone and in a source export', () => {
     expect(gitHistory(join(scratch, 'shallow'))).toBe('shallow');
     expect(gitHistory(bare)).toBe('none');
     expect(gitHistory(nested)).toBe('none');
-    // The docs history test runs on full history only, by this reading.
-    const historyTest = tracked('tests/docs').find((file) =>
-      readFileSync(join(root, file), 'utf8').includes('resolve in the history of this head'),
+  });
+
+  it('reads history in the docs test only on a full clone', () => {
+    const historyTest = readFileSync(
+      join(root, 'tests/docs/authority-proofs-and-history-docs.test.ts'),
+      'utf8',
     );
-    expect(historyTest).toBeDefined();
-    expect(readFileSync(join(root, historyTest ?? ''), 'utf8')).toMatch(
-      /describe\.skipIf\(gitHistory\(root\) !== 'full'\)/u,
-    );
+    expect(historyTest).toContain('resolve in the history of this head');
+    expect(historyTest).toMatch(/describe\.skipIf\(gitHistory\(root\) !== 'full'\)/u);
   });
 });
 

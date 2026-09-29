@@ -16,7 +16,7 @@ describe('how strong the CQ-8 isolation test is', () => {
     expect(isolation).toMatch(/expect\(await revisionOfIn\(to\.id, task\.id\)\)\.toBe\(/u);
   });
 
-  it('Sol proof, criterion 10: wording guard detects unsent stored text', () => {
+  it('the wording guard detects unsent stored text', () => {
     const refusal = { code: 'LEASE_EXPIRED', fixes: ['the named lease is released'] };
     const sent = { leaseId: '3a6fd358-4946-4a40-bdaa-0cf75af74c57', fence: 1 };
     expect(unsent(refusal, sent)).not.toEqual([]);

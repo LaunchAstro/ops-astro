@@ -2,6 +2,9 @@
 //
 // The view validator: the half of `slot_law` that is not the trigger.
 //
+// No command saves a view yet, so it lives with the tests that prove it and
+// moves into `packages/core-records` with the command that first calls it.
+//
 // A saved view names a record type, a filter, a sort, an optional grouping, a
 // visible field list, a page size and an owner. Filter, sort and group may name
 // only slotted fields, and a view naming a non-slotted field is refused at save
@@ -12,8 +15,8 @@
 // it sorted on stopped existing is worse than one that refuses: the reader has
 // no way to tell a different answer from a wrong one.
 
-import { isLive, type FieldDefinition } from './fields.ts';
-import { refuse, type RecordsRefusal } from './refusals.ts';
+import { isLive, type FieldDefinition } from '../../packages/core-records/src/records/fields.ts';
+import { refuse, type RecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
 
 /** Page size is bounded, not optional (E19:363). A larger request is clamped and told so. */
 export const MAX_PAGE_SIZE = 200;
