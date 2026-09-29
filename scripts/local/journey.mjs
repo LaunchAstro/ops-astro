@@ -71,20 +71,22 @@ const flag = (name, fallback) => {
   return at === -1 ? fallback : args[at + 1];
 };
 const stamp = new Date().toISOString().replaceAll(/[:.]/gu, '-');
-const pg = Number(flag('--pg-port', '54430'));
-const apiPort = Number(flag('--api-port', '8830'));
+const pg = flag('--pg-port', '54430');
+const apiPort = flag('--api-port', '8830');
+// The restart legs take the next port up from each; a malformed base stays malformed.
+const next = (port) => (/^\d+$/u.test(port) ? String(Number(port) + 1) : port);
 const ports = {
   pg,
   api: apiPort,
-  web: Number(flag('--web-port', '5230')),
-  proofsPg: pg + 1,
-  proofsApi: apiPort + 1,
+  web: flag('--web-port', '5230'),
+  proofsPg: next(pg),
+  proofsApi: next(apiPort),
 };
 const onlyJourney = flag('--only', '') === 'journey';
 const evidence = resolve(flag('--evidence', join(ROOT, '.local', 'journey', stamp)));
 const container = `ops-astro-journey-${stamp.toLowerCase()}`;
 const password = `journey_${randomUUID().replaceAll('-', '')}`;
-const admin = `postgres://postgres:${password}@127.0.0.1:${String(pg)}/journey`;
+const admin = `postgres://postgres:${password}@127.0.0.1:${pg}/journey`;
 const pidfile = join(evidence, 'journey.pids');
 const lines = [];
 
@@ -219,7 +221,7 @@ say(
 for (const line of short) say(`not passed: ${line.case}`);
 if (!args.includes('--remove')) {
   say(
-    `the database is kept in ${container} on 127.0.0.1:${String(pg)}; remove it with ${DOCKER} rm -f -v ${container}`,
+    `the database is kept in ${container} on 127.0.0.1:${pg}; remove it with ${DOCKER} rm -f -v ${container}`,
   );
 }
 process.exitCode = short.length === 0 ? 0 : 1;
