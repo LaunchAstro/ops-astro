@@ -70,7 +70,7 @@ describe('C80 capture picture', () => {
     const { browser, answers } = scripted([DOCUMENT, ...OTHERS]);
     const picture = await capturePicture(ABOUT, options(transport), browser);
     expect(answers).toHaveLength(OTHERS.length + 1);
-    expect(answers.slice(1).filter((answer) => answer !== undefined)).toEqual([]);
+    expect(answers.slice(1).filter((answer) => answer !== null)).toEqual([]);
     expect(transport.seen).toEqual([ABOUT]);
     if (!picture.ok) throw new Error('the picture should be taken');
     expect(picture.value.refused).toHaveLength(OTHERS.length);
@@ -101,6 +101,6 @@ describe('C80 capture picture, failures', () => {
       ok: false,
       code: 'CAPTURE_HOST_NOT_CATALOGUED',
     });
-    expect([answers[0], transport.seen]).toEqual([undefined, []]);
+    expect([answers[0], transport.seen]).toEqual([null, []]);
   });
 });

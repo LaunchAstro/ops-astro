@@ -42,7 +42,7 @@ function chromiumPort(probe: { ran?: string | null }): PictureBrowser {
           kind: request.resourceType(),
           mainFrame: request.isNavigationRequest() && request.frame() === page.mainFrame(),
         });
-        await (answer === undefined
+        await (answer === null
           ? intercepted.abort()
           : intercepted.fulfill({
               status: answer.status,
@@ -72,7 +72,7 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser', () => {
     expect(Array.from(picture.value.png.subarray(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
     expect(picture.value.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(probe.ran).toBeNull();
-    expect(transport.seen.toSorted()).toEqual([ABOUT, SHEET]);
+    expect(transport.seen.toSorted()).toEqual([ABOUT, SHEET].toSorted());
     expect(picture.value.refused.map((refusal) => refusal.origin)).toContain(
       'https://tracker.example.net',
     );
