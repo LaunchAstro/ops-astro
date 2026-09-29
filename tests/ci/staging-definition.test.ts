@@ -242,15 +242,13 @@ it('S0-1 staging apart: own names, own ports, own credentials, no layout', () =>
   const prefix = def['x-ops-astro'].ownPrefix;
   expect(prefix).toBe('ops-astro-staging');
   expect(def.name).toBe(prefix);
-  expect(Object.keys(def.services).toSorted()).toEqual(['auth', 'db', 'edge']);
+  expect(Object.keys(def.services).toSorted()).toEqual(['auth', 'db']);
 
   for (const [name, service] of Object.entries(def.services)) {
     expect(service.container_name, name).toBe(`${prefix}-${name}`);
     for (const shared of ['network_mode', 'pid', 'ipc', 'privileged', 'userns_mode'])
       expect(service[shared], `${name}.${shared}`).toBeUndefined();
-    // The edge is the one way in (S0-1b); tests/ci/staging-containment.test.ts
-    // holds its bounds.
-    expect(service.networks, name).toEqual(name === 'edge' ? ['staging', 'edge'] : ['staging']);
+    expect(service.networks, name).toEqual(['staging']);
     // Published on loopback only, on a port the runbook names, never a fixed one.
     for (const port of service.ports ?? [])
       expect(port, name).toMatch(/^127\.0\.0\.1:\$\{STAGING_[A-Z_]+_PORT:\?[^}]+\}:\d+$/u);
