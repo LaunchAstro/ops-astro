@@ -28,8 +28,60 @@ export interface StoredCredential {
 export type CredentialRefusal =
   'CREDENTIAL_NOT_STORABLE' | 'SESSION_TOKEN_REFUSED' | 'CREDENTIAL_MALFORMED';
 
-/** Shapes of a browser session token for a consumer chat product. Never stored. */
-const SESSION_TOKEN = [/^sk-ant-sid/iu, /^sess-/iu, /session[-_]?token/iu, /__secure-next-auth/iu];
+/**
+ * Shapes of a browser session token for a consumer chat product, or of the
+ * cookie that carries one. Never stored. Matched anywhere in the value, so a
+ * pasted cookie pair (`sessionKey=sk-ant-sid01-...`) is caught as well as the
+ * bare token.
+ */
+const SESSION_TOKEN = [
+  /sk-ant-sid/iu,
+  /^sess-/iu,
+  /sessionkey/iu,
+  /session[-_]?token/iu,
+  /__secure-next-auth/iu,
+];
+
+/** The value and each percent-decoding of it, until decoding changes nothing. */
+function readings(value: string): readonly string[] {
+  const seen = [value];
+  for (let round = 0; round < 3; round += 1) {
+    let next: string;
+    try {
+      next = decodeURIComponent(seen.at(-1) ?? value);
+    } catch {
+      break;
+    }
+    if (next === seen.at(-1)) break;
+    seen.push(next);
+  }
+  return seen;
+}
+
+/**
+ * An encrypted token in compact form: five base64url parts, the first a
+ * header naming its content encryption. The chat product's sign-in library
+ * writes its session cookie so; an API key or a signed cloud token never is.
+ */
+function isEncryptedToken(text: string): boolean {
+  const parts = text.split('.');
+  if (parts.length !== 5 || !parts.every((part) => /^[\w-]*$/u.test(part))) return false;
+  try {
+    const header: unknown = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString('utf8'));
+    return typeof header === 'object' && header !== null && 'enc' in header;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a value is, or carries, a consumer chat product's browser session. */
+function isSessionToken(value: string): boolean {
+  return readings(value).some(
+    (text) =>
+      SESSION_TOKEN.some((pattern) => pattern.test(text)) ||
+      text.split(/[=;]/u).some((piece) => isEncryptedToken(piece)),
+  );
+}
 
 const REF = /^[a-z][a-z0-9_]{0,62}$/u;
 
@@ -50,7 +102,7 @@ export function parseCredentials(
     const shape = entry as Record<string, unknown>;
     const { ref, kind, account, destination, header, value } = shape;
     if (kind === 'subscription') return { ok: false, code: 'CREDENTIAL_NOT_STORABLE', at };
-    if (typeof value === 'string' && SESSION_TOKEN.some((pattern) => pattern.test(value))) {
+    if (typeof value === 'string' && isSessionToken(value)) {
       return { ok: false, code: 'SESSION_TOKEN_REFUSED', at };
     }
     if (
