@@ -49,6 +49,7 @@ export type {
   QueueResult,
   ReceiptResult,
   ReservationView,
+  SearchHit,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,
@@ -62,6 +63,7 @@ export type {
   TaskExecution,
   TaskExecutionResult,
   TaskReadResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
 } from './views.ts';

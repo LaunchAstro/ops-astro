@@ -34,6 +34,7 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  TaskSearchResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
@@ -61,6 +62,8 @@ export interface ReadOperands {
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
   readonly 'person.list': NoOperands;
+  /** The words to find among the tasks the caller may read (C1). */
+  readonly 'task.search': { readonly query: string };
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -121,6 +124,7 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | SharedTaskRead
   | TaskBoardResult
+  | TaskSearchResult
   | PersonListResult
   | QueueResult
   | PresetPlanResult

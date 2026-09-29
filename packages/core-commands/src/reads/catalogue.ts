@@ -33,6 +33,7 @@ import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { searchTasks, wordsOf } from './search.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -146,6 +147,9 @@ function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
 const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, never>> } =>
   parsed({});
 
+/** The longest query a search takes, which is longer than anything typed into ⌘K. */
+const QUERY_LENGTH = 200;
+
 /** The planner reads each preset field as an object; which keys it needs is its own question. */
 const PRESET_FIELDS_FIX = 'Send fields as an array of field objects, which may be empty.';
 
@@ -228,6 +232,21 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       }
       return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
     },
+  },
+  // The grant is asked by the search, not here: a record-scoped reader is
+  // refused a business-scope check and still may search what they hold, so the
+  // scopes they hold are what the statement is handed (`reads/search.ts`).
+  'task.search': {
+    identifiers: [],
+    parse: ({ query }) =>
+      typeof query === 'string' && query.length <= QUERY_LENGTH && wordsOf(query).length > 0
+        ? parsed({ query })
+        : rejected('query', `Send query as up to ${QUERY_LENGTH} characters with a word in them.`),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands, { spine }) =>
+      await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query }),
   },
   'person.list': {
     identifiers: [],

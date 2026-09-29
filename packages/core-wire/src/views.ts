@@ -395,6 +395,19 @@ export interface PresetPlanResult {
   readonly plan: PresetPlan;
 }
 
+/** One task a search found: enough to list it and to open it. */
+export interface SearchHit {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** `task.search`'s answer. No match in scope is `[]`, and there is no count. */
+export interface TaskSearchResult {
+  readonly ok: true;
+  readonly hits: readonly SearchHit[];
+}
+
 export interface SettingsReadResult {
   readonly ok: true;
   readonly settings: readonly SettingView[];

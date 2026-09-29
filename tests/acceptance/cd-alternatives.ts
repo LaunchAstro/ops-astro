@@ -41,6 +41,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['task.search', { query: 'brochure' }],
 ];
 
 /** The sixteen identifier-bearing operations outside (c) and (d): operand and executed case. */

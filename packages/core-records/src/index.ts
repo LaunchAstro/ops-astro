@@ -36,6 +36,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  heldScopes,
   revokeGrant,
   subjectsOf,
   type Action,

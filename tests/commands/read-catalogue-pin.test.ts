@@ -34,6 +34,7 @@ const PINNED_SHAPE = {
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
 };
 
 const PINNED_IDENTIFIERS = {
@@ -46,6 +47,7 @@ const PINNED_IDENTIFIERS = {
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
+  'task.search': [],
 };
 
 const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
@@ -73,6 +75,11 @@ const BOARD = {
   code: 'FIELD_VALUE_INVALID',
   names: ['board'],
   fixes: ['Send board as a board task’s identifier, or null for tasks on no board.'],
+};
+const QUERY = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['query'],
+  fixes: ['Send query as up to 200 characters with a word in them.'],
 };
 const plan = (name: string) => ({
   code: 'FIELD_VALUE_INVALID',
@@ -126,6 +133,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
+  'task.search': BODIES.map(() => QUERY),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -137,7 +145,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same ten reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

@@ -136,6 +136,9 @@ export function createPositiveBody(
       case 'settings.read':
       case 'session.capabilities':
         return { body: {} };
+      case 'task.search':
+        // A word no audit row carries, so digest-only is checked on it.
+        return { body: { query: 'brochure' } };
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'settings.set_four_eyes_threshold':

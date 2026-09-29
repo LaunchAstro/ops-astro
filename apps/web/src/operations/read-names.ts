@@ -40,6 +40,8 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Search over what the caller may read (C1); the ⌘K surface is C1b's.
+  'task.search',
 ] as const;
 
 /**
