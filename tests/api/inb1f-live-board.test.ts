@@ -22,7 +22,7 @@ import {
   type Database,
   type Listener,
 } from '../../packages/core-records/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
