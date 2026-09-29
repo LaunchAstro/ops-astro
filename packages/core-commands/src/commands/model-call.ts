@@ -72,8 +72,12 @@ interface Held {
 export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
   return async (database, businessId, presented, credential, request) => {
     let held: Held | undefined;
-    const row = modelCallRow(async (tx, call, operands) => {
-      const caller: ModelCaller = { actorId: call.session.actorId, attendedByPersonId: null };
+    const row = modelCallRow(async (tx, call, operands, delegation) => {
+      const caller: ModelCaller = {
+        actorId: call.session.actorId,
+        delegationId: delegation.id,
+        attendedByPersonId: null,
+      };
       const audited: Broker = { ...broker, audit: auditAs(call.session.actorId) };
       const reservation = await reserveModelCall(tx, caller, operands, audited);
       if (!reservation.ok) return refusalOf(reservation);
