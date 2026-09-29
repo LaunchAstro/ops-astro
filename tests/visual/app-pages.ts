@@ -83,7 +83,7 @@ export async function captureBuiltPages(options: {
 }
 
 /** Which screen the app drew: its sign-in form, a gate, or the page itself. */
-function screenOf(): string {
+export function screenOf(): string {
   if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';

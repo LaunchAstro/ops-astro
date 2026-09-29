@@ -389,6 +389,12 @@ svg {
   font: inherit;
   color: inherit;
 }
+/* Inline code in running text: the mono style, never the browser's monospace. */
+:where(code, kbd, samp) {
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
+}
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);

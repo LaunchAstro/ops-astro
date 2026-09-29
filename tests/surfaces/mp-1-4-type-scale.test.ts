@@ -5,9 +5,10 @@
 // The census is `scripts/type-census.mjs`, the same scanner the check runs, so
 // the tests read what it reads: every product stylesheet and every component
 // file. Every route draws from those sheets, so the census over them covers the
-// ten shell-inventory routes and the routes built since. The per-route measure
-// at 1480, 900 and 390 in both themes runs on MP-1-7's harness and is `todo`
-// until those routes' pages and T4b1's signed-in fixture exist.
+// ten shell-inventory routes and the routes built since. The visual match
+// measures every built page as the browser draws it at 1480, 900 and 390 in
+// both themes (mp-1-4-page-census.ts); the ten census routes beside the
+// mockup wait on their pages in later slices.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,6 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { builtPages, needsSession } from '../visual/report.ts';
+import { pageCensus } from './mp-1-4-page-census.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = `${root}scripts/type-census.mjs`;
@@ -163,8 +166,29 @@ function componentFilesRefused(): void {
 }
 
 describe('MP-1-4 type scale', () => {
+  it('MP-1-4 visual match: every built page at 1480, 900 and 390, light and dark, drawn in a browser, sets each drawn text in one of the 23 type styles or a listed exception, with no sideways scroll', async () => {
+    const declared = census().declared;
+    const views = await pageCensus({
+      names: [...declared],
+      exceptions: fixture.exceptions.map(({ selector }) => selector),
+    });
+    expect(views).toHaveLength(builtPages().length * 6);
+    const drawn = new Set<string>();
+    for (const view of views) {
+      const page = view.name.slice(0, view.name.indexOf('@'));
+      expect(view.drew, view.name).toBe(needsSession(page) ? 'the page' : 'the sign-in form');
+      expect(view.sideways, `${view.name} scrolls sideways`).toBe(0);
+      expect(view.counted, `${view.name}: no text measured`).toBeGreaterThan(0);
+      expect(view.strays, `${view.name}: text in no type style`).toEqual([]);
+      for (const name of Object.keys(view.styles)) drawn.add(name);
+    }
+    for (const name of drawn) expect(declared, name).toContain(name);
+    const beyondNumbers = [...drawn].filter((name) => !fixture.numberStyles.includes(name));
+    expect(beyondNumbers.length).toBeLessThanOrEqual(20);
+  }, 600_000);
+
   it.todo(
-    "MP-1-4 visual match: matches mockup the ten census routes in the shell inventory at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those routes' pages in later slices and T4b1's signed-in fixture)",
+    "MP-1-4 the ten census routes in the shell inventory beside the mockup at 1480, 900 and 390, light and dark (waits on those routes' pages in later slices and T4b1's signed-in fixture)",
   );
 });
 
