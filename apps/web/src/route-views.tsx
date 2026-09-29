@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What the manifest draws (MP-2-1): the rail and tab row for an address, the
-// placeholder for a page whose ticket has not landed, and the one refusal for
-// a client address the person holds no grant on. Their looks belong to MP-2-2,
-// MP-2-6 and MP-2-10.
+// placeholder for a page whose ticket has not landed, the one refusal for
+// a client address the person holds no grant on, and the answer for an address
+// nothing resolves. Their looks belong to MP-2-2, MP-2-6 and MP-2-10.
 
 import type { ReactElement } from 'react';
 import { Empty, type RailEntry } from '@launchastro/ui';
-import { CROSS_FACE, SECTIONS, fill, type Page, type PageMatch } from './manifest.ts';
+import { CROSS_FACE, SECTIONS, fill, isLegacy, type Page, type PageMatch } from './manifest.ts';
+import { pathTo } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
 /** A refused address gets no rail: one naming another client would say what the refusal hides. */
@@ -64,3 +65,23 @@ export const ClientRefused = (): ReactElement => (
     {() => null}
   </RecordState>
 );
+
+// An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
+export function NotFound(props: { readonly path: string }): ReactElement {
+  return (
+    <div className="readstate" data-outcome="not-found">
+      <p className="empty__title">
+        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
+      </p>
+      <p className="empty__desc">
+        The route registry is the list the application resolves through. An address that is not in
+        it does not resolve, which is a truer answer than a blank page.
+      </p>
+      <p className="empty__hint">
+        <a className="sb__addr" href={pathTo('agency:projects-board')}>
+          Go to Projects
+        </a>
+      </p>
+    </div>
+  );
+}

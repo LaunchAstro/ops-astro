@@ -39,7 +39,9 @@ const server = createServer((request, response) => {
   response.setHeader('content-type', 'text/html');
   response.end(page(request.url !== '/no-dark'));
 });
-await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+await new Promise<void>((resolve) => {
+  server.listen(0, '127.0.0.1', resolve);
+});
 const app = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
 const out = mkdtempSync(join(tmpdir(), 'app-drift-cases-'));
 const failures: string[] = [];
@@ -109,7 +111,7 @@ try {
     const tab = await side.context.newPage();
     await tab.goto(app.href);
     const seen = await tab.evaluate(() => ({
-      drawn: document.getElementById('held')?.textContent,
+      drawn: document.querySelector('#held')?.textContent,
       local: localStorage.length,
     }));
     expect(seen.drawn === value, "4. the session is in sessionStorage before the page's script");

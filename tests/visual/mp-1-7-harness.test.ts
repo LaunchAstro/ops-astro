@@ -118,6 +118,12 @@ describe('MP-1-7', () => {
 });
 
 describe('MP-1-7 report', () => {
+  zeroHorizontalOverflow();
+  everyPageBuiltSoFar();
+  pinnedMockupBaseline();
+});
+
+function zeroHorizontalOverflow(): void {
   it('MP-1-7 zero horizontal overflow: a page that scrolls sideways fails, naming the page and width', () => {
     expect(overflowOf({ scrollWidth: 390, clientWidth: 390 })).toBe(0);
     expect(overflowOf({ scrollWidth: 402, clientWidth: 390 })).toBe(12);
@@ -129,7 +135,9 @@ describe('MP-1-7 report', () => {
     expect(lines).toContain('FAIL agency:task-detail@390-light: scrolls sideways by 12 px');
     expect(report(packet, builtPages(), everyShot(packet.widths)).failed).toBe(0);
   });
+}
 
+function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
     // The wave 0 pages and the others already built: the route registry's four.
     expect(builtPages()).toEqual([
@@ -171,7 +179,9 @@ describe('MP-1-7 report', () => {
     expect(counted.lines).toContain('FAIL agency:sign-in@1480-light: picture is not a PNG');
     expect(counted.failed).toBe(3);
   });
+}
 
+function pinnedMockupBaseline(): void {
   it('MP-1-7 pinned mockup baseline: the comparison reads the pinned tree, never a previous run', () => {
     const run = readFileSync(new URL('run.ts', import.meta.url), 'utf8');
     // Captures are written to the evidence directory and never read back from it.
@@ -181,4 +191,4 @@ describe('MP-1-7 report', () => {
     expect(run).toMatch(/comparePng\(shot\.name, expected\[i\]\?\.png/u);
     expect(packet.mockup.tree).toMatch(/^[0-9a-f]{40}$/u);
   });
-});
+}

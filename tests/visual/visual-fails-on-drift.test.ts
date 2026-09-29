@@ -89,12 +89,19 @@ describe('visual_fails_on_drift', () => {
   });
 });
 
+let packet: Packet;
+
 describe('the pins refuse', () => {
-  let packet: Packet;
   beforeAll(() => {
     packet = readPacket();
   });
 
+  pinsOnTheComparison();
+  pinsOnTheAssets();
+  reportsEveryWidth();
+});
+
+function pinsOnTheComparison(): void {
   it('an edited tolerance', () => {
     expect(() => assertTolerance(packet.tolerance)).not.toThrow();
     expect(() => assertTolerance({ ...packet.tolerance, maxRatio: 0.001 })).toThrow(/tolerance/u);
@@ -116,7 +123,9 @@ describe('the pins refuse', () => {
     const changed = { ...pinned, tree: `${tree.slice(0, -1)}${tree.endsWith('0') ? '1' : '0'}` };
     expect(() => checkMockupTree(root, changed)).toThrow(/pinned mockup/u);
   });
+}
 
+function pinsOnTheAssets(): void {
   it('a bundled font whose bytes changed, naming the file', () => {
     const manifest = JSON.parse(readFileSync(`${assetsDir}/assets.json`, 'utf8')) as {
       assets: Asset[];
@@ -136,9 +145,11 @@ describe('the pins refuse', () => {
     font.sha256 = '0'.repeat(64);
     expect(() => checkAssets(packet, manifest)).toThrow(/asset records/u);
   });
+}
 
+function reportsEveryWidth(): void {
   it('lists every width in light and prints dark as waiting for the dark theme, owned by U04', () => {
     expect(packet.widths.slice(0, 3)).toEqual([1480, 900, 390]);
     expect(packet.themes.dark).toBe('waiting for the dark theme (U04, MP-1-1)');
   });
-});
+}

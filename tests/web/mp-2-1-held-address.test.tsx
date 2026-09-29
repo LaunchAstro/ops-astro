@@ -58,6 +58,11 @@ async function signInToAlpha(bravo: Bravo, asked: string[] = []) {
 }
 
 describe('MP-2-1 held address switch', () => {
+  asksThenSwitchesBack();
+  namesNothingWithoutAGrant();
+});
+
+function asksThenSwitchesBack(): void {
   it('asks the held business, with the new bearer, whether the person holds a grant there', async () => {
     const asked: string[] = [];
     const { view } = await signInToAlpha('granted', asked);
@@ -79,7 +84,9 @@ describe('MP-2-1 held address switch', () => {
     expect(view.find('[data-notice="other-business"]')).toBeNull();
     await view.unmount();
   });
+}
 
+function namesNothingWithoutAGrant(): void {
   it.each(['no-membership', 'no-grant', 'down'] as const)(
     'names no business and offers no switch when Bravo answers %s',
     async (bravo) => {
@@ -119,4 +126,4 @@ describe('MP-2-1 held address switch', () => {
     expect(opened.view.find('[data-notice="other-business"]')).toBeNull();
     await opened.view.unmount();
   });
-});
+}

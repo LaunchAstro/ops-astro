@@ -17,21 +17,28 @@ export type UiUse = { readonly command: string; readonly route: string; readonly
 
 /** What a surface asks before it runs a command. The same on every surface, or parity fails. */
 export interface Profile {
-  readonly authority: readonly string[]; // every key checked inside, two for a two-part authority
-  readonly authorisedOn: CommandDeclaration['authorisedOn']; // wider reads what narrower refuses
-  readonly personOnly: boolean; // refuses every agent credential, delegation or not, everywhere
-  readonly rule: string; // a hold every path keeps before it writes
+  // every key checked inside, two for a two-part authority
+  readonly authority: readonly string[];
+  // wider reads what narrower refuses
+  readonly authorisedOn: CommandDeclaration['authorisedOn'];
+  // refuses every agent credential, delegation or not, everywhere
+  readonly personOnly: boolean;
+  // a hold every path keeps before it writes
+  readonly rule: string;
 }
 
 export interface CatalogueRow extends Profile {
   readonly command: CommandName;
   readonly kind: 'read' | 'write';
-  readonly agent: CommandDeclaration['agent']; // never, delegated, or also before a pickup
+  // never, delegated, or also before a pickup
+  readonly agent: CommandDeclaration['agent'];
   readonly permissionKey: string;
   readonly api: { readonly person: string; readonly agent: string | null };
   readonly cli: string;
-  readonly ui: readonly string[]; // `route (file)` per place the app calls it; empty: none yet
-  readonly dataEffects: null; // S0-5 (U18) fills it: whether it admits a new outside person
+  // `route (file)` per place the app calls it; empty: none yet
+  readonly ui: readonly string[];
+  // S0-5 (U18) fills it: whether it admits a new outside person
+  readonly dataEffects: null;
 }
 
 /** A UI action with no command, and why it needs none (CS-15.18). */

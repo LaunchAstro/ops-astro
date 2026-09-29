@@ -119,32 +119,14 @@ type StorageState = {
   origins: { origin: string; localStorage: { name: string; value: string }[] }[];
 };
 
-/** One side of the comparison: the mockup, or the app at a local address. */
-export async function openSide(
-  browser: Browser,
-  packet: Packet,
-  width: number,
-  source:
-    | { mockupDir: string; tree: string }
-    | { app: URL; session?: string | undefined; colorScheme?: 'light' | 'dark' },
-): Promise<Side> {
-  const session =
-    'app' in source && source.session !== undefined
-      ? sessionOf(source.session, source.app.origin)
-      : undefined;
-  const context = await browser.newContext({
-    ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
-    viewport: { width, height: packet.height },
-    deviceScaleFactor: 1,
-    colorScheme: 'app' in source ? (source.colorScheme ?? 'light') : 'light',
-    reducedMotion: 'reduce',
-    locale: 'en-AU',
-    timezoneId: 'Australia/Brisbane',
-    serviceWorkers: 'block',
-  });
-  const side: Side = { context, external: new Set(), unresolved: new Set() };
+type SideSource =
+  | { mockupDir: string; tree: string }
+  | { app: URL; session?: string | undefined; colorScheme?: 'light' | 'dark' };
+
+/** Each request a side makes: bundled fonts, pinned sheets, its own origin, or refused. */
+function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route) => Promise<void> {
   const blobs = new Map<string, Buffer>();
-  await context.route('**/*', (route: Route) => {
+  return (route: Route) => {
     const url = new URL(route.request().url());
     const known = packet.external[url.href];
     if (url.origin === ASSET_ORIGIN) {
@@ -162,7 +144,32 @@ export async function openSide(
     }
     side.unresolved.add(url.href);
     return route.abort('blockedbyclient');
+  };
+}
+
+/** One side of the comparison: the mockup, or the app at a local address. */
+export async function openSide(
+  browser: Browser,
+  packet: Packet,
+  width: number,
+  source: SideSource,
+): Promise<Side> {
+  const session =
+    'app' in source && source.session !== undefined
+      ? sessionOf(source.session, source.app.origin)
+      : undefined;
+  const context = await browser.newContext({
+    ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
+    viewport: { width, height: packet.height },
+    deviceScaleFactor: 1,
+    colorScheme: 'app' in source ? (source.colorScheme ?? 'light') : 'light',
+    reducedMotion: 'reduce',
+    locale: 'en-AU',
+    timezoneId: 'Australia/Brisbane',
+    serviceWorkers: 'block',
   });
+  const side: Side = { context, external: new Set(), unresolved: new Set() };
+  await context.route('**/*', routeOf(packet, source, side));
   if (session !== undefined && 'app' in source) {
     await context.addInitScript(
       ({ origin, entries }: { origin: string; entries: [string, string][] }) => {

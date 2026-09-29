@@ -21,7 +21,8 @@ import { createCli } from '../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
-const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']); // transport, addresses
+// transport, addresses
+const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
 
 function sources(root) {
   return readdirSync(root, { recursive: true, withFileTypes: true })
@@ -39,7 +40,7 @@ function importsOf(root, file, text) {
 export function commandsIn(text, namespaces, file = 'a.tsx') {
   const found = [];
   const walk = (node) => {
-    if (Array.isArray(node)) return node.forEach(walk);
+    if (Array.isArray(node)) return node.forEach((one) => walk(one));
     if (node === null || typeof node !== 'object') return;
     if (node.type === 'StringLiteral') found.push(node.value);
     if (node.type === 'TemplateLiteral' && !node.expressions[0]) found.push(node.quasis[0].cooked);
@@ -92,12 +93,15 @@ const under = (root) => COMMAND_SURFACE.map((one) => root + pathOf(one.name));
 // What the real API runs at each path on both prefixes, recorded by stub executors, profiled.
 async function routedByApi() {
   let ran;
-  const command = async (...args) => ((ran = args[4].command), { recordId: 'r', revision: 1 });
+  const command = (...args) => (
+    (ran = args[4].command),
+    Promise.resolve({ recordId: 'r', revision: 1 })
+  );
   const api = createApi({
     database: {},
-    verify: async () => ({ subject: 'parity' }),
-    resolveBusiness: async () => 'business',
-    executeRead: async (...args) => ((ran = args[3].read), {}),
+    verify: () => Promise.resolve({ subject: 'parity' }),
+    resolveBusiness: () => Promise.resolve('business'),
+    executeRead: (...args) => ((ran = args[3].read), Promise.resolve({})),
     executeCommand: command,
     executeAgentCommand: command,
   });
@@ -107,7 +111,8 @@ async function routedByApi() {
     const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
     // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
     await api.fetch(new Request(`http://parity${path}`, init));
-    const runs = COMMAND_SURFACE.find((one) => one.name === ran);
+    const name = ran;
+    const runs = COMMAND_SURFACE.find((one) => one.name === name);
     if (runs !== undefined) routed.set(path, profileOf(runs));
   }
   return routed;
