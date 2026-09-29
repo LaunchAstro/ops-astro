@@ -140,6 +140,25 @@ describe.skipIf(serverUrl === undefined)('MP-4-5 own rows only', () => {
   });
 });
 
+const ownOf = (rows: readonly Readonly<Record<string, unknown>>[], id: string): unknown =>
+  rows.find((row) => row['id'] === id)?.['own'];
+
+describe.skipIf(serverUrl === undefined)('MP-4-5 own rows only, on the read', () => {
+  it('MP-4-5 own rows only: the read marks the reader’s own rows, and only theirs', async () => {
+    const mine = commentIdOf(await post(who.decider, ids['a'] ?? '', 'internal', 'mine to edit'));
+    const theirs = commentIdOf(
+      await post(who.colleague, ids['a'] ?? '', 'internal', 'theirs', mine),
+    );
+
+    const forAuthor = await thread(who.decider, ids['a'] ?? '');
+    expect(ownOf(forAuthor, mine)).toBe(true);
+    expect(ownOf(forAuthor, theirs)).toBe(false);
+    const forColleague = await thread(who.colleague, ids['a'] ?? '');
+    expect(ownOf(forColleague, mine)).toBe(false);
+    expect(ownOf(forColleague, theirs)).toBe(true);
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('MP-4-5 permissions and audit, edit and delete', () => {
   it('MP-4-5 task:comment refused: edit and delete without the grant write nothing', async () => {
     const mine = commentIdOf(await post(who.decider, ids['a'] ?? '', 'internal', 'kept as is'));

@@ -5,8 +5,8 @@
 // (DT-14, DT-17, DT-21, TT-04): the conversation as three tabs, Internal N,
 // Client N and All activity, opening on Internal (R41). A person posts to the
 // tab's audience; All shows both and is read-only; Enter sends; the `system`
-// kind is never offered. Replies, edits, deletes and the signals are the
-// server's next step. The dock task panel places this conversation in MP-4-8.
+// kind is never offered. The thread (replies, signals) is in `mp-4-5-thread`,
+// own rows in `mp-4-5-own-rows`. The dock task panel places it in MP-4-8.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
