@@ -12,6 +12,7 @@
 // - MP-2-7 the chrome stays at the top when a long page scrolls at 901 and
 //   above, and scrolls away at 900 and below.
 // - MP-2-6 no page wider than the viewport at 390.
+// - MP-2-5 search hidden at 900 and below, Back and Forward at 640 and below.
 //
 // Screenshots go to SHOT_DIR (default `.local/evidence/app-frame`). Exit 1 on
 // any failed line. The client workspace cannot be opened in the real app until
@@ -49,14 +50,14 @@ const browser = await chromium.launch();
 try {
   for (const theme of ['light', 'dark']) {
     for (const width of [1480, 900, 390]) {
-      const context = await browser.newContext({ viewport: { width, height: 900 } });
-      await context.addInitScript(
-        ([session, chosen]) => {
-          sessionStorage.setItem('ops-astro.session', session);
-          document.documentElement.setAttribute('data-theme-preference', chosen);
-        },
-        [SESSION, theme],
-      );
+      // The default preference is System, so the browser's scheme picks the theme.
+      const context = await browser.newContext({
+        viewport: { width, height: 900 },
+        colorScheme: theme,
+      });
+      await context.addInitScript((session) => {
+        sessionStorage.setItem('ops-astro.session', session);
+      }, SESSION);
       const page = await context.newPage();
       await page.route('**/api/**', () => {
         /* held: nothing is read */
@@ -67,6 +68,25 @@ try {
       await page.screenshot({ path: `${SHOTS}/dashboard-${width}-${theme}.png` });
 
       const narrow = width <= 900;
+      const shown = (selector) =>
+        page.$eval(selector, (el) => getComputedStyle(el).display !== 'none');
+      check(
+        `MP-2-5 search hidden at 900 and below, ${at}`,
+        (await shown('.appbar__search')) === !narrow,
+      );
+      check(
+        `MP-2-5 Back and Forward hidden at 640 and below, ${at}`,
+        (await shown('.appbar__step')) === width > 640,
+      );
+      const strip = await page.$eval('.appbar', (el) => getComputedStyle(el).backgroundColor);
+      const chrome = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--app-chrome').trim(),
+      );
+      check(
+        `MP-2-5 agency strip in the dark chrome colour, ${at}`,
+        strip !== '' && chrome !== '',
+        `${strip}`,
+      );
       const toggle = await page.$eval('.navtoggle', (el) => getComputedStyle(el).display);
       check(
         `MP-2-8 hamburger only at 900 and below, ${at}`,
