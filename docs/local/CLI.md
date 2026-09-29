@@ -106,6 +106,15 @@ pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
 ```
 
+A person answers a run waiting at its approved ceiling on the person prefix
+(AW-05). The top-up is in the currency's minor units; above the business's
+four-eyes threshold a second person sends the same body to complete it.
+
+```sh
+pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","amountMinor":1000,"currency":"AUD"}'
+pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"}'
+```
+
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
 `detail`. `operationId` is optional on each of them; naming your own lets you
 send the same body again after a lost answer and get the replay.

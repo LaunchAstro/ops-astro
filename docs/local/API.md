@@ -908,6 +908,48 @@ in the same words whoever's row it was. The start reads the rows again, and a ro
 business-internal source since the hold releases the call unsent
 (`LOCAL_MODEL_REQUIRED`); the values sent are the ones read at the start.
 
+## The answers at the budget stop
+
+A run stopped at its approved ceiling waits for a person (AW-05,
+[RUNTIME.md](RUNTIME.md#the-answers-at-the-budget-stop)). The two answers are
+commands on the person prefix, and the command line and the app's client post
+them to the same routes. Both name the task and the run on it, and neither
+writes the task record, so neither takes an `expectedRevision`.
+
+| Operation                | Route                                | Body                                                          | Authority                                                                                                                       |
+| ------------------------ | ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
+| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
+
+The handlers are `topUpOnRun` and `endOnRun` (`commands/run-answers.ts`), over
+`topUpAtBudgetStop` and `endAtBudgetStop` (`core-runtime/src/budget-answer.ts`).
+
+- **The top-up** answers `detail: { runId, state: 'applied', answerId,
+heldMinor }`, and the run is back in the queue for a fresh pickup. Above the
+  business's four-eyes threshold the first person's answer is
+  `detail: { runId, state: 'awaiting_second', approvalId, thresholdMinor }`
+  and applies nothing; a second, distinct holder sending the same amount
+  completes it. `amountMinor` is a whole number of the currency's minor units
+  above zero and `currency` the envelope's three-letter code.
+- **The end** answers `detail: { runId, state: 'cancelled', answerId,
+releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
+  task in the trash, as `task.cancel` does; a top-up does not.
+- **Refusals.** A task not in this business, a run that is not on the named
+  task, and a made-up run are all `NOT_FOUND` 404, the last two with the same
+  bytes. `SCOPE_NOT_GRANTED` 403 for a caller without the grant on that task.
+  From the runtime: `FOUR_EYES_REQUIRED` 409 naming the threshold (the same
+  person twice), `SCOPE_NOT_GRANTED` naming the plan approver while they still
+  hold `billing:decide`, `FIELD_VALUE_INVALID` 422 (the amount, the currency,
+  or a second approval of a different amount), `CAP_BINDING_MISMATCH`,
+  `BUDGET_EXHAUSTED` (the business cap is the hard ceiling), `LINEAGE_TERMINAL`
+  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, or the ask is
+  already answered). A refusal writes nothing.
+- **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
+  answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Not here yet.** The question and its two buttons in the conversation where
+  the plan was approved (AW-04), and the recent sign-in a money answer asks
+  for (C59).
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
@@ -947,7 +989,7 @@ The five support controls, with their owning functions:
 | `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
 | `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
 
-The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
+The others. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
 is served is a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), and
 its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are read off
@@ -1383,8 +1425,8 @@ business fact every member works against, and changing one is an authority
 change. The four-eyes band is stored and shown. `settings.set_four_eyes_threshold` writes it
 (`commands/settings-write.ts`) and `settings.read` returns it. Its consumers
 are the top-up (`budget.top_up`, T2e), the write-off (`budget.write_off`,
-T3c) and AW-05's top-up at the budget stop (`core-runtime/src/budget-answer.ts`,
-[RUNTIME.md](RUNTIME.md)), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
+T3c) and AW-05's top-up at the budget stop, `run.top_up`
+([The answers at the budget stop](#the-answers-at-the-budget-stop)), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
 `FOUR_EYES_REQUIRED` without the band since T2g: the person a task is assigned
 to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.

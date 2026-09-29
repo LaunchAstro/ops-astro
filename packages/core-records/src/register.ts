@@ -898,7 +898,7 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
  * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
  * is produced by the top-up (T2e, `core-runtime/src/budget.ts`), by AW-05's
- * top-up at the budget stop (`core-runtime/src/budget-answer.ts`) and, since
+ * top-up at the budget stop, `run.top_up` (`core-runtime/src/budget-answer.ts`), and, since
  * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
