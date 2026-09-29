@@ -229,6 +229,7 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
+      readonly providerStarting?: true;
     } & Envelope)
   | ({
       readonly command: 'task.dispatch';

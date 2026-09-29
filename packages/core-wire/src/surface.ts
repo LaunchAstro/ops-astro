@@ -357,7 +357,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
-  'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.heartbeat': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    leaseSeconds: 'any',
+    providerStarting: 'any',
+  },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
   // Minor units, of the maximum the person saw; no standing ceiling (Q168).
   'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
