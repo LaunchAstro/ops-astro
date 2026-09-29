@@ -29,6 +29,7 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
+import { topUpOnTask } from './budget-top-up.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -104,6 +105,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
   'task.handback': handbackOwnLease,
+
+  // T2e. A person's money decision; no agent route reaches it.
+  'budget.top_up': topUpOnTask,
 };
 
 function writeOwned(

@@ -588,6 +588,7 @@ function Loaded(props: LoadedProps): ReactElement {
         proposeDraft={props.proposeDraft}
         onProposeDraft={props.onProposeDraft}
         proposals={task.proposals}
+        envelope={task.envelope ?? null}
         recordId={task.id}
         revision={task.revision}
       />

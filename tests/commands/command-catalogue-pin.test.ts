@@ -116,6 +116,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (or
   cancelOnTask: recorder('cancelOnTask'),
   restartOnTask: recorder('restartOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-top-up.ts', async (original) => ({
+  ...(await original<object>()),
+  topUpOnTask: recorder('topUpOnTask'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
@@ -126,6 +130,7 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'budget.top_up': ['recordId'],
   'delegation.revoke': [],
   'grant.revoke': [],
   'settings.set_client_sign_off': [],
@@ -144,6 +149,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'budget.top_up',
   'delegation.revoke',
   'grant.revoke',
   'person.list',
@@ -251,6 +257,13 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
   { command: 'task.dispatch', operationId: 'op', leaseId: 'l', fence: 4 },
   { command: 'task.observe', operationId: 'op', leaseId: 'l', fence: 4, attemptId: 'at' },
+  {
+    command: 'budget.top_up',
+    operationId: 'op',
+    recordId: 'r',
+    amountMinor: 7,
+    fromMaximumMinor: 8,
+  },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -295,6 +308,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
   'task.dispatch': ['dispatchOwnLease', 'request'],
   'task.observe': ['observeOwnLease', 'request'],
+  'budget.top_up': ['topUpOnTask', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -334,7 +348,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-three from an expected revision', () => {
+  it('exempts the same twenty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

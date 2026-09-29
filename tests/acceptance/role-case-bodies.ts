@@ -103,6 +103,26 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
   return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
 }
 
+/** A task whose plan the context's person approved: an envelope to top up (T2e). */
+async function approvedTaskId(context: BodyContext): Promise<string> {
+  const task = await context.freshTask('a task whose envelope is topped up');
+  const proposed = await context.asPerson('task.propose', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    ...PROPOSAL,
+  });
+  if (proposed.code !== 'ok') throw new Error(`matrix: propose refused ${proposed.code}`);
+  const detail = proposed.body['detail'] as Record<string, string>;
+  const decided = await context.asPerson('task.decide', {
+    gateId: detail['gateId'],
+    versionId: detail['versionId'],
+    decision: 'approve',
+    note: 'approved so its envelope can be topped up',
+  });
+  if (decided.code !== 'ok') throw new Error(`matrix: decide refused ${decided.code}`);
+  return task.id;
+}
+
 /** The context's person's own pickup of fresh approved work (EX-01), as its answer's detail. */
 async function ownPickup(context: BodyContext): Promise<Record<string, unknown>> {
   const picked = await context.asPerson('task.pickup', {
@@ -264,6 +284,16 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'budget.top_up':
+        // The admin approved the plan and holds billing, so a top-up under
+        // the band is hers alone (T2e).
+        return {
+          body: {
+            recordId: await approvedTaskId(context),
+            amountMinor: 100,
+            fromMaximumMinor: PROPOSAL.maximumMinor,
+          },
+        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

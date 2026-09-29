@@ -264,6 +264,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
         ],
         ['task.receipt', pair('attemptId', f.picked.attemptId, (attemptId) => ({ attemptId }))],
+        [
+          'budget.top_up',
+          pair('recordId', f.proposal.task.id, (recordId) => ({
+            recordId,
+            amountMinor: 100,
+            fromMaximumMinor: 0,
+          })),
+        ],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

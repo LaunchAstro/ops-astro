@@ -87,6 +87,18 @@ export interface TaskDetail extends TaskSummary {
    * not read the task is told nothing about the cap.
    */
   readonly capCurrency: string | null;
+  /** The task's open envelope, which a top-up raises (T2e); null when none is open. */
+  readonly envelope: TaskEnvelope | null;
+}
+
+/** An open envelope as the task read carries it (T2e). */
+export interface TaskEnvelope {
+  readonly id: string;
+  readonly capId: string;
+  readonly currency: string;
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  readonly actualMinor: number;
 }
 
 /**

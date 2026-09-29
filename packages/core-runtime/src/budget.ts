@@ -11,7 +11,17 @@
 // no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
 // the wrong one raises the wrong ceiling.
 
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import {
+  readBusinessSetting,
+  refuseCommand,
+  type CommandRefusal,
+  type RefusalCode,
+  type Subject,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
+import { lockedInstant } from './clock.ts';
+import { acquire } from './locks.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** A cap's ceiling and everything its envelopes hold or spent, as exact SQL text. */
@@ -243,4 +253,140 @@ export async function settleAtObserved(
     [tx.businessId, of.envelopeId, of.heldMinor.toString(), cost],
   );
   return settledAt(of.heldMinor, of.costMinor);
+}
+
+/** What a top-up did (T2e): raised the envelope, or recorded a first approval. */
+export type TopUp = Readonly<Record<string, unknown>> & {
+  readonly state: 'applied' | 'awaiting_second_approver';
+};
+
+export interface TopUpRequest {
+  readonly taskId: string;
+  readonly amountMinor: bigint;
+  /** The envelope maximum the person saw: a top-up is of that figure or of nothing. */
+  readonly fromMaximumMinor: bigint;
+  readonly personId: string;
+  readonly subjects: readonly Subject[];
+  readonly collection: string;
+}
+
+type TopUpResult =
+  | { readonly ok: true; readonly value: TopUp }
+  | { readonly ok: false; readonly refusal: CommandRefusal };
+
+const refused = (code: RefusalCode, reason: string, fix: string): TopUpResult => ({
+  ok: false,
+  refusal: refuseCommand(code, [], [reason, fix]),
+});
+
+/**
+ * T2e, under the cap, envelope and task locks with the covering grants held.
+ * The cap is the hard ceiling (Q62). Above the four-eyes band a first approval
+ * is the command's applied row in the operation register and moves nothing; a
+ * different live holder naming the same figure applies it, and a moved
+ * envelope leaves nothing standing (Q168). Below it, the plan's approver tops
+ * up when they hold the grant, otherwise any holder.
+ */
+export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<TopUpResult> {
+  const found = await openEnvelopeOf(tx, request.taskId);
+  if (found === undefined) {
+    return refused('BUDGET_UNAVAILABLE', 'this task has no open envelope', 'Approve a plan first.');
+  }
+  await holdCoveringGrants(tx, request.subjects, request.collection);
+  await acquire(tx, [
+    { lockClass: 'cap', id: found.capId },
+    { lockClass: 'envelope', id: found.id },
+    { lockClass: 'task', id: request.taskId },
+  ]);
+  const envelope = await openEnvelopeOf(tx, request.taskId);
+  if (envelope?.id !== found.id || BigInt(envelope.maximumMinor) !== request.fromMaximumMinor) {
+    return refused('VERSION_STALE', "the task's envelope has moved", 'Read the task again.');
+  }
+  const at = await lockedInstant(tx);
+  const scope = { kind: 'record', id: request.taskId } as const;
+  const ask = { collection: request.collection, action: 'decide', scope } as const;
+  const holds = async (subjects: readonly Subject[]): Promise<boolean> =>
+    (await checkAuthorityAt(tx, subjects, ask, at)).ok;
+  const noGrant = 'ask a holder of budget permission on this task';
+  if (!(await holds(request.subjects))) {
+    return refused('SCOPE_NOT_GRANTED', 'no live grant covers it', noGrant);
+  }
+  const committed = BigInt(envelope.heldMinor) + BigInt(envelope.actualMinor);
+  const wanted = BigInt(envelope.maximumMinor) - committed + request.amountMinor;
+  const cap = await capCommitted(tx, envelope.capId);
+  const ceiling = capVerdict({ cap, capId: envelope.capId, wanted, currency: envelope.currency });
+  if (ceiling !== null) return ceiling;
+
+  const figure = {
+    envelopeId: envelope.id,
+    fromMaximumMinor: Number(request.fromMaximumMinor),
+    amountMinor: Number(request.amountMinor),
+  };
+  // Null is the band switched off; a business with no row has the shipped 500.
+  const row = await readBusinessSetting(tx, 'four_eyes_threshold');
+  const band = row === undefined ? 500 : row.value;
+  const pairs = typeof band === 'number' && request.amountMinor > BigInt(Math.round(band * 100));
+  const firsts = pairs ? await approvers(tx, FIRST_APPROVALS, [envelope.id, figure]) : [];
+  const others = firsts.filter((first) => first.personId !== request.personId);
+  const live = await Promise.all(others.map(async (one) => (await holds(one.subjects)) && one));
+  const pair = live.find((one) => one !== false);
+  const by = [...(pair === undefined ? [] : [pair.personId]), request.personId];
+  if (pair === undefined && firsts.length > others.length) {
+    return refused('FOUR_EYES_REQUIRED', 'you gave the first approval', 'Another holder approves.');
+  }
+  const [plan] = pair === undefined ? await approvers(tx, PLAN_APPROVER, [request.taskId]) : [];
+  if (plan !== undefined && plan.personId !== request.personId && (await holds(plan.subjects))) {
+    return refused('SCOPE_NOT_GRANTED', "the plan's approver holds the grant", noGrant);
+  }
+  if (pairs && pair === undefined) {
+    const state = 'awaiting_second_approver';
+    return { ok: true, value: { ...figure, state, firstApproverPersonId: request.personId } };
+  }
+  await tx.query(
+    `update public.task_envelopes set maximum_minor = maximum_minor + $3
+      where business_id = $1 and id = $2`,
+    [tx.businessId, envelope.id, request.amountMinor.toString()],
+  );
+  const maximumMinor = figure.fromMaximumMinor + figure.amountMinor;
+  return { ok: true, value: { ...figure, state: 'applied', maximumMinor, approvers: by } };
+}
+
+/** The first approvals waiting on exactly this figure. */
+const FIRST_APPROVALS = `
+  select o.result -> 'detail' ->> 'firstApproverPersonId' as person_id, o.actor_id
+    from public.operations o
+   where o.business_id = $1 and o.command = 'budget.top_up' and o.outcome = 'applied'
+     and o.result -> 'detail' ->> 'state' = 'awaiting_second_approver'
+     and o.result -> 'detail' ->> 'envelopeId' = $2
+     and o.result -> 'detail' ->> 'fromMaximumMinor' = $3
+     and o.result -> 'detail' ->> 'amountMinor' = $4
+   order by o.created_at`;
+
+/** Who approved the task's latest approved plan. */
+const PLAN_APPROVER = `
+  select d.decided_by_person_id as person_id, d.decided_by_actor_id as actor_id
+    from public.gate_decisions d
+    join public.proposal_lineages l on l.business_id = d.business_id and l.id = d.lineage_id
+   where d.business_id = $1 and l.task_id = $2 and d.decision = 'approve'
+   order by d.seq desc limit 1`;
+
+/** People as grant subjects, read by one of the two queries above. */
+async function approvers(
+  tx: TenantQuery,
+  sql: string,
+  [id, figure]: readonly [string, { fromMaximumMinor: number; amountMinor: number }?],
+): Promise<readonly { readonly personId: string; readonly subjects: readonly Subject[] }[]> {
+  const values = figure === undefined ? [] : [figure.fromMaximumMinor, figure.amountMinor];
+  const rows = await tx.query<{ readonly person_id: string; readonly actor_id: string }>(sql, [
+    tx.businessId,
+    id,
+    ...values.map(String),
+  ]);
+  return rows.map((row) => ({
+    personId: row.person_id,
+    subjects: [
+      { kind: 'person', id: row.person_id },
+      { kind: 'actor', id: row.actor_id },
+    ],
+  }));
 }

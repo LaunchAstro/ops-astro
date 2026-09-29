@@ -53,6 +53,7 @@ export type {
   SharedTaskView,
   TaskBoardResult,
   TaskDetail,
+  TaskEnvelope,
   TaskReadResult,
   TaskStateView,
   TaskSummary,
