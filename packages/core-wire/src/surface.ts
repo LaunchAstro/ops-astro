@@ -95,7 +95,12 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // Custody (C31): the business's secrets, shown only as set or not set. One
+  // command serves both secret screens, and no path returns a value.
+  | 'secret.list'
+  | 'secret.set'
+  | 'secret.clear';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -253,6 +258,7 @@ function declare(
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const CUSTODY_COLLECTION = 'custody';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -339,6 +345,10 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
+  // `value` is `any` so a wrong kind is the command's own FIELD_VALUE_INVALID,
+  // which names the field and never echoes what was sent.
+  'secret.set': { name: 'text', value: 'any', clientId: 'id?|null', expectedRevision: 'any' },
+  'secret.clear': { secretId: 'id', expectedRevision: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -440,6 +450,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
+  }),
+
+  // Custody (C31). `custody:manage` for all three, never an agent (the key
+  // catalogue: owner and administrators). The list is asked per row by the
+  // scopes the caller holds the key at, so a client-scoped holder sees that
+  // client's secrets only; setting and clearing are business-wide.
+  read('secret.list', CUSTODY_COLLECTION, { action: 'manage' }),
+  declare('secret.set', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('secret.clear', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['secretId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

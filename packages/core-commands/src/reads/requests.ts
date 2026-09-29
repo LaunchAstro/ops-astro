@@ -31,6 +31,7 @@ import type {
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
+  SecretListResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -87,6 +88,8 @@ export interface ReadOperands {
    * write sends back as `expectedRevision`. See `reads/settings.ts`.
    */
   readonly 'settings.read': NoOperands;
+  /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
+  readonly 'secret.list': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -116,4 +119,5 @@ export type ReadResult =
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
+  | SecretListResult
   | CapabilitiesResult;

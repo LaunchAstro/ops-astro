@@ -29,6 +29,7 @@ import {
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
+import { listCustodySecrets } from './custody.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -297,6 +298,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
+  'secret.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listCustodySecrets(tx, session),
+  },
   'settings.read': {
     identifiers: [],
     parse: NONE,

@@ -288,7 +288,11 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     };
     const [one, two] = ['cq2/first@1', 'cq2/second@1'].map((id) => {
       const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
-      return composed(noting, { gate: { id, secret: randomUUID() }, delegation });
+      return composed(noting, {
+        gate: { id, secret: randomUUID() },
+        delegation,
+        custody: undefined,
+      });
     }) as [Hono, Hono];
     const read = async (app: Hono) =>
       await send(app, `/api/b/alpha${READ}`, { recordId: randomUUID() }, token);

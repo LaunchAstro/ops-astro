@@ -210,6 +210,20 @@ export type CommandRequest =
   // task is where the work-control authority is asked and the lineage is
   // checked against it. A restart carries no proposal of its own: it is the
   // terminal lineage's last version, proposed again under a new lineage.
+  // Custody (C31). `value` and `expectedRevision` are checked by value in the
+  // handler, which names the field and never echoes what was sent.
+  | ({
+      readonly command: 'secret.set';
+      readonly name: string;
+      readonly value: unknown;
+      readonly clientId?: string | null;
+      readonly expectedRevision?: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'secret.clear';
+      readonly secretId: string;
+      readonly expectedRevision?: unknown;
+    } & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

@@ -45,6 +45,8 @@ export type {
   QueueResult,
   ReservationView,
   SettingsReadResult,
+  SecretListResult,
+  SecretView,
   SessionCapabilities,
   SettingView,
   SharedTaskRead,

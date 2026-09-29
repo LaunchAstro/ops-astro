@@ -19,8 +19,16 @@
 // `sign`/`verify`; this is the same seam one layer up.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { configuredCredentialKeys, withCredentialKeys } from '../../core-records/src/index.ts';
-import type { TenantQuery, CredentialKeysDecision } from '../../core-records/src/index.ts';
+import {
+  configuredCredentialKeys,
+  loadSealingKey,
+  withCredentialKeys,
+} from '../../core-records/src/index.ts';
+import type {
+  TenantQuery,
+  CredentialKeysDecision,
+  SealingKey,
+} from '../../core-records/src/index.ts';
 import type { SigningKey } from './signing.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
@@ -29,10 +37,16 @@ type Settings = Readonly<Record<string, string | undefined>>;
 export interface RuntimeKeys {
   readonly gate: SigningKey | undefined;
   readonly delegation: CredentialKeysDecision;
+  /** The broker's public key custody seals to (C31); the application never holds the private half. */
+  readonly custody: SealingKey | undefined;
 }
 
 export function runtimeKeys(settings: Settings): RuntimeKeys {
-  return { gate: gateSigningKey(settings), delegation: configuredCredentialKeys(settings) };
+  return {
+    gate: gateSigningKey(settings),
+    delegation: configuredCredentialKeys(settings),
+    custody: loadSealingKey(settings),
+  };
 }
 
 const handedOver = new AsyncLocalStorage<RuntimeKeys>();
@@ -45,6 +59,12 @@ const handedOver = new AsyncLocalStorage<RuntimeKeys>();
  */
 export function withRuntimeKeys<T>(keys: RuntimeKeys, run: () => T): T {
   return handedOver.run(keys, () => withCredentialKeys(keys.delegation, run));
+}
+
+/** The key custody seals a secret to, or nothing if unconfigured: `secret.set` then refuses. */
+export function custodySealingKey(): SealingKey | undefined {
+  const held = handedOver.getStore();
+  return held === undefined ? loadSealingKey(process.env) : held.custody;
 }
 
 /** The key this deployment signs decision links with, or nothing if unconfigured. */
