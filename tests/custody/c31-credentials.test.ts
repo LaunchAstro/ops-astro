@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one ticket's named cases over one seeded world */
 //
 // C31: the credentials screen's custody command, over HTTP against a real
 // database. Each case is named after the acceptance line or supporting
@@ -41,6 +42,7 @@ interface SecretView {
 const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
 
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () => {
   const pair = generateSealingPair('test/c31@1');
   let controls: Controls;
