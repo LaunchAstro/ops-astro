@@ -23,8 +23,8 @@ export interface UseReadOptions<T> {
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
   /**
-   * The live channel for what this read shows (T2f). While `paused` (an
-   * unsaved edit) a change is held and read once the pause ends.
+   * The live channel for what this read shows (T2f). While `paused` (an unsaved
+   * edit) a change is held until the pause ends; `closed` is read at once.
    */
   readonly live?: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>;
   readonly paused?: boolean;
@@ -88,8 +88,8 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   useEffect(() => {
     const open = liveRef.current;
     if (open === undefined) return undefined;
-    return followLive(open, () => {
-      if (pausedRef.current) heldRef.current = true;
+    return followLive(open, (change) => {
+      if (pausedRef.current && change === 'changed') heldRef.current = true;
       else reload();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the caller's list, plus the grant.
