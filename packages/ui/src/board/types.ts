@@ -71,7 +71,7 @@ export interface Facet<Row> {
   readonly test: (row: Row) => boolean;
 }
 
-/** A named, counted shortcut over one or more facets (B-07). */
+/** A named shortcut over one or more facets, counted unless it says not (B-07). */
 export interface Preset {
   readonly id: string;
   readonly label: string;

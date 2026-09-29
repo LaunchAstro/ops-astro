@@ -88,6 +88,23 @@
   font-size: 0.8em;
 }
 
+/* The viewer's own chip (P-11): an ink fill when on. */
+.cbd__preset--viewer.is-on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* A category chip where a client or a mention waits (P-13): flagged, never counted. */
+.cbd__preset--cat.is-flagged {
+  border-color: var(--accent);
+}
+
+/* The Review chip's live count (P-10). */
+.cbd__count--accent {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
 .cbd__read {
   margin: 0;
   color: var(--text-muted);

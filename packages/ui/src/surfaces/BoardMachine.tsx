@@ -5,7 +5,8 @@
 // redo, Clear all and the freshness stamp), the chip row (presets, modes and a
 // tag chip for every filter the row cannot show), the reading line, and the
 // table laid out by the width model with sortable, keyboard-operable heads and
-// resize grips. A mode swaps the table for its own surface over the same rows.
+// resize grips. A mode swaps the table for its own surface over the same rows,
+// or narrows the table to some of them.
 // The command bar is drawn into the page's title row when the page hands one
 // over, and leaves it whenever the board is not the panel showing (D-03). The
 // chip row and the heads stick under the chrome; the board publishes the chip
@@ -52,14 +53,18 @@ import type {
   Facet,
   LaidColumn,
   MachineState,
-  Mode,
   Preset,
+  RowMode,
 } from '../board/types.ts';
 import { BoardSearch } from './BoardSearch.tsx';
 
-export interface BoardMode<Row> extends Mode {
-  /** The alternative surface, over the same narrowed rows. */
-  readonly render: (rows: readonly Row[]) => ReactNode;
+export interface BoardMode<Row> extends RowMode<Row> {
+  /** The alternative surface, over the same narrowed rows; without one, the table narrows. */
+  readonly render?: (rows: readonly Row[]) => ReactNode;
+  /** A live count on the mode's chip, and what it says (P-10). */
+  readonly badge?: { readonly count: number; readonly title: string };
+  /** What the table says when the mode leaves no row. */
+  readonly empty?: { readonly title: string; readonly description: string };
 }
 
 export interface BoardMachineProps<Row> {
@@ -303,14 +308,15 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   });
 
   const narrowed = narrowRows(props.rows, view, props.facets, props.hay);
-  const sorted = sortRows(narrowed, view.sort, props.columns);
+  const mode = (props.modes ?? []).find((one) => one.id === view.mode);
+  const moded = mode?.narrow === undefined ? narrowed : narrowed.filter(mode.narrow);
+  const sorted = sortRows(moded, view.sort, props.columns);
   const presets = props.presets ?? [];
   const onPresets = presets.filter(
     (preset) => preset.facetIds.length > 0 && preset.facetIds.every((id) => view.ids.includes(id)),
   );
   const shownByPreset = new Set(onPresets.flatMap((preset) => preset.facetIds));
   const line = readingLine(view, props.facets, narrowed.length, props.withheld);
-  const mode = (props.modes ?? []).find((one) => one.id === view.mode);
   const last = machine.history.past.at(-1);
   const next = machine.history.future.at(-1);
   const rest = view.ids.length === 0 && view.text.length === 0;
@@ -518,11 +524,15 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
             data-mode={one.id}
             type="button"
             aria-pressed={view.mode === one.id}
+            {...(one.badge === undefined ? {} : { title: one.badge.title })}
             onClick={() => {
               dispatch({ type: 'mode', id: one.id });
             }}
           >
             {one.label}
+            {one.badge === undefined ? null : (
+              <span className="cbd__count cbd__count--accent">{one.badge.count}</span>
+            )}
           </button>
         ))}
         {view.ids
@@ -554,11 +564,14 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
 
       {line === '' ? null : <p className="cbd__read">{line}</p>}
 
-      {mode !== undefined ? (
+      {mode?.render !== undefined ? (
         mode.render(narrowed)
       ) : sorted.length === 0 ? (
         <div className="cbd__empty">
-          <Empty title={props.empty.title} description={props.empty.description} />
+          <Empty
+            title={(mode?.empty ?? props.empty).title}
+            description={(mode?.empty ?? props.empty).description}
+          />
         </div>
       ) : (
         <Table
@@ -586,14 +599,17 @@ function PresetChip(props: {
   readonly count: number;
   readonly onPress: (stack: boolean) => void;
 }): ReactElement {
+  const variant = props.preset.variant === undefined ? '' : ` cbd__preset--${props.preset.variant}`;
+  // A flag, never a count (P-13): the chip says why in its title.
+  const flag = props.preset.flag;
   return (
     <button
-      className={`cbd__preset${props.on ? ' is-on' : ''}`}
+      className={`cbd__preset${variant}${props.on ? ' is-on' : ''}${flag === undefined ? '' : ' is-flagged'}`}
       data-preset={props.preset.id}
       type="button"
       aria-pressed={props.on}
       aria-label={props.preset.label}
-      title={`${props.preset.label}${STACK_TIP}`}
+      title={`${props.preset.label}${flag === undefined ? '' : ` · ${flag}`}${STACK_TIP}`}
       onClick={(event) => {
         props.onPress(event.shiftKey);
       }}
@@ -602,7 +618,7 @@ function PresetChip(props: {
         {GLYPH[props.preset.icon ?? ''] ?? props.preset.label.charAt(0)}
       </span>
       <span className="cbd__presetw">{props.preset.label}</span>
-      <span className="cbd__count">{props.count}</span>
+      {props.preset.uncounted === true ? null : <span className="cbd__count">{props.count}</span>}
     </button>
   );
 }

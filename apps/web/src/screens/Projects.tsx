@@ -183,6 +183,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             withheld={value.withheld ?? 0}
             changedAt={value.changedAt ?? null}
             stages={[]}
+            viewer={value.viewer ?? null}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             address={window.location.search}
             onAddress={(query) => {
