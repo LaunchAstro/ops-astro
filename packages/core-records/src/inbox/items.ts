@@ -67,6 +67,16 @@ interface Disclosed {
   readonly subjectRecordId: string;
   readonly factId: string;
   readonly closedByPersonId: string | null;
+  /** T2h's alert on the run the item points at, the one the task page shows; null otherwise. */
+  readonly alert: InboxAlert | null;
+}
+
+/** An alert record (T2h, `core-runtime/src/alerts.ts`) as the inbox carries it. */
+export interface InboxAlert {
+  readonly id: string;
+  readonly kind: 'settled' | 'failed' | 'cancelled' | 'awaiting_person';
+  readonly waitingReason: 'needs_approval' | 'liability_unknown' | 'quarantined' | null;
+  readonly raisedAt: string;
 }
 
 /** Only a finished run asks nothing back; the schema holds the same rule. */
@@ -167,9 +177,13 @@ export const INBOX_HISTORY_PAGE = 50;
 
 /** A row as read: the axes, the pointers, and the facts access is derived from. */
 type ItemRow = InboxItemAxes &
-  Disclosed & {
+  Omit<Disclosed, 'alert'> & {
     readonly trashed: boolean;
     readonly held: boolean;
+    readonly alertId: string | null;
+    readonly alertKind: InboxAlert['kind'] | null;
+    readonly alertReason: InboxAlert['waitingReason'];
+    readonly alertAt: Date | null;
   };
 
 /**
@@ -183,21 +197,8 @@ async function reach(tx: TenantQuery, personId: string): Promise<readonly unknow
   return [tx.businessId, personId, scopes.business, scopes.records, scopes.parties];
 }
 
-/**
- * What one recipient can be shown, each axis read separately and access derived
- * in the same query: every open item, and the newest `INBOX_HISTORY_PAGE`
- * closed ones about a task they read now. A closed item about a task they
- * cannot read is not returned at all, and takes no place in the page, so the
- * history leaves no gap that would count it. The recipient is the only person
- * whose items come back: the query names them, and the attention row it joins
- * is theirs by its foreign key. Oldest raised first.
- */
-export async function readInboxItems(
-  tx: TenantQuery,
-  recipientPersonId: string,
-): Promise<readonly InboxItem[]> {
-  const rows = await tx.query<ItemRow>(
-    `with mine as (
+/** Every open item and the newest page of held closed ones, access and alert derived here. */
+const ITEMS = `with mine as (
        select i.*, r.deleted_at is not null as trashed, ${HELD} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
@@ -216,22 +217,67 @@ export async function readInboxItems(
             (select d.state from public.inbox_delivery_attempts d
               where d.business_id = s.business_id and d.item_id = s.id
               order by d.observed_seq desc limit 1) as "lastDelivery",
-            s.trashed, s.held
+            s.trashed, s.held, al.id as "alertId", al.kind as "alertKind",
+            al.waiting_reason as "alertReason", al.raised_at as "alertAt"
        from shown s
        left join public.inbox_attention a on a.business_id = s.business_id and a.item_id = s.id
-      order by s.raised_at, s.id`,
-    [...(await reach(tx, recipientPersonId)), INBOX_HISTORY_PAGE],
-  );
-  const items: InboxItem[] = [];
-  for (const { trashed, held, subjectRecordId, factId, closedByPersonId, ...axes } of rows) {
-    const access: InboxAccess = held ? (trashed ? 'gone' : 'readable') : 'withheld';
-    items.push(
-      access === 'readable'
-        ? { ...axes, access, subjectRecordId, factId, closedByPersonId }
-        : { ...axes, access },
-    );
-  }
-  return items;
+       left join lateral (
+         select x.id, x.kind, x.waiting_reason, x.raised_at
+           from public.alerts x
+          where s.fact_kind = 'planned_run' and s.held
+            and x.business_id = s.business_id and x.task_id = s.subject_record_id
+            and (x.cause_id in (select t.id from public.attempts t
+                                  join public.reservations v
+                                    on v.business_id = t.business_id and v.id = t.reservation_id
+                                 where t.business_id = s.business_id and v.run_id = s.fact_id)
+                 or x.cause_id = (select p.lineage_id from public.planned_runs p
+                                   where p.business_id = s.business_id and p.id = s.fact_id))
+          order by x.raised_at desc, x.id
+          limit 1
+       ) al on true
+      order by s.raised_at, s.id`;
+
+/**
+ * What one recipient can be shown, each axis read separately and access derived
+ * in the same query: every open item, and the newest `INBOX_HISTORY_PAGE`
+ * closed ones about a task they read now. A closed item about a task they
+ * cannot read is not returned at all, and takes no place in the page, so the
+ * history leaves no gap that would count it. The recipient is the only person
+ * whose items come back: the query names them, and the attention row it joins
+ * is theirs by its foreign key. Oldest raised first.
+ *
+ * An item about a planned run carries T2h's latest alert on that run: one
+ * whose cause is an attempt under the run's reservation (a settlement or a
+ * hand-back) or the run's lineage (a cancellation). The alert is disclosed
+ * only on a readable item, as the task page shows it.
+ */
+export async function readInboxItems(
+  tx: TenantQuery,
+  recipientPersonId: string,
+): Promise<readonly InboxItem[]> {
+  const rows = await tx.query<ItemRow>(ITEMS, [
+    ...(await reach(tx, recipientPersonId)),
+    INBOX_HISTORY_PAGE,
+  ]);
+  return rows.map((row) => itemOf(row));
+}
+
+/** One row as the recipient may be shown it: pointers and the alert only while readable. */
+function itemOf(row: ItemRow): InboxItem {
+  const { trashed, held, subjectRecordId, factId, closedByPersonId, ...rest } = row;
+  const { alertId, alertKind, alertReason, alertAt, ...axes } = rest;
+  const access: InboxAccess = held ? (trashed ? 'gone' : 'readable') : 'withheld';
+  if (access !== 'readable') return { ...axes, access };
+  const alert: InboxAlert | null =
+    alertId === null || alertKind === null || alertAt === null
+      ? null
+      : {
+          id: alertId,
+          kind: alertKind,
+          waitingReason: alertReason,
+          raisedAt: alertAt.toISOString(),
+        };
+  return { ...axes, access, subjectRecordId, factId, closedByPersonId, alert };
 }
 
 /**

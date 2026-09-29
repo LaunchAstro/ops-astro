@@ -25,6 +25,7 @@ import type { FollowInbox } from '../data/board-live.ts';
 import { RecordState } from './record-state.tsx';
 import { titleOf } from './task-title.ts';
 import { pathTo } from '../routes.ts';
+import { say } from '../screens/task/Alerts.tsx';
 
 const REASON: Readonly<Record<InboxEntry['reason'], string>> = {
   decision: 'A decision is waiting for you',
@@ -146,7 +147,6 @@ function InboxRow(props: {
   readonly onOpen: (href: string) => void;
 }): ReactElement {
   const entry = props.entry;
-  const delivery = deliveryWord(entry);
   return (
     <li
       className="inbox__item"
@@ -172,6 +172,23 @@ function InboxRow(props: {
         </a>
       )}{' '}
       <span className="inbox__state">{workWord(entry)}</span>
+      <Marks entry={entry} />
+    </li>
+  );
+}
+
+/** What else a person reads on the row: the run's alert (T2h), the last attempt, and seen. */
+function Marks(props: { readonly entry: InboxEntry }): ReactElement {
+  const entry = props.entry;
+  const delivery = deliveryWord(entry);
+  return (
+    <>
+      {entry.alert === undefined ? null : (
+        <span className="inbox__alert" data-alert={entry.alert.kind}>
+          {' '}
+          {say(entry.alert)}
+        </span>
+      )}
       {delivery === null ? null : (
         <span className="inbox__delivery" data-delivery={entry.lastDelivery}>
           {' '}
@@ -184,6 +201,6 @@ function InboxRow(props: {
           Seen
         </span>
       )}
-    </li>
+    </>
   );
 }

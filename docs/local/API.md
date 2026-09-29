@@ -1255,7 +1255,10 @@ the caller reads now, oldest raised first. `inbox.count` answers
 the same rule (`reads/inbox.ts`). Access is derived for every item inside the
 read's own query, so neither read grows with a person's closed history. An
 item about a task the caller cannot read is not listed, and a closed one takes
-no place in the page. A readable entry carries its pointers, its task's `key` and `title`,
+no place in the page. A readable entry about a planned run carries `alert`,
+T2h's latest alert on that run (the same record, `id`, `kind`,
+`waitingReason` and `raisedAt`, that the task page and the queue read show);
+no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
 and `closedBy`, the decider's `personId` and `name` once it is cleared, all
 read in the same transaction, so the item stores none of them. A gone entry
 carries its own identity and axes and nothing of the task. The board screen

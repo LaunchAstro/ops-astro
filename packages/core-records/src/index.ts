@@ -72,6 +72,7 @@ export {
   type InboxAccess,
   type InboxFactKind,
   type InboxItem,
+  type InboxAlert,
   type InboxReason,
   type InboxWorkState,
   type RaiseInboxItem,

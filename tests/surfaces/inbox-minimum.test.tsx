@@ -66,6 +66,32 @@ describe('INB-1g the inbox inside Tasks', () => {
     await view.unmount();
   });
 
+  it("INB-1 alert: an entry on a run shows its alert in the task page's words, and no other entry shows one", async () => {
+    const api = server(
+      [
+        entry({
+          id: 'run',
+          reason: 'waiting_run',
+          alert: {
+            id: 'alert-1',
+            kind: 'awaiting_person',
+            waitingReason: 'quarantined',
+            raisedAt: '2026-09-29T00:00:00.000Z',
+          },
+        }),
+        entry({ id: 'plain' }),
+      ],
+      2,
+    );
+    const view = await mount(<Inbox client={api.client} grantKey="alpha:mia" />);
+    await settle();
+    expect(view.all('[data-alert]')).toHaveLength(1);
+    expect(view.find('[data-alert]')?.textContent).toContain(
+      'Waiting on a person. The hold is kept. A person reconciles this attempt.',
+    );
+    await view.unmount();
+  });
+
   it('INB-1 nothing is shown as delivered when only sent is known: asked, accepted, delivered and seen stay four states', async () => {
     const api = server(
       [

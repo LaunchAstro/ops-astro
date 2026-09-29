@@ -47,6 +47,7 @@ function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): I
           factKind: item.factKind,
           factId: item.factId,
           closedByPersonId: item.closedByPersonId,
+          ...(item.alert === null ? {} : { alert: item.alert }),
         }
       : {}),
   };
