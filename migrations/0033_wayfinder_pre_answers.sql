@@ -36,11 +36,11 @@ alter table public.map_components
     ),
   add constraint map_components_question_bounded
     check (question is null or char_length(btrim(question)) between 1 and 4000),
-  -- A reference is one line.
+  -- A reference is one line: no CR, LF, NEL or Unicode line or paragraph separator.
   add constraint map_components_reference_bounded
     check (source_reference is null
            or (char_length(btrim(source_reference)) between 1 and 400
-               and source_reference !~ '[\r\n]')),
+               and source_reference !~ E'[\\r\\n\\u0085\\u2028\\u2029]')),
   add constraint map_components_source_fkey foreign key (business_id, source_record_id)
     references public.records (business_id, id) on delete set null (source_record_id);
 

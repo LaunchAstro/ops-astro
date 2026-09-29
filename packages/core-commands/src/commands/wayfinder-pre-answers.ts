@@ -18,6 +18,8 @@ import { invalid, textOk } from './wayfinder.ts';
 import { completed } from './wayfinder-resolve.ts';
 
 export const REFERENCE_LIMIT = 400;
+/** Any character that breaks a line: CR, LF, NEL and the Unicode line and paragraph separators. */
+const LINE_BREAK = /[\r\n\u0085\u2028\u2029]/u;
 
 export type PreAnswerSource = { readonly recordId: string } | { readonly reference: string };
 
@@ -41,7 +43,7 @@ function sourceOf(value: unknown): PreAnswerSource | null {
   }
   if (recordId !== undefined) return isUuid(recordId) ? { recordId: recordId.toLowerCase() } : null;
   const line = typeof reference === 'string' ? reference.trim() : '';
-  if (line === '' || line.length > REFERENCE_LIMIT || /[\r\n]/u.test(line)) return null;
+  if (line === '' || line.length > REFERENCE_LIMIT || LINE_BREAK.test(line)) return null;
   return { reference: line };
 }
 
@@ -82,18 +84,24 @@ export async function refuseUncitable(
     ...new Set(preAnswers.flatMap((p) => ('recordId' in p.source ? [p.source.recordId] : []))),
   ];
   if (ids.length === 0) return undefined;
+  // Held for share until the chart commits, so a cited decision cannot be
+  // reopened between this check and the write.
   const rows = await tx.query<{ readonly id: string; readonly state: string | null }>(
     `select id, uuid_1::text as state from records
       where business_id = $1 and id = any($2::uuid[]) and record_type_id = $3
-        and deleted_at is null`,
+        and deleted_at is null
+      order by id
+      for share`,
     [tx.businessId, ids, context.spine.taskTypeId],
   );
   const subjects = subjectsOf(context.session);
   const found = new Map(rows.map((row) => [row.id, row.state]));
   for (const id of ids) {
-    // One grant check per cited record, on one transaction.
+    // One grant check per cited record, found or not, so an id that exists
+    // and one that does not take the same steps (I04).
     // oxlint-disable-next-line no-await-in-loop
-    if (!found.has(id) || !(await mayRead(tx, subjects, id))) {
+    const readable = await mayRead(tx, subjects, id);
+    if (!found.has(id) || !readable) {
       return refused(
         refuseCommand('NOT_FOUND', ['preAnswers'], ['Cite a closed ticket you may read.']),
       );
