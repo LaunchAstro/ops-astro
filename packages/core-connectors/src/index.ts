@@ -64,8 +64,8 @@ export {
   type PageObservation,
   type ProposedChange,
 } from './site/envelope.ts';
+export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';
 export {
-  contentDigest,
   dispatchToken,
   observeLanded,
   publishCorrection,

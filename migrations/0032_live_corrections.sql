@@ -13,6 +13,9 @@
 -- approve (release decision 3.4). The check below is the storage half of that
 -- rule; the command refuses first, with its own code.
 --
+-- The decision records the version digest it approved, which the storage
+-- keeps equal to the pinned version: the runner binds the dispatch to it.
+--
 -- `party_id` is the party the site belongs to. It is the scope the grants are
 -- asked at, so a party-scoped grant on one client's site reaches no other
 -- client's correction.
@@ -65,6 +68,7 @@ create table public.live_corrections (
   constraint live_corrections_decision_whole check (
     (decided_by_actor_id is null) = (decided_by_person_id is null)
     and (decided_by_actor_id is null) = (decided_at is null)
+    and (decided_by_actor_id is null) = (decided_version_digest is null)
   ),
   constraint live_corrections_decided_before_effect check (
     state in ('requested', 'cancelled') or decided_by_person_id is not null

@@ -14,6 +14,7 @@ import {
   type CorrectionTarget,
   type PublishJob,
   type PublishPorts,
+  versionDigestOf,
 } from '../../packages/core-connectors/src/index.ts';
 
 const TARGET: CorrectionTarget = {
@@ -26,12 +27,17 @@ const AFTER = '<p>We walk beside you.</p>\n';
 
 function job(overrides: Partial<PublishJob> = {}): PublishJob {
   const change = { files: [{ path: TARGET.path, before: BEFORE, after: AFTER }] };
-  const versionDigest = contentDigest({ target: TARGET, change });
-  return {
-    correctionId: 'correction-1',
+  const pinned = {
     target: TARGET,
     change,
     preImageDigest: contentDigest(BEFORE),
+    baseRevision: 'abc123',
+    pageUrl: 'https://agency.example/throwaway/',
+  };
+  const versionDigest = versionDigestOf(pinned);
+  return {
+    correctionId: 'correction-1',
+    ...pinned,
     version: { versionId: 'version-2', digest: versionDigest },
     decision: {
       decisionId: 'decision-1',

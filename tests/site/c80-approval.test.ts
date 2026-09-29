@@ -100,7 +100,8 @@ describe.skipIf(serverUrl === undefined)('C80 no self-approval', () => {
         await tx.query(
           `update public.live_corrections
               set state = 'approved', decided_by_actor_id = requested_by_actor_id,
-                  decided_by_person_id = requested_by_person_id, decided_at = now()
+                  decided_by_person_id = requested_by_person_id, decided_at = now(),
+                  decided_version_digest = version_digest
             where id = $1`,
           [correctionId],
         );

@@ -74,7 +74,8 @@
     "FR6-RUNNER names migration-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
     "CQ-14 adds owning-operation-constraints (product issue 54): the two 0009 checks on field_defs.owning_operation, field_defs_owning_operation_not_empty and field_defs_operation_names_are_operations, each refusing a bad row by name, with a valid list as the control. Its result is the evidence for S0-6's question 6 (the text[] domain change): 'refuses an empty list by field_defs_owning_operation_not_empty' and 'refuses a malformed operation name by field_defs_operation_names_are_operations' name both checks, and 'accepts a well-formed unknown operation name today: the check reads spelling, not existence' pins that the check reads spelling, not existence, until ops-astro#142 turns it into a refusal.",
-    "C80 (SL15 session 2) adds c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-receipt-atomic (receipt written under the worker lease, in the observed result's transaction)."
+    "C80 (SL15 session 2) adds c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-receipt-atomic (receipt written under the worker lease, in the observed result's transaction).",
+    "C80 (SL15 session 3) adds c80-runner (C80 publish runner and C80 revert runner: the approved bytes rebuilt from the pinned source and dispatched once, the capture on the correction's own page, refusals before any dispatch, unknown and accepted never dispatched again, a lease lost mid-flight writing nothing, the revert observed and timed)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -222,7 +223,8 @@
     "tests/site/c80-approval.test.ts",
     "tests/site/c80-isolation.test.ts",
     "tests/site/c80-agent-request.test.ts",
-    "tests/site/c80-receipt-atomic.test.ts"
+    "tests/site/c80-receipt-atomic.test.ts",
+    "tests/site/c80-runner.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
