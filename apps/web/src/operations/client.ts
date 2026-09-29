@@ -77,9 +77,8 @@ export const READ_NAMES = [
   'preset.plan',
   // Settings ▸ Access (C32), under `access:manage` on the server.
   'access.read',
-  // The operations view (C55), under `operations:read` on the server.
+  // The operations view (C55), `operations:read`; the breach drill (C81), `privacy:manage`.
   'operations.read',
-  // The breach drill's notices (C81), under `privacy:manage` on the server.
   'privacy.draft_breach_notices',
 ] as const;
 

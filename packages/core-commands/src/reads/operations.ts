@@ -73,7 +73,7 @@ function recipientOf(value: unknown): NoticeRecipient | undefined {
 
 function peopleOf(value: unknown): readonly NoticeRecipient[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > 500) return undefined;
-  const people = value.map(recipientOf);
+  const people = value.map((item: unknown) => recipientOf(item));
   return people.every((person) => person !== undefined)
     ? (people as readonly NoticeRecipient[])
     : undefined;
