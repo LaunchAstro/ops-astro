@@ -12,6 +12,7 @@
     "tests/commands/task-client-access.test.ts",
     "tests/reads/task-board-crumb.test.ts",
     "tests/reads/task-steps.test.ts",
+    "tests/commands/task-subtasks.test.ts",
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",
     "tests/reads/task-history-trail.test.ts",
