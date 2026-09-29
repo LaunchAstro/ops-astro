@@ -30,6 +30,7 @@ import {
   rollBackActivation,
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
+import { createRecord, recordStepResult, startOnboarding } from './onboarding.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -111,6 +112,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'activation.roll_back': (tx, context, request) => rollBackActivation(tx, context, request),
   'activation.turn_off': (tx, context, request) => turnOffActivationAsPerson(tx, context, request),
   'approval.revoke': (tx, context, request) => revokeStandingApproval(tx, context, request),
+
+  'record.create': (tx, context, request) => createRecord(tx, context, request),
+  'onboarding.start': (tx, context, request) => startOnboarding(tx, context, request),
+  'onboarding.step_result': (tx, context, request) => recordStepResult(tx, context, request),
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

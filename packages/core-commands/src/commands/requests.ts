@@ -25,6 +25,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { AutomationRequest } from './automation-requests.ts';
+import type { OnboardingRequest } from './requests-onboarding.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -315,7 +316,8 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
-    } & Envelope);
+    } & Envelope)
+  | OnboardingRequest<Envelope>;
 
 /**
  * The part of a request the register compares, which is everything except the
