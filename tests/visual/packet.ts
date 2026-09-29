@@ -28,6 +28,13 @@ export type Renderer = {
 export type Packet = {
   mockup: { commit: string; tree: string };
   renderer: Renderer;
+  /**
+   * The renderer the app-only drift mode is pinned to in CI (Linux, headless
+   * shell). Its `os` is platform and architecture alone: the runner image moves
+   * its kernel release under us, so the release is recorded in the evidence of
+   * each run rather than pinned.
+   */
+  ciRenderer: Renderer;
   tolerance: Tolerance;
   assetsDigest: string;
   widths: number[];
@@ -73,12 +80,15 @@ export function liveRenderer(browser: Browser, mode: Mode): Renderer {
   const core = JSON.parse(readFileSync(`${corePath}/browsers.json`, 'utf8')) as {
     browsers: { name: string; revision: string }[];
   };
-  const shell = core.browsers.find((b) => b.name === 'chromium-headless-shell');
+  const shell = mode.headless && mode.channel === undefined;
+  const build = core.browsers.find(
+    (b) => b.name === (shell ? 'chromium-headless-shell' : 'chromium'),
+  );
   return rendererOf(
     {
       playwright: (require('playwright/package.json') as { version: string }).version,
       browser: 'chromium-headless-shell',
-      browserRevision: shell?.revision ?? 'unknown',
+      browserRevision: build?.revision ?? 'unknown',
       browserBuild: browser.version(),
       deviceScaleFactor: 1,
       os: `${platform()} ${release()} ${arch()}`,
@@ -95,10 +105,17 @@ export function liveRenderer(browser: Browser, mode: Mode): Renderer {
 export type Mode = { headless: boolean; channel?: string };
 export const MODE: Mode = { headless: true };
 
-/** The identity a launch mode captures with: only headless with no channel is the shell. */
+/**
+ * The identity a launch mode captures with: only headless with no channel is
+ * the shell. Headed and new-headless Chromium draw through different paths, so
+ * each names its mode and neither can stand in for the other's measurement.
+ */
 export function rendererOf(base: Renderer, mode: Mode): Renderer {
-  const shell = mode.headless && mode.channel === undefined;
-  return { ...base, browser: shell ? 'chromium-headless-shell' : (mode.channel ?? 'chromium') };
+  if (mode.headless && mode.channel === undefined) {
+    return { ...base, browser: 'chromium-headless-shell' };
+  }
+  const channel = mode.channel ?? 'chromium';
+  return { ...base, browser: `${channel} ${mode.headless ? 'new-headless' : 'headed'}` };
 }
 
 export function checkRenderer(packet: Packet, live: Renderer): void {
@@ -110,6 +127,24 @@ export function checkRenderer(packet: Packet, live: Renderer): void {
       );
     }
   }
+}
+
+/**
+ * The app-only drift mode's pin: the CI renderer on Linux, compared on
+ * platform and architecture with the kernel release set aside; the packet's
+ * own renderer anywhere else. Returns the pin it held the run to.
+ */
+export function checkDriftRenderer(packet: Packet, live: Renderer): Renderer {
+  if (!live.os.startsWith('linux ')) {
+    checkRenderer(packet, live);
+    return packet.renderer;
+  }
+  const [system, , machine] = live.os.split(' ');
+  checkRenderer(
+    { ...packet, renderer: packet.ciRenderer },
+    { ...live, os: `${system} ${machine}` },
+  );
+  return packet.ciRenderer;
 }
 
 /** Returns the pinned tree when the commit still names it; refuses otherwise. */

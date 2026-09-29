@@ -4,7 +4,12 @@
 // picture at each width in the packet, in light; each dark picture waits for
 // the dark theme (U04, MP-1-1); and no page scrolls sideways. A page is built
 // once its route is registered, so a route added without pictures fails here.
+// A picture counts only when its file is there: a PNG as wide as the width it
+// was taken at.
 
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { PNG } from 'pngjs';
 import type { Packet } from './packet.ts';
 
 // Read at run time: the web app's own types sit outside this program (`tsconfig.web.json`).
@@ -13,7 +18,13 @@ const { ROUTES } = (await import(registry)) as {
   ROUTES: Record<string, { path: string; authenticated: boolean }>;
 };
 
-export type PageShot = { page: string; width: number; picture: string | null; overflow: number };
+export type PageShot = {
+  page: string;
+  width: number;
+  /** The picture file's path; null when nothing was captured. */
+  picture: string | null;
+  overflow: number;
+};
 
 export const DARK_PENDING = 'waiting for the dark theme (U04, MP-1-1)';
 
@@ -39,6 +50,27 @@ export function addressOf(
 /** Whether drawing the page needs a signed-in session. */
 export const needsSession = (page: string): boolean => ROUTES[page]?.authenticated ?? false;
 
+/** The registered page an address draws, or undefined when none does. */
+export const pageAt = (path: string): string | undefined =>
+  Object.keys(ROUTES).find((page) => ROUTES[page]?.path === path);
+
+/** Why a picture file does not count for its width, or undefined when it does. */
+export function pictureFault(picture: string, width: number): string | undefined {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(picture);
+  } catch {
+    return 'no picture';
+  }
+  let drawn: number;
+  try {
+    drawn = PNG.sync.read(bytes).width;
+  } catch {
+    return 'picture is not a PNG';
+  }
+  return drawn === width ? undefined : `picture is ${drawn} px wide, not ${width}`;
+}
+
 /** How far a page scrolls sideways, in CSS pixels; 0 when it does not. */
 export const overflowOf = (metrics: { scrollWidth: number; clientWidth: number }): number =>
   Math.max(0, metrics.scrollWidth - metrics.clientWidth);
@@ -56,9 +88,13 @@ export function report(
     for (const width of packet.widths) {
       const name = `${page}@${width}`;
       const shot = shots.find((one) => one.page === page && one.width === width);
-      if (shot === undefined || shot.picture === null) {
+      const fault =
+        shot?.picture === undefined || shot.picture === null
+          ? 'no picture'
+          : pictureFault(shot.picture, width);
+      if (shot === undefined || fault !== undefined) {
         failed += 1;
-        lines.push(`FAIL ${name}-light: no picture`);
+        lines.push(`FAIL ${name}-light: ${fault ?? 'no picture'}`);
       } else if (shot.overflow > 0) {
         failed += 1;
         sideways += 1;
@@ -66,7 +102,7 @@ export function report(
         lines.push(`FAIL ${name}-light: scrolls sideways by ${shot.overflow} px`);
       } else {
         pictures += 1;
-        lines.push(`ok ${name}-light: ${shot.picture}; no sideways scroll`);
+        lines.push(`ok ${name}-light: ${basename(shot.picture ?? '')}; no sideways scroll`);
       }
       lines.push(`pending ${name}-dark: ${packet.themes.dark}`);
     }

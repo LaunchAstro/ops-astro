@@ -2,11 +2,19 @@
   "screenshots": "A screenshot establishes none of these: permission enforcement, persistence, that a run happened, or that an effect occurred.",
   "mask": [".u-mono", "time", ".sbact__meta", ".sb__meta", "[data-visual-mask]"],
   "drift": { "state": "gate", "control": ".gatebox__acts > *", "token": "--warning" },
+  "appDrift": {
+    "page": "agency:sign-in",
+    "control": ".signin__form .btn--primary",
+    "token": "--border",
+    "theme": "light",
+    "note": "The one page drawn without a session at this head, and the app draws no dark theme yet; U04 (SL03) moves this to agency:gallery in dark once the gallery and the dark theme land."
+  },
   "states": [
     {
       "id": "board",
       "mockup": "/agency/projects/",
       "regions": { "page": "viewport" },
+      "appPath": "/projects/",
       "app": "T4b1 drives the board from T4a's fixture"
     },
     {
