@@ -21,26 +21,36 @@
    [ui-reference CONTRACT.md:176].
    ============================================================================ */
 
-/* -- Actions ------------------------------------------------------------- */
+/* -- Actions (DS-PRIM-1, DS-PRIM-2, MP-1-3). ----------------------------
+   One focus ring, the global one (DR-1): nothing here draws an outline. A bare
+   `.btn` is the secondary button, so an unmarked button is never invisible.
+   `sm` is the house size and the base; `md` pairs with a 38 input (DR-21). */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--s-2);
-  height: 32px;
-  padding: 0 0.9rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: 6.6px;
+  height: 27px;
+  padding: 0 11.4px;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--text-sm);
+  font-size: var(--text-label);
   font-weight: var(--weight-medium);
+  line-height: 1;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   cursor: pointer;
-  background: transparent;
   transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .btn:disabled {
   cursor: not-allowed;
@@ -48,38 +58,396 @@
 }
 .btn--sm {
   height: 27px;
-  padding: 0 0.7rem;
+  padding: 0 11.4px;
   font-size: var(--text-label);
 }
+.btn--md {
+  height: 38px;
+  padding: 0 14px;
+  font-size: var(--text-sm);
+}
+.btn--lg {
+  height: 43px;
+  padding: 12.75px 22.5px;
+  font-size: 15px;
+}
 .btn--primary {
-  background: var(--btn-fill);
-  color: var(--btn-text);
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
 }
 .btn--primary:hover:not(:disabled) {
-  background: var(--btn-hover);
-  color: var(--btn-hover-text);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
-/* A solid button disables to a deep mid-grey, not a faded black: dark enough
-   to read as a real, deliberately-off control. */
+/* DR-22: a disabled primary is an outline, never a grey fill. */
 .btn--primary:disabled {
-  background: var(--text-dim);
-  color: var(--surface);
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
   opacity: 1;
 }
-.btn--secondary {
-  border-color: var(--btn-outline);
-  color: var(--text);
-}
 .btn--secondary:hover:not(:disabled) {
-  border-color: var(--hover-accent);
-  color: var(--hover-accent);
+  background: var(--text);
+  color: var(--bg);
+}
+/* The filter-preset toggle, pressed (DR-20). */
+.btn[aria-pressed='true'] {
+  background: var(--text);
+  color: var(--bg);
 }
 .btn--ghost {
-  color: var(--text-muted);
+  border-color: transparent;
+  color: var(--text-2);
 }
 .btn--ghost:hover:not(:disabled) {
+  color: var(--accent);
+}
+.btn--text {
+  height: auto;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-2);
+}
+.btn--text:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.ibtn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ibtn:hover:not(:disabled) {
+  color: var(--text);
+}
+.ibtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.ibtn--compact {
+  width: 22px;
+  height: 22px;
+}
+.ibtn--danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.ibtn--accent {
+  transition:
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.ibtn--accent:hover:not(:disabled) {
+  color: var(--accent);
+  transform: scale(1.12);
+}
+/* DR-24: row tools wait for the row's hover above 900, and always show on
+   focus and on touch-width screens. */
+.ibtn--reveal {
+  opacity: 0;
+}
+:hover > .ibtn--reveal,
+.ibtn--reveal:focus-visible {
+  opacity: 1;
+}
+@media (width <= 900px) {
+  .ibtn--reveal {
+    opacity: 1;
+  }
+}
+.disclosure .icon {
+  transition: transform var(--dur-fast) var(--ease);
+}
+.disclosure[aria-expanded='true'] .icon {
+  transform: rotate(90deg);
+}
+
+/* -- Fields (DS-PRIM-3 to DS-PRIM-7, DS-PRIM-9, DS-PRIM-19). -------------
+   One paper field ground on both faces (DR-25). Focus moves the border to the
+   accent; the global ring still shows for the keyboard. */
+.field {
+  display: grid;
+  gap: var(--s-1-5);
+  min-width: 0;
+}
+.field__label {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 300;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.tf,
+.ta {
+  width: 100%;
+  min-width: 0;
+  padding: 7.2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.55;
+}
+.tf {
+  height: 38px;
+}
+.ta {
+  min-height: 6rem;
+  resize: vertical;
+}
+.tf::placeholder,
+.ta::placeholder,
+.search__in::placeholder {
+  color: var(--text-muted);
+}
+.tf:focus,
+.ta:focus,
+.sel__btn:focus,
+.sel__btn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.tf:disabled,
+.ta:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.tf--inline {
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+}
+.tf--inline:focus {
+  border-bottom-color: var(--accent);
+}
+.sel {
+  position: relative;
+}
+.sel__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  height: 37px;
+  padding: 8.8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+.sel__btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.sel__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.sel__caret {
+  width: 0;
+  height: 0;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+.menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--s-1) 0;
+  list-style: none;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+}
+.menu__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 6px 12px;
+  color: var(--text-2);
+  font-size: 13.6px;
+  cursor: pointer;
+}
+.menu__opt:hover,
+.menu__opt.is-active {
   background: var(--surface-2);
-  color: var(--hover-accent);
+  color: var(--text);
+}
+.menu__opt[aria-selected='true'] {
+  color: var(--accent);
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7.2px;
+  height: 34px;
+  padding: 4.8px 8.8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.search:focus-within {
+  border-color: var(--accent);
+}
+.search__in {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  outline: none;
+}
+.keycap {
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10.88px;
+  text-transform: uppercase;
+}
+.check {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+.check:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.check[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  width: 42px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  cursor: pointer;
+}
+.switch:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.switch:focus-visible {
+  border-color: var(--accent);
+}
+.switch:disabled {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.switch__knob {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.switch[aria-checked='true'] {
+  border-color: var(--success);
+}
+.switch[aria-checked='true'] .switch__knob {
+  border-color: var(--success);
+  background: var(--success);
+  transform: translateX(20px);
+}
+
+/* -- Segmented control and facet (DS-PRIM-10). Both have a hover rule (SHELL
+      I8). Pressed segmented is an ink fill; a pressed facet is an accent
+      outline and no fill. -- */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+}
+.segmented__opt {
+  height: 30px;
+  padding: 5.6px 11.2px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+.segmented__opt:last-child {
+  border-right: 0;
+}
+.segmented__opt:hover:not([aria-pressed='true']) {
+  color: var(--text);
+}
+.segmented__opt[aria-pressed='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7.2px;
+  height: 34px;
+  padding: 5.6px 11.2px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: 13.12px;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.facet:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.facet[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.facet__num {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
 }
 
 /* -- Tabs. Anchors and buttons wear the same dress, so a tab can be opened
@@ -262,31 +630,6 @@
   background: none;
   color: inherit;
 }
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--border-strong);
-}
-.segmented button {
-  padding: 0.35rem 0.7rem;
-  border: 0;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  cursor: pointer;
-}
-.segmented button:last-child {
-  border-right: 0;
-}
-.segmented button[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--paper);
-}
-
 /* -- Voice one: no rows. ------------------------------------------------- */
 .empty {
   display: grid;
@@ -323,8 +666,9 @@
 
 /* -- Voice two: this input is wrong. Red is legitimate status here, because
       the field IS in an error state. ------------------------------------- */
+/* DS-PRIM-30's field error (adopted at build-ready). */
 [aria-invalid='true'] {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-color: var(--danger);
 }
 .field__error {
   display: inline-flex;
@@ -375,4 +719,57 @@
 .icon--lg {
   width: var(--icon-lg);
   height: var(--icon-lg);
+}
+
+/* -- The stamp (DS-PRIM-25): a timestamp or provenance line. ------------- */
+.stamp {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 17px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* -- The component gallery page (MP-1-3). -------------------------------- */
+.gallery {
+  display: grid;
+  gap: var(--s-6);
+  padding: var(--s-5) var(--pad-x);
+}
+.gallery__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-tight);
+}
+.gallery__entry {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+}
+.gallery__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: var(--weight-semibold);
+}
+.gallery__states {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-4) var(--s-5);
+}
+.gallery__state {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
 }
