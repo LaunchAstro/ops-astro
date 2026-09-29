@@ -31,7 +31,7 @@ const WHICH: Readonly<Record<StepMove, string>> = {
   archive: `not (r.data ? 'archived_at')
         and coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')`,
   // Archived by a completion: the mark this transition's opposite wrote.
-  restore: `r.data ->> 'archived_why' = '${PARENT_COMPLETED}'`,
+  restore: `r.data ->> 'archived_why' = $4::text`,
 };
 
 /**
@@ -55,7 +55,9 @@ export async function lockSteps(
         and r.deleted_at is null and ${WHICH[move]}
       order by r.id
       for update of r`,
-    [tx.businessId, context.spine.taskTypeId, parentId],
+    move === 'restore'
+      ? [tx.businessId, context.spine.taskTypeId, parentId, PARENT_COMPLETED]
+      : [tx.businessId, context.spine.taskTypeId, parentId],
   );
   const ids = found.map((row) => row.id);
   if (ids.length === 0) return { ok: true, ids };
