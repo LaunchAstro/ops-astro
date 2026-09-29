@@ -12,8 +12,9 @@ on:
     # meant at the last push. Round four found it.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
-    # one: review-evidence-on-edit.yml runs it alone on `edited` (CQ-16), so
-    # a description edit neither re-runs nor cancels any other check.
+    # one: review-evidence.yml holds that check alone and runs it on code
+    # events and on `edited` (CQ-16, issue 93), so a description edit neither
+    # re-runs nor cancels any other check.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -284,51 +285,6 @@ jobs:
         run: node scripts/commit-range-check.mjs
       - name: The checker's own cases
         run: bash tests/ci/commit-range-cases.sh
-
-  review-evidence:
-    # review-evidence-on-edit.yml holds the same job for a description edit.
-    # Both read the body as it stands when they judge it, not the event's copy,
-    # and judge it last: a code run still in flight when the body is edited
-    # finishes after the edit's run, and must not stand on the old body.
-    name: review evidence for this revision
-    needs: [gate]
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      # Issue 88: the check parses the body with markdown-it, pinned in the lockfile.
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: The checker's own cases
-        run: bash tests/ci/review-evidence-cases.sh
-      - name: Read the description as it stands now
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        # Issue 88: the open issues, read with the same token, so a follow-up
-        # outcome can be held to one. The check itself gets no token.
-        run: |
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
-          gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
-            --jq '.[] | select(.pull_request == null) | .number' > "${RUNNER_TEMP}/open-issues.txt"
-      - name: The review must cover the head being merged
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          OPEN_ISSUES="$(cat "${RUNNER_TEMP}/open-issues.txt")" \
-            PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
 
   pr-size:
     name: pull request size

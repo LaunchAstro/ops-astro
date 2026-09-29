@@ -1,20 +1,31 @@
-name: review evidence on edit
+name: review evidence
 
-# A description edit re-runs `review evidence for this revision` and nothing
-# else (CQ-16, the owner's process fix of 29 September 2026). ci.yml runs
-# every check on a push, a label change and a reopen; this workflow runs on
-# `edited` alone and holds one job, under the required check's exact name,
-# with no condition and nothing it waits on. So an edit makes no new, skipped
-# or cancelled run of any other check on the head: each keeps the result its
-# last code run gave. Its concurrency group is its own, so it cannot cancel a
-# code run either.
+# `review evidence for this revision` lives here alone, never in ci.yml (issue
+# 93). A newer run of a workflow replaces its older run's results on the
+# head, but a result from another workflow does not: when ci.yml held a copy,
+# the edit run's pass sat beside the push run's failure and the pull request
+# stayed blocked until someone re-ran that job. So this workflow runs on every
+# event that can change the verdict, the head's and the description's, and
+# its latest run is the one result.
+#
+# It holds one job, under the required check's exact name, with no condition
+# and nothing it waits on, so an edit makes no new, skipped or cancelled run
+# of any other check on the head (CQ-16). ci.yml runs every other check on a
+# push, a label change and a reopen, and never on an edit. Its concurrency
+# group is its own, so it cannot cancel a code run, and a newer run of this
+# one cancels an older one still in flight.
+#
+# It does not wait for ci.yml's contamination gate, which no other workflow
+# can name in `needs`. The gate is not what keeps head code from running: its
+# own steps run scripts from the head. The token here is read-only, no secret
+# reaches the job, and a failed gate still blocks the merge.
 #
 # The trigger is `pull_request`, never its `_target` form: the token stays
 # read-only and no secret reaches the pull request's code.
 
 on:
   pull_request:
-    types: [edited]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -32,7 +43,7 @@ jobs:
       # Retargeting a pull request is an edit too, and every other check was
       # measured against the old base: the size, the commit range and the
       # sweep. This run fails until they run again, so none of them stands
-      # green over a base it never read.
+      # green over a base it never read. On any other event this is empty.
       - name: A base change needs every check run again
         env:
           BASE_FROM: ${{ github.event.changes.base.ref.from }}
@@ -54,8 +65,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh
-      # The body as it stands when it is judged, not the event's copy, as in
-      # ci.yml's job of the same name.
+      # The body as it stands when it is judged, not the event's copy: a run
+      # queued before an edit must not judge the old body.
       - name: Read the description as it stands now
         env:
           GH_TOKEN: ${{ github.token }}
