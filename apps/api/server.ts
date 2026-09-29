@@ -46,7 +46,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
-import type { Alerts } from './alerts/sink.ts';
+import { createAlerts, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   describeFault,
@@ -165,6 +165,7 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  /** The error sink (ticket S0-2); absent without one. */
   readonly alerts?: Alerts;
 }
 
@@ -257,6 +258,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       `api: unhandled fault ${describeFault(cause)} (reference ${reference}): the request ` +
         'could not be completed. Its contents and the fault text are left out of this log.',
     );
+    void config.alerts?.fault(cause);
     if ('getResponse' in cause) return cause.getResponse();
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
@@ -310,6 +312,7 @@ async function main(): Promise<void> {
   // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
+  const alerts = alertsFrom(environment);
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -322,6 +325,7 @@ async function main(): Promise<void> {
     issuer: issuer as string,
     keys,
     live: { topics },
+    ...(alerts === undefined ? {} : { alerts }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -368,6 +372,17 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/** The error sink (ticket S0-2): none without a DSN; a bad setting stops the server. */
+function alertsFrom(environment: Readonly<Record<string, string | undefined>>): Alerts | undefined {
+  try {
+    const sink = sinkFrom(environment);
+    return sink && createAlerts({ ...sink, root: ROOT });
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 }
 
 const RETRY =
