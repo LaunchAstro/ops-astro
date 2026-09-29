@@ -124,6 +124,11 @@ describe('S0-6 content policy', () => {
       '<script src="/a.js" data-x=">">window.planted = 1;</script>',
       '<script src="https://outside.example/a.js"></script>',
       '<script src="//outside.example/a.js"></script>',
+      `<script data-x=' src="/a.js"'>window.planted = 1;</script>`,
+      '<script src="/&#x2f;outside.example/a.js"></script>',
+      '<script src="/\t/outside.example/a.js"></script>',
+      '<script src="/\\outside.example/a.js"></script>',
+      '<script data-x="never closed>window.planted = 1;</script>',
     ]) {
       expect(scriptsOf(`${own}${planted}`).inline, planted).not.toEqual([]);
     }
