@@ -79,7 +79,8 @@
     "C81 adds c81-register (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)",
     "C32 adds c32-clients-and-grants (the client record under record:write and grants given and revoked under access:manage over in-process Hono, the preview showing one client only, client.list filtered by the caller's grants, the task's client link, the last access manager kept, two changes at once under the access lock, refusals per key, three crossings and the canary)",
     "C58 adds c58-end-access (a person's access ended in one act under access:manage over in-process Hono: membership, acting identity, grants and delegations ended in one transaction, the person refused from the commit, the provider's sign-out and deactivation retried until done and never repeated, a failure after each step, hostile provider answers, the 12-hour session limit one second either side with no idle limit, refusals per key, three crossings and the canary)",
-    "C58 adds c58-sessions (a person's own sessions over in-process Hono against a stand-in provider: the list, ending the others and signing out, each refused at the door from the commit and then signed out at the provider, a second-factor change ending the others, hostile provider answers never counted as done, refusals per key, three crossings and the canary)"
+    "C58 adds c58-sessions (a person's own sessions over in-process Hono against a stand-in provider: the list, ending the others and signing out, each refused at the door from the commit and then signed out at the provider, a second-factor change ending the others, hostile provider answers never counted as done, refusals per key, three crossings and the canary)",
+    "C34 adds c34-service-health (the service-health section of operations.read over in-process Hono: never observed, stale, read failure and service failure kept apart, tracing off when unset, a source shown whole or not at all, the Langfuse health read against a stand-in with hostile answers, no source asked for a refused caller, three crossings and the canary)"
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -232,7 +233,8 @@
     "tests/operations/c81-register.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
     "tests/authority/c58-end-access.test.ts",
-    "tests/api/c58-sessions.test.ts"
+    "tests/api/c58-sessions.test.ts",
+    "tests/operations/c34-service-health.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

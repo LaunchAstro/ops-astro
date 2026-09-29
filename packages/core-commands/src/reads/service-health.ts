@@ -178,7 +178,7 @@ function isObservation(value: unknown, now: Date): boolean {
     name.trim().length > 0 &&
     name.length <= NAME_LIMIT &&
     // No control characters: a name is shown as text, on one line.
-    [...name].every((char) => char >= ' ' && char !== '\u007f') &&
+    [...name].every((char) => char >= ' ' && char !== '\u007F') &&
     (scope === 'installation' || scope === 'client-site') &&
     (up === null || typeof up === 'boolean') &&
     (observedAt === null ||
