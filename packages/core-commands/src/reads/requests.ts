@@ -35,6 +35,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
   MapViewResult,
+  MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
@@ -105,6 +106,8 @@ export interface ReadOperands {
   readonly 'task.receipt': { readonly attemptId: string };
   /** A map's sections, tickets and versions (WF-1). */
   readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -131,4 +134,5 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
-  | MapViewResult;
+  | MapViewResult
+  | MapFrontierResult;

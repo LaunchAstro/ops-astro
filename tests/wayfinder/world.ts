@@ -33,8 +33,10 @@ export interface WayfinderWorld extends AgentWorld {
   readonly bravo: BusinessId;
   /** A person of the main business holding exactly the actions named, at the scope given. */
   member(name: string, actions: readonly Action[], scope?: Scope): Promise<Member>;
-  /** A person of the second business holding read and write business-wide. */
+  /** A person of the second business holding read, write and assign business-wide. */
   outsider(name: string): Promise<Member>;
+  /** One more business-wide grant for a person of the main business. */
+  grant(member: Member, action: Action): Promise<void>;
   as(member: Member, body: Body, business?: BusinessId): Promise<CommandResult>;
   read(member: Member, body: Body, business?: BusinessId): Promise<unknown>;
   /** Create, or throw naming the refusal. */
@@ -97,8 +99,14 @@ export async function wayfinderWorld(part: string, key: string): Promise<Wayfind
       await world.db.app.withBusiness(bravo, async (tx) => {
         await grantTo(tx, member, 'read');
         await grantTo(tx, member, 'write');
+        await grantTo(tx, member, 'assign');
       });
       return member;
+    },
+    async grant(member, action) {
+      await world.db.app.withBusiness(world.business, async (tx) => {
+        await grantTo(tx, member, action);
+      });
     },
     as,
     async read(member, body, business = world.business) {

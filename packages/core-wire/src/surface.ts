@@ -116,7 +116,16 @@ export type CommandName =
   | 'task.set_type'
   | 'map.revise'
   | 'map.scope'
-  | 'map.view';
+  | 'map.view'
+  // Wayfinder (WF-2): charting, blocking, claiming, graduating fog, resolving
+  // and closing out of scope, and the frontier read.
+  | 'map.chart'
+  | 'task.set_blocking'
+  | 'task.claim'
+  | 'map.graduate'
+  | 'task.resolve'
+  | 'task.close_out_of_scope'
+  | 'map.frontier';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -404,7 +413,29 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     retire: 'any',
   },
   'map.scope': { ...TARGET, client: 'any' },
+  'map.chart': {
+    title: 'any',
+    destination: 'any',
+    notes: 'any',
+    tickets: 'any',
+    fog: 'any',
+    outOfScope: 'any',
+  },
+  'task.set_blocking': { ...TARGET, blockedBy: 'any' },
+  'task.claim': TARGET,
+  'map.graduate': { ...TARGET, patchId: 'any', tickets: 'any' },
+  'task.resolve': { ...TARGET, answer: 'any', gist: 'any' },
+  'task.close_out_of_scope': { ...TARGET, reason: 'any' },
 };
+
+/**
+ * The key every write to a map's structure serialises on: its components and
+ * versions, its client, its blocking graph and its out-of-scope closes. One
+ * key, taken before any task row, so a revise, a scope, a graduation and a
+ * close never hold a map and a ticket in opposite orders, and two blocking
+ * sets cannot each pass the cycle check against the other's uncommitted link.
+ */
+const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.create', 'write', {
@@ -598,9 +629,21 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // credential narrowed from a person's grants (API-2); until it lands an
   // agent is refused at the surface, which is the retype rule's floor.
   declare('task.set_type', 'write'),
-  declare('map.revise', 'write'),
-  declare('map.scope', 'write'),
+  declare('map.revise', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  declare('map.scope', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
+  declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
+  declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // First-come: the envelope locks the ticket and compares its revision, so
+  // a second claim on the same revision is refused VERSION_STALE and one on
+  // the new revision finds it claimed.
+  declare('task.claim', 'assign'),
+  declare('map.graduate', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // `write` for research, task and build; the handler asks `decide` and the
+  // map's owner for grilling and prototype.
+  declare('task.resolve', 'write'),
+  declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
+  read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

@@ -513,3 +513,15 @@ export interface MapViewResult {
   readonly ok: true;
   readonly map: MapView;
 }
+
+/** A map's frontier and fog (WF-2): each from its read model, in order. */
+export interface MapFrontierResult {
+  readonly ok: true;
+  readonly frontier: readonly {
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly type: string;
+  }[];
+  readonly fog: readonly { readonly id: string; readonly text: string }[];
+}

@@ -87,6 +87,28 @@ export type CommandRequest =
       readonly retire?: unknown;
     } & Targeted)
   | ({ readonly command: 'map.scope'; readonly client: unknown } & Targeted)
+  | ({
+      readonly command: 'map.chart';
+      readonly title?: unknown;
+      readonly destination?: unknown;
+      readonly notes?: unknown;
+      readonly tickets?: unknown;
+      readonly fog?: unknown;
+      readonly outOfScope?: unknown;
+    } & Envelope)
+  | ({ readonly command: 'task.set_blocking'; readonly blockedBy: unknown } & Targeted)
+  | ({ readonly command: 'task.claim' } & Targeted)
+  | ({
+      readonly command: 'map.graduate';
+      readonly patchId: unknown;
+      readonly tickets: unknown;
+    } & Targeted)
+  | ({
+      readonly command: 'task.resolve';
+      readonly answer: unknown;
+      readonly gist: unknown;
+    } & Targeted)
+  | ({ readonly command: 'task.close_out_of_scope'; readonly reason?: unknown } & Targeted)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
