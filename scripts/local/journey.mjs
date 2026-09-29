@@ -32,10 +32,13 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join, resolve } from 'node:path';
+import { commandBudgets, revision, writeBundle } from './journey-bundle.ts';
 import {
   DOCKER,
+  IMAGE,
   refusalsBeforeStarting,
   run,
   startPostgres,
@@ -95,6 +98,9 @@ const password = `journey_${randomUUID().replaceAll('-', '')}`;
 const admin = `postgres://postgres:${password}@127.0.0.1:${pg}/journey`;
 const pidfile = join(evidence, 'journey.pids');
 const lines = [];
+/** What the run hands the bundle beside its case lines (T4d). */
+const carried = { approval: undefined, budgets: [], measures: {} };
+const begun = performance.now();
 
 function say(line) {
   console.log(`journey: ${line}`);
@@ -109,6 +115,18 @@ function record(name, status, raw) {
     `${JSON.stringify({ case: name, status, detail })}\n`,
   );
   say(`${status.padEnd(5)} ${name}${detail === '' ? '' : ` -- ${detail}`}`);
+}
+
+/** One line of the run's output: a case, or what it hands the bundle (T4d). */
+function take(line) {
+  const [kind] = line.split(' ', 1);
+  const value = line.slice(`${kind} `.length);
+  if (kind === 'journey-case') {
+    const one = JSON.parse(value);
+    record(one.case, one.status, one.detail);
+  } else if (kind === 'journey-approval') carried.approval = JSON.parse(value);
+  else if (kind === 'journey-budget') carried.budgets.push(JSON.parse(value));
+  else if (kind === 'journey-measure') Object.assign(carried.measures, JSON.parse(value));
 }
 
 /** The journey's own run, one `journey-case` line per case on its stdout. */
@@ -130,17 +148,13 @@ async function journey() {
     detached: true,
   });
   appendFileSync(pidfile, `-${String(child.pid)} tests/journey/run.ts (process group)\n`);
-  let seen = 0;
+  const before = lines.length;
   let buffer = '';
   child.stdout.on('data', (chunk) => {
     buffer += chunk.toString('utf8');
     const complete = buffer.split('\n');
     buffer = complete.pop() ?? '';
-    for (const line of complete.filter((one) => one.startsWith('journey-case '))) {
-      const one = JSON.parse(line.slice('journey-case '.length));
-      seen += 1;
-      record(one.case, one.status, one.detail);
-    }
+    for (const line of complete) take(line);
   });
   // Whole lines, so the password cannot be split across two writes and pass the scrub.
   let errors = '';
@@ -156,6 +170,7 @@ async function journey() {
   });
   appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors));
   // Exit 1 is the run's own verdict, already on its case lines; anything else is the run breaking.
+  const seen = lines.length - before;
   if (seen === 0 || (code !== 0 && code !== 1)) {
     const detail = `exit ${String(code)}, ${String(seen)} cases; stderr in ${join(evidence, 'run.stderr')}`;
     record('the journey run itself', 'fail', detail);
@@ -196,6 +211,45 @@ function afterJourney() {
   for (const [name, reason] of UNRUN) record(name, 'unrun', reason);
 }
 
+/** T4d: the budgets the command measures itself, then the bundle beside the case lines. */
+function bundle() {
+  const { migrateMs, seedMs } = carried.measures;
+  const own = commandBudgets(migrateMs, performance.now() - begun, seedMs);
+  const budgets = [...carried.budgets, ...own];
+  for (const one of budgets) {
+    say(`budget ${one.status.padEnd(8)} ${one.operation}: ${one.measured} against ${one.budget}`);
+  }
+  const proofs = join(evidence, 'runtime-proofs.txt');
+  const name = 'evidence bundle written (bundle_names_the_approval)';
+  const end = lines.find((line) => line.case === 'identity at the end (T2b)');
+  const system = `${os.type()} ${os.release()} ${os.arch()}`;
+  try {
+    const written = writeBundle({
+      ...revision(),
+      identity: end?.detail ?? 'not recorded',
+      environment: {
+        node: process.version,
+        os: system,
+        image: IMAGE,
+        ports: JSON.stringify(ports),
+      },
+      cases: lines,
+      budgets,
+      crashPoints: existsSync(proofs) ? readFileSync(proofs, 'utf8') : '',
+      approval: carried.approval,
+    });
+    for (const [file, text] of [
+      ['bundle.json', written.json],
+      ['bundle.md', written.markdown],
+    ]) {
+      writeFileSync(join(evidence, file), text.replaceAll(password, '<password>'));
+    }
+    record(name, 'pass', join(evidence, 'bundle.md'));
+  } catch (error) {
+    record(name, 'fail', String(error));
+  }
+}
+
 mkdirSync(evidence, { recursive: true });
 const refusals = await refusalsBeforeStarting(ports, container);
 for (const refusal of refusals) say(`refused: ${refusal}`);
@@ -219,6 +273,7 @@ process.once('SIGTERM', () => {
 });
 try {
   const stack = await startPostgres({ container, password, port: pg, admin });
+  carried.measures.migrateMs = stack.migrateMs;
   record(
     'stack: Postgres from the pinned digest, migrated at this head',
     stack.ok ? 'pass' : 'fail',
@@ -226,6 +281,7 @@ try {
   );
   if (stack.ok) await journey();
   afterJourney();
+  bundle();
 } finally {
   finish();
 }

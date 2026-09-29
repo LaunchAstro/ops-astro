@@ -19,6 +19,8 @@ import { createWorld, type World } from '../acceptance/world.ts';
 import { serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
 import { everyDeclaration, liveWithin2s } from './checks.ts';
 import { castSeparation, crossings } from './separation.ts';
+import { measureBudgets } from './budgets.ts';
+import { approvalLine } from './run-approval.ts';
 import { holdSecret, redact } from './redact.ts';
 import { compareFacts, readFacts } from './facts.ts';
 import { personOn, runPass, type PassContext, type PassResult } from './passes.ts';
@@ -182,8 +184,30 @@ async function passCases(context: PassContext): Promise<PassResult[]> {
   return passes;
 }
 
+/**
+ * T4d's inputs to the bundle, each on its own line for the command: the
+ * approval the app pass applied, the budgets, and the seed time (RN-09).
+ */
+async function evidenceLines(
+  context: PassContext,
+  passes: readonly PassResult[],
+  liveMs: number | undefined,
+  seedMs: number,
+): Promise<void> {
+  const app = passes.find((pass) => pass.surface === 'app');
+  if (app !== undefined) {
+    console.log(await approvalLine(context.world.db.admin, context.world.alpha, app.taskId));
+  }
+  for (const budget of await measureBudgets(context, liveMs)) {
+    console.log(`journey-budget ${JSON.stringify(budget)}`);
+  }
+  console.log(`journey-measure ${JSON.stringify({ seedMs: Math.round(seedMs) })}`);
+}
+
 async function main(): Promise<void> {
+  const seeding = performance.now();
   const world = await createWorld('journey');
+  const seedMs = performance.now() - seeding;
   for (const caller of [world.ada, world.mia, world.noah, world.orphan, world.bea, world.agent]) {
     holdSecret(caller.token);
   }
@@ -200,11 +224,17 @@ async function main(): Promise<void> {
   const title = `Journey ${new Date().toISOString()}`;
   const context: PassContext = { world, api: served.origin, app: WEB, title };
   const passes = await passCases(context);
-  await check('live update within 2 s (RN-01)', async () => await liveWithin2s(context, WEB));
+  let live = '';
+  await check('live update within 2 s (RN-01)', async () => {
+    live = await liveWithin2s(context, WEB);
+    return live;
+  });
+  const liveMs = /after (\d+) ms/u.exec(live)?.[1];
   await check(
     'one command-line process per declaration (RN-10)',
     async () => await everyDeclaration(context),
   );
+  await evidenceLines(context, passes, liveMs === undefined ? undefined : Number(liveMs), seedMs);
   await served.stop();
   const restarted = spawnSync(DOCKER, ['restart', CONTAINER], { encoding: 'utf8' });
   if (restarted.status !== 0) throw new Error(`docker restart ${CONTAINER}: ${restarted.stderr}`);
