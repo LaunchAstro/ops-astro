@@ -101,6 +101,23 @@ function text(read: () => unknown): string {
   }
 }
 
+// A database state (SQLSTATE) or a system error the runtime names; nothing code or a message can fill.
+const SQLSTATE = /^[0-9A-Z]{5}$/u;
+const SYSTEM = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
+SYSTEM.add('EHOSTUNREACH').add('EAI_AGAIN').add('ENOMEM').add('EMFILE');
+
+/**
+ * What the API's own log may say of a fault: its database state or system
+ * code, else a standard error class, else `unknown`. Never a custom name, a
+ * message or a constraint, which a planted value could fill.
+ */
+export function faultCode(cause: unknown): string {
+  const code = text(() => (cause as { code?: unknown } | undefined)?.code);
+  if (SQLSTATE.test(code) || SYSTEM.has(code)) return code;
+  const name = cause instanceof Error ? text(() => cause.name) : '';
+  return STANDARD.has(name) ? name : 'unknown';
+}
+
 export function errorEvent(cause: unknown, place: Place): SinkEvent {
   const error = cause instanceof Error ? cause : undefined;
   const name = text(() => error?.name);

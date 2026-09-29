@@ -79,9 +79,10 @@ and backup heartbeat, and the error sink's health; the error sink (GlitchTip)
 takes the API's errors and its security alerts. The API raises repeated
 failed sign-ins, a burst of cross-scope refusals, a grant or delegation
 revoked, and unusual download volume (the records its reads hand out, per
-reader, 5,000 an hour to start); `scripts/secrets-scan.mjs` raises a failed
-secret scan. Webhook signature failures, custody changes and exports raise
-theirs once those features exist. Each mails the owner and the second operator at once,
+reader, people's and agents' reads alike, 5,000 an hour to start);
+`scripts/secrets-scan.mjs` raises a failed secret scan, one that cannot
+start included. Webhook signature failures (follow-up #147), custody changes
+and exports raise theirs once those features exist. Each mails the owner and the second operator at once,
 from its own mail, in the plain words of `apps/api/alerts/catalogue.ts`. The
 addresses are private, set in the environment at run time:
 

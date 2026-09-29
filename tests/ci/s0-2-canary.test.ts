@@ -65,6 +65,33 @@ async function bearer(subject: string): Promise<string> {
 }
 
 describe('S0-2 canary', () => {
+  it('a fault whose code and constraint carry planted words logs as unknown, never the plant', async () => {
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation(
+      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+    );
+    const planted = Object.assign(new Error('x'), {
+      code: 'PLANTEDCANARYCODE',
+      constraint_name: 'planted_canary_constraint',
+    });
+    const { app, alerts } = served(() => Promise.reject(planted));
+    const response = await app.fetch(
+      new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await bearer('person-one')}`,
+        },
+        body: '{}',
+      }),
+    );
+    await alerts.settled();
+    expect(response.status).toBe(503);
+    const log = logged.join('\n');
+    expect(log.includes('api: unhandled fault Error (reference'), 'the standard class').toBe(true);
+    expect(/planted|PLANTED/u.test(log), 'a planted word').toBe(false);
+  });
+
   it('Sol proof, criterion 4: an identifier-shaped planted error name never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(

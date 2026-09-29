@@ -45,10 +45,9 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type ReadExecutor } from './app.ts';
-import { createAlerts, sinkFrom, type Alerts } from './alerts/sink.ts';
+import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
-  describeFault,
   executeCommand,
   executeRead as readExecutor,
 } from '../../packages/core-commands/src/index.ts';
@@ -237,7 +236,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
   server.onError((cause, context) => {
     const reference = randomUUID();
     console.error(
-      `api: unhandled fault ${describeFault(cause)} (reference ${reference}): the request ` +
+      `api: unhandled fault ${faultCode(cause)} (reference ${reference}): the request ` +
         'could not be completed. Its contents and the fault text are left out of this log.',
     );
     void config.alerts?.fault(cause);
