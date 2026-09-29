@@ -120,7 +120,13 @@ export {
   type LiveCorrection,
   type NewLiveCorrection,
 } from './site/live-corrections.ts';
-export { recordObservedResult, type ObservedResult } from './site/correction-receipts.ts';
+export {
+  readCorrectionForRun,
+  recordObservedResult,
+  type HeldForRun,
+  type ObservedResult,
+  type ReceiptOutcome,
+} from './site/correction-receipts.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';

@@ -265,7 +265,9 @@ whom it refuses. `live_correction_receipts_append_only` (migration 0032, C80)
 is `security invoker`: raising needs no privilege, and the group holds only
 `select` and `insert` on `live_correction_receipts`, so the definer set is
 unchanged. `live_corrections` takes `select`, `insert` and `update`, and a
-check refuses a decision by the person recorded as the requester.
+check refuses a decision by the person recorded as the requester; another
+keeps the digest a decision approved (`decided_version_digest`) equal to the
+pinned version digest, which the publish runner binds its one dispatch to.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist

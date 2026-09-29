@@ -11,9 +11,9 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export { runLiveRevert } from './commands/live-correction-revert.ts';
 export {
   runLivePublish,
-  runLiveRevert,
   type CorrectionRun,
   type RunnerPorts,
   type RunResult,

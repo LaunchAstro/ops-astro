@@ -99,7 +99,8 @@
     "T4b2 names t4-worker-role as an invariant (T4 worker role, RN-04: catalogue, the worker role and a login in it hold no privilege on any table, view, sequence or function in the installation's schemas, security-definer ones included, and no CREATE or USAGE on ops, and PUBLIC may execute no function; the catalogue mutation, SELECT granted on reservations, is found while behaviour alone stays refused 42501; behaviour, a login in the worker role is refused 42501 on every table, sequence and callable function beside the application login reading the same tables; structure is tests/worker/worker-boundary.test.ts).",
     "T4b2 names t4-no-notify as an invariant (RN-01: a whole journey through the application, create, propose, approve, pickup, dispatch, effect, observe, settle and receipt, leaves no NOTIFY and no pg_notify in the runtime statement log, whose capture holds the journey's decision, reservation and run-event writes; a pg_notify planted on the runtime pool is caught).",
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
-    "C80 (SL15 session 2) adds c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-receipt-atomic (receipt written under the worker lease, in the observed result's transaction)."
+    "C80 (SL15 session 2) adds c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-receipt-atomic (receipt written under the worker lease, in the observed result's transaction).",
+    "C80 (SL15 session 3) adds c80-runner (C80 publish runner and C80 revert runner: the approved bytes rebuilt from the pinned source and dispatched once, the capture on the correction's own page, refusals before any dispatch, unknown and accepted never dispatched again, a lease lost mid-flight writing nothing, the revert observed and timed)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -288,7 +289,8 @@
     "tests/site/c80-approval.test.ts",
     "tests/site/c80-isolation.test.ts",
     "tests/site/c80-agent-request.test.ts",
-    "tests/site/c80-receipt-atomic.test.ts"
+    "tests/site/c80-receipt-atomic.test.ts",
+    "tests/site/c80-runner.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

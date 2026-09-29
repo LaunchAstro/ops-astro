@@ -28,7 +28,11 @@ import {
   writeCorrectionDecision,
 } from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
-import { checkEnvelope, contentDigest } from '../../../core-connectors/src/index.ts';
+import {
+  checkEnvelope,
+  contentDigest,
+  versionDigestOf,
+} from '../../../core-connectors/src/index.ts';
 import { readTaskSpine, type CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
@@ -125,7 +129,7 @@ export async function storeRequest(
     preImageDigest,
     baseRevision: request.baseRevision,
     seam: `seam-${randomUUID()}`,
-    versionDigest: contentDigest({
+    versionDigest: versionDigestOf({
       target,
       change,
       preImageDigest,

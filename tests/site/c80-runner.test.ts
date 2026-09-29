@@ -10,7 +10,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { AFTER, BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
+import { BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
+import { doubles } from './c80-runner-doubles.ts';
 import {
   runLivePublish,
   runLiveRevert,
@@ -20,8 +21,6 @@ import { dispatchToken } from '../../packages/core-connectors/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 runner: DATABASE_URL is unset, so nothing ran.');
-
-const PROVIDER_URL = 'https://deploy-preview.example/';
 
 let w: C80World;
 let lease: { leaseId: string; fence: number; taskId: string };
@@ -49,53 +48,6 @@ async function correction(approved: boolean): Promise<string> {
   if (approved)
     expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
   return id;
-}
-
-interface Seen {
-  dispatched: { dispatchToken: string; versionDigest: string }[];
-  captured: string[];
-  reverted: number;
-  raised: string[];
-}
-
-/** Doubles of the source control and hosting connectors and the fenced capture. */
-function doubles(overrides: Partial<RunnerPorts> = {}): RunnerPorts & { seen: Seen } {
-  const seen: Seen = { dispatched: [], captured: [], reverted: 0, raised: [] };
-  let clock = 1_000;
-  let page = AFTER;
-  return {
-    seen,
-    readSource: () =>
-      Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'rev-1' } }),
-    publish: (input) => {
-      seen.dispatched.push(input);
-      return Promise.resolve({
-        kind: 'ok',
-        value: { revision: 'rev-2', deploymentId: 'dep-2', liveUrl: PROVIDER_URL },
-      });
-    },
-    readDeployment: (id) =>
-      Promise.resolve({
-        kind: 'ok',
-        value: { revision: id === 'dep-3' ? 'rev-3' : 'rev-2', served: true },
-      }),
-    capture: (url) => {
-      seen.captured.push(url);
-      return Promise.resolve({ ok: true, value: { text: page } });
-    },
-    revert: () => {
-      seen.reverted += 1;
-      page = BEFORE;
-      return Promise.resolve({ kind: 'ok', value: { revision: 'rev-3', deploymentId: 'dep-3' } });
-    },
-    raiseTask: (reason) => {
-      seen.raised.push(reason);
-      return Promise.resolve();
-    },
-    now: () => (clock += 250),
-    refusals: () => [],
-    ...overrides,
-  };
 }
 
 const run = { correctionId: '', leaseId: '', fence: 0 };
@@ -214,6 +166,25 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, refusals before di
   });
 });
 
+describe.skipIf(serverUrl === undefined)('C80 publish runner, crossings', () => {
+  it('reaches nothing of another business, sending nothing', async () => {
+    const id = await correction(true);
+    const ports = doubles();
+    const answer = await runLivePublish(w.world.db.app, { ...at(id), business: w.beta }, ports);
+    expect(answer).toEqual({ kind: 'refused', code: 'NOT_FOUND' });
+    expect([ports.seen.dispatched.length, await w.stateOf(id)]).toEqual([0, 'approved']);
+  });
+
+  it('refuses a lease held on another task, sending nothing', async () => {
+    const detail = detailOf(await w.request(w.ava));
+    const id = String(detail['correctionId']);
+    await w.approve(w.ben, id, String(detail['versionId']));
+    const ports = doubles();
+    expect(await publish(id, ports)).toEqual({ kind: 'refused', code: 'LEASE_NOT_OWNED' });
+    expect([ports.seen.dispatched.length, await w.stateOf(id)]).toEqual([0, 'approved']);
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('C80 publish runner, after the dispatch', () => {
   it('keeps an unreadable answer unknown, raises a task, and never dispatches again', async () => {
     const id = await correction(true);
@@ -240,7 +211,9 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, after the dispatch
     expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'live' });
     expect([ports.seen.dispatched.length, await w.receiptsOf(id)]).toEqual([1, 2]);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C80 publish runner, a lease lost mid-flight', () => {
   it('writes nothing when the lease is lost during the dispatch, and raises a task', async () => {
     const id = await correction(true);
     const ports = doubles({
@@ -287,6 +260,17 @@ describe.skipIf(serverUrl === undefined)('C80 revert runner', () => {
     const ports = doubles();
     expect(await revert(id, ports)).toEqual({ kind: 'refused', code: 'GATE_NOT_APPROVED' });
     expect([ports.seen.reverted, await w.receiptsOf(id)]).toEqual([0, 0]);
+  });
+
+  it('refuses to revert a publish accepted but not yet served, sending nothing', async () => {
+    const id = await correction(true);
+    const ports = doubles({
+      readDeployment: () =>
+        Promise.resolve({ kind: 'ok', value: { revision: 'rev-2', served: false } }),
+    });
+    expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'accepted' });
+    expect(await revert(id, ports)).toEqual({ kind: 'refused', code: 'GATE_NOT_APPROVED' });
+    expect([ports.seen.reverted, await w.stateOf(id)]).toEqual([0, 'accepted']);
   });
 
   it('keeps the page live when the revert is accepted but not yet observed', async () => {

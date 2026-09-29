@@ -18,7 +18,6 @@
 // a task (case 6); a cancellation that arrives after the dispatch is an
 // uncertain effect, not a cancellation (case 7). Live is a later observation.
 
-import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { ProviderResult } from '../call.ts';
 import {
   checkEnvelope,
@@ -27,10 +26,7 @@ import {
   type ProposedChange,
 } from './envelope.ts';
 import { siteOperation } from './operations.ts';
-
-export function contentDigest(value: unknown): string {
-  return `sha256:${payloadDigest(value)}`;
-}
+import { contentDigest, versionDigestOf } from './version.ts';
 
 /** The provider's idempotency key: stable for one intended effect across retries (broker contract 3.4). */
 export function dispatchToken(operation: string, versionDigest: string): string {
@@ -50,6 +46,9 @@ export interface PublishJob {
   readonly change: ProposedChange;
   /** The target file's digest at the pinned revision, taken before the proposal was composed. */
   readonly preImageDigest: string;
+  readonly baseRevision: string;
+  /** The catalogued page the correction was asked for; the capture reads this and nothing else. */
+  readonly pageUrl: string;
   readonly version: { readonly versionId: string; readonly digest: string };
   readonly decision: GateDecision | undefined;
   /** The reference the publish is read back by, held before dispatch. */
@@ -111,7 +110,7 @@ async function beforeDispatch(
   const bound =
     decision.versionId === job.version.versionId &&
     decision.versionDigest === job.version.digest &&
-    contentDigest({ target: job.target, change: job.change }) === job.version.digest;
+    versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
   if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');

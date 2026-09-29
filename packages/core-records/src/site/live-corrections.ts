@@ -50,18 +50,20 @@ export interface LiveCorrection {
   readonly versionDigest: string;
   readonly state: CorrectionState;
   readonly decidedByPersonId: string | null;
+  /** The version digest the decision approved; the storage keeps it the pinned one. */
+  readonly decidedVersionDigest: string | null;
   readonly revision: number;
 }
 
 export type NewLiveCorrection = Omit<
   LiveCorrection,
-  'id' | 'state' | 'decidedByPersonId' | 'revision' | 'versionId'
+  'id' | 'state' | 'decidedByPersonId' | 'decidedVersionDigest' | 'revision' | 'versionId'
 >;
 
 const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
   c.delegation_id, c.target_path, c.word, c.replacement, c.page_url, c.pre_image_digest,
   c.base_revision, c.seam, c.version_id, c.version_digest, c.state, c.decided_by_person_id,
-  c.revision`;
+  c.decided_version_digest, c.revision`;
 
 interface Row {
   readonly id: string;
@@ -81,6 +83,7 @@ interface Row {
   readonly version_digest: string;
   readonly state: CorrectionState;
   readonly decided_by_person_id: string | null;
+  readonly decided_version_digest: string | null;
   readonly revision: number;
 }
 
@@ -103,6 +106,7 @@ function correctionFrom(row: Row): LiveCorrection {
     versionDigest: row.version_digest,
     state: row.state,
     decidedByPersonId: row.decided_by_person_id,
+    decidedVersionDigest: row.decided_version_digest,
     revision: row.revision,
   };
 }
@@ -141,6 +145,25 @@ export async function insertLiveCorrection(
   const [row] = rows;
   if (row === undefined) throw new Error('insertLiveCorrection: no row returned');
   return correctionFrom(row);
+}
+
+/**
+ * One correction by its id, locked, with no grant filter: the system's read
+ * for the runner, whose authority is the worker lease on the correction's own
+ * task (`correction-receipts.ts` checks it in the same transaction).
+ */
+export async function lockCorrectionForSystem(
+  tx: TenantQuery,
+  id: string,
+): Promise<LiveCorrection | undefined> {
+  const rows = await tx.query<Row>(
+    `select ${COLUMNS} from public.live_corrections c
+      where c.business_id = $1 and c.id = $2
+      for update of c`,
+    [tx.businessId, id],
+  );
+  const [row] = rows;
+  return row === undefined ? undefined : correctionFrom(row);
 }
 
 const COVERED = `exists (
@@ -235,7 +258,10 @@ export interface DecisionWrite {
   readonly personId: string;
 }
 
-/** Write the decision on a row the caller has already locked and judged. */
+/**
+ * Write the decision on a row the caller has already locked and judged. The
+ * decision records the version digest of the version the approver named.
+ */
 export async function writeCorrectionDecision(
   tx: TenantQuery,
   write: DecisionWrite,
@@ -243,7 +269,8 @@ export async function writeCorrectionDecision(
   const rows = await tx.query<Row>(
     `update public.live_corrections as c
         set state = $3, decided_by_actor_id = $4, decided_by_person_id = $5,
-            decided_at = now(), revision = c.revision + 1, updated_at = now()
+            decided_at = now(), decided_version_digest = c.version_digest,
+            revision = c.revision + 1, updated_at = now()
       where c.business_id = $1 and c.id = $2 and c.state = 'requested'
       returning ${COLUMNS}`,
     [tx.businessId, write.id, write.decision, write.actorId, write.personId],
