@@ -12,8 +12,8 @@
 // shows the whole trail open; the dock task panel folds it (MP-4-8). With no
 // change the head has nothing after it and the page says so.
 //
-// Who is the actor as the read names it. The read carries no display name for
-// an actor yet, so it is the actor's identifier until it does.
+// Who is the person's name the read carries for a person's actor, and "An
+// agent" or "The system" for the other two kinds (`whoOf`).
 
 import type { ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
@@ -64,6 +64,19 @@ function ago(at: string, now: number): string {
 
 const whatOf = (entry: Entry): string => WHAT[entry.operation] ?? entry.operation;
 
+/**
+ * Who made a change, in words (MP-4-16): a person by name, an agent and the
+ * system as what they are. An actor identifier is never drawn: it means
+ * nothing to a person reading the page. `?? null`: a task read from a server
+ * that predates the names carries neither field.
+ */
+const whoOf = (entry: Entry): string => {
+  const kind = entry.actorKind ?? null;
+  if (kind === 'agent') return 'An agent';
+  if (kind === 'worker') return 'The system';
+  return entry.actorName ?? 'Someone';
+};
+
 export function History(props: { readonly history: Task['history'] }): ReactElement {
   const now = Date.now();
   const changes = props.history.filter((entry) => !NOT_TRANSITIONS.has(entry.operation));
@@ -74,7 +87,7 @@ export function History(props: { readonly history: Task['history'] }): ReactElem
         <span className="sb__k">History</span>
         {latest === undefined ? null : (
           <span className="sbact__meta" data-history="latest">
-            {`${ago(latest.at, now)} · ${latest.actorId} · ${whatOf(latest)}`}
+            {`${ago(latest.at, now)} · ${whoOf(latest)} · ${whatOf(latest)}`}
           </span>
         )}
       </div>
@@ -87,7 +100,7 @@ export function History(props: { readonly history: Task['history'] }): ReactElem
           {changes.map((entry, index) => (
             <div className="sbact__row" key={`${entry.at}-${String(index)}`}>
               <span className="sbact__meta">
-                {ago(entry.at, now)} · {entry.actorId}
+                {ago(entry.at, now)} · {whoOf(entry)}
               </span>
               <span className="sb__state">{whatOf(entry)}</span>
             </div>

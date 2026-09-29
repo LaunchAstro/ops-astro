@@ -1452,6 +1452,11 @@ successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
+Each history entry names who made the change (MP-4-16): `actorKind`
+(`person`, `agent` or `worker`) and, for a person's actor, `actorName`, the
+person's display name, joined inside the business; the page draws a person
+by name and the other two as "An agent" and "The system", never an actor
+identifier.
 `settings.read` and `session.capabilities` carry a null subject: neither is
 about one record, and naming one would make "who read this record" false.
 
