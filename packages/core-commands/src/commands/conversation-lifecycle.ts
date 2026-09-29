@@ -77,9 +77,12 @@ export async function writeWrapUp(tx: TenantQuery, request: WrapUpRequest): Prom
   if (locked.body_purged_at !== null) return { ok: false, reason: 'purged' };
   if (!locked.quiet) return { ok: false, reason: 'not_quiet' };
   const versions = await tx.query<{ version: number; covers: boolean }>(
-    `select version, activity_through = $3 as covers from conversation_wrap_ups
-      where business_id = $1 and conversation_id = $2 order by version desc limit 1`,
-    [tx.businessId, request.conversationId, locked.last_activity_at],
+    `select w.version, w.activity_through = c.last_activity_at as covers
+       from conversation_wrap_ups w
+       join conversations c on c.business_id = w.business_id and c.id = w.conversation_id
+      where w.business_id = $1 and w.conversation_id = $2
+      order by w.version desc limit 1`,
+    [tx.businessId, request.conversationId],
   );
   const latest = versions[0];
   if (latest?.covers === true) return { ok: true, version: latest.version, written: false };
@@ -87,11 +90,15 @@ export async function writeWrapUp(tx: TenantQuery, request: WrapUpRequest): Prom
   const work = await workOf(tx, request.conversationId, locked.scope_record_id);
   const items = await itemsOf(tx, request.conversationId, locked, work);
   const leftOpen = work.filter((item) => !item.terminal).map((item) => item.pointer);
+  // activity_through is the column's own value, read in SQL: a JavaScript
+  // Date holds milliseconds and the column microseconds, so a value that
+  // went through one would never equal the activity it covers.
   await tx.query(
     `insert into conversation_wrap_ups
        (business_id, id, conversation_id, version, written_by_operation, code_revision,
         request_quotation, items, left_open, activity_through)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::text::jsonb, $9::text::jsonb, $10)`,
+     select $1, $2, $3, $4, $5, $6, $7, $8::text::jsonb, $9::text::jsonb, c.last_activity_at
+       from conversations c where c.business_id = $1 and c.id = $3`,
     [
       tx.businessId,
       randomUUID(),
@@ -102,7 +109,6 @@ export async function writeWrapUp(tx: TenantQuery, request: WrapUpRequest): Prom
       await requestQuotation(tx, request.conversationId),
       JSON.stringify(items),
       JSON.stringify(leftOpen),
-      locked.last_activity_at,
     ],
   );
   return { ok: true, version, written: true };
@@ -161,9 +167,11 @@ export async function purgeConversation(
   const window = await windowDays(tx);
   if (window === undefined) return { ok: false, code: 'WINDOW_UNREADABLE' };
   const covering = await tx.query<{ n: string }>(
-    `select count(*)::text as n from conversation_wrap_ups
-      where business_id = $1 and conversation_id = $2 and activity_through = $3`,
-    [tx.businessId, request.conversationId, locked.last_activity_at],
+    `select count(*)::text as n from conversation_wrap_ups w
+       join conversations c on c.business_id = w.business_id and c.id = w.conversation_id
+      where w.business_id = $1 and w.conversation_id = $2
+        and w.activity_through = c.last_activity_at`,
+    [tx.businessId, request.conversationId],
   );
   if (covering[0]?.n === '0') return { ok: false, code: 'WRAP_UP_ABSENT' };
   const work = await workOf(tx, request.conversationId, locked.scope_record_id);
