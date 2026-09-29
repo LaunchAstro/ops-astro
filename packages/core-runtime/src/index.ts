@@ -8,11 +8,11 @@
 // `task.pickup` and `task.handback` against these names, so a later
 // rearrangement inside this package is not a change to what it imports.
 //
-// There is deliberately no dispatch, worker or provider export. No path here
-// makes a call, and the `planned_steps.dispatched_at` constraint keeps it
-// that way. `RuntimeRefusalCode` is read off the refusal register's rows
-// marked `runtime` (`core-records/src/register.ts`) and passed on here with
-// `SUGGESTED_STATUS`, a view of the same rows' statuses that the tests read.
+// Dispatch marks a step (T2c1, `dispatch.ts`); no path here applies an effect
+// or makes a provider call. `RuntimeRefusalCode` is read off the refusal
+// register's rows marked `runtime` (`core-records/src/register.ts`) and passed
+// on here with `SUGGESTED_STATUS`, a view of the same rows' statuses that the
+// tests read.
 
 export {
   lockProposal,
@@ -32,6 +32,8 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

@@ -161,7 +161,7 @@ export interface PickedUpByPerson extends PickedUpCommon {
 }
 
 export const DECLARED_INCOMPLETENESS: readonly string[] = [
-  'No step is dispatched: this head exports no effect dispatch and no provider adapter.',
+  'Dispatch marks the step; this head applies no effect through it and has no provider adapter.',
   'The attempt is synthetic and names no provider or model.',
   'Handback records a local outcome. It settles no provider usage.',
 ];

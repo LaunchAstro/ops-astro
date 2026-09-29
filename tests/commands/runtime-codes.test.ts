@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// L4's twenty refusal codes, as L3 registers them. The twentieth is
-// `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a lineage that is
-// live, completed or already restarted (`core-runtime/src/propose.ts`).
+// L4's twenty refusal codes, as L3 registers them, and T2c1's three. The
+// twentieth is `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a
+// lineage that is live, completed or already restarted
+// (`core-runtime/src/propose.ts`). T2c1's dispatch added `AUTHORITY_LOST`,
+// `DECISION_STALE` and `EFFECT_NOT_RECONCILABLE` (`core-runtime/src/dispatch.ts`).
 //
 // `RuntimeRefusalCode` is read off the register's rows marked `runtime`, and
 // each row carries its status, so a runtime code cannot be unregistered or
@@ -29,8 +31,8 @@ import {
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all twenty', () => {
-    expect(RUNTIME_CODES).toHaveLength(20);
+  it('registers all twenty-three', () => {
+    expect(RUNTIME_CODES).toHaveLength(23);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }

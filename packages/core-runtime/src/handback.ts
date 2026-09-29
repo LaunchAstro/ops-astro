@@ -406,8 +406,8 @@ interface Settled {
  * near it (R4).
  *
  * R7. The marker is read under the locks and decides whether the attempt's
- * disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
- * requires a marked or observed attempt to sit in `quarantined`, so writing
+ * disposition may move at all. `attempts_marker_in_owning_state` (0033)
+ * admits no marker in `handed_back`, so writing
  * `handed_back` over it would abort the transaction before the classifier
  * could run. A marked attempt is left to the classifier, which quarantines it
  * and keeps the full hold for the recorded reconciliation owner.
