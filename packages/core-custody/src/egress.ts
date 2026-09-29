@@ -109,6 +109,11 @@ async function readBounded(
   return { ok: true, text: Buffer.concat(parts).toString('utf8') };
 }
 
+/** How a listed name becomes addresses. The system lookup unless a test supplies one. */
+export type Resolve = (
+  hostname: string,
+) => Promise<readonly { readonly address: string; readonly family: number }[]>;
+
 /**
  * Send one request to a listed destination with the credential header
  * custody adds. The caller never supplies the origin.
@@ -117,6 +122,7 @@ export async function send(
   destinations: ReadonlyMap<string, Destination>,
   request: OutboundRequest,
   credential: { readonly header: string; readonly value: string } | null,
+  _resolve?: Resolve,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
