@@ -73,6 +73,8 @@ describe('S0-2 security: a failed secret scan raises the alert from the scanner 
       expect(received.map((event) => (event['tags'] as Record<string, string>)['alert'])).toEqual([
         'secret-scan-failed',
       ]);
+      expect(result.out.includes('fakekey'), 'the DSN key in the output').toBe(false);
+      expect(result.out.includes(key), 'the found key in the output').toBe(false);
       const sent = JSON.stringify(received);
       expect(sent.includes(key), 'the key').toBe(false);
       expect(sent.includes('service.env'), 'the file').toBe(false);

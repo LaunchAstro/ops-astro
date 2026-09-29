@@ -292,6 +292,8 @@ export function createApi(options: ApiOptions): Hono {
         { ...body, command: declaration.name },
       );
       if (isCommandRefusal(result)) return refuse(context, result);
+      // An agent's read hands out records too (TR-SEC-9 download volume): its queue, a task.
+      if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(result.detail ?? {}));
       return context.json(agentAnswer(declaration.name, result), 200);
     });
   }
