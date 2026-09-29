@@ -16,7 +16,11 @@
 import { readdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
+import {
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -137,7 +141,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   beforeAll(async () => {
     world = await createWorld('rcf');
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    const walked = await walkTheJourney(world);
+    await callModelOnTheJourney(world, walked);
     for (const business of [world.alpha, world.bravo]) {
       for (const [table, text] of Object.entries(UNREACHED)) {
         // oxlint-disable-next-line no-await-in-loop

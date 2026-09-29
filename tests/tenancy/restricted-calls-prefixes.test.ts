@@ -40,7 +40,11 @@ import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
+import {
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
 import {
   APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
@@ -100,7 +104,7 @@ async function referenceRows(): Promise<Reference> {
   const world = await createWorld('rcpw');
   try {
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    await callModelOnTheJourney(world, await walkTheJourney(world));
     const rows = new Map(Object.entries(UNREACHED).map(([name, row]) => [name, [row]]));
     for (const table of await catalogueTables(world.db.admin)) {
       if (!table.tenant || table.qualified === 'public.businesses') continue;
