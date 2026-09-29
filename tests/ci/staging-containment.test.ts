@@ -39,7 +39,10 @@ type Service = {
 };
 type Definition = {
   services: Record<string, Service>;
-  networks: Record<string, { name: string; internal?: boolean }>;
+  networks: Record<
+    string,
+    { name: string; internal?: boolean; driver_opts?: Record<string, string> }
+  >;
   volumes: Record<string, { name: string; driver_opts?: Record<string, string> }>;
   [key: string]: unknown;
 };
@@ -93,6 +96,16 @@ const REFUSALS: Row[] = [
     name: 'no route out of the staging network: host, metadata, private addresses, internet',
     check: (def) => (def.networks['staging']?.internal === true ? [] : ['staging is not internal']),
     remove: (def) => delete def.networks['staging']!.internal,
+  },
+  {
+    name: "the host's bridge address: no gateway on the staging network",
+    check: (def) =>
+      Object.entries(def.networks).flatMap(([name, network]) =>
+        network.driver_opts?.['com.docker.network.bridge.gateway_mode_ipv4'] === 'isolated'
+          ? []
+          : [`${name}: gateway mode not isolated`],
+      ),
+    remove: (def) => delete def.networks['staging']!.driver_opts,
   },
   {
     name: 'every service on internal networks alone: no bridge route out',
@@ -371,28 +384,40 @@ live('S0-1 containment and resource limits, live', () => {
           `["no-new-privileges:true"] ${names('staging')}`,
       );
     }
-    const internal = docker(['network', 'inspect', names('staging'), '--format', '{{.Internal}}']);
-    expect(internal.out).toBe('true');
+    const format2 =
+      '{{.Internal}} {{index .Options "com.docker.network.bridge.gateway_mode_ipv4"}}';
+    const internal = docker(['network', 'inspect', names('staging'), '--format', format2]);
+    expect(internal.out).toBe('true isolated');
   });
 
-  it('S0-1 containment: from inside staging, each target is refused', () => {
+  it('S0-1 containment: from inside staging, each target is refused', async () => {
+    // A service of the machine itself, listening on every address it has.
+    const listener = createServer((socket) => socket.end()).listen(0, '0.0.0.0');
+    await new Promise<void>((resolve) => {
+      listener.once('listening', () => resolve());
+    });
+    const hostPort = (listener.address() as { port: number }).port;
     const prodIp = docker([
       'inspect',
       prod,
       '--format',
       '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
     ]).out;
-    const gateway = docker([
-      'network',
-      'inspect',
-      prod,
-      '--format',
-      '{{(index .IPAM.Config 0).Gateway}}',
-    ]).out;
+    const ipam = (network: string) =>
+      (
+        JSON.parse(
+          docker(['network', 'inspect', network, '--format', '{{json .IPAM.Config}}']).out,
+        ) as { Subnet: string; Gateway?: string }[]
+      )[0]!;
+    const gateway = ipam(prod).Gateway!;
+    // Staging's bridge has no gateway: the address one would take is probed anyway.
+    expect(ipam(names('staging')).Gateway ?? '').toBe('');
+    const bridge = ipam(names('staging')).Subnet.replace(/\.0\/\d+$/u, '.1');
     const targets: [string, string][] = [
       ["production's socket", `${prodIp}:5432`],
       ["production's port on the host", `host.docker.internal:${prodPort}`],
-      ['the container host', `${gateway}:${prodPort}`],
+      ['the container host', `${gateway}:${hostPort}`],
+      ["the host's address on staging's own bridge", `${bridge}:${hostPort}`],
       ['the metadata address', '169.254.169.254:80'],
       ['a private address, 10/8', '10.0.0.1:80'],
       ['a private address, 172.16/12', '172.16.0.1:80'],
@@ -408,6 +433,15 @@ live('S0-1 containment and resource limits, live', () => {
     expect(
       probe(['run', '--rm', '--network', prod, load().services['db']!.image!], `${prodIp}:5432`),
     ).toBe(0);
+    // On Linux the machine's listener is reachable through an ordinary bridge's
+    // gateway, so the same address refused from staging means something.
+    if (process.platform === 'linux')
+      expect(
+        probe(
+          ['run', '--rm', '--network', prod, load().services['db']!.image!],
+          `${gateway}:${hostPort}`,
+        ),
+      ).toBe(0);
     for (const [what, target] of targets)
       expect(probe(['exec', `${project}-db`], target), `${what} (${target})`).not.toBe(0);
     expect(inStaging('test -e /var/run/docker.sock').status, 'docker socket').not.toBe(0);
@@ -423,6 +457,7 @@ live('S0-1 containment and resource limits, live', () => {
     // The same search inside production finds it, so the search is not blind.
     const control = docker(['exec', prod, 'sh', '-c', `grep -sl '${CANARY}' /proc/self/environ`]);
     expect(control.out).toBe('/proc/self/environ');
+    listener.close();
   }, 120_000);
 
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {

@@ -24,10 +24,10 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
 `S0-1 containment` and `S0-1 resource limits` in
 `tests/ci/staging-containment.test.ts`):
 
-- Every service sits on the `staging` network, which is internal: it has no
-  route out, so the machine, its other containers, the cloud metadata
-  address, private addresses and the internet are all unreachable from
-  inside. No service publishes a port. Operators reach staging through its own
+- Every service sits on the `staging` network, which is internal and has no
+  gateway (isolated gateway mode): it has no route out and no address on the
+  machine, so the machine, its other containers, the cloud metadata address,
+  private addresses and the internet are all unreachable from inside. No service publishes a port. Operators reach staging through its own
   network only: `docker compose exec`, or a one-off `docker compose run` for
   the runbook's seed and migrate steps.
 - No service mounts a path from the machine, reads an env file or secret from
