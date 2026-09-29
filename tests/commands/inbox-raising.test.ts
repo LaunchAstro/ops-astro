@@ -109,13 +109,13 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
   const newTask = async (title: string, client?: string): Promise<{ id: string; rev: number }> => {
     const created = ok(await call('task.create', { fields: { title } })).body;
     const id = String(created['recordId']);
-    if (client !== undefined) {
-      await fixture.db.admin.execute(
-        `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
-        [id, client],
-      );
-    }
-    return { id, rev: Number(created['revision']) };
+    if (client === undefined) return { id, rev: Number(created['revision']) };
+    const [set] = await fixture.db.admin.execute<{ revision: string }>(
+      `update public.records set data = data || jsonb_build_object('client', $2::text)
+        where id = $1 returning revision::text as revision`,
+      [id, client],
+    );
+    return { id, rev: Number(set?.revision) };
   };
 
   beforeAll(async () => {

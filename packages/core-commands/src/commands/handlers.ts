@@ -78,6 +78,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
