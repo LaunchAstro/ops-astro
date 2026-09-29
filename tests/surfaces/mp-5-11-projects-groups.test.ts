@@ -23,6 +23,8 @@ const row = (id: string, over: Partial<ProjectRow> = {}): ProjectRow => ({
   status: 'Active',
   statusPosition: 2000,
   waitReason: null,
+  category: null,
+  awaitingDecision: false,
   estimate: null,
   actual: null,
   comments: { client: 0, mentions: 0, latest: null },

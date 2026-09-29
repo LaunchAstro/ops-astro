@@ -19,7 +19,11 @@ export interface ProjectRow {
   readonly rank: { readonly number: number | null; readonly calc: string };
   readonly starred: boolean;
   readonly client: string | null;
-  readonly assignee: { readonly name: string; readonly agent: boolean } | null;
+  readonly assignee: {
+    readonly id: string;
+    readonly name: string;
+    readonly agent: boolean;
+  } | null;
   readonly due: string | null;
   readonly completed: boolean;
   readonly stage: string | null;
@@ -28,6 +32,10 @@ export interface ProjectRow {
   readonly statusPosition: number | null;
   /** Why the task waits, drawn after its group's heading; null for none. */
   readonly waitReason: string | null;
+  /** The task's category, a chip on the board (MP-5-12); null for none. */
+  readonly category: string | null;
+  /** True when the task waits at an open gate for the viewer's decision (MP-5-12). */
+  readonly awaitingDecision: boolean;
   readonly estimate: Estimate | null;
   readonly actual: Actual | null;
   readonly comments: {
