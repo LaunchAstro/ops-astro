@@ -198,6 +198,26 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     ).toBe(1);
   });
 
+  it('AW-03 purge real: a wrap-up covers its conversation’s last activity as the database holds it, to the microsecond', async () => {
+    const conversationId = await started(w, w.owner, { body: 'Exact to the microsecond.' });
+    await w.age(conversationId, 2);
+    await w.fixture.db.admin.execute(
+      `update public.conversations
+          set last_activity_at = date_trunc('millisecond', last_activity_at) + interval '1123 microseconds'
+        where id = $1`,
+      [conversationId],
+    );
+    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toMatchObject({ written: true });
+    expect(
+      await w.count(
+        `select count(*) as n from public.conversation_wrap_ups u
+           join public.conversations c on c.business_id = u.business_id and c.id = u.conversation_id
+          where c.id = $1 and u.activity_through = c.last_activity_at`,
+        [conversationId],
+      ),
+    ).toBe(1);
+  });
+
   it('AW-03 recovery: two idle passes at once write one wrap-up version', async () => {
     const conversationId = await started(w, w.owner, { body: 'Two passes.' });
     await w.age(conversationId, 2);
