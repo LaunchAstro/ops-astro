@@ -77,7 +77,7 @@
 // gate, so the controls close on it rather than inviting that refusal.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { drawRunState, PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   ProposalDecision,
@@ -599,6 +599,16 @@ function Known(props: { readonly reservations: readonly ProposalReservation[] })
           ) : (
             <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
               attempt {reservation.attempt.state}
+              {/* T3e1: a drop is drawn in its own words, one per cause, and never
+                  as a person's cancellation. */}
+              {reservation.attempt.dropCause === undefined || reservation.attempt.dropCause === null
+                ? null
+                : ` · ${
+                    drawRunState({
+                      state: 'waiting',
+                      waitReason: `dropped_${reservation.attempt.dropCause}`,
+                    }).word
+                  }`}
             </span>
           )}
         </div>

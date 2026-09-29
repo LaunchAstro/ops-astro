@@ -19,11 +19,13 @@
 // Environment: the worker's own (`OPS_ASTRO_API_URL`, `OPS_ASTRO_BUSINESS`,
 // `OPS_ASTRO_TOKEN`, `OPS_ASTRO_DELEGATION`), plus `PARK_TASK` (the task),
 // `PARK_AT` (a point below, or `none`) and `PARK_LEASE_SECONDS` (the lease the
-// pickup asks for, so a killed worker's lease runs out on its own clock).
+// pickup asks for, so a killed worker's lease runs out on its own clock), and
+// `PARK_FAULT` (`provider_unavailable` or `connection_lost`: the provider
+// fails the first call with it, injected at construction, T3e1).
 
 import { writeSync } from 'node:fs';
 import { httpTransport, type Transport } from '../../apps/cli/client.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { ProviderFault, SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 
 /** The named points: after the call whose path ends so has answered with success. */
@@ -51,6 +53,8 @@ const say = (line: string): void => {
   writeSync(1, `${line}\n`);
 };
 
+const fault = env['PARK_FAULT'] ?? 'none';
+let faulted = false;
 const inner = httpTransport(api);
 let parked = false;
 const transport: Transport = async (path, body, bearer, delegation) => {
@@ -74,6 +78,18 @@ const worker = createWorker({
   credential: env['OPS_ASTRO_TOKEN'] ?? '',
   delegation: env['OPS_ASTRO_DELEGATION'] ?? '',
   reporter: SYNTHETIC_USAGE,
+  ...(fault === 'provider_unavailable' || fault === 'connection_lost'
+    ? {
+        provider: {
+          call: async () => {
+            await Promise.resolve();
+            if (faulted) return;
+            faulted = true;
+            throw new ProviderFault(fault);
+          },
+        },
+      }
+    : {}),
 });
 
 // One pass at a time until the work is applied or there is none left to pick up.

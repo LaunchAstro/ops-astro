@@ -178,6 +178,8 @@ export interface ProposalAttempt {
   readonly state: string;
   readonly dispatchMarker?: string | null;
   readonly observed?: unknown;
+  /** T3e1: why the work dropped under it; absent or null when it did not. */
+  readonly dropCause?: string | null;
 }
 
 /**

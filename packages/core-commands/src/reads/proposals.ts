@@ -135,6 +135,8 @@ export interface AttemptView {
   readonly state: string;
   readonly dispatchMarker: boolean;
   readonly observed: boolean;
+  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
+  readonly dropCause: string | null;
 }
 
 export interface GateView {
@@ -216,6 +218,7 @@ interface ReservationRow {
   readonly attempt_state: string | null;
   readonly attempt_dispatch_marker: boolean | null;
   readonly attempt_observed: boolean | null;
+  readonly attempt_drop_cause: string | null;
 }
 
 /** The task's lineages that have a version: the scope of the read. */
@@ -267,7 +270,8 @@ const RESERVATIONS = `select row_number() over (order by res.created_at, res.id)
             lease.fence::text as lease_fence, lease.state as lease_state,
             lease.expires_at as lease_expires_at, lease.holder_actor_id as lease_holder,
             att.id as attempt_id, att.state as attempt_state,
-            att.dispatch_marker as attempt_dispatch_marker, att.observed as attempt_observed
+            att.dispatch_marker as attempt_dispatch_marker, att.observed as attempt_observed,
+            att.drop_cause as attempt_drop_cause
        from public.reservations res
        join public.planned_runs run
          on run.business_id = res.business_id and run.id = res.run_id
@@ -364,6 +368,7 @@ export async function readTaskProposals(
                   state: row.attempt_state ?? 'unknown',
                   dispatchMarker: row.attempt_dispatch_marker ?? false,
                   observed: row.attempt_observed ?? false,
+                  dropCause: row.attempt_drop_cause,
                 },
         })),
     };
