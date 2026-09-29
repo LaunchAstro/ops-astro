@@ -27,6 +27,11 @@ const tick = async (): Promise<void> => {
   });
 };
 
+const PEOPLE = [
+  { personId: 'p-ada', name: 'Ada' },
+  { personId: 'p-grace', name: 'Grace' },
+];
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -74,7 +79,7 @@ function server(versions: readonly ReturnType<typeof version>[], state = 'live')
   };
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
     if (at.endsWith('/task/decide')) {
       decided.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -141,6 +146,46 @@ describe('T3a reject on the proposal header', () => {
     await tick();
 
     expect(page.find('[data-lineage-action="reject"]')).toBeNull();
+    await page.unmount();
+  });
+});
+
+describe('T3a escalate at the bound', () => {
+  it('is drawn in the gate card only at the bound, marked as having no visual reference', async () => {
+    const before = server([version('v-2', 2, { ...pending('g-2'), round: 2 })]);
+    const early = await open(before.client);
+    await tick();
+    expect(early.find('[data-decide="escalate"]')).toBeNull();
+    await early.unmount();
+
+    const { client } = server([version('v-3', 3, { ...pending('g-3'), round: 3 })]);
+    const page = await open(client);
+    await tick();
+    const escalate = page.find('[data-decide="controls"] [data-decide="escalate"]');
+    expect(escalate?.textContent).toBe('Escalate');
+    expect(page.find('[data-escalate="form"]')?.getAttribute('data-ui-reference')).toBe('none');
+    const options = page
+      .all('[data-escalate="recipient"] option')
+      .map((o) => o.getAttribute('value'));
+    expect(options).toStrictEqual(['', 'p-ada', 'p-grace']);
+    await page.unmount();
+  });
+
+  it("sends task.decide's escalate with the chosen recipient, and nothing without one", async () => {
+    const { client, decided } = server([version('v-3', 3, { ...pending('g-3'), round: 3 })]);
+    const page = await open(client);
+    await tick();
+    expect(page.find('[data-decide="escalate"]')?.hasAttribute('disabled')).toBe(true);
+    await page.choose('[data-escalate="recipient"]', 'p-grace');
+    await page.click('[data-decide="escalate"]');
+    await tick();
+    expect(decided).toHaveLength(1);
+    expect(decided[0]).toMatchObject({
+      decision: 'escalate',
+      gateId: 'g-3',
+      versionId: 'v-3',
+      recipientPersonId: 'p-grace',
+    });
     await page.unmount();
   });
 });
