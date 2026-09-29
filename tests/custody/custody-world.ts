@@ -60,16 +60,11 @@ async function openIn(folder: string): Promise<CustodyWorld> {
       value: canary,
     },
   ]);
-  let custody: Custody;
-  try {
-    custody = await startCustody({
-      credentialsFile,
-      destinations: [{ key: 'replay', origin: provider.origin }],
-    });
-  } catch (error) {
+  const destinations = [{ key: 'replay', origin: provider.origin }];
+  const custody = await startCustody({ credentialsFile, destinations }).catch(async (error) => {
     await provider.close();
     throw error;
-  }
+  });
   const adapted = replayAdapter({ instruction: 'draft a reply', tone: 'plain' });
   return {
     provider,

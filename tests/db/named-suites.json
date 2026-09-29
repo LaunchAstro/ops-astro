@@ -285,6 +285,8 @@
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/broker/aw-01-broker.test.ts",
+    "tests/broker/aw-01-broker-limits.test.ts",
+    "tests/broker/aw-01-broker-isolation.test.ts",
     "tests/broker/aw-01-model-call.test.ts"
   ],
   "conformance": [

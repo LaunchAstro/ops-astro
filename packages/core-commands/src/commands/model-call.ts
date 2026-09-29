@@ -80,14 +80,10 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
       };
       const audited: Broker = { ...broker, audit: auditAs(call.session.actorId) };
       const stepId = await stepOfLease(tx, operands.leaseId);
-      const reservation = await reserveModelCall(tx, caller, { ...operands, stepId }, audited);
+      const modelRequest: ModelCallRequest = { ...operands, stepId };
+      const reservation = await reserveModelCall(tx, caller, modelRequest, audited);
       if (!reservation.ok) return refusalOf(reservation);
-      held = {
-        caller,
-        request: { ...operands, stepId },
-        reserved: reservation.reserved,
-        broker: audited,
-      };
+      held = { caller, request: modelRequest, reserved: reservation.reserved, broker: audited };
       return {
         recordId: null,
         revision: null,

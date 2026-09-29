@@ -116,6 +116,55 @@ async function readAll(request: IncomingMessage): Promise<string> {
   return Buffer.concat(parts).toString('utf8');
 }
 
+/** The stand-in's answer in each mode, hostile ones included. */
+function respond(
+  mode: ReplayMode,
+  response: ServerResponse,
+  authorization: string | undefined,
+  timers: Set<NodeJS.Timeout>,
+): void {
+  switch (mode) {
+    case 'answer':
+      return answer(response, { text: 'Drafted.', usage: { input: 40, output: 30 } });
+    case 'costly':
+      return answer(response, { text: 'Long.', usage: { input: 400, output: 300 } });
+    case 'planted':
+      return answer(response, { text: PLANTED, usage: { input: 40, output: 30 } });
+    case 'nothing_happened':
+      return answer(response, {
+        text: '',
+        usage: { input: 0, output: 0 },
+        code: REPLAY_NOTHING_HAPPENED,
+      });
+    case 'malformed':
+      return answer(response, { text: 7, usage: 'lots' });
+    case 'echo_credential':
+      return answer(response, {
+        text: `you sent ${authorization ?? ''}`,
+        usage: { input: 1, output: 1 },
+      });
+    case 'redirect':
+      response.writeHead(307, { location: 'http://203.0.113.9/v1/complete' });
+      response.end();
+      return;
+    case 'oversized': {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.write('{"text":"');
+      const chunk = 'x'.repeat(64 * 1024);
+      for (let i = 0; i < 64; i += 1) response.write(chunk);
+      response.end('","usage":{"input":1,"output":1}}');
+      return;
+    }
+    case 'slow': {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        answer(response, { text: 'late', usage: { input: 1, output: 1 } });
+      }, 10_000);
+      timers.add(timer);
+    }
+  }
+}
+
 /** Start the stand-in on a loopback port of its own. */
 export async function startReplayProvider(): Promise<ReplayProvider> {
   let current: ReplayMode = 'answer';
@@ -126,50 +175,12 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
       const body = await readAll(request);
       const authorization = request.headers['authorization'];
       seen.push({ path: request.url ?? '', authorization, body });
-      switch (current) {
-        case 'answer':
-          return answer(response, { text: 'Drafted.', usage: { input: 40, output: 30 } });
-        case 'costly':
-          return answer(response, { text: 'Long.', usage: { input: 400, output: 300 } });
-        case 'planted':
-          return answer(response, { text: PLANTED, usage: { input: 40, output: 30 } });
-        case 'nothing_happened':
-          return answer(response, {
-            text: '',
-            usage: { input: 0, output: 0 },
-            code: REPLAY_NOTHING_HAPPENED,
-          });
-        case 'malformed':
-          return answer(response, { text: 7, usage: 'lots' });
-        case 'echo_credential':
-          return answer(response, {
-            text: `you sent ${authorization ?? ''}`,
-            usage: { input: 1, output: 1 },
-          });
-        case 'redirect':
-          response.writeHead(307, { location: 'http://203.0.113.9/v1/complete' });
-          response.end();
-          return undefined;
-        case 'oversized': {
-          response.writeHead(200, { 'content-type': 'application/json' });
-          response.write('{"text":"');
-          const chunk = 'x'.repeat(64 * 1024);
-          for (let i = 0; i < 64; i += 1) response.write(chunk);
-          response.end('","usage":{"input":1,"output":1}}');
-          return undefined;
-        }
-        case 'slow': {
-          const timer = setTimeout(() => {
-            timers.delete(timer);
-            answer(response, { text: 'late', usage: { input: 1, output: 1 } });
-          }, 10_000);
-          timers.add(timer);
-          return undefined;
-        }
-      }
+      respond(current, response, authorization, timers);
     })();
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
   const { port } = server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${String(port)}`,
@@ -180,7 +191,9 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
     close: async () => {
       for (const timer of timers) clearTimeout(timer);
       server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
     },
   };
 }
