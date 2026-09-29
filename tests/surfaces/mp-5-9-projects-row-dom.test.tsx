@@ -7,16 +7,14 @@
 // cancelling, and a blank or unchanged name saving nothing (P-32); a plain
 // click opens the task after 260ms unless a double-click follows (CS-5.14);
 // the hover box holds add subtask, the door with its in-app mark, and the
-// timer only when the page can start one (P-33). The last suite drives the
-// commands from the Projects screen.
+// timer only when the page can start one (P-33). The commands from the
+// Projects screen are in mp-5-9-projects-row-screen.test.tsx.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectsBoard } from '../../packages/ui/src/surfaces/ProjectsBoard.tsx';
 import type { ProjectRow } from '../../packages/ui/src/board/projects.ts';
-import { Projects } from '../../apps/web/src/screens/Projects.tsx';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { mount, settle, type Mounted } from './mount.tsx';
+import { mount, type Mounted } from './mount.tsx';
 
 const NOW = new Date(2026, 8, 30, 10, 0);
 
@@ -206,9 +204,13 @@ describe('MP-5-9 open the task beside the board', () => {
         one(board, NAME('open')),
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      // Still inside the double-click window at 200ms.
       expect(calls.opens).toStrictEqual([]);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300);
+        await vi.advanceTimersByTimeAsync(100);
       });
       expect(calls.opens).toStrictEqual(['open']);
       await fire(
@@ -223,78 +225,5 @@ describe('MP-5-9 open the task beside the board', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-const json = (body: unknown): Response =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
-
-const TASK_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-
-describe('MP-5-9 the row’s commands from the Projects screen', () => {
-  it('the tick calls task.complete and a rename task.update, each at the row’s revision', async () => {
-    const sent: { readonly url: string; readonly body: Readonly<Record<string, unknown>> }[] = [];
-    const task = {
-      id: TASK_ID,
-      key: 'TSK-1',
-      title: 'Task TSK-1',
-      state: { id: 's-1', key: 'active', label: 'Active', machineCategory: 'started' },
-      assignee: null,
-      due: null,
-      priority: null,
-      completedAt: null,
-      revision: 7,
-      rank: { number: null, score: null, calc: 'not ranked: missing ease' },
-      stage: null,
-      clientSet: false,
-      statePosition: 2000,
-      awaitingDecision: false,
-    };
-    const fetch = ((url: string, init?: { body?: string }) => {
-      const body = JSON.parse(init?.body ?? '{}') as Readonly<Record<string, unknown>>;
-      sent.push({ url: String(url), body });
-      return Promise.resolve(
-        String(url).includes('task/board') || String(url).includes('task.board')
-          ? json({ ok: true, tasks: [task], changedAt: null, viewer: null, withheld: 0 })
-          : json({ ok: true, recordId: TASK_ID, revision: 8, detail: {} }),
-      );
-    }) as unknown as typeof globalThis.fetch;
-    const client = new OperationsClient({
-      origin: '',
-      businessKey: 'alpha',
-      token: 'a-token',
-      fetch,
-      newOperationId: () => 'operation-1',
-    });
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
-    await settle();
-    await mounted.click(`tr[data-row="${TASK_ID}"] input.cbd__tick`);
-    await settle();
-    await fire(
-      one(mounted, NAME(TASK_ID)),
-      new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
-    );
-    await mounted.type(RENAME(TASK_ID), 'Renamed on the board');
-    await key(mounted, TASK_ID, 'Enter');
-    await settle();
-    const commands = sent
-      .filter((each) => !each.url.includes('board'))
-      .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
-    expect(commands).toStrictEqual([
-      ['task/complete', { recordId: TASK_ID, operationId: 'operation-1', expectedRevision: 7 }],
-      [
-        'task/update',
-        {
-          recordId: TASK_ID,
-          fields: { title: 'Renamed on the board' },
-          operationId: 'operation-1',
-          expectedRevision: 7,
-        },
-      ],
-    ]);
   });
 });

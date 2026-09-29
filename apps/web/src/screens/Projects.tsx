@@ -17,6 +17,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
+import { rowActions } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { BoardTask, TaskBoardResult } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
@@ -185,6 +186,12 @@ export function Projects(props: ProjectsProps): ReactElement {
             stages={[]}
             viewer={value.viewer ?? null}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
+            actions={rowActions({
+              client,
+              tasks: value.tasks,
+              href: (key) => pathTo('agency:task-detail', { key }),
+              reload,
+            })}
             address={window.location.search}
             onAddress={(query) => {
               window.history.replaceState(

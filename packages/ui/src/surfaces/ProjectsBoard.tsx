@@ -66,13 +66,14 @@ const REVIEW_EMPTY = {
 };
 
 /** The chip row's presets and the Review mode with its live count (MP-5-12). */
-function useChips(rows: readonly ProjectRow[], viewer: string | null) {
+function useChips(rows: readonly ProjectRow[], viewer: string | null, now: Date) {
+  const facets = useMemo(() => projectFacets(rows, now, viewer), [rows, now, viewer]);
   const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
   const modes = useMemo(
     () => [{ ...REVIEW_MODE, badge: reviewBadge(rows), empty: REVIEW_EMPTY }],
     [rows],
   );
-  return { presets, modes };
+  return { facets, presets, modes };
 }
 
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
@@ -92,8 +93,8 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const facets = useMemo(() => projectFacets(props.rows, now, viewer), [props.rows, now, viewer]);
-  const { presets, modes } = useChips(props.rows, viewer);
+  const { facets, presets, modes } = useChips(props.rows, viewer, now);
+  const cells = { now, href: props.href, ...(props.actions ? { actions: props.actions } : {}) };
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
@@ -105,7 +106,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       modes={modes}
       groups={{ order: statuses, of: (row) => row.status, reason: groupReason }}
       rowKey={(row) => row.id}
-      cell={(row, key) => projectCell(row, key, { now, href: props.href })}
+      cell={(row, key) => projectCell(row, key, cells)}
       hay={(row) => `${row.name} ${row.client ?? ''} ${row.assignee?.name ?? ''}`}
       name={(row) => row.name}
       noun="task"

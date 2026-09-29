@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One cell of the Projects board (MP-5-8, BOARDS P-20 to P-28, P-36). The
+// One cell of the Projects board (MP-5-8, BOARDS P-20 to P-28, P-36; the name
+// cell, with its tick, rename and hover box, is ProjectName.tsx, MP-5-9). The
 // words come from `board/project-words.ts`; this draws them.
 
 import type { ReactNode } from 'react';
@@ -11,12 +12,16 @@ import {
   estimateWords,
   rankCell,
   type ProjectRow,
+  type RowActions,
 } from '../board/projects.ts';
+import { ProjectName } from './ProjectName.tsx';
 
 export interface CellContext {
   readonly now: Date;
   /** Where the row's record opens. */
   readonly href: (row: ProjectRow) => string;
+  /** What the row can do (MP-5-9); none draws a read-only name. */
+  readonly actions?: RowActions;
 }
 
 const dash = (): ReactNode => <span className="cbd__dim">—</span>;
@@ -109,11 +114,11 @@ export function projectCell(row: ProjectRow, key: string, context: CellContext):
       return <Rank row={row} />;
     case 'name':
       return (
-        <div className="cbd__name">
-          <a className="cbd__nm" href={context.href(row)}>
-            {row.name}
-          </a>
-        </div>
+        <ProjectName
+          row={row}
+          href={context.href(row)}
+          {...(context.actions === undefined ? {} : { actions: context.actions })}
+        />
       );
     case 'comments':
       return <Comments row={row} href={context.href(row)} />;

@@ -226,6 +226,8 @@ const BOARD_TASKS = [
     },
     assignee: null,
     due: null,
+    // The wire always carries it; left out, the row would read as completed.
+    completedAt: null,
     revision: 1,
     rank: { number: null, score: null, calc: '' },
     stage: null,
@@ -238,6 +240,7 @@ const BOARD_TASKS = [
     state: null,
     assignee: { personId: 'p-1', name: 'Ada' },
     due: '2020-01-01T00:00:00.000Z',
+    completedAt: null,
     revision: 1,
     rank: { number: null, score: null, calc: '' },
     stage: null,
