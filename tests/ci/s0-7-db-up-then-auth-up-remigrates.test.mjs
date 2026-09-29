@@ -54,7 +54,7 @@ esac
 exit 0
 `;
 
-test('Sol proof, criterion 6: db-up replacing Postgres makes auth-up remigrate GoTrue', () => {
+test('db-up replacing Postgres makes auth-up remigrate GoTrue', () => {
   const scratch = mkdtempSync(join(tmpdir(), 'sol-s0-7-start-order-'));
   try {
     const scriptDir = join(scratch, 'scripts/local');
