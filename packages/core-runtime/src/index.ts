@@ -110,6 +110,18 @@ export {
   keyResolver,
   type KeyResolver,
 } from './signing.ts';
+export {
+  endAtBudgetStop,
+  topUpAtBudgetStop,
+  type EndOutcome,
+  type TopUpOutcome,
+  type TopUpRequest,
+} from './budget-answer.ts';
+export type {
+  BudgetAnswerCode,
+  BudgetAnswerRequest,
+  BudgetAnswerResult,
+} from './budget-answer-facts.ts';
 export { acquire, LOCK_ORDER, type LockClass, type LockRequest, type LockSet } from './locks.ts';
 export {
   isRuntimeRefusal,

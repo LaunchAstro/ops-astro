@@ -127,6 +127,21 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     spent_minor: 0,
     currency: 'AUD',
   },
+  // AW-05: nothing answers a stop that was never raised.
+  'public.budget_approvals': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    amount_minor: 300,
+    currency: 'AUD',
+  },
+  'public.budget_answers': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    kind: 'end',
+    first_person_id: randomUUID(),
+  },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,
