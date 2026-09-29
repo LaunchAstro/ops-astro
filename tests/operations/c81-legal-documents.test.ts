@@ -15,6 +15,8 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { publishLegalVersion } from '../../packages/core-records/src/operations/legal-documents.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { tokenFor } from '../acceptance/cast.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
@@ -328,6 +330,33 @@ describe.skipIf(serverUrl === undefined)('C81 the legal documents', () => {
       ),
     );
     expect(kept).toEqual([{ body: body.body }]);
+  });
+
+  it('C81 two publishes at once: one publishes, the other is told it already is, and nothing raises', async () => {
+    const body = draftBody({ document: 'breach-runbook' });
+    const versionId = String(detailOf(await draft(body))['versionId']);
+    expect((await approve(versionId, digestOf(body.body))).code).toBe('ok');
+    const actorId = harness.world.ada.actorId as string;
+    // Two connections, so the two transactions truly overlap: the first holds
+    // its lock for 300 ms after publishing, and the second arrives meanwhile.
+    const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
+    const first = wide.withBusiness(harness.world.alpha, async (tx) => {
+      const refusal = await publishLegalVersion(tx, versionId, actorId);
+      await tx.query('select pg_sleep(0.3)');
+      return refusal;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const second = wide.withBusiness(
+      harness.world.alpha,
+      async (tx) => await publishLegalVersion(tx, versionId, actorId),
+    );
+    const outcomes = await Promise.allSettled([first, second]).finally(
+      async () => await wide.close(),
+    );
+    expect(outcomes).toEqual([
+      { status: 'fulfilled', value: undefined },
+      { status: 'fulfilled', value: 'already-published' },
+    ]);
   });
 
   it('C81 public without sign-in: each published document is read with no credential; the breach runbook never is', async () => {
