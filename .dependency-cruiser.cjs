@@ -54,7 +54,17 @@ module.exports = {
         'package on both, and the apps on top. The wire contract and the payload digest are ' +
         'leaves beside them. Records imports none of the others.',
       from: { path: '^packages/core-records/' },
-      to: { path: '^packages/core-(runtime|commands|wire|digest)/' },
+      to: { path: '^packages/core-(runtime|commands|wire|digest|connectors)/' },
+    },
+    {
+      name: 'layer-connectors-take-the-digest-only',
+      severity: 'error',
+      comment:
+        'Provider operations sit beside the runtime, called by the command package once a ' +
+        'gate has passed. They take the payload digest and nothing else of the product, so ' +
+        'no path from them reaches a record, a grant or a command.',
+      from: { path: '^packages/core-connectors/' },
+      to: { path: '^packages/', pathNot: '^packages/core-(connectors|digest)/' },
     },
     {
       name: 'layer-runtime-below-commands',

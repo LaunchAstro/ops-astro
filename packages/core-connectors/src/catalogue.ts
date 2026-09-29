@@ -168,5 +168,33 @@ function invalidField(declaration: Record<string, unknown>): string | undefined 
 
 /** One operation's registration: all twelve, each valid, the release matching its connector. */
 export function registerOperation(candidate: unknown): Registered<OperationDeclaration> {
-  return { ok: true, value: (candidate as { declaration: OperationDeclaration }).declaration };
+  if (!isRecord(candidate) || !isRecord(candidate['declaration'])) {
+    return { ok: false, code: 'OPERATION_DECLARATION_MISSING', fields: [...DECLARATION_NAMES] };
+  }
+  const declaration = candidate['declaration'];
+  const missing = DECLARATION_NAMES.filter(
+    (name) => !Object.hasOwn(declaration, name) || declaration[name] === undefined,
+  );
+  if (missing.length > 0) {
+    return { ok: false, code: 'OPERATION_DECLARATION_MISSING', fields: missing };
+  }
+  const extra = Object.keys(declaration).filter(
+    (name) => !(DECLARATION_NAMES as readonly string[]).includes(name),
+  );
+  if (extra.length > 0) return { ok: false, code: 'OPERATION_DECLARATION_INVALID', fields: extra };
+  const invalid = invalidField(declaration);
+  if (invalid !== undefined) {
+    return { ok: false, code: 'OPERATION_DECLARATION_INVALID', fields: [invalid] };
+  }
+  const connector = candidate['connector'];
+  const release = isRecord(connector) ? `sha256:${payloadDigest(connector)}` : undefined;
+  if (release !== declaration['connector_release']) {
+    return { ok: false, code: 'CONNECTOR_RELEASE_MISMATCH', fields: ['connector_release'] };
+  }
+  const registered = declaration as unknown as OperationDeclaration;
+  const capture = registered.credential_tier === 'none';
+  if (capture !== (isRecord(connector) && connector['credential'] === 'none')) {
+    return { ok: false, code: 'OPERATION_DECLARATION_INVALID', fields: ['credential_tier'] };
+  }
+  return { ok: true, value: registered };
 }

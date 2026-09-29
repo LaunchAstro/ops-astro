@@ -131,7 +131,25 @@ export async function publishCorrection(
   job: PublishJob,
   ports: PublishPorts,
 ): Promise<PublishOutcome> {
-  const token = dispatchToken('site.publish', job.version.digest); const answer = await ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }); return answer.kind === 'ok' ? { state: 'accepted', ...answer.value, dispatchToken: token } : { state: 'failed', code: answer.code, proof: '' };
+  const stopped = await beforeDispatch(job, ports);
+  if (stopped !== undefined) return stopped;
+  const token = dispatchToken('site.publish', job.version.digest);
+  const answer = await ports.publish({
+    seam: job.seam,
+    dispatchToken: token,
+    versionDigest: job.version.digest,
+  });
+  const unknown = async (code: string): Promise<PublishOutcome> => {
+    await ports.raiseTask(code);
+    return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
+  };
+  if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
+  if (answer.kind === 'ok') return { state: 'accepted', ...answer.value, dispatchToken: token };
+  const proofs = siteOperation('site.publish').declaration.nothing_happened_proof;
+  if (answer.kind === 'refused' && answer.proof !== undefined && proofs.includes(answer.proof)) {
+    return { state: 'failed', code: answer.code, proof: answer.proof };
+  }
+  return unknown(answer.code);
 }
 
 export interface Served {
@@ -156,7 +174,16 @@ export async function observeLanded(
   target: CorrectionTarget,
   ports: ObservePorts,
 ): Promise<Accepted | (Omit<Accepted, 'state'> & { readonly state: 'live' })> {
-  return { ...accepted, state: target && ports ? 'live' : 'live' };
+  const deployment = await ports.readDeployment(accepted.deploymentId);
+  const served =
+    deployment.kind === 'ok' &&
+    deployment.value.served &&
+    deployment.value.revision === accepted.revision;
+  if (!served) return accepted;
+  const captured = await ports.capture(accepted.liveUrl);
+  if (!captured.ok || wordOffsets(captured.value.text, target.replacement).length === 0)
+    return accepted;
+  return { ...accepted, state: 'live' };
 }
 
 export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
@@ -200,5 +227,39 @@ export async function revertCorrection(
   },
   ports: RevertPorts,
 ): Promise<RevertOutcome> {
-  const decided = ports.now(); const reverted = await ports.revert({ seam: input.seam }); const observed = ports.now(); return reverted.kind === 'ok' ? { state: 'reverted', ...reverted.value, decidedAt: new Date(decided).toISOString(), observedAt: new Date(observed).toISOString(), intervalMs: observed - decided } : { state: 'failed', code: reverted.code, decidedAt: '' };
+  const decided = ports.now();
+  const decidedAt = new Date(decided).toISOString();
+  const reverted = await ports.revert({ seam: input.seam });
+  if (reverted.kind !== 'ok') {
+    return {
+      state: reverted.kind === 'refused' ? 'failed' : 'unknown',
+      code: reverted.code,
+      decidedAt,
+    };
+  }
+  const { revision, deploymentId } = reverted.value;
+  const pending = { state: 'revert_accepted', revision, deploymentId, decidedAt } as const;
+  const deployment = await ports.readDeployment(deploymentId);
+  if (
+    deployment.kind !== 'ok' ||
+    !deployment.value.served ||
+    deployment.value.revision !== revision
+  ) {
+    return pending;
+  }
+  const captured = await ports.capture();
+  const original =
+    captured.ok &&
+    wordOffsets(captured.value.text, input.target.word).length > 0 &&
+    wordOffsets(captured.value.text, input.target.replacement).length === 0;
+  if (!original) return pending;
+  const observed = ports.now();
+  return {
+    state: 'reverted',
+    revision,
+    deploymentId,
+    decidedAt,
+    observedAt: new Date(observed).toISOString(),
+    intervalMs: observed - decided,
+  };
 }
