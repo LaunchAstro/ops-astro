@@ -67,8 +67,11 @@ function report(line: CaseLine): void {
 /** The run's own container, or nothing: the port DATABASE_URL names must be the one it publishes. */
 function refuseAnotherCluster(): void {
   const published = spawnSync(DOCKER, ['port', CLUSTER, '5432/tcp'], { encoding: 'utf8' });
-  if (published.status !== 0 || !onOwnCluster(DATABASE_URL, published.stdout)) {
-    throw new Error(`self-test: DATABASE_URL is not ${CLUSTER}'s published port; refused`);
+  // Both: the suites connect with the admin URL first (tests/support/fresh-database.ts).
+  for (const [name, url] of Object.entries(DB)) {
+    if (published.status !== 0 || !onOwnCluster(url, published.stdout)) {
+      throw new Error(`self-test: ${name} is not ${CLUSTER}'s published port; refused`);
+    }
   }
 }
 
@@ -88,10 +91,19 @@ function proofs(scratch: Scratch): Ran {
   // The script tees its output into the evidence: read one of the two, and
   // only T3d2's own file, since the script runs T3e1's drop proofs too.
   const said = (existsSync(evidence) ? readFileSync(evidence, 'utf8') : run.stdout).split('\n');
-  const passed = said.filter((line) => line.includes(`✓ ${PROOFS_FILE} >`)).length;
-  const failed = said.filter((line) => line.includes(`× ${PROOFS_FILE} >`)).length;
+  const mark = (glyph: string): string[] =>
+    said
+      .filter((line) => line.includes(`${glyph} ${PROOFS_FILE} >`))
+      .map((line) => line.slice(line.indexOf(`${PROOFS_FILE} >`) + PROOFS_FILE.length + 3).trim());
+  const passed = mark('✓').length;
+  const failed = mark('×').length;
+  const cases = [
+    ...mark('✓').map((title) => ({ name: title, passed: true })),
+    ...mark('×').map((title) => ({ name: title, passed: false })),
+  ];
   const whole = said.some((line) => /^\s*FAIL\s/u.test(line) && line.includes(`${PROOFS_FILE} [`));
   return {
+    cases,
     applied: true,
     executed: passed + failed + (whole ? 1 : 0),
     red: failed > 0 || whole,
@@ -101,8 +113,11 @@ function proofs(scratch: Scratch): Ran {
   };
 }
 
-/** The web typecheck, where a duplicate key in the route registry is TS1117. */
-function typecheck(scratch: Scratch): Ran {
+/**
+ * The web typecheck. Unmutated, any error is red; mutated with a duplicate
+ * route id, red means TS1117 in the route registry and nothing less.
+ */
+function typecheck(scratch: Scratch, duplicateOnly: boolean): Ran {
   const tsc = spawnSync(
     join(scratch.dir, 'node_modules/.bin/tsc'),
     ['-p', 'tsconfig.web.json', '--noEmit'],
@@ -112,7 +127,7 @@ function typecheck(scratch: Scratch): Ran {
   return {
     applied: true,
     executed: 1,
-    red: tsc.status !== 0 && duplicate,
+    red: tsc.status !== 0 && (duplicate || !duplicateOnly),
     detail: `tsc exit ${String(tsc.status)}${duplicate ? ', TS1117 in apps/web/src/routes.ts' : ''}`,
   };
 }
@@ -158,7 +173,7 @@ function negatives(scratch: Scratch): void {
     scratch,
     'T4-N3 a duplicate route id fails the typecheck',
     () => edit(scratch, routes, head, `${head}${ROUTE('agency:settings')}`),
-    () => typecheck(scratch),
+    () => typecheck(scratch, true),
   );
   report(
     classify(
@@ -168,16 +183,23 @@ function negatives(scratch: Scratch): void {
   );
 }
 
+/** One revert of the part and its invariant rerun; see `revertPart` for `keepAdded`. */
+function revertAndRun(scratch: Scratch, part: Part, name: string, keepAdded: boolean): CaseLine {
+  const reverted = revertPart(scratch, part, keepAdded);
+  if (!reverted.applied) {
+    return classify(name, { applied: false, executed: 0, red: false, detail: reverted.detail });
+  }
+  const ran = part.id === 'T3d2' ? proofs(scratch) : vitest(scratch, part.files, DB);
+  return classify(name, { ...ran, detail: `${reverted.detail}; ${ran.detail}` });
+}
+
 function reverts(scratch: Scratch, parts: readonly Part[]): void {
   for (const part of parts) {
     const name = `T4-N4 ${part.id} reverted: ${part.invariants.join(', ')}`;
-    const reverted = revertPart(scratch, part);
-    if (!reverted.applied) {
-      report(classify(name, { applied: false, executed: 0, red: false, detail: reverted.detail }));
-      continue;
-    }
-    const ran = part.id === 'T3d2' ? proofs(scratch) : vitest(scratch, part.files, DB);
-    report(classify(name, { ...ran, detail: `${reverted.detail}; ${ran.detail}` }));
+    const whole = revertAndRun(scratch, part, name, false);
+    // A file that no longer loads never runs the invariant; unwire the part instead.
+    const unloadable = whole.status === 'fail' && whole.detail.includes('fails whole');
+    report(unloadable ? revertAndRun(scratch, part, name, true) : whole);
   }
 }
 
@@ -193,7 +215,7 @@ function controls(scratch: Scratch, parts: readonly Part[]): void {
   const all = vitestReport(scratch, files, DB);
   report(control('control: the isolation matrix', summarise(scratch, all, [ISOLATION])));
   report(control('control: the route registry check', summarise(scratch, all, [ROUTES])));
-  report(control('control: the typecheck', typecheck(scratch)));
+  report(control('control: the typecheck', typecheck(scratch, false)));
   for (const part of parts) {
     const ran = part.id === 'T3d2' ? proofs(scratch) : summarise(scratch, all, part.files);
     report(control(`control: ${part.id} ${part.invariants.join(', ')}`, ran));

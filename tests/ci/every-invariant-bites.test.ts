@@ -26,6 +26,7 @@ import {
   keeps,
   onOwnCluster,
   openScratch,
+  type CaseLine,
   type Ran,
 } from './self-test/mutations.ts';
 
@@ -106,14 +107,41 @@ describe('every_invariant_bites: the catalogue', () => {
   });
 });
 
+/** A part's revert under which its named invariants fail and nothing else is asserted. */
+const bites = (id: string): Ran => {
+  const part = PARTS.find((one) => one.id === id);
+  const names = part?.invariants ?? [];
+  return ran({ cases: names.map((name) => ({ name: `${name}: the case`, passed: false })) });
+};
+
+/** One passing line for every mutation the whole run must hold. */
+const everyLine = (): CaseLine[] => [
+  classify('T4-N1', ran({})),
+  classify('T4-N2', ran({})),
+  ...['a', 'b', 'c'].map((one) => classify(`T4-N3 ${one}`, ran({}))),
+  ...PARTS.map((part) => classify(`T4-N4 ${part.id} reverted`, bites(part.id))),
+];
+
 describe('every_invariant_bites: the verdict', () => {
-  it('passes an invariant its mutation turns red, saying how', () => {
-    const line = classify('T4-N4 T2a', ran({}));
+  it('passes a part whose named invariant fails under its revert, saying so', () => {
+    const line = classify('T4-N4 T2a', bites('T2a'));
     expect(line).toEqual({
       case: 'T4-N4 T2a',
       status: 'pass',
-      detail: 'red under its mutation: 2 of 4 cases failed',
+      detail: 'red under its mutation: run_progress_read failed; 2 of 4 cases failed',
     });
+  });
+
+  it('fails a part whose invariant did not run, however red its file, and names each silent one', () => {
+    const loads = classify('T4-N4 T3d2', ran({ detail: 'the file fails whole', cases: [] }));
+    expect(loads.status).toBe('fail');
+    expect(loads.detail).toContain('apply_after_api_stops, crash_between_apply_and_settle');
+    const half = classify(
+      'T4-N4 T3d2',
+      ran({ cases: [{ name: 'apply_after_api_stops: F1', passed: false }] }),
+    );
+    expect(half.status).toBe('fail');
+    expect(half.detail).toContain('did not fail: crash_between_apply_and_settle');
   });
 
   it('fails an invariant that stays green under its mutation, by name', () => {
@@ -127,21 +155,28 @@ describe('every_invariant_bites: the verdict', () => {
     expect(classify('T4-N4 T2b', ran({ executed: 0, red: false })).status).toBe('fail');
     expect(classify('T4-N4 T2b', ran({ executed: 0 })).status).toBe('fail');
   });
+});
 
-  it('fails the whole run, listing every check that stayed green, and a run with no checks', () => {
-    const lines = [
-      classify('T4-N1', ran({})),
-      classify('T4-N4 T3c', ran({ red: false })),
-      classify('T4-N4 T3f', ran({ red: false })),
-    ];
+describe('every_invariant_bites: the whole run', () => {
+  it('passes the whole run only with every line, and lists what stayed green or is missing', () => {
+    expect(everyInvariantBites(everyLine()).status).toBe('pass');
+    const lines = everyLine().map((line) =>
+      ['T4-N4 T3c reverted', 'T4-N4 T3f reverted'].includes(line.case)
+        ? classify(line.case, ran({ red: false }))
+        : line,
+    );
     const whole = everyInvariantBites(lines);
     expect(whole.case).toBe('every_invariant_bites');
     expect(whole.status).toBe('fail');
     expect(whole.detail).toContain('T4-N4 T3c');
     expect(whole.detail).toContain('T4-N4 T3f');
     expect(whole.detail).not.toContain('T4-N1');
+    const short = everyInvariantBites(
+      everyLine().filter((line) => !line.case.startsWith('T4-N4 T4d')),
+    );
+    expect(short.status).toBe('fail');
+    expect(short.detail).toContain('missing: T4-N4 T4d');
     expect(everyInvariantBites([]).status).toBe('fail');
-    expect(everyInvariantBites([classify('T4-N1', ran({}))]).status).toBe('pass');
   });
 });
 

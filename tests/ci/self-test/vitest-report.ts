@@ -79,6 +79,9 @@ export function summarise(
     executed: cases + loads.length,
     red: (failing.length > 0 || loads.length > 0) && named,
     detail: said.join('; '),
+    cases: all
+      .filter((one) => one.status === 'passed' || one.status === 'failed')
+      .map((one) => ({ name: one.fullName, passed: one.status === 'passed' })),
   };
 }
 

@@ -19,76 +19,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { checkMockupTree } from '../../visual/packet.ts';
+import { keeps, type Part, type Ran } from './catalogue.ts';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 
-/** One part before T4e: its invariants, the files that carry them and its commits on this line. */
-export interface Part {
-  readonly id: string;
-  readonly invariants: readonly string[];
-  readonly files: readonly string[];
-  /** What a revert leaves at the head: a path, or a folder ending in `/`. */
-  readonly keep: readonly string[];
-  readonly commits: readonly string[];
-}
-
-export const keeps = (part: Part, path: string): boolean =>
-  part.keep.some((one) => (one.endsWith('/') ? path.startsWith(one) : path === one));
-
-export const PARTS: readonly Part[] = (
-  JSON.parse(readFileSync(join(import.meta.dirname, 'parts.json'), 'utf8')) as {
-    parts: Part[];
-  }
-).parts;
-
-/** What one mutation did and what its check said. */
-export interface Ran {
-  readonly applied: boolean;
-  /** Cases, files or commands that reported an outcome; 0 means nothing ran. */
-  readonly executed: number;
-  readonly red: boolean;
-  readonly detail: string;
-}
-
-export interface CaseLine {
-  readonly case: string;
-  readonly status: 'pass' | 'fail';
-  readonly detail: string;
-}
-
-export function classify(name: string, ran: Ran): CaseLine {
-  const fail = (why: string): CaseLine => ({
-    case: name,
-    status: 'fail',
-    detail: `${why} (${ran.detail})`,
-  });
-  if (!ran.applied) return fail('the mutation changed nothing, so it proves nothing');
-  if (ran.executed === 0) return fail('nothing ran under the mutation');
-  if (!ran.red) return fail('stayed green under its mutation');
-  return { case: name, status: 'pass', detail: `red under its mutation: ${ran.detail}` };
-}
-
-/** The unmutated control: the same check must be green, with something run, before a red means anything. */
-export function control(name: string, ran: Ran): CaseLine {
-  const green = ran.executed > 0 && !ran.red;
-  return {
-    case: name,
-    status: green ? 'pass' : 'fail',
-    detail: green ? `green unmutated: ${ran.detail}` : `not green unmutated: ${ran.detail}`,
-  };
-}
-
-export function everyInvariantBites(lines: readonly CaseLine[]): CaseLine {
-  const short = lines.filter((line) => line.status !== 'pass');
-  const status = lines.length > 0 && short.length === 0 ? 'pass' : 'fail';
-  const whole = lines.filter((line) => line.detail.includes('fails whole')).length;
-  let detail =
-    `${String(lines.length)} checks, each green unmutated and red under its own mutation ` +
-    `(${String(whole)} of them because a file no longer loads or a hook fails without the part)`;
-  if (lines.length === 0) detail = 'no mutation ran';
-  else if (short.length > 0) detail = `not proven: ${short.map((line) => line.case).join('; ')}`;
-  return { case: 'every_invariant_bites', status, detail };
-}
+export * from './catalogue.ts';
+export * from './verdict.ts';
 
 /**
  * Whether `databaseUrl` is this machine's port that `docker port <cluster>
@@ -254,10 +190,44 @@ export function changePinnedMockup(scratch: Scratch): Ran {
  * on it, has its files set back to before that commit, and the detail counts
  * them. The kept files are then put back as they are at the head.
  */
-export function revertPart(scratch: Scratch, part: Part): { applied: boolean; detail: string } {
+/** The files the part added that still exist at the head. */
+function addedBy(scratch: Scratch, part: Part): string[] {
+  const added = new Set<string>();
+  for (const commit of part.commits) {
+    const names = scratch.git([
+      'show',
+      '--no-renames',
+      '--diff-filter=A',
+      '--name-only',
+      '--format=',
+      commit,
+    ]);
+    for (const path of names.split('\n').filter(Boolean)) {
+      const there = spawnSync('git', ['cat-file', '-e', `${scratch.base}:${path}`], {
+        cwd: scratch.dir,
+      });
+      if (there.status === 0 && !keeps(part, path)) added.add(path);
+    }
+  }
+  return [...added];
+}
+
+/**
+ * With `keepAdded`, the files the part added stay and only its edits to files
+ * that were there before are reverted: the part is unwired, its modules left
+ * where its invariant can still load them. Used when the whole revert leaves
+ * the invariant's file unable to load, so the invariant itself can run.
+ */
+export function revertPart(
+  scratch: Scratch,
+  part: Part,
+  keepAdded = false,
+): { applied: boolean; detail: string } {
   scratch.reset();
-  const kept = (path: string): boolean => keeps(part, path);
-  const exclude = part.keep.map((one) => `--exclude=${one.endsWith('/') ? `${one}*` : one}`);
+  const added = keepAdded ? addedBy(scratch, part) : [];
+  const keep = [...part.keep, ...added];
+  const kept = (path: string): boolean => keeps(part, path) || added.includes(path);
+  const exclude = keep.map((one) => `--exclude=${one.endsWith('/') ? `${one}*` : one}`);
   let restored = 0;
   for (const commit of part.commits.toReversed()) {
     const patch = scratch.git(['show', '--binary', '--no-renames', '--format=', commit]);
@@ -280,13 +250,14 @@ export function revertPart(scratch: Scratch, part: Part): { applied: boolean; de
     }
     scratch.commit(`self-test: revert ${commit.slice(0, 8)} (${part.id})`);
   }
-  scratch.git(['checkout', scratch.base, '--', ...part.keep]);
+  scratch.git(['checkout', scratch.base, '--', ...keep]);
   scratch.commit(`self-test: keep ${part.id}'s invariant files`);
   const changed = scratch
     .git(['diff', '--name-only', scratch.base, 'HEAD'])
     .split('\n')
     .filter(Boolean);
-  const how = restored === 0 ? '' : `, ${String(restored)} set back file by file`;
+  let how = restored === 0 ? '' : `, ${String(restored)} set back file by file`;
+  if (keepAdded) how += `, its ${String(added.length)} added files kept`;
   return {
     applied: changed.length > 0,
     detail: `${String(part.commits.length)} commits reverted${how}, ${String(changed.length)} files differ`,
