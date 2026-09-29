@@ -165,9 +165,10 @@ describe.skipIf(serverUrl === undefined)(
         request.on('end', () => {
           const route = `${request.method} ${request.url}`;
           seen.push({ route, authorization: request.headers.authorization, body });
-          // A Map lookup: the request line names no prototype member (CodeQL js/unvalidated-dynamic-method-call).
+          // The reply is chosen by comparing the request line with each known route, so the
+          // request never names what is called (CodeQL js/unvalidated-dynamic-method-call).
           const reply =
-            new Map(Object.entries(replies)).get(route) ??
+            Object.entries(replies).find(([known]) => known === route)?.[1] ??
             json(404, { code: 404, msg: 'no such route' });
           reply(request, response, body);
         });
