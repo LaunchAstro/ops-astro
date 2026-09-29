@@ -35,6 +35,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
   MapViewResult,
+  MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -96,6 +97,8 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** A map's sections, tickets and versions (WF-1). */
   readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -120,4 +123,5 @@ export type ReadResult =
   | PresetPlanResult
   | SettingsReadResult
   | CapabilitiesResult
-  | MapViewResult;
+  | MapViewResult
+  | MapFrontierResult;

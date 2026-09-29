@@ -28,6 +28,14 @@ import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { reviseMap, scopeMap, setTaskType } from './wayfinder.ts';
+import {
+  chartMap,
+  claimTicket,
+  closeOutOfScope,
+  graduateFog,
+  resolveTicket,
+  setBlocking,
+} from './wayfinder-flow.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -98,6 +106,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.set_type': setTaskType,
   'map.revise': reviseMap,
   'map.scope': scopeMap,
+  'map.chart': chartMap,
+  'task.set_blocking': setBlocking,
+  'task.claim': (tx, context) => claimTicket(tx, context),
+  'map.graduate': graduateFog,
+  'task.resolve': resolveTicket,
+  'task.close_out_of_scope': closeOutOfScope,
 };
 
 function writeOwned(

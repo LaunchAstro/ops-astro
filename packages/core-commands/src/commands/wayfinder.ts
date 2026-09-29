@@ -62,7 +62,11 @@ export async function wayfinderDataOnCreate(
   return data;
 }
 
-async function holdsDecide(tx: TenantQuery, context: CommandContext, facts: WayfinderFacts) {
+export async function holdsDecide(
+  tx: TenantQuery,
+  context: CommandContext,
+  facts: WayfinderFacts,
+): Promise<boolean> {
   const subjects = subjectsOf(context.session);
   const target = context.target?.id ?? '';
   for (const id of [target, facts.mapId].filter((x): x is string => x !== null)) {
@@ -149,7 +153,7 @@ interface OutOfScopeItem {
   readonly ticketId: string | null;
 }
 
-interface Revision {
+export interface Revision {
   readonly destination?: string;
   readonly notes?: string;
   readonly addFog: readonly string[];
@@ -157,12 +161,24 @@ interface Revision {
   readonly retire: readonly string[];
 }
 
-function textOk(value: unknown): value is string {
+export function textOk(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '' && value.length <= BODY_LIMIT;
 }
 
 /** The revision a body asks for, or the names of the operands that are wrong. */
-function parseRevision(request: RequestOf<'map.revise'>): Revision | readonly string[] {
+/** The operands a revision is read from: `map.revise`'s, or a chart's. */
+export interface RevisionOperands {
+  readonly destination?: unknown;
+  readonly notes?: unknown;
+  readonly addFog?: unknown;
+  readonly addOutOfScope?: unknown;
+  readonly retire?: unknown;
+}
+
+export function parseRevision(
+  request: RevisionOperands,
+  allowEmpty = false,
+): Revision | readonly string[] {
   const wrong: string[] = [];
   const text = (name: 'destination' | 'notes'): string | undefined => {
     const value = request[name];
@@ -203,7 +219,7 @@ function parseRevision(request: RequestOf<'map.revise'>): Revision | readonly st
     destination === undefined &&
     notes === undefined &&
     addFog.length + addOutOfScope.length + retire.length === 0;
-  if (empty) return ['destination', 'notes', 'addFog', 'addOutOfScope', 'retire'];
+  if (empty && !allowEmpty) return ['destination', 'notes', 'addFog', 'addOutOfScope', 'retire'];
   return {
     ...(destination === undefined ? {} : { destination }),
     ...(notes === undefined ? {} : { notes }),
@@ -248,6 +264,75 @@ async function retireComponents(
     [tx.businessId, map, version, where.ids ?? null, where.kind ?? null],
   );
   return rows.map((row) => row.id);
+}
+
+/** A patch leaving the fog for the tickets it became (WF-2). */
+export interface Graduation {
+  readonly patchId: string;
+  readonly tickets: readonly string[];
+}
+
+/**
+ * Write one numbered version of a map: retire, replace and add components,
+ * record which ones changed, and move the map's revision. The caller has
+ * already checked every operand, and holds the map lock (`wayfinder.map`).
+ */
+export async function applyRevision(
+  tx: TenantQuery,
+  context: CommandContext,
+  mapId: string,
+  parsed: Revision,
+  graduation?: Graduation,
+): Promise<{
+  readonly version: number;
+  readonly changed: readonly string[];
+  readonly revision: number;
+}> {
+  const numbered = await tx.query<{ readonly next: number }>(
+    `select coalesce(max(version), 0) + 1 as next from map_versions
+      where business_id = $1 and map_id = $2`,
+    [tx.businessId, mapId],
+  );
+  const version = Number(numbered[0]?.next ?? 1);
+  const changed: string[] = [];
+  changed.push(...(await retireComponents(tx, mapId, version, { ids: parsed.retire })));
+  if (graduation !== undefined) {
+    await tx.query(
+      `update map_components set retired_version = $3, graduated_into = $4::uuid[]
+        where business_id = $1 and id = $2`,
+      [tx.businessId, graduation.patchId, version, graduation.tickets],
+    );
+    changed.push(graduation.patchId);
+  }
+  for (const kind of ['destination', 'notes'] as const) {
+    const body = parsed[kind];
+    if (body === undefined) continue;
+    // In order: retire the current one, then write its successor.
+    // oxlint-disable-next-line no-await-in-loop
+    changed.push(...(await retireComponents(tx, mapId, version, { kind })));
+    // oxlint-disable-next-line no-await-in-loop
+    changed.push(await insertComponent(tx, mapId, version, kind, body, null));
+  }
+  for (const line of parsed.addFog) {
+    // oxlint-disable-next-line no-await-in-loop
+    changed.push(await insertComponent(tx, mapId, version, 'fog', line, null));
+  }
+  for (const item of parsed.addOutOfScope) {
+    const { text, ticketId } = item;
+    // oxlint-disable-next-line no-await-in-loop
+    changed.push(await insertComponent(tx, mapId, version, 'out_of_scope', text, ticketId));
+  }
+  await tx.query(
+    `insert into map_versions (business_id, id, map_id, version, changed, actor_id)
+     values ($1, $2, $3, $4, $5::uuid[], $6)`,
+    [tx.businessId, randomUUID(), mapId, version, changed, context.session.actorId],
+  );
+  const rows = await tx.query<{ readonly revision: string }>(
+    `update records set data = data || jsonb_build_object('map_version', $3::int), updated_at = now()
+      where business_id = $1 and id = $2 returning revision::text as revision`,
+    [tx.businessId, mapId, version],
+  );
+  return { version, changed, revision: Number(rows[0]?.revision) };
 }
 
 /**
@@ -301,44 +386,11 @@ export async function reviseMap(
     }
   }
 
-  const numbered = await tx.query<{ readonly next: number }>(
-    `select coalesce(max(version), 0) + 1 as next from map_versions
-      where business_id = $1 and map_id = $2`,
-    [tx.businessId, target.id],
-  );
-  const version = Number(numbered[0]?.next ?? 1);
-  const changed: string[] = [];
-  changed.push(...(await retireComponents(tx, target.id, version, { ids: parsed.retire })));
-  for (const kind of ['destination', 'notes'] as const) {
-    const body = parsed[kind];
-    if (body === undefined) continue;
-    // In order: retire the current one, then write its successor.
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(...(await retireComponents(tx, target.id, version, { kind })));
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, target.id, version, kind, body, null));
-  }
-  for (const line of parsed.addFog) {
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, target.id, version, 'fog', line, null));
-  }
-  for (const item of parsed.addOutOfScope) {
-    const { text, ticketId } = item;
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, target.id, version, 'out_of_scope', text, ticketId));
-  }
-
-  await tx.query(
-    `insert into map_versions (business_id, id, map_id, version, changed, actor_id)
-     values ($1, $2, $3, $4, $5::uuid[], $6)`,
-    [tx.businessId, randomUUID(), target.id, version, changed, context.session.actorId],
-  );
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('map_version', $3::int), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, version],
-  );
-  return applied(target.id, Number(rows[0]?.revision), { version, changed });
+  const written = await applyRevision(tx, context, target.id, parsed);
+  return applied(target.id, written.revision, {
+    version: written.version,
+    changed: written.changed,
+  });
 }
 
 /**

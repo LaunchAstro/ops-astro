@@ -28,6 +28,8 @@ create table public.map_components (
   created_version  integer     not null,
   -- The version that replaced or removed it; null while it is current.
   retired_version  integer,
+  -- A graduated fog patch: the tickets it became (WF-2).
+  graduated_into   uuid[],
   created_at       timestamptz not null default now(),
   constraint map_components_pkey primary key (id),
   constraint map_components_tenant_id_key unique (business_id, id),
@@ -43,6 +45,8 @@ create table public.map_components (
     check (char_length(btrim(body)) between 1 and 4000),
   constraint map_components_ticket_only_out_of_scope
     check (ticket_id is null or kind = 'out_of_scope'),
+  constraint map_components_graduated_fog
+    check (graduated_into is null or (kind = 'fog' and retired_version is not null)),
   constraint map_components_versions_ordered
     check (created_version >= 1 and (retired_version is null or retired_version > created_version))
 );
@@ -160,6 +164,48 @@ create policy authority_map_summaries on public.map_summaries
 
 grant select on public.map_summaries to ops_astro_app;
 
+-- The frontier read model (WF-2): a map's open, unblocked, unclaimed tickets
+-- in order. Written with the summary, by the same function, so the two never
+-- disagree about a map.
+create table public.map_frontier (
+  business_id  uuid     not null,
+  id           uuid     not null,
+  map_id       uuid     not null,
+  ticket_id    uuid     not null,
+  position     integer  not null,
+  constraint map_frontier_pkey primary key (id),
+  constraint map_frontier_tenant_id_key unique (business_id, id),
+  constraint map_frontier_business_fkey foreign key (business_id, business_id)
+    references public.businesses (business_id, id),
+  constraint map_frontier_map_fkey foreign key (business_id, map_id)
+    references public.records (business_id, id) on delete cascade,
+  constraint map_frontier_ticket_fkey foreign key (business_id, ticket_id)
+    references public.records (business_id, id) on delete cascade,
+  constraint map_frontier_position_counts check (position >= 1)
+);
+
+create unique index map_frontier_ticket_idx on public.map_frontier (business_id, map_id, ticket_id);
+create index map_frontier_order_idx on public.map_frontier (business_id, map_id, position);
+create index map_frontier_business_idx on public.map_frontier (business_id);
+create index map_frontier_ticket_fk_idx on public.map_frontier (business_id, ticket_id);
+
+alter table public.map_frontier enable row level security;
+alter table public.map_frontier force row level security;
+
+create policy tenancy_map_frontier on public.map_frontier
+  as restrictive
+  for all
+  using (business_id = (select public.app_business_id()))
+  with check (business_id = (select public.app_business_id()));
+
+create policy authority_map_frontier on public.map_frontier
+  as permissive
+  for all
+  using (true)
+  with check (true);
+
+grant select on public.map_frontier to ops_astro_app;
+
 -- Recount one map, or drop its row when the id is no longer a live map.
 -- Security definer so the read model has one writer; it runs under the
 -- caller's business setting, which the forced tenancy policy still applies.
@@ -183,8 +229,27 @@ begin
        and r.deleted_at is null and r.data ->> 'type' = 'map'
   ) then
     delete from public.map_summaries where business_id = v_business and map_id = p_map;
+    delete from public.map_frontier where business_id = v_business and map_id = p_map;
     return;
   end if;
+
+  delete from public.map_frontier where business_id = v_business and map_id = p_map;
+  insert into public.map_frontier (business_id, id, map_id, ticket_id, position)
+  select v_business, gen_random_uuid(), p_map, c.id,
+         row_number() over (order by c.num_2 nulls last, c.created_at, c.id)
+    from public.records c
+    left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
+   where c.business_id = v_business and c.record_type_id = v_task_type
+     and c.uuid_4 = p_map and c.deleted_at is null
+     and s.data ->> 'machine_category' is distinct from 'completed'
+     and c.uuid_2 is null and c.uuid_3 is null
+     and not exists (
+       select 1 from public.record_links l
+         join public.records b on b.business_id = l.business_id and b.id = l.from_record_id
+         left join public.records bs on bs.business_id = b.business_id and bs.id = b.uuid_1
+        where l.business_id = v_business and l.link_type = 'blocks' and l.to_record_id = c.id
+          and b.deleted_at is null
+          and bs.data ->> 'machine_category' is distinct from 'completed');
 
   insert into public.map_summaries
     (business_id, id, map_id, version, open_tickets, closed_tickets, fog, out_of_scope, updated_at)
@@ -275,3 +340,32 @@ create trigger map_components_map_summary
 create trigger map_versions_map_summary
   after insert on public.map_versions
   for each row execute function public.map_summary_on_map_part();
+
+-- A blocking link moves the frontier of the map its tickets are filed under.
+create or replace function public.map_summary_on_link()
+  returns trigger
+  language plpgsql
+  security definer
+  set search_path = pg_catalog, public
+as $$
+declare
+  v_map uuid;
+begin
+  for v_map in
+    select distinct r.uuid_4 from public.records r
+     where r.business_id = public.app_business_id() and r.uuid_4 is not null
+       and r.id in (
+         case when tg_op <> 'DELETE' then new.to_record_id end,
+         case when tg_op <> 'INSERT' then old.to_record_id end)
+  loop
+    perform public.map_summary_refresh(v_map);
+  end loop;
+  return null;
+end;
+$$;
+
+revoke all on function public.map_summary_on_link() from public;
+
+create trigger record_links_map_summary
+  after insert or update or delete on public.record_links
+  for each row execute function public.map_summary_on_link();

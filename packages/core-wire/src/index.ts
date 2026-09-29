@@ -48,6 +48,7 @@ export type {
   MapComponentView,
   MapView,
   MapViewResult,
+  MapFrontierResult,
   SessionCapabilities,
   SettingView,
   SharedTaskRead,

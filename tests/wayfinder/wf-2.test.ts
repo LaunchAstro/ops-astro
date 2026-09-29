@@ -83,6 +83,9 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     w = await wayfinderWorld('wf2', 'wftwo');
     owner = await w.decider('owner');
     teammate = await w.decider('teammate');
+    // Claiming is task:assign, which the deciders hold beside decide.
+    await w.grant(owner, 'assign');
+    await w.grant(teammate, 'assign');
     writer = await w.member('writer', ['read', 'write']);
     assigner = await w.member('assigner', ['read', 'assign']);
     reader = await w.member('reader', ['read']);
@@ -345,7 +348,8 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       await w.as(owner, { command: 'task.close_out_of_scope', ...(await at(b)), reason: 'no' }),
       'close',
     );
-    const lines = (await w.audit()).slice(before);
+    // Reads are audited too (I13); this line is about the writes.
+    const lines = (await w.audit()).slice(before).filter((l) => l.command !== 'map.frontier');
     expect(lines.map((l) => [l.command, l.outcome])).toStrictEqual([
       ['map.chart', 'applied'],
       ['task.set_blocking', 'applied'],

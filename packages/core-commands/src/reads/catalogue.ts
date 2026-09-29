@@ -31,7 +31,7 @@ import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
-import { readMapView } from './maps.ts';
+import { readMapFrontier, readMapView } from './maps.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -210,6 +210,22 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
       const map = await readMapView(tx, spine.taskTypeId, recordId);
       return map === undefined ? refuseNotFound() : { ok: true, map };
+    },
+  },
+  'map.frontier': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the map’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const answer = await readMapFrontier(tx, spine.taskTypeId, recordId);
+      return answer ?? refuseNotFound();
     },
   },
   'task.board': {

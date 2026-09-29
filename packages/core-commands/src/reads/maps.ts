@@ -6,7 +6,7 @@
 // on its ticket (W2).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { MapComponentView, MapView } from '../../../core-wire/src/index.ts';
+import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -127,5 +127,46 @@ export async function readMapView(
       actorId: row.actor_id,
       at: row.created_at.toISOString(),
     })),
+  };
+}
+
+/**
+ * The frontier and the fog, one query each on their read models, or undefined
+ * when the id names no live map here.
+ */
+export async function readMapFrontier(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+): Promise<MapFrontierResult | undefined> {
+  const frontier = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly type: string;
+  }>(
+    `select f.ticket_id as id, t.txt_1 as key, t.txt_4 as title,
+            coalesce(t.data ->> 'type', 'task') as type
+       from public.records m
+       left join public.map_frontier f on f.business_id = m.business_id and f.map_id = m.id
+       left join public.records t on t.business_id = f.business_id and t.id = f.ticket_id
+      where m.business_id = $1 and m.id = $2 and m.record_type_id = $3
+        and m.deleted_at is null and m.data ->> 'type' = 'map'
+      order by f.position`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+  if (frontier.length === 0) return undefined;
+  const fog = await tx.query<{ readonly id: string; readonly body: string }>(
+    `select id, body from public.map_components
+      where business_id = $1 and map_id = $2 and kind = 'fog' and retired_version is null
+      order by position`,
+    [tx.businessId, mapId],
+  );
+  return {
+    ok: true,
+    frontier: frontier
+      .filter((row) => row.id !== null)
+      .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
+    fog: fog.map((row) => ({ id: row.id, text: row.body })),
   };
 }
