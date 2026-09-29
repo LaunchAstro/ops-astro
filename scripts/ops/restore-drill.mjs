@@ -128,26 +128,9 @@ export async function restoreDrill({
       // No network and no published port: nothing outside can reach it, and it
       // can reach nothing. Local trust is safe for the same reason. The data
       // directory is memory only, so restored rows never reach the disk.
-      await must(
-        run([
-          'run',
-          '-d',
-          '--rm',
-          '--network',
-          'none',
-          '--name',
-          name,
-          '--tmpfs',
-          PGDATA,
-          '-e',
-          `PGDATA=${PGDATA}`,
-          '-e',
-          'POSTGRES_HOST_AUTH_METHOD=trust',
-          '-e',
-          `POSTGRES_DB=${DB}`,
-          image,
-        ]),
-      );
+      const container = `-d --rm --network none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
+      const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
+      await must(run(['run', ...`${container} ${env}`.split(' '), image]));
       let ready = false;
       for (let i = 0; i < 120 && !ready; i += 1) {
         // Over TCP, not the socket: the image's init server listens on the socket only.
@@ -177,25 +160,34 @@ export async function restoreDrill({
       // itself. Every read runs as that role under the named business, where
       // the forced business barrier shows exactly one business: more means the
       // barrier did not survive the restore, and a person or client of another
-      // business is not there to find.
+      // business is not there to find. Within it, the named person must be a
+      // current member holding a current grant over the named client, at party
+      // scope or as the business's manager (Sol's review 3 on #120).
       await psql(
         `create role ${APP_ROLE} nologin`,
         `grant usage on schema public to ${APP_ROLE}`,
         `grant select on all tables in schema public to ${APP_ROLE}`,
         `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
-      const [tables = '', businesses, people] = (
+      const [p, c] = [scope.person, scope.client];
+      const [tables = '', granted, businesses, people] = (
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
           `select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
-             where schemaname in ('public', 'ops')), (select count(*) from public.businesses),
-             (select count(*) from public.people where id in ('${scope.person}', '${scope.client}'))`,
+             where schemaname in ('public', 'ops')),
+             (exists (select from public.memberships where person_id = '${p}' and active)
+             and exists (select from public.grants where subject_kind = 'person' and subject_id = '${p}'
+               and revoked_at is null and coalesce(expires_at > now(), true)
+               and (scope_kind = 'party' and scope_id = '${c}' or scope_kind = 'business' and action = 'manage'))
+             )::int, (select count(*) from public.businesses),
+             (select count(*) from public.people where id in ('${p}', '${c}'))`,
         )
       ).split('|');
       const present = new Set(tables.split(','));
       const whole = expected.length > 0 && expected.every((t) => present.has(t));
-      if (!whole || businesses !== '1' || people !== '2') throw new Error('check failed');
+      if (!whole || granted !== '1' || businesses !== '1' || people !== '2')
+        throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;
     });
