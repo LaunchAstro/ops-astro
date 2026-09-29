@@ -219,6 +219,47 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
     expect(await comments(w.taskId)).toBe(0);
   });
 
+  it('Sol proof, criterion 3: an effect identity cannot write a client-visible comment', async () => {
+    const taskId = await createTask(s, `t2c2 person effect ${randomUUID()}`);
+    const proposal = appliedDetail(
+      await asPerson(s, {
+        ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose() }),
+        step: { kind: 'synthetic_comment', payload: {} },
+      }),
+      'task.propose',
+    );
+    const decision = await approve(s, proposal);
+    const picked = appliedDetail(
+      await asPerson(s, {
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: decision['reservationId'],
+      }),
+      'task.pickup',
+    );
+    appliedDetail(
+      await asPerson(s, {
+        command: 'task.dispatch',
+        operationId: randomUUID(),
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+      }),
+      'task.dispatch',
+    );
+    const attemptId = String(picked['attemptId']);
+    const effect = await asPerson(s, {
+      command: 'task.comment',
+      operationId: effectOperationId(attemptId),
+      recordId: taskId,
+      expectedRevision: await revisionOf(s, taskId),
+      body: 'Client-visible effect under the attempt identity',
+      audience: 'client',
+    });
+    expect(codeOf(effect)).not.toBe('applied');
+    expect(await comments(taskId)).toBe(0);
+    expect(await receiptOf(attemptId)).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
   it('the effect applies exactly once under duplicate delivery and a lost response', async () => {
     const w = await work();
     // A lost dispatch response: asked again, the committed mark and identity come back.

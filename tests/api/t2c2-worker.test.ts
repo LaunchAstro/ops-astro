@@ -99,7 +99,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     });
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
     const decisionId = String((decided.body['detail'] as Record<string, unknown>)['decisionId']);
-    return { taskId, worker, versionId, decisionId };
+    return { taskId, worker, versionId, decisionId, credential };
   }
 
   const comments = async (taskId: string): Promise<readonly Record<string, unknown>[]> => {
@@ -159,5 +159,36 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     const foreign = await cli.run('task.receipt', { attemptId: randomUUID() });
     expect(foreign.status).not.toBe(200);
     expect(foreign.text).not.toContain('receipt"');
+  });
+
+  it('Sol proof, criterion 2: a worker resumes observation after the effect commits and the observe route is briefly unavailable', async () => {
+    const { taskId, credential } = await approvedWork();
+    let failed = 0;
+    const lostObservation: Transport = async (path, body, bearer, delegation) => {
+      if (path.endsWith('/task/observe') && failed < 1) {
+        failed += 1;
+        return new Response(JSON.stringify({ code: 'UPSTREAM_UNAVAILABLE' }), { status: 503 });
+      }
+      return await transport(path, body, bearer, delegation);
+    };
+    const worker = createWorker({
+      transport: lostObservation,
+      businessKey: BUSINESS_KEY,
+      credential: agentToken,
+      delegation: credential,
+      reporter: SYNTHETIC_USAGE,
+    });
+    const first = await worker.applyOnce(taskId);
+    expect(
+      (await comments(taskId)).filter((comment) => comment['body'] === EFFECT_BODY),
+    ).toHaveLength(1);
+    const resumed = 'applied' in first ? first : await worker.applyOnce(taskId);
+    expect(resumed).toHaveProperty('applied');
+    if (!('applied' in resumed)) return;
+    const receipt = await asPerson('task.receipt', { attemptId: resumed.applied.attemptId });
+    expect(receipt.status).toBe(200);
+    expect(
+      (await comments(taskId)).filter((comment) => comment['body'] === EFFECT_BODY),
+    ).toHaveLength(1);
   });
 });
