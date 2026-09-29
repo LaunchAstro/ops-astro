@@ -180,6 +180,7 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    mentions: 'm-comment',
   },
   {
     command: 'task.propose',
@@ -238,7 +239,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment', 'm-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],

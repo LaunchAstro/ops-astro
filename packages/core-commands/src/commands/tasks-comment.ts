@@ -28,7 +28,7 @@
 // is a payload field: a comment whose author or time a caller can choose is
 // not evidence of anything, which is why both are `system` on the spine.
 
-import { writeComment } from '../../../core-records/src/index.ts';
+import { raiseMentions, readMentions, writeComment } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
   CommentAudience,
@@ -37,6 +37,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
+import { isIdentifier } from './operands.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
@@ -64,12 +65,17 @@ const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'It is not a permission problem and retrying will not change it.',
 ];
 
+const MENTIONS_FIXES: readonly string[] = [
+  'Send mentions as a list of person ids, or leave it out.',
+];
+
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  mentions: unknown,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) {
@@ -88,6 +94,7 @@ export async function commentOnTask(
     body,
     audience,
     commentType,
+    mentions,
   );
 }
 
@@ -126,6 +133,7 @@ export async function writeTaskComment(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  mentions: unknown = [],
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
@@ -162,6 +170,24 @@ export async function writeTaskComment(
   if (commentType !== undefined && (typeof commentType !== 'string' || !TYPES.has(commentType))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
+  const named = mentions ?? [];
+  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
+  }
+  // INB-1: a mention of someone who cannot read the comment is refused before
+  // it saves, naming them, rather than raising an item they could never open.
+  const task = { taskId: on.target.id, audience };
+  const mentioned = await readMentions(tx, task, named as string[]);
+  const unreadable = mentioned.filter((person) => !person.readable);
+  if (unreadable.length > 0) {
+    return refused(
+      refuseCommand(
+        'MENTION_NOT_READABLE',
+        ['mentions'],
+        unreadable.map((person) => `${person.label} cannot read this comment: remove the mention.`),
+      ),
+    );
+  }
 
   const commentId = await writeComment(tx, commentTypeId, {
     taskId: on.target.id,
@@ -171,6 +197,7 @@ export async function writeTaskComment(
     body,
     source: on.entryPoint,
   });
+  await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 
   return applied(on.target.id, on.target.revision, { commentId });
 }
