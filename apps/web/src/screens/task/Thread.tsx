@@ -88,7 +88,7 @@ function Row(props: {
       data-comment-id={comment.id}
       data-audience={comment.audience}
     >
-      <RowMeta comment={comment} reply={isReply} />
+      <RowMeta comment={comment} />
       {editing ? (
         <EditBox
           body={comment.body}
@@ -114,11 +114,8 @@ function Row(props: {
   );
 }
 
-/** Who may read a row, what it is, who wrote it and when, and a message's signal. */
-function RowMeta(props: {
-  readonly comment: InternalCommentView;
-  readonly reply: boolean;
-}): ReactElement {
+/** Who may read a row, what it is, who wrote it and when, and a client message's signal. */
+function RowMeta(props: { readonly comment: InternalCommentView }): ReactElement {
   return (
     <div className="sbact__meta">
       {/* The audience is drawn on every comment, because "who may read
@@ -130,7 +127,7 @@ function RowMeta(props: {
       <span> · {props.comment.comment_type}</span>
       <span> · {props.comment.author}</span>
       <span> · {props.comment.posted_at}</span>
-      {props.reply ? null : <Signal signal={props.comment.signal ?? null} />}
+      <Signal signal={props.comment.signal ?? null} />
     </div>
   );
 }
