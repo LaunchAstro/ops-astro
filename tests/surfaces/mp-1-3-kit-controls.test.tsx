@@ -7,9 +7,10 @@
 // controls are driven the way a person drives them (a click, a key), and the
 // sheet is read for the rules the catalogue rules on: one focus ring (DR-1),
 // the outline disabled primary (DR-22), the segmented control's hover (SHELL
-// I8). The visual match and the three-width captures run on MP-1-7's harness
-// over the gallery, which asks for a session: they wait on T4b1's fixture.
+// I8). The visual match draws the gallery in a real browser at three widths in
+// both themes (tests/visual/gallery-views.ts, mp-1-3-gallery-states.ts).
 
+import { spawnSync } from 'node:child_process';
 import { type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it } from 'vitest';
@@ -20,6 +21,7 @@ import { ROUTES } from '../../apps/web/src/routes.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 import { mount, type Mounted } from './mount.tsx';
 import { primitiveSheets } from '../support/primitive-sheets.ts';
+import type { GalleryReport } from './mp-1-3-gallery-states.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const sheet = primitiveSheets();
@@ -155,6 +157,31 @@ it('MP-1-3 segmented control with a hover rule', async () => {
   expect(rule(".facet[aria-pressed='true']")).not.toMatch(/background/u);
 });
 
-it.todo(
-  "MP-1-3 visual match and the gallery captured at three widths in both themes, hover, focus and the open select (MP-1-7 harness; waits on T4b1's signed-in fixture, the gallery asks for a session)",
-);
+it('MP-1-3 visual match: the gallery at 1480, 900 and 390, light and dark, every entry drawn inside the width, with hover, focus and the open select, in a browser', () => {
+  const script = new globalThis.URL('mp-1-3-gallery-states.ts', import.meta.url).pathname;
+  const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
+  expect(run.status, run.stderr.slice(-2000)).toBe(0);
+  const { views, sameInDark } = JSON.parse(run.stdout) as GalleryReport;
+  const ids = GALLERY.map((entry) => entry.id);
+  expect(views.map((view) => view.name)).toEqual(
+    [1480, 900, 390].flatMap((width) => [`gallery@${width}-light`, `gallery@${width}-dark`]),
+  );
+  for (const view of views) {
+    const width = Number(/@(\d+)-/u.exec(view.name)?.[1]);
+    expect(view.sideways, `${view.name} scrolls sideways`).toBe(0);
+    expect(view.boxes.map((box) => box.id)).toEqual(ids);
+    for (const box of view.boxes) {
+      expect(box.width * box.height, `${view.name}: ${box.id} is not drawn`).toBeGreaterThan(0);
+      expect(box.left, `${view.name}: ${box.id} starts off the page`).toBeGreaterThanOrEqual(0);
+      expect(box.right, `${view.name}: ${box.id} runs past the width`).toBeLessThanOrEqual(width);
+    }
+    expect(view.hoverDiffers, `${view.name}: hover on the segmented control`).toBe(true);
+    expect(view.focusDiffers, `${view.name}: keyboard focus on a button`).toBe(true);
+    expect(view.ring, `${view.name}: the focus ring`).not.toBe('none');
+    expect(view.select, `${view.name}: the select opens on a click`).toEqual({
+      closedMenus: 0,
+      openMenus: 1,
+    });
+  }
+  expect(sameInDark, 'entries drawn the same in dark as in light').toEqual([]);
+}, 900_000);
