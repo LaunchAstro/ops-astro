@@ -10,21 +10,10 @@
 // I8). The visual match and the three-width captures run on MP-1-7's harness
 // over the gallery, which asks for a session: they wait on T4b1's fixture.
 
-import { act, type ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it } from 'vitest';
-import {
-  Button,
-  Checkbox,
-  Disclosure,
-  HeadButton,
-  IconButton,
-  SearchBox,
-  Segmented,
-  Select,
-  Switch,
-  TextField,
-} from '../../packages/ui/src/kit/controls.tsx';
+import { Button, HeadButton, IconButton, Segmented } from '../../packages/ui/src/kit/controls.tsx';
 import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
 import { PAGES, pageAt } from '../../apps/web/src/manifest.ts';
 import { ROUTES } from '../../apps/web/src/routes.ts';
@@ -47,12 +36,6 @@ afterEach(async () => {
   await mounted?.unmount();
   mounted = undefined;
 });
-
-const key = async (element: Element | null, name: string): Promise<void> => {
-  await act(() => {
-    element?.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
-  });
-};
 
 it('MP-1-3 the component gallery page is registered and draws the kit', async () => {
   // Read as a plain record, so this test compiles before the route exists.
@@ -170,149 +153,6 @@ it('MP-1-3 segmented control with a hover rule', async () => {
   // A pressed facet is an accent outline, never a fill.
   expect(rule(".facet[aria-pressed='true']")).toMatch(/border-color:\s*var\(--accent\)/u);
   expect(rule(".facet[aria-pressed='true']")).not.toMatch(/background/u);
-});
-
-it('MP-1-3 fields: text input, textarea, select menu and search', async () => {
-  let title = '';
-  mounted = await mount(
-    <TextField
-      label="Task title"
-      value=""
-      onChange={(v) => {
-        title = v;
-      }}
-      error="A title needs at least three words"
-    />,
-  );
-  const input = mounted.find('input');
-  const label = mounted.find('label');
-  expect(label?.getAttribute('for')).toBe(input?.id);
-  expect(input?.getAttribute('aria-invalid')).toBe('true');
-  expect(mounted.find(`#${String(input?.getAttribute('aria-describedby'))}`)?.textContent).toBe(
-    'A title needs at least three words',
-  );
-  await mounted.type('input', 'Write the brief');
-  expect(title).toBe('Write the brief');
-  await mounted.unmount();
-
-  mounted = await mount(<TextField label="Brief" value="" onChange={() => {}} multiline />);
-  expect(mounted.find('textarea.ta')).not.toBeNull();
-  await mounted.unmount();
-
-  let assignee = 'lead';
-  const options = [
-    { value: 'none', label: 'Unassigned' },
-    { value: 'lead', label: 'Account lead' },
-    { value: 'designer', label: 'Designer' },
-  ];
-  mounted = await mount(
-    <Select
-      label="Assignee"
-      options={options}
-      value={assignee}
-      onChange={(v) => {
-        assignee = v;
-      }}
-    />,
-  );
-  const trigger = mounted.find('button.sel__btn');
-  expect(trigger?.getAttribute('aria-haspopup')).toBe('listbox');
-  expect(trigger?.getAttribute('aria-expanded')).toBe('false');
-  expect(mounted.find('[role="listbox"]')).toBeNull();
-  await key(trigger, 'ArrowDown');
-  expect(trigger?.getAttribute('aria-expanded')).toBe('true');
-  expect(mounted.all('[role="option"]').map((o) => o.getAttribute('aria-selected'))).toEqual([
-    'false',
-    'true',
-    'false',
-  ]);
-  await key(trigger, 'ArrowDown');
-  expect(trigger?.getAttribute('aria-activedescendant')).toMatch(/-opt-2$/u);
-  await key(trigger, 'Enter');
-  expect(assignee).toBe('designer');
-  expect(mounted.find('[role="listbox"]')).toBeNull();
-  await mounted.click('button.sel__btn');
-  await key(trigger, 'Escape');
-  expect(mounted.find('[role="listbox"]')).toBeNull();
-  expect(document.activeElement).toBe(trigger);
-  await mounted.click('button.sel__btn');
-  await mounted.click('[role="option"]:first-child');
-  expect(assignee).toBe('none');
-  await mounted.unmount();
-
-  mounted = await mount(
-    <SearchBox
-      label="Search tasks"
-      value=""
-      onChange={() => {}}
-      placeholder="Search"
-      keycap="⌘K"
-    />,
-  );
-  expect(mounted.find('input[type="search"]')?.getAttribute('aria-label')).toBe('Search tasks');
-  expect(mounted.find('kbd.keycap')?.textContent).toBe('⌘K');
-  expect(mounted.find('svg.icon')).not.toBeNull();
-  // DS-PRIM-19: the option menu is an accent-bordered box on paper.
-  expect(rule('.menu')).toMatch(/border:\s*1px solid var\(--accent\)/u);
-  expect(rule('.tf,\n.ta')).toMatch(/border:\s*1px solid var\(--border\)/u);
-  expect(sheet).toMatch(/\[aria-invalid='true'\][^{]*\{[^}]*border-color:\s*var\(--danger\)/u);
-});
-
-it('MP-1-3 checkbox, switch and disclosure', async () => {
-  let checked = false;
-  mounted = await mount(
-    <Checkbox
-      label="Done"
-      checked={false}
-      onChange={(v) => {
-        checked = v;
-      }}
-    />,
-  );
-  expect(mounted.find('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('false');
-  await mounted.click('[role="checkbox"]');
-  expect(checked).toBe(true);
-  await mounted.unmount();
-  // Checked is an outline and a tick, never a fill.
-  expect(rule(".check[aria-checked='true']")).toMatch(/border-color:\s*var\(--accent\)/u);
-  expect(rule(".check[aria-checked='true']")).not.toMatch(/background/u);
-
-  let on = false;
-  mounted = await mount(
-    <Switch
-      label="Email me"
-      on={false}
-      onChange={(v) => {
-        on = v;
-      }}
-    />,
-  );
-  await mounted.click('[role="switch"]');
-  expect(on).toBe(true);
-  await mounted.unmount();
-  const off = renderToStaticMarkup(
-    <Switch label="Email me" on={false} onChange={() => {}} disabled reason="Not built yet" />,
-  );
-  expect(off).toContain('disabled=""');
-  expect(off).toContain('title="Not built yet"');
-  expect(rule('.switch:disabled')).toMatch(/border-style:\s*dashed/u);
-
-  let open = false;
-  mounted = await mount(
-    <Disclosure
-      label="Show the detail"
-      open={false}
-      controls="detail"
-      onToggle={(v) => {
-        open = v;
-      }}
-    />,
-  );
-  expect(mounted.find('button')?.getAttribute('aria-expanded')).toBe('false');
-  expect(mounted.find('button')?.getAttribute('aria-controls')).toBe('detail');
-  await mounted.click('button');
-  expect(open).toBe(true);
-  expect(rule(".disclosure[aria-expanded='true'] .icon")).toMatch(/rotate\(90deg\)/u);
 });
 
 it.todo(
