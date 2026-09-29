@@ -303,7 +303,7 @@ export function createApi(options: ApiOptions): Hono {
 /**
  * Whether this caller may watch the task, asked after verifying the bearer
  * again of `task.execution`, the internal activity the channel reports:
- * expiry, a revoked grant and any external reader all refuse (Sol, #111).
+ * expiry, a revoked grant and any external reader all refuse.
  * The answer is the task's identifier, the topic.
  */
 async function mayWatch(

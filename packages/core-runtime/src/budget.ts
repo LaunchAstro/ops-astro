@@ -300,7 +300,7 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   };
   // Discovery: everyone who gave a first approval on this envelope has their
   // grants held with the caller's, before the runtime set, so a revocation
-  // waits for this decision (Sol, #130).
+  // waits for this decision.
   const known = await approvers(tx, ENVELOPE_APPROVERS, [found.id]);
   const holders = [...request.subjects, ...known.flatMap((first) => first.subjects)];
   await holdCoveringGrants(tx, holders, request.collection);
@@ -334,7 +334,7 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   const pairs = typeof band === 'number' && request.amountMinor > BigInt(Math.round(band * 100));
   // Under the locks: the first approvals of exactly this figure, so one that
   // committed after discovery counts. Its holder's grants are held without
-  // waiting on a grant row under runtime locks (Sol, #130); rows discovery
+  // waiting on a grant row under runtime locks; rows discovery
   // already holds come back at once.
   const firsts = pairs ? await approvers(tx, FIRST_APPROVALS, [envelope.id, figure]) : [];
   if (firsts.length > 0) await holdWithoutWaiting(tx, firsts, request.collection);

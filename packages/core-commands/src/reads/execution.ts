@@ -76,7 +76,7 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 /**
  * The runs, the event head and one page of events, read by one statement so
  * all three come from one snapshot: separate reads could see a successor's
- * events without its run (Sol, #97 criterion 2). Counters come back as
+ * events without its run. Counters come back as
  * `float8`, exact to 2^53 as a JS number is, so the rows need no mapping.
  */
 async function snapshot(

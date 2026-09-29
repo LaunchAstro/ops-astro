@@ -38,7 +38,7 @@ export interface AppliedEffect {
 
 export type ObserveRequest = DispatchRequest & {
   readonly attemptId: string;
-  /** Asked under the locks, so an effect committing meanwhile is seen (Sol review 2 on #124). */
+  /** Asked under the locks, so an effect committing meanwhile is seen. */
   readonly effect: () => Promise<AppliedEffect | undefined>;
   /** What the step used, as the worker's reporter says it; the book prices it. */
   readonly usage: unknown;

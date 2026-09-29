@@ -136,15 +136,15 @@ const EFFECT_FIXES: readonly string[] = [
  *
  * T2d: the attempt must still be `dispatched`. Once observe has settled it, or
  * held it as an unknown liability, its outcome is recorded and a late effect
- * would contradict it (Sol review 1 on #124, criterion 2). A retried effect is
+ * would contradict it. A retried effect is
  * unaffected: the register replays it before this runs.
  *
  * The step is found only through an attempt whose lease binds it to this task
  * and this author, so another client's attempt is refused before anything of
- * its is locked or waited on (Sol review 3 on #124, criterion 3). That step is
+ * its is locked or waited on. That step is
  * then locked through the one lock helper and held to commit, and the check
  * runs again under it: observe takes the same lock, so it cannot settle the
- * attempt between this check and the comment's write (Sol review 2, criterion 2).
+ * attempt between this check and the comment's write.
  */
 async function effectRefusal(
   tx: TenantQuery,

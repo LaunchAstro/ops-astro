@@ -320,7 +320,7 @@ export function TopUp(props: {
           fromMaximumMinor: envelope.maximumMinor,
         }),
       (settlement) => {
-        // Held above the read: the reread below unmounts this control (Sol, #130).
+        // Held above the read: the reread below unmounts this control.
         if (settlement.kind !== 'ok') props.onNote({ kind: 'refusal', said: settlement.because });
         else if (settlement.value.detail?.['state'] === 'awaiting_second_approver') {
           props.onNote({ kind: 'awaiting', said: AWAITING });
