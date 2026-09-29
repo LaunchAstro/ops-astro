@@ -121,6 +121,13 @@ describe('MP-3-1 data-backed tabs', () => {
     ]);
   });
 
+  it('draws no tab for a registration whose route reads no data, such as sign-in', () => {
+    const signIn: PanelRegistration = { ...settings, route: 'agency:sign-in' };
+    expect(dockTabs({ ai: 3 }, { ai: signIn, settings }).map((tab) => tab.id)).toEqual([
+      'settings',
+    ]);
+  });
+
   it('points every shipped tab at a route the router serves', () => {
     for (const tab of dockTabs()) {
       expect(matchRoute(pathTo(tab.route))?.id).toBe(tab.route);
