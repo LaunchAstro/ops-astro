@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines, max-lines-per-function -- one suite per ticket: each case is a checklist line on one shared world */
 //
 // WF-1 (roadmap #634): task types and the map as a task, the map's components,
 // client scope, and who may retype a ticket.
