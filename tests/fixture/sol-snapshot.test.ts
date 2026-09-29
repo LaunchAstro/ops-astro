@@ -108,3 +108,58 @@ it.skipIf(serverUrl === undefined)(
   },
   120_000,
 );
+
+it.skipIf(serverUrl === undefined)(
+  'Sol proof, criterion 3: both fixture clone paths deny temporary tables to the application role',
+  async () => {
+    const hash = createHash('sha256');
+    const sources = [
+      ...readdirSync('migrations')
+        .filter((name) => name.endsWith('.sql'))
+        .toSorted()
+        .map((name) => `migrations/${name}`),
+      ...['shape', 'cast', 'generate'].map((name) => `tests/fixture/${name}.ts`),
+    ];
+    for (const source of sources) hash.update(source).update(readFileSync(source));
+    const template = `fixture_${hash.digest('hex').slice(0, 16)}`;
+    const direct = `fixture_sol_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const fallback = `fixture_sol_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
+    const existing = await server.execute<{ datname: string }>(
+      'select datname from pg_database where datname = $1',
+      [template],
+    );
+    const created = existing.length === 0;
+    if (created) {
+      await server.execute(`create database "${template}"`);
+      await server.execute(`revoke temporary on database "${template}" from public`);
+    }
+    const templateUrl = new URL(serverUrl ?? '');
+    templateUrl.pathname = `/${template}`;
+    const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
+    try {
+      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', direct];
+      vi.resetModules();
+      await import('./snapshot.ts');
+      await reader`select 1`;
+      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', fallback];
+      vi.resetModules();
+      await import('./snapshot.ts');
+      const rows = await server.execute<{ datname: string; temporary: boolean }>(
+        `select datname, has_database_privilege('ops_astro_app', oid, 'TEMP') temporary
+           from pg_database where datname in ($1, $2) order by datname`,
+        [direct, fallback],
+      );
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.temporary)).toStrictEqual([false, false]);
+    } finally {
+      process.argv = originalArgv;
+      await reader.end();
+      await server.execute(`drop database if exists "${direct}" with (force)`);
+      await server.execute(`drop database if exists "${fallback}" with (force)`);
+      if (created) await server.execute(`drop database "${template}" with (force)`);
+      await server.close();
+    }
+  },
+  120_000,
+);
