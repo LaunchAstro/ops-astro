@@ -87,6 +87,10 @@ describe('MP-9-1 primitives placed not restyled', () => {
     expect(restyled(styles('7-page-kit.css'), kitClasses())).toEqual([]);
   });
 
+  it('MP-7-10 the Team panel stylesheet styles no kit primitive either', () => {
+    expect(restyled(styles('10-team.css'), kitClasses())).toEqual([]);
+  });
+
   it('the check finds a restyle however the stylesheet hides it', () => {
     const kit = kitClasses();
     const planted = [

@@ -37,6 +37,7 @@ import './styles/6-kit-standin.css';
 import './styles/7-page-kit.css';
 import './styles/8-notifications.css';
 import './styles/9-ledger.css';
+import './styles/10-team.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';

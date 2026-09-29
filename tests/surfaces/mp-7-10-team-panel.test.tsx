@@ -6,6 +6,7 @@
 // their own availability with a reason. One test per supporting checklist
 // line; `availability set`'s command, audit and isolation are the server's.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TeamPanel,
@@ -170,6 +171,12 @@ describe('MP-7-10 CS-7.27 the person sets their own availability with a reason',
     const submit = mounted.find('.tmc__me button[type="submit"]');
     expect(submit?.hasAttribute('disabled')).toBe(true);
     await mounted.click('.tmc__me button[type="submit"]');
+    // Enter in the field submits the form without the button: still nothing.
+    await act(() => {
+      mounted?.host
+        .querySelector('form.tmc__me')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
     expect(p.calls.availability).toEqual([]);
   });
 
