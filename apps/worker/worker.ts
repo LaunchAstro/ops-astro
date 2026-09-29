@@ -88,42 +88,64 @@ interface Held {
   readonly credential: string;
 }
 
+/** A pickup asked for and not yet answered: asked again under its identity, it replays. */
+interface Asked {
+  readonly reservationId: unknown;
+  readonly operationId: string;
+}
+
 /**
  * Apply the approved proposal on `taskId` once: pick it up, dispatch, the
- * comment, observe. A pickup leaves the queue, so work picked up and not yet
- * observed is kept in `held` and the next pass resumes it rather than looking
- * for it there; dispatch, the effect and observe each replay.
+ * comment, observe. A pickup leaves the queue whether or not its answer
+ * arrives, so a pickup with no answer is kept and asked again under its own
+ * identity, which replays it with its credential; work picked up and not yet
+ * observed is kept too, and the next pass resumes it. Dispatch, the effect
+ * and observe each replay.
  */
 async function applyOnce(
   options: WorkerOptions,
-  held: Map<string, Held>,
+  kept: Map<string, Held | Asked>,
   taskId: string,
 ): Promise<WorkerOutcome> {
-  let work = held.get(taskId);
-  if (work === undefined) {
-    const picked = await pickUp(options, taskId);
-    if (!('held' in picked)) return picked;
+  const known = kept.get(taskId);
+  let work: Held;
+  if (known !== undefined && 'credential' in known) {
+    work = known;
+  } else {
+    const asked = known ?? (await ask(options, taskId));
+    if (!('operationId' in asked)) return asked;
+    kept.set(taskId, asked);
+    const picked = await pickUp(options, asked);
+    // A fault may be a lost answer to a committed pickup, so it is asked again.
+    if (!('held' in picked)) {
+      if (!('fault' in picked)) kept.delete(taskId);
+      return picked;
+    }
     work = picked.held;
-    held.set(taskId, work);
+    kept.set(taskId, work);
   }
   const outcome = await effectOnce(options, taskId, work);
   // A fault may be a lost answer, so the work is kept; anything else ends it here.
-  if (!('fault' in outcome)) held.delete(taskId);
+  if (!('fault' in outcome)) kept.delete(taskId);
   return outcome;
 }
 
-/** The queue and the pickup, reached before any delegation (`agent-envelope.ts`). */
-async function pickUp(
-  options: WorkerOptions,
-  taskId: string,
-): Promise<{ readonly held: Held } | WorkerOutcome> {
-  const before = agentCall(options);
-  const queued = await before('task.queue', {});
+/** The queued work on `taskId`, read before any delegation (`agent-envelope.ts`). */
+async function ask(options: WorkerOptions, taskId: string): Promise<Asked | WorkerOutcome> {
+  const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
   const work = entries.find((entry) => entry['taskId'] === taskId);
   if (work === undefined) return { idle: { taskId } };
-  const picked = await before('task.pickup', { reservationId: work['reservationId'] });
+  return { reservationId: work['reservationId'], operationId: randomUUID() };
+}
+
+/** The pickup, under the identity it was first asked with. */
+async function pickUp(
+  options: WorkerOptions,
+  asked: Asked,
+): Promise<{ readonly held: Held } | WorkerOutcome> {
+  const picked = await agentCall(options)('task.pickup', asked);
   if (!('body' in picked)) return picked;
   return {
     held: {
@@ -160,9 +182,9 @@ export function createWorker(options: WorkerOptions): {
   readonly applyOnce: (taskId: string) => Promise<WorkerOutcome>;
 } {
   const call = agentCall(options, options.delegation);
-  const held = new Map<string, Held>();
+  const kept = new Map<string, Held | Asked>();
   return {
-    applyOnce: async (taskId) => await applyOnce(options, held, taskId),
+    applyOnce: async (taskId) => await applyOnce(options, kept, taskId),
     proposeOnce: async () => {
       const capabilities = await call('session.capabilities', {});
       if (!('body' in capabilities)) return capabilities;
