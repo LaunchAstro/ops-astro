@@ -292,6 +292,23 @@ describe.skipIf(serverUrl === undefined)('MP-4-10 client access', () => {
       expect(holders).toStrictEqual(clientAPeople.map((person) => person.personId).toSorted());
     });
 
+    it('off withdraws the old client’s shares after the client changed', async () => {
+      const task = await fresh(alpha, admin, 'moved client', clientA);
+      await toggle(alpha, admin, SHARE, task);
+      const moved = await as(alpha, admin, {
+        command: 'task.set_party',
+        recordId: task,
+        expectedRevision: await revisionOf(task),
+        fields: { client: clientB },
+      });
+      expect(outcomeOf(moved)).toStrictEqual({ applied: true });
+      // Still on: client A's people still see it until it is turned off.
+      expect(await clientAccessOf(admin, task)).toBe(true);
+      await toggle(alpha, admin, REVOKE, task);
+      expect(await liveHolders(task)).toStrictEqual([]);
+      expect(await clientAccessOf(admin, task)).toBe(false);
+    });
+
     it('refuses a task with no client, and a client nobody stands on, writing nothing', async () => {
       const unset = await fresh(alpha, admin, 'no client', null);
       expect(outcomeOf(await toggle(alpha, admin, SHARE, unset))).toStrictEqual({

@@ -8,6 +8,7 @@
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/reads/task-rank.test.ts",
-    "tests/commands/task-adhoc.test.ts"
+    "tests/commands/task-adhoc.test.ts",
+    "tests/commands/task-client-access.test.ts"
   ]
 }

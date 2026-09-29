@@ -21,7 +21,10 @@
 // deliberate edit to this pin. The second is MP-4-9's `task.set_scores`, a new
 // write an agent reaches inside its delegation: one row added to each table
 // that lists every write or every agent operation, nothing else moved. The
-// third is MP-4-10's `task.set_adhoc`, the same shape as the second.
+// third is MP-4-10's `task.set_adhoc`, the same shape as the second. The
+// fourth is MP-4-10's Client access, `task.share_with_client` and
+// `task.revoke_client_share`: two writes an agent never reaches, one row each
+// in the tables that list every write.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -68,6 +71,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (orig
 vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (original) => ({
   ...(await original<object>()),
   setAdHoc: recorder('setAdHoc'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
+  ...(await original<object>()),
+  shareWithClient: recorder('shareWithClient'),
+  revokeClientShare: recorder('revokeClientShare'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (original) => ({
   ...(await original<object>()),
@@ -264,6 +272,8 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'task.set_scores', operationId: 'op', recordId: 'r', fields: { impact: 7 } },
   { command: 'task.set_adhoc', operationId: 'op', recordId: 'r', fields: { ad_hoc: true } },
+  { command: 'task.share_with_client', operationId: 'op', recordId: 'r' },
+  { command: 'task.revoke_client_share', operationId: 'op', recordId: 'r' },
   { command: 'task.reparent', operationId: 'op', recordId: 'r', parentId: 'parent' },
   { command: 'task.move', operationId: 'op', recordId: 'r', board: 'b', boardSection: 's' },
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
@@ -327,6 +337,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
   'task.set_scores': ['setScores', { impact: 7 }],
   'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],
+  'task.share_with_client': ['shareWithClient'],
+  'task.revoke_client_share': ['revokeClientShare'],
   'task.reparent': ['reparentTask', 'parent'],
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],

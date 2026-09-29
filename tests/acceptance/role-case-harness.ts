@@ -24,6 +24,7 @@ import {
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
+import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
@@ -136,6 +137,36 @@ export async function createHarness(part: string): Promise<Harness> {
     const created = await asPerson('task.create', { fields: { title } });
     if (created.code !== 'ok') throw new Error(`matrix: task.create refused ${created.code}`);
     return { id: String(created.body['recordId']), revision: Number(created.body['revision']) };
+  }
+
+  /**
+   * A task on a fresh client, with one person outside the membership standing
+   * on that client through a party-scoped `task:read`: the client's existing
+   * people `task.share_with_client` shares with (MP-4-10).
+   */
+  async function clientTask(title: string): Promise<Task> {
+    const task = await freshTask(title);
+    const client = randomUUID();
+    const set = await asPerson('task.set_party', {
+      recordId: task.id,
+      expectedRevision: task.revision,
+      fields: { client },
+    });
+    if (set.code !== 'ok') throw new Error(`matrix: task.set_party refused ${set.code}`);
+    await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const personId = await insertPerson(tx, 'client person');
+      await insertActor(tx, personId);
+      const issued = await issueGrant(tx, [], {
+        subject: { kind: 'person', id: personId },
+        scope: { kind: 'party', id: client },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: world.ada.actorId as string,
+      });
+      if (!issued.ok) throw new Error(`matrix: party grant refused ${issued.refusal.code}`);
+    });
+    return { id: task.id, revision: Number(set.body['revision']) };
   }
 
   /**
@@ -275,6 +306,7 @@ export async function createHarness(part: string): Promise<Harness> {
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
+      clientTask,
     }),
     approvedReservation,
     reserve,
