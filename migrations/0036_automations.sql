@@ -76,6 +76,23 @@ create table public.definition_versions (
   )
 );
 
+create function public.definition_versions_immutable() returns trigger
+  language plpgsql
+  as $$
+begin
+  raise exception 'definition_versions: version % in business % is released and never changes',
+    old.id, old.business_id
+    using errcode = 'check_violation', constraint = 'definition_versions_immutable';
+end;
+$$;
+
+revoke execute on function public.definition_versions_immutable() from public;
+
+create trigger definition_versions_immutable
+  before update or delete on public.definition_versions
+  for each row
+  execute function public.definition_versions_immutable();
+
 create table public.activations (
   business_id          uuid        not null,
   id                   uuid        not null,
@@ -108,6 +125,30 @@ create table public.activations (
   constraint activations_revision_positive check (revision >= 1)
 );
 
+-- An after trigger, so row security has refused another business's row first
+-- and only a row this business may write is asked about its mode. The write
+-- passed row security on `activations`, so its pinned version is visible here.
+create function public.activations_mode_permitted() returns trigger
+  language plpgsql
+  as $$
+begin
+  if not exists (select 1 from public.definition_versions v
+                  where v.business_id = new.business_id and v.id = new.version_id
+                    and new.mode = any (v.modes)) then
+    raise exception 'activations: version % does not permit mode %', new.version_id, new.mode
+      using errcode = 'check_violation', constraint = 'activations_mode_permitted';
+  end if;
+  return null;
+end;
+$$;
+
+revoke execute on function public.activations_mode_permitted() from public;
+
+create constraint trigger activations_mode_permitted
+  after insert or update of mode, version_id on public.activations
+  for each row
+  execute function public.activations_mode_permitted();
+
 create table public.activation_occurrences (
   business_id    uuid        not null,
   id             uuid        not null,
@@ -120,6 +161,9 @@ create table public.activation_occurrences (
   recorded_at    timestamptz not null default now(),
   constraint activation_occurrences_pkey primary key (id),
   constraint activation_occurrences_tenant_id_key unique (business_id, id),
+  constraint activation_occurrences_due_once unique (business_id, activation_id, due_at),
+  constraint activation_occurrences_event_once unique (business_id, activation_id, event_id),
+  constraint activation_occurrences_run_once unique (business_id, run_id),
   constraint activation_occurrences_business_fkey foreign key (business_id, business_id)
     references public.businesses (business_id, id),
   constraint activation_occurrences_activation_fkey foreign key (business_id, activation_id)
@@ -130,7 +174,8 @@ create table public.activation_occurrences (
   constraint activation_occurrences_event_shape
     check (event_id is null or event_id ~ '^[A-Za-z0-9._:-]{1,200}$'),
   constraint activation_occurrences_outcome_known
-    check (outcome in ('started', 'activation_off', 'no_standing_approval'))
+    check (outcome in ('started', 'activation_off', 'no_standing_approval')),
+  constraint activation_occurrences_started_names_run check ((outcome = 'started') = (run_id is not null))
 );
 
 alter table public.automation_definitions enable row level security;

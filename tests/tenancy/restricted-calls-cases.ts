@@ -49,6 +49,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // (MP-14-10a). Both updates are column grants.
   ['su', 'graduation_classes'],
   ['siu', 'standing_mandates'],
+  // 0036: a definition, a released version and an occurrence are written once
+  // and never changed; an activation's setting is a column-granted update
+  // (C33).
+  ['si', 'activation_occurrences automation_definitions definition_versions'],
+  ['siu', 'activations'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

@@ -123,6 +123,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select $1, gen_random_uuid(), gen_random_uuid(), '{*}', true, now() + interval '1 day',
             'restricted calls', a.id
        from public.actors a where a.business_id = $1 order by a.id limit 1 returning 1`,
+  // Automations (C33): the journey releases and fires none. Each row is made
+  // from the one before, so the order here is the order of the chain.
+  'public.automation_definitions': `insert into public.automation_definitions
+       (business_id, id, kind, name, created_by_actor_id)
+     select $1, gen_random_uuid(), 'automation', 'restricted calls', a.id
+       from public.actors a where a.business_id = $1 order by a.id limit 1 returning 1`,
+  'public.definition_versions': `insert into public.definition_versions
+       (business_id, id, definition_id, number, content_digest, content_size, inputs, operations,
+        modes, released_by_actor_id)
+     select d.business_id, gen_random_uuid(), d.id, 1, repeat('a', 64), 0, '[]', '[]',
+            '{manual}', d.created_by_actor_id
+       from public.automation_definitions d where d.business_id = $1 limit 1 returning 1`,
+  'public.activations': `insert into public.activations
+       (business_id, id, definition_id, version_id, mode, changed_by_actor_id)
+     select v.business_id, gen_random_uuid(), v.definition_id, v.id, 'manual',
+            v.released_by_actor_id
+       from public.definition_versions v where v.business_id = $1 limit 1 returning 1`,
+  'public.activation_occurrences': `insert into public.activation_occurrences
+       (business_id, id, activation_id, version_id, due_at, outcome)
+     select a.business_id, gen_random_uuid(), a.id, a.version_id, now(), 'activation_off'
+       from public.activations a where a.business_id = $1 limit 1 returning 1`,
 };
 
 /**

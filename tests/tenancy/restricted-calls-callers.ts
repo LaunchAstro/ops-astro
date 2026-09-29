@@ -110,6 +110,7 @@ export const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', '
 const UPDATE_COLUMN: Readonly<Record<string, string>> = {
   'public.graduation_classes': 'revision',
   'public.standing_mandates': 'revision',
+  'public.activations': 'revision',
 };
 
 export function statementFor(table: CatalogueTable, operation: Operation): string {
