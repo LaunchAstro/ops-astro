@@ -98,6 +98,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0032: nothing in the journey raises an inbox item yet (INB-1b does).
+  'public.inbox_items': {
+    recipient_person_id: randomUUID(),
+    subject_record_id: randomUUID(),
+    reason: 'assignment',
+    fact_kind: 'record',
+    fact_id: randomUUID(),
+  },
+  'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
+  'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

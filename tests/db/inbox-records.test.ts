@@ -18,7 +18,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
-import * as records from '../../packages/core-records/src/index.ts';
+import {
+  raiseInboxItem,
+  readInboxItems,
+  recordDeliveryAttempt,
+} from '../../packages/core-records/src/index.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -30,30 +34,6 @@ import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.t
 import { createTask } from '../tasks/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-// RED-ONLY: the inbox module does not exist on this commit, so its contract is
-// written out here; the commit that builds it imports the three by name.
-interface InboxContract {
-  raiseInboxItem(
-    tx: TenantQuery,
-    item: {
-      recipientPersonId: string;
-      subjectRecordId: string;
-      reason: string;
-      fact: { kind: string; id: string };
-    },
-  ): Promise<string>;
-  readInboxItems(
-    tx: TenantQuery,
-    person: string,
-  ): Promise<readonly { id: string; access: string }[]>;
-  recordDeliveryAttempt(
-    tx: TenantQuery,
-    attempt: { itemId: string; channel: string; state: string },
-  ): Promise<string>;
-}
-const { raiseInboxItem, readInboxItems, recordDeliveryAttempt } =
-  records as unknown as InboxContract;
 
 const ITEM_COLUMNS = [
   'business_id',
@@ -160,7 +140,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       `select table_name, column_name from information_schema.columns
         where table_schema = 'public' and table_name like 'inbox%' and column_name like '%access%'`,
     );
-    expect(access).toStrictEqual([]);
+    expect([...access]).toStrictEqual([]);
   });
 
   it('records an attempt without moving the item, and the application cannot rewrite one', async () => {
@@ -173,12 +153,16 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
           fact: { kind: 'record', id: taskA },
         }),
     );
-    const before = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    const itemRow = async (): Promise<unknown> =>
+      await db.admin.execute('select * from public.inbox_items where id = $1', [item]);
+    const before = await itemRow();
     await inAlpha(async (tx) => {
       await recordDeliveryAttempt(tx, { itemId: item, channel: 'in_app', state: 'asked' });
     });
-    const after = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    const after = await itemRow();
     expect(after).toStrictEqual(before);
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    expect(read.find((x) => x.id === item)?.lastDelivery).toBe('asked');
     await expect(
       inAlpha(
         async (tx) =>
@@ -275,7 +259,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       bravo,
       async (tx) => await tx.query('select id from public.inbox_items'),
     );
-    expect(seen).toStrictEqual([]);
+    expect([...seen]).toStrictEqual([]);
     await expect(
       db.app.withBusiness(
         bravo,
