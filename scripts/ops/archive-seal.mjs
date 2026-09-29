@@ -31,7 +31,7 @@ export function sealArchive(dump, publicKey) {
   const length = Buffer.alloc(2);
   length.writeUInt16BE(wrapped.length);
   const header = Buffer.concat([MAGIC, length, wrapped, nonce]);
-  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce, { authTagLength: 16 });
   cipher.setAAD(header);
   const body = Buffer.concat([cipher.update(dump), cipher.final()]);
   return Buffer.concat([header, cipher.getAuthTag(), body]);
@@ -44,7 +44,9 @@ export function openArchive(sealed, privateKey) {
   const header = sealed.subarray(0, end + 12);
   if (sealed.length < header.length + 16) throw new Error('cut short');
   const key = privateDecrypt({ key: privateKey, ...OAEP }, sealed.subarray(6, end));
-  const decipher = createDecipheriv('aes-256-gcm', key, sealed.subarray(end, end + 12));
+  const decipher = createDecipheriv('aes-256-gcm', key, sealed.subarray(end, end + 12), {
+    authTagLength: 16,
+  });
   decipher.setAAD(header);
   decipher.setAuthTag(sealed.subarray(header.length, header.length + 16));
   return Buffer.concat([decipher.update(sealed.subarray(header.length + 16)), decipher.final()]);

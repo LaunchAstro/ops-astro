@@ -7,8 +7,8 @@
       "matches": [
         "1df0f89d5f9b328e"
       ],
-      "file": "5cbab63cb7dd2b77",
-      "reason": "Local seed script logging its own seed person's address and status.",
+      "file": "a8d6a16bd4bc7cd6",
+      "reason": "Local seed script logging its own seed person's address and status. Reviewed again 29 September 2026 (SL01): S0-6b's ES256 service token over CQ-11's env-file reader; the flagged line is unchanged.",
       "impact": "None: the format string holds the script's own seed data, not input.",
       "owner": "Nathan Mulligan, maintainer",
       "control": "Not shipped: scripts/local/ runs only against the local auth container.",
