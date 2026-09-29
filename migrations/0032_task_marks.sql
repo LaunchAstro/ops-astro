@@ -62,6 +62,61 @@ alter table public.records
   check (num_5 is null or (num_5 between 1 and 10 and num_5 = trunc(num_5)));
 
 -- ---------------------------------------------------------------------------
+-- A preset field that already holds one of the three keys, moved aside.
+-- ---------------------------------------------------------------------------
+
+-- A field's key is unique on its record type, deactivated fields included,
+-- and immutable (0004). So a preset field a business synced as `impact`,
+-- `confidence` or `ease` on its task type would keep the key, the backfill
+-- below would skip it, and `task.set_scores` would then refuse the mark as a
+-- field it does not own (Sol, review 1 of #141, criterion 7). The preset field
+-- is not the core's to drop: its definition and every value stored under it
+-- move to `preset_<key>`, unchanged, and its uniqueness claims are released
+-- here and taken again by the records trigger under the new field. A business
+-- that already has `preset_<key>` too fails this migration by name rather
+-- than lose either. The records moved gain one revision.
+do $$
+declare
+  held record;
+  aside text;
+begin
+  for held in
+    select f.*
+      from public.field_defs f
+      join public.record_types t on t.business_id = f.business_id and t.id = f.record_type_id
+     where t.key = 'task' and f.origin <> 'core' and f.key in ('impact', 'confidence', 'ease')
+  loop
+    aside := 'preset_' || held.key;
+    if exists (
+      select 1 from public.field_defs f
+       where f.business_id = held.business_id and f.record_type_id = held.record_type_id
+         and f.key = aside
+    ) then
+      raise exception 'field_defs: task field % cannot move aside to %, which is taken (business %)',
+        held.key, aside, held.business_id
+        using errcode = 'unique_violation';
+    end if;
+    delete from public.record_unique_values
+     where business_id = held.business_id and field_def_id = held.id;
+    delete from public.field_defs where business_id = held.business_id and id = held.id;
+    insert into public.field_defs
+      (business_id, id, record_type_id, key, label, value_type, slot, write_mode,
+       owning_operation, escalating_operation, visibility_class, searchable,
+       unique_value, origin, created_at, deactivated_at)
+    values
+      (held.business_id, gen_random_uuid(), held.record_type_id, aside, held.label,
+       held.value_type, held.slot, held.write_mode, held.owning_operation,
+       held.escalating_operation, held.visibility_class, held.searchable,
+       held.unique_value, held.origin, held.created_at, held.deactivated_at);
+    update public.records
+       set data = (data - held.key) || jsonb_build_object(aside, data -> held.key)
+     where business_id = held.business_id and record_type_id = held.record_type_id
+       and data ? held.key;
+  end loop;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- The fields, on every task type already installed.
 -- ---------------------------------------------------------------------------
 
@@ -70,7 +125,8 @@ alter table public.records
 -- brought up to date with `db:migrate` alone would answer `task.set_scores`
 -- with FIELD_UNKNOWN. The rows are the ones `installTaskSpine` writes for a
 -- new business: numeric, owned by `task.set_scores`, internal, core. A type
--- that already has a field of the key is left alone.
+-- that already has the core field of the key is left alone; a preset one was
+-- moved aside above.
 insert into public.field_defs
   (business_id, id, record_type_id, key, label, value_type, slot, write_mode,
    owning_operation, escalating_operation, visibility_class, searchable,
