@@ -168,8 +168,8 @@ export const DECLARED_INCOMPLETENESS: readonly string[] = [
 /**
  * The one answer for a reservation this caller may not claim, whichever reason
  * it is: none by that id, none approved, or one another holder already has.
- * The last used to name the holding lease, which told a caller with no claim
- * on the work whose claim it was (IDENT-AUDIT red 3). The command layer
+ * It never names the holding lease, which would tell a caller with no claim
+ * on the work whose claim it was. The command layer
  * answers the fabricated and foreign forms with these same two sentences.
  */
 export const NOT_CLAIMABLE_REASON =

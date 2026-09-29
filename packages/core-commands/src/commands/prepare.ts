@@ -79,12 +79,12 @@ export function expectedRevisionOf(request: UncheckedRequest): number | undefine
  * from the actor kind and the entry point. A body carrying one of them is a
  * body claiming a fact it is not in a position to know.
  *
- * **Why a typed refusal and not a quiet drop.** Dropping them and doing the
- * write anyway is what this boundary used to do, and the accepted ledger
- * (D06) requires a typed refusal and unchanged domain state instead. The
- * difference matters to the caller: a client that believed it had set
- * `actor_id` got a `200` and no correction, so the bug lived in the client and
- * the server looked fine. A refusal naming the keys is the only answer that
+ * **Why a typed refusal and not a quiet drop.** The accepted ledger (D06)
+ * requires a typed refusal and unchanged domain state rather than dropping
+ * them and doing the write anyway. The difference matters to the caller: a
+ * client that believed it had set `actor_id` would get a `200` and no
+ * correction, so the bug would live in the client and the server would look
+ * fine. A refusal naming the keys is the only answer that
  * gets the field removed.
  *
  * **Why `FIELD_NOT_WRITABLE` and not `COMMAND_BODY_INVALID`.** The register
@@ -151,7 +151,7 @@ const INSTALLED_SYSTEM_FIELDS = `
 
 /**
  * The system keys a request carries *at its top level*: the envelope's own
- * and every installed system field's (root ruling 1, D06-GENERATED F1).
+ * and every installed system field's (root ruling 1).
  *
  * Only the top level. A key nested in an operand is that operand's business:
  * `fields.completed_at` is the field engine's refusal, `fields.source` stays
@@ -580,7 +580,7 @@ export async function prepareCommand(
     // Only here, where the target is read: a replay re-judges authority with
     // `targetsExistingRecord` off, and it locks nothing (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
-    // F1. A target the runtime locks in its own order is only read here. The
+    // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
     // cap and envelope the runtime then asks for.

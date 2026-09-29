@@ -258,8 +258,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onSaved={(generation) => {
                 // Only the generation that was submitted. A save that settles
                 // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here is exactly how the
-                // person's newer text used to disappear.
+                // any more, and clearing the newer draft here would make the
+                // person's newer text disappear.
                 setDraft((current) =>
                   current !== null &&
                   current.identity === identity &&

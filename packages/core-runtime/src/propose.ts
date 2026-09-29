@@ -98,7 +98,7 @@ interface LineageRow {
  * The ordered lock set a proposal needs, discovered read-only and then taken
  * in one `acquire` call (TRANSACTION-CONTRACT line 9). Split from the writes
  * so a command adapter can compare its own expected revision under these
- * locks rather than taking the task lock itself first (F1): an adapter lock on
+ * locks rather than taking the task lock itself first: an adapter lock on
  * the task before this cap and envelope is one half of a cycle with handback,
  * which takes cap, envelope, then task.
  */
@@ -154,7 +154,7 @@ export async function lockProposal(
   //   decision draws on, and `affectedByVersions` only finds them by way of a
   //   hold that is still live -- an envelope whose holds are all terminal is
   //   just as real and just as much the parent of this version.
-  // - F3. The live version's own work -- a picked-up lease and its delegation
+  // - The live version's own work -- a picked-up lease and its delegation
   //   -- is made obsolete by the version this call writes, so it is retired
   //   here under the same ordered set rather than left able to settle.
   // - R8. Every parent of the holds this proposal is about to make

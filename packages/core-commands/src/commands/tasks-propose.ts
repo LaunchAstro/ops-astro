@@ -21,7 +21,7 @@ export interface ProposeFields {
   readonly step: { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> };
   readonly expiresInSeconds?: number;
   readonly lineageId?: string;
-  /** The task revision the caller read, compared under the runtime's locks (F1). */
+  /** The task revision the caller read, compared under the runtime's locks. */
   readonly expectedRevision?: number;
 }
 
@@ -151,7 +151,7 @@ export async function proposeOnTask(
     // the cap the decision would draw on.
     ...(await readBusinessCapId(tx).then((capId) => (capId === undefined ? {} : { capId }))),
   };
-  // F1. The runtime takes cap, envelope, task and the rest in the contract's
+  // The runtime takes cap, envelope, task and the rest in the contract's
   // order; the envelope only read the task (`targetLock: 'runtime'`). The
   // revision is compared here, with the task lock already held in that order,
   // so a concurrent write is still refused `VERSION_STALE` and never merged.

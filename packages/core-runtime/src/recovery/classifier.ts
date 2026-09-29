@@ -110,7 +110,7 @@ export async function classifyUnderLocks(
   // set as well. Discovering it here and taking it here would be the late
   // envelope lock the contract forbids.
   locks.require('envelope', row.envelope_id);
-  // F4. The revocation this cause names is a delegation row, and the contract
+  // The revocation this cause names is a delegation row, and the contract
   // locks it after the lease. Reading `revoked_at` as the fact means reading
   // it under that lock, not beside it.
   if (request.cause === 'authority_revoked' && row.delegation_id !== null) {
@@ -242,7 +242,7 @@ function supportsCause(cause: NonclaimableCause, row: CauseRow): string | null {
     case 'version_superseded':
       return row.superseded ? null : "this attempt's version is still the live one";
     case 'authority_revoked':
-      // F4. The durable fact is the revocation of the delegation this
+      // The durable fact is the revocation of the delegation this
       // attempt's lease was issued under. A grant revocation reaches here only
       // through the delegation it cost its authority, which `grant.revoke`
       // revokes in the same transaction, so one fact covers both.
@@ -350,7 +350,7 @@ export async function discoverEligible(
         and ($2::uuid is null or lin.id = $2::uuid)
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
-             -- F4. A revocation that committed without its classification:
+             -- A revocation that committed without its classification:
              -- the delegation row records it, and the lease may still be live.
              or held_delegation.revoked_at is not null
              -- R5. A hold still bound to a lease the server has already fenced

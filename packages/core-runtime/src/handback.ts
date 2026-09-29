@@ -307,7 +307,7 @@ async function recheckOwner(
 }
 
 /**
- * Re-check the binding (F3). The lease is live and fenced, and that is still
+ * Re-check the binding. The lease is live and fenced, and that is still
  * not enough: the work it holds is bound to one reservation and one approved
  * version, and T4 re-reads "every parent link, active proposal version ... and
  * reservation eligibility after all locks are held". A version a person has

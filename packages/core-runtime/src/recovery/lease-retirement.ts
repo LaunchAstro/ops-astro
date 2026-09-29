@@ -40,8 +40,8 @@ type LiveWorkTarget =
  * Read-only: the live leases on a lineage's runs, or on the runs of a set of
  * versions. Cancellation and supersession both end the work these leases
  * authorise, so their leases and delegations belong to the lock set those
- * operations take, discovered here before any lock (F2, F3). Authority loss
- * reads the same leases by the delegations and person leases it may cost (F4).
+ * operations take, discovered here before any lock. Authority loss
+ * reads the same leases by the delegations and person leases it may cost.
  *
  * The run join filters nothing: every lease names a run in its own business.
  */
@@ -103,7 +103,7 @@ export async function endLease(
  * each live lease, and revoke the delegation it was issued under. T5 names
  * both halves for cancellation ("releases the live lease and revokes the
  * delegation"); supersession retires the old version's work the same way, so
- * a holder of superseded work has nothing left to settle with (F3). Revoked
+ * a holder of superseded work has nothing left to settle with. Revoked
  * rather than settled: nothing was handed back, and the next call the agent
  * makes on that credential re-evaluates it and is refused.
  *
@@ -183,8 +183,8 @@ export async function replayRecordedTransitions(
     locks,
     (row) => ({ reservationId: row.reservation_id, cause: row.cause, causeId: row.cause_id }),
     async (row) => {
-      // F4. A revocation that committed without its classification also left
-      // its lease live, because the old handler wrote only the timestamp. The
+      // A revocation that committed without its classification leaves its
+      // lease live, because only the revocation timestamp was written. The
       // lease and delegation are already in this set, so finishing the
       // transition here fences them rather than leaving an inert live claim on
       // the task until it expires.
@@ -202,7 +202,7 @@ export async function replayRecordedTransitions(
 /**
  * The cancellation path's entry point: record the person's cancellation on the
  * lineage, fence and release the live lease, revoke the delegation it was
- * issued under, end its runs as cancelled (F2), then classify **its own**
+ * issued under, end its runs as cancelled, then classify **its own**
  * reservations. Exported because T5 names cancellation as one of the owning
  * transitions, and the command layer wires it.
  *
@@ -243,7 +243,7 @@ export async function cancelAndClassify(
 
   // Discovery before the locks: every reservation this lineage owns, whatever
   // its version's own state, because cancellation makes all of them
-  // nonclaimable; and (F2) every live lease on its runs with the delegation it
+  // nonclaimable; and every live lease on its runs with the delegation it
   // was issued under, because cancellation ends that authority too.
   const discover = async (): Promise<readonly Affected[]> => {
     const rows = await tx.query<Affected>(

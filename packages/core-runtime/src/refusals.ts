@@ -67,8 +67,7 @@ const RUNTIME_CODES: ReadonlySet<string> = new Set(
 
 // A record over the delegation union rather than a list, so a delegation code
 // added there is a type error here instead of a code this module silently
-// claims as its own. `DELEGATION_ALREADY_LIVE` was claimed that way until it
-// was added.
+// claims as its own.
 const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
   DELEGATION_EXCLUDES_DECISION: true,
   DELEGATION_OUT_OF_PURPOSE: true,

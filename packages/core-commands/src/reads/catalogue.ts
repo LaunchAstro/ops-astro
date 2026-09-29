@@ -198,7 +198,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     identifiers: ['board'],
     // `null` is a real board: the list of tasks on none. An absent key is
     // not, and answering it with that list gave a body that asked nothing
-    // the answer to a question it never put (I14-SEAM U1). A string is
+    // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
     parse: ({ board }) =>
       typeof board === 'string' || board === null

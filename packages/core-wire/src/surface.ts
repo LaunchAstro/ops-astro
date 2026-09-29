@@ -152,7 +152,7 @@ export interface CommandDeclaration {
    * the revision before the handler runs, the ordinary task-write path.
    * `runtime`: the operation's own ordered lock set takes the task after the
    * cap and envelope (TRANSACTION-CONTRACT line 9), so the envelope only reads
-   * it, and the handler compares the revision once those locks are held (F1).
+   * it, and the handler compares the revision once those locks are held.
    */
   readonly targetLock: 'command' | 'runtime';
   /**
@@ -355,7 +355,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),
-  // F1. The runtime takes cap, envelope, then task; an envelope lock on the
+  // The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
   declare('task.propose', 'write', { targetLock: 'runtime' }),
   // In the agent's reach so a delegated agent is refused by the decision
@@ -501,11 +501,10 @@ export function declarationOf(name: CommandName): CommandDeclaration {
  * The commands with no existing record to be stale against: the rows that
  * target none.
  *
- * It was once derived, then written by hand, because a test comparing the two
- * was comparing a derivation with its source and could not fail. It is derived
- * again now that `tests/commands/command-catalogue-pin.test.ts` holds the list
- * as a literal: that test is the check the hand-written copy was, and a new
- * exemption is still a diff to it.
+ * It is derived from the rows, and
+ * `tests/commands/command-catalogue-pin.test.ts` holds the list as a literal,
+ * so a new exemption is still a diff to that test. A test comparing a
+ * derivation with its own source could not fail.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal

@@ -27,7 +27,7 @@
 // It **does not collapse a distinction the database keeps**. `observed` and
 // `settled` are different steps, and `cancelled` and
 // `cancelled_may_have_completed` are different runs, on the owner's own
-// instruction ([C16-5]). Mapping either pair onto one word would destroy in
+// instruction. Mapping either pair onto one word would destroy in
 // the reading exactly what the migration's constraints exist to preserve.
 
 import {
@@ -96,7 +96,7 @@ const RUN_STATE: Readonly<Record<string, DrawnEntry>> = {
  *
  * The three `dropped_*` reasons are three words and never one. Nathan's
  * instruction is that a provider outage must not be conflated with somebody
- * manually cancelling a job ([C16-5]), and a single word for three causes is
+ * manually cancelling a job, and a single word for three causes is
  * that conflation in the one place a person actually looks.
  */
 const WAIT_REASON: Readonly<Record<string, DrawnEntry>> = {

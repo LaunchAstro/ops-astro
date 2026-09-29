@@ -699,17 +699,14 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
 /**
  * Registered, and nothing in the tree can produce one yet.
  *
- * Each waits on something this part does not build: a delegations table for
- * pickup and handback, a comment record type, and the gate triple for a
- * proposal and a decision.
+ * Why each is unreachable is written beside its row below.
  *
- * Three came off the list when T1k landed the budget tables. Only one of them
- * is produced: `BUDGET_EXHAUSTED` is what the enforcing path returns when an
- * attempt would cross a ceiling a person approved
- * (`core-runtime/src/budget.ts`).
- * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` came off with it for the gated
- * money decisions, a top-up and a write-off, and those were deferred, so
- * nothing in `apps/` or `packages/` returns either code. They are registered,
+ * Three budget codes are not on the list. Only one of them is produced:
+ * `BUDGET_EXHAUSTED` is what the enforcing path returns when an attempt would
+ * cross a ceiling a person approved (`core-runtime/src/budget.ts`).
+ * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` belong to the gated money
+ * decisions, a top-up and a write-off, which are deferred, so nothing in
+ * `apps/` or `packages/` returns either code. They are registered,
  * unproduced and not on this list, so this list is not every code nothing
  * produces.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
@@ -734,22 +731,22 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  */
 export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'WRONG_BUSINESS',
-  // Delegation codes no reachable operation raises. `DELEGATION_NARROWED`
-  // left this list with `grant.revoke`, the route that revokes the delegating
+  // Delegation codes no reachable operation raises. `DELEGATION_NARROWED` is
+  // not on this list: `grant.revoke` reaches it by revoking the delegating
   // person's grant between a pickup and the agent's next call.
-  // `DELEGATION_WIDENS` left it on the same route, one step earlier: the mint
-  // reads the approver's live grants when the agent picks the work up, not
+  // `DELEGATION_WIDENS` is reached on the same route, one step earlier: the
+  // mint reads the approver's live grants when the agent picks the work up, not
   // when the person approved it, so a grant revoked or expired in between
   // leaves the pickup asking for authority the approver no longer holds
   // (`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`). These
-  // three name a delegation lifecycle — intake, expiry as its own answer, an
-  // explicit revocation — that this head's one-task purpose does not
+  // three name a delegation lifecycle (intake, expiry as its own answer, an
+  // explicit revocation) that this head's one-task purpose does not
   // distinguish.
-  // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
+  // `DELEGATION_ALREADY_LIVE` is not on this list:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
-  // already holds live, and `task.pickup` reaches it as a 409 instead of the
-  // 503 the unique index used to raise. `DELEGATION_EXCLUDES_OPERATION` came
-  // off too: `agent-envelope.ts` refuses with it any operation outside
+  // already holds live, and `task.pickup` reaches it as a 409 rather than the
+  // unique index's 503. Nor is `DELEGATION_EXCLUDES_OPERATION`:
+  // `agent-envelope.ts` refuses with it any operation outside
   // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXPIRED',
@@ -771,11 +768,11 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // `LEASE_NOT_OWNED`; and the handback that settles a lease settles its
   // delegation too.
   //
-  // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` came off this list when a
-  // command case reached each (`tests/commands/unproduced-reach.test.ts`):
+  // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` are not on this list: a
+  // command case reaches each (`tests/commands/unproduced-reach.test.ts`):
   // `task.propose` takes `expiresInSeconds`, so a one-second window closes
   // before the decision, and `task.propose` on a lineage plus `task.decide`
-  // reach the third round. `LEASE_HELD` came off the same way
+  // reach the third round. `LEASE_HELD` is reached the same way
   // (`tests/commands/lease-held-reach.test.ts`). A second pickup of the *same*
   // reservation meets `RESERVATION_NOT_CLAIMABLE` first, but pickup keeps a
   // reservation `held`, and a handback releases its hold without closing the
