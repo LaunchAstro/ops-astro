@@ -442,3 +442,107 @@ td[data-tight] {
     background: var(--paper);
   }
 }
+
+/* The Projects board's cells (MP-5-8, BOARDS P-20 to P-28, P-36). */
+.cbd__rank {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+.cbd__due {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+}
+.cbd__due[data-tone='overdue'] {
+  color: var(--danger);
+  font-weight: 500;
+}
+.cbd__due[data-tone='today'] {
+  font-weight: 500;
+}
+.cbd__chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.cbd__tok {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.cbd__tokk {
+  display: block;
+  font-family: var(--font-sans, inherit);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.cbd__cmt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.cbd__cmtg {
+  font-size: 13px;
+}
+.cbd__cmtn {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+.cbd__cmt:hover,
+.cbd__cmt:focus-visible {
+  color: var(--accent);
+}
+.cbd__cmt:hover .cbd__cmtn,
+.cbd__cmt:focus-visible .cbd__cmtn {
+  background: var(--ink);
+}
+.brn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.brn__bar {
+  flex: 1 1 auto;
+  min-width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.brn__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.brn__fig {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+}
+.brn.is-over .brn__fill {
+  background: var(--danger);
+}
+.brn.is-over .brn__fig {
+  color: var(--danger);
+}

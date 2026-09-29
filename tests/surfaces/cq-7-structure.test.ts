@@ -91,7 +91,7 @@ describe('CQ-7 no shadow types', () => {
 
   it('takes the read types from the wire package and nothing but types from the command index', () => {
     const reads =
-      /import type \{[^}]*\bTask(?:Summary|ReadResult)\b[^}]*\} from '[./]*packages\/core-wire\/src\/index\.ts';/u;
+      /import type \{[^}]*\b(?:Task(?:Summary|ReadResult)|BoardTask)\b[^}]*\} from '[./]*packages\/core-wire\/src\/index\.ts';/u;
     expect(readFileSync('apps/web/src/screens/Projects.tsx', 'utf8')).toMatch(reads);
     expect(readFileSync('apps/web/src/screens/TaskDetail.tsx', 'utf8')).toMatch(reads);
     for (const file of CLIENT_ROOTS.flatMap(sources)) {
