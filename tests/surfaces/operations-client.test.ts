@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
+import { CSRF_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 
 interface Captured {
   readonly url: string;
@@ -40,11 +40,11 @@ function stub(
   return { fetch, calls };
 }
 
-const make = (fetch: typeof globalThis.fetch, token: string | null = 'tok'): OperationsClient =>
+const make = (fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token,
+    signedIn: true,
     fetch,
     newOperationId: () => 'op-1',
   });
@@ -78,7 +78,7 @@ describe('route derivation', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'a/../b',
-      token: 't',
+      signedIn: true,
       fetch,
     });
     await client.read('task.board', { board: null });
@@ -148,14 +148,13 @@ describe('the envelope', () => {
     expect(calls[1]?.body['operationId']).toBe('retry-me');
   });
 
-  it('carries the token as a bearer and sets no actor or business header', async () => {
+  it('sends no bearer, no actor and no business header: the cookie is the credential', async () => {
     const { fetch, calls } = stub({ ok: true, persons: [] });
     await make(fetch).read('person.list', {});
     const headers = calls[0]?.headers ?? {};
-    expect(headers['authorization']).toBe('Bearer tok');
     expect(Object.keys(headers).map((name) => name.toLowerCase())).toEqual([
       'content-type',
-      'authorization',
+      CSRF_HEADER,
     ]);
   });
 
@@ -198,7 +197,7 @@ describe('what comes back', () => {
       const result = await new OperationsClient({
         origin: '',
         businessKey: 'alpha',
-        token: 'tok',
+        signedIn: true,
         fetch,
         newOperationId: () => 'op-1',
         onSessionEnded: (refusal) => ended.push(refusal.code),
@@ -221,7 +220,7 @@ describe('what comes back', () => {
     await new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: null,
+      signedIn: false,
       fetch,
       onSessionEnded: (refusal) => ended.push(refusal.code),
     }).read('task.board', { board: null });

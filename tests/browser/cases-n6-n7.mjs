@@ -94,10 +94,10 @@ export async function caseN7(run) {
 async function postClaimingSystemOwnedFields(page, taskId, revision) {
   return await page.evaluate(
     async (given) => {
-      const session = JSON.parse(sessionStorage.getItem('ops-astro.session'));
+      // The session cookie goes with it, as with any call from this page.
       const response = await window.fetch('/api/b/alpha/task/update', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
+        headers: { 'content-type': 'application/json', 'x-ops-astro-csrf': '1' },
         body: JSON.stringify({
           operationId: crypto.randomUUID(),
           recordId: given.taskId,
@@ -148,7 +148,7 @@ async function bodyClaimRefused(page, taskId) {
  * It goes straight at the API rather than through the dev server, because Vite
  * answers an unfamiliar `Host` with a 403 of its own before the API sees the
  * request, and a forgery the proxy eats proves nothing. The session is still
- * the page's: its bearer token is read out and presented unchanged. The actor
+ * the page's: its cookie's token is read out and presented unchanged. The actor
  * that session really is comes from the history the app already shows -- the
  * newest applied entry before this attempt -- because nothing else the browser
  * can reach carries an actor id, and a literal here would compare the record
@@ -157,13 +157,14 @@ async function bodyClaimRefused(page, taskId) {
 async function forgedHeadersKeepTheSessionActor(page, taskId) {
   const before = await serverTask(page, taskId);
   const sessionActor = before?.history.at(-1)?.actorId;
-  const token = await page.evaluate(
-    () => JSON.parse(sessionStorage.getItem('ops-astro.session')).token,
-  );
+  // The page cannot read its session cookie (S0-6c); the test driver can.
+  const token = (await page.context().cookies()).find(
+    (cookie) => cookie.name === 'ops-astro-session',
+  )?.value;
   const tampered = await page.request.post(`${API}/api/b/alpha/task/update`, {
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
+      authorization: `Bearer ${String(token)}`,
       ...FORGED_HEADERS,
     },
     data: {

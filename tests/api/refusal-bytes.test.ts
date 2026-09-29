@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { asBrowser, signBearer, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
@@ -70,15 +70,14 @@ const api = createApi({
  * one `createApi` built, with its own status, its own headers and its own
  * bytes. No case here may construct a body.
  */
-const transport = ((url: string | URL, init?: RequestInit) =>
-  api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch;
+const transport = async (url: string, init?: RequestInit) => api.fetch(new Request(url, init));
 
 const client = (token: string | null): OperationsClient =>
   new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token,
-    fetch: transport,
+    signedIn: token !== null,
+    fetch: asBrowser(token, transport),
     newOperationId: () => '33333333-3333-4333-8333-333333333333',
   });
 
@@ -117,8 +116,8 @@ describe('a refusal crossing the boundary into the browser client', () => {
     const stranger = new OperationsClient({
       origin: 'http://api.test',
       businessKey: 'bravo',
-      token: await tokenFor(MIA),
-      fetch: transport,
+      signedIn: true,
+      fetch: asBrowser(await tokenFor(MIA), transport),
       newOperationId: () => '44444444-4444-4444-8444-444444444444',
     });
 

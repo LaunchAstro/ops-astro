@@ -33,6 +33,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
+import { deleteCookie, setCookie } from 'hono/cookie';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -51,6 +52,8 @@ import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
+  SESSION_COOKIE,
+  SESSION_PATH,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -64,6 +67,13 @@ import type {
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
+import {
+  bearerOf,
+  CROSS_SITE_FIXES,
+  crossSiteSession,
+  fromOwnPages,
+  SESSION_COOKIE_OPTIONS,
+} from './auth/session.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -184,6 +194,9 @@ async function admit(
   entry: Entry,
   readsBody = true,
 ): Promise<Admitted | Response> {
+  // A session cookie from another site's page stops here, before the
+  // verifier reads it (`auth/session.ts`).
+  if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
   if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
   if (presented === undefined) {
@@ -212,6 +225,29 @@ async function admit(
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
+
+  // The browser trades the provider's token for the session cookie here, and
+  // gives it back at `/end`; both only from this application's own pages.
+  api.post(SESSION_PATH, async (context) => {
+    if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
+    const token = bearerOf(context.req);
+    const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'expired') {
+      return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
+    }
+    if (token === undefined || presented === undefined) {
+      return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+    }
+    // No `Max-Age`: the cookie ends with the browser session and the token's
+    // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
+    setCookie(context, SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+    return context.json({ ok: true }, 200);
+  });
+  api.post(`${SESSION_PATH}/end`, (context) => {
+    if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
+    deleteCookie(context, SESSION_COOKIE, SESSION_COOKIE_OPTIONS);
+    return context.json({ ok: true }, 200);
+  });
 
   /** One route per surface declaration under `prefix`, each through the door. */
   function mountSurface(
@@ -429,6 +465,7 @@ function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
+const CROSS_SITE = (): CommandRefusal => refuseCommand('AUTH_CROSS_SITE', [], CROSS_SITE_FIXES);
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
 /** The largest body a surface route reads. Files go by signed link, never through the API. */

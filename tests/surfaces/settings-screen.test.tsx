@@ -96,7 +96,7 @@ function server(options: { readonly refuse?: boolean; readonly reads?: boolean }
 }
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen client={client(fetch)} grantKey="alpha:ada" storage={window.sessionStorage} />

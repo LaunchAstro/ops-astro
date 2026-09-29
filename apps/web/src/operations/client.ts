@@ -13,7 +13,8 @@
 // prefix and verified server-side by login resolution, so there is no field
 // here for a caller to put a business in and no header this module will set
 // that could carry one (checklist N7). The actor is likewise absent: the server
-// takes it from the bearer token's subject.
+// takes it from the subject of the session cookie's token, which this module
+// never holds (S0-6c).
 //
 // **`operationId` is minted here, per attempt, and a retry reuses it.** That
 // is what makes the register's replay rule reachable from a browser: the same
@@ -42,7 +43,7 @@
 // matching `commands/requests.ts`, though the slice contract's prose writes
 // `operation_id`. There is one spelling on the wire and this is it.
 
-import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import { CSRF_HEADER, PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
@@ -101,8 +102,11 @@ export interface ClientOptions {
   readonly origin: string;
   /** `alpha` or `bravo`. It is a path segment, not a claim in a body. */
   readonly businessKey: string;
-  /** The GoTrue access token. Absent means not signed in, which the API refuses. */
-  readonly token: string | null;
+  /**
+   * Whether the person is signed in. The credential is the session cookie the
+   * browser sends and no script reads; this says only that there is one.
+   */
+  readonly signedIn: boolean;
   /** Injected so a test can drive the client without a network or a global. */
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
@@ -110,8 +114,8 @@ export interface ClientOptions {
   /**
    * The session this client was given is one the API will not vouch for.
    *
-   * Called only when a token was actually sent: a 401 with no bearer is a call
-   * nobody was signed in for, and ending a session that was never held would
+   * Called only when signed in: a 401 with no session is a call nobody was
+   * signed in for, and ending a session that was never held would
    * be reporting an event that did not happen.
    */
   readonly onSessionEnded?: (refusal: WireRefusal) => void;
@@ -191,11 +195,15 @@ export class OperationsClient {
     body: Readonly<Record<string, unknown>>,
   ): Promise<CallResult<T>> {
     const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    // The only credential this client sends. No actor header, no business
-    // header, no forwarded host: there is nothing here for a tampered request
-    // to reach (checklist N7).
-    if (this.#options.token !== null) headers['authorization'] = `Bearer ${this.#options.token}`;
+    // The session cookie is the only credential, and the browser adds it. No
+    // actor header, no business header, no forwarded host: there is nothing
+    // here for a tampered request to reach (checklist N7). `CSRF_HEADER` is
+    // what the API asks of a cookie-carried request: a page on another origin
+    // cannot add it.
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      [CSRF_HEADER]: '1',
+    };
 
     let response: Response;
     try {
@@ -213,11 +221,7 @@ export class OperationsClient {
     const parsed: unknown = await response.json().catch(() => undefined);
 
     if (isWireRefusal(parsed)) {
-      if (
-        response.status === 401 &&
-        SESSION_ENDED.has(parsed.code) &&
-        this.#options.token !== null
-      ) {
+      if (response.status === 401 && SESSION_ENDED.has(parsed.code) && this.#options.signedIn) {
         this.#options.onSessionEnded?.(parsed);
       }
       return parsed;

@@ -24,9 +24,12 @@ import { describe, expect, it } from 'vitest';
 import { useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SESSION_PATH } from '../../packages/core-wire/src/index.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
-const SESSION = { token: 'the-hour-old-token', businessKey: 'alpha', email: 'mia@alpha.local' };
+const SESSION = { businessKey: 'alpha', email: 'mia@alpha.local' };
+/** The token the tab's session cookie held when the test starts: an hour old. */
+const OLD_TOKEN = 'the-hour-old-token';
 /** What the stand-in identity provider hands back on a fresh sign-in. */
 const FRESH_TOKEN = 'a-fresh-token';
 
@@ -102,9 +105,8 @@ const scopeDenied = (): Response =>
 function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
   let reads = options.reads ?? 'ok';
   let mutations: 'ok' | 'ended' = 'ok';
-  const seenTokens: (string | null)[] = [];
 
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = (async (url: string | URL) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
@@ -117,9 +119,6 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       mutations = 'ok';
       return json({ access_token: 'a-fresh-token' });
     }
-    const headers = (init?.headers ?? {}) as Record<string, string>;
-    seenTokens.push(headers['authorization'] ?? null);
-
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return unknownLogin();
@@ -135,7 +134,6 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
 
   return {
     fetch,
-    seenTokens,
     endTheSession(): void {
       reads = 'ended';
       mutations = 'ended';
@@ -284,8 +282,13 @@ function byBearer(): {
   readonly fetch: typeof globalThis.fetch;
   /** Answer the old-token read that is still in flight. */
   readonly deliverTheDelayedRefusal: () => void;
+  /** The token the session cookie holds now. */
+  readonly cookie: () => string;
 } {
   let deliver: ((response: Response) => void) | null = null;
+  // The browser's cookie jar: the session cookie each call carries is the one
+  // held when it left, and signing in again replaces it (S0-6c).
+  let cookie = OLD_TOKEN;
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
@@ -295,7 +298,11 @@ function byBearer(): {
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
+    if (at === SESSION_PATH) {
+      cookie = headers['authorization']?.replace('Bearer ', '') ?? '';
+      return json({ ok: true });
+    }
+    const stale = cookie === OLD_TOKEN;
 
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
     if (at.endsWith('/person/list')) {
@@ -311,6 +318,7 @@ function byBearer(): {
 
   return {
     fetch,
+    cookie: () => cookie,
     deliverTheDelayedRefusal: () => {
       if (deliver === null) throw new Error('no old-token read was in flight');
       deliver(unknownLogin());
@@ -342,7 +350,8 @@ describe('a refusal that belongs to a session which is already over', () => {
     expect(sessions.session).toBeNull();
 
     await signInAgain(view);
-    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(sessions.session).not.toBeNull();
+    expect(api.cookie()).toBe(FRESH_TOKEN);
     expect(seen.at(-1)).toBe('/task/TSK-1');
     expect(view.text()).toContain('Wire the board to the API');
 
@@ -354,7 +363,8 @@ describe('a refusal that belongs to a session which is already over', () => {
 
     // The new session is untouched: in memory, in storage, on the screen, and
     // at the address the person was returned to.
-    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(sessions.session).not.toBeNull();
+    expect(api.cookie()).toBe(FRESH_TOKEN);
     expect(store.held.get('ops-astro.session')).toBeDefined();
     expect(view.find('[data-reason="session-ended"]')).toBeNull();
     expect(view.find('#signin-email')).toBeNull();
@@ -372,9 +382,10 @@ describe('a refusal that belongs to a session which is already over', () => {
 // and this stand-in gives each business its own task with the same key --
 // which is the only way a test can tell "returned to where I was" apart from
 // "returned to a string that resolved to something else".
-const BRAVO = { token: 'the-hour-old-token', businessKey: 'bravo', email: 'bea@bravo.local' };
+const BRAVO = { businessKey: 'bravo', email: 'bea@bravo.local' };
 
 function perBusiness(): typeof globalThis.fetch {
+  let cookie = OLD_TOKEN;
   return (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
@@ -384,7 +395,11 @@ function perBusiness(): typeof globalThis.fetch {
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();
+    if (at === SESSION_PATH) {
+      cookie = headers['authorization']?.replace('Bearer ', '') ?? '';
+      return json({ ok: true });
+    }
+    if (cookie === OLD_TOKEN) return unknownLogin();
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };

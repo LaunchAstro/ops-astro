@@ -216,6 +216,18 @@ signature and `exp` against GoTrue's published key set
 `sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
 secret that can make a token.
 
+A browser holds no token (S0-6c). After the password grant it posts the token
+once to `POST /api/session` as the bearer. The API verifies it the same way and
+answers `{ ok: true }` with a `Secure`, `HttpOnly`, `SameSite=Lax` cookie,
+`ops-astro-session`, scoped to `/api/b/`, holding that token. The adapter reads
+a bearer when there is one and the cookie otherwise, so the command line keeps
+its bearer. `POST /api/session/end` clears the cookie. A request whose
+credential is the cookie, and both session routes, must carry
+`x-ops-astro-csrf: 1` and no `Sec-Fetch-Site` other than `same-origin`. A page
+on another origin cannot add that header without a preflight this API never
+answers. Anything else is `AUTH_CROSS_SITE` 403 before the verifier runs
+(`apps/api/auth/session.ts`, `tests/api/session-cookie.test.ts`).
+
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
 `businessId` alongside its token is a request with those fields nowhere to go.

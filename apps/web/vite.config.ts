@@ -116,6 +116,20 @@ function buildStamp(): Plugin {
   };
 }
 
+/**
+ * The dev server drops the page's content policy. React's fast refresh puts an
+ * inline script in the served page, which the policy refuses; the built page,
+ * the one that is deployed, keeps it.
+ */
+function devWithoutContentPolicy(): Plugin {
+  return {
+    name: 'ops-astro-dev-without-content-policy',
+    apply: 'serve',
+    transformIndexHtml: (html) =>
+      html.replace(/<meta\s+http-equiv="Content-Security-Policy"[^>]*>/u, ''),
+  };
+}
+
 const relative = (id: string): string => id.slice(root.length).replace(/\?.*$/u, '');
 
 const apiTarget = process.env['API_ORIGIN'] ?? 'http://127.0.0.1:8790';
@@ -123,7 +137,13 @@ const port = Number(process.env['WEB_PORT'] ?? '5190');
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  plugins: [react(), moduleGraphManifest(), servedIdentity(), buildStamp()],
+  plugins: [
+    react(),
+    moduleGraphManifest(),
+    servedIdentity(),
+    buildStamp(),
+    devWithoutContentPolicy(),
+  ],
   resolve: {
     alias: {
       '@launchastro/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),

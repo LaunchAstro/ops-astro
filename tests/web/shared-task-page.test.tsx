@@ -73,7 +73,7 @@ function server(first: unknown) {
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <TaskDetailScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ext"
     taskKey={TASK_ID}
   />

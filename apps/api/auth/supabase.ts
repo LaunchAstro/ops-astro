@@ -6,11 +6,12 @@
 // deliberately does not contain — and it is the only place a caller's identity
 // enters the slice. Three properties are what make it that.
 //
-// **The token is the only input.** Not the body, not a host header, not a
-// forwarded header, not a query parameter. A request that carries `actorId`,
-// `businessId`, `X-Forwarded-For` or an `apikey` alongside its token is a
-// request with those fields nowhere to go (checklist N7). The signature is
-// what this function reads and the signature is all it reads.
+// **The token is the only input**, as a bearer or as the browser's session
+// cookie the bearer was traded for (`session.ts`). Not the body, not a host
+// header, not a forwarded header, not a query parameter. A request that
+// carries `actorId`, `businessId`, `X-Forwarded-For` or an `apikey` alongside
+// its token is a request with those fields nowhere to go (checklist N7). The
+// signature is what this function reads and the signature is all it reads.
 //
 // **A bad token and a missing token are the same answer.** Forged, unsigned
 // (`alg: none`), signed with an unpublished key, for another audience or issuer,
@@ -29,6 +30,7 @@
 import type { Context } from 'hono';
 import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
 import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
+import { bearerOf, sessionCookieOf } from './session.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -84,7 +86,9 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
   return async function verifySupabaseToken(
     request: Context['req'],
   ): Promise<Verified | undefined> {
-    const token = bearerOf(request.header('authorization'));
+    // The bearer when there is one (the command line), else the browser's
+    // session cookie; the door has already held a cookie to the CSRF check.
+    const token = bearerOf(request) ?? sessionCookieOf(request);
     if (token === undefined) return undefined;
 
     // ES256 pinned, the key chosen by `kid` from the published set, and only
@@ -102,12 +106,4 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // transaction, not a claim a token can assert.
     return { provider: SUPABASE_PROVIDER, subject };
   };
-}
-
-/** `Authorization: Bearer <token>`, and nothing else counts as one. */
-function bearerOf(header: string | undefined): string | undefined {
-  if (header === undefined) return undefined;
-  const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());
-  const token = match?.groups?.['token'];
-  return token === undefined || token === '' ? undefined : token;
 }

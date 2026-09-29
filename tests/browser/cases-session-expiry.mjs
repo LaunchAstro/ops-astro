@@ -59,11 +59,11 @@ async function sessionExpiry(page) {
   }
 
   // The hour running out, expressed the way the server experiences it: the
-  // token in the tab's own session store is no longer one it can vouch for.
-  await page.evaluate((token) => {
-    const held = JSON.parse(sessionStorage.getItem('ops-astro.session'));
-    sessionStorage.setItem('ops-astro.session', JSON.stringify({ ...held, token }));
-  }, UNVERIFIABLE);
+  // token in the session cookie is no longer one it can vouch for. The page
+  // cannot reach the cookie (S0-6c); the test driver replaces it.
+  const context = page.context();
+  const held = (await context.cookies()).find((cookie) => cookie.name === 'ops-astro-session');
+  if (held !== undefined) await context.addCookies([{ ...held, value: UNVERIFIABLE }]);
 
   await page.goto(`${WEB}${address}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
