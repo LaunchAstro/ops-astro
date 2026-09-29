@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import postgres from 'postgres';
 import { composeApi } from '../../apps/api/server.ts';
-import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
+import { createAlerts, faultCode, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
@@ -63,7 +63,52 @@ async function bearer(subject: string): Promise<string> {
   return await signBearer(claims);
 }
 
+/** A driver error the caller made itself: no database answered. */
+const made = (code: string) => new postgres.PostgresError({ code, message: 'm' } as never);
+
 describe('S0-2 canary', () => {
+  it('Sol proof, criterion 4: a manufactured database error cannot log a planted code', async () => {
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation(
+      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+    );
+    // No database ran: the caller manufactured an instance of the driver's public class.
+    const planted = new postgres.PostgresError({ code: 'K7QXZ', message: 'a fault' } as never);
+    const { app, events, alerts } = served(() => Promise.reject(planted));
+    const response = await app.fetch(
+      new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await bearer('person-one')}`,
+        },
+        body: '{}',
+      }),
+    );
+    await alerts.settled();
+    expect(response.status).toBe(503);
+    expect(events).toHaveLength(1);
+    const exposures = {
+      'API log': logged.join('\n'),
+      'sink event': JSON.stringify(events),
+      response: await response.text(),
+    };
+    for (const [where, seen] of Object.entries(exposures)) {
+      expect(seen.includes('K7QXZ'), `the planted code in ${where}`).toBe(false);
+    }
+  });
+
+  it('S0-2 canary: a database code is logged only from the listed SQLSTATEs, whoever made the error', () => {
+    expect(faultCode(made('22P02'))).toBe('22P02');
+    expect(faultCode(made('40001'))).toBe('40001');
+    // Five characters of anything are a channel into the log: refused.
+    for (const code of ['K7QXZ', 'P0001', 'ZZZZZ', '22p02', '22P02 ']) {
+      expect(faultCode(made(code)), code).toBe('unknown');
+    }
+    // A listed code on anything but the driver's error is not a database code.
+    expect(faultCode(Object.assign(new Error('m'), { code: '22P02' }))).toBe('Error');
+  });
+
   it('a canary in every field of a fault (name, code, message, stack, constraint, detail, cause) reaches no log, sink or response', async () => {
     const PLANT = 'QZCANARYQZ';
     const planted = Object.assign(new Error(`${PLANT} in the message`), {
