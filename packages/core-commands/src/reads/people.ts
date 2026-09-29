@@ -12,7 +12,7 @@
 // session set and row security holds the same line underneath it, so a person
 // of another business is not filtered out -- they are not visible to filter.
 
-import { heldPermissions } from '../../../core-records/src/index.ts';
+import { heldPermissions, standsOnShares } from '../../../core-records/src/index.ts';
 import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   AccessAgent,
@@ -52,24 +52,35 @@ interface DelegationRow {
  * Settings ▸ Access (C32): Team, Clients and Agents, each with what it may do
  * now. One list of people underneath all three (RC-22). Team is `listPeople`
  * itself, not a copy of its query. Clients are the people with no active
- * membership whom a live grant still reaches: an external party standing on a
- * share, and a former member whose grant outlived them, so an access that
- * still works is shown and not hidden. An agent carries its person's row.
+ * membership who stand on a share, by `standsOnShares`, the rule sign-in
+ * asks. A former member whose grant outlived them is on neither list: sign-in
+ * refuses them, so they can do nothing now. An agent carries its person's row.
  *
- * Each preview is `heldPermissions`, the grant check's own walk, so it cannot
- * say more or less than the check grants.
+ * Each preview is `heldPermissions`, the grant check's own walk, for a person
+ * sign-in would admit: one with standing and an active acting identity. The
+ * grant check runs only behind sign-in, so a person it refuses (for instance
+ * `ACTOR_INACTIVE`) is shown no permission. It cannot say more than the check
+ * grants.
  */
 export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult, 'ok'>> {
   const team = await listPeople(tx);
   const held = await heldPermissions(tx);
   const members = new Set(team.map((person) => person.personId));
-  const outside = new Set(held.map((permission) => permission.personId));
-  for (const personId of members) outside.delete(personId);
+  const outside: string[] = [];
+  for (const personId of new Set(held.map((permission) => permission.personId))) {
+    // oxlint-disable-next-line no-await-in-loop
+    if (!members.has(personId) && (await standsOnShares(tx, personId))) outside.push(personId);
+  }
+  const acting = await tx.query<{ readonly person_id: string }>(
+    `select person_id from public.actors where business_id = $1 and kind = 'person' and active`,
+    [tx.businessId],
+  );
+  const admitted = new Set(acting.map((row) => row.person_id));
   const clients = await tx.query<{ readonly id: string; readonly display_name: string }>(
     `select id, display_name from public.people
       where business_id = $1 and id = any($2::uuid[])
       order by display_name, id`,
-    [tx.businessId, [...outside]],
+    [tx.businessId, outside],
   );
   const delegations = await tx.query<DelegationRow>(
     `select d.id, d.agent_actor_id, p.id as person_id, p.display_name, d.purpose, d.collections,
@@ -86,10 +97,12 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
   );
   const withPreview = (person: PersonView): AccessPerson => ({
     ...person,
-    permissions: once(held.filter((permission) => permission.personId === person.personId)),
+    permissions: admitted.has(person.personId)
+      ? once(held.filter((permission) => permission.personId === person.personId))
+      : [],
   });
   return {
-    team: team.map(withPreview),
+    team: team.map((person) => withPreview(person)),
     clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name })),
     agents: delegations.map((row) => agentOf(row, held)),
   };
