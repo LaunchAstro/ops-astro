@@ -7,7 +7,8 @@
 // business (the same login in Bravo, answered as a made-up task is); another
 // client in the same business (a reader of task two sees task two's ledger and
 // nothing of task one's); another person under a live delegation (the agent
-// working task two reads nothing of task one's ledger).
+// working task two reads nothing of task one's ledger, and is shown no ledger
+// on its own task, since the ledger names the business's cap).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -96,6 +97,22 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 isolation', () => {
     const across = await c.asPerson('task.read', { recordId: one.taskId }, readerOfTwo);
     expect([403, 404]).toContain(across.status);
     carriesNothing(across);
+  });
+
+  it('MP-6-5 isolation: the agent working a task is shown no ledger: it names the business’s cap', async () => {
+    const own = await c.asAgent('task.read', { recordId: two.taskId }, two.credential);
+    expect(own.status).toBe(200);
+    // An agent's answer carries the task under `detail`.
+    const task = (own.body['detail'] as { readonly task: { readonly ledger: Ledger | null } }).task;
+    expect(task).toBeDefined();
+    expect(task.ledger).toBeNull();
+    const cap = await c.fixture.db.admin.execute<{ readonly key: string; readonly limit: string }>(
+      `select cap.key, cap.limit_minor::text as limit from public.task_envelopes e
+         join public.budget_caps cap on cap.business_id = e.business_id and cap.id = e.cap_id
+        where e.task_id = $1`,
+      [two.taskId],
+    );
+    expect(JSON.stringify(own.body)).not.toContain(`"${cap[0]?.key ?? 'missing'}"`);
   });
 
   it('MP-6-5 isolation: another person under a live delegation: the agent working task two reads nothing of task one’s', async () => {

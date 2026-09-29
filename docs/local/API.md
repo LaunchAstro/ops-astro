@@ -1078,6 +1078,8 @@ ledger: {
 The per-run rows are the proposals' reservations: each names its envelope, and
 the held reservations and the spent ones add up to its `heldMinor` and
 `actualMinor`. It is read only and adds no audit event beyond the read's own.
+It names the business's cap and its limit, so only an internal reader is shown
+it: an agent's `task.read` answers `ledger: null` (I09).
 AW-05's ceiling and its stops are not on it yet (SL11).
 
 Three things about the shape matter. First, `gate.expired` is the

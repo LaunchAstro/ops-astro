@@ -224,6 +224,21 @@ async function commentsFor(
   }));
 }
 
+/**
+ * The proposals and the token ledger (MP-6-5), from the one statement, so an
+ * envelope and its per-run rows are one snapshot. The ledger names the
+ * business's cap and its limit, so only an internal reader is shown it; an
+ * agent, a delegate on one task, gets null (I09).
+ */
+async function workOf(
+  tx: TenantQuery,
+  taskId: string,
+  internal: boolean,
+): Promise<Pick<TaskDetail, 'proposals' | 'ledger'>> {
+  const work = await readTaskWork(tx, taskId);
+  return { proposals: work.proposals, ledger: internal ? work.ledger : null };
+}
+
 /** One task with its history, or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
@@ -253,9 +268,7 @@ export async function readTaskDetail(
     // catalogue classifies -- it carries the proposal's own payload, which is
     // what the proposer put in it and what the decision was about. An external
     // reader who may see the task may see what somebody proposed doing to it.
-    // The token ledger (MP-6-5) comes from the same statement as the proposals,
-    // so the envelope and its per-run rows are one snapshot.
-    ...(await readTaskWork(tx, row.id)),
+    ...(await workOf(tx, row.id, comments.internal)),
     capCurrency: await taskCapCurrency(tx, row.id),
   };
 }
