@@ -35,7 +35,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'bootstrap_reads run_definition_pins'],
   ['i', 'bootstrap_bytes'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
+  // AW-02: a historical run is never rewritten; the application moves its
+  // state alone, by the column grant in COLUMN_UPDATES.
+  ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -58,7 +61,43 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
+  // 0033 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0033', letters: 'u' },
 };
+
+/**
+ * Update granted column by column: the table, the columns, and the first
+ * migration that grants them. Every other column-level privilege, to any
+ * role, is outside the contract.
+ */
+const COLUMN_UPDATES: Readonly<
+  Record<string, { readonly from: string; readonly columns: readonly string[] }>
+> = {
+  'public.planned_runs': { from: '0033', columns: ['state'] },
+};
+
+/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
+export function columnUpdatesAt(at?: string): readonly string[] {
+  return Object.entries(COLUMN_UPDATES)
+    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
+    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+    .toSorted();
+}
+
+/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
+export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
+  const rows = await admin.execute<{ line: string }>(
+    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
+            n.nspname || '.' || c.relname || '.' || a.attname as line
+       from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       cross join lateral aclexplode(a.attacl) acl
+      where a.attacl is not null and n.nspname in ('public', 'ops')
+      order by 1`,
+  );
+  return rows.map((row) => row.line);
+}
 
 /**
  * What the application group holds on a table after the migration `at` (its

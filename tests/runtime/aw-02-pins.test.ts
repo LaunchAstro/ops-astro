@@ -182,7 +182,21 @@ const REWRITES: readonly (readonly [string, string])[] = [
   ['update copy', 'update public.bootstrap_bytes set bytes = bytes where business_id = $1'],
   ['delete copy', 'delete from public.bootstrap_bytes where business_id = $1'],
   ['delete a historical run', 'delete from public.planned_runs where business_id = $1'],
+  [
+    "rewrite a run's version",
+    'update public.planned_runs set version_id = version_id where business_id = $1',
+  ],
+  [
+    "rewrite a run's task",
+    'update public.planned_runs set task_id = task_id where business_id = $1',
+  ],
+  [
+    "rewrite a run's lineage",
+    'update public.planned_runs set lineage_id = lineage_id where business_id = $1',
+  ],
 ];
+
+const STATE_MOVE = 'update public.planned_runs set state = state where business_id = $1';
 
 const READS: readonly (readonly [string, string])[] = [
   ['read pin', 'select 1 from public.run_definition_pins where business_id = $1'],
@@ -232,6 +246,8 @@ it('AW-02 immutable: no run role rewrites a pin or a ledger row, or reads the au
   // The application may read what it may insert, and the copy stays blind to it.
   const visible = await Promise.all(READS.map(async ([, text]) => await asApplication(text)));
   expect(visible).toStrictEqual(['ok', 'ok']);
+  // A run's state is the one thing the application moves on it.
+  expect(await asApplication(STATE_MOVE)).toBe('ok');
   // The evidence reads back unchanged.
   expect(await fingerprint(w.alpha)).toBe(before);
 }, 120_000);

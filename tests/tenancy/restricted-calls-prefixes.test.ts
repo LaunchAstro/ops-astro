@@ -69,6 +69,7 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
@@ -347,6 +348,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+
+      wrong.push(
+        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+      );
 
       for (const fn of functions) {
         for (const caller of [...activeCallers, 'owner'] as const) {
