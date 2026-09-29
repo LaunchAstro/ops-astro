@@ -59,6 +59,7 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import { siteCatalogue } from '../../packages/core-connectors/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
@@ -302,6 +303,15 @@ async function main(): Promise<void> {
   // the setting, never a key's bytes.
   if (!keys.delegation.ok) {
     console.error(`api: delegation credential keys: ${keys.delegation.problem}`);
+    process.exit(1);
+  }
+
+  // The operation catalogue registers at boot or the server does not start:
+  // an operation missing one of its twelve declarations is refused here,
+  // before any surface could offer it.
+  const catalogue = siteCatalogue();
+  if (!catalogue.ok) {
+    console.error(`api: operation catalogue: ${catalogue.code} (${catalogue.fields.join(', ')})`);
     process.exit(1);
   }
 

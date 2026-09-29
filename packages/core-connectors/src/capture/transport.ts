@@ -4,7 +4,7 @@
 // checked, never to a name. The host name is kept for TLS (SNI and the
 // certificate check) and the Host header, but the lookup is answered with the
 // pinned address, so a DNS answer that changes after the check is never
-// consulted (TR-SEC4-7). The socket's remote address is compared with the pin
+// consulted. The socket's remote address is compared with the pin
 // before a byte is sent. Size and time are capped while reading, not after.
 
 import { BlockList, isIP } from 'node:net';
