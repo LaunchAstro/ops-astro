@@ -182,3 +182,24 @@ export {
   revokeMandate,
   type MandateFiling,
 } from './mandates/writes.ts';
+export {
+  changeActivation,
+  insertActivation,
+  insertDefinition,
+  readActivation,
+  readVersion,
+  releaseVersion,
+  type ActivationMode,
+  type ActivationRow,
+  type ActivationSetting,
+  type DefinitionKind,
+  type DefinitionVersionRow,
+  type VersionRelease,
+} from './automations/automations.ts';
+export {
+  claimOccurrence,
+  type OccurrenceCause,
+  type OccurrenceClaim,
+  type OccurrenceOutcome,
+  type OccurrenceRow,
+} from './automations/occurrences.ts';
