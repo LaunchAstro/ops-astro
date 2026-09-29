@@ -272,6 +272,15 @@ REPORT="$(cd "$dir" && BASE_SHA=0000000000000000000000000000000000000000 HEAD_SH
 [ "$STATUS" = "0" ] && pass "an unknown revision passes with a warning (exit 0)" \
   || fail "an unknown revision passes with a warning" "expected 0, got $STATUS: $REPORT"
 reports "an unknown revision is a warning" '::warning::pr-size could not measure this pull request'
+# Hostile: a revision carrying a line break and a workflow command. Nothing
+# printed, git's own stderr included, may start a line with it.
+REPORT="$(cd "$dir" && BASE_SHA=$'nope\n::error::planted-canary' HEAD_SHA="$(git rev-parse HEAD)" \
+    node "$SIZER" 2>&1)"; STATUS=$?
+if [ "$STATUS" = "0" ] && ! printf '%s\n' "$REPORT" | grep -q '^::error::'; then
+  pass "a revision carrying a workflow command cannot start one (exit 0)"
+else
+  fail "a revision carrying a workflow command cannot start one" "status $STATUS: $REPORT"
+fi
 rm -rf "$dir"
 
 echo
