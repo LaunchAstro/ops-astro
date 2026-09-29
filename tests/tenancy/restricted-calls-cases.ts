@@ -16,7 +16,7 @@ import { type AdminConnection } from '../../packages/core-records/src/tenancy/da
 export const WORKER_ROLE = 'ops_astro_worker';
 
 /**
- * The contract: what 0001-0020 grant the application group, table by table,
+ * The contract: what the migrations grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
@@ -28,6 +28,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
+  // 0032 (C59): a factor is written and moved on, never deleted.
+  ['siu', 'second_factors'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

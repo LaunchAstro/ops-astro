@@ -103,10 +103,11 @@ describe('C59 the adapter passes the assurance through beside sub', () => {
       { method: 'totp', timestamp: 1_900_000_100 },
       { method: 'password', timestamp: 1_900_000_000 },
     ];
-    const first = await verify(requestWith(await tokenWith({ aal: 'aal2', amr })));
-    const refreshed = await verify(
-      requestWith(await tokenWith({ aal: 'aal2', amr, iat: Math.floor(Date.now() / 1000) + 5 })),
-    );
+    // `iat` moves on every refresh; hono refuses one in the future, so the
+    // first token is the older one.
+    const now = Math.floor(Date.now() / 1000);
+    const first = await verify(requestWith(await tokenWith({ aal: 'aal2', amr, iat: now - 1800 })));
+    const refreshed = await verify(requestWith(await tokenWith({ aal: 'aal2', amr, iat: now })));
     expect(first).toMatchObject({ assurance: { factorAt: 1_900_000_100 } });
     expect(refreshed).toEqual(first);
   });

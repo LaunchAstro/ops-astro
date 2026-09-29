@@ -36,6 +36,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_money_step_up', { value: true }],
   ['task.queue', {}],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],

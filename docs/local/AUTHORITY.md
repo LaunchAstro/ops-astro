@@ -215,6 +215,13 @@ code on this head, and where that is shown.
 | ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
+| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a person with a verified second factor signed in below `aal2` (C59)                     |
+| `STEP_UP_REQUIRED`                                                           | 403    | not yet: no command on this head holds a money key; wave 0's `budget.*` commands will (C59)                            |
+| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                  |
+| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                  |
+| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
+| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
+| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                  |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
 | `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
@@ -504,12 +511,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                              |
-| -------------------------- | ------------------- | ----------- | ---------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                        |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                     |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
+| Key                        | Default             | Write mode  | Why                                                               |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
+| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59) |
+| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
+| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the

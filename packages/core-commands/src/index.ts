@@ -18,3 +18,14 @@ export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  enrolSecondFactor,
+  removeSecondFactor,
+  verifySecondFactor,
+  type FactorCaller,
+  type FactorProvider,
+  type FactorSession,
+  type IssuedFactor,
+  type ProviderAnswer,
+  type ProviderFault,
+} from './commands/account-factor.ts';

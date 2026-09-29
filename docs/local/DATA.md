@@ -485,3 +485,16 @@ Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 (`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
 mint. Until that file exists the seed writes a placeholder with random subjects
 and says on every run that those identities cannot sign in.
+
+## Second factors (0032, C59)
+
+`second_factors` records that a person has a second factor at the sign-in
+provider, which one (the provider's factor id, a bounded identifier, never a
+secret) and where it stands: `unverified` from enrolment until the first code
+completes it, `verified`, then `removed` when it is replaced or taken away.
+One live factor per person (`second_factors_one_live`). The application may
+select, insert and update; nothing deletes a row, so a person's factor history
+stays readable. The authenticator secret and the codes a person types are
+never written here. Login resolution reads it to refuse a sign-in without the
+second factor (`identity/second-factor.ts`); a database from before 0032 has
+no such table, and there the answer is no factor.

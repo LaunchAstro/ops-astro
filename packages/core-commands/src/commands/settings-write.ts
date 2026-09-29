@@ -44,6 +44,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_four_eyes_threshold': 'four_eyes_threshold',
   'settings.set_client_sign_off': 'client_sign_off_required',
+  'settings.set_money_step_up': 'money_step_up_required',
 };
 
 const THRESHOLD_FIXES: readonly string[] = [
@@ -52,6 +53,11 @@ const THRESHOLD_FIXES: readonly string[] = [
 ];
 
 const SIGN_OFF_FIXES: readonly string[] = ['Send value as true or false.'];
+
+const STEP_UP_FIXES: readonly string[] = [
+  'Send value as true or false.',
+  'While it is false, a money action needs only a live session, not a recent second factor.',
+];
 
 const ABSENT_FIXES: readonly string[] = [
   'This business has no row for that setting yet.',
@@ -84,7 +90,10 @@ function isCheckViolation(cause: unknown): boolean {
 export async function setBusinessSetting(
   tx: TenantQuery,
   context: CommandContext,
-  command: 'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off',
+  command:
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_money_step_up',
   value: unknown,
   expectedRevision?: number,
 ): Promise<HandlerOutcome> {
@@ -102,7 +111,7 @@ export async function setBusinessSetting(
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
     else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));
   } else if (typeof value === 'boolean') writable = value;
-  else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SIGN_OFF_FIXES));
+  else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
 
   // `owningOperation` is this command's own name and never the caller's idea of
   // one. The row says which operation owns it, so a setting someone later
@@ -121,13 +130,7 @@ export async function setBusinessSetting(
     });
   } catch (cause) {
     if (!isCheckViolation(cause)) throw cause;
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['value'],
-        command === 'settings.set_four_eyes_threshold' ? THRESHOLD_FIXES : SIGN_OFF_FIXES,
-      ),
-    );
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
   }
 
   if (written === undefined) return refused(refuseCommand('NOT_FOUND', [key], ABSENT_FIXES));
@@ -145,4 +148,10 @@ export async function setBusinessSetting(
     value: written.value,
     revision: written.revision,
   });
+}
+
+function fixesFor(command: string): readonly string[] {
+  if (command === 'settings.set_four_eyes_threshold') return THRESHOLD_FIXES;
+  if (command === 'settings.set_money_step_up') return STEP_UP_FIXES;
+  return SIGN_OFF_FIXES;
 }

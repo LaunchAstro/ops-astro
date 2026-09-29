@@ -43,10 +43,14 @@ import {
 import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  enrolSecondFactor,
   isCommandRefusal,
   isReadName,
   refuseCommand,
+  removeSecondFactor,
+  verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
+import type { FactorProvider } from '../../packages/core-commands/src/index.ts';
 import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
@@ -61,7 +65,7 @@ import type {
   CommandRefusal,
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
-import type { Verifier } from './auth/supabase.ts';
+import { bearerOf, type Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
 
 /**
@@ -115,6 +119,14 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
+   * deployment. Absent means the three factor routes are not mounted, which is
+   * the honest answer for a deployment whose provider has no second factor.
+   * They are mounted on the person prefix only: a factor is a person's own,
+   * and no agent holds `account:write`.
+   */
+  readonly factors?: FactorProvider;
   readonly live?: LiveOptions;
 }
 
@@ -296,6 +308,8 @@ export function createApi(options: ApiOptions): Hono {
       });
     });
   }
+  const factors = options.factors;
+  if (factors !== undefined) mountFactorRoutes(api, options, factors);
 
   return api;
 }
@@ -366,6 +380,43 @@ async function follow(
     clearInterval(timer);
     unsubscribe();
   }
+}
+
+/**
+ * The person's own second factor (C59): `account/factor/enrol`, `verify` and
+ * `remove`, through the same door as every person route. The bearer goes to
+ * the provider as the person's own; the body is the code and nothing else.
+ */
+function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
+  const routes = new Hono();
+  const acts = {
+    enrol: async (caller: Parameters<typeof enrolSecondFactor>[0]) =>
+      await enrolSecondFactor(caller, factors),
+    verify: async (caller: Parameters<typeof enrolSecondFactor>[0], body: unknown) =>
+      await verifySecondFactor(caller, body, factors),
+    remove: async (caller: Parameters<typeof enrolSecondFactor>[0], body: unknown) =>
+      await removeSecondFactor(caller, body, factors),
+  } as const;
+  for (const [name, act] of Object.entries(acts)) {
+    routes.post(`/account/factor/${name}`, async (context) => {
+      const admitted = await admit(options, context, PERSON);
+      if (admitted instanceof Response) return admitted;
+      const accessToken = bearerOf(context.req.header('authorization'));
+      if (accessToken === undefined) {
+        return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+      }
+      const caller = {
+        database: options.database,
+        businessId: admitted.businessId,
+        presented: admitted.presented,
+        accessToken,
+      };
+      const result = await act(caller, admitted.body);
+      if (isCommandRefusal(result)) return refuse(context, result);
+      return context.json(result, 200);
+    });
+  }
+  api.route(`${PREFIX.person}:businessKey`, routes);
 }
 
 /**

@@ -87,6 +87,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
+  'settings.set_money_step_up': setting,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
@@ -129,7 +130,11 @@ function writeOwned(
 function setting(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off'>,
+  request: RequestOf<
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_money_step_up'
+  >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }

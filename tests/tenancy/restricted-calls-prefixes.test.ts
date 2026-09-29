@@ -98,6 +98,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0032 (C59): no journey enrols a second factor.
+  'public.second_factors': {
+    person_id: randomUUID(),
+    provider: 'supabase',
+    provider_factor_id: 'restricted-calls-seed',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

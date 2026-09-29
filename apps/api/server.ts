@@ -59,6 +59,7 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import { createGoTrueFactors } from './auth/factors.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
@@ -242,6 +243,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeCommand,
       executeAgentCommand,
       ...(config.live === undefined ? {} : { live: config.live }),
+      // The provider GoTrue is: the one destination its factor calls reach.
+      factors: createGoTrueFactors({ baseUrl: config.issuer }),
     }),
   );
 

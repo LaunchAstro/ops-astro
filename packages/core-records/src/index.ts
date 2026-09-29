@@ -58,9 +58,27 @@ export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   withSession,
+  type SecondFactorRule,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export { NO_ASSURANCE, type Assurance, type AssuranceLevel } from './identity/verified-subject.ts';
+export {
+  hasVerifiedFactor,
+  liveFactor,
+  recordFactorEnrolled,
+  recordFactorRemoved,
+  recordFactorVerified,
+  type FactorStatus,
+  type SecondFactor,
+} from './identity/second-factor.ts';
+export {
+  isMoneyKey,
+  judgeStepUp,
+  MONEY_STEP_UP_SETTING,
+  refuseStaleMoneyStep,
+  STEP_UP_WINDOW_SECONDS,
+} from './authority/step-up.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,

@@ -407,6 +407,7 @@ no route written by hand.
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                       |
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
+| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
 
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
@@ -901,6 +902,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_money_step_up`       | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1442,3 +1444,39 @@ identity, a reused one, a stale revision, generic writes to protected fields, a
 spoofed system field, and a body and headers carrying an actor and a business
 that reach nothing. One line per case with the status and the code it observed;
 a case that cannot run yet prints `unrun` with its reason.
+
+## The second factor and the money step-up (C59)
+
+The sign-in adapter (`apps/api/auth/supabase.ts`) passes the provider's
+assurance through beside `sub`: the level (`aal`), and from `amr` the time of
+the session's first sign-in and of its second factor. A refresh carries the
+`amr` times unchanged, so the factor time is never renewed by one. A claim the
+adapter cannot read is the lowest level, `aal1` with no factor time.
+
+Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the person has
+a verified second factor and the sign-in is below `aal2`. That holds on every
+person route except the three below, which are how the sign-in gets its code.
+
+A command whose declared key is in the money set (every `billing` key,
+`offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
+`prepare.ts`, straight after its grant check: a team member needs a second
+factor verified in the last 60 minutes, a client a sign-in in the last 60
+minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
+`money_step_up_required` is `false` a live session is enough; only
+`settings:manage` switches it, through `settings.set_money_step_up`.
+
+A person's own factor has three routes on the person prefix only. Each is
+served only when the composition root passes a `factors` provider
+(`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
+bearer). Each writes one audit event, applied or refused, named by the act.
+
+| Route                    | Body                   | Answer                                               | Refusals                                                                                                                                           |
+| ------------------------ | ---------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once      | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502            |
+| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `PROVIDER_ANSWER_INVALID` 502 |
+| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true }`                                  | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `PROVIDER_ANSWER_INVALID` 502                                  |
+
+`PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
+`oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
+The authenticator secret is in the enrol answer and nowhere else: not a log,
+not an audit event, not the `second_factors` row.
