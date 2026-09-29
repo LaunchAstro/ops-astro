@@ -68,6 +68,7 @@ function server(refuse = false): {
     changedBy: 'p-1',
     changedAt: '2026-09-29T00:00:00.000Z',
     revision: 3,
+    approval: null,
   };
   const answer = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
@@ -109,7 +110,7 @@ describe('C33 Workflow triggers panel', () => {
       'every 60 minutes',
     );
     expect(page.find('[data-definition="d-1"]')?.textContent).toContain('Weekly report');
-    await page.click('[data-activation="a-1"] button');
+    await page.click('[data-activation="a-1"] [data-control="manual"]');
     await tick();
     const change = stub.sent.find((call) => call.includes('/activation/change')) ?? '';
     const body = JSON.parse(change.slice(change.indexOf(' ') + 1)) as Record<string, unknown>;
@@ -126,7 +127,7 @@ describe('C33 Workflow triggers panel', () => {
     const again = await mount(<TriggersPanel client={client} />);
     await tick();
     expect(again.find('[data-activation="a-1"]')?.getAttribute('data-mode')).toBe('manual');
-    expect(again.find('[data-activation="a-1"] button')).toBeNull();
+    expect(again.find('[data-activation="a-1"] [data-control="manual"]')).toBeNull();
     await again.unmount();
   });
 
