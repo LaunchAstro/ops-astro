@@ -90,8 +90,6 @@ See AI_POLICY.md.
 
 ## Checklist
 
-- [ ] Under 400 changed lines, or carrying a waiver label with its reason in
-      a comment
 - [ ] Every commit signed off (`git commit -s`); no sign-off added by a tool
 - [ ] Checks green
 - [ ] No client data, no real names, no fixture taken from a live system
@@ -133,7 +131,6 @@ is worth writing down when it is true.
 - [ ] The cross-vendor reviewer and Copilot each reviewed this revision, and
       every finding from both is closed
 - [ ] Security pass, where the surface calls for one
-- [ ] Under the size cap
 - [ ] Which layer should have caught this, answered above, and the answer has
       become a check or a filed issue
 - [ ] If the diff touches one of the eight components (domain model, tenancy

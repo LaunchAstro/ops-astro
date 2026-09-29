@@ -59,7 +59,6 @@ These stay Nathan's own decision, and no green check releases any of them:
 
 - the production deploy;
 - the five protected parts, T1a, T1d1, T1d2, T1e, and T1i;
-- a coherence waiver on the size cap;
 - a reduction of any check's tier;
 - the sandbox's final contract, approved before implementation.
 
@@ -80,7 +79,8 @@ Whoever invokes the merge answers these first:
    is missing or bound to an earlier revision. No findings is not the same as
    no review.
 5. Did the required security review run?
-6. Is the change under the size cap or covered by a valid waiver?
+6. Has the size report been read? The size is reported, not limited, and is
+   never a reason to split.
 7. Which layer should have caught each finding, and what check now covers it?
 
 The review-evidence check reads question four's answer out of the pull
@@ -149,24 +149,21 @@ currently a draft and no signing service is active.
 
 ## Keep changes reviewable
 
-The size checker counts product code only. It allows up to 400 changed lines
-of non-test code and warns from 300. Test files are listed in the report but
-never count, towards the total or the per-file cap: a path under `tests/`, or a
+The size checker counts product code only, and the size is reported, not
+limited (owner, 29 September 2026). Nothing is split to meet a size. The
+check prints the changed lines of non-test code, in total and per file, and
+always passes; no waiver label is needed, and none changes anything. Test
+files are listed in the report but never count: a path under `tests/`, or a
 file named `*.test.*` or `*.spec.*`. Everything else counts, fixtures and
-scripts outside `tests/` included. A recorded reason is required for either
-waiver: `size-waiver-mechanical` for mechanical changes, or
-`size-waiver-coherence` for a change that must be reviewed together. The
-maintainer decides a coherence waiver. One file may not contain more than 400
-hand-written changed lines in a pull request. Lines git marks as moved between
-non-test files, indentation changes allowed, count towards neither limit, and
-the report lists them per file; a moved line that is then edited counts. Split
-work names the invariant test that verifies the integrated result.
+scripts outside `tests/` included. Lines git marks as moved between non-test
+files, indentation changes allowed, are not counted, and the report lists them
+per file; a moved line that is then edited counts.
 
 Keep every pull request under 250 commits, the most the DCO check can
 evaluate; no ruleset change makes room for more. One ticket per pull request
-under the size cap keeps it there. A pull request that cannot be split waits
-for Nathan's line before the DCO check leaves the required checks for its one
-merge, and the removal and the restore are recorded on its ticket.
+keeps it there. A pull request that cannot be split waits for Nathan's line
+before the DCO check leaves the required checks for its one merge, and the
+removal and the restore are recorded on its ticket.
 
 Use synthetic fixtures. Retain third-party licences and attribution. Presets
 are data only, as the [preset boundary](docs/licensing/preset-boundary.md)

@@ -38,7 +38,7 @@ const STEPS = [
   ['provenance:cases', 'the actual commit message hook'],
   ['candidate:cases', 'candidate snapshots and public-content cases'],
   ['public:history:cases', 'public policy on outgoing history and metadata'],
-  ['size:cases', 'the size gate and its waivers'],
+  ['size:cases', 'the size report measures and never blocks'],
   ['review:cases', 'review evidence binds to a revision'],
   ['session:cases', 'the session check reads a scope correctly'],
   ['pins:cases', 'pins-check refuses an unpinned action, image or container'],
