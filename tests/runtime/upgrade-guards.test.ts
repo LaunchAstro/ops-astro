@@ -353,6 +353,15 @@ describe.skipIf(serverUrl === undefined)('an over-ceiling total admitted at 0028
     },
     120_000,
   );
+});
+
+describe.skipIf(serverUrl === undefined)('an over-ceiling total admitted at 0028', () => {
+  let db: EmptyDatabase | undefined;
+
+  afterEach(async () => {
+    await db?.drop();
+    db = undefined;
+  });
 
   it('upgrades a valid 0028 database, a cap filled to exactly its ceiling, with rows unchanged', async () => {
     db = await at0028('guardcapok');

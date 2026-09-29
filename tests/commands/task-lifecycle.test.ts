@@ -7,10 +7,11 @@
 // may already write and `task.move` when it changes visibility — to whichever
 // part read `escalating_operation`, and that is `task.update` here.
 //
-// Two companion files carry the rest: `task-fields.test.ts` is what a payload
-// may carry, and `task-trash-commands.test.ts` is the trash family and
-// revocation. Three files so each stays readable: about 400 lines a file is
-// this repository's guide, never a gate (FU-400).
+// Companion files carry the rest: `task-fields.test.ts` is what a payload may
+// carry, `task-trash-commands.test.ts` is the trash family and revocation, and
+// `task-explicit-null.test.ts` is the explicit null the legacy had. Separate
+// files so each stays readable: about 400 lines a file is this repository's
+// guide, never a gate (FU-400).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -287,22 +288,6 @@ describe.skipIf(serverUrl === undefined)(
           fields: { board_section: board.recordId, board: board.recordId },
         });
         expect(isCommandRefusal(generic)).toBe(false);
-      });
-    });
-    describe('the explicit null the legacy had', () => {
-      it('clears a field on an explicit null and leaves an absent one alone', async () => {
-        const made = await create({ title: 'dated', due: new Date(0).toISOString(), priority: 3 });
-        const cleared = await run({
-          command: 'task.update',
-          operationId: randomUUID(),
-          recordId: made.recordId ?? '',
-          expectedRevision: made.revision ?? 0,
-          fields: { due: null },
-        });
-        if (isCommandRefusal(cleared)) throw new Error('update refused');
-        const row = await read(made.recordId ?? '');
-        expect('due' in row.data).toBe(false);
-        expect(row.data['priority']).toBe(3);
       });
     });
   },

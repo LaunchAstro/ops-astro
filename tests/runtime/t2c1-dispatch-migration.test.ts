@@ -24,7 +24,7 @@ import {
   migrate,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
-import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
@@ -48,6 +48,41 @@ const onDisk = readMigrations('migrations');
 // Through T2a's 0032 run_events, which the runtime that seeds below writes to.
 const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
 
+/** Proposes work on the task and approves it, answering the reservation the approval made. */
+async function approvedReservation(
+  tx: TenantQuery,
+  fixture: RuntimeFixture,
+  taskId: string,
+): Promise<string> {
+  const proposed = await propose(tx, {
+    taskId,
+    collection: TASK_COLLECTION,
+    proposedByActorId: fixture.decider.actorId,
+    subjects: subjectsOf(fixture.decider),
+    purpose: `t2c1_${randomUUID().slice(0, 8)}`,
+    maximumMinor: 2_000,
+    currency: 'AUD',
+    payload: { change: 'a comment' },
+    step: { kind: 'synthetic_comment', payload: {} },
+    expiresAt: new Date(Date.now() + 3_600_000),
+  });
+  if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
+  const decided = await decide(tx, {
+    gateId: proposed.value.gateId,
+    versionId: proposed.value.versionId,
+    decidedByPersonId: fixture.decider.personId,
+    decidedByActorId: fixture.decider.actorId,
+    subjects: subjectsOf(fixture.decider),
+    collection: TASK_COLLECTION,
+    decision: 'approve',
+    note: 'go',
+    signingKey: TEST_SIGNING_KEY,
+    capId: fixture.capId,
+  });
+  if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+  return decided.value.reservationId;
+}
+
 /** One approved and picked-up piece of work; `handedBack` settles it too. */
 async function work(
   database: Database,
@@ -56,35 +91,10 @@ async function work(
 ): Promise<{ readonly attemptId: string; readonly stepId: string; readonly leaseId: string }> {
   const taskId = await newTask(database, fixture.businessId, fixture.decider);
   return await database.withBusiness(fixture.businessId, async (tx) => {
-    const proposed = await propose(tx, {
-      taskId,
-      collection: TASK_COLLECTION,
-      proposedByActorId: fixture.decider.actorId,
-      subjects: subjectsOf(fixture.decider),
-      purpose: `t2c1_${randomUUID().slice(0, 8)}`,
-      maximumMinor: 2_000,
-      currency: 'AUD',
-      payload: { change: 'a comment' },
-      step: { kind: 'synthetic_comment', payload: {} },
-      expiresAt: new Date(Date.now() + 3_600_000),
-    });
-    if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
-    const decided = await decide(tx, {
-      gateId: proposed.value.gateId,
-      versionId: proposed.value.versionId,
-      decidedByPersonId: fixture.decider.personId,
-      decidedByActorId: fixture.decider.actorId,
-      subjects: subjectsOf(fixture.decider),
-      collection: TASK_COLLECTION,
-      decision: 'approve',
-      note: 'go',
-      signingKey: TEST_SIGNING_KEY,
-      capId: fixture.capId,
-    });
-    if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+    const reservationId = await approvedReservation(tx, fixture, taskId);
     const picked = await pickup(tx, {
       claimant: 'agent',
-      reservationId: decided.value.reservationId,
+      reservationId,
       agentActorId: fixture.agentActorId,
       authorisedByPersonId: fixture.decider.personId,
       mintedByActorId: fixture.decider.actorId,

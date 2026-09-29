@@ -82,26 +82,27 @@ describe('the decision link', () => {
   });
 });
 
+/** One v2 chain row signed under `key`, with the fields its link was built from. */
+function row(seq: number, previous: string, key: SigningKey) {
+  const payload = { note: `decision ${seq}`, link: 2 };
+  const payloadDigest = digestOf(payload);
+  const signature = sign(key, payloadDigest);
+  const fields = { ...FIELDS, seq, payloadDigest, signature, key: key.id };
+  return {
+    seq,
+    prev_hash: previous,
+    hash: chainHash(previous, decisionLink(2, fields)),
+    payload,
+    payload_digest: payloadDigest,
+    signature,
+    signing_key_id: key.id,
+    fields,
+  };
+}
+
 describe('verifyChain with a key resolver', () => {
   const older: SigningKey = { id: 'test/older@0', secret: 'older secret' };
   const current: SigningKey = { id: 'test/current@1', secret: 'current secret' };
-
-  function row(seq: number, previous: string, key: SigningKey) {
-    const payload = { note: `decision ${seq}`, link: 2 };
-    const payloadDigest = digestOf(payload);
-    const signature = sign(key, payloadDigest);
-    const fields = { ...FIELDS, seq, payloadDigest, signature, key: key.id };
-    return {
-      seq,
-      prev_hash: previous,
-      hash: chainHash(previous, decisionLink(2, fields)),
-      payload,
-      payload_digest: payloadDigest,
-      signature,
-      signing_key_id: key.id,
-      fields,
-    };
-  }
 
   const first = row(1, CHAIN_GENESIS, older);
   const second = row(2, first.hash, current);

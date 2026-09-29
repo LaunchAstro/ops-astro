@@ -339,7 +339,9 @@ async function follow(
   taskId: string,
   may: () => Promise<string | CommandRefusal>,
 ): Promise<void> {
-  const ended = new Promise<void>((resolve) => stream.onAbort(resolve));
+  const ended = new Promise<void>((resolve) => {
+    stream.onAbort(resolve);
+  });
   let pending: LiveSignal | 'check' | null = null;
   let chain = Promise.resolve();
   const send = async (): Promise<void> => {

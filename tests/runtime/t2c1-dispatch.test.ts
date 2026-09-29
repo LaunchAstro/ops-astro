@@ -23,7 +23,11 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
@@ -73,6 +77,42 @@ interface Leased {
   readonly request: DispatchRequest;
 }
 
+/** Propose a step on the task and approve it, through the runtime. */
+async function approved(
+  tx: TenantQuery,
+  fixture: RuntimeFixture,
+  taskId: string,
+  kind: string,
+): Promise<{ readonly versionId: string; readonly reservationId: string }> {
+  const proposed = await propose(tx, {
+    taskId,
+    collection: TASK_COLLECTION,
+    proposedByActorId: fixture.decider.actorId,
+    subjects: subjectsOf(fixture.decider),
+    purpose: `t2c1_${randomUUID().slice(0, 8)}`,
+    maximumMinor: 2_500,
+    currency: 'AUD',
+    payload: { change: 'a team-only comment' },
+    step: { kind, payload: {} },
+    expiresAt: new Date(Date.now() + 3_600_000),
+  });
+  if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
+  const decided = await decide(tx, {
+    gateId: proposed.value.gateId,
+    versionId: proposed.value.versionId,
+    decidedByPersonId: fixture.decider.personId,
+    decidedByActorId: fixture.decider.actorId,
+    subjects: subjectsOf(fixture.decider),
+    collection: TASK_COLLECTION,
+    decision: 'approve',
+    note: 'go',
+    signingKey: TEST_SIGNING_KEY,
+    capId: fixture.capId,
+  });
+  if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+  return { versionId: proposed.value.versionId, reservationId: decided.value.reservationId };
+}
+
 /** Propose, approve and pick up as the agent, on a new task, through the runtime. */
 async function leased(
   database: Database,
@@ -81,35 +121,10 @@ async function leased(
 ): Promise<Leased> {
   const taskId = await newTask(database, fixture.businessId, fixture.decider);
   return await database.withBusiness(fixture.businessId, async (tx) => {
-    const proposed = await propose(tx, {
-      taskId,
-      collection: TASK_COLLECTION,
-      proposedByActorId: fixture.decider.actorId,
-      subjects: subjectsOf(fixture.decider),
-      purpose: `t2c1_${randomUUID().slice(0, 8)}`,
-      maximumMinor: 2_500,
-      currency: 'AUD',
-      payload: { change: 'a team-only comment' },
-      step: { kind, payload: {} },
-      expiresAt: new Date(Date.now() + 3_600_000),
-    });
-    if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
-    const decided = await decide(tx, {
-      gateId: proposed.value.gateId,
-      versionId: proposed.value.versionId,
-      decidedByPersonId: fixture.decider.personId,
-      decidedByActorId: fixture.decider.actorId,
-      subjects: subjectsOf(fixture.decider),
-      collection: TASK_COLLECTION,
-      decision: 'approve',
-      note: 'go',
-      signingKey: TEST_SIGNING_KEY,
-      capId: fixture.capId,
-    });
-    if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+    const { versionId, reservationId } = await approved(tx, fixture, taskId, kind);
     const picked = await pickup(tx, {
       claimant: 'agent',
-      reservationId: decided.value.reservationId,
+      reservationId,
       agentActorId: fixture.agentActorId,
       authorisedByPersonId: fixture.decider.personId,
       mintedByActorId: fixture.decider.actorId,
@@ -124,7 +139,7 @@ async function leased(
       fence: picked.value.fence,
       attemptId: picked.value.attemptId,
       reservationId: picked.value.reservationId,
-      versionId: proposed.value.versionId,
+      versionId,
       delegationId,
       request: {
         claimant: 'agent',

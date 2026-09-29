@@ -399,35 +399,38 @@ describe.skipIf(serverUrl === undefined).each([
   });
 });
 
+/** Each row a 0025 database may hold that a later rule forbids, and where the upgrade stops. */
+const REFUSED_UPGRADES = [
+  [
+    'an actual reservation',
+    async (db: EmptyDatabase) => {
+      const own = await buildFixture(db.app, 'refused-actual');
+      const { reservationId } = await heldReservation(db.app, own);
+      // At 0025 nothing in storage stops it; only the handback did.
+      await asApp(
+        db.app,
+        own,
+        `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
+          where business_id = $1 and id = $2`,
+        [own.businessId, reservationId],
+      );
+    },
+    /reservations_first_head_no_actual/u,
+    '0025',
+  ],
+  [
+    'two businesses under one key',
+    async (db: EmptyDatabase) => {
+      await buildFixture(db.app, 'refused-shared');
+      await insertBusiness(db.app, 'refused-shared');
+    },
+    /businesses_key_global_idx/u,
+    '0025',
+  ],
+] as const;
+
 describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new rule forbids', () => {
-  it.each([
-    [
-      'an actual reservation',
-      async (db: EmptyDatabase) => {
-        const own = await buildFixture(db.app, 'refused-actual');
-        const { reservationId } = await heldReservation(db.app, own);
-        // At 0025 nothing in storage stops it; only the handback did.
-        await asApp(
-          db.app,
-          own,
-          `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
-            where business_id = $1 and id = $2`,
-          [own.businessId, reservationId],
-        );
-      },
-      /reservations_first_head_no_actual/u,
-      '0025',
-    ],
-    [
-      'two businesses under one key',
-      async (db: EmptyDatabase) => {
-        await buildFixture(db.app, 'refused-shared');
-        await insertBusiness(db.app, 'refused-shared');
-      },
-      /businesses_key_global_idx/u,
-      '0025',
-    ],
-  ] as const)(
+  it.each(REFUSED_UPGRADES)(
     'refuses the upgrade for %s, stopping before the rule with the rows untouched',
     async (_label, write, message, stopsAt) => {
       const db = await createEmptyDatabase({ part: 'fr1mrefused' });

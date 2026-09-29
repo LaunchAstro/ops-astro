@@ -68,7 +68,7 @@ gate, whatever the gate's state; the second rule covers a decided gate whose
 state was reset to `pending`. So a decided or superseded gate keeps its version.
 An expired gate is stored as `pending`: no runtime path writes the state
 `expired`, which the read derives from `expires_at`
-(`packages/core-commands/src/reads/proposals.ts:248-249`). So an undecided gate
+(`packages/core-commands/src/reads/proposals.ts:103-104`). So an undecided gate
 past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the

@@ -248,7 +248,8 @@ running application, so start the database, the identity service, the API and
 the web server first. The N6 revocation cases (a grant revoked underneath a live
 session, and an older in-flight response that cannot restore it) are part of
 that command. `tests/browser/slice-acceptance.mjs` runs them through
-`cases-n6-n7.mjs`, which imports `n6-revocation.mjs`. One further harness runs
+`cases-n6-n7.mjs`, which hands on the fence in `n6-fenced-revocation.mjs` over
+the cases in `n6-revocation.mjs`. One further harness runs
 on its own, outside that command: `node tests/browser/keyboard-and-widths.mjs`
 (keyboard paths, and the width captures the gaps below are recorded from).
 Running `node tests/browser/n6-revocation.mjs` alone revokes a grant that the

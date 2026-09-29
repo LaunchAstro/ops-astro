@@ -487,9 +487,9 @@ function ensureGateKey() {
   return { id, secret, fresh: true };
 }
 
-/** One agent actor, its login and the mapping, all idempotent by lookup. */
-async function seedAgent(tx, agent) {
-  const actorId = await ensure(
+/** The agent's actor, found through its login's subject or inserted. */
+function ensureAgentActor(tx, agent) {
+  return ensure(
     tx,
     async () => {
       const rows = await tx.query(
@@ -511,6 +511,11 @@ async function seedAgent(tx, agent) {
       return id;
     },
   );
+}
+
+/** One agent actor, its login and the mapping, all idempotent by lookup. */
+async function seedAgent(tx, agent) {
+  const actorId = await ensureAgentActor(tx, agent);
   const loginId = await ensure(
     tx,
     async () => {

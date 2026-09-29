@@ -288,7 +288,7 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({

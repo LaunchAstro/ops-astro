@@ -50,7 +50,9 @@ describe('the runtime refusal codes L3 registers', () => {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }
   });
+});
 
+describe('the runtime refusal codes L3 registers', () => {
   it('leaves the ones an operation now produces off the unproduced list', () => {
     // The codes the four real commands and the agent path can answer with.
     // Each comes off `UNPRODUCED_CODES` in the commit that makes it reachable,

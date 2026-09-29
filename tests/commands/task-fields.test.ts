@@ -202,7 +202,9 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
       expect(isCommandRefusal(refusal) && refusal.code).toBe('TRANSITION_PROTECTED');
       expect(isCommandRefusal(refusal) && refusal.names).toStrictEqual(['title=task.update']);
     });
+  });
 
+  describe('the operation needs its own action', () => {
     it('checks the action the operation needs, not just any grant', async () => {
       const made = await create({ title: 'needs assign' });
       await db.app.withBusiness(business, async (tx) => {

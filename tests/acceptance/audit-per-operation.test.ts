@@ -167,6 +167,39 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     };
   }
 
+  /**
+   * task.observe's applied cell: dispatched, and its one effect applied under the
+   * attempt's identity (T2c2).
+   */
+  async function observedCell(): Promise<Cell> {
+    const ada = w.h.world.ada;
+    const agent = await freshAgent();
+    const p = await pickUpBy(ada, agent, 'work whose effect is observed');
+    const lease = { leaseId: p.leaseId, fence: p.fence };
+    const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
+    const effect = await w.agent(
+      agent,
+      'task.comment',
+      {
+        operationId: effectOperationId(p.attemptId),
+        recordId: p.taskId,
+        body: 'the synthetic effect',
+        audience: 'internal',
+      },
+      p.credential,
+    );
+    if (marked.code !== 'ok' || effect.code !== 'ok') {
+      throw new Error(`audit: effect refused ${marked.code} ${effect.code}`);
+    }
+    return agentCell(
+      agent,
+      'task.observe',
+      { ...lease, attemptId: p.attemptId },
+      p.credential,
+      null,
+    );
+  }
+
   async function applied(declaration: CommandDeclaration): Promise<Cell> {
     const { name } = declaration;
     const ada = w.h.world.ada;
@@ -176,28 +209,8 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const reservationId = await reservationBy(ada, 'work an agent picks up');
         return agentCell(agent, name, { reservationId }, undefined, null);
       }
-      case 'task.observe': {
-        // Dispatched, and its one effect applied under the attempt's identity (T2c2).
-        const agent = await freshAgent();
-        const p = await pickUpBy(ada, agent, 'work whose effect is observed');
-        const lease = { leaseId: p.leaseId, fence: p.fence };
-        const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
-        const effect = await w.agent(
-          agent,
-          'task.comment',
-          {
-            operationId: effectOperationId(p.attemptId),
-            recordId: p.taskId,
-            body: 'the synthetic effect',
-            audience: 'internal',
-          },
-          p.credential,
-        );
-        if (marked.code !== 'ok' || effect.code !== 'ok') {
-          throw new Error(`audit: effect refused ${marked.code} ${effect.code}`);
-        }
-        return agentCell(agent, name, { ...lease, attemptId: p.attemptId }, p.credential, null);
-      }
+      case 'task.observe':
+        return await observedCell();
       case 'task.heartbeat':
       case 'task.dispatch':
       case 'task.handback': {

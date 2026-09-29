@@ -55,8 +55,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
     ...extra,
   });
 
-  /** Approved work on a new task, picked up by the agent or by Ada herself. */
-  async function picked(kind: string, by: 'agent' | 'person'): Promise<Lease> {
+  /** A new task whose step Ada proposed and approved: the create's answer and the reservation. */
+  async function approved(kind: string): Promise<{ task: Run; reservationId: string }> {
     const person = as(world.ada.token);
     const task = await runCli(
       ['task.create', '--json', JSON.stringify({ fields: { title: `dispatch ${kind}` } })],
@@ -92,7 +92,12 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
       ],
       person,
     );
-    const reservationId = String(detailOf(decided)['reservationId']);
+    return { task, reservationId: String(detailOf(decided)['reservationId']) };
+  }
+
+  /** Approved work on a new task, picked up by the agent or by Ada herself. */
+  async function picked(kind: string, by: 'agent' | 'person'): Promise<Lease> {
+    const { task, reservationId } = await approved(kind);
     const file = join(scratch, `delegation-${randomUUID()}`);
     const pickup = await runCli(
       [

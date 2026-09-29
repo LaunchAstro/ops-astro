@@ -34,48 +34,68 @@ type Holder = ObserveRequest extends infer R
     : never
   : never;
 
+interface Operands {
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly attemptId: string;
+  readonly outcome: 'completed' | 'failed';
+}
+
+/** The operands as read, or their refusal, refused as dispatch refuses them. */
+function readOperands(fields: ObserveFields): Operands | { readonly refusal: HandlerOutcome } {
+  if (typeof fields.fence !== 'number' || !Number.isSafeInteger(fields.fence)) {
+    return {
+      refusal: refused(
+        refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
+      ),
+    };
+  }
+  const outcome = fields.outcome ?? 'completed';
+  if (outcome !== 'completed' && outcome !== 'failed') {
+    return {
+      refusal: refused(
+        refuseCommand(
+          'FIELD_VALUE_INVALID',
+          ['outcome'],
+          ['Send completed or failed, or leave it out.'],
+        ),
+      ),
+    };
+  }
+  // A malformed lease or token in the bytes a well-formed one naming nothing gets.
+  if (!isIdentifier(fields.leaseId) || !isIdentifier(fields.attemptId)) {
+    return {
+      refusal: refused(
+        refuseCommand(
+          'LEASE_NOT_OWNED',
+          [],
+          [
+            leaseReason('not_owned'),
+            'Observe under the lease your own pickup was issued, with its attempt.',
+          ],
+        ),
+      ),
+    };
+  }
+  return { leaseId: fields.leaseId, fence: fields.fence, attemptId: fields.attemptId, outcome };
+}
+
 async function observeAs(
   tx: TenantQuery,
   fields: ObserveFields,
   holder: Holder,
 ): Promise<HandlerOutcome> {
-  if (typeof fields.fence !== 'number' || !Number.isSafeInteger(fields.fence)) {
-    return refused(
-      refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
-    );
-  }
-  const outcome = fields.outcome ?? 'completed';
-  if (outcome !== 'completed' && outcome !== 'failed') {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['outcome'],
-        ['Send completed or failed, or leave it out.'],
-      ),
-    );
-  }
-  // A malformed lease or token in the bytes a well-formed one naming nothing gets.
-  if (!isIdentifier(fields.leaseId) || !isIdentifier(fields.attemptId)) {
-    return refused(
-      refuseCommand(
-        'LEASE_NOT_OWNED',
-        [],
-        [
-          leaseReason('not_owned'),
-          'Observe under the lease your own pickup was issued, with its attempt.',
-        ],
-      ),
-    );
-  }
-  const attemptId = fields.attemptId;
+  const operands = readOperands(fields);
+  if ('refusal' in operands) return operands.refusal;
+  const { attemptId } = operands;
   const result = await observe(tx, {
     ...holder,
-    leaseId: fields.leaseId,
-    fence: fields.fence,
+    leaseId: operands.leaseId,
+    fence: operands.fence,
     attemptId,
     effect: async () => await lookupEffect(tx, holder.holderActorId, attemptId),
     usage: fields.usage,
-    outcome,
+    outcome: operands.outcome,
   });
   if (!result.ok) return refused(result.refusal);
   const { taskId, ...observed } = result.value;

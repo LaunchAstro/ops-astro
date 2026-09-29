@@ -23,6 +23,21 @@ if (serverUrl === undefined) {
   );
 }
 
+/** Resolves once the node server is listening. */
+async function listening(server: ServerType): Promise<void> {
+  await new Promise<void>((done) => {
+    server.once('listening', () => done());
+  });
+}
+
+/** Closes the node server, or resolves at once when it was never started. */
+async function closed(server: ServerType | undefined): Promise<void> {
+  await new Promise<void>((done) => {
+    if (server === undefined) done();
+    else server.close(() => done());
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('T2 identity local: the served-identity route', () => {
   let fixture: ApiFixture;
   let api: Hono;
@@ -33,17 +48,12 @@ describe.skipIf(serverUrl === undefined)('T2 identity local: the served-identity
     fixture = await createApiFixture('t2bid');
     api = fixture.compose(undefined, readIdentity(ROOT));
     server = serve({ fetch: api.fetch, hostname: '127.0.0.1', port: 0 });
-    await new Promise<void>((done) => {
-      server.once('listening', () => done());
-    });
+    await listening(server);
     origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   }, 120_000);
 
   afterAll(async () => {
-    await new Promise<void>((done) => {
-      if (server === undefined) done();
-      else server.close(() => done());
-    });
+    await closed(server);
     await fixture?.drop();
   });
 

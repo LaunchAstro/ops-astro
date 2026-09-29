@@ -80,7 +80,8 @@
     "T2c2 names t2c2-effect as an invariant (effect_once_with_receipt: approve, dispatch, one team-only comment under the operation identity derived from the attempt, observe, and a receipt citing that decision, its version and the effect; a second pass replays every step and adds nothing; a staged intent is refused EFFECT_NOT_OBSERVED with no receipt; an effect before its dispatch is refused EFFECT_NOT_DISPATCHED; duplicate delivery and a lost response apply it once; observe refuses a non-holder, a foreign, unknown or fenced token and a released hold, audited, with no money moved; another business's receipt reads as a made-up one and a person outside the task's client is refused), and t2c2-worker as conformance (the worker proposes, a person approves, the worker applies it once through the agent routes, the person reads the receipt through the command line's client, and a second worker pass is idle).",
     "T2d names t2d-settle and t2d-settle-migration as invariants (settles_at_observed: the hold settles to the priced observed cost with the difference released by amount, settling twice charges once, an unpriced or absent report reads as unpriced and moves no money; the receipt names the settled amount; a failure injected in the step, the reservation or the audit event rolls back all three; an expired lease settles money and moves no work; a cost above the hold is refused, audited with the observed amount and held as liability_unknown at the maximum; a failed attempt settles at its cost against the ceiling; hand-back still refuses actual spend; another business's envelopes never move, and the money line reaches only a reader with the task grant. Migration 0034 on a fresh database and on one seeded at 0033 then upgraded: rows unchanged, the same constraints, 0026 byte-identical and lifted, the settled-actual rules refused as the application role, the worker holding nothing). These are the budget tests the manifest names (product issue 14).",
     "T2e names t2e-top-up as an invariant (top_up_is_a_persons: an agent under its delegation is refused DELEGATION_EXCLUDES_OPERATION and the same person tops up on their own credential; the four-eyes band is read from the business setting, 500 by default, off permitted, and a second approver above it is a different person holding billing:decide in that business; an ordinary top-up is the plan approver's when they hold budget permission, otherwise any holder's; no standing pre-authorisation; the cap is the hard ceiling; separations business to business, client to client and person to person; split for the per-file cap into t2e-top-up-races, the second approval against a revocation, a concurrent first approval and a late approver's grant under revocation, and t2e-top-up-clients, two external clients each sharing one task, crossing, plus task to task), and t2e-top-up-surfaces as conformance (budget.top_up through the command line, both HTTP prefixes and the in-process entries against the served API: the agent refused alike on every surface, the person applied on every surface).",
-    "W0-INTEG names t2d-late-effect-and-wrong-client (T2d's review proofs, first filed as sol-t2d-review) as an invariant beside t2d-settle: a concurrent failure leaves no late effect on the settled attempt, and a wrong-client effect identity never waits on that client's step. It opens a database and was unnamed at T2d's own head; main's named-suite manifest refuses that on the integration line."
+    "W0-INTEG names t2d-late-effect-and-wrong-client (T2d's review proofs, first filed as sol-t2d-review) as an invariant beside t2d-settle: a concurrent failure leaves no late effect on the settled attempt, and a wrong-client effect identity never waits on that client's step. It opens a database and was unnamed at T2d's own head; main's named-suite manifest refuses that on the integration line.",
+    "W0-INTEG's group A lint commit (CQ-12 ratchet) splits four named suites by behaviour, each case unchanged, and names the new files in the same list as the file they came from: cq-2-start-up-keys (from cq-2), task-explicit-null (from task-lifecycle), t2d-settle-isolation (from t2d-settle) and pickup-version-binding (from agent-pickup-payload)."
   ],
   "invariant": [
     "tests/runtime/run-progress-read.test.ts",
@@ -90,6 +91,7 @@
     "tests/runtime/t2c1-dispatch-migration.test.ts",
     "tests/runtime/t2c2-effect.test.ts",
     "tests/runtime/t2d-settle.test.ts",
+    "tests/runtime/t2d-settle-isolation.test.ts",
     "tests/runtime/t2d-late-effect-and-wrong-client.test.ts",
     "tests/runtime/t2d-settle-migration.test.ts",
     "tests/runtime/t2e-top-up.test.ts",
@@ -150,6 +152,7 @@
     "tests/api/cq-1.test.ts",
     "tests/ci/cq-3-supply-chain.test.ts",
     "tests/api/cq-2.test.ts",
+    "tests/api/cq-2-start-up-keys.test.ts",
     "tests/commands/cq-4.test.ts",
     "tests/commands/cq-5.test.ts",
     "tests/api/cq-6.test.ts",
@@ -214,6 +217,7 @@
     "tests/commands/heartbeat-bound.test.ts",
     "tests/runtime/recovery-entry.test.ts",
     "tests/pickup/agent-pickup-payload.test.ts",
+    "tests/pickup/pickup-version-binding.test.ts",
     "tests/acceptance/i10-inflight.test.ts",
     "tests/commands/board-not-found.test.ts",
     "tests/acceptance/identifier-timing.test.ts",
@@ -262,6 +266,7 @@
     "tests/commands/lost-update.test.ts",
     "tests/commands/task-fields.test.ts",
     "tests/commands/task-lifecycle.test.ts",
+    "tests/commands/task-explicit-null.test.ts",
     "tests/commands/task-trash-commands.test.ts",
     "tests/identity/identifier-resolution.test.ts",
     "tests/identity/login-resolution.test.ts",

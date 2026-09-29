@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// CQ-2: fault text kept out of logs, and the keys kept out of the process environment.
+// CQ-2: fault text kept out of logs, and each app kept to its own keys. The keys
+// kept out of the process environment are in `cq-2-start-up-keys.test.ts`.
 
-import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import type { ReadExecutor } from '../../apps/api/app.ts';
@@ -23,13 +21,9 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-const ROOT = join(import.meta.dirname, '../..');
 const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
 const [BOARD, QUEUE, PEOPLE] = [pathOf('task.board'), pathOf('task.queue'), pathOf('person.list')];
 const TABLES = 'audit_events operations records grants authentication_attempts'.split(' ');
-const NAMES = JSON.stringify(['GATE_SIGNING_', 'DELEGATION_CREDENTIAL_KEY']);
-const DEAD = 'postgres://cq2@127.0.0.1:1/cq2';
-const URLS = ['DATABASE_URL', 'DATABASE_ADMIN_URL'].map((name) => process.env[name] ?? DEAD);
 type Task = Record<'title' | 'recordId' | 'client', string> & { person?: string };
 type Party = { key: string; member: string; tasks: Task[]; add: (name: string) => Promise<Task> };
 
@@ -42,20 +36,6 @@ const ghost = (t: Task): Task => ({ ...t, recordId: randomUUID() });
 const ids = (text: string) => [
   ...new Set(text.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gu)),
 ];
-
-/** `node apps/api/server.ts`, printing the key settings it holds once listening, or at exit. */
-function start(settings: Record<string, string>, [url, admin]: readonly string[] = [DEAD, DEAD]) {
-  const report = `const held = () => console.error('CQ2-ENV', JSON.stringify(Object.keys(process.env)
-    .filter((name) => ${NAMES}.some((prefix) => name.startsWith(prefix)))));
-  process.on('exit', held); const log = console.log; console.log = (...parts) => { log(...parts);
-    if (String(parts[0]).startsWith('api: listening')) setImmediate(() => process.exit(0)); };`;
-  const preload = `data:text/javascript,${encodeURIComponent(report)}`;
-  const env = { PATH: process.env['PATH'], DATABASE_URL: url, DATABASE_ADMIN_URL: admin };
-  const settled = { ...env, SUPABASE_JWT_SECRET: SECRET, GOTRUE_URL: ISSUER, API_PORT: '0' };
-  const options = { cwd: ROOT, env: { ...settled, ...settings }, timeout: 60_000 };
-  const run = spawnSync(process.execPath, ['--import', preload, 'apps/api/server.ts'], options);
-  return { status: run.status, output: `${run.stdout}${run.stderr}` };
-}
 
 async function logged<T>(run: () => Promise<T>): Promise<[T, string]> {
   const lines: unknown[] = [];
@@ -71,17 +51,6 @@ async function logged<T>(run: () => Promise<T>): Promise<[T, string]> {
 
 const send = async (api: Hono, path: string, body: object, token: string) =>
   await post(api, path, body, authorised(token));
-
-describe('CQ-2 start-up', () => {
-  it('CQ-2 malformed keyring: start-up stops naming the setting, never a key byte', () => {
-    const bytes = randomBytes(16).toString('base64url');
-    const keyring = { DELEGATION_CREDENTIAL_KEYS: `cq2@1:${bytes}` };
-    const { status, output } = start({ DELEGATION_CREDENTIAL_KEY_ID: 'cq2@1', ...keyring });
-    expect(status).toBe(1);
-    expect(output).toContain('api: delegation credential keys: DELEGATION_CREDENTIAL_KEYS');
-    expect(output).not.toContain(bytes);
-  });
-});
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and faults', () => {
   let fixture: ApiFixture;
@@ -139,21 +108,6 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   afterAll(async () => await fixture?.drop());
 
-  it('CQ-2 process.env: after start-up it holds no key the server put there', () => {
-    const gate = join(ROOT, '.local', 'gate.env');
-    const wrote = !existsSync(gate);
-    mkdirSync(join(ROOT, '.local'), { recursive: true });
-    if (wrote)
-      writeFileSync(gate, `GATE_SIGNING_KEY_ID=cq2@1\nGATE_SIGNING_SECRET=${randomUUID()}`);
-    expect(runtimeKeys({}).delegation.ok).toBe(true);
-    // The keys are in the checkout's files only; the server recovers, listens, then reports.
-    const { status, output } = start({ RECOVERY_BUSINESS_KEYS: 'none' }, URLS);
-    if (wrote) rmSync(gate);
-    expect([status, output]).toStrictEqual([
-      0,
-      expect.stringMatching(/listening[^]*CQ2-ENV \[\]/u),
-    ]);
-  });
   it('CQ-2 database error log: the log line holds the error code and command name, never the value', async () => {
     const value = `cq2-value-${randomUUID()}`;
     const { app } = fixture.db;

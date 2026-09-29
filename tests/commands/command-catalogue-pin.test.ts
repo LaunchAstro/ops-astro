@@ -360,7 +360,9 @@ describe('the per-command tables at 06ab232', () => {
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
     expect([...BEFORE_PICKUP].toSorted()).toStrictEqual(PINNED_BEFORE_PICKUP);
   });
+});
 
+describe('the per-command requests and handlers at 06ab232', () => {
   it('pins a request for every write in the surface', () => {
     const writes = COMMAND_SURFACE.filter((command) => command.kind === 'write').map(
       (command) => command.name,

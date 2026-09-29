@@ -509,7 +509,7 @@ changed without reading the rest:
 | `harness.mjs`              | sign-in, the in-page client, screenshots, the results table                                                                                                |
 | `cases-b.mjs`              | B1 to B5, the journey and the reload                                                                                                                       |
 | `cases-n3-n5.mjs`          | protected fields, system fields, replay and revision                                                                                                       |
-| `cases-n6-n7.mjs`          | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                                                                                |
+| `cases-n6-n7.mjs`          | N7 input tampering, N6 revocation (fenced in `n6-fenced-revocation.mjs`, cases in `n6-revocation.mjs`)                                                     |
 | `cases-n1-n2.mjs`          | another business, and a member with no grant                                                                                                               |
 | `cases-create-retry.mjs`   | R1, retrying a create whose answer was lost                                                                                                                |
 | `cases-task-drafts.mjs`    | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
@@ -521,7 +521,7 @@ changed without reading the rest:
 | `cases-proposals.mjs`      | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
 | `i10-open-page.mjs`        | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
 | `r4-shared-page.mjs`       | R4, an external party's shared task page, revoked through `grant.revoke` while open                                                                        |
-| `surface-final.mjs`        | D03 and D05 through the page's own client, and R4X the external party's reads                                                                              |
+| `surface-final.mjs`        | D03 and D05 through the page's own client, and R4X the external party's reads (`external-party-reads.mjs`)                                                 |
 
 ### What B6 restarts
 

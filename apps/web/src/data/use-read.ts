@@ -87,7 +87,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
 
   useEffect(() => {
     const open = liveRef.current;
-    if (open === undefined) return undefined;
+    if (open === undefined) return;
     return followLive(open, (change) => {
       if (pausedRef.current && change === 'changed') heldRef.current = true;
       else reload();

@@ -54,8 +54,10 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts';
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
-import { readVerifiedProjection } from './verified-decisions.ts';
-import type { ProposalVersionView, ProposalView } from '../../../core-wire/src/index.ts';
+import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
+import type { DecisionLink, ProposalView } from '../../../core-wire/src/index.ts';
+import { asReservation, asVersion } from './proposal-rows.ts';
+import type { ReservationRow, VersionRow } from './proposal-rows.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -72,47 +74,6 @@ const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
     'prevHash',
   ],
 };
-
-interface VersionRow {
-  readonly lineage_id: string;
-  readonly lineage_state: string;
-  readonly version_id: string;
-  readonly version: string;
-  readonly purpose: string;
-  readonly maximum_minor: string;
-  readonly currency: string;
-  readonly payload_digest: string;
-  readonly payload: unknown;
-  readonly superseded_at: string | null;
-  readonly run_id: string | null;
-  readonly evidence_pack_id: string | null;
-  readonly evidence_renderer: string | null;
-  readonly evidence_digest: string | null;
-  readonly evidence_body: unknown;
-  readonly gate_id: string | null;
-  readonly gate_state: string | null;
-  readonly gate_round: number | null;
-  readonly gate_expires_at: string | null;
-  readonly gate_expired: boolean | null;
-}
-
-interface ReservationRow {
-  readonly lineage_id: string;
-  readonly id: string;
-  readonly state: string;
-  readonly held_minor: string;
-  readonly actual_minor: string | null;
-  readonly classified_cause: string | null;
-  readonly lease_id: string | null;
-  readonly lease_fence: string | null;
-  readonly lease_state: string | null;
-  readonly lease_expires_at: string | null;
-  readonly lease_holder: string | null;
-  readonly attempt_id: string | null;
-  readonly attempt_state: string | null;
-  readonly attempt_dispatch_marker: boolean | null;
-  readonly attempt_observed: boolean | null;
-}
 
 /** The task's lineages that have a version: the scope of the read. */
 const LINEAGES = `select distinct ver.lineage_id
@@ -214,98 +175,33 @@ export async function readTaskProposals(
     return {
       lineageId,
       state: first?.lineage_state ?? 'unknown',
-      versions: rows.map(asVersion),
+      versions: rows.map((row) => asVersion(row)),
       decisions: decisions
         .filter((row) => row.lineage_id === lineageId)
-        .map((row) => ({
-          id: row.id,
-          seq: Number(row.seq),
-          decision: row.decision,
-          round: row.round,
-          decidedByPersonId: row.decided_by_person_id,
-          decidedAt: row.decided_at.toISOString(),
-          signingKeyId: row.signing_key_id,
-          signature: row.signature,
-          prevHash: row.prev_hash,
-          hash: row.hash,
-          linkVersion: row.link_version,
-          signedFields: SIGNED_FIELDS[row.link_version] ?? [],
-        })),
+        .map((row) => asDecision(row)),
       reservations: reservations
         .filter((row) => row.lineage_id === lineageId)
-        .map((row) => ({
-          id: row.id,
-          state: row.state,
-          heldMinor: Number(row.held_minor),
-          actualMinor: row.actual_minor === null ? null : Number(row.actual_minor),
-          releasedMinor:
-            row.actual_minor === null ? null : Number(row.held_minor) - Number(row.actual_minor),
-          classifiedCause: row.classified_cause,
-          leaseId: row.lease_id,
-          lease:
-            row.lease_id === null
-              ? null
-              : {
-                  id: row.lease_id,
-                  fence: Number(row.lease_fence ?? '0'),
-                  state: row.lease_state ?? 'unknown',
-                  expiresAt: isoTime(row.lease_expires_at),
-                  holderActorId: row.lease_holder,
-                },
-          attempt:
-            row.attempt_id === null
-              ? null
-              : {
-                  id: row.attempt_id,
-                  state: row.attempt_state ?? 'unknown',
-                  dispatchMarker: row.attempt_dispatch_marker ?? false,
-                  observed: row.attempt_observed ?? false,
-                },
-        })),
+        .map((row) => asReservation(row)),
     };
   });
 }
 
-function asVersion(row: VersionRow): ProposalVersionView {
+/** One stored decision link, as stored, with the fields its format signed. */
+function asDecision(row: VerifiedDecision): DecisionLink {
   return {
-    versionId: row.version_id,
-    version: Number(row.version),
-    purpose: row.purpose,
-    maximumMinor: Number(row.maximum_minor),
-    currency: row.currency,
-    payloadDigest: row.payload_digest,
-    payload: row.payload,
-    supersededAt: row.superseded_at === null ? null : isoTime(row.superseded_at),
-    runId: row.run_id,
-    evidence:
-      row.evidence_pack_id === null
-        ? null
-        : {
-            id: row.evidence_pack_id,
-            renderer: row.evidence_renderer ?? 'unknown',
-            digest: row.evidence_digest ?? '',
-            body: row.evidence_body,
-          },
-    gate:
-      row.gate_id === null
-        ? null
-        : {
-            id: row.gate_id,
-            state: row.gate_state ?? 'unknown',
-            round: row.gate_round ?? 0,
-            expiresAt: isoTime(row.gate_expires_at),
-            expired: row.gate_expired ?? false,
-            payloadDigest: row.payload_digest,
-          },
+    id: row.id,
+    seq: Number(row.seq),
+    decision: row.decision,
+    round: row.round,
+    decidedByPersonId: row.decided_by_person_id,
+    decidedAt: row.decided_at.toISOString(),
+    signingKeyId: row.signing_key_id,
+    signature: row.signature,
+    prevHash: row.prev_hash,
+    hash: row.hash,
+    linkVersion: row.link_version,
+    signedFields: SIGNED_FIELDS[row.link_version] ?? [],
   };
-}
-
-/**
- * A timestamp from the snapshot's JSON, in the spelling a `Date` read gives:
- * milliseconds, UTC. A missing one reads as the epoch, as it did before.
- */
-function isoTime(text: string | null): string {
-  return new Date(text ?? 0).toISOString();
 }
 
 /**

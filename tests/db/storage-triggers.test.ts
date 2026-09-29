@@ -197,8 +197,11 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
     },
   ];
 
+  // Each role's cases sit in two blocks under one title, so every case keeps
+  // its full name: the trigger refusals, then the deletes and the controls.
   for (const role of ['application', 'owner'] as const) {
-    describe(`as the ${role === 'owner' ? 'owner' : 'application role'}`, () => {
+    const roleTitle = `as the ${role === 'owner' ? 'owner' : 'application role'}`;
+    describe(roleTitle, () => {
       for (const refusal of refusals) {
         it(`refuses ${refusal.name} with restrict_violation`, async () => {
           const before = await rows();
@@ -226,7 +229,9 @@ describe.skipIf(serverUrl === undefined)('the 0010 and 0014 storage triggers', (
         );
         expect(await rows()).toStrictEqual(before);
       });
+    });
 
+    describe(roleTitle, () => {
       it('refuses deleting an attempt', async () => {
         const before = await rows();
         await expect(

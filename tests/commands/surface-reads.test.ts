@@ -112,7 +112,9 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       expect(band?.value).toBe(750);
       expect(band?.updatedByActorId).toBe(mia.actorId);
     });
+  });
 
+  describe('settings.read', () => {
     it('refuses a member with no grant, and audits both answers with a null subject', async () => {
       const denied = await read({ read: 'settings.read' }, noah);
       expect(isCommandRefusal(denied) ? denied.code : '').toBe('SCOPE_NOT_GRANTED');
@@ -148,7 +150,9 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       // Mia's pairs are hers. Nothing in this answer is anybody else's.
       expect(JSON.stringify(result).includes(mia.personId)).toBe(false);
     });
+  });
 
+  describe('session.capabilities', () => {
     it('follows a revocation, because the grants are read and not remembered', async () => {
       const before = await read({ read: 'session.capabilities' });
       if (!('grants' in before)) throw new Error('refused');

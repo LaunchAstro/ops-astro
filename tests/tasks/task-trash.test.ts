@@ -265,7 +265,9 @@ describe.skipIf(serverUrl === undefined)('task trash and retention', () => {
       expect(isRecordsRefusal(refusal) && refusal.code).toBe('RETENTION_CLASS_PROTECTED');
       expect(isRecordsRefusal(refusal) && refusal.names).toStrictEqual(['audit_trail', 'evidence']);
     });
+  });
 
+  describe('retention', () => {
     // The refusal is written before the evidence tables exist, because a purge
     // that learns about evidence later has already run once.
     it('refuses to name a table in the evidence class, and one nobody classified', () => {

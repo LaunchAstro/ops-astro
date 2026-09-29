@@ -240,7 +240,9 @@ describe('API.md operands and codes derived from the code', () => {
     const paragraph = paragraphWith('`FREE_OPERANDS`');
     for (const operand of free) expect(paragraph, operand).toContain(`\`${operand}\``);
   });
+});
 
+describe('API.md operands and codes derived from the code', () => {
   it('names every code proposeOnTask answers through a command, and not the unreached one', () => {
     const codes = new Set([...codesIn(fn(`${C}/tasks-propose.ts`, 'proposeFor')), 'NOT_FOUND']);
     // Unreached: `prepareCommand` refuses a mistyped `lineageId` first (CODE above).

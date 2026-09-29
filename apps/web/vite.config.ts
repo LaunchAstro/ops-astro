@@ -42,7 +42,7 @@ function moduleGraphManifest(): Plugin {
         if (info === null) continue;
         modules[relative(id)] = info.importedIds
           .filter((imported) => imported.startsWith(root))
-          .map(relative);
+          .map((target) => relative(target));
       }
       this.emitFile({
         type: 'asset',

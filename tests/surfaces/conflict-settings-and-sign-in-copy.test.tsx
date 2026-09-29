@@ -34,6 +34,14 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** The capability read's answer: ada, who may manage settings. */
+const CAPABILITIES = {
+  ok: true,
+  personId: 'p-ada',
+  businessKey: 'alpha',
+  grants: [{ collection: 'settings', action: 'manage' }],
+};
+
 /** A settings server whose four-eyes row moves to 999 under the first write. */
 function staleServer(): typeof globalThis.fetch {
   let value: unknown = 500;
@@ -43,12 +51,7 @@ function staleServer(): typeof globalThis.fetch {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p-ada',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return json(CAPABILITIES);
     }
     if (at.endsWith('/settings/read')) {
       return json({

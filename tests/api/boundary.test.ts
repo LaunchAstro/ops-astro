@@ -255,7 +255,9 @@ describe('the business is named in the path and verified (N7)', () => {
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
   });
+});
 
+describe('an unknown business is refused before the body is read (N7)', () => {
   it('refuses before it reads the body, so a bad body cannot tell you a business exists', async () => {
     const seen: Seen[] = [];
     const token = await tokenFor(MIA);
@@ -319,7 +321,9 @@ describe('the read half of the surface', () => {
       { businessId: ALPHA, presented: { provider: 'supabase', subject: MIA }, read: first.name },
     ]);
   });
+});
 
+describe('the read executor contract', () => {
   it('passes a read through without an operation identity or a revision', async () => {
     const seenRequests: Array<Readonly<Record<string, unknown>>> = [];
     const passing: ReadExecutor = async (_database, _businessId, _presented, request) => {

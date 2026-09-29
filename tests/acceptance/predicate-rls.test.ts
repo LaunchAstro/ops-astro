@@ -224,6 +224,28 @@ describe.skipIf(serverUrl === undefined)('I14: the predicate and the policy, one
     };
   };
 
+  /**
+   * The reaches with row security off on `records`, restored before this
+   * returns whatever happens. The only mutation in this file, as the owner, on
+   * a database nothing else can see. `disable` clears `relrowsecurity` and
+   * leaves `relforcerowsecurity` alone, which is why the restore is one
+   * `enable` and why both flags are asserted after it.
+   */
+  const measureWhileDisabled = async () => {
+    try {
+      await db.admin.execute('alter table public.records disable row level security');
+      return {
+        flagsWhileDisabled: await rowSecurity(),
+        findingsWhileDisabled: await tenancyConformance(db.admin.execute),
+        rlsDisabled: await reach(alpha, bravoTask, true),
+        ownWhileDisabled: await reach(alpha, alphaTask, true),
+        bothRemoved: await reach(alpha, bravoTask, false),
+      };
+    } finally {
+      await db.admin.execute('alter table public.records enable row level security');
+    }
+  };
+
   // `tenancyConformance` is the shipped check `prefix-harness.ts` runs after
   // every migration prefix, and it already owns "row security enabled and
   // forced on every application table". Running it here rather than writing a
@@ -242,25 +264,7 @@ describe.skipIf(serverUrl === undefined)('I14: the predicate and the policy, one
     const predicateRemoved = await reach(alpha, bravoTask, false);
     const ownWithoutPredicate = await reach(alpha, alphaTask, false);
 
-    let flagsWhileDisabled: RowSecurity;
-    let findingsWhileDisabled: readonly Finding[];
-    let rlsDisabled: Observation;
-    let ownWhileDisabled: Observation;
-    let bothRemoved: Observation;
-    try {
-      // The only mutation in this file, as the owner, on a database nothing
-      // else can see. `disable` clears `relrowsecurity` and leaves
-      // `relforcerowsecurity` alone, which is why the restore is one `enable`
-      // and why both flags are asserted after it.
-      await db.admin.execute('alter table public.records disable row level security');
-      flagsWhileDisabled = await rowSecurity();
-      findingsWhileDisabled = await tenancyConformance(db.admin.execute);
-      rlsDisabled = await reach(alpha, bravoTask, true);
-      ownWhileDisabled = await reach(alpha, alphaTask, true);
-      bothRemoved = await reach(alpha, bravoTask, false);
-    } finally {
-      await db.admin.execute('alter table public.records enable row level security');
-    }
+    const disabled = await measureWhileDisabled();
 
     const flagsAfter = await rowSecurity();
     const findingsAfter = await tenancyConformance(db.admin.execute);
@@ -271,16 +275,16 @@ describe.skipIf(serverUrl === undefined)('I14: the predicate and the policy, one
       bothInPlace,
       predicateRemoved,
       ownWithoutPredicate,
-      rlsDisabled,
-      ownWhileDisabled,
-      bothRemoved,
+      rlsDisabled: disabled.rlsDisabled,
+      ownWhileDisabled: disabled.ownWhileDisabled,
+      bothRemoved: disabled.bothRemoved,
       restoredBothInPlace,
       restoredPredicateRemoved,
       flagsBefore,
-      flagsWhileDisabled,
+      flagsWhileDisabled: disabled.flagsWhileDisabled,
       flagsAfter,
       findingsBefore,
-      findingsWhileDisabled,
+      findingsWhileDisabled: disabled.findingsWhileDisabled,
       findingsAfter,
     };
   };

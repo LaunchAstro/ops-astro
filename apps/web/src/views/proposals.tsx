@@ -145,33 +145,7 @@ export function Proposals(props: ProposalsProps): ReactElement {
         <span className="sbact__meta">{countWord(props.proposals)}</span>
       </div>
 
-      {props.proposals === undefined ? (
-        // The answer did not carry the projection. Drawing "no proposals" here
-        // would be this screen reporting an absence it never established.
-        <p className="card__sub" data-proposals="not-carried">
-          This task read carried no proposal projection, so what has been proposed on this task is
-          not known here. It is not that there is nothing: it is that nothing was read.
-        </p>
-      ) : props.proposals.length === 0 ? (
-        <div data-proposals="none">
-          <PaneEmpty say="Nothing has been proposed on this one yet." />
-        </div>
-      ) : (
-        <div className="stack" data-proposals="list">
-          {at === 'section' ? <Refusal note={props.note} /> : null}
-          {props.proposals.map((lineage) => (
-            <Lineage
-              client={props.client}
-              key={lineage.lineageId}
-              lineage={lineage}
-              note={props.note}
-              noteAt={at}
-              onChanged={props.onChanged}
-              onDecided={props.onDecided}
-            />
-          ))}
-        </div>
-      )}
+      <ProposalList {...props} at={at} />
 
       {props.envelope === null ? null : (
         <TopUp
@@ -196,6 +170,38 @@ export function Proposals(props: ProposalsProps): ReactElement {
         revision={props.revision}
       />
     </section>
+  );
+}
+
+/** The lineages the answer carried, or why there are none to draw. */
+function ProposalList(props: ProposalsProps & { readonly at: NoteAt | null }): ReactElement {
+  const { at } = props;
+  return props.proposals === undefined ? (
+    // The answer did not carry the projection. Drawing "no proposals" here
+    // would be this screen reporting an absence it never established.
+    <p className="card__sub" data-proposals="not-carried">
+      This task read carried no proposal projection, so what has been proposed on this task is not
+      known here. It is not that there is nothing: it is that nothing was read.
+    </p>
+  ) : props.proposals.length === 0 ? (
+    <div data-proposals="none">
+      <PaneEmpty say="Nothing has been proposed on this one yet." />
+    </div>
+  ) : (
+    <div className="stack" data-proposals="list">
+      {at === 'section' ? <Refusal note={props.note} /> : null}
+      {props.proposals.map((lineage) => (
+        <Lineage
+          client={props.client}
+          key={lineage.lineageId}
+          lineage={lineage}
+          note={props.note}
+          noteAt={at}
+          onChanged={props.onChanged}
+          onDecided={props.onDecided}
+        />
+      ))}
+    </div>
   );
 }
 
