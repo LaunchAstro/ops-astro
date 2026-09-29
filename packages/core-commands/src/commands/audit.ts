@@ -117,12 +117,16 @@ export async function writeAuditEvent(
   // reach the server on purpose: the trigger overwrites all three, and a
   // column the insert never mentioned could not have been shown to be
   // overwritten.
+  //
+  // The origin conversation (0034) is named only when there is one: without
+  // it the insert is the one every earlier schema takes, and the column's
+  // null is its default.
+  const origin = event.originConversationId ?? null;
   const rows = await tx.query<WrittenAuditEvent>(
     `insert into audit_events
        (business_id, id, actor_id, command, operation_id, outcome, refusal_code,
-        subject_record_id, payload_digest, attempted, origin_conversation_id, seq, prev_hash,
-        hash)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11::uuid, $12, $13, $14)
+        subject_record_id, payload_digest, attempted, seq, prev_hash, hash${origin === null ? '' : ', origin_conversation_id'})
+     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13${origin === null ? '' : ', $14::uuid'})
      returning id, seq::text as seq, hash`,
     [
       tx.businessId,
@@ -135,10 +139,10 @@ export async function writeAuditEvent(
       event.subjectRecordId ?? null,
       event.payloadDigest,
       event.attempted === undefined || event.attempted === null ? null : storable(event.attempted),
-      event.originConversationId ?? null,
       event.seq ?? '1',
       event.prevHash ?? null,
       event.hash ?? PLACEHOLDER_HASH,
+      ...(origin === null ? [] : [origin]),
     ],
   );
   const written = rows[0];
