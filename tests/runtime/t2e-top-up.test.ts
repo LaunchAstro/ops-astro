@@ -234,7 +234,8 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
   });
 
   it('no standing pre-authorisation: a first approval binds its amount and figure, and a ceiling operand is refused', async () => {
-    const { taskId } = await planned();
+    // The planner holds no budget permission, so any holder gives either approval.
+    const { taskId } = await planned(planner);
     appliedDetail(await topUp(s.decider, taskId, LARGE, MAXIMUM), 'budget.top_up');
     // A different amount is its own first approval, not the other half of this one.
     expect(

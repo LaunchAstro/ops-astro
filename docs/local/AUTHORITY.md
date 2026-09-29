@@ -368,11 +368,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:673-703`, run at `:833-841`). It gets a login and an acting identity,
-  and no membership and no business grant (`:117-120`, `:269-271`). The seed
+  user (`:676-706`, run at `:836-844`). It gets a login and an acting identity,
+  and no membership and no business grant (`:120-123`, `:272-274`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:714-734`, `:868-878`).
+  (`:717-737`, `:871-881`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -523,9 +523,11 @@ always the caller's business's row. The request body no longer carries one: a
 body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 ([API.md](API.md)). The purge applies no default, floor or ceiling of its own,
 and no accepted source names one for the work window (C122-1's seven-day floor
-is the conversation window's). `conversation_window_days`,
-`four_eyes_threshold` and `client_sign_off_required` still have no consumer
-among the first slice's operations.
+is the conversation window's). `conversation_window_days` and
+`client_sign_off_required` still have no consumer among the first slice's
+operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+second approver, a different person holding `billing:decide` on the task
+(T2e, `core-runtime/src/budget.ts`).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second

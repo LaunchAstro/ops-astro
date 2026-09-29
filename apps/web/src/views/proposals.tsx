@@ -76,7 +76,7 @@
 // on it with `LINEAGE_TERMINAL`. The lineage state is in the same answer as the
 // gate, so the controls close on it rather than inviting that refusal.
 
-import { type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -84,6 +84,7 @@ import type {
   ProposalLineage,
   ProposalReservation,
   ProposalVersion,
+  TaskEnvelope,
 } from '../operations/shapes.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 
@@ -114,6 +115,8 @@ export interface ProposalsProps {
   readonly client: OperationsClient;
   /** Absent means the answer carried no projection at all. Not the same as none. */
   readonly proposals: readonly ProposalLineage[] | undefined;
+  /** The task's open envelope, or null when the read carried none (T2e). */
+  readonly envelope: TaskEnvelope | null;
   readonly recordId: string;
   /** The revision the page holds; a proposal is offered against it. */
   readonly revision: number;
@@ -171,6 +174,15 @@ export function Proposals(props: ProposalsProps): ReactElement {
             />
           ))}
         </div>
+      )}
+
+      {props.envelope === null ? null : (
+        <TopUp
+          client={props.client}
+          envelope={props.envelope}
+          onChanged={props.onChanged}
+          recordId={props.recordId}
+        />
       )}
 
       <Propose
@@ -791,6 +803,87 @@ function Propose(props: ProposeProps): ReactElement {
         </p>
       )}
     </form>
+  );
+}
+
+/** The envelope and its top-up (T2e), of the maximum drawn here so a moved envelope is refused. */
+function TopUp(props: {
+  readonly client: OperationsClient;
+  readonly envelope: TaskEnvelope;
+  readonly recordId: string;
+  readonly onChanged: () => void;
+}): ReactElement {
+  const { envelope } = props;
+  const command = useCommand();
+  const [amount, setAmount] = useState('');
+  const [awaiting, setAwaiting] = useState(false);
+  const submit = (): void => {
+    if (command.locked || minorOf(amount) <= 0) return;
+    command.run(
+      () =>
+        props.client.mutate('budget.top_up', {
+          recordId: props.recordId,
+          amountMinor: minorOf(amount),
+          fromMaximumMinor: envelope.maximumMinor,
+        }),
+      (settlement) => {
+        setAwaiting(
+          settlement.kind === 'ok' &&
+            settlement.value.detail?.['state'] === 'awaiting_second_approver',
+        );
+        if (settlement.kind === 'ok') setAmount('');
+        props.onChanged();
+      },
+    );
+  };
+  return (
+    <div className="sbact" data-top-up="section">
+      <div className="sb__sh">
+        <span className="sb__k">Budget for this task</span>
+      </div>
+      <p className="card__sub" data-top-up="envelope">
+        approved {money(envelope.maximumMinor, envelope.currency)} · held{' '}
+        {money(envelope.heldMinor, '')} · spent {money(envelope.actualMinor, '')}
+      </p>
+      {awaiting ? (
+        <p className="card__sub" data-top-up="awaiting">
+          Your approval is recorded. Above the four-eyes threshold a second person approves it too.
+        </p>
+      ) : null}
+      {command.because === null ? null : (
+        <p className="field__error" role="alert" data-top-up="refusal">
+          {command.because}
+        </p>
+      )}
+      <div className="field">
+        <label className="tf__k" htmlFor="top-up-amount">
+          Top up by ({envelope.currency})
+        </label>
+        <input
+          className="input"
+          disabled={command.locked}
+          id="top-up-amount"
+          min="0"
+          step="0.01"
+          type="number"
+          onChange={(event) => {
+            setAmount(event.target.value);
+          }}
+          value={amount}
+        />
+      </div>
+      <div className="btnrow">
+        <button
+          className="btn"
+          data-top-up="submit"
+          disabled={command.locked}
+          onClick={submit}
+          type="button"
+        >
+          {command.busy ? 'Approving…' : 'Approve top-up'}
+        </button>
+      </div>
+    </div>
   );
 }
 

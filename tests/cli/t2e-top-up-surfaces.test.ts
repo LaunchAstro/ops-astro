@@ -23,7 +23,6 @@ import {
   isCommandRefusal,
 } from '../../packages/core-commands/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
-import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
 
 const MAXIMUM = 2_000;
@@ -178,20 +177,6 @@ describe.skipIf(serverUrl === undefined)('T2e budget.top_up on every surface', (
     world = await createWorld('t2esurf');
     scratch = mkdtempSync(join(tmpdir(), 't2e-surfaces-'));
     api = await serveApi(world);
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(
-        tx,
-        {
-          personId: world.ada.personId as string,
-          actorId: world.ada.actorId as string,
-          presented: world.ada.presented,
-        },
-        'decide',
-        WHOLE_BUSINESS,
-        false,
-        'billing',
-      );
-    });
   }, 120_000);
 
   afterAll(async () => {

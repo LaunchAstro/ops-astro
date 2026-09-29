@@ -94,6 +94,15 @@ export interface TaskDetail extends TaskSummary {
    * "Proposal projection" heading in `docs/local/API.md`.
    */
   readonly proposals: readonly ProposalView[];
+  /** The task's open envelope, which a top-up raises (T2e); null when none is open. */
+  readonly envelope: {
+    readonly id: string;
+    readonly capId: string;
+    readonly currency: string;
+    readonly maximumMinor: number;
+    readonly heldMinor: number;
+    readonly actualMinor: number;
+  } | null;
 }
 
 /**

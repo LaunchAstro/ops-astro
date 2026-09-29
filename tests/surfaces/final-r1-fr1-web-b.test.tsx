@@ -140,7 +140,7 @@ describe('FR1-WEB-B #69: the settings copy', () => {
     window.sessionStorage.clear();
   });
 
-  it('says the two settings are stored and not yet applied by any operation', async () => {
+  it('says the sign-off setting is not yet applied, and the band is applied to top-ups', async () => {
     const page = await mount(settingsScreen(staleServer()));
     await tick();
     const text = page.text();
@@ -148,7 +148,9 @@ describe('FR1-WEB-B #69: the settings copy', () => {
     expect(text).not.toMatch(/second person must agree/u);
     expect(text).not.toMatch(/each changes who must agree/u);
     expect(text).not.toMatch(/Whether the client must agree before work is counted/u);
-    expect(page.all('[data-settings="not-applied"]')).toHaveLength(2);
+    expect(page.all('[data-settings="not-applied"]')).toHaveLength(1);
+    // T2e: the four-eyes band has its consumer.
+    expect(page.find('[data-settings="applied"]')?.textContent).toMatch(/top-ups/u);
     for (const note of page.all('[data-settings="not-applied"]')) {
       expect(note.textContent).toMatch(/no operation applies it yet/u);
     }

@@ -10,10 +10,9 @@
 // `operation` rather than `generic` because a setting that changes who must
 // agree is an authority change wearing configuration's clothes — so neither is
 // reachable through a generic edit, and each has a named command of its own.
-// This screen posts to those two commands and nowhere else. They are storage
-// without a consumer so far: no first-slice operation reads either value
-// (`docs/local/AUTHORITY.md`), and the copy on the page says so rather than
-// describing a stop that does not happen yet.
+// This screen posts to those two commands and nowhere else. `budget.top_up`
+// reads the band (T2e); the sign-off setting has no consumer yet, and the
+// copy on the page says so rather than describing a stop that does not happen.
 //
 // **The values are the server's now.** `settings.read` answers each row with
 // the instant the server last wrote it, so the number beside a setting is the
@@ -157,14 +156,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           The amount above which a second person is to agree before money moves. Off means one
           person is enough at any amount.
         </p>
-        {/*
-          Storage without a consumer (docs/local/AUTHORITY.md, the settings
-          section): no operation in the first slice reads the band. Its
-          consumers are the deferred top-up and write-off workflows, and the
-          screen must not imply a stop that does not exist.
-        */}
-        <p className="card__sub" data-settings="not-applied">
-          Stored and shown only: no operation applies it yet.
+        {/* T2e: `budget.top_up` reads the band. The write-off is still to come. */}
+        <p className="card__sub" data-settings="applied">
+          Applied to task top-ups: above this amount a second person approves.
         </p>
         {model.answered ? <ValueLine which="four-eyes" row={model.rowFor('four-eyes')} /> : null}
         {confirmedLine('four-eyes')}

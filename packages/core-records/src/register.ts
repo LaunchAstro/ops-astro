@@ -751,10 +751,10 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * attempt would cross a ceiling a person approved
  * (`core-runtime/src/budget.ts`).
  * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` came off with it for the gated
- * money decisions, a top-up and a write-off, and those were deferred, so
- * nothing in `apps/` or `packages/` returns either code. They are registered,
- * unproduced and not on this list, so this list is not every code nothing
- * produces.
+ * money decisions. The top-up (T2e, `core-runtime/src/budget.ts`) produces
+ * `FOUR_EYES_REQUIRED`; the write-off is deferred, so nothing returns
+ * `GATE_NOT_APPROVED`. It is registered, unproduced and not on this list, so
+ * this list is not every code nothing produces.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the

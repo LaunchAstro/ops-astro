@@ -243,6 +243,16 @@ export interface TaskDetail extends TaskSummary {
    * list would print "no proposals" over a projection that was never consulted.
    */
   readonly proposals?: readonly ProposalLineage[];
+  /** The open envelope a top-up raises (T2e); absent or null offers no top-up. */
+  readonly envelope?: TaskEnvelope | null;
+}
+
+export interface TaskEnvelope {
+  readonly id: string;
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  readonly actualMinor: number;
+  readonly currency: string;
 }
 
 /**

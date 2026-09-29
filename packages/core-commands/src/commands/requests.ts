@@ -242,6 +242,12 @@ export type CommandRequest =
       /** What the step used, priced by the synthetic book (T2d). */
       readonly usage?: { readonly item: string; readonly quantity: number } | null;
       readonly outcome?: 'completed' | 'failed';
+    } & Envelope)
+  | ({
+      readonly command: 'budget.top_up';
+      readonly recordId: unknown;
+      readonly amountMinor: number;
+      readonly fromMaximumMinor: number;
     } & Envelope);
 
 /**

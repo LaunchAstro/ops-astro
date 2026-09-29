@@ -108,7 +108,9 @@ export type CommandName =
   // The lease holder observes its applied effect, and a person reads the
   // receipt citing the decision it came from (T2c2).
   | 'task.observe'
-  | 'task.receipt';
+  | 'task.receipt'
+  // A person raises a task's envelope, two people above the band (T2e).
+  | 'budget.top_up';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -280,6 +282,7 @@ function declare(
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const BILLING_COLLECTION = 'billing';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -376,6 +379,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  // Minor units, of the maximum the person saw; no standing ceiling (Q168).
+  'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -550,6 +555,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // What an observed effect came from, asked on the attempt and checked on
   // its task; it names no operation to reverse it (T2c2).
   read('task.receipt', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `billing:decide` on the task (T2e). No agent route serves it, so a
+  // delegated agent is refused `DELEGATION_EXCLUDES_OPERATION` everywhere.
+  declare('budget.top_up', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId'],
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
