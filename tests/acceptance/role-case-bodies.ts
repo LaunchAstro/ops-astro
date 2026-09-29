@@ -25,6 +25,7 @@
 
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import { type ConnectionsContext } from './role-case-connections.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -59,18 +60,13 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext {
+export interface BodyContext extends ConnectionsContext {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
-  /**
-   * A broken connection to repair (MP-14-7a), owner-written. A context that
-   * cannot write one leaves it out and the body names a fabricated one.
-   */
-  brokenConnection?(): Promise<string>;
 }
 
 export const batchOf = (answer: Answer): string =>

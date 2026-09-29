@@ -16,7 +16,7 @@
 // Nothing below the boundary is substituted. Fixture grants go through
 // `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
-import { seedBrokenConnection } from '../connections/fixture.ts';
+import { seedBrokenConnection, seedMandate, seedReadyClass } from '../connections/fixture.ts';
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
@@ -82,6 +82,10 @@ export interface IdentWorld {
     secretId: string;
     /** A broken connection of bravo's, owner-written (MP-14-7a). */
     connectionId: string;
+    /** A ready graduation row of bravo's, its client and a mandate on it (MP-14-10a). */
+    classId: string;
+    clientId: string;
+    mandateId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -261,6 +265,17 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     }
   });
 
+  const bravoClass = await seedReadyClass(world.db.admin, world.bravo);
+  const bravoGraduation = {
+    ...bravoClass,
+    mandateId: await seedMandate(
+      world.db.admin,
+      world.bravo,
+      bravoClass.clientId,
+      bravoAdmin.actorId as string,
+    ),
+  };
+
   return {
     h,
     foreign: {
@@ -272,6 +287,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       grantId: String(bravoGrants[0]?.id),
       secretId: String(bravoSecret['secretId']),
       connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
+      ...bravoGraduation,
     },
     otherPicked,
     rhea,

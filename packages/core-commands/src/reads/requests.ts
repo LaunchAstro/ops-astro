@@ -34,6 +34,7 @@ import type {
   SecretListResult,
   ConnectionFleetResult,
   ConnectionSignalResult,
+  ConnectionGraduationResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -141,4 +142,5 @@ export type ReadResult =
   | SecretListResult
   | ConnectionFleetResult
   | ConnectionSignalResult
+  | ConnectionGraduationResult
   | CapabilitiesResult;

@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The thirteen operations that name no identifier, each with a minimal valid body.
+ * The fourteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -48,9 +48,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['connection.fleet', {}],
   // Grants, tripwires and the night round (MP-14-8) name no row either.
   ['connection.signal', {}],
+  // The per-client region (MP-14-10a) names no row.
+  ['connection.graduation', {}],
 ];
 
-/** The eighteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -60,6 +62,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
   'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.board': ['board', 'board'],

@@ -44,6 +44,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0034: tripwires and night round steps are written by the checks and the
   // round itself and only read here (MP-14-8).
   ['s', 'night_round_steps tripwires'],
+  // 0035: a graduation row is written by the agent loops and only has its
+  // revision bumped here; a mandate is filed and revoked, never deleted
+  // (MP-14-10a). Both updates are column grants.
+  ['su', 'graduation_classes'],
+  ['siu', 'standing_mandates'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

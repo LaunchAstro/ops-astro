@@ -54,6 +54,6 @@ describe("the client's read names", () => {
       (name) => !READ_NAMES.some((reached) => reached === name),
     );
     expect(unreached).toEqual([]);
-    expect(READ_NAMES).toHaveLength(12);
+    expect(READ_NAMES).toHaveLength(13);
   });
 });

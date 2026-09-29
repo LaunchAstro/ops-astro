@@ -10,7 +10,8 @@
 //
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
 // on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
-// to 008 (grants, tripwires, the night round) are MP-14-8's, read apart.
+// to 008 (grants, tripwires, the night round) are MP-14-8's, read apart, and
+// the per-client region from the scope bar down is MP-14-10a's.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Empty, InDevelopment } from '@launchastro/ui';
@@ -21,6 +22,7 @@ import type {
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
 import { FleetTable } from './connections/fleet-table.tsx';
 import { SignalSections } from './connections/signal.tsx';
+import { GraduationRegion } from './connections/graduation.tsx';
 import {
   initialFleetView,
   toggleOpen,
@@ -248,6 +250,7 @@ export function ConnectionsScreen(props: {
       ) : null}
       <NotConnected />
       <SignalSections client={client} now={now} />
+      <GraduationRegion client={client} />
     </section>
   );
 }

@@ -14,7 +14,12 @@
 // ordinary gate's to decide: this check only ever removes a question, it never
 // answers one the other way.
 
-import { type TenantQuery } from '../../core-records/src/index.ts';
+import {
+  classMatches,
+  mandateIsLive,
+  lockClientMandates,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 
 export interface MandateQuestion {
   readonly clientId: string;
@@ -34,8 +39,29 @@ export type MandateVerdict =
   | { readonly covered: false; readonly reason: 'none' };
 
 export async function standingMandateVerdict(
-  _tx: TenantQuery,
-  _question: MandateQuestion,
+  tx: TenantQuery,
+  question: MandateQuestion,
 ): Promise<MandateVerdict> {
-  return await Promise.resolve({ covered: false, reason: 'none' });
+  if (!Number.isSafeInteger(question.valueMinor) || question.valueMinor < 0) {
+    throw new RangeError('standingMandateVerdict: the value is a whole number of minor units');
+  }
+  const matching = (await lockClientMandates(tx, question.clientId)).filter((one) =>
+    one.classes.some((scope) => classMatches(scope, question.actionClass)),
+  );
+  const live = matching.filter((one) => mandateIsLive(one, question.at));
+  const refusal = live.find((one) => one.refuses);
+  if (refusal !== undefined) return { covered: false, reason: 'refused', mandateId: refusal.id };
+  const approvals = live.filter((one) => !one.refuses);
+  const within = approvals.find(
+    (one) =>
+      one.currency === question.currency &&
+      one.ceilingMinor !== null &&
+      question.valueMinor <= one.ceilingMinor,
+  );
+  if (within !== undefined) return { covered: true, mandateId: within.id };
+  const over = approvals[0];
+  if (over !== undefined) return { covered: false, reason: 'over-ceiling', mandateId: over.id };
+  const expired = matching.find((one) => !one.refuses);
+  if (expired !== undefined) return { covered: false, reason: 'expired', mandateId: expired.id };
+  return { covered: false, reason: 'none' };
 }

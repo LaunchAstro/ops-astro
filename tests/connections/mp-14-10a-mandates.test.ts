@@ -410,6 +410,31 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation and standing mand
     expect(await ask({})).toStrictEqual({ covered: false, reason: 'none' });
   });
 
+  it('MP-14-10a core: a live matching refusal wins over an approval at the effect', async () => {
+    const approval = await file(admin, {
+      classes: ['billing.invoice'],
+      ceiling: AUD(100_000),
+      label: 'Invoices for A up to a thousand dollars',
+    });
+    const refusal = await file(admin, {
+      classes: ['billing.*'],
+      refuses: true,
+      ceiling: null,
+      label: 'No billing runs on its own for A',
+    });
+    const refusalId = String(detail(refusal)['mandateId']);
+    const question = { actionClass: 'billing.invoice', valueMinor: 1 };
+    expect(await verdict(question)).toStrictEqual({
+      covered: false,
+      reason: 'refused',
+      mandateId: refusalId,
+    });
+    expect((await as(admin, 'mandate.revoke', { mandateId: refusalId })).status).toBe(200);
+    const approvalId = String(detail(approval)['mandateId']);
+    expect(await verdict(question)).toStrictEqual({ covered: true, mandateId: approvalId });
+    expect((await as(admin, 'mandate.revoke', { mandateId: approvalId })).status).toBe(200);
+  });
+
   it('MP-14-10a revoking stops pre-approval at once, and an effect already past its check is not undone', async () => {
     const filed = await file(admin, { classes: ['email.send'], label: 'Email for A' });
     const mandateId = String(detail(filed)['mandateId']);

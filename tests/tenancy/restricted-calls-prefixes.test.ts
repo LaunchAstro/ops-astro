@@ -136,6 +136,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     who: 'restricted calls',
     say: 'restricted calls',
   },
+  // Graduation and standing mandates (MP-14-10a, 0035): the journey files none.
+  'public.graduation_classes': {
+    client_id: randomUUID(),
+    client_label: 'restricted calls client',
+    action_class: 'restricted.calls',
+    class_label: 'restricted calls',
+    earned: 'ready',
+  },
+  'public.standing_mandates': {
+    client_id: randomUUID(),
+    classes: ['*'],
+    refuses: true,
+    expires_at: '2099-01-01T00:00:00Z',
+    label: 'restricted calls',
+    authored_by_actor_id: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

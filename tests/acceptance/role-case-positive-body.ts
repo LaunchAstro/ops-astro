@@ -20,12 +20,15 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { connectionsBody } from './role-case-connections.ts';
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
+    const connections = await connectionsBody(declaration.name, context);
+    if (connections !== undefined) return connections;
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
@@ -179,14 +182,6 @@ export function createPositiveBody(
           body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
         };
       }
-      // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
-      case 'connection.fleet':
-      case 'connection.signal':
-        return { body: {} };
-      case 'connector.repair':
-        return {
-          body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() },
-        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

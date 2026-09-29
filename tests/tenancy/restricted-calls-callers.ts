@@ -103,10 +103,19 @@ export const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', '
  * are asked for rows that exist and must see none. Every statement returns one
  * row per row it touched, so the count is the server's.
  */
+/**
+ * Tables whose update is a column grant: the update is asked of a column the
+ * application role may write, so a refusal is the tenancy's, not the grant's.
+ */
+const UPDATE_COLUMN: Readonly<Record<string, string>> = {
+  'public.graduation_classes': 'revision',
+  'public.standing_mandates': 'revision',
+};
+
 export function statementFor(table: CatalogueTable, operation: Operation): string {
   const t = table.qualified;
   const where = table.tenant ? ' where business_id = $1' : '';
-  const column = table.tenant ? 'business_id' : `"${table.firstColumn}"`;
+  const column = UPDATE_COLUMN[t] ?? (table.tenant ? 'business_id' : `"${table.firstColumn}"`);
   const statements: Readonly<Record<Operation, string>> = {
     select: `select 1 from ${t}${where}`,
     insert: table.tenant
