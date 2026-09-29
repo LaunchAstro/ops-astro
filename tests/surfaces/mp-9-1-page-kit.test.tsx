@@ -183,7 +183,7 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
         ))}
       </StatRow>,
     );
-    expect(mounted.find('.statrow')?.className).toBe('statrow g5');
+    expect(mounted.find('.statrow')?.className).toBe('statrow statrow--5');
     const css = readFileSync(
       join(process.cwd(), 'packages/ui/src/styles/7-page-kit.css'),
       'utf8',
@@ -192,7 +192,7 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
       css.match(
         new RegExp(`@media \\((?:max-width: |width <= )${width}px\\) \\{([\\s\\S]*?)\\n\\}`, 'u'),
       )?.[1] ?? '';
-    expect(rule(1279)).toMatch(/\.statrow\.g[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/u);
+    expect(rule(1279)).toMatch(/\.statrow--[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/u);
     expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
     expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/u);
     expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font-size: 1\.75rem/u);
