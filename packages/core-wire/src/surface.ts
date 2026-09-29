@@ -100,7 +100,11 @@ export type CommandName =
   // command serves both secret screens, and no path returns a value.
   | 'secret.list'
   | 'secret.set'
-  | 'secret.clear';
+  | 'secret.clear'
+  // The connector fleet (MP-14-7a): read by `connection:read`, and a repair
+  // started by `custody:manage`, which records it and sends nothing.
+  | 'connection.fleet'
+  | 'connector.repair';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -259,6 +263,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const CUSTODY_COLLECTION = 'custody';
+const CONNECTION_COLLECTION = 'connection';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -349,6 +354,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   // which names the field and never echoes what was sent.
   'secret.set': { name: 'text', value: 'any', clientId: 'id?|null', expectedRevision: 'any' },
   'secret.clear': { secretId: 'id', expectedRevision: 'any' },
+  'connector.repair': { connectionId: 'id', expectedRevision: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -466,6 +472,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['secretId'],
+  }),
+
+  // The connector fleet (MP-14-7a). The fleet is `connection:read`, asked per
+  // row by the scopes the caller holds it at, so a client-scoped reader sees
+  // the connections serving that client only. Starting a repair touches the
+  // credential's custody, so it is `custody:manage`, never an agent (the
+  // ticket's permissions table).
+  read('connection.fleet', CONNECTION_COLLECTION),
+  declare('connector.repair', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['connectionId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

@@ -30,6 +30,7 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
+import { readConnectionFleet } from './connections.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -305,6 +306,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await listCustodySecrets(tx, session),
+  },
+  // Asked per row by the scopes the caller holds `connection:read` at, as
+  // `secret.list` is by `custody:manage`: a caller holding it nowhere is
+  // refused inside the read, never shown an empty fleet.
+  'connection.fleet': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionFleet(tx, session),
   },
   'settings.read': {
     identifiers: [],

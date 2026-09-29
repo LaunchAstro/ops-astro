@@ -224,6 +224,12 @@ export type CommandRequest =
       readonly secretId: string;
       readonly expectedRevision?: unknown;
     } & Envelope)
+  // The connector fleet (MP-14-7a): start a repair of one broken connection.
+  | ({
+      readonly command: 'connector.repair';
+      readonly connectionId: string;
+      readonly expectedRevision?: unknown;
+    } & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({
