@@ -219,3 +219,39 @@ pnpm cli map frontier <id>
   Internal readers only; an agent reaches it once its credential is narrowed
   from a person's grants (API-2).
 - _Changes since_ joins with the live change record (C4).
+
+## The wayfinder tracker (API-5)
+
+`docs/agents/issue-tracker-ops-astro.md` is the tracker file the upstream
+wayfinder and grilling skills read, beside their `issue-tracker-github.md` and
+`issue-tracker-local.md`: point a project's tracker at it and the skills run
+unmodified against Ops Astro. Every operation it names is one of the verbs
+above or one of these (`apps/cli/tracker-verbs.ts`), each onto its owning
+wayfinder command:
+
+```
+pnpm cli map chart --title <t> [--destination <d>] [--notes <n>] [--fog <json list>] [--tickets <json list>] [--out-of-scope <json list>]
+pnpm cli map revise <map> --revision n [--destination <d>] [--notes <n>] [--add-fog <json list>] [--add-out-of-scope <json list>] [--retire <id,id>]
+pnpm cli map graduate <map> --revision n --patch <fog id> --tickets <json list>
+pnpm cli task claim <id> --revision n
+pnpm cli task type <id> --revision n --type <type>
+pnpm cli task out-of-scope <id> --revision n --reason <r>
+pnpm cli task close <id> --revision n
+pnpm cli task research <id>
+```
+
+- List operands (fog lines, tickets) are JSON lists; a flag that is not one is
+  a usage error before any request.
+- `map chart --tickets` takes `{ref, title, type, blockedBy}` entries and
+  prints each ref with the ticket it became (`a=<id>`); `map graduate` prints
+  its tickets in order (`1=<id>`).
+- `task research` answers `NOT_AVAILABLE` ("not available until Docs"), exit 1,
+  and sends nothing: a research artefact is a Docs page, which arrives with
+  WF-8. There is no other store for it.
+- The tracker's mapping table is the spec's (`CAPABILITY-SLICES.md` section
+  15a, copied in `tests/cli/api-5-spec-mapping.md`); the upstream skill files
+  are pinned by SHA-256 in the tracker file. `tests/cli/api-5-contract.test.ts`
+  fails when either drifts, and `tests/cli/api-5-conformance.test.ts` runs the
+  same wayfinding script against the local-Markdown tracker and Ops Astro.
+- A ticket ruled out of scope is an Out of scope item and stays out of
+  Decisions so far, in `map view` and in `task context`.
