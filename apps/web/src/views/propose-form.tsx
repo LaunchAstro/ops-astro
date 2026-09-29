@@ -109,11 +109,11 @@ export function Propose(props: ProposeProps): ReactElement {
             // **`step` is an object, not the purpose again.** The contract is
             // `{ kind, payload }` (`commands/requests.ts`), and `proposeOnTask`
             // writes `step.kind` straight into `planned_steps.kind`, which is
-            // `not null`. Sending the slug as a bare string put null in that
-            // column and the handler threw, which the API reports as a 503 — so
-            // the screen said "the API answered 503" and the person had no idea
-            // their proposal was well formed and the client was not. The browser
-            // case is what found it; the mounted stand-in had accepted anything.
+            // `not null`. A bare string would put null in that column and the
+            // handler would throw, which the API reports as a 503, so the screen
+            // would say "the API answered 503" to a person whose proposal was
+            // well formed. The browser case covers it, because a mounted
+            // stand-in accepts anything.
             step: { kind: purpose, payload: { step: purpose } },
           },
           // The revision the attempt was made at: the page's for a new attempt,

@@ -46,7 +46,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand, runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -145,7 +145,7 @@ describe.skipIf(serverUrl === undefined)('two writers against one revision', () 
   });
 
   const titleOf = async (recordId: string): Promise<string | undefined> => {
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly title: string }>(
         `select data ->> 'title' as title from records where business_id = $1 and id = $2`,
         [business, recordId],

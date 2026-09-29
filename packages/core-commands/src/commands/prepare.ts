@@ -79,12 +79,12 @@ export function expectedRevisionOf(request: UncheckedRequest): number | undefine
  * from the actor kind and the entry point. A body carrying one of them is a
  * body claiming a fact it is not in a position to know.
  *
- * **Why a typed refusal and not a quiet drop.** Dropping them and doing the
- * write anyway is what this boundary used to do, and the accepted ledger
- * (D06) requires a typed refusal and unchanged domain state instead. The
- * difference matters to the caller: a client that believed it had set
- * `actor_id` got a `200` and no correction, so the bug lived in the client and
- * the server looked fine. A refusal naming the keys is the only answer that
+ * **Why a typed refusal and not a quiet drop.** The accepted ledger (D06)
+ * requires a typed refusal and unchanged domain state rather than dropping
+ * them and doing the write anyway. The difference matters to the caller: a
+ * client that believed it had set `actor_id` would get a `200` and no
+ * correction, so the bug would live in the client and the server would look
+ * fine. A refusal naming the keys is the only answer that
  * gets the field removed.
  *
  * **Why `FIELD_NOT_WRITABLE` and not `COMMAND_BODY_INVALID`.** The register
@@ -151,7 +151,7 @@ const INSTALLED_SYSTEM_FIELDS = `
 
 /**
  * The system keys a request carries *at its top level*: the envelope's own
- * and every installed system field's (root ruling 1, D06-GENERATED F1).
+ * and every installed system field's (root ruling 1).
  *
  * Only the top level. A key nested in an operand is that operand's business:
  * `fields.completed_at` is the field engine's refusal, `fields.source` stays
@@ -235,12 +235,12 @@ function refuseMalformedIdentifier(
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
  * purpose, currency, payload and step, a handback's report and successor.
  *
- * Final review round 2 (R2-SURFACE-9, R2-THERMO-11, R2-RUNTIME-63) found each
- * of them reaching its insert holding a NUL or an unpaired surrogate, which the
- * column refuses with a raise: the owed refusal became a 503, the audit read
- * `failed`, and a retry of the same body could never succeed. The rule is
- * `values.ts`'s; this is the one place the person path applies it, so an
- * operand added to a command is covered by adding its name here.
+ * Without this check, each of them could reach its insert holding a NUL or an
+ * unpaired surrogate, which the column refuses with a raise. The owed refusal
+ * would be a 503, the audit would read `failed`, and a retry of the same body
+ * could never succeed. The rule is `values.ts`'s; this is the one place the
+ * person path applies it, so an operand added to a command is covered by
+ * adding its name here.
  *
  * `fields` is not listed. The field engine refuses a field value with the
  * field's own name and type (`values.ts`, `refuseWrongValueType`), and a
@@ -276,17 +276,15 @@ function refuseUnstorableOperands(request: UncheckedRequest): Refused | undefine
  *
  * `refuseMalformedIdentifier` answers a *string* that is not a uuid, and it
  * lets any other type through, because `task.move` and `task.reparent` answer
- * a non-string `board` or `parentId` by name in their own handlers. These
- * three did not, and final review round 2 (R2-SURFACE-8) found `afterId: 5`,
- * `lineageId: 5` and a `gateId` of 5 or none each reaching the bind and
- * answering 503. They are refused by name, as API.md says of every absent or
- * mistyped operand. `task.cancel` and `task.restart` type their `lineageId`
- * themselves and are not listed.
+ * a non-string `board` or `parentId` by name in their own handlers. The
+ * handlers listed here do not, so `afterId: 5`, `lineageId: 5` or a `gateId`
+ * of 5 or none would reach the bind and answer 503. They are refused by name,
+ * as API.md says of every absent or mistyped operand. `task.cancel` and
+ * `task.restart` type their `lineageId` themselves and are not listed.
  *
- * Round 3 found two more. The R2-AUTHORITY-33 fix lower-cases `versionId` in
- * `decide()`, which threw on one that was absent or not a string
- * (R3-AUTHORITY-6), and `task.create` carries `parentId`, `board` and
- * `boardSection` into its placement without typing any of them (R3-SURFACE-8).
+ * `decide()` lower-cases `versionId`, which throws on one that is absent or
+ * not a string, and `task.create` carries `parentId`, `board` and
+ * `boardSection` into its placement without typing any of them.
  */
 const TYPED_IDENTIFIERS: Readonly<
   Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
@@ -412,12 +410,11 @@ const BUSINESS: Scope = { kind: 'business', id: null };
  * A grant at the scope it was issued on, a delegation at its purpose scope,
  * each read only for the command that revokes it.
  *
- * One list tried both fields for either command, so a `delegation.revoke`
- * that also carried a `grantId` was asked at that grant's scope, and a
- * record-scoped manager could tell a same-business delegation outside their
- * scope from a fabricated one by the answer (final review round 2,
- * R2-AUTHORITY-30). Each command now reads its own field, and the other's is
- * refused (`refuseOtherTarget`).
+ * Each command reads its own field, and the other's is refused
+ * (`refuseOtherTarget`). One list trying both fields for either command would
+ * ask a `delegation.revoke` that also carried a `grantId` at that grant's
+ * scope, and a record-scoped manager could tell a same-business delegation
+ * outside their scope from a fabricated one by the answer.
  */
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   'grant.revoke': [
@@ -581,10 +578,9 @@ export async function prepareCommand(
     // Before any task row: a command that rewrites a subtree's links takes its
     // per-business lock first, so it never holds a row while waiting for it.
     // Only here, where the target is read: a replay re-judges authority with
-    // `targetsExistingRecord` off, and it locks nothing (`withheldNow`; final
-    // review R3-THERMO-25).
+    // `targetsExistingRecord` off, and it locks nothing (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
-    // F1. A target the runtime locks in its own order is only read here. The
+    // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
     // cap and envelope the runtime then asks for.
@@ -597,8 +593,8 @@ export async function prepareCommand(
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would
-    // tell the caller the task is there (OWNER-CARD section 6; final review
-    // round 1, #25). The handler keeps its own check for the agent path.
+    // tell the caller the task is there (OWNER-CARD section 6). The handler
+    // keeps its own check for the agent path.
     if (declaration.name === 'task.comment' && target.deleted_at !== null) {
       return refused(refuseNotFound());
     }

@@ -4,8 +4,8 @@
 // reader, and the calls that bring a lineage, a reservation and a lease into
 // existence through the routes that own them.
 //
-// Its own file because the two control suites both need it and the per-file
-// review cap is 400 changed lines. Nothing here writes a row a route would
+// Its own file because the two control suites both need it, and each stays
+// readable at about 400 lines, the repository's guide. Nothing here writes a row a route would
 // write: grants are issued the way `tests/api/fixture.ts` issues them (a root
 // grant is an administrative act and there is no route for one), and every
 // lineage, reservation, lease and revocation comes from an operation.

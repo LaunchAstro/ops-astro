@@ -30,7 +30,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   insertActor,
@@ -218,7 +218,7 @@ describe.skipIf(serverUrl === undefined)('one login is a person or an agent', ()
     });
 
   it('refuses the second of two simultaneous mappings of different kinds', async () => {
-    const loginId = await db.app.withBusiness(business, async (tx) =>
+    const loginId = await db.app.withBusiness(business, (tx) =>
       insertLogin(tx, `race-insert-${randomUUID()}`),
     );
 

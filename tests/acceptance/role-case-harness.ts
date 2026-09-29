@@ -3,9 +3,9 @@
 // The world the role-and-case matrix is driven against, and everything the
 // cases ask it.
 //
-// Three files rather than one, for T1h's reason: the per-file cap is 400
-// changed lines, no waiver lifts it, and the repository's answer is to split
-// the file rather than the change or the comments. The seams are real ones —
+// Three files rather than one, for T1h's reason: about 400 lines is the
+// guide for a readable file, and the repository's answer is to split the
+// file rather than the change or the comments. The seams are real ones —
 // `role-case-ledger.ts` knows only about rows, `role-case-bodies.ts` knows
 // only about tasks, and this knows about callers — so
 // `role-case-matrix.test.ts` is left reading as the cases themselves.

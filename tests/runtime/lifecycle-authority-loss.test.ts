@@ -18,7 +18,7 @@
 // classification, which the fixed handler can no longer produce.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import {
   classifyUnderLocks,

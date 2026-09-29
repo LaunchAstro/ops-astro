@@ -26,7 +26,7 @@ import {
   databaseUrlFromEnvironment,
   type EmptyDatabase,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   applyMigrations,
   readMigrations,
@@ -127,7 +127,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
   });
 
   it('defaults the four-eyes band to five hundred and permits it being off', async () => {
-    const band = await db.app.withBusiness(business, async (tx) =>
+    const band = await db.app.withBusiness(business, (tx) =>
       readBusinessSetting(tx, 'four_eyes_threshold'),
     );
     expect(band?.value).toBe(500);
@@ -138,7 +138,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         [business],
       );
     });
-    const off = await db.app.withBusiness(business, async (tx) =>
+    const off = await db.app.withBusiness(business, (tx) =>
       readBusinessSetting(tx, 'four_eyes_threshold'),
     );
     expect(off?.value).toBeNull();
@@ -176,38 +176,38 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
     });
 
     it('counts up once per write, and the read hands back the new one', async () => {
-      const first = await db.app.withBusiness(business, async (tx) =>
+      const first = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, { key: 'conversation_window_days', value: 45 }),
       );
       expect(isSettingRevisionStale(first ?? {})).toBe(false);
       expect(first).toMatchObject({ key: 'conversation_window_days', value: 45, revision: 2 });
 
-      const second = await db.app.withBusiness(business, async (tx) =>
+      const second = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, { key: 'conversation_window_days', value: 60 }),
       );
       expect(second).toMatchObject({ value: 60, revision: 3 });
 
-      const read = await db.app.withBusiness(business, async (tx) =>
+      const read = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
       );
       expect(read).toMatchObject({ value: 60, revision: 3 });
     });
 
     it('proceeds when no revision is named, which is what the landed caller does', async () => {
-      const before = await db.app.withBusiness(business, async (tx) =>
+      const before = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
       );
-      const written = await db.app.withBusiness(business, async (tx) =>
+      const written = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, { key: 'conversation_window_days', value: 61 }),
       );
       expect(written).toMatchObject({ value: 61, revision: (before?.revision ?? 0) + 1 });
     });
 
     it('refuses a write against a revision that has moved on, and changes nothing', async () => {
-      const before = await db.app.withBusiness(business, async (tx) =>
+      const before = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
       );
-      const stale = await db.app.withBusiness(business, async (tx) =>
+      const stale = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'conversation_window_days',
           value: 999,
@@ -224,17 +224,17 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
           'A write against a stale revision is refused, never merged.',
         ],
       });
-      const after = await db.app.withBusiness(business, async (tx) =>
+      const after = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
       );
       expect(after).toMatchObject({ value: before?.value, revision: before?.revision });
     });
 
     it('applies the write of the revision it names, at the revision it names', async () => {
-      const before = await db.app.withBusiness(business, async (tx) =>
+      const before = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
       );
-      const written = await db.app.withBusiness(business, async (tx) =>
+      const written = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'conversation_window_days',
           value: 15,
@@ -245,14 +245,14 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
     });
 
     it('answers nothing at all for a key this business has no row for', async () => {
-      const absent = await db.app.withBusiness(business, async (tx) =>
+      const absent = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, { key: 'no_such_setting', value: 1 }),
       );
       expect(absent).toBeUndefined();
     });
 
     it('writes an operation-owned row only for an operation the row names', async () => {
-      const band = await db.app.withBusiness(business, async (tx) =>
+      const band = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'four_eyes_threshold',
           value: 1200,
@@ -260,7 +260,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         }),
       );
       expect(band).toMatchObject({ value: 1200 });
-      const notItsOperation = await db.app.withBusiness(business, async (tx) =>
+      const notItsOperation = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'four_eyes_threshold',
           value: 1300,
@@ -268,7 +268,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         }),
       );
       expect(notItsOperation).toBeUndefined();
-      const kept = await db.app.withBusiness(business, async (tx) =>
+      const kept = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'four_eyes_threshold'),
       );
       expect(kept?.value).toBe(1200);
@@ -299,7 +299,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
     });
 
     it("applies one and tells the other it is stale, with the winner's value standing", async () => {
-      const shared = await db.app.withBusiness(business, async (tx) =>
+      const shared = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'retention_window_days'),
       );
       const revision = shared?.revision ?? 0;
@@ -326,7 +326,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       // The second administrator, on their own connection, presenting the
       // revision they read before the first started -- which is exactly what a
       // second browser tab holds.
-      const other = second.withBusiness(business, async (tx) =>
+      const other = second.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'retention_window_days',
           value: 222,
@@ -350,7 +350,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       expect(loser).toMatchObject({ code: 'VERSION_STALE', names: [`revision=${revision + 1}`] });
 
       // Exactly one write landed, and the value standing is the winner's.
-      const standing = await db.app.withBusiness(business, async (tx) =>
+      const standing = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'retention_window_days'),
       );
       expect(standing).toMatchObject({ value: 111, revision: revision + 1 });
@@ -366,7 +366,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       );
       await installBusinessSettings(tx);
     });
-    const kept = await db.app.withBusiness(business, async (tx) =>
+    const kept = await db.app.withBusiness(business, (tx) =>
       readBusinessSetting(tx, 'retention_window_days'),
     );
     expect(kept?.value).toBe(90);
@@ -415,7 +415,7 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it('counts up from 1 for a business that was upgraded', async () => {
-      const written = await db.app.withBusiness(business, async (tx) =>
+      const written = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, { key: 'retention_window_days', value: 7, expectedRevision: 1 }),
       );
       expect(written).toMatchObject({ value: 7, revision: 2 });

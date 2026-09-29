@@ -22,7 +22,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

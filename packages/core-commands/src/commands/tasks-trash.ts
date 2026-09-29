@@ -106,7 +106,7 @@ export async function restoreTasks(
   const restored = await restoreBatch(tx, { batchId });
   if (isRecordsRefusal(restored)) return refused(restored);
   // The ids go in the stored result: the event this command writes has one
-  // subject column and a restore has no single subject (R2-RUNTIME-55).
+  // subject column and a restore has no single subject.
   return applied(null, null, {
     batchId,
     restored: restored.recordIds.length,
@@ -122,7 +122,7 @@ export async function restoreTasks(
  * business's row and never a number the caller sent. Specification 14.3 purges
  * the work class "after the business's retention window", and SPEC:319 with
  * C12-5 Q46 moved that window out of this request body and into the settings
- * table (root ruling 2, L3-RETENTION). It is still configurable, which is what
+ * table (root ruling 2). It is still configurable, which is what
  * 14.3 asks of it: a test sets the row to zero and watches the operation accept
  * the work class and refuse the evidence class in one run.
  *
@@ -152,7 +152,7 @@ export async function purgeTasks(
   // `retained` names the aged trash the runtime still holds, so the stored
   // result says what the purge kept as well as how much it removed. The
   // destroyed ids are named too: after the purge, this result is the only
-  // place that says they existed (R2-RUNTIME-55).
+  // place that says they existed.
   return applied(null, null, {
     purged: purged.recordIds.length,
     purgedIds: purged.recordIds,
@@ -207,7 +207,7 @@ const LONGEST_COMPUTED_WINDOW_DAYS = 2_000_000;
  *
  * The window has no ceiling, so a longer one than the calendar holds is
  * answered as what it means, nothing is old enough, rather than handed to
- * date arithmetic that overflows and faults the purge (R2-SURFACE-66).
+ * date arithmetic that overflows and faults the purge.
  */
 async function cutoff(tx: TenantQuery, days: number): Promise<Date | undefined> {
   if (days > LONGEST_COMPUTED_WINDOW_DAYS) return undefined;

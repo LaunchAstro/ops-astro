@@ -96,7 +96,8 @@ export async function authorise<O extends object>(
 
   if (operation.authority === 'decision') {
     const taskId = (await namedTaskId(tx, request, 'record')) ?? delegation.purposeScope.id;
-    // L4 asks L2 and returns L2's answer. It cannot succeed: `DelegableAction`
+    // The runtime asks the delegation check and returns its answer. It cannot
+    // succeed: `DelegableAction`
     // excludes `decide`, the check refuses it first, and a delegation carrying
     // it cannot be written at all. An ordinary write of one is refused by
     // `delegations_actions_known` (0008:188), the constraint Postgres reports;
@@ -119,7 +120,7 @@ export async function authorise<O extends object>(
   });
   const { serve } = operation;
   // The task checked is the task served: `serve` is handed the id the check
-  // was made on, never the body to read again (THERMO-RECHECK-2 NNA1).
+  // was made on, never the body to read again.
   return decision.ok
     ? { run: async (operands) => await serve(tx, call, operands, delegation, named) }
     : refusing(decision.refusal);
@@ -141,8 +142,8 @@ function unreachable(): never {
  *
  * A `recordId` that is present and not a string never reaches here: the row's
  * operands refuse it first (`recordIdOperand`), because `String([id])` is the
- * id, and checking the agent's own task while serving the one the array
- * prints as was THERMO-RECHECK-2 NNA1.
+ * id, and the agent's own task would be checked while the one the array
+ * prints as was served.
  */
 async function namedTaskId(
   tx: TenantQuery,
@@ -150,12 +151,12 @@ async function namedTaskId(
   subjectTask: 'lease' | 'record',
 ): Promise<string | undefined> {
   // The id as sent: `String([id])` is the id, and the array itself would then
-  // reach the bound parameter (Sol 6 AUTHORITY-2).
+  // reach the bound parameter.
   const leaseId = request['leaseId'];
   // A lease call names its task through the lease and nothing else: a stray
   // `recordId` beside a malformed lease id would otherwise steer the check,
-  // and the malformed id would answer unlike a fabricated one (final review
-  // R1 #23). Neither names a lease, so both are checked on the purpose scope.
+  // and the malformed id would answer unlike a fabricated one. Neither names
+  // a lease, so both are checked on the purpose scope.
   if (subjectTask === 'lease') {
     return isUuid(leaseId) ? await taskOfLease(tx, leaseId) : undefined;
   }
@@ -163,6 +164,6 @@ async function namedTaskId(
   if (typeof named !== 'string') return undefined;
   // One task, however its uuid is spelled: the person entry binds it as a
   // uuid, so an upper-case spelling of the agent's own task is that task and
-  // not "another resource" (final review R1 #20).
+  // not "another resource".
   return isUuid(named) ? named.toLowerCase() : named;
 }

@@ -29,7 +29,7 @@ import {
   createEmptyDatabase,
   databaseUrlFromEnvironment,
   type EmptyDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   applyMigrations,
   migrate,

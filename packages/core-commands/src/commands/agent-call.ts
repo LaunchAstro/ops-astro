@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The shape of one agent call, and nothing else. Types only, so every agent
-// module can depend on it without depending on the operation table
-// (THERMO-RECHECK NA5).
+// module can depend on it without depending on the operation table.
 
 import type { AgentSession } from '../../../core-records/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
@@ -34,8 +33,7 @@ export interface AgentCall {
 /**
  * The operands each agent row reads beyond its identifiers, parsed rather than
  * coerced. Each row's parser returns its own type, so a field its parser
- * guarantees is carried typed and nothing downstream invents a value for it
- * (THERMO-RECHECK-2 NNA3).
+ * guarantees is carried typed and nothing downstream invents a value for it.
  */
 export type NoOperands = Readonly<Record<never, never>>;
 

@@ -54,7 +54,7 @@ export interface AuthorityLoss<T> {
 }
 
 /**
- * F4. Recorded authority loss, as an owning transition: `delegation.revoke`
+ * Recorded authority loss, as an owning transition: `delegation.revoke`
  * and `grant.revoke` both end here.
  *
  * `delegationIds` is every delegation the revocation might cost its work

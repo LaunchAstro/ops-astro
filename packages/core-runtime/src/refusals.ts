@@ -9,9 +9,10 @@
 // down" cannot do it through a `catch`.
 //
 // `DELEGATION_EXCLUDES_DECISION` is deliberately **not** in this union. It is
-// L2's code, produced by `checkDelegatedAuthority`, and `decide.ts` returns it
-// unchanged rather than re-deriving it — a second module that decides for
-// itself what an agent may decide is a second place that rule can drift.
+// the authority module's code, produced by `checkDelegatedAuthority`, and
+// `decide.ts` returns it unchanged rather than re-deriving it. A second module
+// that decides for itself what an agent may decide is a second place that rule
+// can drift.
 
 import { REFUSAL_REGISTER, refuseCommand } from '../../core-records/src/index.ts';
 import type {
@@ -29,8 +30,9 @@ import type {
 export type { RuntimeRefusalCode };
 
 /**
- * A runtime refusal, or one L2 produced and this module is passing through,
- * in the register's one shape: the reason first in `fixes`, then the fix.
+ * A runtime refusal, or one the delegation check produced and this module is
+ * passing through, in the register's one shape: the reason first in `fixes`,
+ * then the fix.
  */
 export type RuntimeResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -49,7 +51,7 @@ export function refuse(
 
 /**
  * Whether a refusal is one of the runtime's own: a register row marked
- * `runtime`, and not one of L2's delegation codes. It takes any refusal, so
+ * `runtime`, and not one of the delegation codes. It takes any refusal, so
  * it answers from the register rather than by elimination, or an identity
  * code such as `AUTH_UNKNOWN_LOGIN` would count as the runtime's.
  */
@@ -63,9 +65,9 @@ const RUNTIME_CODES: ReadonlySet<string> = new Set(
   REFUSAL_REGISTER.filter((row) => row.runtime).map((row) => row.code),
 );
 
-// A record over L2's union rather than a list, so a delegation code L2 adds is
-// a type error here instead of a code this module silently claims as its own.
-// `DELEGATION_ALREADY_LIVE` was claimed that way until it was added.
+// A record over the delegation union rather than a list, so a delegation code
+// added there is a type error here instead of a code this module silently
+// claims as its own.
 const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
   DELEGATION_EXCLUDES_DECISION: true,
   DELEGATION_OUT_OF_PURPOSE: true,
@@ -76,10 +78,9 @@ const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
 };
 
 /**
- * Each runtime code with the status it is carried under, read from the
- * register rows marked `runtime`. It used to be a second table the runtime
- * suggested and a test compared with the API's own status map; it is now a view of
- * the one table. Nothing in production reads it; it stays exported for the
+ * Each runtime code with the status it is carried under: a view of the
+ * register rows marked `runtime`, so no second table can drift from the API's
+ * own status map. Nothing in production reads it; it stays exported for the
  * tests that census the runtime's codes through it
  * (`tests/runtime/refusal-classes.test.ts`, `tests/commands/runtime-codes.test.ts`).
  */

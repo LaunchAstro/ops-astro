@@ -3,9 +3,9 @@
 // The matrix itself: what was observed, what was expected, and the file it is
 // written to.
 //
-// It is its own file for T1h's reason — the per-file cap is 400 changed lines,
-// no waiver lifts it, and the answer is to split the file rather than the
-// change or the comments that say why an assertion is the assertion. The seam
+// It is its own file for T1h's reason — about 400 lines is the guide for a
+// readable file, and the answer is to split the file rather than the change
+// or the comments that say why an assertion is the assertion. The seam
 // is the obvious one: this module knows nothing about tasks, agents or
 // businesses, only about rows.
 //

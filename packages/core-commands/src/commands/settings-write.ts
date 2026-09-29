@@ -2,12 +2,12 @@
 //
 // The two settings a named operation owns.
 //
-// L2 classified `four_eyes_threshold` and `client_sign_off_required` as
-// `operation` and named the commands that would own them; these are those
-// commands. The classification is the whole reason they exist: a setting that
-// decides whether a second approver is needed is an authority change wearing
-// configuration's clothes, so it is not reachable through a generic editor and
-// the operation that owns it is the only way in.
+// The settings catalogue classifies `four_eyes_threshold` and
+// `client_sign_off_required` as `operation` and named the commands that would
+// own them; these are those commands. The classification is the whole reason
+// they exist: a setting that decides whether a second approver is needed is an
+// authority change wearing configuration's clothes, so it is not reachable
+// through a generic editor and the operation that owns it is the only way in.
 //
 // **The key is the command, not a field.** `settings.set_four_eyes_threshold`
 // writes one row and knows which. A single `settings.set` taking a key would
@@ -24,13 +24,11 @@
 // one the caller meets as a 500.
 //
 // **The row is written by `records/business-settings.ts`, against a revision.**
-// The update these two commands used to run themselves did not touch
-// `revision`, so a setting written through a command kept the number it had and
-// two administrators editing one row from two browser tabs both applied — the
-// second silently replacing a value chosen before the first existed. The write
-// now goes through `writeBusinessSetting`, which locks the row before it
-// compares, so the loser waits, re-reads and is refused `VERSION_STALE` instead
-// of being told `applied`.
+// `writeBusinessSetting` locks the row before it compares, so of two
+// administrators editing one row from two browser tabs, the loser waits,
+// re-reads and is refused `VERSION_STALE` instead of being told `applied`. An
+// update that left `revision` alone would let the second silently replace a
+// value chosen before the first existed.
 //
 // `expectedRevision` is optional and stays optional. The four contracts that
 // name these settings predate the column, so a caller that has not learnt to

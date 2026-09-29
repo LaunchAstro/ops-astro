@@ -9,7 +9,7 @@
 //   transaction, each file's ledger row written after its statements, with one
 //   commit at the end. A file and its ledger row therefore commit together, and
 //   a refusal or a failed statement anywhere leaves the database at the version
-//   it started at: a run cannot stop between two files (SOL-FR6-2).
+//   it started at: a run cannot stop between two files.
 //   PostgreSQL runs DDL inside transactions, which is what makes this possible
 //   at all, and a file holding a statement it will not run inside one is
 //   refused before anything runs.
@@ -22,8 +22,8 @@
 // - It checks, when anything is pending, that no other client session is
 //   connected to the database, and refuses to apply anything if one is. The
 //   supported upgrade is the application stopped, and a migration run beside a
-//   live application has two known ways to go wrong in 0030 alone (SOL-R3R-1,
-//   SOL-R3R2-1). The check is a backstop to stopping the application, not the
+//   live application has two known ways to go wrong in 0030 alone. The check
+//   is a backstop to stopping the application, not the
 //   stop: an idle application that holds no connection passes it
 //   (docs/local/DATA.md, "Upgrade"). A role that cannot read every session is
 //   refused rather than trusted to have seen nobody.

@@ -27,7 +27,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 

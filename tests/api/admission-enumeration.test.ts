@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { authorised, createApiFixture, tokenFor, type ApiFixture } from './fixture.ts';
 
@@ -129,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('admission does not tell a business key
     ['an array', ['12345678']],
     ['null', null],
   ] as const) {
-    it(`AUTHORITY-4: ${label} as the agent's operationId is OPERATION_ID_REQUIRED, with no operation row`, async () => {
+    it(`${label} as the agent's operationId is OPERATION_ID_REQUIRED, with no operation row`, async () => {
       const answer = await raw(
         api,
         '/api/a/b/alpha/task/queue',
@@ -147,7 +147,7 @@ describe.skipIf(serverUrl === undefined)('admission does not tell a business key
     });
   }
 
-  it('AUTHORITY-4: a string operationId still reaches the queue', async () => {
+  it('a string operationId still reaches the queue', async () => {
     const answer = await raw(
       api,
       '/api/a/b/alpha/task/queue',

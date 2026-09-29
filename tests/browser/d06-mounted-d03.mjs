@@ -2,7 +2,7 @@
 //
 // D03's browser column, run by `d06-mounted.mjs` on the page it signed in.
 //
-// Its own module for the per-file review cap, not because it shares anything
+// Its own module so each file stays readable, not because it shares anything
 // else: the grid in `d06-mounted.mjs` is the page's client, and this is the
 // page's screen. Each of the 11 protected task fields is added on the wire to
 // the task screen's own Save, and the existing renderer must draw the server's

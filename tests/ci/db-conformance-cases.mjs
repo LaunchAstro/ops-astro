@@ -274,7 +274,7 @@ const withoutDocker = (ci) => {
   }
 };
 
-test('a fixture suite that reaches the database passes', async (t) => {
+test('a fixture suite that reaches the database passes', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites({ 'reaches.test.ts': REACHES_DATABASE }, { invariant: ['reaches.test.ts'] }, (m) => {
@@ -286,7 +286,7 @@ test('a fixture suite that reaches the database passes', async (t) => {
   );
 });
 
-test('a fixture suite with a skipped database test fails', async (t) => {
+test('a fixture suite with a skipped database test fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -302,7 +302,7 @@ test('a fixture suite with a skipped database test fails', async (t) => {
   );
 });
 
-test('a named suite that is not on disk fails', async (t) => {
+test('a named suite that is not on disk fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites({ 'present.test.ts': REACHES_DATABASE }, { invariant: ['present.test.ts'] }, (m) => {
@@ -320,7 +320,7 @@ test('a named suite that is not on disk fails', async (t) => {
   );
 });
 
-test('zero database tests fails', async (t) => {
+test('zero database tests fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites({ 'empty.test.ts': NO_TESTS_AT_ALL }, { invariant: ['empty.test.ts'] }, (m) => {
@@ -331,7 +331,7 @@ test('zero database tests fails', async (t) => {
   );
 });
 
-test('a suite that passes without touching the database fails', async (t) => {
+test('a suite that passes without touching the database fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -346,7 +346,7 @@ test('a suite that passes without touching the database fails', async (t) => {
   );
 });
 
-test('a named suite vitest never discovered fails', async (t) => {
+test('a named suite vitest never discovered fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -363,7 +363,7 @@ test('a named suite vitest never discovered fails', async (t) => {
   );
 });
 
-test('a run vitest itself reported as failed fails', async (t) => {
+test('a run vitest itself reported as failed fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -381,7 +381,7 @@ test('a run vitest itself reported as failed fails', async (t) => {
   );
 });
 
-test('an empty manifest fails rather than passing vacuously', async (t) => {
+test('an empty manifest fails rather than passing vacuously', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites({}, {}, (m) => {
@@ -395,7 +395,7 @@ test('an empty manifest fails rather than passing vacuously', async (t) => {
 // Round nine, 23 September. Finding 3: the transaction counter was a
 // whole-run number, so a named suite holding no database call at all passed
 // on a sibling's transactions. The pair is two suites in one manifest.
-test('a suite that reaches the database does not cover its sibling', async (t) => {
+test('a suite that reaches the database does not cover its sibling', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -413,7 +413,7 @@ test('a suite that reaches the database does not cover its sibling', async (t) =
   );
 });
 
-test('two suites that each reach the database pass together', async (t) => {
+test('two suites that each reach the database pass together', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -433,7 +433,7 @@ test('two suites that each reach the database pass together', async (t) => {
 // naming `invariant.test.ts` also ran `invariant.test.ts.db.test.ts`, and a
 // named suite that never reached the database passed on its sibling's
 // transactions and test count.
-test('a named suite runs alone, not with a sibling its name prefixes', async (t) => {
+test('a named suite runs alone, not with a sibling its name prefixes', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -451,7 +451,7 @@ test('a named suite runs alone, not with a sibling its name prefixes', async (t)
   );
 });
 
-test('a named suite that reaches the database passes alone, sibling uncounted', async (t) => {
+test('a named suite that reaches the database passes alone, sibling uncounted', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(
@@ -523,7 +523,7 @@ pg.Client.prototype.query = function (...args) {
 };
 `;
 
-test('a counter read that fails is a failure, not a zero baseline', async (t) => {
+test('a counter read that fails is a failure, not a zero baseline', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>
     withSuites(

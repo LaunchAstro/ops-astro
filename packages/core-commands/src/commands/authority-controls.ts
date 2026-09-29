@@ -22,7 +22,7 @@
 // The audit row is the envelope's: an applied command writes one naming the
 // revoked row's id as its subject, and a refused one writes one with the code.
 //
-// F4. A revocation is also one of T5's recorded authority-loss transitions.
+// A revocation is also one of T5's recorded authority-loss transitions.
 // The attempts it leaves without work authority are no longer claimable, so
 // the same transaction releases their leases and classifies their holds
 // through `classifyAuthorityLoss`, under the complete ordered lock set. Both
@@ -205,7 +205,7 @@ export async function revokeGrantAsManager(
     readonly scope_id: string | null;
     readonly revoked: boolean;
   }>(
-    // F4. Locked before the runtime set, outside the global order on purpose:
+    // Locked before the runtime set, outside the global order on purpose:
     // `grants` is not a class in it. The one runtime operation that locks a
     // grant row is `task.pickup`, which holds `for share` on its covering
     // grants (`holdCoveringGrants`) before its own runtime locks, the same
@@ -288,7 +288,7 @@ export async function revokeDelegationAsManager(
     readonly purpose_scope_kind: Scope['kind'];
     readonly purpose_scope_id: string | null;
   }>(
-    // F4. Discovery, not a lock. The delegation is a class in the global
+    // Discovery, not a lock. The delegation is a class in the global
     // order after cap, envelope, task, run, lineage and lease, so locking it
     // here and then taking those would be the backwards acquisition the
     // contract forbids. These columns are written once at mint; whether the

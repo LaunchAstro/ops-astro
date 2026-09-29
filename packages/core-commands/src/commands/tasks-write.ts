@@ -140,8 +140,7 @@ export async function createTask(
   }
 
   // A uuid names one task in either case. Lower-cased once, so the stored
-  // `parent` and `board` and the sibling lock agree with the uuid-typed slots
-  // (R2-RUNTIME-58, R3-SURFACE-22).
+  // `parent` and `board` and the sibling lock agree with the uuid-typed slots.
   const parentId =
     typeof request.parentId === 'string'
       ? request.parentId.toLowerCase()

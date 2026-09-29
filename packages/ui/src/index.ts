@@ -18,12 +18,11 @@
 // controls and layout; session-scoped panel registration, open state and drafts
 // belong to `apps/web` [ui-reference CONTRACT.md:305].
 //
-// **What the working slice carries and what it leaves in the draft.** The draft
-// at `ops-astro-t1-draft@60f2009` also exports `AgentTab`, `AgentPanel` and
-// `Gate`. All three draw surfaces the slice's three screens do not reach and
-// whose records no part of this build stores, so they are not ported: an
+// **The working slice exports only what its screens mount.** There is no
+// `AgentTab`, `AgentPanel` or `Gate`: each draws a surface the slice's three
+// screens do not reach, over records no part of this build stores, and an
 // exported component that nothing mounts is an estate to maintain, not a
-// capability. They stay in the draft until the phase that owns them lands.
+// capability. They arrive with the phase that owns them.
 
 // The package's stylesheets, in their load order: the font faces, then tokens,
 // then primitives, then the shell, then the board, then the task surfaces. They enter through this

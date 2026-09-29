@@ -88,9 +88,10 @@ governance change that carries this amendment, an agent invokes each merge on
 Nathan's credential. Its rule has no discretion: every required check green on
 the head being merged. It notifies him after the merge, naming the pull
 request and the merged revision. The production deploy, the five protected
-parts (T1a, T1d1, T1d2, T1e and T1i), a coherence waiver on the size cap, a
-reduction of any check's tier and the sandbox's final contract stay his
-decision. Automatic merging stays disabled. Per
+parts (T1a, T1d1, T1d2, T1e and T1i), a reduction of any check's tier and the
+sandbox's final contract stay his decision; the coherence waiver left this
+list on 29 September 2026 (FU-400), when the size became reported, not
+limited. Automatic merging stays disabled. Per
 [ADR 0046](adr/0046-merge-mode-machine-proven-merges.md).
 
 **Amended 28 September 2026** (CQ-13, on Nathan's line of that day). The merge

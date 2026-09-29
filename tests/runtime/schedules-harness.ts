@@ -23,10 +23,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { createServer, connect as connectSocket, type Server, type Socket } from 'node:net';
-import {
-  createFreshDatabase,
-  type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import {
   connect,
   type BusinessId,

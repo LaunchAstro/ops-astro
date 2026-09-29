@@ -207,7 +207,7 @@ export function fenceCause(
   return null;
 }
 
-/** A person's own live write on the task, at the locked instant (final review R2-RUNTIME-4). */
+/** A person's own live write on the task, at the locked instant. */
 export async function personWriteLive(
   tx: TenantQuery,
   person: { readonly subjects: readonly Subject[]; readonly collection: string },
