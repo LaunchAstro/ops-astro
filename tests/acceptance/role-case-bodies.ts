@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import { answerAtTheStop } from './stopped-run.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */
 export const PROPOSAL = {
@@ -62,10 +63,7 @@ export interface BodyContext {
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
-  /**
-   * The agent's own prefix, where a harness has an agent: AW-05's answers need
-   * a run the broker stopped, and only the run's worker makes a model call.
-   */
+  /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
   asAgent?(
     name: CommandName,
     body: Readonly<Record<string, unknown>>,
@@ -112,56 +110,6 @@ async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence:
   if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
   const detail = picked.body['detail'] as Record<string, unknown>;
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
-}
-
-/** The replay operation's priced maximum is 500 minor units: a 400 ceiling cannot hold one call. */
-const UNDER_ONE_CALL = 400;
-
-/**
- * A run waiting at its approved ceiling (AW-05): proposed under one call's
- * price and approved by the context's person, picked up by the agent, and
- * stopped by the broker at its first call. Answers the task and the run.
- */
-export async function stoppedRun(
-  context: BodyContext,
-): Promise<{ readonly recordId: string; readonly runId: string } | undefined> {
-  const { asAgent } = context;
-  if (asAgent === undefined) return undefined;
-  const task = await context.freshTask('a task whose run stops at its ceiling');
-  const proposed = await context.asPerson('task.propose', {
-    recordId: task.id,
-    expectedRevision: task.revision,
-    ...PROPOSAL,
-    maximumMinor: UNDER_ONE_CALL,
-  });
-  if (proposed.code !== 'ok') throw new Error(`matrix: propose refused ${proposed.code}`);
-  const gate = proposed.body['detail'] as Record<string, unknown>;
-  const decided = await context.asPerson('task.decide', {
-    gateId: gate['gateId'],
-    versionId: gate['versionId'],
-    decision: 'approve',
-    note: 'approved under one call, so the first call stops it',
-  });
-  if (decided.code !== 'ok') throw new Error(`matrix: decide refused ${decided.code}`);
-  const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-  const picked = await asAgent('task.pickup', { reservationId });
-  if (picked.code !== 'ok') throw new Error(`matrix: agent pickup refused ${picked.code}`);
-  const lease = picked.body['detail'] as Record<string, unknown>;
-  const call = await asAgent(
-    'model.call',
-    {
-      leaseId: lease['leaseId'],
-      fence: lease['fence'],
-      operation: 'model.replay_compose',
-      fields: [{ name: 'tone', from: { recordId: task.id, key: 'title' } }],
-    },
-    String(lease['credential']),
-  );
-  // The approved ceiling reached: the run waits for a person (AW-05).
-  if (call.code !== 'BUDGET_UNAVAILABLE') {
-    throw new Error(`matrix: the call past the ceiling answered ${call.code}, not the stop`);
-  }
-  return { recordId: task.id, runId: String(lease['runId']) };
 }
 
 export function createPositiveBody(
@@ -330,22 +278,9 @@ export function createPositiveBody(
             'in case (h)',
         };
       case 'run.top_up':
-      case 'run.end_at_budget_stop': {
-        // A run the broker stopped at its approved ceiling, which the admin
-        // approved, so the admin is the plan approver who answers it. The
-        // four-eyes band is off in this world, so one top-up completes.
-        const stopped = await stoppedRun(context);
-        if (stopped === undefined) {
-          return {
-            exception:
-              'executed alternative: this harness has no agent to stop a run; the approver ' +
-              'answers one over the person route in tests/broker/aw-05-budget-answer-routes.test.ts',
-          };
-        }
-        return declaration.name === 'run.top_up'
-          ? { body: { ...stopped, amountMinor: 1_000, currency: PROPOSAL.currency } }
-          : { body: stopped };
-      }
+      case 'run.end_at_budget_stop':
+        // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
+        return await answerAtTheStop(context, declaration.name, PROPOSAL);
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
