@@ -326,6 +326,18 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ).toEqual([true, true, true]);
   });
 
+  it('Sol proof, criterion 4: rejects SQL comments after query text', () => {
+    const sources = [
+      'const q = sql`select 1 -- Final review R1 #10\n`;',
+      'const q = sql`select /* Final review R1 #10 */ 1`;',
+    ];
+    expect(
+      sources.map((source) =>
+        passages(commentLines(source)).some(({ comment }) => cites(comment) !== undefined),
+      ),
+    ).toEqual([true, true]);
+  });
+
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
@@ -356,5 +368,16 @@ describe('a source comment cites no review round, lane or finding id', () => {
         .map(({ line, comment }) => `${file}:${line} ${comment.trim()}`),
     );
     expect(histories).toEqual([]);
+  });
+
+  it('Sol proof, criterion 5: comments describe the current API projection', () => {
+    const source = readFileSync(
+      new URL('packages/core-records/src/tasks/comments.ts', root),
+      'utf8',
+    );
+    const stale = commentLines(source).filter(({ comment }) =>
+      /\bnot yet projected through the API\b/iu.test(comment),
+    );
+    expect(stale).toEqual([]);
   });
 });
