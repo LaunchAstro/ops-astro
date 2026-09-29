@@ -13,7 +13,12 @@
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { withStanding } from '../../../core-records/src/index.ts';
-import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
+import type {
+  BusinessId,
+  Database,
+  Session,
+  VerifiedSubject,
+} from '../../../core-records/src/index.ts';
 import { isInternalReader } from '../reads/tasks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -56,17 +61,39 @@ export function availabilityOf(
   return fits ? { state, reason } : refuseCommand('FIELD_VALUE_INVALID', ['reason'], REASON_FIXES);
 }
 
-/** Set the signed-in person's own availability, with its audit event, in one transaction. */
+/** The Team panel is staff only; past that, the body's own refusal, if any. */
+function refusalFor(
+  session: Session,
+  asked: Availability | CommandRefusal,
+): CommandRefusal | undefined {
+  if (!isInternalReader(session.roleKey)) return refuseNotFound();
+  return 'refused' in asked ? asked : undefined;
+}
+
+/**
+ * Set the signed-in person's own availability, with its audit event, in one
+ * transaction. A refusal of a signed-in person is audited too, refused and
+ * with its code (I13), and writes no row; a caller with no standing here is
+ * refused before there is anyone to audit.
+ */
 export async function setOwnAvailability(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   body: Readonly<Record<string, unknown>>,
 ): Promise<{ readonly availability: Availability } | CommandRefusal> {
-  const wanted = availabilityOf(body);
-  if ('refused' in wanted) return wanted;
+  const asked = availabilityOf(body);
   const outcome = await withStanding(database, businessId, presented, async (tx, session) => {
-    if (!isInternalReader(session.roleKey)) return refuseNotFound();
+    const wanted = 'refused' in asked ? undefined : asked;
+    const refusal = refusalFor(session, asked);
+    await writeAuditEvent(tx, {
+      actorId: session.actorId,
+      command: AVAILABILITY_COMMAND,
+      outcome: refusal === undefined ? 'applied' : 'refused',
+      refusalCode: refusal?.code ?? null,
+      payloadDigest: payloadDigest(wanted ?? { person: session.personId }),
+    });
+    if (refusal !== undefined || wanted === undefined) return refusal ?? refuseNotFound();
     await tx.query(
       `insert into public.person_availability as a (business_id, person_id, state, reason)
             values ($1, $2, $3, $4)
@@ -74,12 +101,6 @@ export async function setOwnAvailability(
        do update set state = excluded.state, reason = excluded.reason, set_at = now()`,
       [tx.businessId, session.personId, wanted.state, wanted.reason],
     );
-    await writeAuditEvent(tx, {
-      actorId: session.actorId,
-      command: AVAILABILITY_COMMAND,
-      outcome: 'applied',
-      payloadDigest: payloadDigest(wanted),
-    });
     return { availability: wanted };
   });
   return 'refused' in outcome ? asCallerVisible(outcome) : outcome;
