@@ -357,6 +357,28 @@ async function approved(page, first) {
       (await approve.count()) === 1,
   });
 
+  // T2g: the gate draws exactly two controls, both on the displayed version,
+  // and the notice naming the one effect as a team-only comment.
+  const controls = await page.locator('[data-decide="controls"] button').allInnerTexts();
+  const bound = await page
+    .locator('[data-decide="controls"] button')
+    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-version-id')));
+  const notice = await page
+    .locator('[data-decide="controls"] [data-gate="notice"]')
+    .innerText()
+    .catch(() => '');
+  record({
+    case: 'T2g the gate offers Request changes and Approve this version, and nothing else',
+    action: 'read the gate controls and their notice before deciding',
+    observed: `controls ${JSON.stringify(controls)} on versions ${JSON.stringify(bound)}; notice "${notice}"`,
+    ok:
+      JSON.stringify(controls) === JSON.stringify(['Request changes', 'Approve this version']) &&
+      bound.every((id) => id === drawn.versionId) &&
+      notice.includes('team-only comment') &&
+      notice.includes('changes nothing outside the app'),
+    shot: await shot(page, 'T2g-gate-two-controls'),
+  });
+
   await approve.click();
   await page.waitForSelector('[data-reservation-id]', { timeout: 15_000 }).catch(() => undefined);
   const reservation = page.locator('[data-reservation-id]').first();
