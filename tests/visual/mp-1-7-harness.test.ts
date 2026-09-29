@@ -162,7 +162,9 @@ describe('MP-1-7 report', () => {
     expect(planted.lines).toContain('FAIL agency:planted@1480-dark: no picture');
     expect(planted.failed).toBe(2 * (1 + packet.widths.length));
   });
+});
 
+describe('MP-1-7 report', () => {
   it('MP-1-7 pinned mockup baseline: the comparison reads the pinned tree, never a previous run', () => {
     const run = readFileSync(new URL('run.ts', import.meta.url), 'utf8');
     // Captures are written to the evidence directory and never read back from it.

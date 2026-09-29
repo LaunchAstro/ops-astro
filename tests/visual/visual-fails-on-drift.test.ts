@@ -116,6 +116,13 @@ describe('the pins refuse', () => {
     const changed = { ...pinned, tree: `${tree.slice(0, -1)}${tree.endsWith('0') ? '1' : '0'}` };
     expect(() => checkMockupTree(root, changed)).toThrow(/pinned mockup/u);
   });
+});
+
+describe('the pins refuse', () => {
+  let packet: Packet;
+  beforeAll(() => {
+    packet = readPacket();
+  });
 
   it('a bundled font whose bytes changed, naming the file', () => {
     const manifest = JSON.parse(readFileSync(`${assetsDir}/assets.json`, 'utf8')) as {
