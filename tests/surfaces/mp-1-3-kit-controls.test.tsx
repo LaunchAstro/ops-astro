@@ -27,6 +27,7 @@ import {
   TextField,
 } from '../../packages/ui/src/kit/controls.tsx';
 import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
+import { PAGES, pageAt } from '../../apps/web/src/manifest.ts';
 import { ROUTES } from '../../apps/web/src/routes.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 import { mount, type Mounted } from './mount.tsx';
@@ -61,9 +62,12 @@ it('MP-1-3 the component gallery page is registered and draws the kit', async ()
     path: '/gallery/',
     title: 'Component gallery',
     surface: 'none',
-    rail: false,
     authenticated: true,
   });
+  // No rail entry: the rail and the tab rows are read off the route manifest
+  // (MP-2-1), and the manifest has no page at the gallery's address.
+  expect(PAGES.filter((page) => page.path === '/gallery/')).toEqual([]);
+  expect(pageAt('/gallery/')).toBeNull();
   expect(typeof (SCREENS as Readonly<Record<string, unknown>>)['agency:gallery']).toBe('function');
   mounted = await mount(<Gallery />);
   const ids = mounted.all('[data-catalogue-id]').map((e) => e.getAttribute('data-catalogue-id'));
