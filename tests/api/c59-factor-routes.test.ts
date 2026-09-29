@@ -165,7 +165,10 @@ describe.skipIf(serverUrl === undefined)(
         request.on('end', () => {
           const route = `${request.method} ${request.url}`;
           seen.push({ route, authorization: request.headers.authorization, body });
-          const reply = replies[route] ?? json(404, { code: 404, msg: 'no such route' });
+          // A Map lookup: the request line names no prototype member (CodeQL js/unvalidated-dynamic-method-call).
+          const reply =
+            new Map(Object.entries(replies)).get(route) ??
+            json(404, { code: 404, msg: 'no such route' });
           reply(request, response, body);
         });
       });
