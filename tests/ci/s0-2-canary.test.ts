@@ -65,6 +65,29 @@ async function bearer(subject: string): Promise<string> {
 }
 
 describe('S0-2 canary', () => {
+  it('Sol proof, criterion 4: a five-character planted fault code never reaches the API log', async () => {
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation(
+      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+    );
+    const planted = Object.assign(new Error('a fault'), { code: 'K7QXZ' });
+    const { app, events, alerts } = served(() => Promise.reject(planted));
+    const response = await app.fetch(
+      new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await bearer('person-one')}`,
+        },
+        body: '{}',
+      }),
+    );
+    await alerts.settled();
+    expect(response.status).toBe(503);
+    expect(events).toHaveLength(1);
+    expect(logged.join('\n').includes('K7QXZ'), 'the planted secret').toBe(false);
+  });
+
   it('a fault whose code and constraint carry planted words logs as unknown, never the plant', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
