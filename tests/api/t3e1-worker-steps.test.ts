@@ -151,6 +151,30 @@ describe.skipIf(serverUrl === undefined)('T3e1: the worker at each step, answers
       [fixture.business, taskId],
     );
 
+  /** The task's first attempt: the one a worker dropped. */
+  const firstAttempt = async (taskId: string): Promise<string> =>
+    String(
+      (
+        await fixture.db.admin.execute<{ id: string }>(
+          `select att.id from public.attempts att
+             join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
+            where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id limit 1`,
+          [fixture.business, taskId],
+        )
+      )[0]?.id,
+    );
+
+  /** A person records one of the three outcomes on the dropped attempt (T3d1, O7). */
+  const recordOutcome = async (taskId: string, outcome: string): Promise<void> => {
+    const recorded = await asPerson('budget.record_outcome', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      attemptId: await firstAttempt(taskId),
+      outcome,
+    });
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(200);
+  };
+
   beforeAll(async () => {
     fixture = await createApiFixture('t3e1s');
     api = fixture.compose(undefined, readIdentity(ROOT));
@@ -231,9 +255,11 @@ describe.skipIf(serverUrl === undefined)('T3e1: the worker at each step, answers
     expect(await effects(taskId)).toBe(0);
     // Nothing comes back on the worker's word.
     expect(await worker.applyOnce(taskId)).toStrictEqual({ idle: { taskId } });
+    // A person closes it, so no unknown step is left for the cases after this.
+    await recordOutcome(taskId, 'happened');
   });
 
-  it('only the pass proving the effect absent brings the work back, and it is applied once', async () => {
+  it("the pass cannot prove a provider drop absent; a person's nothing happened brings the work back, applied once", async () => {
     const { taskId, credential } = await approvedWork();
     const dropping = workerOn(credential, transport, {
       call: async () => {
@@ -242,40 +268,26 @@ describe.skipIf(serverUrl === undefined)('T3e1: the worker at each step, answers
       },
     });
     expect(await dropping.applyOnce(taskId)).toHaveProperty('dropped');
-    await fixture.db.admin.execute(
-      `update public.delegations set revoked_at = now(), revocation_cause = 'work_retired'
-        where business_id = $1 and agent_actor_id = $2 and purpose = 'synthetic_comment'
-          and revoked_at is null and settled_at is null`,
-      [fixture.business, fixture.agentActorId],
-    );
-    const [first] = await holds(taskId);
-    const mine = await fixture.db.admin.execute<{ id: string }>(
-      `select att.id from public.attempts att
-         join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
-        where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id`,
-      [fixture.business, taskId],
-    );
-    const topUp = await asPerson('budget.top_up', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      amountMinor: 2_500,
-      fromMaximumMinor: 2_500,
-    });
-    expect(topUp.status, JSON.stringify(topUp.body)).toBe(200);
+    const attemptId = await firstAttempt(taskId);
     const answered = await fixture.db.app.withBusiness(
       fixture.business,
       async (tx) => await reconcileUnknown(tx, registerEffectLookup),
     );
-    expect(first).toMatchObject({ state: 'liability_unknown' });
-    expect(answered).toContainEqual(
-      expect.objectContaining({ attemptId: mine[0]?.id, answer: 'absent' }),
-    );
+    expect(answered).toContainEqual(expect.objectContaining({ attemptId, answer: 'unanswered' }));
+    expect(await holds(taskId)).toMatchObject([
+      { state: 'liability_unknown', held: 'held', held_minor: '2500' },
+    ]);
+    expect(await workerOn(credential, transport).applyOnce(taskId)).toStrictEqual({
+      idle: { taskId },
+    });
+
+    await recordOutcome(taskId, 'nothing_happened');
     const again = await workerOn(credential, transport).applyOnce(taskId);
     expect(again).toHaveProperty('applied');
     expect(await effects(taskId)).toBe(1);
-    // The first hold stays whole for a person (O6); the replacement settled.
+    // The person's word released the first hold; the replacement settled.
     expect(await holds(taskId)).toMatchObject([
-      { state: 'liability_unknown', held: 'held', held_minor: '2500' },
+      { state: 'abandoned', held: 'abandoned' },
       { state: 'settled', held: 'actual' },
     ]);
     const [run] = await fixture.db.admin.execute<{ reactivated: boolean }>(

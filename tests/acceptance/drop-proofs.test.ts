@@ -53,12 +53,17 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
       )
     ).map((row) => row.kind);
 
-  /** Room for a replacement beside the kept hold, by the person (T2e, O6). */
-  const room = async (w: Work): Promise<void> => {
-    await p.asAda('budget.top_up', {
+  /**
+   * The provider was reached and its answer lost, so the register cannot say
+   * (Sol review 2): ada records that nothing happened, and only then does the
+   * work come back (T3d1, O7).
+   */
+  const nothingHappened = async (w: Work): Promise<void> => {
+    const [first] = await p.attempts(w.taskId);
+    await p.asAda('budget.record_outcome', {
       recordId: w.taskId,
-      amountMinor: 2_500,
-      fromMaximumMinor: 2_500,
+      attemptId: first?.id,
+      outcome: 'nothing_happened',
     });
   };
 
@@ -80,9 +85,8 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   });
 
   for (const cause of ['provider_unavailable', 'connection_lost'] as const) {
-    it(`drop_is_not_cancel: ${cause}, injected after the mark, is held whole until the pass proves it absent, then applied once`, async () => {
+    it(`drop_is_not_cancel: ${cause}, injected after the mark, is held whole until a person records it, then applied once`, async () => {
       const w = await fresh();
-      await room(w);
       const run = p.worker(w, 'none', `t3e1-worker-${cause}`, 900, cause);
       expect(await run.exited()).toBeNull();
       expect(
@@ -95,10 +99,15 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
         { state: 'liability_unknown', drop_cause: cause },
       ]);
       expect(await kinds(w.taskId)).toStrictEqual(['claimed', 'dropped']);
+      // The pass cannot prove the provider did nothing: still held whole.
       expect(await pass()).toMatchObject({ ok: true });
-      await finishedOnce(w, `t3e1-worker-${cause}-2`);
       expect(await p.attempts(w.taskId)).toMatchObject([
         { state: 'liability_unknown', drop_cause: cause },
+      ]);
+      await nothingHappened(w);
+      await finishedOnce(w, `t3e1-worker-${cause}-2`);
+      expect(await p.attempts(w.taskId)).toMatchObject([
+        { state: 'abandoned', drop_cause: cause },
         { state: 'settled', drop_cause: null },
       ]);
       evidence({ proof: 'drop_is_not_cancel', cause, result: 'pass' });
@@ -166,10 +175,6 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   }, 60_000);
   it('one_report_per_outage: five real workers dropped by one outage give one report, and every run comes back', async () => {
     const five = await Promise.all(Array.from({ length: 5 }, async () => await fresh()));
-    for (const w of five) {
-      // eslint-disable-next-line no-await-in-loop
-      await room(w);
-    }
     const runs = five.map((w, at) =>
       p.worker(w, 'none', `t3e2-worker-${String(at)}`, 900, 'provider_unavailable'),
     );
@@ -187,9 +192,14 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
     );
     expect(reports).toHaveLength(1);
     expect(reports[0]?.tasks).toStrictEqual(five.map((w) => w.taskId).toSorted());
-    // Dropped after the mark: none is back until the pass proves each absent.
+    // Dropped after the mark: none is back until a person records it.
     expect(reports[0]?.back).toBe(false);
     expect(await pass()).toMatchObject({ ok: true });
+    // The pass cannot say; ada records that nothing happened on each.
+    for (const w of five) {
+      // eslint-disable-next-line no-await-in-loop
+      await nothingHappened(w);
+    }
     const back = await p.admin.execute<{ back: boolean }>(
       'select bool_and(reactivated) as back from public.outage_runs where business_id = $1 and task_id = any($2::uuid[])',
       [p.world.alpha, five.map((w) => w.taskId)],
