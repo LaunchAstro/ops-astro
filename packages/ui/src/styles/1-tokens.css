@@ -55,6 +55,10 @@
   --accent-wash: color-mix(in oklch, var(--accent) 8%, transparent);
   /* The backdrop behind the off-canvas rail and a modal sheet. */
   --scrim: oklch(0 0 0 / 0.4);
+  /* Chart paint beside ink and the accent (the mockup's PAINT): the donut's
+     third and fourth slices. The same in both themes, as the mockup has them. */
+  --lilac: oklch(0.78 0.088 305);
+  --lilac-deep: oklch(0.52 0.125 300);
 
   /* -- Chrome that is dark in both themes. The app strip lifts off the void
         in dark; the client face paints it with the client's brand. The cover

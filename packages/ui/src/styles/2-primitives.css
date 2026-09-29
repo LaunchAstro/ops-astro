@@ -702,6 +702,25 @@
   stroke-width: 1.5;
   opacity: 1;
 }
+/* The donut's slices by index, in the mockup's chart paint order. */
+[data-paint='ink'] {
+  color: var(--ink);
+}
+[data-paint='accent'] {
+  color: var(--accent);
+}
+[data-paint='lilac'] {
+  color: var(--lilac);
+}
+[data-paint='deep'] {
+  color: var(--lilac-deep);
+}
+[data-paint='muted'] {
+  color: var(--ink-muted);
+}
+[data-paint='faint'] {
+  color: var(--ink-faint);
+}
 .chart__slice {
   fill: currentColor;
   opacity: 0.92;
@@ -806,6 +825,8 @@
   font: var(--type-num-md);
   letter-spacing: var(--type-num-md-tracking);
   text-transform: var(--type-num-md-case);
+  /* type-exception DS-COMP-28: the score dial's number at the medium weight, as the mockup's scoreDial draws it */
+  font-weight: var(--weight-medium);
 }
 .dial__label {
   color: var(--text-muted);

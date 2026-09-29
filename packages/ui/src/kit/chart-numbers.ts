@@ -36,6 +36,11 @@ const TONES: readonly ChartTone[] = ['accent', 'ink', 'info', 'muted'];
 export const toneOf = (tone: ChartTone | undefined, index: number): ChartTone =>
   tone ?? TONES[index % TONES.length] ?? 'accent';
 
+/** The mockup's chart paint, in its order (PAINT in the mockup's data): a donut's slices take it by index. */
+const PAINT = ['ink', 'accent', 'lilac', 'deep', 'muted', 'faint'] as const;
+export const paintOf = (index: number): (typeof PAINT)[number] =>
+  PAINT[index % PAINT.length] ?? 'ink';
+
 /** A number with no more than `places` decimals and no trailing zeros, never in exponent form. */
 export function trim(value: number, places: number): string {
   const fixed = value.toFixed(Math.min(places, 100));

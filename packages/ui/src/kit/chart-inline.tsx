@@ -35,7 +35,7 @@ export function Sparkline(props: {
   return (
     <svg
       className="spark"
-      data-tone={props.tone ?? 'ink'}
+      data-tone={props.tone ?? 'accent'}
       viewBox={`0 0 ${String(w)} ${String(h)}`}
       width={w}
       height={h}
