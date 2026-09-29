@@ -193,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 27 cells: the 17 record-targeted operations, then the 10 with their own operand. */
+  /** The 28 cells: the 18 record-targeted operations, then the 10 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -209,6 +209,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_party': { fields: { client: randomUUID() } },
       'task.set_audience': { fields: { client_visible: true } },
       'task.set_scores': { fields: { impact: 5 } },
+      'task.set_adhoc': { fields: { ad_hoc: true } },
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
@@ -319,11 +320,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 34 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 35 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(34);
-    expect(names).toHaveLength(34);
+    expect(new Set(names).size, 'distinct operations').toBe(35);
+    expect(names).toHaveLength(35);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

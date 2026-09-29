@@ -194,7 +194,8 @@ describe.skipIf(serverUrl === undefined)('MP-4-10 CS-4.9 ad hoc', () => {
           actor_id: reader.actorId,
           outcome: 'refused',
           refusal_code: 'SCOPE_NOT_GRANTED',
-          subject_record_id: task.recordId,
+          // A refusal before authority names no record, as every refused write does.
+          subject_record_id: null,
         },
       ]);
       // The change and its record committed together: the mark is what the audit says.

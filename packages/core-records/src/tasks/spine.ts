@@ -280,6 +280,17 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
+    // The Ad hoc mark (MP-4-10, migration 0033): it drives billing and is the
+    // default for the task's new time entries. Absent reads as not ad hoc.
+    key: 'ad_hoc',
+    label: 'Ad hoc',
+    valueType: 'boolean',
+    slot: 'bool_2',
+    writeMode: 'operation',
+    owningOperations: ['task.set_adhoc'],
+    escalatingOperation: null,
+  },
+  {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
     key: 'description',
@@ -297,6 +308,7 @@ export const TASK_SPINE: readonly SpineField[] = [
  * relaxing one is a visible diff (minimum contract, 5.3 assertion 2).
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
+  'ad_hoc',
   'assignee',
   'client',
   'client_visible',

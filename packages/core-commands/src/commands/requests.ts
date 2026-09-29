@@ -173,7 +173,8 @@ export type CommandRequest =
         | 'task.set_stage'
         | 'task.set_party'
         | 'task.set_audience'
-        | 'task.set_scores';
+        | 'task.set_scores'
+        | 'task.set_adhoc';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)

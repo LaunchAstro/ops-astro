@@ -50,6 +50,7 @@ interface TaskRowRead {
   readonly state_machine_category: string | null;
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
+  readonly ad_hoc: boolean | null;
 }
 
 // The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
@@ -76,7 +77,8 @@ const SELECT = `
          s.data ->> 'label' as state_label,
          s.data ->> 'machine_category' as state_machine_category,
          p.id as assignee_id,
-         p.display_name as assignee_name
+         p.display_name as assignee_name,
+         r.bool_2 as ad_hoc
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
@@ -262,7 +264,7 @@ export async function readTaskDetail(
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
     alerts: await readAlerts(tx, row.id),
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
-    adHoc: false,
+    adHoc: row.ad_hoc === true,
   };
 }
 
@@ -349,11 +351,23 @@ export async function readBoard(
   return rows.map(summaryOf);
 }
 
-/** Not built yet: the Ad hoc default a new time entry on this task takes (MP-4-10). */
+/**
+ * The Ad hoc default a new time entry on this task takes (MP-4-10, CS-4.9):
+ * the task's own mark, and false for a task never marked. It is the one value
+ * the timer and the log read, so an entry cannot start from a different
+ * answer than the task page shows. Scoped by the business the session set: a
+ * task in another business is not here, and takes false.
+ */
 export async function adHocDefault(
-  _tx: TenantQuery,
-  _taskTypeId: string,
-  _recordId: string,
+  tx: TenantQuery,
+  taskTypeId: string,
+  recordId: string,
 ): Promise<boolean> {
-  return await Promise.resolve(false);
+  if (!isUuid(recordId)) return false;
+  const rows = await tx.query<{ readonly ad_hoc: boolean | null }>(
+    `select r.bool_2 as ad_hoc from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.id = $3 and r.deleted_at is null`,
+    [tx.businessId, taskTypeId, recordId],
+  );
+  return rows[0]?.ad_hoc === true;
 }

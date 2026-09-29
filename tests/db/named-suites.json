@@ -100,7 +100,8 @@
     "T4b2 names t4-no-notify as an invariant (RN-01: a whole journey through the application, create, propose, approve, pickup, dispatch, effect, observe, settle and receipt, leaves no NOTIFY and no pg_notify in the runtime statement log, whose capture holds the journey's decision, reservation and run-event writes; a pg_notify planted on the runtime pool is caught).",
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
     "MP-4-9a names task-scores: the MP-4-9 marks command invariant (the three marks, their range in the command and in 0032, task:write, the audit, and the API, command line and agent entries), and Sol's review 1 proof on #141 beside it.",
-    "MP-4-9b (SL08) names task-rank: the rank on task.read (rank or not ranked, the calc line, a mark changed is the next read's number) and its three crossings (another business, another client's task under a record grant, an agent under a live delegation) with inherited scope. task-rank-derivation.test.ts is a pure unit suite and must not be named."
+    "MP-4-9b (SL08) names task-rank: the rank on task.read (rank or not ranked, the calc line, a mark changed is the next read's number) and its three crossings (another business, another client's task under a record grant, an agent under a live delegation) with inherited scope. task-rank-derivation.test.ts is a pure unit suite and must not be named.",
+    "MP-4-10a (SL08) names task-adhoc: the Ad hoc mark command invariant (bool_2 reserved in 0033, task:write, the audit, the time default adHocDefault reads, and the three crossings: another business, another client's task under a record grant, an agent under a live delegation)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -288,7 +289,8 @@
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/commands/task-scores.test.ts",
     "tests/commands/sol-proof-mp-4-9a.test.ts",
-    "tests/reads/task-rank.test.ts"
+    "tests/reads/task-rank.test.ts",
+    "tests/commands/task-adhoc.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
