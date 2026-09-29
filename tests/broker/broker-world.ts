@@ -29,12 +29,7 @@ import {
 } from '../../packages/core-custody/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
-import {
-  createTask,
-  openSchedules,
-  type Schedules,
-  type Work,
-} from '../runtime/schedules-harness.ts';
+import { openSchedules, type Schedules, type Work } from '../runtime/schedules-harness.ts';
 
 export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 
@@ -69,11 +64,12 @@ export const NOT_RECONCILABLE: ModelOperationDeclaration = {
 
 /**
  * Business-internal fields only: the cloud route may carry them. The field is
- * bound to a task a person of the business entered, titled the planted
- * prompt, because only the broker can find a source business-internal (S3).
- * Set by `useBrokerWorld`'s beforeAll.
+ * bound to the run's own task, which a person of the business entered,
+ * because only the broker can find a source business-internal (S3).
  */
-export let INTERNAL: readonly ModelCallField[] = [];
+export const internalOn = (work: Work): readonly ModelCallField[] => [
+  { name: 'tone', from: { recordId: work.taskId, key: 'title' } },
+];
 
 export let s: Schedules;
 export let world: CustodyWorld;
@@ -115,7 +111,7 @@ export const requestFor = (
   fence: Number(work.picked['fence']),
   stepId: steps.get(String(work.picked['leaseId'])) ?? 'unknown',
   operation: REPLAY_COMPOSE.key,
-  fields: INTERNAL,
+  fields: internalOn(work),
   ...overrides,
 });
 
@@ -164,9 +160,6 @@ export function useBrokerWorld(label: string): void {
   beforeAll(async () => {
     if (noDatabase) return;
     s = await openSchedules(label, 1_000_000);
-    INTERNAL = [
-      { name: 'tone', from: { recordId: await createTask(s, PLANTED_PROMPT), key: 'title' } },
-    ];
     world = await openCustodyWorld();
     broker = {
       custody: world.custody,

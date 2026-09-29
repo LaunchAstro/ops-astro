@@ -78,7 +78,7 @@ it('reservation_before_dispatch_through_broker', async () => {
 });
 
 it('AW-01 reservation and settlement: held at the maximum, settled at the price, the rest released', async () => {
-  const work = await liveWork(s, 'one priced call', 2_000);
+  const work = await liveWork(s, `one priced call ${PLANTED_PROMPT}`, 2_000);
   world.provider.mode('answer');
   const result = await call(work);
   expect(result).toEqual({

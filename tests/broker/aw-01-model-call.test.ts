@@ -30,7 +30,6 @@ import { statusOf } from '../../packages/core-records/src/index.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
 import {
-  createTask,
   liveWork,
   openSchedules,
   type Schedules,
@@ -54,7 +53,8 @@ const bodyFor = (
   leaseId: work.picked['leaseId'],
   fence: work.picked['fence'],
   operation: REPLAY_COMPOSE.key,
-  fields: [tone],
+  // Bound to the run's own task, which a person entered (S3).
+  fields: [{ name: 'tone', from: { recordId: work.taskId, key: 'title' } }],
   ...extra,
 });
 
@@ -62,8 +62,6 @@ const bodyFor = (
 const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
 
 let s: Schedules;
-/** A field bound to a task a person entered: only the broker finds a source business-internal (S3). */
-let tone: Readonly<Record<string, unknown>>;
 let world: CustodyWorld;
 let key: string;
 let agentToken: string;
@@ -138,7 +136,6 @@ const callsOn = async (work: Work): Promise<readonly Record<string, unknown>[]> 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
   s = await openSchedules('aw01modelcall', 1_000_000);
-  tone = { name: 'tone', from: { recordId: await createTask(s, 'warm'), key: 'title' } };
   world = await openCustodyWorld();
   const [row] = await s.db.admin.execute<{ key: string }>(
     'select key from public.businesses where id = $1',
