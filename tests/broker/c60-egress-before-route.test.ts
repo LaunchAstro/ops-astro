@@ -149,7 +149,7 @@ it('C60 race: a call waits on a client link in flight, then refuses on it', asyn
     expect(world.provider.seen.length).toBe(seen);
   } finally {
     commit();
-    await linking.catch(() => undefined);
+    await linking.catch(() => {});
     await linker.close();
   }
 }, 120_000);
