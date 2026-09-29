@@ -85,7 +85,7 @@ export async function holdsDecide(
 /**
  * `ticket type changed`. A retype between research, task and build is the
  * row's `task:write`. To or from grilling, prototype or map it is the map
- * owner's, under `task:decide` (TR-S-R4R-9): a teammate who holds decide but
+ * owner's, under `task:decide`: a teammate who holds decide but
  * does not own the map is refused, so a retype cannot route around the rule
  * that only the owner resolves grilling and prototype tickets.
  */

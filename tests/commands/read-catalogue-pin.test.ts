@@ -25,6 +25,8 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'map.frontier': { spine: true, subject: true, authority: 'declared' },
+  'map.view': { spine: true, subject: true, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -37,6 +39,8 @@ const PINNED_SHAPE = {
 };
 
 const PINNED_IDENTIFIERS = {
+  'map.frontier': ['recordId'],
+  'map.view': ['recordId'],
   'person.list': [],
   'preset.plan': [],
   'session.capabilities': [],
@@ -48,7 +52,14 @@ const PINNED_IDENTIFIERS = {
   'task.receipt': ['attemptId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
+const PINNED_OUTSIDER_NOT_FOUND = [
+  'map.frontier',
+  'map.view',
+  'task.board',
+  'task.execution',
+  'task.read',
+  'task.receipt',
+];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -68,6 +79,11 @@ const RECORD_ID = {
   code: 'FIELD_VALUE_INVALID',
   names: ['recordId'],
   fixes: ['Send recordId as the task’s identifier or its key.'],
+};
+const MAP_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the map’s identifier or its key.'],
 };
 const BOARD = {
   code: 'FIELD_VALUE_INVALID',
@@ -122,6 +138,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
     PLAN_FIELDS,
   ],
+  'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
