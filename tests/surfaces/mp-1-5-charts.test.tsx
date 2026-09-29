@@ -9,7 +9,7 @@
 // visual match at 1480, 900 and 390 runs on MP-1-7's harness and is `todo`
 // until the pages it names and T4b1's signed-in fixture exist.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
 import { type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -37,6 +37,7 @@ import {
   resize,
   standInResizeObserver,
 } from './chart-driver.tsx';
+import { noChartLibrary } from './chart-library.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
@@ -58,21 +59,6 @@ afterEach(async () => {
 const viewBox = (): string => mounted?.find('svg')?.getAttribute('viewBox') ?? '';
 const texts = (selector: string): readonly string[] =>
   (mounted?.all(selector) ?? []).map((node) => node.textContent ?? '');
-
-/** Nothing but React and the kit is imported, and no manifest names a chart package. */
-function noChartLibrary(): void {
-  // Nothing but React and the kit is imported, and no manifest names a chart package.
-  const kit = `${root}packages/ui/src/kit/`;
-  const files = readdirSync(kit).filter((name) => /^charts?[-.]/u.test(name));
-  expect(files.length).toBeGreaterThan(1);
-  const source = files.map((name) => read(`${kit}${name}`)).join('\n');
-  const imports = [...source.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gmu)].map((m) => m[1]);
-  for (const from of imports) expect(from, from).toMatch(/^(react|\.\.?\/)/u);
-  const library =
-    /"(recharts|chart\.js|d3(-[a-z]+)?|victory|@nivo\/[a-z-]+|@visx\/[a-z-]+|echarts|apexcharts|highcharts|plotly\.js|vega(-lite)?)"\s*:/u;
-  for (const manifest of ['package.json', 'packages/ui/package.json', 'apps/web/package.json'])
-    expect(read(`${root}${manifest}`), manifest).not.toMatch(library);
-}
 
 /** A line, and a column chart with its dashed line. */
 async function lineAndColumn(): Promise<void> {
