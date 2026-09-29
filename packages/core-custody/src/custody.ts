@@ -17,7 +17,7 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { StorableKind } from './credentials.ts';
 import type { Destination, Outbound, OutboundRequest } from './egress.ts';
 
@@ -49,9 +49,9 @@ export interface Custody {
 }
 
 function forkCustody(config: CustodyConfig): ChildProcess {
-  // Resolved when custody starts, not when the module loads: a browser-side
-  // import of this package's types never needs a file path.
-  const entry = fileURLToPath(new URL('./custody-main.ts', import.meta.url));
+  // A file path, not a URL: under a browser-like test environment the
+  // module's URL is not a file one, and custody is still a local process.
+  const entry = join(import.meta.dirname, 'custody-main.ts');
   return fork(entry, [], {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,

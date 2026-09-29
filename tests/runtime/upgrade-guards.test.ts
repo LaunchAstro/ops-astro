@@ -203,7 +203,12 @@ describe.skipIf(serverUrl === undefined)('TEMPORARY after an upgrade from 0028',
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      expect(await lastApplied(on)).toBe(
+        onDisk
+          .map((m) => m.version.slice(0, 4))
+          .toSorted()
+          .at(-1),
+      );
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;
