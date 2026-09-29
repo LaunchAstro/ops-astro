@@ -102,6 +102,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-dispatch.ts', async (or
   ...(await original<object>()),
   dispatchOwnLease: recorder('dispatchOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-observe.ts', async (original) => ({
+  ...(await original<object>()),
+  observeOwnLease: recorder('observeOwnLease'),
+}));
 vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
@@ -117,6 +121,7 @@ const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
   'task.dispatch': 'leaseId',
+  'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
 };
 
@@ -131,6 +136,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
   'task.dispatch': ['leaseId'],
+  'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
@@ -154,10 +160,12 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.execution',
   'task.handback',
   'task.heartbeat',
+  'task.observe',
   'task.pickup',
   'task.purge',
   'task.queue',
   'task.read',
+  'task.receipt',
   'task.restart',
   'task.restore',
 ];
@@ -169,6 +177,7 @@ const PINNED_AGENT_SURFACE = [
   'task.dispatch',
   'task.handback',
   'task.heartbeat',
+  'task.observe',
   'task.pickup',
   'task.propose',
   'task.queue',
@@ -241,6 +250,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
   { command: 'task.dispatch', operationId: 'op', leaseId: 'l', fence: 4 },
+  { command: 'task.observe', operationId: 'op', leaseId: 'l', fence: 4, attemptId: 'at' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -249,7 +259,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
@@ -284,6 +294,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
   'task.dispatch': ['dispatchOwnLease', 'request'],
+  'task.observe': ['observeOwnLease', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -323,13 +334,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-one from an expected revision', () => {
+  it('exempts the same twenty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same ten, two of them before a pickup', () => {
+  it('lets an agent reach the same eleven, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
