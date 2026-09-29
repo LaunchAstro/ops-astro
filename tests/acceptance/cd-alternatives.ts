@@ -70,6 +70,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.write_off': ['attemptId', 'control'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
+  'conversation.rename': ['conversationId', 'conversation'],
+  'conversation.set_scope': ['conversationId', 'conversation'],
 };
 
 /**

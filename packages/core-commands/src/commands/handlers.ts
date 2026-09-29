@@ -34,6 +34,7 @@ import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { messageConversation, startConversation } from './conversations.ts';
+import { renameConversation, setConversationScope } from './conversation-tabs.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -120,6 +121,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
+  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  'conversation.rename': renameConversation,
+  'conversation.set_scope': setConversationScope,
 };
 
 function writeOwned(

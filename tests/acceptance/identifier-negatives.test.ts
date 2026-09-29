@@ -300,6 +300,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const cells: readonly [CommandName, Body][] = [
         ['conversation.read', {}],
         ['conversation.message', { body: NOBODY }],
+        ['conversation.rename', { title: NOBODY }],
+        ['conversation.set_scope', { page: null }],
       ];
       for (const [op, extra] of cells) {
         // eslint-disable-next-line no-await-in-loop -- each operation against its own before and after

@@ -34,7 +34,7 @@ import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
-import { readConversation } from './conversation.ts';
+import { listConversations, readConversation } from './conversation.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -179,6 +179,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session, { conversationId }) =>
       await readConversation(tx, session, conversationId),
+  },
+  // MP-7-11. The caller's own conversations; the rule is the read's own, as
+  // `conversation.read`'s is, because the owner lists without the read-any
+  // grant and the read-any grant lists nothing.
+  'conversation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listConversations(tx, session),
   },
   'task.read': {
     identifiers: ['recordId'],

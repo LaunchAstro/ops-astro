@@ -24,14 +24,14 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
 const BODY_LIMIT = 20_000;
-const TITLE_LIMIT = 120;
+export const TITLE_LIMIT = 120;
 const SUBJECT_LIMIT = 200;
 const DEFAULT_TITLE = 'New conversation';
 
 /** The conversation's address: the page C36 draws, and the API's read of it. */
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
 
-const bounded = (value: unknown, limit: number): value is string =>
+export const bounded = (value: unknown, limit: number): value is string =>
   typeof value === 'string' && value.trim() !== '' && value.length <= limit;
 
 const optionalBounded = (value: unknown, limit: number): boolean =>
@@ -142,7 +142,7 @@ export interface MessageFields {
   readonly body: unknown;
 }
 
-const NOT_YOURS = refuseCommand(
+export const NOT_YOURS: CommandRefusal = refuseCommand(
   'SCOPE_NOT_GRANTED',
   [],
   [
@@ -151,7 +151,7 @@ const NOT_YOURS = refuseCommand(
   ],
 );
 
-const PURGED = refuseCommand(
+export const PURGED: CommandRefusal = refuseCommand(
   'TRANSITION_NOT_PERMITTED',
   [],
   [

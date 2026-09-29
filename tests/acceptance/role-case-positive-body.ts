@@ -236,6 +236,19 @@ export function createPositiveBody(
         return { body: { conversationId: await ownConversation(context), body: 'and again' } };
       case 'conversation.read':
         return { body: { conversationId: await ownConversation(context) } };
+      // MP-7-11. The tab row: the admin's own list, and a title and a page
+      // on the conversation the admin just started.
+      case 'conversation.list':
+        return { body: {} };
+      case 'conversation.rename':
+        return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
+      case 'conversation.set_scope':
+        return {
+          body: {
+            conversationId: await ownConversation(context),
+            page: { address: '/settings', shows: 'Settings' },
+          },
+        };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }
