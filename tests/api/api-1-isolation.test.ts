@@ -6,7 +6,8 @@
 // refuses. Two businesses, Alpha and Bravo, and in Alpha two tasks standing for
 // two clients' work, each with one person holding one grant on it alone; and
 // an agent working under a live delegation from another person, which reaches
-// only the task it picked up. Made-up names only.
+// only the task it picked up, never a second Alpha person's own held reservation
+// or live lease. Made-up names only.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -16,7 +17,7 @@ import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
-import { insertBusiness } from '../identity/fixture.ts';
+import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 
@@ -83,7 +84,9 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   let agentToken: string;
   let delegation: string;
   let delegatedTask: string;
-  let lease: { leaseId: unknown; fence: unknown };
+  /** A second Alpha person's own claims: one approved and held, one picked up and live. */
+  let foreignLease: { leaseId: string; fence: unknown };
+  let foreignReservation: string;
   let attemptedForeignLeaseId = '';
   let attemptedForeignReservationId = '';
   /** Raw id or title to its label, so a leak is named and no record value is printed. */
@@ -144,11 +147,45 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
       await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
     });
-    ({ agentToken, delegation, delegatedTask, lease } = await pickUp(alphaToken));
+    ({ agentToken, delegation, delegatedTask } = await pickUp(alphaToken));
+    const otherPerson = await enrol(fixture.db.app, fixture.business, 'other-decider');
+    labels.set(otherPerson.personId, '<other person>').set(otherPerson.actorId, '<other person>');
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+        // eslint-disable-next-line no-await-in-loop -- `issueGrant` reads the granter's own rows
+        await grantTo(tx, otherPerson, action);
+      }
+    });
+    const otherToken = await tokenFor(otherPerson.presented.subject);
+    // Their held reservation, for the agent's own purpose; and their live lease, held
+    // by a second agent under their delegation for that same purpose, so only the
+    // delegation's one task tells the two agents' leases apart.
+    foreignReservation = await approve(otherToken);
+    const secondAgent = `agent-${randomUUID()}`;
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      const actorId = randomUUID();
+      await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+        fixture.business,
+        actorId,
+      ]);
+      await tx.query(
+        `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+         values ($1, $2, $3, $4, $5)`,
+        [
+          fixture.business,
+          randomUUID(),
+          await insertLogin(tx, secondAgent),
+          actorId,
+          otherPerson.actorId,
+        ],
+      );
+    });
+    const theirs = await pickUp(otherToken, secondAgent);
+    foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
   }, 120_000);
 
-  /** The Alpha person proposes and approves one task, and the agent picks it up. */
-  async function pickUp(personToken: string) {
+  /** An Alpha person proposes and approves one task: its reservation, held for pickup. */
+  async function approve(personToken: string): Promise<string> {
     const asPerson = async (path: string, body: Record<string, unknown>) =>
       (await post(api, `/api/b/alpha${path}`, body, authorised(personToken))).body;
     const made = await asPerson('/task/create', {
@@ -172,22 +209,33 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       decision: 'approve',
       note: 'approved for the API-1 delegation crossing',
     });
-    const token = await tokenFor(fixture.agent.subject);
+    const reservationId = detail(decided)['reservationId'];
+    if (typeof reservationId !== 'string') throw new Error(JSON.stringify(decided));
+    labels.set(reservationId, '<reservation>');
+    return reservationId;
+  }
+
+  /** An Alpha person approves one task, and an agent picks it up under that person's delegation. */
+  async function pickUp(personToken: string, agentSubject = fixture.agent.subject) {
+    const token = await tokenFor(agentSubject);
     const picked = await post(
       api,
       '/api/a/b/alpha/task/pickup',
-      { operationId: randomUUID(), reservationId: detail(decided)['reservationId'] },
+      { operationId: randomUUID(), reservationId: await approve(personToken) },
       authorised(token),
     );
     if (picked.status !== 200) throw new Error(JSON.stringify(picked));
     const taskId = String(detail(picked.body)['taskId']);
     labels.set(taskId, '<delegated task>');
     const held = detail(picked.body);
+    const leaseId = String(held['leaseId']);
+    labels.set(leaseId, '<lease>');
     return {
       agentToken: token,
       delegation: String(held['credential']),
       delegatedTask: taskId,
-      lease: { leaseId: held['leaseId'], fence: held['fence'] },
+      leaseId,
+      fence: held['fence'],
     };
   }
 
@@ -335,12 +383,23 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     const own = await asAgent(read, 'alpha', { recordId: delegatedTask });
     expect(own.map((one) => one.status)).toEqual([200, 200]);
     expect(JSON.stringify(own[0]?.body)).toContain('<delegated task>');
-    // Each command's own target: a record, a lease, or none. A lease call names its
-    // task through its lease and ignores a record id beside it, so its crossing is a
-    // lease that is not the agent's.
-    const notOwnLease = { leaseId: randomUUID(), fence: lease.fence };
+    // Each command's own target: a record, a lease, a reservation, or none. A lease
+    // call names its task through its lease and ignores a record id beside it, so its
+    // crossing is another Alpha person's live lease at its own fence (the same agent
+    // holds it, under that person's delegation, not this one); a pickup's crossing is
+    // that person's approved reservation, still held.
+    const notOwnLease = foreignLease;
     attemptedForeignLeaseId = notOwnLease.leaseId;
-    attemptedForeignReservationId = randomUUID();
+    attemptedForeignReservationId = foreignReservation;
+    const claims = async () =>
+      await fixture.db.admin.execute(
+        `select l.state, l.fence::text, l.expires_at::text, r.state as reservation, r.lease_id
+           from public.leases l, public.reservations r
+          where l.business_id = $1 and l.id = $2 and r.business_id = $1 and r.id = $3`,
+        [fixture.business, foreignLease.leaseId, foreignReservation],
+      );
+    const before = await claims();
+    expect(before).toHaveLength(1);
     const target: Record<string, (record: string) => Record<string, unknown> | null> = {
       'task.read': (record) => ({ recordId: record }),
       'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
@@ -355,6 +414,13 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       'session.capabilities': () => null,
     };
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
+    // The lease: the delegation's one task is not the other lease's. The pickup: one live
+    // delegation per agent and purpose, so a second task never joins the first one's reach.
+    const reason: Record<string, string> = {
+      'task.heartbeat': 'DELEGATION_OUT_OF_PURPOSE',
+      'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
+      'task.pickup': 'DELEGATION_ALREADY_LIVE',
+    };
     for (const row of agentRows) {
       for (const [businessKey, other] of [
         ['alpha', task.client1],
@@ -377,8 +443,14 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
         }
         expect(heard[0]?.status, where).toBeGreaterThanOrEqual(400);
         expect(SHAPE, where).not.toContain(heard[0]?.code);
+        // Refused for the delegation's reason, not because the claim does not exist.
+        if (businessKey === 'alpha' && row.command in reason) {
+          expect(heard[0]?.code, where).toBe(reason[row.command]);
+        }
       }
     }
+    // Check first, then act: every refusal left the other person's claims as they were.
+    expect(await claims()).toEqual(before);
   }, 60_000);
 
   it("Sol proof, criterion API-1 4: agent crossings use another person's live lease and held reservation", async () => {
