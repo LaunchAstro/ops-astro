@@ -246,7 +246,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
       expect(await listed()).not.toContain(item);
     });
 
-    it('only open, owed items on a task that is there can be unattended', async () => {
+    it('only open items on a task that is there can be unattended', async () => {
       const subject = await task('closed and not owed');
       const gone = await onTask('Gil Gone', subject, ['read']);
       const finished = await raise(gone.member.personId, subject, 'run_finished');
@@ -265,9 +265,25 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
       );
       await deactivate(gone.member, 'login');
       const now = await listed();
-      expect(now).not.toContain(finished);
+      expect(now).toContain(finished);
       expect(now).not.toContain(withdrawn);
       expect(now).not.toContain(trashed);
+    });
+
+    it('Sol proof, criterion 33: a no-response item becomes unattended when its only path breaks', async () => {
+      const subject = await task('finished run, recipient offline');
+      const recipient = await onTask('Rae Run Recipient', subject, ['read']);
+      const item = await raise(recipient.member.personId, subject, 'run_finished');
+      const before = await w.fixture.db.admin.execute<{ owed: boolean; work_state: string }>(
+        `select owed, work_state from public.inbox_items where id = $1`,
+        [item],
+      );
+      expect(before).toHaveLength(1);
+      expect(before[0]?.owed).toBe(false);
+      expect(before[0]?.work_state).toBe('open');
+      expect(await listed()).not.toContain(item);
+      await deactivate(recipient.member, 'login');
+      expect(await listed()).toContain(item);
     });
 
     it('the read writes nothing: the items stay open and nothing is raised', async () => {

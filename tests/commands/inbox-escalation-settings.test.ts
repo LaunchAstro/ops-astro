@@ -16,7 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
+import { raiseInboxItem, readUnattended } from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { authorised, BUSINESS_KEY, post, tokenFor, type Answer } from '../api/fixture.ts';
@@ -207,6 +207,61 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
         action: 'write',
         authorisedOn: 'self',
         agent: 'never',
+      });
+    });
+  });
+
+  describe('INB-1 isolation (the unattended read)', () => {
+    it('Sol proof, criterion 3: a client B item is excluded before the client A query returns rows', async () => {
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      const operator = await enrol(w.fixture.db.app, w.fixture.business, 'Scoped Operator');
+      const onA = await task('scoped read A');
+      const onB = await task('scoped read B');
+      await w.fixture.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [onA, clientA],
+      );
+      await w.fixture.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [onB, clientB],
+      );
+      const ann = await enrol(w.fixture.db.app, w.fixture.business, 'Ann Scope A');
+      const ben = await enrol(w.fixture.db.app, w.fixture.business, 'Ben Scope B');
+      await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+        await grantTo(tx, operator, 'read', WHOLE_BUSINESS, false, 'operations');
+        await grantTo(tx, operator, 'read', { kind: 'party', id: clientA });
+        await grantTo(tx, ann, 'read', { kind: 'record', id: onA });
+        await grantTo(tx, ben, 'read', { kind: 'record', id: onB });
+      });
+      const aItem = await raise(ann.personId, onA);
+      const bItem = await raise(ben.personId, onB);
+      await w.fixture.db.admin.execute(
+        `update public.person_logins set active = false, deactivated_at = now()
+          where person_id = any($1::uuid[]) and active`,
+        [[ann.personId, ben.personId]],
+      );
+      await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+        const scopedTx = {
+          businessId: tx.businessId,
+          async query<Row>(sql: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
+            const rows = await tx.query<Row>(sql, parameters);
+            if (sql.includes('from public.inbox_items i')) {
+              expect(
+                rows.some(
+                  (row) =>
+                    typeof row === 'object' && row !== null && 'id' in row && row.id === bItem,
+                ),
+              ).toBe(false);
+            }
+            return rows;
+          },
+        };
+        const visible = await readUnattended(scopedTx, operator.personId);
+        expect(visible.map((entry) => entry.id)).toContain(aItem);
+        expect(visible.map((entry) => entry.id)).not.toContain(bItem);
       });
     });
   });
