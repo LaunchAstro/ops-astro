@@ -18,11 +18,12 @@
 // and carries no tick: it comes back only when its parent is reopened.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
-import type { StepView } from '../../../../../packages/core-wire/src/index.ts';
+import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelDoor } from './Perspectives.tsx';
+import { TimeLog } from './Time.tsx';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 
@@ -211,27 +212,48 @@ export function SubtaskList(props: {
   );
 }
 
-/** The Team side's subtask section with the list placed in it, as the task page draws it. */
+/** The Team side's subtask and time sections, each placed in it, as the task page draws them. */
 export function TeamSubtasks(props: {
   readonly client: OperationsClient;
-  readonly task: { readonly id: string; readonly steps: readonly StepView[] };
+  readonly task: {
+    readonly id: string;
+    readonly steps: readonly StepView[];
+    readonly time: TaskTimeView | null;
+  };
   readonly showFinished: boolean;
   readonly onShowFinished: (value: boolean) => void;
+  readonly showAllTime: boolean;
+  readonly onShowAllTime: (value: boolean) => void;
   readonly onChanged: () => void;
   readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
 }): ReactElement {
+  const { task } = props;
   return (
     <TeamWork
-      steps={stepMarks(props.task.steps)}
+      steps={stepMarks(task.steps)}
       list={
         <SubtaskList
           client={props.client}
-          parentId={props.task.id}
-          steps={props.task.steps}
+          parentId={task.id}
+          steps={task.steps}
           showFinished={props.showFinished}
           onShowFinished={props.onShowFinished}
           onChanged={props.onChanged}
         />
+      }
+      // No estimate is on the record yet, so the burn bar waits for one.
+      time={
+        task.time === null ? undefined : (
+          <TimeLog
+            client={props.client}
+            taskId={task.id}
+            time={task.time}
+            estimateMinutes={null}
+            showAll={props.showAllTime}
+            onShowAll={props.onShowAllTime}
+            onChanged={props.onChanged}
+          />
+        )
       }
       onOpenPanel={props.onOpenPanel}
     />
