@@ -37,3 +37,12 @@ The report reads Docker's containers and launchd's jobs and keeps only names,
 state, start times, images and ports, never environments or arguments. It
 exits 1 when a live service stopped, restarted, vanished or moved port, and 0
 when every live service is unchanged (`S0-1 services unchanged`).
+
+The promotion refuses while production's API or auth server runs (owner line
+63), so a person stops them first with `scripts/ops/stop-production.mjs`. It
+asks the operator gate before anything else, then stops the containers
+`ops-astro-api` and `ops-astro-auth` and records the stop. It takes no
+argument, so no caller can point it at another service. Those two names are
+the one part of production's layout this repository holds, because a stop
+with no input has to name its services itself; S0-6's deploy gives the
+containers these names (`S0-1 gated stop`).

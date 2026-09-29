@@ -209,7 +209,8 @@
     "tests/runtime/final-r3r-0030-upgrade-race.test.ts",
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
     "tests/tenancy/final-r6-runner-guard.test.ts",
-    "tests/ci/operator-only.test.ts"
+    "tests/ci/operator-only.test.ts",
+    "tests/ci/service-stop.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
