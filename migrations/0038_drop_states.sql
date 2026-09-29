@@ -11,9 +11,9 @@
 -- classifier as before; a marked one keeps `liability_unknown` and its whole
 -- hold, carrying the cause beside it, for the reconciliation pass (T3d1).
 -- Either way the cause is written once. A drop appends `dropped` to the run's
--- progress and `reactivated` when the work is reserved again, and tells a
--- person with a `dropped` alert. A worker reports a provider or connection
--- drop by handing back `dropped`.
+-- progress and `reactivated` when the work is reserved again; a person is
+-- told by the outage report it joins (T3e2, 0039), not an alert per run. A
+-- worker reports a provider or connection drop by handing back `dropped`.
 --
 -- Constraint swaps only, as 0033's: no function is created and the gate
 -- engine's tables are not touched. Protected: budget invariants.
@@ -35,10 +35,6 @@ alter table public.attempts add constraint attempts_dropped_has_cause
 alter table public.run_events drop constraint run_events_kind_known;
 alter table public.run_events add constraint run_events_kind_known
   check (kind in ('claimed', 'handed_back', 'dropped', 'reactivated'));
-
-alter table public.alerts drop constraint alerts_kind_known;
-alter table public.alerts add constraint alerts_kind_known
-  check (kind in ('settled', 'failed', 'cancelled', 'awaiting_person', 'dropped'));
 
 alter table public.handback_reports drop constraint handback_reports_outcome_known;
 alter table public.handback_reports add constraint handback_reports_outcome_known

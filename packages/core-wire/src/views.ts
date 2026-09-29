@@ -361,12 +361,32 @@ export interface PersonListResult {
 
 /**
  * `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal.
- * `alerts` are the team's (T2h); a reader outside the team is sent none.
+ * `alerts` are the team's (T2h), and so are `outages` (T3e2); a reader outside
+ * the team is sent none.
  */
 export interface QueueResult {
   readonly ok: true;
   readonly queue: readonly QueuedWork[];
   readonly alerts: readonly TaskAlert[];
+  readonly outages: readonly OutageView[];
+}
+
+/** One outage's report, as `task.queue` carries it to the team (T3e2; `core-runtime/src/recovery/outage.ts`). */
+export interface OutageView {
+  readonly id: string;
+  readonly cause: string;
+  /** Whose fault the cause names: the provider's, the network's, or ours. */
+  readonly fault: string;
+  readonly openedAt: string;
+  readonly lastDropAt: string;
+  /** Null while drops of its cause may still join it. */
+  readonly closedAt: string | null;
+  readonly runs: readonly {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly attemptId: string;
+    readonly reactivated: boolean;
+  }[];
 }
 
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */

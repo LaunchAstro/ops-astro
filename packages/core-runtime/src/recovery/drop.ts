@@ -16,7 +16,7 @@
 //
 // The caller has classified the hold under its locks. Here the cause is
 // written once, `dropped` is appended to the run's progress, and a person is
-// told. Then the work comes back by itself, because nobody decided to stop it:
+// told through the outage report the drop joins (T3e2, `outage.ts`). Then the work comes back by itself, because nobody decided to stop it:
 // an unmarked step did nothing, so it is reserved again as a new attempt on
 // the same run and step, through `reserve`'s envelope and cap checks and only
 // on a live lineage whose approval is current (T3d1's `resume`). The run's
@@ -26,21 +26,14 @@
 // comes here, and its lineage is terminal, so nothing it stopped returns.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { raiseAlert } from '../alerts.ts';
 import type { LockSet } from '../locks.ts';
 import { appendRunEvent } from '../run-events.ts';
 import type { Classification } from './classifier.ts';
+import { DROP_FAULT, joinOutage, type DropCause } from './outage.ts';
 import { resume, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 import { sweepExpiredLeases } from './sweep.ts';
 
-export type DropCause = 'provider_unavailable' | 'connection_lost' | 'worker_lost';
-
-/** Whose fault each cause is: read from the cause, never stored twice. */
-export const DROP_FAULT: Readonly<Record<DropCause, 'provider' | 'network' | 'ours'>> = {
-  provider_unavailable: 'provider',
-  connection_lost: 'network',
-  worker_lost: 'ours',
-};
+export { DROP_FAULT, type DropCause };
 
 /** The causes a worker may report of itself. It cannot report its own loss. */
 export const REPORTED_DROP_CAUSES: readonly DropCause[] = [
@@ -96,12 +89,15 @@ export async function recordDrop(
     },
     drop.locks,
   );
-  await raiseAlert(tx, {
+  // A person is told once per outage, not once per run (T3e2, `outage.ts`).
+  const outage = {
+    cause: drop.cause,
+    attemptId: drop.attemptId,
+    runId: row.run_id,
     taskId: row.task_id,
-    causeId: drop.attemptId,
-    raised: { kind: 'dropped' },
-  });
+  };
   if (marked.state !== 'dropped') {
+    await joinOutage(tx, { ...outage, reactivated: false });
     return 'dropped after its dispatch mark: the whole hold stays unknown for the reconciliation pass';
   }
   const resumed = await resume(
@@ -119,6 +115,7 @@ export async function recordDrop(
         and res.state = 'held' and res.lease_id is null`,
     [tx.businessId, row.run_id, row.step_id, row.task_id],
   );
+  await joinOutage(tx, { ...outage, reactivated: next !== undefined });
   if (next === undefined) return `dropped and ${resumed}`;
   await appendRunEvent(
     tx,

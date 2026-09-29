@@ -97,12 +97,9 @@ const reports = async (on: Schedules) =>
     [on.business],
   );
 
+/** Every alert in the business: a drop raises none of any kind. */
 const droppedAlerts = async (on: Schedules): Promise<number> =>
-  (
-    await rows(on, `select 1 from public.alerts where business_id = $1 and kind = 'dropped'`, [
-      on.business,
-    ])
-  ).length;
+  (await rows(on, 'select 1 from public.alerts where business_id = $1', [on.business])).length;
 
 describe.skipIf(url === undefined)('T3e2: one report per outage', { timeout: 180_000 }, () => {
   let s: Schedules;

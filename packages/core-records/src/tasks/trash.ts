@@ -53,6 +53,9 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   run_events: 'runtime',
   // T2h: a record of a transition, kept with the run it describes.
   alerts: 'runtime',
+  // T3e2: an outage's one report and the runs it dropped, kept with them.
+  outage_reports: 'runtime',
+  outage_runs: 'runtime',
 };
 
 /**

@@ -55,6 +55,7 @@ export type {
   SharedTaskRead,
   SharedTaskView,
   TaskAlert,
+  OutageView,
   TaskBoardResult,
   TaskDetail,
   TaskEnvelope,
