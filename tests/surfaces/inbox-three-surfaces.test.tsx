@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INB-1g: the owed count is one number on the three surfaces (supporting
@@ -7,18 +8,22 @@
 // browser, the API and the command-line process").
 //
 // One served API process (`apps/api/server.ts` on its own port). The working
-// minimum is the web's own client module, the one the board screen's inbox
-// calls, pointed at that process; the command line is `apps/cli/main.ts` run
+// minimum is the board screen's mounted inbox panel (`views/inbox.tsx`), its
+// count read off the page, and the web's own client module beside it, both
+// pointed at that process; the command line is `apps/cli/main.ts` run
 // once per call; the API is a plain HTTP post. A no-response item (a finished
 // run) sits in the inbox the whole time and is never counted. No worker runs.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { Inbox } from '../../apps/web/src/views/inbox.tsx';
+import { mount, settle } from './mount.tsx';
 import type { InboxCountResult, InboxReadResult } from '../../packages/core-wire/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
-import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
+import { runCli, serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
 
 // eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surfaces', () => {
@@ -47,6 +52,26 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
       fetch: globalThis.fetch.bind(globalThis),
     });
 
+  /** The owed count the mounted inbox panel shows, read off the page. */
+  const mountedCount = async (token: string): Promise<number> => {
+    const view = await mount(createElement(Inbox, { client: web(token), grantKey: 'alpha:ada' }));
+    try {
+      return await vi.waitFor(
+        async () => {
+          await settle();
+          const shown = (view.find('[data-inbox-count]') as HTMLElement | null)?.dataset[
+            'inboxCount'
+          ];
+          if (shown === undefined) throw new Error('the inbox count is not on the page yet');
+          return Number(shown);
+        },
+        { timeout: 10_000 },
+      );
+    } finally {
+      await view.unmount();
+    }
+  };
+
   /** The count on each surface, and the counted entries of the web's list. */
   const counts = async (token: string) => {
     const client = web(token);
@@ -58,6 +83,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
     const cli = await runCli(['inbox.count'], env(token));
     expect(cli.code, cli.stderr).toBe(0);
     return {
+      mounted: await mountedCount(token),
       webList: listed.value.inbox.filter((entry) => entry.counted).length,
       web: counted.value.owed,
       api: Number((await post('/inbox/count', token))['owed']),
@@ -109,7 +135,8 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
     expect(before.noResponse).toHaveLength(1);
     expect(before.noResponse[0]).toMatchObject({ counted: false, owed: false });
     expect(before.web).toBeGreaterThan(0);
-    expect([before.webList, before.api, before.cli]).toStrictEqual([
+    expect([before.mounted, before.webList, before.api, before.cli]).toStrictEqual([
+      before.web,
       before.web,
       before.web,
       before.web,
@@ -126,7 +153,12 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
 
     const after = await counts(world.ada.token);
     expect(after.web).toBe(before.web - 1);
-    expect([after.webList, after.api, after.cli]).toStrictEqual([after.web, after.web, after.web]);
+    expect([after.mounted, after.webList, after.api, after.cli]).toStrictEqual([
+      after.web,
+      after.web,
+      after.web,
+      after.web,
+    ]);
     expect(after.noResponse).toHaveLength(1);
   }, 120_000);
 });
