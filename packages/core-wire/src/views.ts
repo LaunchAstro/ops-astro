@@ -326,6 +326,38 @@ export interface TaskBoardResult {
   readonly tasks: readonly TaskSummary[];
 }
 
+/**
+ * One applied write to a task, as the activity ledger lists it (MP-8-4). The
+ * actor is named, never identified: the ledger is read by people, and an
+ * actor's identifier tells them nothing a name does not.
+ */
+export interface LedgerEventView {
+  readonly id: string;
+  readonly at: string;
+  /** The person who acted, or what kind of actor it was when no person did. */
+  readonly actorName: string;
+  /** The command that was applied, by its surface name. */
+  readonly operation: string;
+  readonly task: { readonly key: string; readonly title: string | null };
+}
+
+/** One day in the reader's zone and every event on it, newest first. */
+export interface LedgerDayView {
+  /** `YYYY-MM-DD` in the zone the reader asked for. */
+  readonly day: string;
+  readonly events: readonly LedgerEventView[];
+}
+
+/**
+ * `task.ledger`'s answer: whole days, newest first, never split across pages.
+ * `earlier` says whether a day before the last one here has events.
+ */
+export interface TaskLedgerResult {
+  readonly ok: true;
+  readonly days: readonly LedgerDayView[];
+  readonly earlier: boolean;
+}
+
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly PersonView[];

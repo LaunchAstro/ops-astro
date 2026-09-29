@@ -226,6 +226,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
     },
   },
+  'task.ledger': {
+    identifiers: [],
+    parse: ({ before, timeZone }) =>
+      parsed({
+        before: typeof before === 'string' ? before : null,
+        timeZone: typeof timeZone === 'string' ? timeZone : 'UTC',
+      }),
+    spine: true,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async () => await Promise.resolve({ ok: true, days: [], earlier: false }),
+  },
   'person.list': {
     identifiers: [],
     parse: NONE,
