@@ -103,3 +103,91 @@ test('no container: 17 starts on the 17 volume', () => {
   assert.doesNotMatch(calls, REMOVED);
   assert.match(calls, STARTED_17);
 });
+
+// GoTrue migrates schema `auth` when it starts, so a new cluster needs a new
+// GoTrue, and the same cluster keeps the one it has. This harness runs the
+// script to its end: GoTrue's issuer and key are always right here, so only
+// the database decides whether it is replaced.
+function runToEnd(pg) {
+  const scratch = mkdtempSync(join(tmpdir(), 's0-7-auth-up-gotrue-'));
+  try {
+    const scriptDir = join(scratch, 'scripts/local');
+    const bin = join(scratch, 'bin');
+    const local = join(scratch, '.local');
+    mkdirSync(scriptDir, { recursive: true });
+    mkdirSync(bin);
+    mkdirSync(local);
+    copyFileSync(join(root, 'scripts/local/auth-up.sh'), join(scriptDir, 'auth-up.sh'));
+    writeFileSync(join(local, 'auth-signing-key.json'), 'synthetic-test-key');
+    writeFileSync(join(local, 'db.env'), 'DATABASE_URL=synthetic-test-url\n');
+    const label = spawnSync(
+      'sh',
+      ['-c', `shasum -a 256 '${join(local, 'auth-signing-key.json')}' | cut -c1-16`],
+      {
+        encoding: 'utf8',
+      },
+    ).stdout.trim();
+    const calls = join(scratch, 'calls');
+    const removed = join(scratch, 'auth-removed');
+    const pgAnswers =
+      pg === null
+        ? `'inspect ops-astro-local-pg') exit 1 ;;\n  *State.Running*ops-astro-local-pg*) exit 1 ;;`
+        : `'inspect ops-astro-local-pg') exit 0 ;;
+  *ops-astro-local-pg*Mounts*) printf '%s\\n' ops-astro-local-pgdata-17 ;;
+  *ops-astro-local-pg*Config.Image*) printf '%s\\n' '${pinned}' ;;
+  *State.Running*ops-astro-local-pg*) printf '%s\\n' ${pg.running} ;;`;
+    writeFileSync(
+      join(bin, 'docker'),
+      `#!/bin/sh
+printf '%s\\n' "$*" >> '${calls}'
+case "$*" in
+  ${pgAnswers}
+  run*'--name ops-astro-local-auth'*) rm -f '${removed}' ;;
+  *signing-key*ops-astro-local-auth*) printf '%s\\n' '${label}' ;;
+  *State.Running*ops-astro-local-auth*) if [ -f '${removed}' ]; then exit 1; else printf '%s\\n' true; fi ;;
+  'inspect ops-astro-local-auth')
+    if [ -f '${removed}' ]; then exit 1; fi
+    printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' ;;
+  'rm -f ops-astro-local-auth') : > '${removed}' ;;
+esac
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    writeFileSync(join(bin, 'curl'), '#!/bin/sh\nprintf healthy\\n\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'openssl'), '#!/bin/sh\nprintf synthetic-test-secret\n', {
+      mode: 0o755,
+    });
+    const run = spawnSync('bash', [join(scriptDir, 'auth-up.sh')], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(run.status, 0, `the script did not finish: ${run.stderr}`);
+    return readFileSync(calls, 'utf8');
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+const AUTH_REPLACED = /^rm -f ops-astro-local-auth$/mu;
+const AUTH_STARTED = /^run .*--name ops-astro-local-auth /mu;
+
+test('no Postgres container: the new cluster gets a new GoTrue, however right the old one is', () => {
+  const calls = runToEnd(null);
+  assert.match(calls, STARTED_17);
+  assert.match(calls, AUTH_REPLACED);
+  assert.match(calls, AUTH_STARTED);
+});
+
+test("the contract's own running Postgres keeps the GoTrue that serves it", () => {
+  const calls = runToEnd({ running: true });
+  assert.doesNotMatch(calls, AUTH_REPLACED);
+  assert.doesNotMatch(calls, AUTH_STARTED);
+});
+
+test("the contract's own stopped Postgres is the same cluster: started, and GoTrue kept", () => {
+  const calls = runToEnd({ running: false });
+  assert.match(calls, /^start ops-astro-local-pg$/mu);
+  assert.doesNotMatch(calls, AUTH_REPLACED);
+});
