@@ -308,6 +308,7 @@
     "tests/commands/task-subtasks.test.ts",
     "tests/commands/task-completion.test.ts",
     "tests/tasks/time-entries.test.ts",
+    "tests/cli/mp-4-15-completion-cli.test.ts",
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",
     "tests/reads/task-history-trail.test.ts",
