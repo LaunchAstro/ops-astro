@@ -684,7 +684,10 @@ places this build does not yet reach it.
   all; `pnpm type:census` refuses any other size, weight, family, line height,
   tracking or case, and lists the four exceptions a ruling keeps (strong text
   at the medium weight, the two larger button labels, the run hero's mono
-  figure). A stat number keeps one size at every width.
+  figure). A stat number keeps one size at every width. Inline `code`, `kbd`
+  and `samp` take the mono style from the base layer. The census reads the
+  sheets; the MP-1-4 visual match also measures every built page as the
+  browser draws it, so an element left on the browser's own default is caught.
 - Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
   no chart library: line, column with a dashed line, donut, gauge, score dial,
   sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
