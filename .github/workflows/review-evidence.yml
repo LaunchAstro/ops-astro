@@ -27,9 +27,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+# Issue 151: `issues: read` lets the job list open issues, so a follow-up
+# outcome can be held to one. Without it GitHub's listing gave this token pull
+# requests only, and every follow-up read as "not an open issue". Every scope
+# stays read.
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
