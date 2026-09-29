@@ -23,7 +23,6 @@ import { cq8World, type Party } from '../runtime/cq-8-world.ts';
 const serverUrl = databaseUrlFromEnvironment();
 
 if (serverUrl === undefined) console.warn('api/c4-change-record: DATABASE_URL is unset.');
-
 let s: Schedules;
 let alpha: Party;
 let beta: Party;
@@ -54,23 +53,19 @@ const touch = async (business: BusinessId, recordIds: readonly string[]): Promis
   });
 };
 
-/** A point past `recordId`'s last change: nothing older is still running. */
-const pointPast = async (business: BusinessId, who: Member, recordId: string) => {
-  const [row] = await s.db.admin.execute<{ xid: string }>(
-    'select changed_xid::text as xid from public.live_changes where subject_id = $1',
+/**
+ * The point just past `recordId`'s last stamp. A point the read hands back
+ * can sit lower on a shared server (another database's open transaction holds
+ * the watermark), which costs duplicates, never a skip; this one is exact.
+ */
+const pointAfter = async (recordId: string): Promise<string> => {
+  const [row] = await s.db.admin.execute<{ point: string }>(
+    `select (changed_xid::text::numeric + 1)::text as point
+       from public.live_changes where subject_id = $1`,
     [recordId],
   );
   if (row === undefined) throw new Error('no change row to pass');
-  for (let tries = 0; tries < 200; tries += 1) {
-    // eslint-disable-next-line no-await-in-loop -- waiting for the cluster's oldest open transaction.
-    const read = await since(business, who, null);
-    if (BigInt(read.point) > BigInt(row.xid)) return read.point;
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => {
-      setTimeout(resolve, 25);
-    });
-  }
-  throw new Error('the watermark never passed the change');
+  return row.point;
 };
 
 const tasksOf = (p: Party): [string, string] => {
@@ -85,9 +80,11 @@ async function afterThePoint(): Promise<void> {
   await touch(alpha.id, [two]);
   const first = await since(alpha.id, alpha.member, null);
   expect([first.changes, first.point]).toEqual([[], expect.stringMatching(/^[1-9]\d*$/u)]);
-  const point = await pointPast(alpha.id, alpha.member, two);
+  const point = await pointAfter(two);
 
   await touch(alpha.id, [one]);
+  const equal = String(BigInt(await pointAfter(one)) - 1n);
+  expect(ids(await since(alpha.id, alpha.member, equal))).toContain(one);
   const read = await since(alpha.id, alpha.member, point);
   expect(ids(read)).toContain(one);
   expect(ids(read)).not.toContain(two);
@@ -100,7 +97,7 @@ async function afterThePoint(): Promise<void> {
 
 /** C4 changes since: a write still open when the point is taken is not lost */
 async function openAtThePoint(): Promise<void> {
-  const [one] = tasksOf(alpha);
+  const [one, two] = tasksOf(alpha);
   const other = racer(s);
   let wrote!: () => void;
   let release!: () => void;
@@ -117,6 +114,8 @@ async function openAtThePoint(): Promise<void> {
   });
   try {
     await written;
+    // A later write that commits first, so the open one is not the newest.
+    await touch(alpha.id, [two]);
     const { point } = await since(alpha.id, alpha.member, null);
     release();
     await open;
@@ -131,7 +130,8 @@ async function openAtThePoint(): Promise<void> {
 /** C4 changes since: a rolled-back write leaves no change */
 async function rolledBack(): Promise<void> {
   const [, two] = tasksOf(alpha);
-  const { point } = await since(alpha.id, alpha.member, null);
+  await touch(alpha.id, [two]);
+  const point = await pointAfter(two);
   await expect(
     s.db.app.withBusiness(alpha.id, async (tx) => {
       await tx.query('update public.records set data = data where id = $1', [two]);
@@ -210,7 +210,7 @@ async function isolation(): Promise<void> {
   const other = await enrol(s.db.app, alpha.id, `c4-other-${randomUUID().slice(0, 8)}`);
   const derived = await s.db.app.withBusiness(alpha.id, async (tx) => {
     const parent = await grantTo(tx, alpha.member, 'read', { kind: 'record', id: a2 }, true);
-    const issued = await issueGrant(tx, [], {
+    const issued = await issueGrant(tx, subjects(alpha.member), {
       subject: { kind: 'person', id: other.personId },
       scope: { kind: 'record', id: a2 },
       collection: 'task',

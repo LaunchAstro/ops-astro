@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4 (#429): the live change record's *changes since* read (CS-15.19, API-4).
+// C4 (#429): *changes since* on the live change record (migration 0036,
+// CS-15.19), for API-4. The tasks stamped after a point, filtered inside the
+// one query by the caller's live `task:read` grants, at business scope or on
+// the task itself. The answer names tasks, never what changed: the caller
+// re-reads each through its own checked read.
+//
+// A point is the oldest transaction still open when the last read ran, so a
+// write open at that moment comes back next time instead of being skipped. A
+// task stamped just before the point can come back twice; a duplicate costs a
+// re-read. Points never go backwards: the next is at least the one given.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { Subject } from '../authority/grants.ts';
+import { EFFECTIVE, type Subject } from '../authority/grants.ts';
 
 /** One task that changed after the point; nothing about what changed. */
 export interface TaskChange {
@@ -18,10 +27,58 @@ export interface ChangesSince {
   readonly changes: readonly TaskChange[];
 }
 
+// An xid8 in its canonical text, no wider than 19 digits, so any match casts.
+const POINT = /^(?:0|[1-9]\d{0,18})$/u;
+
+const CHANGES_SINCE = `${EFFECTIVE},
+  readable as (
+    select e.scope_kind, e.scope_id
+      from effective e
+     where e.collection = 'task'
+       and e.action = 'read'
+       and e.scope_kind in ('business', 'record')
+       and exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                    where s.kind = e.subject_kind and s.id = e.subject_id))
+  select greatest(pg_snapshot_xmin(pg_current_snapshot()), $3::xid8)::text as point,
+         coalesce((select json_agg(json_build_object('id', c.subject_id, 'at', c.changed_at)
+                                   order by c.changed_xid, c.subject_id)
+                     from public.live_changes c
+                    where $3::xid8 is not null
+                      and c.subject_kind = 'task'
+                      and c.changed_xid >= $3::xid8
+                      and (exists (select 1 from readable r where r.scope_kind = 'business')
+                           or c.subject_id in (select r.scope_id from readable r
+                                                where r.scope_kind = 'record'))),
+                  '[]'::json) as changes`;
+
+interface Row {
+  readonly point: string;
+  readonly changes: readonly { readonly id: string; readonly at: string }[];
+}
+
+/**
+ * The tasks changed after `point` that `subjects` may read, and the next
+ * point. `null` starts: the point alone. A malformed point is refused before
+ * any query.
+ */
 export async function changesSince(
   tx: TenantQuery,
-  _subjects: readonly Subject[],
-  _point: string | null,
+  subjects: readonly Subject[],
+  point: string | null,
 ): Promise<ChangesSince | 'POINT_INVALID'> {
-  return await Promise.resolve({ point: tx.businessId === '' ? '' : '0', changes: [] });
+  if (point !== null && !POINT.test(point)) return 'POINT_INVALID';
+  const [row] = await tx.query<Row>(CHANGES_SINCE, [
+    subjects.map((subject) => subject.kind),
+    subjects.map((subject) => subject.id),
+    point,
+  ]);
+  if (row === undefined) throw new Error('changes since answered no row');
+  return {
+    point: row.point,
+    changes: row.changes.map((change) => ({
+      kind: 'task',
+      id: change.id,
+      changedAt: new Date(change.at),
+    })),
+  };
 }
