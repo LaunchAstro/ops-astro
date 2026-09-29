@@ -106,7 +106,8 @@
     "MP-4-1 (SL08) names task-board-crumb: the board on task.read for the task page crumb (the board's own title, read at read and never copied; null for no board) and its three crossings (another business's board planted in the slot reads as no board; another client's board in the same business is withheld with no title; an agent under a live delegation is told only that there is one).",
     "MP-4-2 (SL08) names task-facts: the stage and the client mark on task.read for the facts band, each the task's own record, and its three crossings (another business's task not found with its stage absent; another client's task in the same business refused with its stage absent; an agent under a live delegation reads its own task's facts and none of another's).",
     "MP-4-3 (SL08) names task-perspectives: the Team and Agent counts worked out from one task's own task.read (an open gate on another task is never counted) and its three crossings (another business's task not found with its title absent; another client's task in the same business refused, its gate never counted and its proposal's canary never sent to a reader of client A's task; an agent under a live delegation counts its own task and reads nothing of another).",
-    "MP-4-16 (SL08) names task-history-trail: the history on task.read is the task's own changes, filtered by its own address (another task's writer never appears), and its three crossings (another business's task not found with no history sent; another client's task in the same business refused and its writer never shown to a reader of client A's task; an agent under a live delegation reads nothing of another task's history)."
+    "MP-4-16 (SL08) names task-history-trail: the history on task.read is the task's own changes, filtered by its own address (another task's writer never appears), and its three crossings (another business's task not found with no history sent; another client's task in the same business refused and its writer never shown to a reader of client A's task; an agent under a live delegation reads nothing of another task's history).",
+    "MP-4-5 (SL08) names task-conversation: a comment is task:comment's (a reader without it writes nothing) and joins the audit chain as applied; an agent comments to Internal only (a Client comment refused AUDIENCE_NOT_PERMITTED, nothing written); and a client message reaches only that task's client, the internal note and its count never reaching a client session and another client's task refused with its words absent (TR-S-B2-16)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -300,7 +301,8 @@
     "tests/reads/task-board-crumb.test.ts",
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",
-    "tests/reads/task-history-trail.test.ts"
+    "tests/reads/task-history-trail.test.ts",
+    "tests/commands/task-conversation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
