@@ -10,6 +10,7 @@
 // (RA-10). Its authority (`run:write`) and isolation are in
 // `mp-6-2-revisions-isolation.test.ts`.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detailOf } from './controls-fixture.ts';
@@ -105,6 +106,16 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised', () => {
       expect(answers.map((answer) => answer.status)).toStrictEqual([200, 200]);
       expect(answers.map((answer) => detailOf(answer)['version']).toSorted()).toStrictEqual([1, 2]);
       expect((await w.revisionsOn(work.taskId)).map((one) => one.version)).toStrictEqual([1, 2]);
+    });
+
+    it('a lost answer retried under the same operation writes one revision', async () => {
+      const work = await pickedUpOn(w.c, 'revise_retried');
+      const body = { operationId: randomUUID(), ...knowledge('once') };
+      const first = await w.revise(work, body);
+      const retried = await w.revise(work, body);
+      expect([first.status, retried.status]).toStrictEqual([200, 200]);
+      expect(detailOf(retried)['revisionId']).toBe(detailOf(first)['revisionId']);
+      expect(await w.c.count(REVISIONS, [work.taskId])).toBe(1);
     });
 
     it('refuses a revision with no live lease and writes nothing', async () => {
