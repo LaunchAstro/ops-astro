@@ -36,7 +36,7 @@ it.skipIf(serverUrl === undefined || otherUrl === undefined)(
         createdTemplate = true;
       }
       await reader`select 1`;
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', target];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', target];
       vi.resetModules();
       await expect(import('./snapshot.ts')).rejects.toThrow('fixture: dump and restore failed (1)');
       const outside = await other`select datname from pg_database where datname = ${target}`;
