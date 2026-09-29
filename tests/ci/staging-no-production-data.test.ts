@@ -200,4 +200,32 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     );
     expect(await productionSigns(db.admin, MADE_UP, true)).not.toEqual([]);
   });
+
+  it('Sol proof, criterion 9: confirmation cannot override a mismatched made-up mark', async () => {
+    await reset();
+    const originalId = await business('alpha');
+    await markMadeUp(db.admin, [originalId]);
+    await db.admin.execute('delete from public.businesses where id = $1', [originalId]);
+    await business('alpha');
+    expect(await productionSigns(db.admin, MADE_UP)).toContain(
+      'it holds a business the seed did not make',
+    );
+    expect(await productionSigns(db.admin, MADE_UP, true, ['Ada Alpha'])).not.toEqual([]);
+  });
+
+  it('Sol proof, criterion 9: a marked database rejects restored private record content', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const typeId = randomUUID();
+    await db.admin.execute(
+      'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
+      [businessId, typeId, 'private_note', 'Private note'],
+    );
+    await db.admin.execute(
+      'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
+      [businessId, randomUUID(), typeId, { title: 'Private customer canary' }],
+    );
+    expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
+  });
 });

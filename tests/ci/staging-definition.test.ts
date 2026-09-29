@@ -191,6 +191,27 @@ it('Sol proof, criterion 5: a live network attachment change makes the report re
   expect(report.out).toMatch(/RECONFIGURED docker live-runner/u);
 });
 
+it('Sol proof, criterion 5: a live network endpoint address change makes the report red', () => {
+  const withAddress = (address: string): string => {
+    const containers = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
+    containers[0]!['NetworkSettings'] = {
+      Networks: { live: { NetworkID: 'live-network', IPAddress: address } },
+    };
+    const result = run([
+      'snapshot',
+      '--docker-inspect',
+      file(JSON.stringify(containers)),
+      '--launchctl',
+      file(launchctl(JOBS)),
+    ]);
+    expect(result.status, result.out).toBe(0);
+    return file(result.out);
+  };
+  const report = compare(withAddress('172.20.0.10'), withAddress('172.20.0.11'));
+  expect(report.status, report.out).toBe(1);
+  expect(report.out).toMatch(/RECONFIGURED docker live-runner/u);
+});
+
 // ---- S0-1 credentials canary -------------------------------------------------
 
 it('S0-1 credentials canary', () => {
