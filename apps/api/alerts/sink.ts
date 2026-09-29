@@ -102,21 +102,27 @@ function text(read: () => unknown): string {
   }
 }
 
-// A database state is logged only from the driver's own error, which carries the
-// server's SQLSTATE; a system code only from this fixed list. Any other code,
-// whatever its shape, was set by code or a message and could hold anything.
-const SQLSTATE = /^[0-9A-Z]{5}$/u;
+// A database state is logged only from the driver's error class and only from
+// this fixed list of standard SQLSTATEs; a system code only from the list after
+// it. The class is public, so code can make one with any code, and a function
+// can raise any code: five free characters are a channel into the log, and a
+// listed state carries nothing but its own meaning.
+const SQLSTATE = new Set(['22001', '22003', '22P02', '23502', '23503', '23505', '23514']);
+for (const code of ['25P02', '40001', '40P01', '42501', '42P01', '42703', '42883', '53300'])
+  SQLSTATE.add(code);
+for (const code of ['55P03', '57014', '57P01', '08000', '08001', '08003', '08006'])
+  SQLSTATE.add(code);
 const SYSTEM = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
 SYSTEM.add('EHOSTUNREACH').add('EAI_AGAIN').add('ENOMEM').add('EMFILE');
 
 /**
- * What the API's own log may say of a fault: the database's state from a
+ * What the API's own log may say of a fault: a listed database state from a
  * `PostgresError`, a listed system code, else a standard error class, else
  * `unknown`. Never a custom name, a message or a constraint.
  */
 export function faultCode(cause: unknown): string {
   const code = text(() => (cause as { code?: unknown } | undefined)?.code);
-  if (cause instanceof postgres.PostgresError && SQLSTATE.test(code)) return code;
+  if (cause instanceof postgres.PostgresError && SQLSTATE.has(code)) return code;
   if (SYSTEM.has(code)) return code;
   const name = cause instanceof Error ? text(() => cause.name) : '';
   return STANDARD.has(name) ? name : 'unknown';
