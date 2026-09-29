@@ -92,7 +92,7 @@ function effects(over: Partial<DeployEffects> = {}): Watched {
     snapshot: () => snapshot([live]),
     compare: (before, after) => ({ unchanged: before === after, report: 'compared' }),
     buildImage: () => BUILT,
-    up: () => undefined,
+    up: () => {},
     imageId: (ref) => ref,
     runningImages: () => expected(),
   };

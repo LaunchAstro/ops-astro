@@ -137,7 +137,9 @@ export async function serveTestKeySetApart(body: unknown = TEST_KEY_SET): Promis
     url: `http://127.0.0.1:${port}/auth/v1/.well-known/jwks.json`,
     close: async () => {
       child.kill();
-      await new Promise((resolve) => child.once('exit', resolve));
+      await new Promise((resolve) => {
+        child.once('exit', resolve);
+      });
     },
   };
 }

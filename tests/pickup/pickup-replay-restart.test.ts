@@ -31,7 +31,9 @@ const enabled =
   container === 'ops-astro-pickup-replay-pg';
 
 const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 };
 
 interface Running {

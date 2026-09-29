@@ -57,7 +57,7 @@ export async function serviceToken(keys) {
 /** The checkout's own key, or undefined when `auth-up.sh` has not run. */
 export async function localServiceToken(root) {
   const file = join(root, '.local', 'auth-signing-key.json');
-  if (!existsSync(file)) return undefined;
+  if (!existsSync(file)) return;
   let keys;
   try {
     keys = JSON.parse(readFileSync(file, 'utf8'));

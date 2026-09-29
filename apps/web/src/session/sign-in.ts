@@ -69,7 +69,7 @@ export async function openSession(
   }
   const answer = await toApi(request, SESSION_PATH, { authorization: bearer });
   if (answer === undefined) return { ok: false, because: 'The API did not accept the sign-in.' };
-  const body: unknown = await answer.json().catch(() => undefined);
+  const body: unknown = await answer.json().catch(() => {});
   const sessionId = (body as { session?: unknown } | undefined)?.session;
   return typeof sessionId === 'string' ? { ok: true, sessionId } : { ok: true };
 }
@@ -87,7 +87,7 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     return { ok: false, because: 'The sign-in service did not answer.' };
   }
 
-  const parsed: unknown = await response.json().catch(() => undefined);
+  const parsed: unknown = await response.json().catch(() => {});
   if (!response.ok) {
     // GoTrue's own words where it gave some, and the status where it did not.
     // No attempt to guess whether the email or the password was the wrong one:
