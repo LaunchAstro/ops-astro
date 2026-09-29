@@ -266,6 +266,7 @@ export async function readTaskDetail(
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
     adHoc: row.ad_hoc === true,
     clientAccess: (await outsideHolders(tx, row.id)).length > 0,
+    board: null,
   };
 }
 

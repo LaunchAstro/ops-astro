@@ -49,6 +49,7 @@ export const SCREENS: {
       taskKey={context.params.key}
     />
   ),
+  'agency:task-unnamed': () => <div />,
 };
 
 /** The screen a matched address draws, handed that route's own parameters. */

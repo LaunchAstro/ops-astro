@@ -101,6 +101,12 @@ export interface TaskDetail extends TaskSummary {
    * nothing stored beside it.
    */
   readonly clientAccess: boolean;
+  /**
+   * The board the task sits on, as its page's crumb reads it (MP-4-1): null
+   * when it sits on none. A board is a task, so its title is sent only to a
+   * reader who may read that board; anyone else is told there is one.
+   */
+  readonly board: BoardCrumb | null;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -122,6 +128,10 @@ export interface TaskEnvelope {
   readonly heldMinor: number;
   readonly actualMinor: number;
 }
+
+/** A task's board as the crumb draws it: its title, or that it is withheld. */
+export type BoardCrumb =
+  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
 
 /**
  * A task's derived rank as its reader is shown it (R70, MP-4-9).
