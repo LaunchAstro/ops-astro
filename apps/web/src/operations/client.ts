@@ -221,11 +221,7 @@ export class OperationsClient {
     return this.#post<CommandOutcome>(name, payload);
   }
 
-  /**
-   * The task's live channel (T2f): the stream, or nothing when the API refused
-   * the join or could not be reached. It carries only that the task changed;
-   * the page re-reads through `read`.
-   */
+  /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
   async openLive(
     recordId: string,
     signal: AbortSignal,

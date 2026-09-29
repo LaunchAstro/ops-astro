@@ -23,9 +23,8 @@ export interface UseReadOptions<T> {
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
   /**
-   * The live channel for what this read shows (T2f): re-read when it says the
-   * thing changed. While `paused`, an unsaved edit is open, so a change is held
-   * and read once the pause ends; an invalidation never lands under a draft.
+   * The live channel for what this read shows (T2f). While `paused` (an
+   * unsaved edit) a change is held and read once the pause ends.
    */
   readonly live?: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>;
   readonly paused?: boolean;

@@ -196,14 +196,11 @@ export function connect(url: string, options: DatabaseOptions = {}): Database {
 }
 
 /**
- * A session connection that can only listen (T2f). LISTEN is a session verb,
- * so it cannot run inside `withBusiness`, and this handle has no way to send
- * anything else: no query, no transaction, no business. postgres.js holds it
- * on a connection of its own, listens again after a reconnect and calls
- * `onListening` each time, which is when a subscriber must resync.
- *
- * A hosted deployment gives it a direct or session-mode URL: LISTEN does not
- * work through a transaction-mode pooler.
+ * A session connection that can only listen (T2f): LISTEN is a session verb,
+ * outside `withBusiness`, and this handle sends nothing else. postgres.js
+ * listens again after a reconnect and calls `onListening` each time. Hosted,
+ * it needs a direct or session-mode URL: LISTEN fails through a
+ * transaction-mode pooler.
  */
 export interface Listener extends Connection {
   listen(
