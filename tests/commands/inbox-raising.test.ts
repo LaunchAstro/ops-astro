@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world, and the cases that share it */
 //
 // INB-1 raised on transition and INB-1 mention (INB-1b, supporting checklist
 // lines C4, C7, C18 and C29). Every case goes through the mounted API, so an
@@ -30,7 +31,7 @@ import {
   type InboxItem,
   type InboxReason,
 } from '../../packages/core-records/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import {
@@ -73,6 +74,7 @@ const proposal = (task: { id: string; rev: number }, lineageId?: string) => ({
   ...(lineageId === undefined ? {} : { lineageId }),
 });
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
   let fixture: ApiFixture;
   let api: Hono;
@@ -213,6 +215,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     expect(await allItems()).toBe(before);
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   it('tells the launcher of a finished run (owed nothing) and of a failed one waiting on them', async () => {
     const settle = async (outcome: 'completed' | 'failed', successor?: unknown) => {
       const task = await newTask(`run ${outcome}`);
@@ -315,8 +318,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     expect(await allItems()).toBe(before);
   });
 
-  it('Sol proof, criterion 32: incident has a transition raiser', () => {
+  it('incident has a transition raiser', () => {
     const raising = readFileSync('packages/core-records/src/inbox/raise.ts', 'utf8');
+    // eslint-disable-next-line require-unicode-regexp -- the proof's pattern, kept byte for byte
     expect(raising).toMatch(/reason:\s*'incident'/);
   });
 
@@ -360,6 +364,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 mention', () => {
     const comment = async (
       task: { id: string; rev: number },
@@ -421,7 +426,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       expect(await allItems()).toBe(before);
     });
 
-    it('Sol proof, criterion 32: a login without paid-client status does not raise a client comment', async () => {
+    it('a login without paid-client status does not raise a client comment', async () => {
       const freeWithLogin = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
         const personId = await insertPerson(tx, 'Free portal contact');
         const actorId = await insertActor(tx, personId);
@@ -442,7 +447,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       ).toStrictEqual([]);
     });
 
-    it('Sol proof, criterion 32: an outside party without paid-client status gets no client comment item', async () => {
+    it('an outside party without paid-client status gets no client comment item', async () => {
       const onA = await newTask('client A without paid status', clientA);
       ok(await comment(onA, [outsider], 'client'));
       expect(

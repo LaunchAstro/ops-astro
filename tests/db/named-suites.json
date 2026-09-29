@@ -279,7 +279,7 @@
     "tests/commands/inbox-clearing.test.ts",
     "tests/commands/inbox-clearing-guards.test.ts",
     "tests/commands/inbox-restart.test.ts",
-    "tests/commands/sol-inb1c-isolation.test.ts",
+    "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox.test.ts",
     "tests/reads/inbox-named.test.ts",
     "tests/cli/inbox-process.test.ts",

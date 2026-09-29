@@ -23,7 +23,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem, type TenantQuery } from '../../packages/core-records/src/index.ts';
 import * as shippedRecords from '../../packages/core-records/src/index.ts';
@@ -88,6 +88,7 @@ async function proves(
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g queue-and-delivery conformance proof', () => {
   const w = clearingWorld('i1gc');
 

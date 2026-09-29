@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { clearingWorld, decideBody, detailOf, ok } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

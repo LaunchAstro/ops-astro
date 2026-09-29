@@ -19,6 +19,7 @@ import type { InboxEntry, InboxReadResult } from '../../packages/core-wire/src/i
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the inbox reads back after a restart', () => {
   let world: World;
   let api: ServedApi | undefined;
@@ -63,6 +64,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the inbox reads back after a re
     await world?.close();
   }, 60_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   it('INB-1 inbox items read back identically after the API and the browser restart', async () => {
     const created = await post('/task/create', world.mia.token, { fields: { title: 'read back' } });
     const taskId = String(created['recordId']);

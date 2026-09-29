@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world, and the cases that share it */
 //
 // INB-1e: unattended (supporting checklist lines C14 and C30). Escalation
 // parked and settings per channel (C20, C36) are `inbox-escalation-settings.test.ts`.
@@ -23,7 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { revokeGrant, type Scope } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem, type InboxReason } from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -42,6 +43,7 @@ const route = (name: string): string => pathOf(name as CommandName);
 const CLIENT_A = randomUUID();
 const CLIENT_B = randomUUID();
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
   const w = clearingWorld('i1e');
   let opal: Member;
@@ -161,6 +163,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
     brunoToken = await tokenFor(bruno.presented.subject);
   }, 120_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 unattended every path', () => {
     it('a decision becomes unattended only when every decider is cut off, and one live path keeps it attended', async () => {
       const subject = await task('two deciders');
@@ -270,7 +273,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
       expect(now).not.toContain(trashed);
     });
 
-    it('Sol proof, criterion 33: a no-response item becomes unattended when its only path breaks', async () => {
+    it('a no-response item becomes unattended when its only path breaks', async () => {
       const subject = await task('finished run, recipient offline');
       const recipient = await onTask('Rae Run Recipient', subject, ['read']);
       const item = await raise(recipient.member.personId, subject, 'run_finished');

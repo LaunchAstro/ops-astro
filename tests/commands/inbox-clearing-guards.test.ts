@@ -18,11 +18,12 @@ import {
   recordDeliveryAttempt,
   withdrawEndedGates,
 } from '../../packages/core-records/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { clearingWorld, decideBody, detailOf, ok, readable } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
   const w = clearingWorld('inb1cg');
 
@@ -100,6 +101,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
     ]);
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   it('INB-1 clearing isolation: business to business, client to client and person to person', async () => {
     const clientA = randomUUID();
     const clientB = randomUUID();

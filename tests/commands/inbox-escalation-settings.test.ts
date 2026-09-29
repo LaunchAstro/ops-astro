@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { raiseInboxItem, readUnattended } from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
@@ -26,6 +26,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 const route = (name: string): string => pathOf(name as CommandName);
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings', () => {
   const w = clearingWorld('i1es');
   let opal: Member;
@@ -88,7 +89,9 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
     pimToken = await tokenFor(pim.presented.subject);
   }, 120_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 escalation parked', () => {
+    // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
     it('an unanswered decision with nobody reachable stays unattended: no fallback person, no grant, no decision', async () => {
       const proposed = await w.proposed('nobody answers');
       const holders = w.holders();
@@ -143,6 +146,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
     });
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 settings per channel', () => {
     it('in-app is always on: on is accepted, anything else is refused', async () => {
       const on = ok(await setChannel(pimToken, { channel: 'in_app', mode: 'on' }));
@@ -220,8 +224,10 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
     });
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 isolation (the unattended read)', () => {
-    it('Sol proof, criterion 3: a client B item is excluded before the client A query returns rows', async () => {
+    // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
+    it('a client B item is excluded before the client A query returns rows', async () => {
       const clientA = randomUUID();
       const clientB = randomUUID();
       const operator = await enrol(w.fixture.db.app, w.fixture.business, 'Scoped Operator');

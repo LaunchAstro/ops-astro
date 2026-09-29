@@ -54,7 +54,9 @@ const isListed = (item: InboxItem): item is InboxItem & { readonly access: Inbox
 
 /** The caller's own entries, before anything is named. The count reads these. */
 async function listed(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
-  return (await readInboxItems(tx, personId)).filter(isListed).map(entryOf);
+  return (await readInboxItems(tx, personId))
+    .filter((item) => isListed(item))
+    .map((item) => entryOf(item));
 }
 
 /**

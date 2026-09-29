@@ -135,11 +135,12 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
-      // The caller's own inbox (INB-1d): a live grant of any kind, as above.
       case 'inbox.read':
       case 'inbox.count':
-      // `operations:read`, which the seed grants the admin (INB-1e, C55).
       case 'inbox.unattended':
+        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
+        // above; `inbox.unattended` needs `operations:read`, which the seed
+        // grants the admin (INB-1e, C55).
         return { body: {} };
       case 'notifications.set_channel':
         // Self-scoped (INB-1e): in-app is always on, the one mode it takes.

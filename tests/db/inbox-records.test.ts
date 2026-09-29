@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world, and the cases that share it */
 //
 // INB-1 three records (INB-1a, supporting checklist lines C1 and C2): the fact,
 // the recipient's inbox item and its delivery attempts are three records and
@@ -29,7 +30,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertAgentActor,
@@ -56,6 +57,7 @@ const ITEM_COLUMNS = [
   'work_state',
 ];
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
   let db: FreshDatabase;
   let alpha: string;
@@ -247,7 +249,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(await accessOf(ada, onB)).toBe('withheld');
   });
 
-  it('Sol proof, criterion 3: withheld client pointers are redacted', async () => {
+  it('withheld client pointers are redacted', async () => {
     await grantRead({ kind: 'party', id: clientA });
     const hiddenItem = await inAlpha(
       async (tx) =>
@@ -265,7 +267,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(withheld).not.toHaveProperty('factId');
   });
 
-  it('Sol proof, criterion 3: withheld client decider identity is redacted', async () => {
+  it('withheld client decider identity is redacted', async () => {
     await grantRead({ kind: 'party', id: clientA });
     await inAlpha(async (tx) => {
       const [task] = await tx.query<{ readonly clientId: string }>(
@@ -306,7 +308,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(withheld).not.toHaveProperty('closedByPersonId');
   });
 
-  it('Sol proof, criterion 5: delivery observations read in causal order', async () => {
+  it('delivery observations read in causal order', async () => {
     const item = await inAlpha(
       async (tx) =>
         await raiseInboxItem(tx, {
@@ -334,6 +336,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(read.find((candidate) => candidate.id === item)?.lastDelivery).toBe('accepted');
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   it('separates an external client: a share reaches its own task, and a canary id never shows', async () => {
     const [cleo, cleoActor] = await inAlpha(async (tx) => {
       const person = await insertPerson(tx, 'Cleo, an outside client');

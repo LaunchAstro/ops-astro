@@ -24,7 +24,7 @@ function processProofNames(): readonly string[] {
 }
 
 describe('INB-1d command-line process coverage', () => {
-  it('Sol proof, criterion 38: inbox operations use the command-line process helper', () => {
+  it('inbox operations use the command-line process helper', () => {
     expect(processProofNames()).toStrictEqual(['inbox.count', 'inbox.read', 'inbox.seen']);
   });
 });

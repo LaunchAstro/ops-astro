@@ -12,7 +12,7 @@ function sourceFiles(directory: string): readonly string[] {
   });
 }
 
-it('Sol proof, criterion 32: incident raising is called by a production transition', () => {
+it('incident raising is called by a production transition', () => {
   const sources = [
     ...sourceFiles('packages/core-commands/src'),
     ...sourceFiles('packages/core-records/src'),
@@ -24,7 +24,7 @@ it('Sol proof, criterion 32: incident raising is called by a production transiti
   expect(callers).not.toHaveLength(0);
 });
 
-it('Sol proof, criterion 32: task.comment can raise a paid-client comment', () => {
+it('task.comment can raise a paid-client comment', () => {
   const handler = readFileSync('packages/core-commands/src/commands/tasks-comment.ts', 'utf8');
   expect(handler).not.toMatch(/paidClient:\s*false/u);
 });

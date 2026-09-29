@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world, and the cases that share it */
 //
 // INB-1d: the inbox read and the owed count, on the API and the command line
 // (supporting checklist lines C3, C8, C10, C19, C35 and C37).
@@ -19,7 +20,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {
   raiseInboxItem,
@@ -39,6 +40,7 @@ const route = (name: string): string => pathOf(name as CommandName);
 
 type Entry = Readonly<Record<string, unknown>>;
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () => {
   const w = clearingWorld('i1d');
   let dee: Member;
@@ -251,8 +253,9 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
     expect(await attention(item)).toStrictEqual([w.reviewer.personId]);
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 isolation over the read, the count and the stamp', () => {
-    it('Sol proof, criterion 3: wrong-client item is not listed', async () => {
+    it('wrong-client item is not listed', async () => {
       const recipient = await enrol(w.fixture.db.app, w.fixture.business, 'Sol Client Read');
       const token = await tokenFor(recipient.presented.subject);
       const clientA = randomUUID();
@@ -268,7 +271,7 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
       expect(await owed(token)).toBe(1);
     });
 
-    it('Sol proof, criterion 3: wrong-client item cannot be stamped', async () => {
+    it('wrong-client item cannot be stamped', async () => {
       const recipient = await enrol(w.fixture.db.app, w.fixture.business, 'Sol Client Stamp');
       const token = await tokenFor(recipient.presented.subject);
       const clientA = randomUUID();

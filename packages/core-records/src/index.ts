@@ -65,7 +65,6 @@ export {
   readInboxItems,
   stampSeen,
   recordDeliveryAttempt,
-  taskAccess,
   type DeliveryChannel,
   type DeliveryState,
   type InboxAccess,
@@ -75,6 +74,7 @@ export {
   type InboxWorkState,
   type RaiseInboxItem,
 } from './inbox/items.ts';
+export { taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
