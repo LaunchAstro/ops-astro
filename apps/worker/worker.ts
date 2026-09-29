@@ -90,6 +90,14 @@ interface Held {
   readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
   readonly attemptId: string;
   readonly credential: string;
+  /**
+   * Set once the provider dropped this attempt: only the hand-back is sent
+   * again, under its first operation identity, so it replays.
+   */
+  readonly drop?: {
+    readonly cause: 'provider_unavailable' | 'connection_lost';
+    readonly operationId: string;
+  };
 }
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
@@ -128,7 +136,9 @@ async function applyOnce(
     work = picked.held;
     kept.set(taskId, work);
   }
-  const outcome = await effectOnce(options, taskId, work);
+  const outcome = await effectOnce(options, taskId, work, (dropped) => {
+    kept.set(taskId, dropped);
+  });
   // A fault may be a lost answer, so the work is kept; anything else ends it here.
   if (!('fault' in outcome)) kept.delete(taskId);
   return outcome;
@@ -164,24 +174,38 @@ async function pickUp(
 async function effectOnce(
   options: WorkerOptions,
   taskId: string,
-  { lease, attemptId, credential }: Held,
+  held: Held,
+  keep: (dropped: Held) => void,
 ): Promise<WorkerOutcome> {
+  const { lease, attemptId, credential } = held;
   const call = agentCall(options, credential);
-  // T3e1: the provider first, before the mark. A fault under the worker is
-  // handed back as a drop with its cause, never as a failure of the work.
+  const handBackDrop = async ({ cause, operationId }: NonNullable<Held['drop']>) => {
+    const back = await call('task.handback', {
+      operationId,
+      ...lease,
+      outcome: 'dropped',
+      report: { dropCause: cause },
+    });
+    return 'body' in back ? { dropped: { taskId, cause } } : back;
+  };
+  // A drop whose hand-back answer was lost: send the hand-back again, and
+  // never call the provider a second time for this attempt.
+  if (held.drop !== undefined) return await handBackDrop(held.drop);
+  // The mark first (Sol review 1 on #154): a provider call may act and then
+  // lose its answer, so it is made only once the step is marked. A fault is
+  // then handed back as a drop, and the step's whole hold stays unknown until
+  // the reconciliation pass proves the effect absent (T3d1); nothing is
+  // released or reserved again on the worker's word.
+  const dispatched = await call('task.dispatch', lease);
+  if (!('body' in dispatched)) return dispatched;
   try {
     await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
   } catch (fault) {
     if (!(fault instanceof ProviderFault)) throw fault;
-    const back = await call('task.handback', {
-      ...lease,
-      outcome: 'dropped',
-      report: { dropCause: fault.dropCause },
-    });
-    return 'body' in back ? { dropped: { taskId, cause: fault.dropCause } } : back;
+    const drop = { cause: fault.dropCause, operationId: randomUUID() };
+    keep({ ...held, drop });
+    return await handBackDrop(drop);
   }
-  const dispatched = await call('task.dispatch', lease);
-  if (!('body' in dispatched)) return dispatched;
   const effect = await call('task.comment', {
     operationId: effectOperationId(attemptId),
     recordId: taskId,

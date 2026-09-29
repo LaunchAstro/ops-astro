@@ -1282,11 +1282,17 @@ direct SQL.
   T3e1 names drops (`recovery/drop.ts`, 0038). A drop is never a person's
   cancellation, and each keeps its cause on the attempt: `provider_unavailable`
   (the provider's fault) and `connection_lost` (the network's), which a worker
-  reports by handing back `dropped` with `report.dropCause`, and `worker_lost`
+  reports by handing back `dropped` with `report.dropCause`. The worker calls
+  its provider only once the step is marked, since a call may act and lose its
+  answer, so such a drop keeps its whole hold unknown until the pass proves the
+  effect absent; a lost hand-back answer is sent again under its first
+  identity, never the provider call. And `worker_lost`
   (ours), which the pass's sweep (`sweepLostWorkers`) names when a lease runs
   out with nothing reported.
   A silent run is running until then. The drop appends `dropped` to the run's
-  events and joins its outage's one report (T3e2, `recovery/outage.ts`, 0039),
+  events and joins its outage's one report, marked back once its step is
+  reserved again (on the drop, on the pass's absence proof or on a person's
+  "nothing happened") (T3e2, `recovery/outage.ts`, 0039),
   never an alert per run: drops of one cause in one business join the open
   report while they arrive within `OUTAGE_WINDOW_SECONDS` (300) of the last,
   which names the cause, its fault, the window and each run with whether it

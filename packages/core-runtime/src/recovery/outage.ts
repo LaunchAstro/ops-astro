@@ -62,6 +62,20 @@ export async function joinOutage(
   return outageId;
 }
 
+/**
+ * The dropped run came back: its step was reserved again, by a drop that
+ * needed no proof or, for a marked step, once the pass proved the effect
+ * absent or a person recorded that nothing happened (Sol review 1 on #154).
+ * A run no outage lists changes nothing.
+ */
+export async function markCameBack(tx: TenantQuery, attemptId: string): Promise<void> {
+  await tx.query(
+    `update public.outage_runs set reactivated = true
+      where business_id = $1 and attempt_id = $2 and not reactivated`,
+    [tx.businessId, attemptId],
+  );
+}
+
 export interface OutageReport {
   readonly id: string;
   readonly cause: DropCause;

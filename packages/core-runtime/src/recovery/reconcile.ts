@@ -29,6 +29,7 @@ import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
 import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
+import { markCameBack } from './outage.ts';
 
 /** The register's answer for one unknown step: true, false, or `undefined` when it cannot answer. */
 export type EffectLookup = (
@@ -229,6 +230,8 @@ export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Prom
     return `not resumed: ${replaced.refusal.code}`;
   }
   await tx.query('release savepoint t3d1_resume');
+  // T3e2: an outage that dropped this step now reports it back.
+  await markCameBack(tx, row.attempt_id);
   // The old identity's fence: its attempt is no longer `dispatched`, and the
   // delegation its worker held is revoked, as `retireWork` retires superseded
   // work, so a worker woken now is refused and the purpose is free for the
