@@ -42,6 +42,7 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
+  'tests/api/mp-6-1-preferences.test.ts': 'skips until preference.save is on the command surface',
 };
 
 interface Manifest {
