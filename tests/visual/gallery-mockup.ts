@@ -15,11 +15,15 @@
 // MP-1-3 and MP-1-6: each component the ticket names is compared pixel by
 // pixel with its unit on the mockup page that draws it (the Invoices page and
 // the channel workbench, by their canonical addresses, for MP-1-6's
-// treatments). The mockup's own markup for the component is drawn at one
-// fixed place by each side's stylesheet, the mockup's and the kit's, and the
-// two pictures are compared (compare.ts): any difference beyond the harness
-// tolerance fails, and a component the mockup page does not draw fails. Both
-// pictures are written for a person to set side by side.
+// treatments). The gallery side is the component as the gallery renders it,
+// photographed where it stands; nothing is drawn onto the gallery page. The
+// mockup side is that same markup drawn at one fixed place on the mockup page
+// by the mockup's stylesheet, or, for a treatment the ticket redraws, the
+// mockup's own markup for the unit. The two pictures are compared
+// (compare.ts): any difference beyond the harness tolerance fails, and so
+// does a component the mockup page or the gallery does not draw, or one that
+// cannot be photographed. Both pictures are written for a person to set side
+// by side.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -52,8 +56,8 @@ const WORKBENCH = `/clients/${CLIENT}/workbench/`;
  * the kit draws the unit as the mockup does. `redrawn`: the ticket itself
  * redraws the mockup's treatment (MP-1-6: the freshness marker an indicator,
  * not a sync button; an unavailable control not the faded unwired button), so
- * the pictures must differ. `draw`: markup of the mockup's own class, drawn in
- * place of the unit found, where the treatment is the class alone.
+ * the pictures must differ. `gallery`: the kit's own selector, where the
+ * ticket gives the component other markup than the mockup's.
  */
 const UNITS = [
   {
@@ -84,14 +88,14 @@ const UNITS = [
     address: WORKBENCH,
     component: '.is-mock',
     expect: 'same',
-    // The mark is the class alone: drawn on one fixed box, not on a region whose size is its page's.
-    draw: '<div class="is-mock" style="width:160px;height:48px"></div>',
   },
   {
     ticket: 'MP-1-6',
     what: 'unavailable-control',
     address: INVOICES,
     component: '.btn[data-unwired]',
+    // The kit's unavailable control: disabled, its tooltip naming the feature.
+    gallery: '.btn[disabled][title]',
     expect: 'redrawn',
   },
   {
@@ -149,12 +153,34 @@ function place(markup: string): Box {
   return { x: drawn.x, y: drawn.y, width: Math.ceil(drawn.width), height: Math.ceil(drawn.height) };
 }
 
-/** A picture of the placed box; a page that reports no box is pictured whole, which never matches. */
-const picture = (page: Page, box?: unknown): Promise<Buffer> => {
-  const clip = typeof box === 'object' && box !== null && 'width' in box ? (box as Box) : undefined;
-  const options = { animations: 'disabled', caret: 'hide', scale: 'css' } as const;
-  return page.screenshot(clip === undefined ? options : { ...options, clip });
-};
+const SHOT = { animations: 'disabled', caret: 'hide', scale: 'css' } as const;
+
+/** A picture of the whole page. */
+const picture = (page: Page): Promise<Buffer> => page.screenshot(SHOT);
+
+/** A picture of the first shown element the selector finds, where it stands. */
+const unitPicture = (page: Page, selector: string): Promise<Buffer> =>
+  page.locator(`${selector}:visible >> nth=0`).screenshot({ ...SHOT, timeout: 10_000 });
+
+/** The drawn component of each side, or the reason one side has none to compare. */
+async function pictures(
+  page: Page,
+  gallery: Page,
+  unit: (typeof UNITS)[number],
+): Promise<{ left: Buffer; right: Buffer } | string> {
+  const mockupMarkup = await page.evaluate(markupOf, unit.component);
+  if (mockupMarkup === '') return `${unit.component} not in the mockup page at ${unit.address}`;
+  const kit = 'gallery' in unit ? unit.gallery : unit.component;
+  const galleryMarkup = await gallery.evaluate(markupOf, kit);
+  if (galleryMarkup === '') return `${kit} not in the gallery`;
+  await page.evaluate(place, unit.expect === 'redrawn' ? mockupMarkup : galleryMarkup);
+  try {
+    const left = await unitPicture(page, '#mockup-compare > *');
+    return { left, right: await unitPicture(gallery, kit) };
+  } catch (error) {
+    return `not photographed (${error instanceof Error ? error.message.split('\n')[0] : 'unknown'})`;
+  }
+}
 
 /** Each unit compared at one width in one theme: a result line per unit. */
 async function compareUnits(
@@ -169,14 +195,12 @@ async function compareUnits(
     const page =
       pages.get(unit.address) ?? (await load(mockup, at.packet, `${MOCKUP_ORIGIN}${unit.address}`));
     pages.set(unit.address, page);
-    const markup = await page.evaluate(markupOf, unit.component);
-    if (markup === '') {
-      lines.push(`FAIL ${label}: ${unit.component} not in the mockup page at ${unit.address}`);
+    const drawn = await pictures(page, gallery, unit);
+    if (typeof drawn === 'string') {
+      lines.push(`FAIL ${label}: ${drawn}`);
       continue;
     }
-    const drawn = 'draw' in unit ? unit.draw : markup;
-    const left = await picture(page, await page.evaluate(place, drawn));
-    const right = await picture(gallery, await gallery.evaluate(place, drawn));
+    const { left, right } = drawn;
     writeFileSync(join(at.out, `mockup-${unit.ticket}-${unit.what}${at.name}.png`), left);
     writeFileSync(join(at.out, `gallery-${unit.ticket}-${unit.what}${at.name}.png`), right);
     const verdict = comparePng(label, left, right);
