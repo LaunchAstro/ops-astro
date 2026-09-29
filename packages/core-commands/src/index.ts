@@ -31,3 +31,8 @@ export {
   type ProviderAnswer,
   type ProviderFault,
 } from './commands/account-factor-provider.ts';
+export {
+  settleAccessEndings,
+  type LoginProvider,
+  type SettleReport,
+} from './commands/access-end.ts';

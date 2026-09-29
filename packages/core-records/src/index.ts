@@ -89,7 +89,12 @@ export {
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
-export { NO_ASSURANCE, type Assurance, type AssuranceLevel } from './identity/verified-subject.ts';
+export {
+  NO_ASSURANCE,
+  SESSION_ABSOLUTE_SECONDS,
+  type Assurance,
+  type AssuranceLevel,
+} from './identity/verified-subject.ts';
 export {
   liveFactor,
   recordFactorEnrolled,

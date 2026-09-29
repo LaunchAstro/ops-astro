@@ -56,7 +56,7 @@ import {
   removeSecondFactor,
   verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
-import type { FactorProvider } from '../../packages/core-commands/src/index.ts';
+import type { FactorProvider, LoginProvider } from '../../packages/core-commands/src/index.ts';
 import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
@@ -134,6 +134,13 @@ export interface ApiOptions {
    * and no agent holds `account:write`.
    */
   readonly factors?: FactorProvider;
+  /**
+   * The sign-in provider's calls for a login whose access has ended (C58),
+   * `auth/logins.ts` in a deployment. `access.end` ends access locally either
+   * way; with a provider, the owed provider steps are tried as soon as the act
+   * commits. Absent, they stay owed for the server's retry.
+   */
+  readonly logins?: LoginProvider;
   readonly live?: LiveOptions;
 }
 

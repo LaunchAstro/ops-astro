@@ -19,6 +19,16 @@ export interface Assurance {
 
 export const NO_ASSURANCE: Assurance = { level: 'aal1', signedInAt: null, factorAt: null };
 
+/**
+ * A session's absolute limit (C58, the owner's ruling of 28 September 2026):
+ * 12 hours from the first sign-in, set here and nowhere else. There is no idle
+ * limit: a session left alone for hours inside the 12 is still a session.
+ * Measured from `Assurance.signedInAt` (the provider's first-factor time,
+ * which a refresh carries unchanged), never from a token's `iat`, which every
+ * refresh moves.
+ */
+export const SESSION_ABSOLUTE_SECONDS: number = 12 * 60 * 60;
+
 /** A subject the auth provider has already verified. Never from a request body. */
 export interface VerifiedSubject {
   readonly provider: string;
