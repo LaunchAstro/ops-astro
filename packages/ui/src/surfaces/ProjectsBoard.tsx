@@ -29,6 +29,10 @@ export interface ProjectsBoardProps {
   readonly now?: Date;
   readonly width?: number;
   readonly viewport?: number;
+  /** The signed-in person, whose own tasks the viewer preset narrows to. */
+  readonly viewer?: string | null;
+  /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
+  readonly viewerOn?: boolean;
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
