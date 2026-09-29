@@ -7,12 +7,35 @@
 // under the per-file cap.
 
 import { randomUUID } from 'node:crypto';
+import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { executeCommand } from '../../packages/core-commands/src/index.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { reconcileUnknown, type EffectLookup } from '../../packages/core-runtime/src/index.ts';
 import { registerEffectLookup } from '../../apps/api/recovery-entry.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { appliedDetail, asAgent, asPerson, rows, type Schedules } from './schedules-harness.ts';
 import { MAXIMUM, t2dHarness, type Work } from './t2d-harness.ts';
 import { t3bHarness } from './t3b-harness.ts';
+
+/** A command as `who`, a person other than the schedule's decider. */
+export const asMember = async (s: Schedules, who: Member, body: object): Promise<CommandResult> =>
+  await executeCommand(s.db.app, s.business, who.presented, 'api', body as never);
+
+/** Budget permission for the decider, and the four-eyes band above one hold (T2e). */
+export const openBilling = async (on: Schedules): Promise<void> => {
+  await on.db.app.withBusiness(on.business, async (tx) => {
+    await installBusinessSettings(tx);
+    await grantTo(tx, on.decider, 'decide', undefined, false, 'billing');
+    await grantTo(tx, on.decider, 'share');
+  });
+  // Tops up of one hold go through on the approver alone (T2e's band).
+  await on.db.admin.execute(
+    `update public.business_settings set value = '100000'::jsonb
+      where business_id = $1 and key = 'four_eyes_threshold'`,
+    [on.business],
+  );
+};
 
 /** The lookup that cannot answer: the register is never asked (the fixture route). */
 export const CANNOT_ANSWER: EffectLookup = async () => await Promise.resolve(undefined);

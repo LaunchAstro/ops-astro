@@ -25,8 +25,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { executeCommand } from '../../packages/core-commands/src/index.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { passDeployment, registerEffectLookup } from '../../apps/api/recovery-entry.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -42,28 +40,9 @@ import {
 } from './schedules-harness.ts';
 import { cq8World, PRICED } from './t2d-harness.ts';
 import { onLease, openSecond } from './t3b-harness.ts';
-import { CANNOT_ANSWER, t3d1Harness } from './t3d1-harness.ts';
+import { asMember, CANNOT_ANSWER, openBilling, t3d1Harness } from './t3d1-harness.ts';
 
 const url = databaseUrlFromEnvironment();
-
-/** A command as `who`, a person other than the schedule's decider. */
-const asMember = async (s: Schedules, who: Member, body: object) =>
-  await executeCommand(s.db.app, s.business, who.presented, 'api', body as never);
-
-/** Budget permission for the decider, and the four-eyes band above one hold (T2e). */
-const openBilling = async (on: Schedules): Promise<void> => {
-  await on.db.app.withBusiness(on.business, async (tx) => {
-    await installBusinessSettings(tx);
-    await grantTo(tx, on.decider, 'decide', undefined, false, 'billing');
-    await grantTo(tx, on.decider, 'share');
-  });
-  // Tops up of one hold go through on the approver alone (T2e's band).
-  await on.db.admin.execute(
-    `update public.business_settings set value = '100000'::jsonb
-      where business_id = $1 and key = 'four_eyes_threshold'`,
-    [on.business],
-  );
-};
 
 describe.skipIf(url === undefined)('T3d1: the reconciliation pass', { timeout: 60_000 }, () => {
   let s: Schedules;
