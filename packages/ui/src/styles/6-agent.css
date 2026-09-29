@@ -406,3 +406,123 @@
   padding-left: var(--s-3);
   border-left: 2px solid var(--border);
 }
+
+/* ── Token tracked (MP-6-5, DS-TASK-9, DA-08, DA-09; mockup app.css:9453-9531,
+   :5264-5269, :8237). The allowance is money in the envelope's currency: the
+   reservation ledger reserves money. Label, value and provenance on one line
+   while there is room; nothing in a run row truncates. */
+.tokpanel,
+.tokempty {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.tokpanel__est,
+.tokpanel__sk,
+.tokpanel__src,
+.toksplit {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem var(--s-3);
+}
+.tokpanel__by {
+  color: var(--text-muted);
+  font-size: var(--text-overline);
+}
+.tokpanel__chips,
+.tokrun__skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.tokrun__skills {
+  flex-basis: 100%;
+}
+/* A skill chip is a door to the Docs panel, drawn unavailable until it exists. */
+.tokchip {
+  background: none;
+  cursor: not-allowed;
+  color: var(--text-muted);
+  text-transform: none;
+}
+.tokest__n,
+.tokrun__n {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.tokpanel .tt__bar {
+  height: 4px;
+  margin: 0.25rem 0 0.15rem;
+  background: color-mix(in oklch, var(--ink) 12%, transparent);
+}
+.tt__fill {
+  height: 100%;
+  background: var(--accent);
+}
+.tt__fill.is-over {
+  background: var(--danger);
+}
+.brn__over {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--danger);
+  white-space: nowrap;
+}
+.tokruns {
+  display: grid;
+  gap: 0.1rem;
+}
+.tokrun {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.55rem;
+  padding: 0.38rem 0;
+  border-top: 1px solid var(--rule-faint);
+}
+.tokrun:first-child {
+  border-top: 0;
+}
+/* The run dot by outcome: the ruled carve-out (§115 item 5). */
+.tokrun__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+.tokrun__dot[data-outcome='settled'] {
+  background: var(--success);
+}
+.tokrun__dot[data-outcome='held'] {
+  background: var(--accent);
+}
+.tokrun__dot[data-outcome='quarantined'] {
+  background: var(--warning);
+}
+/* The run id keeps its case: mono family, never `.u-mono`, never truncated. */
+.tokrun__model {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+  word-break: break-word;
+}
+.tokrun__io {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+.tokrun__k,
+.tokrun__when,
+.tokempty__say {
+  color: var(--text-muted);
+  font-size: var(--text-overline);
+}
+.tokempty__say {
+  margin: 0;
+}

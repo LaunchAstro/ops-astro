@@ -121,7 +121,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
 
 const RESERVATIONS = `select row_number() over (order by res.created_at, res.id) as ordinal,
             run.lineage_id,
-            res.id, res.envelope_id, res.state, res.held_minor::text as held_minor,
+            res.id, res.envelope_id, res.run_id, res.state, res.held_minor::text as held_minor,
             res.actual_minor::text as actual_minor, res.classified_cause,
             res.lease_id,
             lease.fence::text as lease_fence, lease.state as lease_state,

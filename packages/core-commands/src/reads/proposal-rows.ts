@@ -37,6 +37,7 @@ export interface ReservationRow {
   readonly lineage_id: string;
   readonly id: string;
   readonly envelope_id: string;
+  readonly run_id: string;
   readonly state: string;
   readonly held_minor: string;
   readonly actual_minor: string | null;
@@ -112,6 +113,7 @@ export function asReservation(row: ReservationRow): ReservationView {
   return {
     id: row.id,
     envelopeId: row.envelope_id,
+    runId: row.run_id,
     state: row.state,
     heldMinor: Number(row.held_minor),
     actualMinor: row.actual_minor === null ? null : Number(row.actual_minor),

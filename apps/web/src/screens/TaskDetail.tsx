@@ -614,6 +614,7 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         proposals={task.proposals}
         people={people.state.outcome === 'ready' ? people.state.value.persons : []}
+        ledger={task.ledger}
         onChanged={props.onChanged}
       />
 

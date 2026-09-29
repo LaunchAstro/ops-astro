@@ -1071,6 +1071,7 @@ proposals: {
   }[];
   reservations: {
     id; envelopeId;                    // the envelope it holds against (MP-6-5)
+    runId;                             // the run it holds for: one per-run row
     state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
     attempt: { id; state; dispatchMarker; observed } | null;
@@ -1101,6 +1102,10 @@ the held reservations and the spent ones add up to its `heldMinor` and
 It names the business's cap and its limit, so only an internal reader is shown
 it: an agent's `task.read` answers `ledger: null` (I09).
 AW-05's ceiling and its stops are not on it yet (SL11).
+The task page's Agent pane draws it as the token panel (DS-TASK-9): the
+current envelope (the open one, else the newest closed), its reservations as
+the per-run rows by `runId`, and the skills and data source its opening
+version's stored evidence names (`skills`, `dataSource { label, href }`).
 
 Three things about the shape matter. First, `gate.expired` is the
 server's answer, so a client with a skewed clock cannot disagree with the
