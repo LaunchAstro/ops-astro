@@ -205,7 +205,7 @@ export interface CommandDeclaration {
    * also `before-pickup`, when it holds nothing yet (minimum contract 8.2).
    */
   readonly agent: 'never' | 'delegated' | 'before-pickup';
-  /** Every key checked inside, `collection:action`, for a two-part authority (API-1). */
+  /** A two-part authority's keys (API-1). The envelope asks only `action`; the handler checks the rest. */
   readonly authority?: readonly string[];
   /** A rule every path holds, carried onto the catalogue row as written. */
   readonly rule?: string;
