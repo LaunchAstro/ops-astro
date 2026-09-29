@@ -97,9 +97,11 @@ export async function openSide(
   browser: Browser,
   packet: Packet,
   width: number,
-  source: { mockupDir: string; tree: string } | { app: URL },
+  source: { mockupDir: string; tree: string } | { app: URL; session?: string | undefined },
 ): Promise<Side> {
   const context = await browser.newContext({
+    // A signed-in local fixture session (T4b1), as Playwright storage state.
+    ...('app' in source && source.session !== undefined ? { storageState: source.session } : {}),
     viewport: { width, height: packet.height },
     deviceScaleFactor: 1,
     colorScheme: 'light',

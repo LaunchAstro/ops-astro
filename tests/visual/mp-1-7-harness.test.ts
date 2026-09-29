@@ -94,7 +94,9 @@ describe('MP-1-7', () => {
       /deviceScaleFactor/u,
     );
   });
+});
 
+describe('MP-1-7 report', () => {
   it('MP-1-7 zero horizontal overflow: a page that scrolls sideways fails, naming the page and width', () => {
     expect(overflowOf({ scrollWidth: 390, clientWidth: 390 })).toBe(0);
     expect(overflowOf({ scrollWidth: 402, clientWidth: 390 })).toBe(12);

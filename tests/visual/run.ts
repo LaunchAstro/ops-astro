@@ -6,7 +6,8 @@
 // The visual comparison (T4c): the app against the pinned mockup, rendered at
 // the same width, never against a previous run of the app.
 //
-//   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL] [--prove-drift] [--out DIR]
+//   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL [--session FILE] [--task KEY]]
+//     [--prove-drift] [--out DIR]
 //
 // Light is captured at every width in the packet; dark prints as undischarged,
 // owned by U04. Without --app each drawn state prints red: T4b1 drives the
@@ -15,6 +16,12 @@
 // unchanged recapture of the mockup passes, and a control shifted by two
 // pixels or one changed token colour fails, naming the capture.
 // Evidence lands in DIR (default .local/evidence/visual, gitignored).
+//
+// MP-1-7 widens it to the boundary widths and adds the width-and-theme
+// report: with --app, every page the app registers is captured at each width
+// in light and measured for sideways scroll; --session is a signed-in local
+// fixture session (T4b1) as Playwright storage state, --task the key the task
+// page opens. The report goes to DIR/width-and-theme.txt.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium, type Page } from 'playwright';
@@ -35,9 +42,18 @@ import {
   checkMockupTree,
   checkRenderer,
   liveRenderer,
+  MODE,
   readPacket,
   visualDir,
 } from './packet.ts';
+import {
+  addressOf,
+  builtPages,
+  needsSession,
+  overflowOf,
+  report,
+  type PageShot,
+} from './report.ts';
 
 const args = process.argv.slice(2);
 const option = (flag: string): string | undefined => {
@@ -70,17 +86,23 @@ const say = (line: string, fails = false): void => {
   console.log(line);
 };
 
-const browser = await chromium.launch({ headless: true });
+const session = option('--session');
+const task = option('--task');
+const shots: PageShot[] = [];
+
+const browser = await chromium.launch(MODE);
 const sides: Side[] = [];
 try {
-  checkRenderer(packet, liveRenderer(browser));
+  checkRenderer(packet, liveRenderer(browser, MODE));
   say(`renderer ${JSON.stringify(packet.renderer)}; tolerance ${JSON.stringify(packet.tolerance)}`);
   say(`mockup tree ${tree}; ${catalogue.screenshots}`);
   for (const width of packet.widths) {
     const mockup = await openSide(browser, packet, width, { mockupDir, tree });
-    const appSide = app === undefined ? undefined : await openSide(browser, packet, width, { app });
+    const appSide =
+      app === undefined ? undefined : await openSide(browser, packet, width, { app, session });
     sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
     for (const state of catalogue.states) await compareState(width, state, mockup, appSide);
+    if (appSide !== undefined && app !== undefined) await capturePages(width, appSide, app);
     const external = [...mockup.external].toSorted();
     const listed = Object.keys(packet.external).toSorted();
     say(
@@ -166,8 +188,44 @@ async function proveDrift(
   await page.addStyleTag({ content: colour });
   for (const v of await verdicts())
     say(`drift, token ${token} changed: ${v.line}`, v.pass && v.capture.endsWith('#gatebox'));
+  // The sideways-scroll measure bites: an element 40px wider than the viewport.
+  await page.addStyleTag({
+    content: 'body::after{content:"";display:block;width:calc(100vw + 40px);height:1px}',
+  });
+  const planted = overflowOf(await page.evaluate(scrollMetrics));
+  say(`overflow, planted 40px: ${name} scrolls sideways by ${planted} px`, planted === 0);
 }
 
+function scrollMetrics(): { scrollWidth: number; clientWidth: number } {
+  const root = document.documentElement;
+  return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth };
+}
+
+/** Every page the app registers, at one width, in light: a picture and its sideways scroll. */
+async function capturePages(width: number, side: Side, origin: URL): Promise<void> {
+  for (const id of builtPages()) {
+    const name = `${id}@${width}-light`;
+    const address = addressOf(id, task === undefined ? {} : { key: task });
+    if (address === undefined || (needsSession(id) && session === undefined)) {
+      say(`red ${name}: needs ${address === undefined ? '--task' : '--session'} (T4b1's fixture)`);
+      continue;
+    }
+    const page = await load(side, packet, new URL(address, origin).href, {});
+    const [shot] = await shoot(page, name, { page: 'viewport' }, catalogue.mask);
+    const overflow = overflowOf(await page.evaluate(scrollMetrics));
+    await page.close();
+    const picture = `${name}.page.png`;
+    if (shot !== undefined) writeFileSync(`${out}/${picture}`, shot.png);
+    shots.push({ page: id, width, picture: shot === undefined ? null : picture, overflow });
+  }
+}
+
+if (app !== undefined) {
+  const pages = report(packet, builtPages(), shots);
+  for (const line of pages.lines) say(line, false);
+  failed += pages.failed;
+  writeFileSync(`${out}/width-and-theme.txt`, `${pages.lines.join('\n')}\n`);
+}
 writeFileSync(`${out}/summary.txt`, `${lines.join('\n')}\n`);
 console.log(`\nvisual: ${failed === 0 ? 'pass' : `${failed} line(s) red`}; evidence in ${out}`);
 process.exitCode = failed === 0 ? 0 : 1;

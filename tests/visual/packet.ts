@@ -65,7 +65,7 @@ export function readAssets(): { assets: Asset[] } {
 }
 
 /** The renderer this process is about to capture with. */
-export function liveRenderer(browser: Browser): Renderer {
+export function liveRenderer(browser: Browser, mode: Mode): Renderer {
   const require = createRequire(import.meta.url);
   // playwright-core is playwright's own dependency, so it resolves from there.
   const fromPlaywright = createRequire(require.resolve('playwright/package.json'));
@@ -74,21 +74,31 @@ export function liveRenderer(browser: Browser): Renderer {
     browsers: { name: string; revision: string }[];
   };
   const shell = core.browsers.find((b) => b.name === 'chromium-headless-shell');
-  return {
-    playwright: (require('playwright/package.json') as { version: string }).version,
-    browser: 'chromium-headless-shell',
-    browserRevision: shell?.revision ?? 'unknown',
-    browserBuild: browser.version(),
-    deviceScaleFactor: 1,
-    os: `${platform()} ${release()} ${arch()}`,
-  };
+  return rendererOf(
+    {
+      playwright: (require('playwright/package.json') as { version: string }).version,
+      browser: 'chromium-headless-shell',
+      browserRevision: shell?.revision ?? 'unknown',
+      browserBuild: browser.version(),
+      deviceScaleFactor: 1,
+      os: `${platform()} ${release()} ${arch()}`,
+    },
+    mode,
+  );
 }
 
-/** How the browser is launched. Not built yet (MP-1-7). */
+/**
+ * How the browser is launched. The renderer identity names the mode, so a
+ * headed or new-headless run refuses until it is measured once and recorded
+ * (MP-1-7; spike RN-08).
+ */
 export type Mode = { headless: boolean; channel?: string };
+export const MODE: Mode = { headless: true };
 
-export function rendererOf(_base: Renderer, _mode: Mode): Renderer {
-  throw new Error('MP-1-7: not built');
+/** The identity a launch mode captures with: only headless with no channel is the shell. */
+export function rendererOf(base: Renderer, mode: Mode): Renderer {
+  const shell = mode.headless && mode.channel === undefined;
+  return { ...base, browser: shell ? 'chromium-headless-shell' : (mode.channel ?? 'chromium') };
 }
 
 export function checkRenderer(packet: Packet, live: Renderer): void {
