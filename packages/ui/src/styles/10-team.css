@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* The Team panel (MP-7-10): the pinned mockup's `tmc__` rules. Buttons are the
-   kit's `btn`, the empty line is `dp__empty`, both placed, never restyled.
+/* The Team panel (MP-7-10, C71-D): the pinned mockup's `tmc__` rules. Buttons
+   are the kit's `btn`, counts its `cbadge`, the empty line `dp__empty`, and the
+   thread the task page's `thread`/`msg` dialect, all placed, never restyled.
    Away is a dashed ring and the word Away, never a coloured dot. */
 
 .tmc {
@@ -72,6 +73,11 @@
 .tmc__door::before {
   content: ' \2197';
 }
+.tmc__u {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
 .tmc__away {
   font-size: 0.625rem;
 }
@@ -91,4 +97,22 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+.tmc__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.tmc .thread {
+  padding-top: var(--s-3);
+  border-top: 0;
+}
+.tmc .composer {
+  display: flex;
+  flex: none;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+}
+.tmc .composer input {
+  flex: 1;
 }

@@ -195,6 +195,12 @@
   line-height: 1;
   cursor: pointer;
 }
+/* The panel's count rides the tab's corner: the kit's `cbadge`, placed. */
+.dock__count {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
 .dock__tab:hover {
   color: var(--text);
   background: var(--surface);

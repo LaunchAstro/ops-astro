@@ -60,6 +60,9 @@ describe("C71-D CS-7.25 select a teammate's thread; unread is derived from last 
       messages: [message('m1', ME, '2026-09-28T09:00:00Z')],
     };
     expect(unreadOf(mineAfter, ME)).toBe(0);
+    // The marker sits on the message it was moved to: that message is read.
+    const atMarker: DirectThread = { ...thread('p-ryan'), lastRead: '2026-09-28T11:47:00Z' };
+    expect(unreadOf(atMarker, ME)).toBe(0);
     expect(newestAt(thread('p-ryan'))).toBe('2026-09-28T11:47:00Z');
     expect(newestAt({ with: 'p-x', lastRead: null, messages: [] })).toBeNull();
   });
@@ -199,6 +202,15 @@ describe("C71-D the Team tab's unread chip is painted at load", () => {
     expect(teamUnread(THREADS, ME)).toBe(3);
     expect(tabCount(mounted)).toBe('3');
     expect(mounted.find('.dock__tab')?.getAttribute('aria-label')).toBe('Open Team, 3 unread');
+    const twelve: DirectThread = {
+      with: 'p-len',
+      lastRead: null,
+      messages: Array.from({ length: 12 }, (_, i) =>
+        message(`n${String(i)}`, 'p-len', `2026-09-28T0${String(i % 10)}:00:00Z`),
+      ),
+    };
+    await mounted.render(<Shell {...shell([twelve])} />);
+    expect(tabCount(mounted)).toBe('12');
     await mounted.render(<Shell {...shell([thread('p-len')])} />);
     expect(mounted.find('.dock__tab .cbadge')).toBeNull();
     expect(mounted.find('.dock__tab')?.getAttribute('aria-label')).toBe('Open Team');
