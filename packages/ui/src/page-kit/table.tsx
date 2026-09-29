@@ -20,6 +20,8 @@ export interface TableColumn<Row> {
   /** What the cell draws; the raw value when absent. */
   readonly render?: ((row: Row) => ReactNode) | undefined;
   readonly numeric?: boolean | undefined;
+  /** The plain-words definition of the label, shown on hover and focus. */
+  readonly term?: string | undefined;
 }
 
 export interface SortState {

@@ -47,3 +47,5 @@ export * from './page-kit/tips.tsx';
 export * from './page-kit/section.tsx';
 export * from './page-kit/stats.tsx';
 export * from './page-kit/table.tsx';
+export * from './page-kit/bars.tsx';
+export * from './page-kit/detail.tsx';
