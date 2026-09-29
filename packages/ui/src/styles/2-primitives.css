@@ -947,12 +947,16 @@
   align-items: flex-start;
   gap: var(--s-4) var(--s-5);
 }
+/* A state lays its component out in flow, as a page does: an inline control
+   (a button, a chip) keeps its own width and a block fills the state. */
 .gallery__state {
-  display: grid;
-  gap: var(--s-2);
+  display: flow-root;
   min-width: 0;
   max-width: 100%;
   margin: 0;
+}
+.gallery__state > figcaption {
+  margin-bottom: var(--s-2);
 }
 /* An axis chart or the funnel takes its width from its host and has none of
    its own, so its state is given a basis rather than shrinking to fit. */
