@@ -39,6 +39,8 @@ export type {
   InternalTaskRead,
   LeaseView,
   PersonListResult,
+  TeamListResult,
+  TeamMemberView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,

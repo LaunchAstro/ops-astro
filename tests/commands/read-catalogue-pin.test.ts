@@ -34,6 +34,7 @@ const PINNED_SHAPE = {
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'team.list': { spine: false, subject: false, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
@@ -46,9 +47,17 @@ const PINNED_IDENTIFIERS = {
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
+  'team.list': [],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
+// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
+const PINNED_OUTSIDER_NOT_FOUND = [
+  'task.board',
+  'task.execution',
+  'task.read',
+  'task.receipt',
+  'team.list',
+];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -124,6 +133,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   ],
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
+  'team.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
 };
@@ -137,7 +147,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same ten reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

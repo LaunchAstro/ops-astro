@@ -26,7 +26,7 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
-import { listPeople } from './people.ts';
+import { listPeople, listTeam } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
@@ -241,6 +241,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, persons: await listPeople(tx) }),
+  },
+  // The Team panel (MP-7-10) is staff only: a client holding `person:read`
+  // still meets NOT_FOUND, and the list names staff alone.
+  'team.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session) =>
+      isInternalReader(session.roleKey)
+        ? { ok: true, people: await listTeam(tx) }
+        : refuseNotFound(),
   },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the

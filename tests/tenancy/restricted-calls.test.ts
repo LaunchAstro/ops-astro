@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the four tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -75,6 +75,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.records a
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+  // 0037: set by a person in the Team panel (MP-7-10), which the journey never opens.
+  'public.person_availability': `insert into public.person_availability
+       (business_id, person_id, state, reason)
+     select business_id, id, 'away', 'restricted calls seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

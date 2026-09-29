@@ -134,18 +134,19 @@ async function recorded(): Promise<void> {
 async function refusals(): Promise<void> {
   const me = await teammate();
   const before = await written();
-  const bodies: unknown[] = [
-    { state: 'asleep' },
-    { state: 'away', reason: 'x'.repeat(141) },
-    { state: 'away', reason: 7 },
-    { state: 'available', reason: 'still here' },
-    { state: 'away', personId: s.decider.personId },
-    {},
+  // A value of the wrong kind is FIELD_VALUE_INVALID; a field it does not take, the body.
+  const bodies: [unknown, number][] = [
+    [{ state: 'asleep' }, 422],
+    [{ state: 'away', reason: 'x'.repeat(141) }, 422],
+    [{ state: 'away', reason: 7 }, 422],
+    [{ state: 'available', reason: 'still here' }, 422],
+    [{}, 422],
+    [{ state: 'away', personId: s.decider.personId }, 400],
   ];
-  for (const body of bodies) {
+  for (const [body, status] of bodies) {
     // eslint-disable-next-line no-await-in-loop -- each body in turn.
     const answer = await setAvailability(me, body);
-    expect([answer.status, answer.body['refused']]).toEqual([422, true]);
+    expect([answer.status, answer.body['refused']]).toEqual([status, true]);
   }
   const agent = await post(api, `${PREFIX.agent}${key}/account/availability`, { state: 'away' });
   expect(agent.status).toBe(404);
@@ -179,6 +180,8 @@ async function isolation(): Promise<void> {
   await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
   const clientCrossing = async (name: string): Promise<void> => {
     const client = await world.client(s.business, s.decider, name, taskId);
+    const staff = await teamList(me);
+    expect(listed(staff).map((person) => person.personId)).not.toContain(client.personId);
     const answers = [await teamList(client), await setAvailability(client, { state: 'away' })];
     expect(answers.map((a) => [a.status, JSON.stringify(a.body).includes(me.personId)])).toEqual([
       [404, false],
@@ -187,6 +190,15 @@ async function isolation(): Promise<void> {
   };
   await clientCrossing('mp710-client-1');
   await clientCrossing('mp710-client-2');
+  // A member whose role is not staff, holding `person:read`: the panel is still not theirs.
+  const guest = await teammate();
+  await s.db.admin.execute(
+    "update public.memberships set role_key = 'guest' where business_id = $1 and person_id = $2",
+    [s.business, guest.personId],
+  );
+  expect((await teamList(guest)).status).toBe(404);
+  expect((await setAvailability(guest, { state: 'away' })).status).toBe(404);
+  expect(listed(await teamList(me)).map((person) => person.personId)).not.toContain(guest.personId);
   // A person under a live delegation from me sets their own row and never mine.
   const delegate = await teammate();
   await s.db.app.withBusiness(

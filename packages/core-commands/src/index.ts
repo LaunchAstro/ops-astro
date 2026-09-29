@@ -11,6 +11,7 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export { setOwnAvailability } from './commands/availability.ts';
 export {
   isCommandRefusal,
   refuseCommand,

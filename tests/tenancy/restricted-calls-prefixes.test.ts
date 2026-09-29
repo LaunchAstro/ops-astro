@@ -67,7 +67,7 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the four tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -86,6 +86,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     link_type: 'restricted_calls',
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
+  },
+  'public.person_availability': {
+    person_id: randomUUID(),
+    state: 'away',
+    reason: 'restricted calls seed',
   },
 };
 
