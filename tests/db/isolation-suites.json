@@ -7,6 +7,11 @@
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
-    "tests/db/inbox-records.test.ts"
+    "tests/db/inbox-records.test.ts",
+    "tests/web/mp-2-1-isolation-api.test.tsx",
+    "tests/api/api-1-isolation.test.ts",
+    "tests/reads/inbox.test.ts",
+    "tests/commands/sol-inb1c-isolation.test.ts",
+    "tests/reads/inbox-named.test.ts"
   ]
 }
