@@ -133,7 +133,7 @@ function scannerAndGrantSkip(): void {
     const comment = realSurfaces([]).agent.get('task.comment') as Profile;
     expect(checkParity(rows, planted('agent', 'task.decide', comment))).toEqual([
       'agent API task.decide skips the grant check task:decide the app makes',
-      'agent API task.decide asks at record scope where the app asks at business',
+      'agent API task.decide asks at record scope where the app asks at target',
       'agent API task.decide drops the person-only marker and admits an agent',
     ]);
     expect(checkParity(rows, planted('api', 'task.read', { authorisedOn: 'business' }))).toEqual([
