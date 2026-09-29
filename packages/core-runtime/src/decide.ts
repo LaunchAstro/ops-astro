@@ -24,6 +24,8 @@ import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
   checkDelegatedAuthority,
+  fourEyesRequired,
+  gateAlreadyDecided,
   refuseCommand,
 } from '../../core-records/src/index.ts';
 import type {
@@ -409,11 +411,28 @@ async function recheckDecision(
   }
   const gate = await recheckGate(tx, request, locked.lockedAt);
   if (!gate.ok) return gate;
+  // Four eyes (T2g): the person the task is assigned to does not decide its
+  // gate. Read under the task lock taken above (the record row, for update),
+  // which an assignment's own update of that row waits on, so a reassignment
+  // racing this decision is seen or waits for it, never missed.
+  if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
+    return { ok: false, refusal: fourEyesRequired() };
+  }
   const evidence = await recheckEvidence(tx, gate.value);
   if (!evidence.ok) return evidence;
   const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);
   if (!work.ok) return work;
   return { ok: true, value: { gate: gate.value, ...evidence.value } };
+}
+
+/** Whether the task is assigned to this person, read under the caller's task lock. */
+async function assignedTo(tx: TenantQuery, taskId: string, personId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly mine: boolean }>(
+    `select exists (select 1 from public.records
+                     where business_id = $1 and id = $2 and uuid_2 = $3) as mine`,
+    [tx.businessId, taskId, personId],
+  );
+  return rows[0]?.mine === true;
 }
 
 /** The gate is still pending, on the presented version, and not past its deadline. */
@@ -433,11 +452,7 @@ async function recheckGate(
     // G03: the loser of the race lands here and its refusal is recorded by the
     // caller's own audit path, which is L3's envelope. The row is not written
     // to `gate_decisions`, because a refusal is not a decision.
-    return refuse(
-      'GATE_ALREADY_DECIDED',
-      `gate ${gate.id} is ${gate.state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    );
+    return { ok: false, refusal: gateAlreadyDecided(gate.id, gate.state) };
   }
   if (gate.version_id !== request.versionId) {
     return refuse(

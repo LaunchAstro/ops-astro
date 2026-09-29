@@ -1234,9 +1234,10 @@ case (g) carries the rows. The web types the two answers as
 business fact every member works against, and changing one is an authority
 change. The four-eyes band is stored and shown, and no first-slice operation
 applies it yet. `settings.set_four_eyes_threshold` writes it
-(`commands/settings-write.ts`), `settings.read` returns it, and no operation
-produces `FOUR_EYES_REQUIRED`. Its consumers, top-up (S2-04) and write-off
-(S2-10), are deferred (ROOT-FBFREEZE-RULINGS §3). The seed gives
+(`commands/settings-write.ts`), `settings.read` returns it. The band's consumers,
+top-up (S2-04) and write-off (S2-10), are deferred (ROOT-FBFREEZE-RULINGS §3).
+`task.decide` produces `FOUR_EYES_REQUIRED` without the band since T2g: the
+person a task is assigned to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
 **`settings.read` carries a `revision` on every setting.** It is the number

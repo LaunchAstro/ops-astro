@@ -346,12 +346,36 @@ export interface ExecutionEvent {
   readonly runId: string;
   readonly position: number;
   readonly kind: string;
+  /** The attempt the event is about; its receipt is read by this. */
+  readonly attemptId: string;
   readonly at: string;
 }
 
-/** `task.execution`'s answer; `denied`, `unavailable` and `loading` are the read's own. */
+/** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
 export interface TaskExecutionResult {
+  readonly execution: TaskExecution;
+}
+
+export interface TaskExecution {
   readonly outcome: 'ready' | 'no-run' | 'stale';
   readonly runs: readonly ExecutionRun[];
   readonly events: readonly ExecutionEvent[];
+}
+
+/** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */
+export interface ReceiptResult {
+  readonly receipt: {
+    readonly attemptId: string;
+    readonly decision: { readonly id: string };
+    readonly version: { readonly id: string; readonly number: number };
+    readonly effect: { readonly kind: string; readonly audience: string };
+    readonly settlement:
+      | {
+          readonly state: 'settled';
+          readonly heldMinor: number;
+          readonly spentMinor: number;
+          readonly releasedMinor: number;
+        }
+      | { readonly state: string; readonly heldMinor: number };
+  };
 }

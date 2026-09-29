@@ -30,11 +30,25 @@ function bodyOf(source: string, name: string): string {
   return source.slice(start, end < 0 ? undefined : end);
 }
 
-/** Every code a body answers with directly, by `refuse('X'` or `refuseCommand('X'`. */
+/** The register's named constructors (T2g), each the one way its code is raised. */
+const CONSTRUCTED: Readonly<Record<string, string>> = {
+  audienceNotPermitted: 'AUDIENCE_NOT_PERMITTED',
+  fourEyesRequired: 'FOUR_EYES_REQUIRED',
+  gateAlreadyDecided: 'GATE_ALREADY_DECIDED',
+  gatePending: 'GATE_PENDING',
+};
+
+/**
+ * Every code a body answers with directly, by `refuse('X'`, `refuseCommand('X'`
+ * or the register's named constructor for it.
+ */
 const codesIn = (body: string): string[] => [
-  ...new Set(
-    [...body.matchAll(/refuse(?:Command)?\(\s*'([A-Z_]+)'/gu)].map((match) => match[1] ?? ''),
-  ),
+  ...new Set([
+    ...[...body.matchAll(/refuse(?:Command)?\(\s*'([A-Z_]+)'/gu)].map((match) => match[1] ?? ''),
+    ...Object.entries(CONSTRUCTED)
+      .filter(([name]) => body.includes(`${name}(`))
+      .map(([, code]) => code),
+  ]),
 ];
 
 describe('API.md task.comment row (R2-AUTHORITY-37)', () => {

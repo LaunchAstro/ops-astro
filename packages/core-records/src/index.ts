@@ -70,7 +70,11 @@ export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fiel
 export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
+  audienceNotPermitted,
   CALLER_VISIBLE,
+  fourEyesRequired,
+  gateAlreadyDecided,
+  gatePending,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,

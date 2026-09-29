@@ -33,7 +33,12 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
  * again. The pre-pickup pair runs under none.
  */
 export type Authorisation<O extends object> =
-  { readonly refusal: CommandRefusal } | { readonly run: (operands: O) => Promise<HandlerOutcome> };
+  | {
+      readonly refusal: CommandRefusal;
+      /** What the refusal's audit event records beside it: the acting delegation. */
+      readonly attempted?: Readonly<Record<string, unknown>>;
+    }
+  | { readonly run: (operands: O) => Promise<HandlerOutcome> };
 
 const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> => ({ refusal });
 
@@ -105,7 +110,13 @@ export async function authorise<O extends object>(
       collection: 'task',
       taskId,
     });
-    return refusing(excluded.ok ? unreachable() : excluded.refusal);
+    // Provenance (T2g): the refused decision's audit event names the exact
+    // delegation that asked, by id and never by credential, and no decision
+    // is written. A person's decision has no delegation acting at all.
+    return {
+      refusal: excluded.ok ? unreachable() : excluded.refusal,
+      attempted: { delegationId: delegation.id },
+    };
   }
 
   const named = await namedTaskId(tx, request, operation.subjectTask);
