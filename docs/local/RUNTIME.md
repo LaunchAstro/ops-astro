@@ -1362,7 +1362,8 @@ both tenancy-scoped with row security forced.
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
   update and delete, and the application group may select and insert only.
 
-The broker (`core-custody/src/broker.ts`) writes both, and the `model.call`
+The broker (`core-custody/src/broker.ts`, with its steps in the
+`broker-*.ts` files beside it) writes both, and the `model.call`
 command ([API.md](API.md), "The model call") is its one product caller. The
 lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
 is held as `liability_unknown`, never released; an unsent one is released.

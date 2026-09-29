@@ -64,12 +64,12 @@ import type {
 import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts';
 import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
 import { asCallerVisible, refuseCommand } from './refusal.ts';
-import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
-import { enter, retryOnce, settle } from './envelope.ts';
+import type { CommandHandle, CommandResult } from './register-store.ts';
 import { isRefused } from './outcome.ts';
+import { enter, retryOnce, settle } from './envelope.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
-import { writeAuditEvent } from './audit.ts';
+import { inSavepoint, recordApplied } from './agent-applied.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
@@ -256,59 +256,11 @@ async function runRow<O extends object>(
   const parsed = parseRequest(request, call.declaration);
   if ('refusal' in parsed) return await settle(tx, session, request, digest, parsed.refusal);
 
-  await tx.query('savepoint agent_work');
-  const outcome = await authorised.run(operands);
-  // A refusal rolls back whatever reached the database on the way to it, for
-  // the same reason and by the same mechanism as the person envelope's.
-  await tx.query(
-    // A refusal rolls back, except the one that kept something on purpose:
-    // `Refused.retains` is set by a handler that wrote a row the contract
-    // retains alongside the refusal, and rolling back would discard it.
-    isRefused(outcome) && outcome.retains !== true
-      ? 'rollback to savepoint agent_work'
-      : 'release savepoint agent_work',
-  );
+  const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
   if (isRefused(outcome)) {
     const { refusal, attempted } = outcome;
     return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
 
-  const handle: CommandHandle = {
-    command: request.command,
-    recordId: outcome.recordId,
-    revision: outcome.revision,
-    detail: outcome.detail,
-  };
-  await registerAttempt(tx, {
-    operationId: request.operationId,
-    command: request.command,
-    actorId: session.actorId,
-    digest,
-    result: storable(handle),
-    recordId: outcome.recordId,
-  });
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: request.command,
-    operationId: request.operationId,
-    payloadDigest: digest,
-    outcome: 'applied',
-    subjectRecordId: outcome.recordId,
-  });
-  return handle;
-}
-
-/**
- * The handle as the register keeps it: without the delegation credential.
- *
- * The credential is "stored by hash" (TRANSACTION-CONTRACT) and
- * `delegations.credential_hash` is that store. A register row holding it in
- * the clear would be a second, readable copy, and a replay would hand it to
- * whoever repeated the operation id. So the row keeps every handle and a null
- * credential; `replayPickup` derives the credential again rather than reading
- * it from anywhere.
- */
-function storable(handle: CommandHandle): CommandHandle {
-  if (!('credential' in handle.detail)) return handle;
-  return { ...handle, detail: { ...handle.detail, credential: null } };
+  return await recordApplied(tx, session, request, digest, outcome);
 }

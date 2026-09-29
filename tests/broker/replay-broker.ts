@@ -21,6 +21,16 @@ export interface ReplayBroker {
   close(): Promise<void>;
 }
 
+/** The one route: the replay provider, carried by an API key of this installation. */
+const REPLAY_ROUTE = {
+  key: 'replay',
+  reach: 'cloud',
+  provider: 'replay',
+  credentialRef: 'replay_key',
+  credentialKind: 'api_key',
+  installation: 'here',
+};
+
 export async function openReplayBroker(): Promise<ReplayBroker> {
   const folder = mkdtempSync(join(tmpdir(), 'aw01-broker-'));
   const provider = await startReplayProvider();
@@ -43,16 +53,7 @@ export async function openReplayBroker(): Promise<ReplayBroker> {
     const settings = brokerSettings({
       MODEL_BROKER_CREDENTIALS_FILE: credentialsFile,
       MODEL_BROKER_DESTINATIONS: JSON.stringify([{ key: 'replay', origin: provider.origin }]),
-      MODEL_BROKER_ROUTES: JSON.stringify([
-        {
-          key: 'replay',
-          reach: 'cloud',
-          provider: 'replay',
-          credentialRef: 'replay_key',
-          credentialKind: 'api_key',
-          installation: 'here',
-        },
-      ]),
+      MODEL_BROKER_ROUTES: JSON.stringify([REPLAY_ROUTE]),
       MODEL_BROKER_INSTALLATION: 'here',
     });
     if (settings.kind !== 'configured') throw new Error(`replay broker: ${settings.kind}`);

@@ -107,7 +107,9 @@ export function brokerSettings(
 
   const routesJson = parsedJson(value('MODEL_BROKER_ROUTES'));
   const entries = routesJson?.value;
-  const routes = Array.isArray(entries) ? entries.map(routeOf) : undefined;
+  const routes = Array.isArray(entries)
+    ? entries.map((entry: unknown) => routeOf(entry))
+    : undefined;
   if (routes === undefined || routes.length === 0 || routes.includes(undefined)) {
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +

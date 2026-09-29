@@ -832,7 +832,7 @@ It runs in two parts (`commands/model-call.ts`). The agent entry runs the row
 `executeAgentOperation` (`commands/agent-envelope.ts`) unchanged: the login,
 the register and its replay, the operands, the delegation and the surface row.
 Its serve is the broker's reserve (`reserveModelCall`,
-`core-custody/src/broker.ts`) in the same transaction, so the hold at the
+`core-custody/src/broker-reserve.ts`) in the same transaction, so the hold at the
 operation's priced maximum, the prompt copy's registration, the register row
 and the audit event commit together. A repeat of the operation id replays the
 register row and sends nothing; two at once cannot both hold, because the

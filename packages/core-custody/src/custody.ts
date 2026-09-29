@@ -50,8 +50,8 @@ export interface Custody {
 
 const ENTRY = fileURLToPath(new URL('./custody-main.ts', import.meta.url));
 
-export async function startCustody(config: CustodyConfig): Promise<Custody> {
-  const child: ChildProcess = fork(ENTRY, [], {
+function forkCustody(config: CustodyConfig): ChildProcess {
+  return fork(ENTRY, [], {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),
@@ -60,20 +60,9 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
   });
-  let errors = '';
-  child.stderr?.on('data', (chunk: Buffer) => {
-    errors += chunk.toString('utf8');
-  });
-  const waiting = new Map<string, (message: Record<string, unknown>) => void>();
-  const lost = new Set<() => void>();
-  child.on('message', (message: unknown) => {
-    const shape = message as Record<string, unknown>;
-    const id = shape['id'];
-    if (typeof id === 'string') waiting.get(id)?.(shape);
-  });
-  child.on('exit', () => {
-    for (const notify of lost) notify();
-  });
+}
+
+async function ready(child: ChildProcess): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const onReady = (message: unknown): void => {
       if ((message as Record<string, unknown>)['type'] === 'ready') {
@@ -84,11 +73,26 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
     child.on('message', onReady);
     child.once('exit', (code) => reject(new Error(`custody did not start (${String(code)})`)));
   });
+}
 
-  const exchange = async (
-    body: Record<string, unknown>,
-    onStarted: () => void,
-  ): Promise<Record<string, unknown> | 'lost'> =>
+type Exchange = (
+  body: Record<string, unknown>,
+  onStarted?: () => void,
+) => Promise<Record<string, unknown> | 'lost'>;
+
+/** One message out and its answer back, or `lost` when custody goes first. A `started` note is passed on, never taken as the answer. */
+function exchangeWith(child: ChildProcess): Exchange {
+  const waiting = new Map<string, (message: Record<string, unknown>) => void>();
+  const lost = new Set<() => void>();
+  child.on('message', (message: unknown) => {
+    const shape = message as Record<string, unknown>;
+    const id = shape['id'];
+    if (typeof id === 'string') waiting.get(id)?.(shape);
+  });
+  child.on('exit', () => {
+    for (const notify of lost) notify();
+  });
+  return async (body, onStarted) =>
     await new Promise((resolve) => {
       const id = randomUUID();
       const onLost = (): void => {
@@ -99,7 +103,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       lost.add(onLost);
       waiting.set(id, (message) => {
         if (message['type'] === 'started') {
-          onStarted();
+          onStarted?.();
           return;
         }
         waiting.delete(id);
@@ -112,7 +116,30 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       }
       child.send({ ...body, id });
     });
+}
 
+function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): CustodyOutcome {
+  if (reply === 'lost') return { kind: 'worker_lost', started, fault: 'ours' };
+  if (reply['type'] === 'answer') {
+    return {
+      kind: 'answered',
+      started: true,
+      outbound: reply['outcome'] as Outbound,
+      credentialKind: reply['kind'] as StorableKind,
+      account: (reply['account'] as string | null) ?? null,
+    };
+  }
+  return { kind: 'refused', started: false, code: String(reply['code']) };
+}
+
+export async function startCustody(config: CustodyConfig): Promise<Custody> {
+  const child = forkCustody(config);
+  let errors = '';
+  child.stderr?.on('data', (chunk: Buffer) => {
+    errors += chunk.toString('utf8');
+  });
+  const exchange = exchangeWith(child);
+  await ready(child);
   return {
     pid: child.pid ?? -1,
     dispatch: async (credentialRef, request) => {
@@ -120,21 +147,11 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       const reply = await exchange({ type: 'dispatch', credentialRef, request }, () => {
         started = true;
       });
-      if (reply === 'lost') return { kind: 'worker_lost', started, fault: 'ours' };
-      if (reply['type'] === 'answer') {
-        return {
-          kind: 'answered',
-          started: true,
-          outbound: reply['outcome'] as Outbound,
-          credentialKind: reply['kind'] as StorableKind,
-          account: (reply['account'] as string | null) ?? null,
-        };
-      }
-      return { kind: 'refused', started: false, code: String(reply['code']) };
+      return outcomeOf(reply, started);
     },
     stderr: () => errors,
     raw: async (message) => {
-      const reply = await exchange(message, () => undefined);
+      const reply = await exchange(message);
       return reply === 'lost' ? { type: 'lost' } : reply;
     },
     kill: () => {
