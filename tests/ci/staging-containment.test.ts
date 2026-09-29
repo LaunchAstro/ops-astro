@@ -401,7 +401,7 @@ live('S0-1 containment and resource limits, live', () => {
       expect(probe(['exec', `${project}-db`], target), `${what} (${target})`).not.toBe(0);
     expect(inStaging('test -e /var/run/docker.sock').status, 'docker socket').not.toBe(0);
     expect(inStaging('touch /escape').out).toMatch(/Read-only file system/u);
-  });
+  }, 120_000);
 
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
     const db = load().services['db']!;
@@ -450,5 +450,9 @@ live('S0-1 containment and resource limits, live', () => {
     });
     expect(Number(kept.stdout.trim())).toBeLessThanOrEqual(cap);
     await productionGreen();
+
+    // Staging itself rode every limit out: no container of it was restarted.
+    for (const service of ['db', EDGE])
+      expect(docker(['inspect', names(service), '--format', '{{.RestartCount}}']).out).toBe('0');
   }, 240_000);
 });

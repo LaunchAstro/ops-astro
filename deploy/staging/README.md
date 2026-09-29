@@ -12,11 +12,35 @@ in S0-6. `x-ops-astro` names what other scripts read: the prefix every
 staging name carries, the production major and the artefact the promotion
 step selects.
 
-Everything staging owns is named `ops-astro-staging*`: containers, network
-and volume. Ports are published on loopback only. Every credential and every
-port is a `${STAGING_*}` placeholder, and Compose refuses to start with one
-unset. The values and the machine's layout (ports, service names, data paths)
+Everything staging owns is named `ops-astro-staging*`: containers, networks
+and volume. Every credential and every port is a `${STAGING_*}` placeholder,
+and Compose refuses to start with one unset. The values and the machine's layout (ports, service names, data paths)
 live in the private staging runbook, never in this repository.
+
+## Containment and limits
+
+Staging shares a machine with live services, so it is confined (ticket S0-1,
+`S0-1 containment` and `S0-1 resource limits` in
+`tests/ci/staging-containment.test.ts`):
+
+- The database and the auth server sit on the `staging` network, which is
+  internal: it has no route out, so the machine, its other containers, the
+  cloud metadata address, private addresses and the internet are all
+  unreachable from inside.
+- Internal networks cannot publish ports, so `edge` is the one way in: a
+  pinned HAProxy that forwards two loopback ports to the database and the auth
+  server and nothing else. It holds no credential and no data.
+- No service mounts a path from the machine, reads an env file or secret from
+  it, joins the host's network or namespaces, or gains a capability. Every
+  root filesystem is read-only.
+- Each service has a CPU share, a memory limit with no swap beyond it, a
+  process limit and rotated logs (three files of 10 MB). The only places a
+  service can write are sized tmpfs mounts inside its memory limit, so staging
+  cannot fill the machine's disk.
+
+The database's files live on a 512 MB tmpfs volume, so staging's data does not
+survive the database container stopping. It holds made-up data only, and the
+runbook migrates and seeds it again after a restart.
 
 Staging's database holds made-up data only (`S0-1 no production data`).
 `scripts/local-seed.mjs` refuses a database with no made-up mark, reading
