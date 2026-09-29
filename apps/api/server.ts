@@ -51,6 +51,7 @@ import {
   describeFault,
   executeCommand,
   executeRead as readExecutor,
+  type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -62,6 +63,7 @@ import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { brokerSettings, startModelBroker } from './model-broker.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -164,6 +166,8 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  /** `model.call` through the credential broker; absent where none is configured. */
+  readonly executeModelCall?: ModelCallExecutor;
 }
 
 export interface ComposedApi {
@@ -242,6 +246,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeCommand,
       executeAgentCommand,
       ...(config.live === undefined ? {} : { live: config.live }),
+      ...(config.executeModelCall === undefined
+        ? {}
+        : { executeModelCall: config.executeModelCall }),
     }),
   );
 
@@ -308,6 +315,16 @@ async function main(): Promise<void> {
   // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
+  // The credential broker (AW-01): custody's own process, started only from a
+  // complete configuration. None configured, `model.call` answers 501.
+  const brokerConfig = brokerSettings(environment);
+  if (brokerConfig.kind === 'invalid') {
+    console.error(`api: ${brokerConfig.problem}`);
+    process.exit(1);
+  }
+  const broker =
+    brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
+  console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -320,6 +337,7 @@ async function main(): Promise<void> {
     issuer: issuer as string,
     keys,
     live: { topics },
+    ...(broker === undefined ? {} : { executeModelCall: broker.executor }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -337,7 +355,7 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close(), topics.close()]);
+    await Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
@@ -360,8 +378,8 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    void Promise.allSettled([database.close(), admin.close(), topics.close()]).then(() =>
-      process.exit(0),
+    void Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]).then(
+      () => process.exit(0),
     );
   };
   process.on('SIGINT', stop);
