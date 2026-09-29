@@ -275,7 +275,11 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
         businessKey: 'alpha',
         email: 'two@example.test',
       },
-      { token: await tokenFor(both.presented.subject), businessKey: 'bravo', email: 'both@example.test' },
+      {
+        token: await tokenFor(both.presented.subject),
+        businessKey: 'bravo',
+        email: 'both@example.test',
+      },
       {
         token: await tokenFor(fixture.agent.subject),
         businessKey: 'alpha',
