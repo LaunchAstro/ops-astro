@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
-import { cookieNameFor } from '../../apps/api/auth/session.ts';
+import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { openSession, signOut } from '../../apps/web/src/session/sign-in.ts';
@@ -25,7 +25,7 @@ import {
   CSRF_HEADER,
   SESSION_COOKIE,
   SESSION_PATH,
-  SUBJECT_HEADER,
+  SESSION_HEADER,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
@@ -43,9 +43,10 @@ const database = {
   },
 } as unknown as Database;
 
-async function bearerFor(subject = 'mia'): Promise<string> {
+async function bearerFor(subject = 'mia', jti?: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return await signBearer({
+    ...(jti === undefined ? {} : { jti }),
     sub: subject,
     aud: 'authenticated',
     iss: ISSUER,
@@ -123,11 +124,11 @@ describe('S0-6 session cookie', () => {
     // The answer a page can read says nothing about the credential.
     const text = await answer.text();
     expect(text).not.toContain(token);
-    // Who the cookie is, for the tab to send back: an identifier, not the token.
-    expect(JSON.parse(text)).toEqual({ ok: true, subject: 'mia' });
+    // This sign-in's id, for the tab to send back: a digest, not the token.
+    expect(JSON.parse(text)).toEqual({ ok: true, session: sessionIdOf(token) });
     const cookie = cookieOf(answer);
-    // One cookie per person, named from the subject: never the token or the email.
-    expect(cookie.name).toBe(cookieNameFor('mia'));
+    // One cookie per sign-in, named from that id.
+    expect(cookie.name).toBe(cookieNameFor(sessionIdOf(token)));
     expect(cookie.value).toBe(token);
     expect(cookie.attributes).toEqual(
       expect.arrayContaining(['httponly', 'secure', 'samesite=lax', 'path=/api/b/']),
@@ -148,25 +149,28 @@ describe('S0-6 session cookie', () => {
     const { api, executeRead } = build();
     const token = await bearerFor('mia');
     const answer = await post(api, BOARD, {
-      cookie: `${cookieNameFor('mia')}=${token}`,
-      [SUBJECT_HEADER]: 'mia',
+      cookie: `${cookieNameFor(sessionIdOf(token))}=${token}`,
+      [SESSION_HEADER]: sessionIdOf(token),
       ...SAME_ORIGIN,
     });
     expect(answer.status).toBe(200);
     expect(executeRead.mock.calls[0]?.[2]).toEqual({ provider: 'supabase', subject: 'mia' });
   });
 
-  it('signing out clears the named person’s cookie, and a sign-out naming nobody clears none', async () => {
+  it('signing out clears the named sign-in’s cookie; naming none, or no id this API issues, clears none', async () => {
     const { api } = build();
     const unnamed = await post(api, `${SESSION_PATH}/end`, SAME_ORIGIN);
     expect(unnamed.headers.get('set-cookie')).toBeNull();
-    const answer = await post(api, `${SESSION_PATH}/end`, {
-      [SUBJECT_HEADER]: 'mia',
+    const forged = await post(api, `${SESSION_PATH}/end`, {
+      [SESSION_HEADER]: 'x; Path=/; Domain=example.test',
       ...SAME_ORIGIN,
     });
+    expect(forged.headers.get('set-cookie')).toBeNull();
+    const id = sessionIdOf(await bearerFor());
+    const answer = await post(api, `${SESSION_PATH}/end`, { [SESSION_HEADER]: id, ...SAME_ORIGIN });
     expect(answer.status).toBe(200);
     const cookie = cookieOf(answer);
-    expect(cookie.name).toBe(cookieNameFor('mia'));
+    expect(cookie.name).toBe(cookieNameFor(id));
     expect(cookie.value).toBe('');
     expect(cookie.attributes).toEqual(expect.arrayContaining(['max-age=0', 'path=/api/b/']));
   });
@@ -322,108 +326,118 @@ describe('S0-6 csrf', () => {
   });
 });
 
-/**
- * A tab that signed in as `tab`, in a browser holding `holder`'s cookie under
- * `holder`'s name, with `inside`'s token in it (`holder`'s own unless tampered).
- */
+/** One sign-in: its token and the id the API gives its tab. */
+async function signInOf(who: string, jti?: string) {
+  const token = await bearerFor(who, jti);
+  return { token, id: sessionIdOf(token), cookie: `${cookieNameFor(sessionIdOf(token))}=${token}` };
+}
+
+/** A tab naming `tab` (or nothing), in a browser holding the given sign-ins' cookies. */
 async function fromTab(
   tab: string | undefined,
-  holder: string,
-  { inside = holder, path = BOARD }: { inside?: string; path?: string } = {},
+  held: readonly { readonly cookie: string }[],
+  path = BOARD,
 ) {
   const { api, executeRead } = build();
   const headers: Record<string, string> = {
-    cookie: `${cookieNameFor(holder)}=${await bearerFor(inside)}`,
+    cookie: held.map((one) => one.cookie).join('; '),
     ...SAME_ORIGIN,
   };
-  if (tab !== undefined) headers[SUBJECT_HEADER] = tab;
+  if (tab !== undefined) headers[SESSION_HEADER] = tab;
   const answer = await post(api, path, headers);
-  return { answer, executeRead };
+  const reader = (executeRead.mock.calls[0]?.[2] as { subject?: string } | undefined)?.subject;
+  return { answer, executeRead, reader };
 }
 
-describe('S0-6 isolation: one cookie per person, many tabs', () => {
-  it('person crossover: a tab signed in as ada reads nothing on mia’s cookie', async () => {
+describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
+  it('person crossover: a tab signed in as ada reads only as ada, never on mia’s cookie', async () => {
+    const [ada, mia] = await Promise.all([signInOf('ada'), signInOf('mia')]);
     // Ada's own session is not in this browser: she is asked to sign in again.
-    const other = await fromTab('ada', 'mia');
-    expect(other.answer.status).toBe(401);
-    expect(await other.answer.json()).toMatchObject({ code: 'AUTH_UNKNOWN_LOGIN' });
-    expect(other.executeRead).not.toHaveBeenCalled();
-    // Mia's token under Ada's cookie name is refused as another person's.
-    const swapped = await fromTab('ada', 'ada', { inside: 'mia' });
-    expect(swapped.answer.status).toBe(403);
-    expect(await swapped.answer.json()).toMatchObject({ code: 'AUTH_SESSION_MISMATCH' });
-    expect(swapped.executeRead).not.toHaveBeenCalled();
-    const own = await fromTab('ada', 'ada');
-    expect(own.answer.status).toBe(200);
+    const gone = await fromTab(ada.id, [mia]);
+    expect(gone.answer.status).toBe(401);
+    expect(await gone.answer.json()).toMatchObject({ code: 'AUTH_UNKNOWN_LOGIN' });
+    expect(gone.executeRead).not.toHaveBeenCalled();
+    // Both cookies present: each tab reads as its own person.
+    expect((await fromTab(ada.id, [mia, ada])).reader).toBe('ada');
+    expect((await fromTab(mia.id, [ada, mia])).reader).toBe('mia');
   });
 
-  it('client crossover: a client contact’s tab and a member’s tab never read on each other’s cookie', async () => {
-    const crossed = await Promise.all([
-      fromTab('client-contact-of-alpha', 'alpha-member'),
-      fromTab('alpha-member', 'client-contact-of-alpha'),
+  it('client crossover: a client contact’s tab and a member’s tab each read only as themselves', async () => {
+    const [contact, member] = await Promise.all([
+      signInOf('client-contact-of-alpha'),
+      signInOf('alpha-member'),
     ]);
-    for (const { answer, executeRead } of crossed) {
-      expect(answer.status).toBe(401);
-      expect(executeRead).not.toHaveBeenCalled();
-    }
+    expect((await fromTab(contact.id, [member, contact])).reader).toBe('client-contact-of-alpha');
+    expect((await fromTab(member.id, [contact, member])).reader).toBe('alpha-member');
+    const crossed = await fromTab(contact.id, [member]);
+    expect(crossed.answer.status).toBe(401);
+    expect(crossed.executeRead).not.toHaveBeenCalled();
   });
 
   it('business crossover: the cookie names no business; the path does, and login resolution decides', async () => {
-    const bravo = await fromTab('mia', 'mia', { path: `/api/b/bravo${pathOf('task.board')}` });
+    const mia = await signInOf('mia');
+    const bravo = await fromTab(mia.id, [mia], `/api/b/bravo${pathOf('task.board')}`);
     expect(bravo.answer.status).toBe(200);
     expect(bravo.executeRead.mock.calls[0]?.[1]).toBe('business-bravo');
-    const nowhere = await fromTab('mia', 'mia', { path: `/api/b/charlie${pathOf('task.board')}` });
+    const nowhere = await fromTab(mia.id, [mia], `/api/b/charlie${pathOf('task.board')}`);
     expect(nowhere.answer.status).toBe(403);
     expect(await nowhere.answer.json()).toMatchObject({ code: 'AUTH_NO_MEMBERSHIP' });
     expect(nowhere.executeRead).not.toHaveBeenCalled();
   });
 
   it('Sol review 2, through the real API: an old tab’s late sign-out cannot clear a new tab’s session', async () => {
-    const { api } = build();
-    // The browser's jar, applying each answer's Set-Cookie in the order it lands.
-    const jar = new Map<string, string>();
-    const land = (answer: Response) => {
-      for (const line of answer.headers.getSetCookie()) {
-        const [pair = '', ...attributes] = line.split(';');
-        const [name = '', ...value] = pair.trim().split('=');
-        if (attributes.some((a) => a.trim().toLowerCase() === 'max-age=0')) jar.delete(name);
-        else jar.set(name, value.join('='));
-      }
-    };
-    const cookie = () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
-    const exchange = async (who: string) =>
-      await post(api, SESSION_PATH, {
-        authorization: `Bearer ${await bearerFor(who)}`,
+    /** One browser: the old tab signs out, a new sign-in lands first, then the old answer. */
+    const race = async (old: string, fresh: string) => {
+      const { api } = build();
+      // The browser's jar, applying each answer's Set-Cookie in the order it lands.
+      const jar = new Map<string, string>();
+      const land = (answer: Response) => {
+        for (const line of answer.headers.getSetCookie()) {
+          const [pair = '', ...attributes] = line.split(';');
+          const [name = '', ...value] = pair.trim().split('=');
+          if (attributes.some((a) => a.trim().toLowerCase() === 'max-age=0')) jar.delete(name);
+          else jar.set(name, value.join('='));
+        }
+      };
+      const cookie = () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+      const exchange = async (token: string) =>
+        await post(api, SESSION_PATH, { authorization: `Bearer ${token}`, ...SAME_ORIGIN });
+
+      land(await exchange(old));
+      const late = post(api, `${SESSION_PATH}/end`, {
+        cookie: cookie(),
+        [SESSION_HEADER]: sessionIdOf(old),
         ...SAME_ORIGIN,
       });
+      land(await exchange(fresh));
+      land(await late);
+      const board = await post(api, BOARD, {
+        cookie: cookie(),
+        [SESSION_HEADER]: sessionIdOf(fresh),
+        ...SAME_ORIGIN,
+      });
+      return { oldGone: !jar.has(cookieNameFor(sessionIdOf(old))), status: board.status };
+    };
 
-    land(await exchange('ada'));
-    // Ada's tab signs out; its answer is still on its way.
-    const late = await post(api, `${SESSION_PATH}/end`, {
-      cookie: cookie(),
-      [SUBJECT_HEADER]: 'ada',
-      ...SAME_ORIGIN,
-    });
-    // Mia signs in in another tab, and her answer lands first.
-    land(await exchange('mia'));
-    land(late);
-
-    expect(jar.has(cookieNameFor('ada'))).toBe(false);
-    const board = await post(api, BOARD, {
-      cookie: cookie(),
-      [SUBJECT_HEADER]: 'mia',
-      ...SAME_ORIGIN,
-    });
-    expect(board.status).toBe(200);
+    // Two people, and the same person twice: no late sign-out touches another sign-in.
+    const outcomes = await Promise.all([
+      race(await bearerFor('ada'), await bearerFor('mia')),
+      race(await bearerFor('mia', 'first'), await bearerFor('mia', 'second')),
+    ]);
+    expect(outcomes).toEqual([
+      { oldGone: true, status: 200 },
+      { oldGone: true, status: 200 },
+    ]);
   });
 
-  it('a tab that kept a session from before it knew its person is refused, not trusted', async () => {
-    const unnamed = await fromTab(undefined, 'mia');
+  it('a tab that kept a session from before it had an id is refused, not trusted', async () => {
+    const unnamed = await fromTab(undefined, [await signInOf('mia')]);
     expect(unnamed.answer.status).toBe(403);
+    expect(await unnamed.answer.json()).toMatchObject({ code: 'AUTH_SESSION_MISMATCH' });
     expect(unnamed.executeRead).not.toHaveBeenCalled();
   });
 
-  it('the browser client names its tab’s person on every call', async () => {
+  it('the browser client names its tab’s sign-in on every call', async () => {
     const sent: Record<string, string>[] = [];
     const fetch = (async (_url: string, init?: RequestInit) => {
       sent.push((init?.headers ?? {}) as Record<string, string>);
@@ -433,12 +447,15 @@ describe('S0-6 isolation: one cookie per person, many tabs', () => {
       origin: '',
       businessKey: 'alpha',
       signedIn: true,
-      subject: 'mia',
+      sessionId: 'a'.repeat(32),
       fetch,
     });
     await client.read('task.board', {});
     await client.mutate('task.create', { title: 'x' });
-    expect(sent.map((headers) => headers[SUBJECT_HEADER])).toEqual(['mia', 'mia']);
+    expect(sent.map((headers) => headers[SESSION_HEADER])).toEqual([
+      'a'.repeat(32),
+      'a'.repeat(32),
+    ]);
   });
 });
 

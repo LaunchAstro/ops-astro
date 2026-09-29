@@ -87,11 +87,11 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
-    const subject = props.sessions.session?.subject;
+    const sessionId = props.sessions.session?.sessionId;
     void signOut({
       apiOrigin: props.apiOrigin,
       fetch: props.fetch,
-      ...(subject === undefined ? {} : { subject }),
+      ...(sessionId === undefined ? {} : { sessionId }),
     });
     props.sessions.clear();
     setSession(null);
@@ -137,7 +137,7 @@ export function App(props: AppProps): ReactElement {
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
         signedIn: session !== null,
-        ...(session?.subject === undefined ? {} : { subject: session.subject }),
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it

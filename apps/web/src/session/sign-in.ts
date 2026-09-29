@@ -17,8 +17,8 @@
 
 import {
   CSRF_HEADER,
+  SESSION_HEADER,
   SESSION_PATH,
-  SUBJECT_HEADER,
 } from '../../../../packages/core-wire/src/index.ts';
 
 export interface SignInRequest {
@@ -50,16 +50,16 @@ let latest = 0;
 export async function openSession(
   request: SignInRequest & ApiRoute,
 ): Promise<
-  | { readonly ok: true; readonly subject?: string }
+  | { readonly ok: true; readonly sessionId?: string }
   | { readonly ok: false; readonly because: string }
 > {
   const result = await signIn(request);
   if (!result.ok) return result;
   const bearer = `Bearer ${result.token}`;
   const mine = ++latest;
-  // A sign-out still in flight clears whichever cookie is there when its
-  // answer lands, this one included. So once it has landed the session is
-  // written again, unless a later sign-in or sign-out has had its say.
+  // A sign-out still in flight that names no session may clear this one when
+  // it lands, so once it has the session is written again, unless a later
+  // sign-in or sign-out has had its say.
   if (signingOut.size > 0) {
     const landed = Promise.allSettled(signingOut);
     void (async () => {
@@ -70,8 +70,8 @@ export async function openSession(
   const answer = await toApi(request, SESSION_PATH, { authorization: bearer });
   if (answer === undefined) return { ok: false, because: 'The API did not accept the sign-in.' };
   const body: unknown = await answer.json().catch(() => undefined);
-  const subject = (body as { subject?: unknown } | undefined)?.subject;
-  return typeof subject === 'string' ? { ok: true, subject } : { ok: true };
+  const sessionId = (body as { session?: unknown } | undefined)?.session;
+  return typeof sessionId === 'string' ? { ok: true, sessionId } : { ok: true };
 }
 
 export async function signIn(request: SignInRequest): Promise<SignInResult> {
@@ -103,10 +103,10 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     : { ok: true, token };
 }
 
-/** Ask the API to clear this person's session cookie. The page cannot. */
-export async function signOut(request: ApiRoute & { readonly subject?: string }): Promise<void> {
+/** Ask the API to clear this sign-in's session cookie. The page cannot. */
+export async function signOut(request: ApiRoute & { readonly sessionId?: string }): Promise<void> {
   latest += 1;
-  const named = request.subject === undefined ? {} : { [SUBJECT_HEADER]: request.subject };
+  const named = request.sessionId === undefined ? {} : { [SESSION_HEADER]: request.sessionId };
   const sent = toApi(request, `${SESSION_PATH}/end`, named);
   signingOut.add(sent);
   await sent;

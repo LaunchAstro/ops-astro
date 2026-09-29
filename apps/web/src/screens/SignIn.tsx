@@ -73,7 +73,7 @@ export function SignIn(props: SignInProps): ReactElement {
         props.onSignedIn({
           businessKey,
           email,
-          ...(result.subject === undefined ? {} : { subject: result.subject }),
+          ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
         });
       else setBecause(result.because);
     })();

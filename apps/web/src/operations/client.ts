@@ -45,7 +45,7 @@
 import {
   CSRF_HEADER,
   PREFIX,
-  SUBJECT_HEADER,
+  SESSION_HEADER,
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
@@ -108,8 +108,8 @@ export interface ClientOptions {
   readonly businessKey: string;
   /** Signed in: the credential is the session cookie, which no script reads. */
   readonly signedIn: boolean;
-  /** The person this tab signed in as, which the API holds the cookie to. */
-  readonly subject?: string;
+  /** The id of this tab's sign-in: the API reads that session's cookie only. */
+  readonly sessionId?: string;
   /** Injected so a test can drive the client without a network or a global. */
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
@@ -204,7 +204,7 @@ export class OperationsClient {
       'content-type': 'application/json',
       [CSRF_HEADER]: '1',
     };
-    if (this.#options.subject !== undefined) headers[SUBJECT_HEADER] = this.#options.subject;
+    if (this.#options.sessionId !== undefined) headers[SESSION_HEADER] = this.#options.sessionId;
 
     let response: Response;
     try {
