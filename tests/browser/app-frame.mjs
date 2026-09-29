@@ -20,6 +20,9 @@
 //
 //   node tests/browser/app-frame.mjs
 
+// Sequential on purpose: one browser context at a time, each width and theme in turn.
+/* oxlint-disable no-await-in-loop */
+
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -163,7 +166,7 @@ try {
           '.navbackdrop',
           (el) => getComputedStyle(el).backgroundColor,
         );
-        check(`MP-2-8 40% backdrop, ${at}`, /0\.4\)$/u.test(scrim), scrim);
+        check(`MP-2-8 40% backdrop, ${at}`, scrim.endsWith('0.4)'), scrim);
         await page.screenshot({ path: `${SHOTS}/drawer-${width}-${theme}.png` });
         await page.keyboard.press('Escape');
         await page.waitForTimeout(300);
