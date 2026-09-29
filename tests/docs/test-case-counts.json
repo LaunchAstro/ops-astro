@@ -1,9 +1,9 @@
 {
   "measured": "vitest 5.0.0 JSON reporter, DATABASE_URL unset so database cases count as skipped rather than vanish; files keyed by their name at this head",
-  "total": 6613,
+  "total": 6684,
   "before": {
-    "head": "f0a705d94110b8f3b1cc969f8b05b3d84d4e879e",
-    "total": 6579,
+    "head": "5116fbdd6dde77b88f4dd0716ce79ef9d8703898",
+    "total": 6649,
     "files": {
       "tests/acceptance/audit-per-operation.test.ts": 10,
       "tests/acceptance/comment-on-trashed-task.test.ts": 1,
@@ -155,7 +155,7 @@
       "tests/docs/cli-and-web-docs.test.ts": 11,
       "tests/docs/migration-docs.test.ts": 11,
       "tests/docs/runtime-authority-data-docs.test.ts": 15,
-      "tests/docs/source-comments.test.ts": 30,
+      "tests/docs/source-comments.test.ts": 100,
       "tests/identity/agent-deactivation.test.ts": 4,
       "tests/identity/agent-delegation.test.ts": 13,
       "tests/identity/authentication-attempts.test.ts": 6,
@@ -321,7 +321,7 @@
     }
   },
   "after": {
-    "total": 6579,
+    "total": 6649,
     "files": {
       "tests/acceptance/audit-per-operation.test.ts": 10,
       "tests/acceptance/comment-on-trashed-task.test.ts": 1,
@@ -473,7 +473,7 @@
       "tests/docs/cli-and-web-docs.test.ts": 11,
       "tests/docs/migration-docs.test.ts": 11,
       "tests/docs/runtime-authority-data-docs.test.ts": 15,
-      "tests/docs/source-comments.test.ts": 30,
+      "tests/docs/source-comments.test.ts": 100,
       "tests/identity/agent-deactivation.test.ts": 4,
       "tests/identity/agent-delegation.test.ts": 13,
       "tests/identity/authentication-attempts.test.ts": 6,
@@ -639,93 +639,107 @@
     }
   },
   "added": {
-    "file": "tests/docs/test-files-by-behaviour.test.ts",
-    "total": 34,
-    "declared": [
+    "total": 35,
+    "files": [
       {
-        "title": "reads %s as filed by when it was found: %s",
-        "cases": 10
+        "file": "tests/docs/test-files-by-behaviour.test.ts",
+        "declared": [
+          {
+            "title": "reads %s as filed by when it was found: %s",
+            "cases": 10
+          },
+          {
+            "title": "refuses the title %s",
+            "cases": 10
+          },
+          {
+            "title": "keeps the title %s",
+            "cases": 5
+          },
+          {
+            "title": "reads a title after a string that holds a call",
+            "cases": 1
+          },
+          {
+            "title": "reads a title however it is cased, joined or imported",
+            "cases": 1
+          },
+          {
+            "title": "no test file name contains final-r, review-fixes or a round number, and no test title cites a review id",
+            "cases": 1
+          },
+          {
+            "title": "counts an import only where the code makes one",
+            "cases": 1
+          },
+          {
+            "title": "nothing in packages/ or apps/ is imported only by tests",
+            "cases": 1
+          },
+          {
+            "title": "the docs history test passes in a clone and skips (not fails) in a source export",
+            "cases": 1
+          },
+          {
+            "title": "reads history in the docs test only on a full clone",
+            "cases": 1
+          },
+          {
+            "title": "the pre-existing cases number the same before and after, and the cases this ticket adds are listed by name",
+            "cases": 1
+          },
+          {
+            "title": "the test files for task pickup come back by name, from one folder",
+            "cases": 1
+          }
+        ],
+        "names": [
+          "test files named by what they prove reads tests/runtime/review-fixes.test.ts as filed by when it was found: true",
+          "test files named by what they prove reads tests/commands/final-r2-place.test.ts as filed by when it was found: true",
+          "test files named by what they prove reads tests/api/sol-cq6-review.test.ts as filed by when it was found: true",
+          "test files named by what they prove reads tests/docs/fr2-docs.test.ts as filed by when it was found: true",
+          "test files named by what they prove reads tests/runtime/round-3.test.ts as filed by when it was found: true",
+          "test files named by what they prove reads tests/commands/placement-operands.test.ts as filed by when it was found: false",
+          "test files named by what they prove reads tests/ci/review-evidence-cases.sh as filed by when it was found: false",
+          "test files named by what they prove reads tests/runtime/successor-bounds-edge.test.ts as filed by when it was found: false",
+          "test files named by what they prove reads tests/api/cq-7.test.ts as filed by when it was found: false",
+          "test files named by what they prove reads tests/browser/r4-shared-page.mjs as filed by when it was found: false",
+          "test files named by what they prove refuses the title R2-RUNTIME-4 a decide grant that lapses while the decision waits",
+          "test files named by what they prove refuses the title final review round 1: trash, purge and cancel",
+          "test files named by what they prove refuses the title FR1-JSONB: unstorable bodies",
+          "test files named by what they prove refuses the title R1-THERMO-13: task.reparent needs a parentId",
+          "test files named by what they prove refuses the title Sol proof, criterion 6: an agent command refuses",
+          "test files named by what they prove refuses the title SOL-R3-1: an over-ceiling total admitted at 0028",
+          "test files named by what they prove refuses the title agent recordId shape (NNA1)",
+          "test files named by what they prove refuses the title #27: a cancelled lineage is not offered for a decision",
+          "test files named by what they prove refuses the title AUTHORITY.md on task.comment (#21, #42)",
+          "test files named by what they prove refuses the title reserve against a cap it cannot read (thermo O2)",
+          "test files named by what they prove keeps the title CQ-7 isolation: business to business",
+          "test files named by what they prove keeps the title R4 and the two reads that describe a business",
+          "test files named by what they prove keeps the title the %s row holds %s",
+          "test files named by what they prove keeps the title a round-trip keeps the rank",
+          "test files named by what they prove keeps the title task.decide versionId absent or not a string",
+          "test files named by what they prove reads a title after a string that holds a call",
+          "test files named by what they prove reads a title however it is cased, joined or imported",
+          "test files named by what they prove no test file name contains final-r, review-fixes or a round number, and no test title cites a review id",
+          "product source holds what the product uses counts an import only where the code makes one",
+          "product source holds what the product uses nothing in packages/ or apps/ is imported only by tests",
+          "the docs history test in a clone and in a source export the docs history test passes in a clone and skips (not fails) in a source export",
+          "the docs history test in a clone and in a source export reads history in the docs test only on a full clone",
+          "the case count across the renames the pre-existing cases number the same before and after, and the cases this ticket adds are listed by name",
+          "test files for one task step, in one folder the test files for task pickup come back by name, from one folder"
+        ]
       },
       {
-        "title": "refuses the title %s",
-        "cases": 10
-      },
-      {
-        "title": "keeps the title %s",
-        "cases": 5
-      },
-      {
-        "title": "reads a title after a string that holds a call",
-        "cases": 1
-      },
-      {
-        "title": "reads a title however it is cased, joined or imported",
-        "cases": 1
-      },
-      {
-        "title": "no test file name contains final-r, review-fixes or a round number, and no test title cites a review id",
-        "cases": 1
-      },
-      {
-        "title": "counts an import only where the code makes one",
-        "cases": 1
-      },
-      {
-        "title": "nothing in packages/ or apps/ is imported only by tests",
-        "cases": 1
-      },
-      {
-        "title": "the docs history test passes in a clone and skips (not fails) in a source export",
-        "cases": 1
-      },
-      {
-        "title": "reads history in the docs test only on a full clone",
-        "cases": 1
-      },
-      {
-        "title": "the pre-existing cases number the same before and after, and the cases this ticket adds are listed by name",
-        "cases": 1
-      },
-      {
-        "title": "the test files for task pickup come back by name, from one folder",
-        "cases": 1
+        "file": "tests/docs/source-comment-cases-kept.test.ts",
+        "declared": [
+          {
+            "title": "current-main source-comment cases survive and the ledger names current main",
+            "cases": 1
+          }
+        ],
+        "names": ["current-main source-comment cases survive and the ledger names current main"]
       }
-    ],
-    "names": [
-      "test files named by what they prove reads tests/runtime/review-fixes.test.ts as filed by when it was found: true",
-      "test files named by what they prove reads tests/commands/final-r2-place.test.ts as filed by when it was found: true",
-      "test files named by what they prove reads tests/api/sol-cq6-review.test.ts as filed by when it was found: true",
-      "test files named by what they prove reads tests/docs/fr2-docs.test.ts as filed by when it was found: true",
-      "test files named by what they prove reads tests/runtime/round-3.test.ts as filed by when it was found: true",
-      "test files named by what they prove reads tests/commands/placement-operands.test.ts as filed by when it was found: false",
-      "test files named by what they prove reads tests/ci/review-evidence-cases.sh as filed by when it was found: false",
-      "test files named by what they prove reads tests/runtime/successor-bounds-edge.test.ts as filed by when it was found: false",
-      "test files named by what they prove reads tests/api/cq-7.test.ts as filed by when it was found: false",
-      "test files named by what they prove reads tests/browser/r4-shared-page.mjs as filed by when it was found: false",
-      "test files named by what they prove refuses the title R2-RUNTIME-4 a decide grant that lapses while the decision waits",
-      "test files named by what they prove refuses the title final review round 1: trash, purge and cancel",
-      "test files named by what they prove refuses the title FR1-JSONB: unstorable bodies",
-      "test files named by what they prove refuses the title R1-THERMO-13: task.reparent needs a parentId",
-      "test files named by what they prove refuses the title Sol proof, criterion 6: an agent command refuses",
-      "test files named by what they prove refuses the title SOL-R3-1: an over-ceiling total admitted at 0028",
-      "test files named by what they prove refuses the title agent recordId shape (NNA1)",
-      "test files named by what they prove refuses the title #27: a cancelled lineage is not offered for a decision",
-      "test files named by what they prove refuses the title AUTHORITY.md on task.comment (#21, #42)",
-      "test files named by what they prove refuses the title reserve against a cap it cannot read (thermo O2)",
-      "test files named by what they prove keeps the title CQ-7 isolation: business to business",
-      "test files named by what they prove keeps the title R4 and the two reads that describe a business",
-      "test files named by what they prove keeps the title the %s row holds %s",
-      "test files named by what they prove keeps the title a round-trip keeps the rank",
-      "test files named by what they prove keeps the title task.decide versionId absent or not a string",
-      "test files named by what they prove reads a title after a string that holds a call",
-      "test files named by what they prove reads a title however it is cased, joined or imported",
-      "test files named by what they prove no test file name contains final-r, review-fixes or a round number, and no test title cites a review id",
-      "product source holds what the product uses counts an import only where the code makes one",
-      "product source holds what the product uses nothing in packages/ or apps/ is imported only by tests",
-      "the docs history test in a clone and in a source export the docs history test passes in a clone and skips (not fails) in a source export",
-      "the docs history test in a clone and in a source export reads history in the docs test only on a full clone",
-      "the case count across the renames the pre-existing cases number the same before and after, and the cases this ticket adds are listed by name",
-      "test files for one task step, in one folder the test files for task pickup come back by name, from one folder"
     ]
   }
 }

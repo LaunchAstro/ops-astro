@@ -499,10 +499,12 @@ interface CaseLedger {
   };
   readonly after: { readonly total: number; readonly files: Record<string, number> };
   readonly added: {
-    readonly file: string;
     readonly total: number;
-    readonly declared: readonly { readonly title: string; readonly cases: number }[];
-    readonly names: readonly string[];
+    readonly files: readonly {
+      readonly file: string;
+      readonly declared: readonly { readonly title: string; readonly cases: number }[];
+      readonly names: readonly string[];
+    }[];
   };
 }
 
@@ -525,12 +527,16 @@ describe('the case count across the renames', () => {
     expect(Object.keys(ledger.after.files).filter((file) => !existsSync(join(root, file)))).toEqual(
       [],
     );
-    // Added: the new cases, by name, as the file that adds them declares them.
-    expect(ledger.after.files[ledger.added.file]).toBeUndefined();
-    const text = readFileSync(join(root, ledger.added.file), 'utf8');
-    expect(ledger.added.declared).toEqual(declaredCases(ledger.added.file, text));
-    expect(ledger.added.total).toBe(ledger.added.declared.reduce((a, b) => a + b.cases, 0));
-    expect(ledger.added.names).toHaveLength(ledger.added.total);
+    // Added: the new cases, by name, as each file that adds them declares them.
+    let added = 0;
+    for (const { file, declared, names } of ledger.added.files) {
+      expect(ledger.before.files[file]).toBeUndefined();
+      expect(declared).toEqual(declaredCases(file, readFileSync(join(root, file), 'utf8')));
+      const cases = declared.reduce((a, b) => a + b.cases, 0);
+      expect(names).toHaveLength(cases);
+      added += cases;
+    }
+    expect(ledger.added.total).toBe(added);
     expect(ledger.total).toBe(ledger.after.total + ledger.added.total);
   });
 });
