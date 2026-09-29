@@ -81,7 +81,10 @@ const A2 = {
   client: randomUUID(),
   revoked: randomUUID(),
   outsider: randomUUID(),
+  derived: randomUUID(),
 };
+// A root grant over A2.derived, revoked, and a grant A.person holds from it.
+const ROOT = randomUUID();
 
 const hasDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 if (!hasDocker) console.warn('ci/restore-drill: Docker is not running, so nothing below ran.');
@@ -161,20 +164,27 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
         ('${A.business}', '${A.client}', 'made-up client A'), ('${B.business}', '${B.person}', 'made-up person B'),
         ('${B.business}', '${B.client}', 'made-up client B'), ('${A.business}', '${A2.person}', 'made-up person A2'),
         ('${A.business}', '${A2.client}', 'made-up client A2'), ('${A.business}', '${A2.revoked}', 'made-up client A3'),
-        ('${A.business}', '${A2.outsider}', 'made-up outsider A');
+        ('${A.business}', '${A2.outsider}', 'made-up outsider A'),
+        ('${A.business}', '${A2.derived}', 'made-up client A4');
       create table public.memberships (business_id uuid not null, id uuid primary key default gen_random_uuid(),
         person_id uuid not null, active boolean not null default true);
       insert into public.memberships (business_id, person_id) values ('${A.business}', '${A.person}'),
         ('${A.business}', '${A2.person}'), ('${B.business}', '${B.person}');
       create table public.grants (business_id uuid not null, id uuid primary key default gen_random_uuid(),
         subject_kind text not null, subject_id uuid not null, scope_kind text not null, scope_id uuid,
-        action text not null, expires_at timestamptz, revoked_at timestamptz);
+        collection text not null default 'records', action text not null, can_delegate boolean not null default false,
+        may_permit_delegation boolean not null default false, parent_grant_id uuid,
+        expires_at timestamptz, revoked_at timestamptz);
       insert into public.grants (business_id, subject_kind, subject_id, scope_kind, scope_id, action, revoked_at) values
         ('${A.business}', 'person', '${A.person}', 'party', '${A.client}', 'read', null),
         ('${A.business}', 'person', '${A2.person}', 'party', '${A2.client}', 'read', null),
         ('${A.business}', 'person', '${A.person}', 'party', '${A2.revoked}', 'read', now()),
         ('${A.business}', 'person', '${A2.outsider}', 'party', '${A.client}', 'read', null),
         ('${B.business}', 'person', '${B.person}', 'party', '${B.client}', 'read', null);
+      insert into public.grants (business_id, id, subject_kind, subject_id, scope_kind, scope_id, action,
+        can_delegate, parent_grant_id, revoked_at) values
+        ('${A.business}', '${ROOT}', 'person', '${A2.person}', 'party', '${A2.derived}', 'read', true, null, now()),
+        ('${A.business}', gen_random_uuid(), 'person', '${A.person}', 'party', '${A2.derived}', 'read', false, '${ROOT}', null);
       create table public.tasks (business_id uuid not null, id int primary key, title text);
       insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
       ${['businesses', 'people', 'memberships', 'grants', 'tasks'].map(barrier).join('\n')}`;
@@ -508,6 +518,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         { business: A.business, person: A2.person, client: A.client }, // the other pair's person
         { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
         { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
+        { business: A.business, person: A.person, client: A2.derived }, // its granter's grant revoked
       ]) {
         // oxlint-disable-next-line no-await-in-loop
         expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
