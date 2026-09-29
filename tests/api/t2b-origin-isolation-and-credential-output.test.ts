@@ -6,7 +6,7 @@ import { identityDefects, migrationHead, type IdentityEvidence } from '../../app
 import { main as workerMain } from '../../apps/worker/main.ts';
 
 describe('T2b served identity', () => {
-  it('Sol proof, criterion 2: the web origin cannot hide a different API tree behind the same pid', () => {
+  it('the web origin cannot hide a different API tree behind the same pid', () => {
     const tree = 'a'.repeat(40);
     const head = migrationHead([{ version: '0001', checksum: 'a' }]);
     const api = {
@@ -30,7 +30,7 @@ describe('T2b served identity', () => {
 });
 
 describe('T2b isolation evidence', () => {
-  it('Sol proof, criterion 3: T2b names business, client and person crossover tests', () => {
+  it('T2b names business, client and person crossover tests', () => {
     const source = readFileSync(new URL('./t2b-worker.test.ts', import.meta.url), 'utf8');
     const names = [...source.matchAll(/\bit\(['"`]([^'"`]+)['"`]/gu)].map((match) => match[1]);
     for (const boundary of ['business to business', 'client to client', 'person to person']) {
@@ -41,7 +41,7 @@ describe('T2b isolation evidence', () => {
     }
   });
 
-  it('Sol proof, criterion 3: a failed mint cannot stand in for a live person crossover', () => {
+  it('a failed mint cannot stand in for a live person crossover', () => {
     const source = readFileSync(new URL('./t2b-worker.test.ts', import.meta.url), 'utf8');
     const personCase = source.slice(source.indexOf("it('T2 isolation: person to person'"));
     expect(personCase).not.toMatch(
@@ -51,7 +51,7 @@ describe('T2b isolation evidence', () => {
 });
 
 describe('T2b credential output', () => {
-  it('Sol proof, criterion 3: transport failures never print an agent credential or delegation', async () => {
+  it('transport failures never print an agent credential or delegation', async () => {
     const token = 'canary-agent-credential';
     const delegation = 'canary-dispatch-token';
     const originalFetch = globalThis.fetch;
