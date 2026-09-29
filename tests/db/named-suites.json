@@ -87,6 +87,7 @@
     "tests/runtime/t2c2-effect.test.ts",
     "tests/runtime/t2d-settle.test.ts",
     "tests/runtime/t2d-settle-migration.test.ts",
+    "tests/runtime/sol-t2d-review.test.ts",
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/tenancy/migration-prefixes.test.ts",
     "tests/identity/agent-delegation.test.ts",

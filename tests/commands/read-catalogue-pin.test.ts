@@ -33,6 +33,7 @@ const PINNED_SHAPE = {
   'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
+  'task.receipt': { spine: true, subject: true, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
@@ -44,9 +45,10 @@ const PINNED_IDENTIFIERS = {
   'task.execution': ['recordId'],
   'task.queue': [],
   'task.read': ['recordId'],
+  'task.receipt': ['attemptId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read'];
+const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -114,6 +116,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
     PLAN_FIELDS,
   ],
+  // T2c2: no body here carries an attemptId, so each is refused.
+  'task.receipt': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['attemptId'],
+    fixes: ['Send attemptId as the observed attempt.'],
+  })),
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
@@ -129,7 +137,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same eight reads', () => {
+  it('names the same nine reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

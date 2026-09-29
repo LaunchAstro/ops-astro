@@ -86,7 +86,7 @@ describe('the surface as a table', () => {
     ).toBe(true);
   });
 
-  it('declares the eight reads as reads, and everything else as a write', () => {
+  it('declares the nine reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
@@ -96,6 +96,7 @@ describe('the surface as a table', () => {
       'task.execution',
       'task.queue',
       'task.read',
+      'task.receipt',
     ]);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
