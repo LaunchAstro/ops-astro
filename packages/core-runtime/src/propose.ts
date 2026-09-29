@@ -295,11 +295,14 @@ export async function proposeUnderLocks(
   // any write. Priced first, a lineage on another task would release that
   // task's hold into the refusal's committed figure, and whether the answer
   // was LINEAGE_NOT_ON_TASK would depend on the ceiling.
+  // T3a: a restart's lineage draws on a new envelope (`task.restart` closes
+  // the task's open one under this same lock), so it is measured against the
+  // cap alone and never against the room the old envelope has left.
   const outOfBudget = await refuseBeyondBudget(
     tx,
     request,
     capId,
-    accounting?.id ?? null,
+    restarts === null ? (accounting?.id ?? null) : null,
     liveVersions,
   );
   if (outOfBudget !== null) return outOfBudget;
