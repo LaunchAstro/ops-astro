@@ -7,7 +7,7 @@
 // delivery print as undischarged until INB-1 lands.
 
 import { describe, expect, it } from 'vitest';
-import { PROTECTED, protectedVerdicts } from '../../scripts/local/journey-proofs.mjs';
+import { PROTECTED, protectedVerdicts } from '../../scripts/local/journey-proofs.ts';
 
 const suites = PROTECTED.flatMap(([, files]) => files);
 const manifest = { invariant: suites, conformance: [] };
