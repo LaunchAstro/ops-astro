@@ -89,30 +89,7 @@ function MenuPanel(
 ): ReactElement {
   const menu = useRef<HTMLDivElement | null>(null);
   const { onClose, trigger } = props;
-
-  useEffect(() => {
-    menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    const outside = (event: PointerEvent): void => {
-      const target = event.target as Node | null;
-      const inside = [menu.current, trigger.current].some(
-        (each) => each?.contains(target) === true,
-      );
-      if (target !== null && !inside) onClose(false);
-    };
-    document.addEventListener('pointerdown', outside);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-    };
-  }, [onClose, trigger]);
-
-  const onSettings = (event: MouseEvent<HTMLAnchorElement>): void => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    onClose(false);
-    props.onSettings();
-  };
+  useFocusInClosedOutside(menu, trigger, onClose);
 
   return (
     <div
@@ -128,7 +105,14 @@ function MenuPanel(
         <span className="who__name">{props.shown}</span>
         {props.name === null ? null : <span className="who__email">{props.email}</span>}
       </div>
-      <a className="menu__opt" role="menuitem" href={props.settingsHref} onClick={onSettings}>
+      <a
+        className="menu__opt"
+        role="menuitem"
+        href={props.settingsHref}
+        onClick={(event) => {
+          followSettings(event, onClose, props.onSettings);
+        }}
+      >
         Your settings
       </a>
       <button
@@ -144,6 +128,45 @@ function MenuPanel(
       </button>
     </div>
   );
+}
+
+/**
+ * A plain click on Your settings closes the menu and goes there in the app; a
+ * click with another button or a modifier (a new tab or window) is the browser's.
+ */
+function followSettings(
+  event: MouseEvent<HTMLAnchorElement>,
+  onClose: (refocus: boolean) => void,
+  onSettings: () => void,
+): void {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  onClose(false);
+  onSettings();
+}
+
+/** Focus goes to the menu's first item on open; a press outside the menu and its circle closes it. */
+function useFocusInClosedOutside(
+  menu: RefObject<HTMLDivElement | null>,
+  trigger: RefObject<HTMLButtonElement | null>,
+  onClose: (refocus: boolean) => void,
+): void {
+  useEffect(() => {
+    menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const outside = (event: PointerEvent): void => {
+      const target = event.target as Node | null;
+      const inside = [menu.current, trigger.current].some(
+        (each) => each?.contains(target) === true,
+      );
+      if (target !== null && !inside) onClose(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+    };
+  }, [menu, onClose, trigger]);
 }
 
 /** The menu's keys: arrows, Home and End between items, Escape back to the circle, Tab away. */

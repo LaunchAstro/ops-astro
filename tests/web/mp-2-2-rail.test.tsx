@@ -94,7 +94,7 @@ describe('MP-2-2 railmark slides over 220ms on in-app navigation and snaps on lo
     const items = view.all('.rail__group > .rail__item');
     const at = (label: string): number =>
       items.findIndex((item) => item.textContent?.trim() === label);
-    expect(mark()?.hasAttribute('data-placing')).toBe(true);
+    expect(mark()?.dataset['placing']).toBe('');
     expect(mark()?.style.getPropertyValue('--railmark-y')).toBe(
       `${at('Projects') * ITEM_HEIGHT}px`,
     );
@@ -103,7 +103,7 @@ describe('MP-2-2 railmark slides over 220ms on in-app navigation and snaps on lo
     expect(click.defaultPrevented).toBe(true);
     expect(seen.at(-1)).toBe('/settings');
     expect(lit(view)).toEqual(['Settings']);
-    expect(mark()?.hasAttribute('data-placing')).toBe(false);
+    expect(mark()?.dataset['placing']).toBeUndefined();
     expect(mark()?.style.getPropertyValue('--railmark-y')).toBe(
       `${at('Settings') * ITEM_HEIGHT}px`,
     );

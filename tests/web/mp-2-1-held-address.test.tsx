@@ -79,7 +79,9 @@ describe('MP-2-1 held address switch', () => {
     expect(view.find('[data-notice="other-business"]')).toBeNull();
     await view.unmount();
   });
+});
 
+describe('MP-2-1 held address switch, where none is offered', () => {
   it.each(['no-membership', 'no-grant', 'down'] as const)(
     'names no business and offers no switch when Bravo answers %s',
     async (bravo) => {

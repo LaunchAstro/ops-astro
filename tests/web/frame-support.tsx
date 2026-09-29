@@ -45,10 +45,10 @@ export function layout(): () => void {
 
 /** A person's click on a link: a real bubbling event the application may take over. */
 export async function follow(view: Mounted, selector: string): Promise<MouseEvent> {
-  const target = view.find(selector);
-  if (target === null) throw new Error(`nothing matches ${selector}`);
+  const [target] = view.all(selector);
+  if (target === undefined) throw new Error(`nothing matches ${selector}`);
   const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(event);
   });
   return event;
@@ -71,7 +71,7 @@ export async function press(
     metaKey: options.metaKey ?? false,
     ctrlKey: options.ctrlKey ?? false,
   });
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(event);
   });
   return event;

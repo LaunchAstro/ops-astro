@@ -7,8 +7,17 @@
 
 import type { ReactElement } from 'react';
 import type { RailEntry, StripClient, TabEntry } from '@launchastro/ui';
-import { CROSS_FACE, SECTIONS, fill, type Page, type PageMatch, type Section } from './manifest.ts';
-import type { RouteMatch } from './routes.ts';
+import {
+  CROSS_FACE,
+  SECTIONS,
+  fill,
+  pageAt,
+  type ClientAccess,
+  type Page,
+  type PageMatch,
+  type Section,
+} from './manifest.ts';
+import { matchRoute, type RouteMatch } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
 /**
@@ -90,6 +99,36 @@ export function tabsFor(
       href: fill(each.path, at.client),
       current: each === at.page,
     })),
+  };
+}
+
+/** Everything the frame draws that follows from the address and the client grants. */
+export interface FrameAt {
+  readonly match: RouteMatch | null;
+  readonly at: PageMatch | null;
+  /** A client the session may not open: no rail, tabs, identity or switch. */
+  readonly refused: boolean;
+  readonly rail: readonly RailEntry[];
+  readonly tabs: ReturnType<typeof tabsFor> | null;
+  readonly identity: StripClient | null;
+  readonly face: 'agency' | 'client';
+}
+
+/** `businessKey` is the session's, or null signed out. */
+export function frameAt(bare: string, businessKey: string | null, access: ClientAccess): FrameAt {
+  const match = matchRoute(bare);
+  const at = pageAt(bare);
+  const refused =
+    at !== null && at.client !== null && (businessKey === null || !access(businessKey, at.client));
+  const section = refused ? null : sectionAt(at, match);
+  return {
+    match,
+    at,
+    refused,
+    rail: railFor(at, refused, section, bare),
+    tabs: at === null || refused || businessKey === null ? null : tabsFor(at, section),
+    identity: refused ? null : stripClient(at?.client ?? null),
+    face: at?.page.namespace === 'portal' ? 'client' : 'agency',
   };
 }
 

@@ -10,26 +10,21 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { AppStrip, PersonMenu, Shell, type StripSteps } from '@launchastro/ui';
+import { Shell, type StripSteps } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
-import { SearchPalette, useSearchKey } from './search.tsx';
-import { gateOf, matchRoute, pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
-import {
-  ClientRefused,
-  PagePlaceholder,
-  railFor,
-  sectionAt,
-  stripClient,
-  tabsFor,
-} from './route-views.tsx';
+import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
+import { pathTo } from './routes.ts';
+import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
+import { frameAt } from './route-views.tsx';
+import { drawContent } from './app-content.tsx';
+import { useCanonicalAddress, usePersonName, useOnline } from './app-state.ts';
+import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS } from './panels.ts';
+import { PANELS, dockTabs } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endIdentitySession } from './session/sign-in.ts';
-import { drawScreen } from './screen-registry.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -52,21 +47,8 @@ export interface AppProps {
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
-
-  // The root address is not a screen and it is not a mistake either: it is how
-  // a person arrives. There is no launcher page (R3): it leads to the
-  // dashboard when there is a session and to sign-in when there is not, and
-  // the address bar is corrected to say so, so a reload lands on the same
-  // place a link would.
-  // A legacy address is answered with its canonical one the same way, so the
-  // address bar, the rail and a remembered interruption never hold a legacy one.
-  const here =
-    canonicalOf(props.path) ??
-    (props.path === '/' ? (session === null ? pathTo('agency:sign-in') : DASHBOARD) : props.path);
   const navigate = props.navigate;
-  useEffect(() => {
-    if (here !== props.path) navigate(here, { replace: true });
-  }, [here, props.path, navigate]);
+  const here = useCanonicalAddress(props.path, session !== null, navigate);
 
   // The narrow drawer (MP-2-8) is open or not here, and any change of address
   // closes it, a link in it included.
@@ -75,17 +57,7 @@ export function App(props: AppProps): ReactElement {
     setNavOpen(false);
   }, [here]);
   const online = useOnline();
-  // Search (C1): open or not is the application's; the strip's box and ⌘K
-  // open it on the agency face only, and closing returns focus to the box.
-  const [searching, setSearching] = useState(false);
-  const searchBox = useRef<HTMLButtonElement | null>(null);
-  const openSearch = useCallback(() => {
-    setSearching(true);
-  }, []);
-  const closeSearch = useCallback(() => {
-    setSearching(false);
-    searchBox.current?.focus();
-  }, []);
+  const search = useSearch();
 
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
@@ -201,26 +173,7 @@ export function App(props: AppProps): ReactElement {
     void endIdentitySession({ gotrueUrl: props.gotrueUrl, token: ended.token, fetch: props.fetch });
   };
 
-  // Who is signed in, for the person menu: the server's name for this session's
-  // person, kept only while it is still this session's.
-  const [person, setPerson] = useState<{ readonly of: Session; readonly name: string } | null>(
-    null,
-  );
-  useEffect(() => {
-    if (session === null) return;
-    let current = true;
-    void client.read<unknown>('session.person', {}).then((answer) => {
-      // Read as the server's answer, not as the type it should have: a body
-      // without a name leaves the email standing in, and never throws.
-      const name = 'value' in answer ? nameIn(answer.value) : null;
-      if (current && name !== null) setPerson({ of: session, name });
-      return answer;
-    });
-    return () => {
-      current = false;
-    };
-  }, [client, session]);
-  const personName = person !== null && person.of === session ? person.name : null;
+  const personName = usePersonName(client, session);
 
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
@@ -232,21 +185,14 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const match = matchRoute(bare);
-  const at = pageAt(bare);
   const grantKey = grantKeyOf(session);
-  const clientAccess = props.clientAccess ?? NO_CLIENT_GRANTS;
-  const refused =
-    at !== null &&
-    at.client !== null &&
-    (session === null || !clientAccess(session.businessKey, at.client));
-  const section = refused ? null : sectionAt(at, match);
-  const rail = railFor(at, refused, section, bare);
-  const tabs = at === null || refused || session === null ? null : tabsFor(at, section);
-  const identity = refused ? null : stripClient(at?.client ?? null);
-  const face = at?.page.namespace === 'portal' ? 'client' : 'agency';
+  const { match, at, refused, rail, tabs, identity, face } = frameAt(
+    bare,
+    session?.businessKey ?? null,
+    props.clientAccess ?? NO_CLIENT_GRANTS,
+  );
   const searchable = session !== null && face === 'agency';
-  useSearchKey(searchable, openSearch);
+  useSearchKey(searchable, search.open);
 
   const signIn = (
     <SignIn
@@ -257,42 +203,30 @@ export function App(props: AppProps): ReactElement {
     />
   );
 
-  const content = ((): ReactElement => {
-    // A manifest page with no screen yet: sign-in first, then the grant check.
-    if (match === null && at !== null) {
-      if (session === null) return signIn;
-      return refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
-    }
-    const gate = gateOf(match, session !== null);
-    switch (gate.kind) {
-      case 'not-found':
-        return <NotFound path={here} />;
-      case 'sign-in':
-        return signIn;
-      case 'signed-in-already':
-        return (
-          <SignedInAlready
-            onGo={() => {
-              props.navigate(pathTo('agency:projects-board'));
-            }}
+  const content = drawContent({
+    here,
+    match,
+    at,
+    signedIn: session !== null,
+    refused,
+    signIn,
+    onGo: () => {
+      props.navigate(pathTo('agency:projects-board'));
+    },
+    screen: {
+      client,
+      grantKey,
+      notice:
+        notice === null || session === null ? null : (
+          <HeldAddressNotice
+            offer={notice.offer}
+            signedInTo={session.businessKey}
+            onSwitch={onSwitch}
           />
-        );
-      case 'screen':
-        return drawScreen(gate.match, {
-          client,
-          grantKey,
-          notice:
-            notice === null || session === null ? null : (
-              <HeldAddressNotice
-                offer={notice.offer}
-                signedInTo={session.businessKey}
-                onSwitch={onSwitch}
-              />
-            ),
-          storage: props.storage,
-        });
-    }
-  })();
+        ),
+      storage: props.storage,
+    },
+  });
 
   return (
     <>
@@ -301,58 +235,30 @@ export function App(props: AppProps): ReactElement {
         rail={rail}
         here={bare}
         strip={
-          <AppStrip
+          <FrameStrip
             face={face}
-            client={identity}
-            {...(props.steps === undefined ? {} : { steps: props.steps })}
-            onSearch={searchable ? openSearch : null}
-            searchRef={searchBox}
-            onFace={
-              identity === null || at?.client == null
-                ? null
-                : (next) => {
-                    const slug = at.client ?? '';
-                    navigate(next === 'client' ? `/portal/${slug}/` : `/clients/${slug}/`);
-                  }
-            }
-          >
-            {session === null ? null : (
-              <PersonMenu
-                name={personName}
-                email={session.email}
-                settingsHref={pathTo('agency:settings')}
-                onSettings={() => {
-                  navigate(pathTo('agency:settings'));
-                }}
-                onSignOut={onSignOut}
-              />
-            )}
-          </AppStrip>
+            identity={identity}
+            clientSlug={at?.client ?? null}
+            steps={props.steps}
+            onSearch={searchable ? search.open : null}
+            searchRef={search.box}
+            session={session}
+            personName={personName}
+            navigate={navigate}
+            onSignOut={onSignOut}
+          />
         }
         tabs={tabs}
         freshness={online ? null : 'offline'}
         nav={{ open: navOpen, onToggle: setNavOpen }}
         onNavigate={navigate}
         title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-        // The panel registry is the dock. Each registration names the address
-        // that draws its surface, and the tab navigates there rather than
-        // opening a drawer over the page: the surface has a real address, and an
-        // address a person can quote is worth more than a panel they cannot.
         // An open tab is announced as "Close", so pressing it leaves the address
         // for the board rather than pushing the same address again.
-        // The client face has no dock (R17).
-        dock={
-          session === null || at?.page.namespace === 'portal'
-            ? []
-            : PANELS.map((panel) => ({
-                id: panel.id,
-                label: panel.label,
-                open: panel.route !== null && here === pathTo(panel.route),
-              }))
-        }
+        dock={session === null || face === 'client' ? [] : dockTabs(here)}
         onDockTab={(id) => {
           const panel = PANELS.find((entry) => entry.id === id);
-          if (panel?.route == null) return;
+          if (panel === undefined || panel.route === null) return;
           const target = pathTo(panel.route);
           props.navigate(here === target ? pathTo('agency:projects-board') : target);
         }}
@@ -360,82 +266,16 @@ export function App(props: AppProps): ReactElement {
       >
         <FaceProvider face={face}>{content}</FaceProvider>
       </Shell>
-      {searching && searchable ? (
+      {search.showing && searchable ? (
         <SearchPalette
           client={client}
           onOpen={(address) => {
-            setSearching(false);
+            search.dismiss();
             navigate(address);
           }}
-          onClose={closeSearch}
+          onClose={search.close}
         />
       ) : null}
     </>
   );
-}
-
-/** Portfolio Command's address (R1), where a signed-in arrival at `/` goes (R3). */
-const DASHBOARD = '/dashboard/';
-
-/**
- * Whether the browser says it is connected, for the header's freshness marker
- * (CS-1.1). Live sync (C4) supplies the other states when it lands; until
- * then the marker shows only a dropped connection and claims nothing live.
- */
-function useOnline(): boolean {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine,
-  );
-  useEffect(() => {
-    const update = (): void => {
-      setOnline(navigator.onLine);
-    };
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    return () => {
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-    };
-  }, []);
-  return online;
-}
-
-// An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
-function NotFound(props: { readonly path: string }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">
-        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
-      </p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
-    </div>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
-  );
-}
-
-/** The name in a `session.person` answer, or null for anything else. */
-function nameIn(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const person = (value as { readonly person?: unknown }).person;
-  if (typeof person !== 'object' || person === null) return null;
-  const name = (person as { readonly name?: unknown }).name;
-  return typeof name === 'string' && name.trim() !== '' ? name : null;
 }

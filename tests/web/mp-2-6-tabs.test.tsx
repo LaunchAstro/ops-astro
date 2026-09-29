@@ -62,7 +62,7 @@ describe('MP-2-6 the underline slides, including across a page change', () => {
   it('places the mark on load, then slides it to the tab followed', async () => {
     const { view, seen } = await open('/clients/acme-dental/workbench/');
     const mark = (): HTMLElement | null => view.find('.tabmark') as HTMLElement | null;
-    expect(mark()?.hasAttribute('data-placing')).toBe(true);
+    expect(mark()?.dataset['placing']).toBe('');
     expect(mark()?.style.getPropertyValue('--tabmark-x')).toBe('0px');
 
     const click = await follow(
@@ -72,7 +72,7 @@ describe('MP-2-6 the underline slides, including across a page change', () => {
     expect(click.defaultPrevented).toBe(true);
     expect(seen.at(-1)).toBe('/clients/acme-dental/workbench/google-ads/');
     const index = tabs(view).indexOf('Google Ads');
-    expect(mark()?.hasAttribute('data-placing')).toBe(false);
+    expect(mark()?.dataset['placing']).toBeUndefined();
     expect(mark()?.style.getPropertyValue('--tabmark-x')).toBe(`${index * TAB_WIDTH}px`);
     expect(mark()?.style.getPropertyValue('--tabmark-w')).toBe(`${TAB_WIDTH}px`);
     await view.unmount();
@@ -102,17 +102,17 @@ describe('MP-2-6 overflow scrolls horizontally with a fade and arrow buttons at 
     const scrollBy = vi.fn();
     scroller.scrollBy = scrollBy as unknown as typeof scroller.scrollBy;
     const edges = (): readonly string[] =>
-      view.all('.tabbar__arrow').map((arrow) => arrow.getAttribute('data-edge') ?? '');
+      view.all('.tabbar__arrow').map((arrow) => (arrow as HTMLElement).dataset['edge'] ?? '');
     const scrollTo = async (value: number): Promise<void> => {
       left = value;
-      await act(async () => {
+      await act(() => {
         scroller.dispatchEvent(new Event('scroll'));
       });
     };
 
     await scrollTo(0);
     expect(edges()).toEqual(['end']);
-    expect(view.find('.tabbar')?.getAttribute('data-more')).toBe('end');
+    expect((view.find('.tabbar') as HTMLElement | null)?.dataset['more']).toBe('end');
     await scrollTo(600);
     expect(edges()).toEqual(['start', 'end']);
     await scrollTo(1200);

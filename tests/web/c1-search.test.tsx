@@ -21,12 +21,12 @@ const HITS = [
 /** A transport that answers `task.search` with `answer` and holds every other call. */
 function searching(answer: (query: string) => Response) {
   const asked: { readonly url: string; readonly query: string }[] = [];
-  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (!url.endsWith('/task/search')) return new Promise<Response>(() => {});
     const { query } = JSON.parse(String(init?.body ?? '{}')) as { query: string };
     asked.push({ url, query });
-    return answer(query);
+    return Promise.resolve(answer(query));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, asked };
 }

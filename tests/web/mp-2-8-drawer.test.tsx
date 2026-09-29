@@ -26,8 +26,8 @@ afterEach(() => {
   undo();
 });
 
-const shell = (app: Opened): Element | null => app.view.find('.shell');
-const isOpen = (app: Opened): boolean => shell(app)?.getAttribute('data-nav') === 'open';
+const shell = (app: Opened): HTMLElement | null => app.view.find('.shell') as HTMLElement | null;
+const isOpen = (app: Opened): boolean => shell(app)?.dataset['nav'] === 'open';
 const inDrawer = (app: Opened): boolean =>
   app.view.find('.rail')?.contains(document.activeElement) ?? false;
 

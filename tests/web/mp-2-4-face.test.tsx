@@ -39,10 +39,10 @@ describe('MP-2-4 the switch shows only inside a client workspace or portal', () 
 describe('MP-2-4 Client from /clients/:client/* goes to /portal/:client/', () => {
   it('goes to the portal home from any workspace page', async () => {
     const { view, seen } = await open('/clients/acme-dental/library/voice/');
-    expect(view.find(faceButton('Agency'))?.getAttribute('aria-pressed')).toBe('true');
+    expect(view.find(`${faceButton('Agency')}[aria-pressed="true"]`)).not.toBeNull();
     await view.click(faceButton('Client'));
     expect(seen.at(-1)).toBe('/portal/acme-dental/');
-    expect(view.find(faceButton('Client'))?.getAttribute('aria-pressed')).toBe('true');
+    expect(view.find(`${faceButton('Client')}[aria-pressed="true"]`)).not.toBeNull();
     await view.unmount();
   });
 });
@@ -74,8 +74,8 @@ describe('MP-2-4 pressing the face already on does nothing', () => {
 describe('MP-2-4 the client face has the teal strip and "Client portal" tag, no timer, no presence and no dock', () => {
   it('draws the client-face chrome on the portal', async () => {
     const { view } = await open('/portal/acme-dental/');
-    expect(view.find('.shell')?.getAttribute('data-face')).toBe('client');
-    expect(view.find('.appbar')?.getAttribute('data-face')).toBe('client');
+    expect((view.find('.shell') as HTMLElement | null)?.dataset['face']).toBe('client');
+    expect((view.find('.appbar') as HTMLElement | null)?.dataset['face']).toBe('client');
     expect(view.find('.appbar .clienthdr__tag')?.textContent).toBe('Client portal');
     expect(view.find('.appbar .appbar__timer')).toBeNull();
     expect(view.all('.appbar .viewers')).toHaveLength(0);
@@ -108,7 +108,7 @@ describe('MP-2-4 CS-2.5 a labelled "view as client" preview, client writes disab
 
   it('reads nothing a client login would not be served, on the client face', async () => {
     const asked: string[] = [];
-    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const fetch = vi.fn((input: RequestInfo | URL) => {
       asked.push(String(input));
       return new Promise<Response>(() => {});
     }) as unknown as typeof globalThis.fetch;
@@ -168,7 +168,7 @@ describe('MP-2-4 the client-face chrome is the client-face variant of the app st
   it('uses the one strip component with its client-face variant', async () => {
     const { view } = await open('/portal/acme-dental/');
     expect(view.all('.appbar')).toHaveLength(1);
-    expect(view.find('.appbar')?.getAttribute('data-face')).toBe('client');
+    expect((view.find('.appbar') as HTMLElement | null)?.dataset['face']).toBe('client');
     await view.unmount();
   });
 });

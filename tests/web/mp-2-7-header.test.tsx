@@ -91,7 +91,7 @@ describe('MP-2-7 the freshness marker: five states, an indicator only, no sync b
       const view = await mount(<Freshness state={state} at="Saturday 6:10am" />);
       views.push(view);
       const marker = view.find('[data-freshness]');
-      expect(marker?.getAttribute('data-freshness')).toBe(state);
+      expect((marker as HTMLElement | null)?.dataset['freshness']).toBe(state);
       expect(marker?.getAttribute('role')).toBe('status');
       expect(marker?.tagName).toBe('SPAN');
       expect(marker?.hasAttribute('tabindex')).toBe(false);
@@ -112,7 +112,7 @@ describe('MP-2-7 the freshness marker: five states, an indicator only, no sync b
     const online = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
     Object.defineProperty(Navigator.prototype, 'onLine', { configurable: true, get: () => false });
     try {
-      await act(async () => {
+      await act(() => {
         window.dispatchEvent(new Event('offline'));
       });
       expect(view.find('.topbar .topbar__meta [data-freshness="offline"]')).not.toBeNull();
@@ -120,7 +120,7 @@ describe('MP-2-7 the freshness marker: five states, an indicator only, no sync b
       expect(controls.filter((text) => /sync|refresh|reload/iu.test(text))).toEqual([]);
     } finally {
       if (online !== undefined) Object.defineProperty(Navigator.prototype, 'onLine', online);
-      await act(async () => {
+      await act(() => {
         window.dispatchEvent(new Event('online'));
       });
     }

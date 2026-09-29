@@ -164,7 +164,7 @@ try {
           heights.join(','),
         );
 
-        const lit = async () =>
+        const lit = () =>
           page.evaluate(() => {
             const mark = document.querySelector('.railmark').getBoundingClientRect();
             const item = document.querySelector('.rail [data-lit]').getBoundingClientRect();
@@ -225,7 +225,7 @@ try {
         await page.screenshot({ path: `${SHOTS}/drawer-${width}-${theme}.png` });
         await page.keyboard.press('Escape');
         await page.waitForTimeout(300);
-        const open = await page.$eval('.shell', (el) => el.getAttribute('data-nav'));
+        const open = await page.$eval('.shell', (el) => el.dataset.nav ?? null);
         check(`MP-2-8 Escape closes it, ${at}`, open === null);
       }
       await personMenu(page, width, at);

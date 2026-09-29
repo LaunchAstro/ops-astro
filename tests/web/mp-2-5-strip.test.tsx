@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 /** The real application root over jsdom's own history, as the browser entry mounts it. */
-async function rooted(address: string): Promise<Mounted> {
+function rooted(address: string): Promise<Mounted> {
   window.history.replaceState(null, '', address);
   const held = storage({ 'ops-astro.session': JSON.stringify(session('alpha')) });
   return mount(
@@ -67,7 +67,7 @@ describe('MP-2-5 CS-2.3 step back and forward through the pages visited in this 
     expect(window.location.pathname).toBe('/settings');
     expect(button(view, 'Back')?.disabled).toBe(false);
 
-    await act(async () => {
+    await act(() => {
       button(view, 'Back')?.click();
     });
     await traversed();
@@ -75,7 +75,7 @@ describe('MP-2-5 CS-2.3 step back and forward through the pages visited in this 
     expect(view.find('h1')?.textContent).toBe('Projects');
     expect(button(view, 'Forward')?.disabled).toBe(false);
 
-    await act(async () => {
+    await act(() => {
       button(view, 'Forward')?.click();
     });
     await traversed();
@@ -101,7 +101,7 @@ describe('MP-2-5 forward is disabled when there is no later history entry (TR-S-
     expect(button(view, 'Forward')?.disabled).toBe(true);
     expect(button(view, 'Back')?.disabled).toBe(true);
     await follow(view, '.rail__item[href="/settings"]');
-    await act(async () => {
+    await act(() => {
       button(view, 'Back')?.click();
     });
     await traversed();

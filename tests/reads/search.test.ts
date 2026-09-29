@@ -2,7 +2,8 @@
 //
 // C1a: the one scoped query service, `task.search`.
 //
-// Two checklist lines, one test each (ticket C1, lines C2 and C3):
+// Two checklist lines (ticket C1, lines C2 and C3); the first is three
+// `describe` blocks under its name, over one database seeded for the file:
 //
 //  - **C1 scope before candidates.** The viewer's live grants are part of the
 //    statement that finds candidates, never a filter over what it found. A
@@ -56,91 +57,94 @@ function hitIds(result: ReadResult | CommandRefusal): readonly string[] {
   return result.hits.map((hit) => hit.id);
 }
 
-describe.skipIf(serverUrl === undefined)('task.search', () => {
-  let db: FreshDatabase;
-  let alpha: string;
-  let beta: string;
-  /** Reads every task in alpha. */
-  let mia: Member;
-  /** Holds `task:read` on Acme's task and nothing else. */
-  let ann: Member;
-  /** Holds `task:read` on Boreal's task and nothing else. */
-  let ben: Member;
-  /** A member of alpha holding no grant on tasks. */
-  let noah: Member;
-  /** Reads every task in beta. */
-  let bea: Member;
-  let acmeTask: string;
-  let borealTask: string;
-  let betaTask: string;
+let db: FreshDatabase;
+let alpha: string;
+let beta: string;
+/** Reads every task in alpha. */
+let mia: Member;
+/** Holds `task:read` on Acme's task and nothing else. */
+let ann: Member;
+/** Holds `task:read` on Boreal's task and nothing else. */
+let ben: Member;
+/** A member of alpha holding no grant on tasks. */
+let noah: Member;
+/** Reads every task in beta. */
+let bea: Member;
+let acmeTask: string;
+let borealTask: string;
+let betaTask: string;
 
-  const create = async (business: string, who: Member, title: string): Promise<string> => {
-    const created = await executeCommand(db.app, business, who.presented, 'api', {
-      command: 'task.create',
-      operationId: randomUUID(),
-      fields: { title },
-    } as never);
-    if (isCommandRefusal(created) || created.recordId === null) {
-      throw new Error(`task.create: ${JSON.stringify(created)}`);
-    }
-    return created.recordId;
-  };
+const create = async (business: string, who: Member, title: string): Promise<string> => {
+  const created = await executeCommand(db.app, business, who.presented, 'api', {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title },
+  } as never);
+  if (isCommandRefusal(created) || created.recordId === null) {
+    throw new Error(`task.create: ${JSON.stringify(created)}`);
+  }
+  return created.recordId;
+};
 
-  const search = async (who: Member, query: unknown, business = alpha) =>
-    await executeRead(db.app, business, who.presented, {
-      read: 'task.search',
-      query,
-    } as ReadRequest);
+const search = async (who: Member, query: unknown, business = alpha) =>
+  await executeRead(db.app, business, who.presented, {
+    read: 'task.search',
+    query,
+  } as ReadRequest);
 
-  /** The read, with every row the database returned to the process kept. */
-  const searchWatched = async (who: Member, query: string) => {
-    const returned: unknown[] = [];
-    const result = await withSession(db.app, alpha, who.presented, async (tx, session) => {
-      const watched: TenantQuery = {
-        businessId: tx.businessId,
-        async query<Row>(text: string, parameters?: readonly unknown[]) {
-          const rows = await tx.query<Row>(text, parameters);
-          returned.push(...rows);
-          return rows;
-        },
-      };
-      return await runRead(watched, session, { read: 'task.search', query });
-    });
-    return { result, returned: JSON.stringify(returned) };
-  };
+/** The read, with every row the database returned to the process kept. */
+const searchWatched = async (who: Member, query: string) => {
+  const returned: unknown[] = [];
+  const result = await withSession(db.app, alpha, who.presented, async (tx, session) => {
+    const watched: TenantQuery = {
+      businessId: tx.businessId,
+      async query<Row>(text: string, parameters?: readonly unknown[]) {
+        const rows = await tx.query<Row>(text, parameters);
+        returned.push(...rows);
+        return rows;
+      },
+    };
+    return await runRead(watched, session, { read: 'task.search', query });
+  });
+  return { result, returned: JSON.stringify(returned) };
+};
 
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'c1a' });
-    alpha = await insertBusiness(db.app, 'alpha');
-    beta = await insertBusiness(db.app, 'beta');
-    await installSpine(db.app, alpha);
-    await installSpine(db.app, beta);
-    mia = await enrol(db.app, alpha, 'mia');
-    ann = await enrol(db.app, alpha, 'ann');
-    ben = await enrol(db.app, alpha, 'ben');
-    noah = await enrol(db.app, alpha, 'noah');
-    bea = await enrol(db.app, beta, 'bea');
-    await db.app.withBusiness(alpha, async (tx) => {
-      await grantTo(tx, mia, 'read');
-      await grantTo(tx, mia, 'write');
-      await grantTo(tx, mia, 'share');
-    });
-    await db.app.withBusiness(beta, async (tx) => {
-      await grantTo(tx, bea, 'read');
-      await grantTo(tx, bea, 'write');
-    });
-    acmeTask = await create(alpha, mia, `Acme ${ACME_WORD} brochure`);
-    borealTask = await create(alpha, mia, `Boreal ${BOREAL_WORD} invoice`);
-    betaTask = await create(beta, bea, `Beta ${ACME_WORD} ${BOREAL_WORD} copy`);
-    await db.app.withBusiness(alpha, async (tx) => {
-      await grantTo(tx, ann, 'read', { kind: 'record', id: acmeTask });
-      await grantTo(tx, ben, 'read', { kind: 'record', id: borealTask });
-    });
-  }, 60_000);
+// One database for every case in the file; nothing runs without a server.
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'c1a' });
+  alpha = await insertBusiness(db.app, 'alpha');
+  beta = await insertBusiness(db.app, 'beta');
+  await installSpine(db.app, alpha);
+  await installSpine(db.app, beta);
+  mia = await enrol(db.app, alpha, 'mia');
+  ann = await enrol(db.app, alpha, 'ann');
+  ben = await enrol(db.app, alpha, 'ben');
+  noah = await enrol(db.app, alpha, 'noah');
+  bea = await enrol(db.app, beta, 'bea');
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, mia, 'read');
+    await grantTo(tx, mia, 'write');
+    await grantTo(tx, mia, 'share');
+  });
+  await db.app.withBusiness(beta, async (tx) => {
+    await grantTo(tx, bea, 'read');
+    await grantTo(tx, bea, 'write');
+  });
+  acmeTask = await create(alpha, mia, `Acme ${ACME_WORD} brochure`);
+  borealTask = await create(alpha, mia, `Boreal ${BOREAL_WORD} invoice`);
+  betaTask = await create(beta, bea, `Beta ${ACME_WORD} ${BOREAL_WORD} copy`);
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, ann, 'read', { kind: 'record', id: acmeTask });
+    await grantTo(tx, ben, 'read', { kind: 'record', id: borealTask });
+  });
+}, 60_000);
 
-  afterAll(async () => await db?.drop());
+afterAll(async () => await db?.drop());
 
-  describe('C1 scope before candidates', () => {
+describe.skipIf(serverUrl === undefined)(
+  'C1 scope before candidates: client, person and business',
+  () => {
     it('one client’s grant finds nothing of the other client’s word, not even a count', async () => {
       const { result, returned } = await searchWatched(ann, BOREAL_WORD);
       expect(result).toStrictEqual({ ok: true, hits: [] });
@@ -184,7 +188,12 @@ describe.skipIf(serverUrl === undefined)('task.search', () => {
       const after = await search(carl, ACME_WORD);
       expect(isCommandRefusal(after) ? after.code : after).toBe('SCOPE_NOT_GRANTED');
     });
+  },
+);
 
+describe.skipIf(serverUrl === undefined)(
+  'C1 scope before candidates: refusals name nothing',
+  () => {
     it('a member holding no task grant is refused, never answered with an empty list', async () => {
       const result = await search(noah, ACME_WORD);
       expect(isCommandRefusal(result) ? result.code : result).toBe('SCOPE_NOT_GRANTED');
@@ -207,7 +216,12 @@ describe.skipIf(serverUrl === undefined)('task.search', () => {
         expect(JSON.stringify(result)).not.toContain(canary);
       }
     });
+  },
+);
 
+describe.skipIf(serverUrl === undefined)(
+  'C1 scope before candidates: hostile and malformed queries',
+  () => {
     it('hostile queries never widen the scope and never fault', async () => {
       const hostile = [
         `${ACME_WORD} | ${BOREAL_WORD}`,
@@ -247,23 +261,23 @@ describe.skipIf(serverUrl === undefined)('task.search', () => {
         expect(isCommandRefusal(result) ? result.names : result).toStrictEqual(['query']);
       }
     });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)('C1 one scoped query service', () => {
+  it('the read answers exactly what searchTasks answers', async () => {
+    const direct = await withSession(db.app, alpha, ann.presented, async (tx, session) => {
+      const spine = await readTaskSpine(tx);
+      return await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: ACME_WORD });
+    });
+    expect(await search(ann, ACME_WORD)).toStrictEqual(direct);
   });
 
-  describe('C1 one scoped query service', () => {
-    it('the read answers exactly what searchTasks answers', async () => {
-      const direct = await withSession(db.app, alpha, ann.presented, async (tx, session) => {
-        const spine = await readTaskSpine(tx);
-        return await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: ACME_WORD });
-      });
-      expect(await search(ann, ACME_WORD)).toStrictEqual(direct);
-    });
-
-    it('is a read on the API and the command line, asked as the viewer’s own scope', () => {
-      expect(declarationOf('task.search')).toMatchObject({ kind: 'read', collection: 'task' });
-      expect(pathOf('task.search')).toBe('/task/search');
-      expect(accepts('task.search')).toBe(true);
-      expect(isWrite('task.search')).toBe(false);
-      expect(READ_CATALOGUE['task.search'].authority).toBe('holds-any-grant');
-    });
+  it('is a read on the API and the command line, asked as the viewer’s own scope', () => {
+    expect(declarationOf('task.search')).toMatchObject({ kind: 'read', collection: 'task' });
+    expect(pathOf('task.search')).toBe('/task/search');
+    expect(accepts('task.search')).toBe(true);
+    expect(isWrite('task.search')).toBe(false);
+    expect(READ_CATALOGUE['task.search'].authority).toBe('holds-any-grant');
   });
 });

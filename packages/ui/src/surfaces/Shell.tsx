@@ -15,21 +15,21 @@
 // is open and the current face belong to `apps/web`, because `packages/ui`
 // owns visual controls and layout and may not own a session [ui-reference
 // CONTRACT.md:305 rule 3]. It owns their motion and focus: the railmark, the
-// drawer's focus trap and the one Escape.
+// drawer's focus trap and the one Escape (drawer.ts).
 
 import {
   useCallback,
-  useEffect,
   useId,
   useRef,
   type CSSProperties,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { useDrawerFocus } from './drawer.ts';
 import { useMark } from './mark.ts';
-import { Chevron, Freshness, TabRow, type FreshnessState, type TabEntry } from './Frame.tsx';
+import { Freshness, type FreshnessState } from './Frame.tsx';
+import { Chevron, TabRow, type TabEntry } from './TabRow.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -83,8 +83,6 @@ export interface ShellProps {
   readonly children: ReactNode;
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /** The in-app address a click on a link asked for, or null to leave it to the browser. */
 function inAppAddress(event: MouseEvent<HTMLElement>): string | null {
   if (event.defaultPrevented || event.button !== 0) return null;
@@ -115,50 +113,7 @@ export function Shell(props: ShellProps): ReactElement {
   // the lit item has changed, hidden where nothing is lit.
   const mark = useMark(litId, measure, '[data-lit]');
 
-  // Focus moves into the drawer on open and back to its toggle on close.
-  const wasOpen = useRef(open);
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      const rail = railRef.current;
-      const into =
-        rail?.querySelector<HTMLElement>('[data-lit]') ??
-        rail?.querySelector<HTMLElement>(FOCUSABLE);
-      into?.focus();
-    }
-    if (!open && wasOpen.current) toggleRef.current?.focus();
-    wasOpen.current = open;
-  }, [open]);
-
-  // One Escape closes the drawer and nothing under it.
-  useEffect(() => {
-    if (!open || onToggle === undefined) return;
-    const onKey = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onToggle(false);
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => {
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [open, onToggle]);
-
-  // While the drawer is open, Tab and Shift+Tab stay inside it.
-  const trap = (event: KeyboardEvent<HTMLElement>): void => {
-    if (!open || event.key !== 'Tab') return;
-    const inside = [...(railRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
-    const first = inside[0];
-    const last = inside.at(-1);
-    if (first === undefined || last === undefined) return;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
+  const trap = useDrawerFocus(open, onToggle, railRef, toggleRef);
 
   const onClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (props.onNavigate === undefined) return;
@@ -259,9 +214,9 @@ export function Shell(props: ShellProps): ReactElement {
       <main className="main" inert={open}>
         <div className="chrome">
           {props.strip}
-          {props.tabs == null ? null : (
+          {props.tabs ? (
             <TabRow key={props.tabs.id} label={props.tabs.label} tabs={props.tabs.entries} />
-          )}
+          ) : null}
           <header className="topbar">
             {onToggle === undefined ? null : (
               <button
@@ -284,7 +239,7 @@ export function Shell(props: ShellProps): ReactElement {
               <h1 className="t-title">{props.title}</h1>
             </div>
             <div className="topbar__meta">
-              {props.freshness == null ? null : <Freshness state={props.freshness} />}
+              {props.freshness ? <Freshness state={props.freshness} /> : null}
               {props.meta}
             </div>
           </header>
