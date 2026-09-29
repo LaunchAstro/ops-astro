@@ -73,7 +73,8 @@
     "FR5-0030 adds two cases to final-r3r-0030-upgrade-race (SOL-R3R2-1): a real propose on a database at 0029, held between its evidence pack and its gate (a first version) or between superseding the old gate and its pack (a successor), while 0030 starts as the runner applies it. Both must commit, with 0030 recorded, its pack key validated and the gate on its own version's pack. Unedited, 0030 deadlocked with the first; locking evidence_packs before gates deadlocks with the second; 0030 now locks proposal_versions first.",
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
-    "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named."
+    "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named.",
+    "C1a names search as an invariant (task.search, ticket C1 lines C2 and C3): the viewer's live task:read scopes are a predicate of the statement that finds candidates, so no row of another client's, person's or business's task is returned to the process, not even as a count; red against a planted post-filter build."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -218,7 +219,8 @@
     "tests/runtime/final-r3r-0030-upgrade-race.test.ts",
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
     "tests/tenancy/final-r6-runner-guard.test.ts",
-    "tests/web/mp-2-1-isolation-api.test.tsx"
+    "tests/web/mp-2-1-isolation-api.test.tsx",
+    "tests/reads/search.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

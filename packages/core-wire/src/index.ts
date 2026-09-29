@@ -44,6 +44,7 @@ export type {
   QueuedWork,
   QueueResult,
   ReservationView,
+  SearchHit,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,
@@ -52,6 +53,7 @@ export type {
   TaskBoardResult,
   TaskDetail,
   TaskReadResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
 } from './views.ts';
