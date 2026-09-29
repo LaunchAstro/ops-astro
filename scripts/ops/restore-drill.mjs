@@ -148,11 +148,12 @@ export async function restoreDrill({
         // oxlint-disable-next-line no-await-in-loop
         const probe = await exec(['pg_isready', '-h', '127.0.0.1', ...AS]);
         ready = probe.code === 0;
-        // oxlint-disable-next-line no-await-in-loop
-        if (!ready)
+        if (!ready) {
+          // oxlint-disable-next-line no-await-in-loop
           await new Promise((resolve) => {
             setTimeout(resolve, 500);
           });
+        }
       }
       record.targetMajor = Math.floor(Number(await psql('show server_version_num')) / 10_000);
       stage = 'target';
