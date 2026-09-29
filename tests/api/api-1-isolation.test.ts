@@ -30,11 +30,15 @@ interface Heard {
 
 type Name = 'client1' | 'client2' | 'bravo';
 
-/** Every record any answer names, refusals included, other than the caller's own. */
+/** Every task, title, business or person any answer names, refusals included, but the caller's own. */
 function foreign(heard: readonly Heard[], own: Name | null): string[] {
   const named = heard
     .flatMap((one) =>
-      Array.from(JSON.stringify(one.body).matchAll(/<(client1|client2|bravo) (?:task|title)>/gu)),
+      Array.from(
+        JSON.stringify(one.body).matchAll(
+          /<(client1|client2|bravo) (?:task|title|business|person)>/gu,
+        ),
+      ),
     )
     .map((match) => match[1] as string);
   return [...new Set(named)].filter((name) => name !== own);
@@ -59,6 +63,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   };
   let clientOne: Member;
   let clientTwo: Member;
+  let bravoBusinessId: string;
   /** Raw id or title to its label, so a leak is named and no record value is printed. */
   const labels = new Map<string, string>();
 
@@ -92,8 +97,11 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     api = fixture.compose();
     rows = buildCatalogue([]);
     const bravo = await insertBusiness(fixture.db.app, 'bravo');
+    bravoBusinessId = bravo;
     await installSpine(fixture.db.app, bravo);
     const bravoWriter = await enrol(fixture.db.app, bravo, 'bravo-writer');
+    labels.set(bravo, '<bravo business>');
+    labels.set(bravoWriter.personId, '<bravo person>').set(bravoWriter.actorId, '<bravo person>');
     await fixture.db.app.withBusiness(bravo, async (tx) => {
       await grantTo(tx, bravoWriter, 'read');
       await grantTo(tx, bravoWriter, 'write');
@@ -104,6 +112,12 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     task.bravo = await create('bravo', await tokenFor(bravoWriter.presented.subject), 'bravo');
     clientOne = await enrol(fixture.db.app, fixture.business, 'client-one-person');
     clientTwo = await enrol(fixture.db.app, fixture.business, 'client-two-person');
+    for (const [member, name] of [
+      [clientOne, 'client1'],
+      [clientTwo, 'client2'],
+    ] as const) {
+      labels.set(member.personId, `<${name} person>`).set(member.actorId, `<${name} person>`);
+    }
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
       await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
@@ -234,5 +248,16 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     } finally {
       leaked.mockRestore();
     }
+  });
+
+  it('Sol proof, criterion 4: refusals expose no foreign business or person record', () => {
+    const heard: Heard[] = [
+      {
+        status: 403,
+        code: 'SCOPE_NOT_GRANTED',
+        body: label({ businessId: bravoBusinessId, personId: clientTwo.personId }),
+      },
+    ];
+    expect(foreign(heard, 'client1')).toEqual(['bravo', 'client2']);
   });
 });
