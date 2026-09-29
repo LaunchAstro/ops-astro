@@ -11,6 +11,6 @@ const doc = readFileSync(new URL('../../docs/rehearsal/batch-1.md', import.meta.
 
 describe('the batch 1 rehearsal note', () => {
   it('says it never merges', () => {
-    expect(doc).toContain('This file always merges.');
+    expect(doc).toContain('This file never merges.');
   });
 });
