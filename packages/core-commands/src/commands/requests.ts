@@ -268,7 +268,14 @@ export type CommandRequest =
       readonly reason: unknown;
     } & Envelope)
   // The recipient opening their own inbox item (INB-1d).
-  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope);
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // The caller's own notification setting on one channel (INB-1e).
+  | ({
+      readonly command: 'notifications.set_channel';
+      readonly channel: string;
+      readonly mode: string;
+      readonly category?: string;
+    } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

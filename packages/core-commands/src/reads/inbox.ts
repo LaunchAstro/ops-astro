@@ -14,7 +14,12 @@
 // caller still holds read on, is listed as gone and names nothing of the task
 // or the fact it points at.
 
-import { readInboxItems, type InboxItem } from '../../../core-records/src/index.ts';
+import {
+  readInboxItems,
+  readUnattended,
+  type InboxItem,
+  type UnattendedItem,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 
 export interface InboxEntry {
@@ -73,4 +78,27 @@ export async function readInbox(tx: TenantQuery, personId: string): Promise<read
 /** The owed count: the counted entries of the same read, never a second query. */
 export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
   return (await readInbox(tx, personId)).filter((entry) => entry.counted).length;
+}
+
+/** An item no path reaches (INB-1e), as the operations view is shown it. */
+export type UnattendedEntry = Omit<UnattendedItem, 'raisedAt'> & { readonly raisedAt: string };
+
+/**
+ * The business's unattended items whose task the caller can read: the list
+ * the operations view (C55) will show, on the API and the command line until
+ * then. It names each recipient, so it is `operations:read`'s and nobody's own.
+ */
+export async function readUnattendedInbox(
+  tx: TenantQuery,
+  viewerPersonId: string,
+): Promise<readonly UnattendedEntry[]> {
+  return (await readUnattended(tx, viewerPersonId)).map((item) => ({
+    id: item.id,
+    recipientPersonId: item.recipientPersonId,
+    subjectRecordId: item.subjectRecordId,
+    reason: item.reason,
+    factKind: item.factKind,
+    factId: item.factId,
+    raisedAt: item.raisedAt.toISOString(),
+  }));
 }
