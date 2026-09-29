@@ -257,7 +257,7 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
  * Columns a migration after 0030 adds to a table this snapshot reads. A row
  * that gained a column has not changed what it held, so the snapshot compares
  * the columns the seed wrote: 0041 (T3a) adds the escalation columns to gates
- * and 0033 adds `origin_conversation_id`.
+ * and 0043 adds `origin_conversation_id`.
  */
 const ADDED_AFTER_0030 = `array['escalated_to_person_id','escalated_by_person_id','escalated_by_actor_id','escalated_at','origin_conversation_id']`;
 
