@@ -53,6 +53,15 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
       )
     ).map((row) => row.kind);
 
+  /** Room for a replacement beside the kept hold, by the person (T2e, O6). */
+  const room = async (w: Work): Promise<void> => {
+    await p.asAda('budget.top_up', {
+      recordId: w.taskId,
+      amountMinor: 2_500,
+      fromMaximumMinor: 2_500,
+    });
+  };
+
   /** A replacement worker applies the work that came back, once. */
   async function finishedOnce(w: Work, name: string): Promise<void> {
     const again = p.worker(w, 'none', name);
@@ -71,8 +80,9 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   });
 
   for (const cause of ['provider_unavailable', 'connection_lost'] as const) {
-    it(`drop_is_not_cancel: ${cause}, injected into the worker, comes back and is applied once`, async () => {
+    it(`drop_is_not_cancel: ${cause}, injected after the mark, is held whole until the pass proves it absent, then applied once`, async () => {
       const w = await fresh();
+      await room(w);
       const run = p.worker(w, 'none', `t3e1-worker-${cause}`, 900, cause);
       expect(await run.exited()).toBeNull();
       expect(
@@ -80,17 +90,17 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
           .lines()
           .some((line) => line.includes(`"dropped":{"taskId":"${w.taskId}","cause":"${cause}"}`)),
       ).toBe(true);
+      // The provider may have acted: the whole hold stays unknown, nothing comes back yet.
       expect(await p.attempts(w.taskId)).toMatchObject([
-        { state: 'dropped', drop_cause: cause },
+        { state: 'liability_unknown', drop_cause: cause },
+      ]);
+      expect(await kinds(w.taskId)).toStrictEqual(['claimed', 'dropped']);
+      expect(await pass()).toMatchObject({ ok: true });
+      await finishedOnce(w, `t3e1-worker-${cause}-2`);
+      expect(await p.attempts(w.taskId)).toMatchObject([
+        { state: 'liability_unknown', drop_cause: cause },
         { state: 'settled', drop_cause: null },
       ]);
-      expect((await kinds(w.taskId)).slice(0, 4)).toStrictEqual([
-        'claimed',
-        'dropped',
-        'reactivated',
-        'claimed',
-      ]);
-      expect(await p.effects(w.taskId)).toBe(1);
       evidence({ proof: 'drop_is_not_cancel', cause, result: 'pass' });
     }, 60_000);
   }
@@ -156,6 +166,10 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   }, 60_000);
   it('one_report_per_outage: five real workers dropped by one outage give one report, and every run comes back', async () => {
     const five = await Promise.all(Array.from({ length: 5 }, async () => await fresh()));
+    for (const w of five) {
+      // eslint-disable-next-line no-await-in-loop
+      await room(w);
+    }
     const runs = five.map((w, at) =>
       p.worker(w, 'none', `t3e2-worker-${String(at)}`, 900, 'provider_unavailable'),
     );
@@ -173,7 +187,19 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
     );
     expect(reports).toHaveLength(1);
     expect(reports[0]?.tasks).toStrictEqual(five.map((w) => w.taskId).toSorted());
-    expect(reports[0]?.back).toBe(true);
+    // Dropped after the mark: none is back until the pass proves each absent.
+    expect(reports[0]?.back).toBe(false);
+    expect(await pass()).toMatchObject({ ok: true });
+    const back = await p.admin.execute<{ back: boolean }>(
+      'select bool_and(reactivated) as back from public.outage_runs where business_id = $1 and task_id = any($2::uuid[])',
+      [p.world.alpha, five.map((w) => w.taskId)],
+    );
+    expect(back[0]?.back).toBe(true);
+    const again = five.map((w, at) => p.worker(w, 'none', `t3e2-worker-${String(at)}-2`));
+    for (const run of again) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await run.exited()).toBeNull();
+    }
     const raised = await p.admin.execute<{ kind: string }>(
       'select distinct kind from public.alerts where business_id = $1 and task_id = any($2::uuid[])',
       [p.world.alpha, five.map((w) => w.taskId)],

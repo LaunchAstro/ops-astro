@@ -165,18 +165,66 @@ describe.skipIf(url === undefined)('T3e2: one report per outage', { timeout: 180
     expect(JSON.stringify(there)).not.toContain(s.business);
   });
 
-  it('a client and a member with no grant see no outage', async () => {
-    const [one] = await outage(s, 1, 'provider_unavailable');
+  it('client to client and person to person: two clients and two people with one task grant each see no outage', async () => {
+    const [first, second] = await outage(s, 2, 'provider_unavailable');
+    const taskA = first?.taskId as string;
+    const taskB = second?.taskId as string;
     await s.db.app.withBusiness(s.business, async (tx) => {
       await grantTo(tx, s.decider, 'share');
     });
-    const elsewhere = await createTask(s, `t3e2 elsewhere ${randomUUID()}`);
-    const client = await cq8World(s).client(s.business, s.decider, 't3e2-client', elsewhere);
-    const seen = await queueOf(s, client);
-    expect(seen['outages'] ?? []).toStrictEqual([]);
-    expect(JSON.stringify(seen)).not.toContain(one?.taskId);
+    // Two clients of this business, each shared one of the two dropped tasks.
+    const clientA = await cq8World(s).client(s.business, s.decider, 't3e2-client-a', taskA);
+    const clientB = await cq8World(s).client(s.business, s.decider, 't3e2-client-b', taskB);
+    // Two members, each granted read on one of the two tasks and nothing wider.
+    const personA = await enrol(s.db.app, s.business, 't3e2-person-a');
+    const personB = await enrol(s.db.app, s.business, 't3e2-person-b');
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, personA, 'read', { kind: 'record', id: taskA });
+      await grantTo(tx, personB, 'read', { kind: 'record', id: taskB });
+    });
+    const answers = {
+      clientA: await queueOf(s, clientA),
+      clientB: await queueOf(s, clientB),
+      personA: await queueOf(s, personA),
+      personB: await queueOf(s, personB),
+    };
+    // The team's reader sees both runs in the one report.
+    const team = JSON.stringify(await queueOf(s, s.decider));
+    expect(team).toContain(taskA);
+    expect(team).toContain(taskB);
+    for (const [who, seen] of Object.entries(answers)) {
+      expect(seen['outages'] ?? [], who).toStrictEqual([]);
+      const body = JSON.stringify(seen);
+      // No outage names a run, a task or a cause to any of them.
+      expect(body, who).not.toMatch(/provider_unavailable|attemptId|reactivated/u);
+    }
+    // Each client sees nothing of the other's task.
+    expect(JSON.stringify(answers.clientA)).not.toContain(taskB);
+    expect(JSON.stringify(answers.clientB)).not.toContain(taskA);
+    // A task grant is not the team's queue: both people are refused, naming no task.
+    for (const seen of [answers.personA, answers.personB]) {
+      expect(seen).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+      expect(JSON.stringify(seen)).not.toContain(taskA);
+      expect(JSON.stringify(seen)).not.toContain(taskB);
+    }
     const idle = await enrol(s.db.app, s.business, 't3e2-idle');
     expect(await queueOf(s, idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+
+    // A member outside the team (a role other than owner, admin or member)
+    // whose business-wide grant does reach the queue is answered, and is still
+    // shown no outage: the reports are the team's, as the alerts are.
+    const contractor = await enrol(s.db.app, s.business, 't3e2-contractor');
+    await s.db.admin.execute(
+      `update public.memberships set role_key = 'contractor'
+        where business_id = $1 and person_id = $2`,
+      [s.business, contractor.personId],
+    );
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, contractor, 'read');
+    });
+    const answered = await queueOf(s, contractor);
+    expect(answered).toMatchObject({ ok: true, outages: [] });
+    expect(JSON.stringify(answered)).not.toMatch(/provider_unavailable|attemptId|reactivated/u);
   });
 
   it('Sol proof, criterion 2: an outage reports a marked run as back after absence proof resumes it', async () => {
