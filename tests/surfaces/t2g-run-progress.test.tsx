@@ -67,6 +67,26 @@ const event = (position: number, runId: string, kind: string) => ({
   at: '2026-09-29T01:00:00.000Z',
 });
 
+const RECEIPT = new Response(
+  JSON.stringify({
+    ok: true,
+    receipt: {
+      attemptId: 'a-1',
+      taskId: TASK.id,
+      decision: {
+        id: 'd-1',
+        gateId: 'g-1',
+        decidedByPersonId: 'p-mia',
+        decidedAt: '2026-09-29T01:00:00Z',
+      },
+      version: { id: 'v-1', number: 2 },
+      effect: { kind: 'comment', operationId: 'op-1', commentId: 'c-1', audience: 'internal' },
+      settlement: { state: 'settled', heldMinor: 2000, spentMinor: 1500, releasedMinor: 500 },
+    },
+  }),
+  { status: 200, headers: { 'content-type': 'application/json' } },
+);
+
 type Execution = (() => Promise<Response> | Response) | Response;
 
 function open(execution: Execution) {
@@ -74,6 +94,7 @@ function open(execution: Execution) {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+    if (at.endsWith('/task/receipt')) return RECEIPT.clone();
     if (at.endsWith('/task/execution')) {
       return typeof execution === 'function' ? await execution() : execution.clone();
     }
@@ -161,6 +182,19 @@ describe('T2g the run on the task page', () => {
     expect(unknown?.getAttribute('data-tone')).toBe('wait');
     expect(unknown?.getAttribute('data-state-reference')).toBe('unknown');
     expect(page.find('[data-run-id="r-1"] [data-event-kind="picked_up"]')).not.toBeNull();
+    await page.unmount();
+  });
+
+  it('draws the receipt: the approval it came from, the effect, and held, spent and released', async () => {
+    const page = await open(answer('ready', [run('r-1', 'running')], [event(1, 'r-1', 'claimed')]));
+    await tick();
+    const receipt = page.find('[data-run-id="r-1"] [data-receipt-attempt="a-1"]');
+    expect(receipt?.getAttribute('data-receipt-decision')).toBe('d-1');
+    expect(receipt?.textContent).toContain('version 2');
+    expect(receipt?.textContent).toContain('team-only comment');
+    const money = page.find('[data-receipt-attempt="a-1"] [data-money]');
+    expect(money?.textContent).toBe('held 20.00 · spent 15.00 · released 5.00');
+    expect(page.find('[data-receipt-attempt="a-1"] button')).toBeNull();
     await page.unmount();
   });
 });
