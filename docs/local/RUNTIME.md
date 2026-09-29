@@ -1268,6 +1268,16 @@ direct SQL.
   configured business on an interval, fences a live lease past its deadline,
   releases an unmarked hold in full and holds a marked step as
   `liability_unknown` at its whole maximum, which no timer path leaves.
+  T3d1 extends that one pass (`recovery/reconcile.ts`, `passDeployment` in
+  `apps/api/recovery-entry.ts`): after the sweep, the recorded-transition
+  replay runs on the same interval, then the register is asked, under the
+  step lock, whether an unknown step's effect happened. Present: settled
+  once at the book's price for the one effect. Absent: the old hold stays
+  held for a person, marked `absence_proved_at` (0035), the old worker's
+  delegation is revoked, and the step resumes on a new hold and attempt that
+  dispatches through T2c1's recheck (dispatch marks the step again for it,
+  once the prior attempt is fenced). No answer: nothing moves. Each phase is
+  one transaction per business.
 - **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
   are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
   `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They
@@ -1349,10 +1359,11 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No write-off and no recorded outcome.** The worker (`apps/worker/`, T2b),
-  effect activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`) and
-  the sweep (T3b) are built. An unknown liability waits for a person (T3c,
-  T3d1); the sweep never settles or releases a marked step.
+- **No write-off.** The worker (`apps/worker/`, T2b), effect activation
+  (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep (T3b) and
+  the reconciliation pass with a person's recorded outcome
+  (`budget.record_outcome`, T3d1) are built. An unknown liability the
+  register cannot answer waits for a person's outcome or a write-off (T3c).
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

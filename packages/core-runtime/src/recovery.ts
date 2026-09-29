@@ -52,7 +52,6 @@ export {
   retireWork,
 } from './recovery/lease-retirement.ts';
 export { sweepExpiredLeases } from './recovery/sweep.ts';
-export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
 export {
   classifyAuthorityLoss,
   type AuthorityLoss,

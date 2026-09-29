@@ -196,7 +196,12 @@ async function readFacts(tx: TenantQuery, found: Found, leaseId: string): Promis
             (res.state = 'held' and res.lease_id = $3 and res.held_minor >= att.estimated_minor
               and att.state = 'dispatched' and att.lease_id = $3) as covered,
             coalesce(d.revoked_at is not null, false) as delegation_revoked,
-            att.id as attempt_id, step.kind as step_kind, step.dispatched_at
+            att.id as attempt_id, step.kind as step_kind,
+            -- T3d1: a step resumed after its first attempt was proved absent
+            -- is marked again for the replacement. The answer to a second
+            -- dispatch is this attempt's own mark, never another's.
+            case when step.dispatch_attempt_id = att.id then step.dispatched_at end
+              as dispatched_at
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
@@ -301,7 +306,13 @@ async function mark(
   const marked = await tx.query<{ readonly dispatched_at: Date }>(
     `update public.planned_steps
         set dispatched_at = $4::timestamptz, dispatch_attempt_id = $3, dispatch_marked = true
-      where business_id = $1 and id = $2 and dispatched_at is null
+      where business_id = $1 and id = $2
+        and (dispatched_at is null
+             -- T3d1: only once the attempt that held the mark is fenced
+             -- (held unknown or settled), so two live marks never share a step.
+             or exists (select 1 from public.attempts prior
+                         where prior.business_id = $1 and prior.id = dispatch_attempt_id
+                           and prior.id <> $3 and prior.state <> 'dispatched'))
       returning dispatched_at`,
     [tx.businessId, found.step_id, attemptId, lockedAt],
   );

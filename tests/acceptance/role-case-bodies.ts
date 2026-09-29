@@ -163,6 +163,22 @@ export async function ownAppliedEffect(
   return { ...lease, attemptId };
 }
 
+/**
+ * An attempt of the person's own held as an unknown liability (T2d): its effect
+ * applied, then observed at a cost above the hold. What a recorded outcome
+ * takes (T3d1).
+ */
+async function ownUnknownAttempt(context: BodyContext): Promise<Record<string, unknown>> {
+  const applied = await ownAppliedEffect(context);
+  const observed = await context.asPerson('task.observe', {
+    ...applied,
+    usage: { item: 'synthetic_comment_long', quantity: 1 },
+  });
+  if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
+  const detail = observed.body['detail'] as Record<string, unknown>;
+  return { recordId: detail['taskId'], attemptId: applied.attemptId };
+}
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
@@ -293,6 +309,10 @@ export function createPositiveBody(
             fromMaximumMinor: PROPOSAL.maximumMinor,
           },
         };
+      case 'budget.record_outcome':
+        // The admin holds billing, so any unknown attempt on the business's
+        // tasks is hers to record (O8, T3d1).
+        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

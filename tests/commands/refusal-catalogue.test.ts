@@ -116,9 +116,10 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
   ['EFFECT_NOT_DISPATCHED', 409, 'caller'],
   ['EFFECT_NOT_OBSERVED', 409, 'caller'],
+  ['LIABILITY_NOT_UNKNOWN', 409, 'caller'],
 ];
 
-/** The runtime's own twenty-four, as `core-runtime` names them; T2c1 added three, T2c2 one. */
+/** The runtime's own twenty-five, as `core-runtime` names them; T2c1 added three, T2c2 one, T3d1 one. */
 const RUNTIME = [
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
   'AUTHORITY_LOST',
@@ -136,6 +137,7 @@ const RUNTIME = [
   'LEASE_EXPIRED',
   'LEASE_HELD',
   'LEASE_NOT_OWNED',
+  'LIABILITY_NOT_UNKNOWN',
   'LINEAGE_NOT_ON_TASK',
   'LINEAGE_TERMINAL',
   'PROPOSAL_OUT_OF_SCOPE',
@@ -153,7 +155,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same twenty-four as the runtime’s own, each under its register status', () => {
+  it('names the same twenty-five as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);

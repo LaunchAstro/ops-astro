@@ -64,8 +64,9 @@ import {
   describeRecovered,
   parseRecoveryScope,
   recoverDeployment,
+  passDeployment,
+  registerEffectLookup,
   startSweeper,
-  sweepDeployment,
   RECOVERY_SCOPE_SETTING,
 } from './recovery-entry.ts';
 
@@ -355,7 +356,7 @@ async function main(): Promise<void> {
   const sweeper = startSweeper(
     async () =>
       await withRuntimeKeys(keys, async () => {
-        return await sweepDeployment(database, resolveBusiness, scope.keys);
+        return await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup);
       }),
   );
 

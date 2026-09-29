@@ -272,6 +272,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
             fromMaximumMinor: 0,
           })),
         ],
+        [
+          'budget.record_outcome',
+          pair('attemptId', f.picked.attemptId, (attemptId) => ({
+            recordId: f.proposal.task.id,
+            attemptId,
+            outcome: 'happened',
+          })),
+        ],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

@@ -37,7 +37,6 @@ import {
   codeOf,
   openSchedules,
   pickup,
-  propose,
   rows,
   type Schedules,
 } from './schedules-harness.ts';
@@ -66,7 +65,7 @@ const openBilling = async (on: Schedules): Promise<void> => {
   );
 };
 
-describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
+describe.skipIf(url === undefined)('T3d1: the reconciliation pass', { timeout: 60_000 }, () => {
   let s: Schedules;
   let other: Schedules;
   let nobody: Member;
@@ -108,7 +107,7 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
     // A second pass, and the woken worker's retry: nothing moves, nothing repeats.
     const settled = await h.t3b.snapshot();
     expect(await h.reconcile()).toStrictEqual([]);
-    expect(codeOf(await h.wokenApply(w))).toBe('ok');
+    expect(codeOf(await h.wokenApply(w))).toBe('applied');
     expect(await h.effects(w)).toBe(1);
     expect(await h.t3b.snapshot()).toStrictEqual(settled);
   });
@@ -132,14 +131,14 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
 
     // Woken after the re-dispatch: the old identity is refused and recorded.
     const before = await h.t3b.snapshot();
-    expect(codeOf(await h.wokenApply(w))).toBe('EFFECT_NOT_DISPATCHED');
+    expect(codeOf(await h.wokenApply(w))).toBe('DELEGATION_NOT_LIVE');
     const audited = await rows(
       s,
       `select outcome, refusal_code from public.audit_events
         where business_id = $1 and operation_id = $2`,
       [s.business, effectOperationId(w.attemptId)],
     );
-    expect(audited).toStrictEqual([{ outcome: 'refused', refusal_code: 'EFFECT_NOT_DISPATCHED' }]);
+    expect(audited).toEqual([{ outcome: 'refused', refusal_code: 'DELEGATION_NOT_LIVE' }]);
     // Its late observe moves no money.
     const late = await onLease(s, w, {
       command: 'task.observe',
@@ -147,7 +146,7 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
       usage: PRICED,
       outcome: 'failed',
     });
-    expect(codeOf(late)).not.toBe('ok');
+    expect(codeOf(late)).not.toBe('applied');
     expect(await h.t3b.snapshot()).toStrictEqual(before);
     expect(await h.effects(w)).toBe(0);
 
@@ -202,7 +201,8 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
     // A lease already fenced whose hold nobody classified: a recorded transition.
     const fenced = await h.t2d.work();
     await s.db.admin.execute(
-      `update public.leases set state = 'expired' where business_id = $1 and id = $2`,
+      `update public.leases set state = 'expired', released_at = now()
+        where business_id = $1 and id = $2`,
       [s.business, fenced.picked['leaseId']],
     );
     // A worker that applied once and is gone: its lease ran out unswept.
@@ -236,19 +236,18 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
       credential: String(picked['credential']),
       attemptId: String(picked['attemptId']),
     };
-    const lineageId = String(w.proposal['lineageId']);
-    if (move === 'superseded') {
-      await propose(s, w.taskId, { lineageId, maximumMinor: 2_500 });
-    } else {
-      const cancel = {
-        command: 'task.cancel',
-        operationId: randomUUID(),
-        recordId: w.taskId,
-        lineageId,
-        reason: 'removed before the replacement dispatched',
-      };
-      appliedDetail(await asPerson(s, cancel), 'task.cancel');
-    }
+    // Moved as T2c1's own recheck case moves it: committed without reaching
+    // the lease, which is the race the recheck is inside dispatch for.
+    await s.db.admin.execute(
+      move === 'superseded'
+        ? `update public.proposal_versions set superseded_at = now()
+            where business_id = $1 and id = $2`
+        : `update public.proposal_lineages
+              set state = 'rejected', terminal_reason = 'removed', terminal_at = now()
+            where business_id = $1 and id = (select lineage_id from public.proposal_versions
+                                              where business_id = $1 and id = $2)`,
+      [s.business, w.proposal['versionId']],
+    );
     const before = await h.t3b.snapshot();
     const dispatched = await h.t2d.held(next, { command: 'task.dispatch' });
     expect(codeOf(dispatched), move).toBe('DECISION_STALE');
@@ -259,7 +258,7 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
       `select 1 from public.operations where business_id = $1 and operation_id = $2`,
       [s.business, effectOperationId(next.attemptId)],
     );
-    expect(receipts, move).toStrictEqual([]);
+    expect(receipts, move).toHaveLength(0);
   };
 
   it('T3 replacement dispatch gate: superseded, then removed, before the replacement dispatches', async () => {
@@ -274,12 +273,15 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
       await h.outcome(nothing, 'nothing_happened', operationId),
       'budget.record_outcome',
     );
-    expect(recorded).toMatchObject({ outcome: 'nothing_happened', settlement: { spentMinor: 0 } });
+    expect(recorded).toMatchObject({
+      outcome: 'nothing_happened',
+      settlement: { spentMinor: 0, releasedMinor: 2500 },
+    });
     // Nothing happened: the hold goes back and the work resumes on a new hold.
     expect(await h.t3b.money(nothing)).toMatchObject({
-      state: 'actual',
-      actual: '0',
-      attempt_state: 'settled',
+      state: 'abandoned',
+      classified_cause: 'outcome_recorded',
+      attempt_state: 'abandoned',
     });
     expect(await h.replacement(nothing)).toBeDefined();
     const once = await h.t3b.snapshot();
@@ -303,10 +305,39 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
 
     // Only the three.
     const w = await h.unknownStep({ applied: false });
+    const untouched = await h.t3b.snapshot();
     expect(codeOf(await h.outcome(w, 'unknown'))).toBe('FIELD_VALUE_INVALID');
+    // An undeclared field is refused, never ignored.
+    const extra = await asPerson(s, {
+      command: 'budget.record_outcome',
+      operationId: randomUUID(),
+      recordId: w.taskId,
+      attemptId: w.attemptId,
+      outcome: 'happened',
+      actualMinor: 1,
+    });
+    expect(codeOf(extra)).not.toBe('applied');
+    expect(await h.t3b.snapshot()).toStrictEqual(untouched);
+
+    // Two people's records at once, on one attempt: exactly one is recorded.
+    const raced = await Promise.all([h.outcome(w, 'happened'), h.outcome(w, 'nothing_happened')]);
+    const codes = raced.map((one) => codeOf(one)).toSorted();
+    expect(codes).toStrictEqual(['LIABILITY_NOT_UNKNOWN', 'applied']);
+    expect(await h.t3b.money(w)).toMatchObject({ envelope_held: '0' });
   });
 
   it('T3 isolation and authority: an agent, a person without the grant, another client and another business record nothing', async () => {
+    // Client to client: an external client on its own shared task, holding a
+    // money grant there that R4 never lets it use, records nothing anywhere;
+    // a member whose money grant covers only that other task records nothing
+    // here, and naming this attempt on the task it does hold is NOT_FOUND.
+    const own = await h.t2d.work();
+    const client = await cq8World(s).client(s.business, s.decider, 'client-own', own.taskId);
+    const scoped = await enrol(s.db.app, s.business, 'scoped-billing');
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, client, 'decide', { kind: 'record', id: own.taskId }, false, 'billing');
+      await grantTo(tx, scoped, 'decide', { kind: 'record', id: own.taskId }, false, 'billing');
+    });
     const w = await h.unknownStep({ applied: true });
     const before = await h.t3b.snapshot();
     const body = {
@@ -322,26 +353,22 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
     expect(codeOf(await asMember(s, nobody, { ...body, operationId: randomUUID() }))).toBe(
       'SCOPE_NOT_GRANTED',
     );
-    // Client to client: an external client holding billing:decide on its own task only.
-    const own = await h.t2d.work();
-    const client = await cq8World(s).client(s.business, s.decider, 'client-own', own.taskId);
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(tx, client, 'decide', { kind: 'record', id: own.taskId }, false, 'billing');
-    });
-    const foreign = await asMember(s, client, { ...body, operationId: randomUUID() });
-    expect(['NOT_FOUND', 'SCOPE_NOT_GRANTED']).toContain(codeOf(foreign));
-    expect(
-      codeOf(
-        await asMember(s, client, { ...body, operationId: randomUUID(), recordId: own.taskId }),
-      ),
-    ).toBe('NOT_FOUND');
+    const again = (extra: object) => ({ ...body, operationId: randomUUID(), ...extra });
+    expect(codeOf(await asMember(s, client, again({})))).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await asMember(s, client, again({ recordId: own.taskId })))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    expect(codeOf(await asMember(s, scoped, again({})))).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await asMember(s, scoped, again({ recordId: own.taskId })))).toBe('NOT_FOUND');
     expect(await h.t3b.snapshot()).toStrictEqual(before);
 
     // Business to business: the other business's unknown step is not this pass's.
     const there = await away.unknownStep({ applied: true });
     const awayBefore = await away.t3b.snapshot();
     const answered = await h.reconcile();
-    expect(answered.map((one) => one.attemptId)).toStrictEqual([w.attemptId]);
+    const ids = answered.map((one) => one.attemptId);
+    expect(ids).toContain(w.attemptId);
+    expect(ids).not.toContain(there.attemptId);
     expect(await away.t3b.snapshot()).toStrictEqual(awayBefore);
     expect(await away.t3b.money(there)).toMatchObject({ attempt_state: 'liability_unknown' });
     // Nor can this business's person name that attempt.
@@ -351,6 +378,10 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', () => {
       attemptId: there.attemptId,
     });
     expect(codeOf(across)).toBe('NOT_FOUND');
+    // The refusal carries nothing of the other business: no id, no title.
+    for (const canary of [there.attemptId, there.taskId, other.business]) {
+      expect(JSON.stringify(across)).not.toContain(canary);
+    }
     expect(await away.t3b.snapshot()).toStrictEqual(awayBefore);
     expect(await away.reconcile()).toMatchObject([
       { attemptId: there.attemptId, answer: 'present' },

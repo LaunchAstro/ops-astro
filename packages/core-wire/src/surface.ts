@@ -110,7 +110,9 @@ export type CommandName =
   | 'task.observe'
   | 'task.receipt'
   // A person raises a task's envelope, two people above the band (T2e).
-  | 'budget.top_up';
+  | 'budget.top_up'
+  // A person records what an unknown effect came to: one of three (T3d1).
+  | 'budget.record_outcome';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -381,6 +383,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
   // Minor units, of the maximum the person saw; no standing ceiling (Q168).
   'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
+  // The task, the attempt held unknown, and one of the three outcomes (O7).
+  'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -562,6 +566,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId'],
+  }), // `billing:decide` on the task (T3d1): any person holding it records an
+  // unknown effect's outcome (O8); no agent route serves it.
+  declare('budget.record_outcome', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
 ];
 

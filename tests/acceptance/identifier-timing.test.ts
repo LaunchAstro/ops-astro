@@ -265,6 +265,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 100,
       fromMaximumMinor: 0,
     }));
+    byAda('budget.record_outcome', 'attemptId', f.picked.attemptId, (attemptId) => ({
+      recordId: f.proposal.task.id,
+      attemptId,
+      outcome: 'happened',
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -298,11 +303,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 30 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 31 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(30);
-    expect(names).toHaveLength(30);
+    expect(new Set(names).size, 'distinct operations').toBe(31);
+    expect(names).toHaveLength(31);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
