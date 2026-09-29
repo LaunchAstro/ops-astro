@@ -87,7 +87,7 @@ describe.skipIf(serverUrl === undefined)('the target a grant is checked against'
   });
 
   const revisionOf = async (recordId: string): Promise<number> => {
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly revision: string }>(
         `select revision::text as revision from records where business_id = $1 and id = $2`,
         [business, recordId],
@@ -153,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('the target a grant is checked against'
     expect(isCommandRefusal(outcome) && outcome.names).toStrictEqual(['recordId']);
 
     // And nothing was written under the borrowed target.
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly count: string }>(
         `select count(*)::text as count from records
           where business_id = $1 and data ->> 'title' = 'borrowed authority'`,

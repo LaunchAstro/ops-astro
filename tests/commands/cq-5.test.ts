@@ -268,7 +268,7 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
       { kind: 'person', id: holder.personId },
       { kind: 'actor', id: holder.actorId },
     ] as const;
-    const decision = await db.app.withBusiness(charlie.id, async (tx) =>
+    const decision = await db.app.withBusiness(charlie.id, (tx) =>
       checkAuthority(tx, subjects, {
         collection: 'task',
         action: 'write',

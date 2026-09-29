@@ -147,7 +147,7 @@ describe.skipIf(serverUrl === undefined)(
         if (isCommandRefusal(purged)) throw new Error(`purge refused ${purged.code}`);
         expect(Number(purged.detail['purged'])).toBeGreaterThanOrEqual(1);
 
-        const gone = await db.app.withBusiness(business, async (tx) =>
+        const gone = await db.app.withBusiness(business, (tx) =>
           tx.query<{ readonly count: string }>(
             `select count(*)::text as count from records where business_id = $1 and id = $2`,
             [business, doomed.recordId],
@@ -156,11 +156,11 @@ describe.skipIf(serverUrl === undefined)(
         expect(gone[0]?.count).toBe('0');
 
         // The record is gone and what was done to it is not.
-        const history = await db.app.withBusiness(business, async (tx) =>
+        const history = await db.app.withBusiness(business, (tx) =>
           readRecordAudit(tx, doomed.recordId ?? ''),
         );
         expect(history.map((event) => event.command)).toStrictEqual(['task.create', 'task.trash']);
-        const register = await db.app.withBusiness(business, async (tx) =>
+        const register = await db.app.withBusiness(business, (tx) =>
           tx.query<{ readonly count: string }>(
             `select count(*)::text as count from operations
             where business_id = $1 and record_id = $2`,

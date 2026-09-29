@@ -94,7 +94,7 @@ async function proposeOn(
 }
 
 async function approveOn(database: FreshDatabase, fixture: RuntimeFixture, of: Proposed) {
-  return await database.app.withBusiness(fixture.businessId, async (tx) =>
+  return await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,

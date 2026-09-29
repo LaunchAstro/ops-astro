@@ -220,7 +220,7 @@ describe.skipIf(serverUrl === undefined)('a decision committed during the decisi
       expect(paused.outcome).toBeNull();
 
       // And the committed decision reads afterwards, verified.
-      const after = await current.db.app.withBusiness(current.alpha, async (tx) =>
+      const after = await current.db.app.withBusiness(current.alpha, (tx) =>
         readVerifiedDecisions(tx, [gate.lineageId], configuredKey()),
       );
       expect(after).toHaveLength(before + 1);
