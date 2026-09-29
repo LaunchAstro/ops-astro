@@ -132,6 +132,7 @@ async function roleClasses(
                  when r.rolname = $2 then 'worker'
                  when r.rolname = 'ops_astro_backup' then 'backup'
                  when r.rolname = 'ops_astro_backup_retention' then 'backup retention'
+                 when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
