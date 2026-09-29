@@ -14,6 +14,7 @@ import type { CommandContext } from './context.ts';
 import { createTask } from './tasks-write.ts';
 import { invalid, textOk, type RequestOf } from './wayfinder.ts';
 import { applyRevision, parseRevision, type Revision } from './wayfinder-revision.ts';
+import { PRE_ANSWER_FIXES, preAnswerList, refuseUncitable } from './wayfinder-pre-answers.ts';
 
 export const TICKET_LIMIT = 100;
 
@@ -113,6 +114,8 @@ function chartOperands(
         ? (request.outOfScope as readonly unknown[]).map((text) => ({ text }))
         : null;
   if (outOfScope === null) wrong.push('outOfScope');
+  const preAnswers = preAnswerList(request.preAnswers);
+  if (preAnswers === undefined) wrong.push('preAnswers');
   const revision = parseRevision(
     {
       destination: request.destination,
@@ -127,7 +130,10 @@ function chartOperands(
     wrong.push(...(revision as readonly string[]).map((name) => renamed[name] ?? name));
   }
   if (wrong.length > 0) return [...new Set(wrong)].toSorted();
-  return { tickets: tickets as readonly ChartTicket[], body: revision as Revision };
+  return {
+    tickets: tickets as readonly ChartTicket[],
+    body: { ...(revision as Revision), addPreAnswers: preAnswers ?? [] },
+  };
 }
 
 /**
@@ -173,9 +179,13 @@ export async function chartMap(
     return invalid(operands as readonly string[], [
       'title is 1 to 4000 characters; tickets a list of { ref, title, type, blockedBy? }.',
       'Each blockedBy names refs of this chart, with no cycle; fog and outOfScope are lists of lines.',
+      ...PRE_ANSWER_FIXES,
     ]);
   }
   const { tickets, body } = operands as Exclude<typeof operands, readonly string[]>;
+  // Every citation is checked before the first row is written.
+  const uncitable = await refuseUncitable(tx, context, body.addPreAnswers ?? []);
+  if (uncitable !== undefined) return uncitable;
   const map = await createTask(tx, context, {
     command: 'task.create',
     operationId: '',
@@ -190,7 +200,7 @@ export async function chartMap(
   const hasBody =
     body.destination !== undefined ||
     body.notes !== undefined ||
-    body.addFog.length + body.addOutOfScope.length > 0;
+    body.addFog.length + body.addOutOfScope.length + (body.addPreAnswers?.length ?? 0) > 0;
   const written = hasBody ? await applyRevision(tx, context, mapId, body) : undefined;
   const current = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from records where business_id = $1 and id = $2`,

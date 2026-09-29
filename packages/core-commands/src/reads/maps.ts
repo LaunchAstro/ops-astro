@@ -5,7 +5,7 @@
 // tickets in closing order, never stored on the map, so a decision lives once,
 // on its ticket (W2).
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   MapComponentView,
   MapFrontierResult,
@@ -13,6 +13,7 @@ import type {
   MapView,
 } from '../../../core-wire/src/index.ts';
 import type { Detail } from './detail.ts';
+import { readPreAnswers } from './map-pre-answers.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -77,6 +78,7 @@ function mapView(
   components: readonly ComponentRow[],
   tickets: readonly TicketRow[],
   versions: readonly VersionRow[],
+  preAnswers: MapView['preAnswers'],
 ): MapView {
   const of = (kind: MapComponentView['kind']) =>
     components.filter((row) => row.kind === kind).map((row) => componentView(row));
@@ -93,6 +95,7 @@ function mapView(
     notes: of('notes')[0] ?? null,
     fog: of('fog'),
     outOfScope: of('out_of_scope'),
+    preAnswers,
     decisions: decisionsSoFar(tickets),
     tickets: tickets.map((ticket) => ({
       id: ticket.id,
@@ -144,6 +147,7 @@ export async function readMapView(
   tx: TenantQuery,
   taskTypeId: string,
   mapId: string,
+  subjects: readonly Subject[],
 ): Promise<MapView | undefined> {
   const maps = await tx.query<MapRow>(
     `select r.txt_1 as key, r.txt_4 as title, r.data ->> 'map_owner' as owner,
@@ -159,6 +163,7 @@ export async function readMapView(
   const components = await tx.query<ComponentRow>(
     `select id, kind, body, ticket_id from public.map_components
       where business_id = $1 and map_id = $2 and retired_version is null
+        and kind <> 'pre_answer'
       order by kind, position`,
     [tx.businessId, mapId],
   );
@@ -168,7 +173,8 @@ export async function readMapView(
       where business_id = $1 and map_id = $2 order by version`,
     [tx.businessId, mapId],
   );
-  return mapView(mapId, map, components, tickets, versions);
+  const preAnswers = await readPreAnswers(tx, subjects, mapId);
+  return mapView(mapId, map, components, tickets, versions, preAnswers);
 }
 
 /**

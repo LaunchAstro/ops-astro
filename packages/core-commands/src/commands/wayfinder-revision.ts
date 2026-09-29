@@ -13,6 +13,7 @@ import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { BODY_LIMIT, invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
+import { writePreAnswers, type PreAnswer } from './wayfinder-pre-answers.ts';
 
 interface OutOfScopeItem {
   readonly text: string;
@@ -25,6 +26,8 @@ export interface Revision {
   readonly addFog: readonly string[];
   readonly addOutOfScope: readonly OutOfScopeItem[];
   readonly retire: readonly string[];
+  /** Charting's cited pre-answers (WF-6), checked by the chart before it writes. */
+  readonly addPreAnswers?: readonly PreAnswer[];
 }
 
 /** The operands a revision is read from: `map.revise`'s, or a chart's. */
@@ -200,6 +203,9 @@ export async function applyRevision(
     changed.push(graduation.patchId);
   }
   changed.push(...(await writeComponents(tx, mapId, version, parsed)));
+  if (parsed.addPreAnswers !== undefined) {
+    changed.push(...(await writePreAnswers(tx, mapId, version, parsed.addPreAnswers)));
+  }
   await tx.query(
     `insert into map_versions (business_id, id, map_id, version, changed, actor_id)
      values ($1, $2, $3, $4, $5::uuid[], $6)`,

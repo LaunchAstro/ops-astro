@@ -229,6 +229,16 @@ Migration `0032_wayfinder_maps.sql` holds what a map has that a task does not:
 Decisions so far is not stored: `map.view` renders it from the map's completed
 tickets in closing order, so a decision lives once, on its ticket.
 
+Charting's pre-answers (WF-6, migration `0033_wayfinder_pre_answers.sql`) are
+`map_components` rows of kind `pre_answer`: the question, the answer (the
+body), `veto_open` for an obvious call ("decided, veto open"), and exactly one
+source, `source_record_id` (a closed ticket) or `source_reference` (one line).
+`map.chart` refuses an uncited pre-answer, and a cited record the charter may
+not read answers NOT_FOUND like one that does not exist. `map.view` shows a
+cited record only to a reader who may read it; anyone else sees the source as
+withheld. A pre-answer resolves nothing, so it never joins Decisions so far.
+Renumber 0033 at merge if another slice took the number.
+
 `map_summaries` has one writer, the security definer trigger functions in 0032. A write to a task recounts the map it is, and the map its parent was
 before and after; a write to a component or a version recounts its map. So the
 counts move in the transaction that changed them, whichever command did it.

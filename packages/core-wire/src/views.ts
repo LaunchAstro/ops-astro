@@ -473,6 +473,23 @@ export interface MapComponentView {
   readonly ticketId: string | null;
 }
 
+/**
+ * A charting pre-answer (WF-6): a question recorded decisions settle, its
+ * answer and the one source it cites. A cited record the reader may not read
+ * (or one since purged) is shown as withheld, never by id.
+ */
+export interface MapPreAnswerView {
+  readonly id: string;
+  readonly question: string;
+  readonly answer: string;
+  /** An obvious call: decided, veto open. */
+  readonly vetoOpen: boolean;
+  readonly source:
+    | { readonly recordId: string; readonly key: string | null }
+    | { readonly reference: string }
+    | { readonly withheld: true };
+}
+
 /** A map as its view reads it: the task, its sections, its tickets and its versions. */
 export interface MapView {
   readonly id: string;
@@ -488,6 +505,7 @@ export interface MapView {
   readonly notes: MapComponentView | null;
   readonly fog: readonly MapComponentView[];
   readonly outOfScope: readonly MapComponentView[];
+  readonly preAnswers: readonly MapPreAnswerView[];
   /** Rendered from resolved tickets in closing order; stored once, on each ticket. */
   readonly decisions: readonly {
     readonly ticketId: string;

@@ -95,6 +95,7 @@ export type CommandRequest =
       readonly tickets?: unknown;
       readonly fog?: unknown;
       readonly outOfScope?: unknown;
+      readonly preAnswers?: unknown;
     } & Envelope)
   | ({ readonly command: 'task.set_blocking'; readonly blockedBy: unknown } & Targeted)
   | ({ readonly command: 'task.claim' } & Targeted)

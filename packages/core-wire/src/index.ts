@@ -51,6 +51,7 @@ export type {
   ReservationView,
   SettingsReadResult,
   MapComponentView,
+  MapPreAnswerView,
   MapView,
   MapViewResult,
   MapFrontierResult,

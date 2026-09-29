@@ -422,6 +422,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     tickets: 'any',
     fog: 'any',
     outOfScope: 'any',
+    preAnswers: 'any',
   },
   'task.set_blocking': { ...TARGET, blockedBy: 'any' },
   'task.claim': TARGET,
