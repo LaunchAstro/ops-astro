@@ -2,7 +2,7 @@
 //
 // `task.decide`: a person's decision on a gate.
 
-import { isUuid, subjectsOf } from '../../../core-records/src/index.ts';
+import { clearDecision, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -136,6 +136,9 @@ export async function decideOnGate(
       escalatedToPersonId: decided.escalatedToPersonId,
     });
   }
+  // INB-1: the gate's decision items close in this transaction, naming the
+  // decider; a fault here throws and takes the decision down with it.
+  await clearDecision(tx, { gateId: decided.gateId, decisionId: decided.decisionId });
   return applied(null, null, {
     decisionId: decided.decisionId,
     gateId: decided.gateId,
