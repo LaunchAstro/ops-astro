@@ -55,6 +55,7 @@ import {
   walkTheOtherLineages,
   type Journey,
   type Lineages,
+  digestOf,
 } from './restart-harness.ts';
 import { declaredApiPort, readOverHttp, startApi } from './restart-process.ts';
 
@@ -197,8 +198,12 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
         const decideAgain = await asAda(world, fresh.api, '/task/decide', journey.decideBody);
         expect(proposeAgain.code, 'replayed propose').toBe('ok');
         expect(decideAgain.code, 'replayed decide').toBe('ok');
-        expect(proposeAgain.text, 'replayed propose').toBe(journey.receipts.propose);
-        expect(decideAgain.text, 'replayed decide').toBe(journey.receipts.decide);
+        expect(digestOf(proposeAgain.text), 'replayed propose').toBe(
+          digestOf(journey.receipts.propose),
+        );
+        expect(digestOf(decideAgain.text), 'replayed decide').toBe(
+          digestOf(journey.receipts.decide),
+        );
         report('replayed propose and decide', [proposeAgain.code, decideAgain.code]);
         expect(await identities(world)).toStrictEqual(beforeReplay);
       } finally {
@@ -257,7 +262,9 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
         undefined,
       );
       expect(replayed.code).toBe('ok');
-      expect(replayed.text, 'the original answer').toBe(journey.receipts.pickup);
+      expect(digestOf(replayed.text), 'the original answer').toBe(
+        digestOf(journey.receipts.pickup),
+      );
       expect(await countLeases(world, journey.reservationId)).toBe(leasesBefore);
 
       const handback = {

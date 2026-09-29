@@ -11,7 +11,8 @@
 //   a `family.verb` operation name, and none is null. It reads the spelling
 //   only (0009's pattern): a well-formed name no command owns, such as
 //   `task.no_such_operation`, passes it, and so does `preset.plan`. Nothing in
-//   the product refuses such a name yet; that is a follow-up, not this suite.
+//   the product refuses such a name yet: a case below pins that it is
+//   accepted today, and ops-astro#142 turns it into a refusal.
 //
 // A valid list is written alongside as the control, so each refusal is about
 // the value and not about the row around it. An empty list fails both checks,
@@ -32,6 +33,10 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
+/** Thrown to end a transaction that must leave nothing behind. */
+class Rollback extends Error {}
+
+// eslint-disable-next-line max-lines-per-function -- one fresh database, its cases read top to bottom
 describe.skipIf(serverUrl === undefined)('CQ-14 owning operation constraints', () => {
   let db: FreshDatabase;
   let businessId: string;
@@ -69,7 +74,6 @@ describe.skipIf(serverUrl === undefined)('CQ-14 owning operation constraints', (
     await expect(operationField('owned_by_none', [])).rejects.toThrow(
       /field_defs_operation_names_are_operations/u,
     );
-    class Rollback extends Error {}
     const alone = db.admin.transaction(async (execute) => {
       await execute(
         `alter table public.field_defs drop constraint field_defs_operation_names_are_operations`,
@@ -97,6 +101,25 @@ describe.skipIf(serverUrl === undefined)('CQ-14 owning operation constraints', (
     await expect(
       operationField('owned_by_one_and_nothing', ['task.complete', 'Task Complete']),
     ).rejects.toThrow(/field_defs_operation_names_are_operations/u);
+  });
+
+  // Pinned as it is, not as it should be: ops-astro#142 refuses an operation
+  // no command owns, at `preset.plan` and, if the plan keeps it, here. That fix
+  // turns this case into a refusal. Written in a transaction that rolls back,
+  // so the table keeps only the control.
+  it('accepts a well-formed unknown operation name today: the check reads spelling, not existence', async () => {
+    const written = db.app.withBusiness(businessId, async (tx) => {
+      await insertField(tx, typeId, {
+        key: 'owned_by_no_such_operation',
+        valueType: 'text',
+        writeMode: 'operation',
+        owningOperations: ['task.no_such_operation'],
+      });
+      throw new Rollback();
+    });
+    await expect(written, 'the insert went through to the rollback').rejects.toBeInstanceOf(
+      Rollback,
+    );
   });
 
   it('wrote only the control', async () => {

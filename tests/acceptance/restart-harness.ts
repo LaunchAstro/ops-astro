@@ -17,8 +17,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { expect } from 'vitest';
 import {
   ADMIN_ACTIONS,
@@ -208,13 +209,22 @@ export async function countLeases(world: World, reservationId: string): Promise<
   return Number(rows[0]?.n ?? '0');
 }
 
+/**
+ * A body's digest, which is what a receipt comparison prints. The pickup's
+ * receipt carries its delegation credential, and a failure message must not.
+ */
+export const digestOf = (text: string): string => createHash('sha256').update(text).digest('hex');
+
 /** A replay of `first`'s request, its content checked against `first`, as that request's receipt. */
 async function receiptOf(
   first: Awaited<ReturnType<typeof call>>,
   replay: () => ReturnType<typeof call>,
 ): Promise<string> {
   const again = await replay();
-  expect(JSON.parse(again.text), 'the replay carries the first answer').toStrictEqual(first.body);
+  expect(
+    isDeepStrictEqual(JSON.parse(again.text), first.body),
+    'the replay carries the first answer',
+  ).toBe(true);
   return again.text;
 }
 

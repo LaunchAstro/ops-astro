@@ -47,6 +47,7 @@ import {
   type AgentWork,
   type Journey,
   type Lineages,
+  digestOf,
 } from './restart-harness.ts';
 import { declaredApiPort, overHttp, startApi, type RunningApi } from './restart-process.ts';
 
@@ -313,8 +314,10 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     const decideAgain = await asAda(world, api, '/task/decide', journey.decideBody);
     expect(proposeAgain.code, 'replayed propose').toBe('ok');
     expect(decideAgain.code, 'replayed decide').toBe('ok');
-    expect(proposeAgain.text, 'replayed propose').toBe(journey.receipts.propose);
-    expect(decideAgain.text, 'replayed decide').toBe(journey.receipts.decide);
+    expect(digestOf(proposeAgain.text), 'replayed propose').toBe(
+      digestOf(journey.receipts.propose),
+    );
+    expect(digestOf(decideAgain.text), 'replayed decide').toBe(digestOf(journey.receipts.decide));
     expect(await identities(world)).toStrictEqual(before);
     report('http replays', [
       `propose ${String(proposeAgain.status)}`,
@@ -371,7 +374,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       reservationId: journey.reservationId,
     });
     expect(replayed.code, 'replayed pickup').toBe('ok');
-    expect(replayed.text, 'replayed pickup').toBe(journey.receipts.pickup);
+    expect(digestOf(replayed.text), 'replayed pickup').toBe(digestOf(journey.receipts.pickup));
     expect(await countLeases(world, journey.reservationId)).toBe(leases);
     const handback = {
       leaseId: journey.leaseId,
