@@ -89,6 +89,7 @@ export type CommandName =
   // `business_settings` rows already cite in `owning_operation`.
   | 'settings.set_four_eyes_threshold'
   | 'settings.set_client_sign_off'
+  // C59: whether a money action needs a recent second-factor sign-in.
   | 'settings.set_money_step_up'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
@@ -343,6 +344,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
+  'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -445,6 +447,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
   }),
   declare('settings.set_client_sign_off', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C59: the money step-up, switched only by `settings:manage` (the owner or
+  // an administrator), never by an agent, and audited by the envelope.
+  declare('settings.set_money_step_up', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],

@@ -49,7 +49,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501 | 502;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -296,6 +296,57 @@ const ROWS = [
     status: 401,
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
+  },
+  // C59. A person with a verified second factor who presents a sign-in
+  // without it is not yet signed in: 401, the door that asks for the code.
+  // A money command asked of a sign-in older than the step-up window is signed
+  // in and not recent enough: 403, like any other authority refusal.
+  {
+    code: 'AUTH_SECOND_FACTOR_REQUIRED',
+    status: 401,
+    meaning: 'This person has a second factor and the sign-in did not use it',
+    source: 'C59 LF-4',
+  },
+  {
+    code: 'STEP_UP_REQUIRED',
+    status: 403,
+    meaning: 'A money action needs a sign-in with the second factor inside the step-up window',
+    source: 'C59 TR-SEC4-6',
+  },
+  // C59, a person's own factor. A first enrolment needs a password sign-in
+  // inside the step-up window; a second one needs the first removed; a code is
+  // checked by the provider, and a provider answer that is malformed,
+  // oversized, slow or unreachable is refused by its kind (502: the fault is
+  // upstream, and nothing was changed).
+  {
+    code: 'FRESH_SIGN_IN_REQUIRED',
+    status: 403,
+    meaning: 'Setting up a second factor needs a password sign-in inside the step-up window',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_ALREADY_ENROLLED',
+    status: 409,
+    meaning: 'This person already has a verified second factor',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_NOT_ENROLLED',
+    status: 409,
+    meaning: 'This person has no second factor to verify or remove',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_INVALID',
+    status: 422,
+    meaning: 'The code was not accepted by the sign-in provider',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'PROVIDER_ANSWER_INVALID',
+    status: 502,
+    meaning: 'The sign-in provider answered malformed, oversized, slowly or not at all',
+    source: 'C59 TR-SEC4R-5',
   },
 
   // Delegation and lease, T1's pickup and handback. No table yet.

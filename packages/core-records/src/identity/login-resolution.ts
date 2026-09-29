@@ -35,7 +35,8 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
-import type { VerifiedSubject } from './verified-subject.ts';
+import { hasVerifiedFactor } from './second-factor.ts';
+import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
 
@@ -52,7 +53,20 @@ export interface Session {
    * no role a preset names can be mistaken for one.
    */
   readonly roleKey: string | null;
+  /**
+   * How strongly the provider says this call signed in (C59): the level, and
+   * the times of the first sign-in and of the second factor. The money
+   * step-up reads it (`authority/step-up.ts`); nothing else grants on it.
+   */
+  readonly assurance: Assurance;
 }
+
+/**
+ * Whether a sign-in without the second factor is refused for a person who has
+ * one. `required` everywhere but the factor routes themselves, which serve the
+ * sign-in that has not yet given its code (C59: verifying is how it gets one).
+ */
+export type SecondFactorRule = 'required' | 'enrolling';
 
 interface ResolutionRow {
   readonly login_id: string;
@@ -68,6 +82,10 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
+
+const SECOND_FACTOR_FIXES = [
+  'enter the code from your authenticator app to finish signing in',
+] as const;
 
 // Left joins rather than four round trips, because the four facts are read
 // under one snapshot and one policy evaluation. Row security scopes every
@@ -104,6 +122,7 @@ const RESOLUTION = `
 export async function resolveLogin(
   tx: TenantQuery,
   presented: VerifiedSubject,
+  rule: SecondFactorRule = 'required',
 ): Promise<Session | Refusal> {
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
@@ -118,12 +137,29 @@ export async function resolveLogin(
     return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
   }
 
+  // After the person is known and active, because only a person has a factor,
+  // and before anything is served: a sign-in that stopped at the password is
+  // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
+  const assurance = presented.assurance ?? NO_ASSURANCE;
+  if (
+    rule === 'required' &&
+    assurance.level !== 'aal2' &&
+    (await hasVerifiedFactor(tx, found.person_id))
+  ) {
+    return await recordRefusal(
+      tx,
+      presented,
+      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
+    );
+  }
+
   const session: Session = {
     businessId: tx.businessId,
     loginId: found.login_id,
     personId: found.person_id,
     actorId: found.actor_id,
     roleKey: found.role_key,
+    assurance,
   };
   // The attempt and what it resolved to commit together with whatever the
   // caller goes on to do. I13 asks for every attempt, which includes the ones
@@ -199,9 +235,10 @@ export async function withSession<T>(
   businessId: BusinessId,
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
+  rule: SecondFactorRule = 'required',
 ): Promise<T | Refusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const resolved = await resolveLogin(tx, presented);
+    const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
     return await run(tx, resolved);
   });

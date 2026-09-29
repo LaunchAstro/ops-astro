@@ -19,6 +19,7 @@
 // before. 0031 changes no row: an over-ceiling database refuses the upgrade
 // with its rows as they were, and the ledger does not record 0031.
 
+import { readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -41,6 +42,13 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+
+/** The four-digit version of the newest migration on disk. */
+const NEWEST_ON_DISK = readdirSync('migrations')
+  .filter((name) => name.endsWith('.sql'))
+  .toSorted()
+  .at(-1)
+  ?.slice(0, 4);
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -203,7 +211,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      // The newest migration on disk: the upgrade ran to the end, whatever lands after 0031.
+      expect(await lastApplied(on)).toBe(NEWEST_ON_DISK);
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;

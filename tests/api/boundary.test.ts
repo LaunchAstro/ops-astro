@@ -316,7 +316,16 @@ describe('the read half of the surface', () => {
 
     expect(answer.status).toBe(200);
     expect(calls).toEqual([
-      { businessId: ALPHA, presented: { provider: 'supabase', subject: MIA }, read: first.name },
+      {
+        businessId: ALPHA,
+        // The token carries no `aal` or `amr`, so the lowest assurance (C59).
+        presented: {
+          provider: 'supabase',
+          subject: MIA,
+          assurance: { level: 'aal1', signedInAt: null, factorAt: null },
+        },
+        read: first.name,
+      },
     ]);
   });
 

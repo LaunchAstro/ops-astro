@@ -120,6 +120,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'grant.revoke': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'settings.set_money_step_up': [],
   'task.cancel': ['recordId', 'lineageId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
@@ -141,6 +142,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
+  'settings.set_money_step_up',
   'task.board',
   'task.cancel',
   'task.create',
@@ -226,6 +228,7 @@ const REQUESTS: readonly CommandRequest[] = [
     expectedRevision: 3,
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
+  { command: 'settings.set_money_step_up', operationId: 'op', value: false },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -266,6 +269,12 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     'setBusinessSetting',
     'settings.set_client_sign_off',
     true,
+    undefined,
+  ],
+  'settings.set_money_step_up': [
+    'setBusinessSetting',
+    'settings.set_money_step_up',
+    false,
     undefined,
   ],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
@@ -312,7 +321,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-one from an expected revision', () => {
+  it('exempts the same twenty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

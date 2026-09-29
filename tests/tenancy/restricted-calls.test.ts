@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the four tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -69,6 +69,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = a.business_id
        join public.actors actor on actor.business_id = a.business_id
       order by p.id, actor.id limit 1 returning 1`,
+  // C59: no journey enrols a second factor, so one is written here.
+  'public.second_factors': `insert into public.second_factors
+       (business_id, id, person_id, provider, provider_factor_id)
+     select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

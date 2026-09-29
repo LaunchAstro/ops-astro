@@ -28,7 +28,7 @@
 
 import type { Context } from 'hono';
 import { verify } from 'hono/jwt';
-import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
+import type { Assurance, VerifiedSubject } from '../../../packages/core-records/src/index.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -101,13 +101,61 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const subject = claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
-    // Only `sub` crosses. The token's `email`, `role`, `app_metadata` and
+    // `sub` crosses, and beside it how strongly the provider says the caller
+    // signed in (C59, LF-4). The token's `email`, `role`, `app_metadata` and
     // `user_metadata` are the provider's business and carry no authority here:
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
-    return { provider: SUPABASE_PROVIDER, subject };
+    return { provider: SUPABASE_PROVIDER, subject, assurance: assuranceOf(claims) };
   };
 }
+
+/**
+ * The assurance a verified token carries: `aal`, and from `amr` the time of the
+ * session's first sign-in and of its second factor.
+ *
+ * **The factor time is the `amr` entry, never `iat`.** GoTrue stamps each
+ * method with the time it was performed and copies the list into every token
+ * the session refreshes, so a refresh carries the factor time unchanged and
+ * never renews it (TR-SEC4-6). `iat` moves on every refresh.
+ *
+ * **Anything it cannot read is the lowest level.** An unknown `aal`, an `amr`
+ * that is not a list, a time that is not a whole number, or `aal2` with no
+ * factor entry all read as `aal1` with no factor time, so a malformed claim
+ * grants nothing a missing one would not.
+ */
+function assuranceOf(claims: Readonly<Record<string, unknown>>): Assurance {
+  const methods = Array.isArray(claims['amr']) ? (claims['amr'] as readonly unknown[]) : [];
+  const times = (wanted: ReadonlySet<string>): number | null => {
+    const found = methods
+      .map((entry) => (typeof entry === 'object' && entry !== null ? entry : {}))
+      .filter((entry) => wanted.has(String((entry as Record<string, unknown>)['method'])))
+      .map((entry) => (entry as Record<string, unknown>)['timestamp'])
+      .filter((time): time is number => Number.isSafeInteger(time) && (time as number) > 0);
+    return found.length === 0 ? null : Math.max(...found);
+  };
+  const signedInAt = times(FIRST_FACTOR_METHODS);
+  const factorAt = times(SECOND_FACTOR_METHODS);
+  if (claims['aal'] === 'aal2' && factorAt !== null) {
+    return { level: 'aal2', signedInAt, factorAt };
+  }
+  return { level: 'aal1', signedInAt, factorAt: null };
+}
+
+/** GoTrue's `amr` methods that begin a session: the first factor. */
+const FIRST_FACTOR_METHODS: ReadonlySet<string> = new Set([
+  'password',
+  'otp',
+  'magiclink',
+  'email/signup',
+  'recovery',
+  'invite',
+  'oauth',
+  'sso/saml',
+]);
+
+/** The one second factor C59 enrols: the authenticator app. */
+const SECOND_FACTOR_METHODS: ReadonlySet<string> = new Set(['totp']);
 
 /**
  * Whether Hono's verifier rejected a token for its `exp` rather than its
@@ -143,7 +191,7 @@ async function signatureVerifies(token: string, secret: string, checks: Checks):
 }
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
-function bearerOf(header: string | undefined): string | undefined {
+export function bearerOf(header: string | undefined): string | undefined {
   if (header === undefined) return undefined;
   const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());
   const token = match?.groups?.['token'];

@@ -227,6 +227,8 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_money_step_up':
+        return { body: { value: true } };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
