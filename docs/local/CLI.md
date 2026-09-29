@@ -157,3 +157,42 @@ build; `task` when absent). `task.set_type`, `map.revise`, `map.scope`,
 set. A grilling or prototype ticket is retyped or resolved only by the map's
 owner, holding `task:decide`. An agent reaches none of these yet: they wait on
 the agent credential narrowed from a person's grants (API-2).
+
+## The agent verbs (API-3)
+
+A small general set on top of the operations, for people and delegated agents
+alike. Each verb maps onto its owning operation (`apps/cli/verbs.ts`) and is
+one request; the CLI adds no rule, so a refusal is the server's, printed in one
+line that names the missing key when it is about authority.
+
+```
+pnpm cli help
+pnpm cli task get <id> [--detail brief|standard|full] [--fields a,b] [--json]
+pnpm cli task list [--board <id>] [--limit n] [--page <next>] [--detail ...]
+pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
+pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
+pnpm cli task link <id> --revision n --blocked-by <id,id>
+pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
+pnpm cli task resolve <id> --revision n --answer <a> --gist <one line>
+pnpm cli map view <id>
+pnpm cli map frontier <id>
+```
+
+- `--business`, `--api` and `--agent` and the environment work as for an
+  operation. Exit codes are the same.
+- A write prints `ok <operation> <id> r<revision>`; pass that revision to the
+  next write on the same task.
+- Reads take a detail level. `brief` is id, title and state. `standard` (the
+  default) adds the summary, description, blockers and the latest five
+  comments. `full` is everything, the whole thread and history included. A
+  blocker the reader may not read is never listed: it is counted as
+  `blockersWithheld`.
+- Output is terse text. `--json` prints minimal JSON, and `--fields` keeps only
+  the fields named.
+- `task list` pages 20 at a time (at most 100 with `--limit`). A page ends with
+  `next: <token>`; pass it as `--page` for the next one. A task added meanwhile
+  joins a later page, and none repeats.
+- The API takes the same `detail`, `limit` and `page` body fields on
+  `task.read` and `task.board`. Without them it answers as before.
+- _Map status_, _work this ticket_ (`context`) and _changes since_ join with
+  API-4.
