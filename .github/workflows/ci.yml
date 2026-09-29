@@ -170,6 +170,20 @@ jobs:
         run: bash scripts/local/semgrep-settings.sh
       - name: Public content in the actual checked-out snapshot
         run: node scripts/public-content-check.mjs --repo "$PWD"
+      # S0-1 promotion same artefact, a dry run in CI: the build `pnpm check`
+      # just made is stored the way staging keeps it, under the name the
+      # staging definition gives it, and the promotion step must select that
+      # artefact by the stamp it carries (S0-1c's `build.json`) and record it.
+      # Red until the build is stamped. It touches no service and no database.
+      - name: S0-1 promotion same artefact, a dry run over the build just made
+        run: |
+          set -euo pipefail
+          version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
+          store="${RUNNER_TEMP}/artefacts"
+          mkdir -p "$store"
+          cp -R apps/web/dist "${store}/ops-astro-${version}"
+          node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
+            --line "CI dry run of the promotion step over the build just made"
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
