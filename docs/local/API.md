@@ -130,8 +130,9 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 
 **A free operand the stores cannot hold is refused by name.** A comment
 `body`, a cancel `reason`, a decision `note`, a proposal's `purpose`,
-`currency`, `payload` and `step`, and a handback's `report` and `successor`
-holding U+0000 or an unpaired surrogate, in any string or key, are
+`currency`, `payload` and `step`, a handback's `report` and `successor`, a
+privacy incident's `whatHappened`, `foundBy` and `affected`, and a legal
+document version's `body`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
