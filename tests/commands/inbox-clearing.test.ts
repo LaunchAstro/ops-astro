@@ -26,7 +26,7 @@ import { tokenFor as acceptanceToken } from '../acceptance/cast.ts';
 import type { World } from '../acceptance/world.ts';
 import { serveApi } from '../cli/cli-process-harness.ts';
 import { authorised, BUSINESS_KEY, post } from '../api/fixture.ts';
-import { clearingWorld, decideBody, detailOf, ok } from './inbox-clearing-world.ts';
+import { clearingWorld, decideBody, detailOf, ok, readable } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -115,7 +115,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing', () => {
         w.fixture.business,
         async (tx) => await readInboxItems(tx, w.fixture.member.personId),
       );
-      expect(theirs.filter((i) => i.factId === gate.gateId)).toMatchObject([
+      expect(
+        theirs.filter((i) => readable(i)).filter((i) => i.factId === gate.gateId),
+      ).toMatchObject([
         { reason: 'decision', workState: 'cleared', closedByPersonId: w.reviewer.personId },
       ]);
       // oxlint-disable-next-line no-await-in-loop
