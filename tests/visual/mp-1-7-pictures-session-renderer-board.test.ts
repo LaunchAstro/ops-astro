@@ -9,6 +9,12 @@ import { readPacket, rendererOf } from './packet.ts';
 import { builtPages, report } from './report.ts';
 
 describe('MP-1-7', () => {
+  picturesMustExist();
+  suppliedSessionState();
+  rendererAndBoard();
+});
+
+function picturesMustExist(): void {
   it('nonexistent page pictures cannot satisfy the current-surfaces check', () => {
     const packet = readPacket();
     const shots = builtPages().flatMap((page) =>
@@ -21,7 +27,9 @@ describe('MP-1-7', () => {
     );
     expect(report(packet, builtPages(), shots).failed).toBeGreaterThan(0);
   });
+}
 
+function suppliedSessionState(): void {
   it('supplied state initialises the app session store', async () => {
     const addInitScript = vi.fn();
     const context = { route: vi.fn(), addInitScript };
@@ -60,7 +68,9 @@ describe('MP-1-7', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+}
 
+function rendererAndBoard(): void {
   it('headed and new-headless Chromium have distinct renderer identities', () => {
     const pinned = readPacket().renderer;
     expect(rendererOf(pinned, { headless: false, channel: 'chromium' })).not.toEqual(
@@ -76,4 +86,4 @@ describe('MP-1-7', () => {
     expect(board?.mockup).toBe('/agency/projects/');
     expect(board?.appPath).toBe('/projects/');
   });
-});
+}

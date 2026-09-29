@@ -50,19 +50,45 @@ async function enrolAs(
   });
 }
 
-describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
-  let fixture: ApiFixture;
-  let api: Hono;
-  let agentSubject: string;
-  /** The live delegation's credential, which the agent presents beside its login. */
-  let delegation: string;
-  const subjects = {
-    both: `both-${randomUUID()}`,
-    alphaOnly: `alpha-only-${randomUUID()}`,
-    bravoOnly: `bravo-only-${randomUUID()}`,
-    bravoNoGrant: `bravo-no-grant-${randomUUID()}`,
-  };
+let fixture: ApiFixture;
 
+let api: Hono;
+
+let agentSubject: string;
+
+/** The live delegation's credential, which the agent presents beside its login. */
+let delegation: string;
+
+const subjects = {
+  both: `both-${randomUUID()}`,
+  alphaOnly: `alpha-only-${randomUUID()}`,
+  bravoOnly: `bravo-only-${randomUUID()}`,
+  bravoNoGrant: `bravo-no-grant-${randomUUID()}`,
+};
+
+const through = ((url: string | URL, init?: RequestInit) =>
+  api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
+
+async function offer(subject: string, heldIn: string, signedInTo: string, held?: string) {
+  // An agent's probe carries its live delegation on every call, as the agent's own client does.
+  const fetch = (
+    held === undefined
+      ? through
+      : async (url: string | URL, init?: RequestInit) => {
+          const headers = new Headers(init?.headers);
+          headers.set('x-agent-delegation', held);
+          return await through(url, { ...init, headers });
+        }
+  ) as typeof globalThis.fetch;
+  return await heldAddressOffer({
+    held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
+    next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
+    apiOrigin: '',
+    fetch,
+  });
+}
+
+describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   beforeAll(async () => {
     const controls = await createControls('mp_2_1_isolation');
     ({ fixture, api } = controls);
@@ -84,28 +110,11 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
 
   afterAll(async () => await fixture?.drop());
 
-  const through = ((url: string | URL, init?: RequestInit) =>
-    api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
+  offersTheSwitchOnlyWithAGrant();
+  agentsAndMissingBusinesses();
+});
 
-  async function offer(subject: string, heldIn: string, signedInTo: string, held?: string) {
-    // An agent's probe carries its live delegation on every call, as the agent's own client does.
-    const fetch = (
-      held === undefined
-        ? through
-        : async (url: string | URL, init?: RequestInit) => {
-            const headers = new Headers(init?.headers);
-            headers.set('x-agent-delegation', held);
-            return await through(url, { ...init, headers });
-          }
-    ) as typeof globalThis.fetch;
-    return await heldAddressOffer({
-      held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
-      next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
-      apiOrigin: '',
-      fetch,
-    });
-  }
-
+function offersTheSwitchOnlyWithAGrant(): void {
   it('offers the switch to a person holding a grant in the held business, both ways', async () => {
     expect(await offer(subjects.both, 'bravo', 'alpha')).toEqual({
       kind: 'switch',
@@ -127,7 +136,9 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   it('names no business to a member who holds no grant there', async () => {
     expect(await offer(subjects.bravoNoGrant, 'bravo', 'alpha')).toEqual({ kind: 'unnamed' });
   });
+}
 
+function agentsAndMissingBusinesses(): void {
   it('names no business to an agent under a live delegation from an Alpha person', async () => {
     // The delegation is live and the bearer with it is answered on the agent's own route,
     // so an unnamed offer below is the delegation lending nothing, not a dead credential.
@@ -149,4 +160,4 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   it('names no business for one that does not exist, the same as one the person is not in', async () => {
     expect(await offer(subjects.both, 'charlie', 'alpha')).toEqual({ kind: 'unnamed' });
   });
-});
+}

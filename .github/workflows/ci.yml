@@ -402,7 +402,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/command-parity.mjs --check
-      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/api-1-parity-bypasses.test.ts tests/commands/api-1-parity-redirects-and-agent-discovery.test.ts
+      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/api-1-catalogue-authority.test.ts tests/commands/api-1-parity-bypasses.test.ts tests/commands/api-1-parity-redirects-and-agent-discovery.test.ts
 
   visual-drift:
     # MP-1-7: drift proved on the app's own page in the pinned headless shell on

@@ -67,6 +67,13 @@ function checkedDigestFault(name: string, bytes: Buffer): string | undefined {
 }
 
 describe('C82 the design system crossed as a checked copy', () => {
+  copyMatchesItsRecord();
+  scrubbedFreshFiles();
+  noPrivateParentAndSyntheticShots();
+  plantedNameStopsTheCopy();
+});
+
+function copyMatchesItsRecord(): void {
   it('C82 copy record: every file is listed, and each matches its digest', () => {
     const listed = rows();
     expect(listed.size).toBe(11);
@@ -101,7 +108,9 @@ describe('C82 the design system crossed as a checked copy', () => {
       }
     }
   });
+}
 
+function scrubbedFreshFiles(): void {
   it('CS-16.21: C82 the design system crossed as fresh files with the scrub applied, every group retaken on synthetic data, and every file through the real-names check with zero hits', () => {
     const report = textOf(NAMES);
     const count = files().length;
@@ -136,7 +145,9 @@ describe('C82 the design system crossed as a checked copy', () => {
       expect(themes).toBe('light, dark');
     }
   });
+}
 
+function noPrivateParentAndSyntheticShots(): void {
   it('Only fresh files cross: the product repository gains no commit whose parent comes from the private repository', () => {
     // The check compared every commit here with the private repository before the copy.
     expect(textOf(NAMES)).toMatch(
@@ -171,7 +182,9 @@ describe('C82 the design system crossed as a checked copy', () => {
     const images = files().filter((name) => /\.(png|jpe?g|gif|webp|svg|avif)$/iu.test(name));
     expect(images).toEqual([]);
   });
+}
 
+function plantedNameStopsTheCopy(): void {
   it('A planted name in any copied file after the check fails the copy against its checked digests', () => {
     for (const name of files().filter((one) => one !== NAMES)) {
       const planted = Buffer.concat([
@@ -187,4 +200,4 @@ describe('C82 the design system crossed as a checked copy', () => {
       'PLANTED.md was not checked',
     );
   });
-});
+}

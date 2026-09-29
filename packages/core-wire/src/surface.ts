@@ -211,8 +211,10 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
-  readonly authority?: readonly string[]; // two-part keys (API-1); the handler checks past `action`
-  readonly rule?: string; // a hold every path keeps, carried onto the catalogue row (API-1)
+  // two-part keys (API-1); the handler checks past `action`
+  readonly authority?: readonly string[];
+  // a hold every path keeps, carried onto the catalogue row (API-1)
+  readonly rule?: string;
 }
 
 /**

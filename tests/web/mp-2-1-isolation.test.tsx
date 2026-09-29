@@ -35,6 +35,11 @@ const PEOPLE = [
 ] as const;
 
 describe('MP-2-1 isolation', () => {
+  theOtherClientIsRefused();
+  portalAndDefaultGrants();
+});
+
+function theOtherClientIsRefused(): void {
   it.each(PEOPLE)(
     '$business opens its own client and is refused the other, naming nothing',
     async ({ business, own, other, otherBusiness }) => {
@@ -66,7 +71,9 @@ describe('MP-2-1 isolation', () => {
     await unknown.view.unmount();
     await real.view.unmount();
   });
+}
 
+function portalAndDefaultGrants(): void {
   it('serves a portal address only to its own client', async () => {
     const { view } = await open('/portal/acme-dental/account/connections/', {
       businessKey: 'alpha',
@@ -86,4 +93,4 @@ describe('MP-2-1 isolation', () => {
       await view.unmount();
     }
   });
-});
+}

@@ -12,8 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
+import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
@@ -268,26 +268,6 @@ export function App(props: AppProps): ReactElement {
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-// An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
-function NotFound(props: { readonly path: string }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">
-        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
-      </p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
-    </div>
   );
 }
 
