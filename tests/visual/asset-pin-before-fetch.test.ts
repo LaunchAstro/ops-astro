@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { fetchAssets, readAssets } from './packet.ts';
 
-describe('Sol proof, criterion 2', () => {
-  it('Sol proof, criterion 2: a changed asset record cannot fetch before its pin is checked', async () => {
+describe('the asset pin before any fetch', () => {
+  it('a changed asset record cannot fetch before its pin is checked', async () => {
     const manifest = structuredClone(readAssets());
     const font = manifest.assets.find((asset) => asset.kind === 'font');
     if (font === undefined) throw new Error('the test needs a font record');
