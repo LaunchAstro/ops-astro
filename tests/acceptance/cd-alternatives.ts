@@ -43,7 +43,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
 ];
 
-/** The fifteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -62,6 +62,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
+  'budget.write_off': ['attemptId', 'control'],
 };
 
 /**
