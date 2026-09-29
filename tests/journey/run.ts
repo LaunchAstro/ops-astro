@@ -258,4 +258,9 @@ try {
 } catch (error) {
   report('run', false, String(error).slice(0, 600));
 }
-process.exitCode = failed === 0 ? 0 : 1;
+// Exit once the lines are out, whatever is still open: a run that failed part
+// way holds the API process and pools, and the command stops those by their
+// process groups.
+process.stdout.write('', () => {
+  process.exit(failed === 0 ? 0 : 1);
+});
