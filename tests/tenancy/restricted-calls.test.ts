@@ -80,6 +80,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // AW-01: the copy register, which the journey never reaches.
+  'public.copy_registrations': `insert into public.copy_registrations
+       (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
+     values ($1, gen_random_uuid(), 'outbound_prompt', 'model_call:' || gen_random_uuid(),
+             'call_ended', 'transient') returning 1`,
 };
 
 /**
