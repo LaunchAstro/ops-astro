@@ -495,6 +495,9 @@ completes it, `verified`, then `removed` when it is replaced or taken away.
 One live factor per person (`second_factors_one_live`). The application may
 select, insert and update; nothing deletes a row, so a person's factor history
 stays readable. The authenticator secret and the codes a person types are
-never written here. Login resolution reads it to refuse a sign-in without the
-second factor (`identity/second-factor.ts`); a database from before 0032 has
-no such table, and there the answer is no factor.
+never written here. Whether a person has a verified factor is mirrored onto
+`people.second_factor_verified` by the same writers in the same transaction
+(`identity/second-factor.ts`), so login resolution reads it inside the one
+query it already makes and refuses a sign-in without the second factor. It
+reads the column through the row's json, so on a database from before 0032,
+which has no such column, the answer is no factor.

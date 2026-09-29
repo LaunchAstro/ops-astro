@@ -35,7 +35,6 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
-import { hasVerifiedFactor } from './second-factor.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -74,6 +73,8 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
+  /** 'true' once the person has a verified second factor; null before 0032. */
+  readonly second_factor_verified: string | null;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -97,7 +98,10 @@ const RESOLUTION = `
          pl.person_id,
          m.id as membership_id,
          m.role_key,
-         a.id as actor_id
+         a.id as actor_id,
+         -- Read through the row's json so this one query serves a database
+         -- from before 0032, which has no such column and so no factor.
+         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -106,6 +110,8 @@ const RESOLUTION = `
     left join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
+    left join public.people p
+      on p.business_id = pl.business_id and p.id = pl.person_id
    where l.provider = $1 and l.subject = $2`;
 
 /**
@@ -144,7 +150,7 @@ export async function resolveLogin(
   if (
     rule === 'required' &&
     assurance.level !== 'aal2' &&
-    (await hasVerifiedFactor(tx, found.person_id))
+    found.second_factor_verified === 'true'
   ) {
     return await recordRefusal(
       tx,

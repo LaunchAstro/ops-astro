@@ -63,3 +63,10 @@ create policy authority_second_factors on public.second_factors
 
 -- Written and moved on, never deleted.
 grant select, insert, update on public.second_factors to ops_astro_app;
+
+-- Whether the person has a verified factor, mirrored onto their row by the
+-- factor writers in the same transaction (`identity/second-factor.ts`), so
+-- login resolution reads it in the one query it already makes instead of a
+-- second round trip on every call.
+alter table public.people
+  add column second_factor_verified boolean not null default false;

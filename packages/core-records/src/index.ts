@@ -64,7 +64,6 @@ export {
 } from './identity/login-resolution.ts';
 export { NO_ASSURANCE, type Assurance, type AssuranceLevel } from './identity/verified-subject.ts';
 export {
-  hasVerifiedFactor,
   liveFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
