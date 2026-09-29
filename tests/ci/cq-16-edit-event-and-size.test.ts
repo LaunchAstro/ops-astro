@@ -299,7 +299,12 @@ describe('CQ-16 contributing says code only', () => {
     expect(text).toContain('`*.test.*`');
     expect(text).toContain('`*.spec.*`');
     expect(text).toContain('reported, not limited');
-    expect(text).toContain('Nothing is split to meet a size');
+    // Addendum 4 (owner, 29 September 2026): about 400 lines is a guide for a readable chunk, never a gate.
+    expect(text).toContain('About 400 changed lines is a guide for a readable chunk');
+    expect(text).toContain('never a gate');
+    expect(text).toContain(
+      'Nothing is split into separate sessions, lanes or review queues to meet a size',
+    );
   });
 });
 
