@@ -124,6 +124,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   // EFFECT_NOT_RECONCILABLE are the core's, above).
   ['OPERATION_NOT_CATALOGUED', 403, 'caller'],
   ['LOCAL_MODEL_REQUIRED', 501, 'caller'],
+  // C60, the client's model use.
+  ['CLIENT_MODEL_USE_OFF', 403, 'caller'],
   ['SUBSCRIPTION_UNATTENDED', 403, 'caller'],
   ['SUBSCRIPTION_OTHER_TENANT', 403, 'caller'],
   ['SUBSCRIPTION_NOT_OWN_WORK', 403, 'caller'],

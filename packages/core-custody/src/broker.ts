@@ -6,20 +6,22 @@
 // caller's own (`reserveModelCall`): the `model.call` command commits the
 // hold with its register row, so one operation id holds once.
 //
-// 1. Reserve. Under the lease, delegation and reservation row locks (the
-//    contract's order), verify the six facts against rows: the business (the
+// 1. Reserve. Under the task, lease, delegation and reservation row locks
+//    (the contract's order), verify the six facts against rows: the business (the
 //    tenant transaction), the run and its step, the caller's live lease and
 //    fence, the approved version the reservation holds for, the catalogued
 //    operation, and the grant (the run's live delegation). None comes from
-//    the caller, and the caller never names a destination. Then the data
+//    the caller, and the caller never names a destination. A task a client
+//    is on is refused here, before any route (C60). Then the data
 //    classes choose the eligible routes before any route is chosen, the
 //    credential rule checks the route's kind, and the operation's priced
 //    maximum is held out of the reservation's room: a row in `model_calls`,
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
 //    a refusal of the facts themselves writes nothing.
-// 2. Start. The six facts are read again under their locks, and a call whose
-//    authority went since the hold is released unsent. The call is marked
+// 2. Start. The six facts and the client link are read again under their
+//    locks, and a call whose authority went, or whose task gained a client,
+//    since the hold is released unsent. The call is marked
 //    `dispatched` with its route and credential kind before custody is
 //    asked, so a crash after this point leaves a call the sweep holds as
 //    unknown liability and never releases.
@@ -36,7 +38,7 @@
 // broker-settle.ts; the shapes are broker-types.ts.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
-import { lockFacts } from './broker-facts.ts';
+import { lockFacts, type Checked } from './broker-facts.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { settle, settlementOf } from './broker-settle.ts';
 import type {
@@ -68,10 +70,11 @@ export {
 } from './broker-reserve.ts';
 
 /**
- * Step 2, as the effect applies: the six facts again under their locks, so a
- * lease, delegation or reservation lost since the hold sends nothing. The
- * hold is then released, never started, with the route it would have taken
- * and no start time. Only then is the call marked `dispatched`.
+ * Step 2, as the effect applies: the six facts and the client link again
+ * under their locks, so a lease, delegation or reservation lost since the
+ * hold, or a client put on the task since, sends nothing. The hold is then
+ * released, never started, with the route it would have taken and no start
+ * time. Only then is the call marked `dispatched`.
  */
 async function markStarted(
   database: Database,
@@ -83,7 +86,11 @@ async function markStarted(
 ): Promise<'started' | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
-    const checked = await lockFacts(tx, caller, request);
+    const facts = await lockFacts(tx, caller, request);
+    const checked: Checked =
+      facts.ok && facts.facts.clientId !== null
+        ? { ok: false, code: 'CLIENT_MODEL_USE_OFF' }
+        : facts;
     if (!checked.ok) {
       await tx.query(
         `update public.model_calls

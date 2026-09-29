@@ -107,6 +107,10 @@ const FIXES: Partial<Record<BrokerRefusal, readonly string[]>> = {
   EFFECT_NOT_RECONCILABLE: [
     'An operation with no proof that nothing happened is never dispatched.',
   ],
+  CLIENT_MODEL_USE_OFF: [
+    "Model use is off for this task's client: its work reaches no model, local or cloud.",
+    'Personal information stays out of cloud AI until a local model exists.',
+  ],
 };
 
 /** The refusal in the register's words: the plain words, the wait, then the fix. */
@@ -150,6 +154,11 @@ export async function reserveModelCall(
   if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
     return await refused('EFFECT_NOT_RECONCILABLE');
+  // C60, before any route is chosen: a client's model use is off by default
+  // and cannot be switched on while no local model exists (owner line 72), so
+  // no call on a client's task reaches a route. The setting itself is stored
+  // on the client record once there is one (C32).
+  if (facts.clientId !== null) return await refused('CLIENT_MODEL_USE_OFF');
   const route = routeFor(operation, caller, request, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
   if (await atCeiling(tx, operation, route.route)) {

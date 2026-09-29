@@ -686,6 +686,14 @@ const ROWS = [
     meaning: 'Personal information stays out of cloud AI until a local model exists',
     source: 'AW-01, owner line 72',
   },
+  // C60 (LF-5): a client's model use is off by default and, while no local
+  // model exists, cannot be switched on, so a call on its task reaches no route.
+  {
+    code: 'CLIENT_MODEL_USE_OFF',
+    status: 403,
+    meaning: "Model use is off for the task's client, so no route is chosen",
+    source: 'C60, LF-5, owner line 72',
+  },
   {
     code: 'SUBSCRIPTION_UNATTENDED',
     status: 403,

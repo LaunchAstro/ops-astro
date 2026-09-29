@@ -861,8 +861,8 @@ and the audit event commit together. A repeat of the operation id replays the
 register row and sends nothing; two at once cannot both hold, because the
 second loses the register's identity key and replays. After that commit the
 broker starts the call, sends it through custody and settles it
-(`sendReservedCall`), re-reading the lease, the delegation and the reservation
-under their locks, so authority lost in between refuses the call when its
+(`sendReservedCall`), re-reading the task's client link, the lease, the
+delegation and the reservation under their locks, so authority lost in between refuses the call when its
 effect applies.
 
 The answer is the call as its ledger row stands: `callId`, `state`,
@@ -871,7 +871,8 @@ model's words, only on the request that made them. The words are never stored,
 so a replay answers the ledger's state without them. A reserve refusal is the
 register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
-`LOCAL_MODEL_REQUIRED` 501, the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
+`LOCAL_MODEL_REQUIRED` 501, `CLIENT_MODEL_USE_OFF` (the task's client has
+model use off, C60), the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 `model_calls` row. `RATE_LIMITED` writes nothing and answers two ceilings,
 each counting a call from its hold until it ends: the business's own per

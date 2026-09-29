@@ -1443,6 +1443,16 @@ lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
 is held as `liability_unknown`, never released; an unsent one is released.
 Neither the prompt nor the model's words are stored in either table.
 
+A call on a task a client is on is refused before any route is chosen
+(C60, `CLIENT_MODEL_USE_OFF`, recorded as its step). A client's model use is
+off by default and cannot be switched on while no local model exists (owner
+line 72); the setting is stored on the client record once there is one (C32).
+The broker reads the task's client link, the spine's client slot, holding the
+run's task `for share` ahead of the lease (class `task` before `lease`), so a
+`task.set_party` in flight is waited on, never missed. The start reads it
+again under the same locks, and a task that gained a client since the hold
+releases the call unsent.
+
 ## Instruction files pinned by digest
 
 `0033_bootstrap_pins` (AW-02; numbered again at the rebase) adds three
