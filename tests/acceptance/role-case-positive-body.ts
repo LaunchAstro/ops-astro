@@ -243,6 +243,17 @@ export function createPositiveBody(
             inUse: true,
           },
         };
+      case 'privacy.set_data_class':
+        return {
+          body: {
+            dataClass: 'A made-up class the matrix sets',
+            purpose: 'nothing real',
+            disclosures: 'no one',
+            retention: 'a day',
+            deletion: 'deleted',
+            inUse: true,
+          },
+        };
       // C81's breach drill: an incident of the admin's, and a runbook whose
       // template the drill can fill, published as the admin (who holds
       // `privacy:manage`, as the owner does).

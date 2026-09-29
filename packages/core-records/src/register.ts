@@ -401,6 +401,13 @@ const ROWS = [
     meaning: 'A service on the overseas-services register is still to confirm',
     source: 'C81 SP-25',
   },
+  // C81: a privacy policy reads the data-class register.
+  {
+    code: 'LEGAL_DATA_CLASSES_CHANGED',
+    status: 409,
+    meaning: 'The data-class register changed since this policy was drafted',
+    source: 'C81 CS-16.20',
+  },
   // C81: the breach drill drafts notices from the published breach runbook.
   {
     code: 'BREACH_RUNBOOK_UNPUBLISHED',

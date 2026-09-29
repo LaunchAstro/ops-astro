@@ -38,6 +38,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0035 (C81): a row of the overseas-services register is set by insert or
   // update; never deleted.
   ['siu', 'overseas_services'],
+  // 0036 (C81): a data class is set by insert or update; never deleted.
+  ['siu', 'data_classes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

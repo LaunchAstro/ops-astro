@@ -132,8 +132,9 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 `body`, a cancel `reason`, a decision `note`, a proposal's `purpose`,
 `currency`, `payload` and `step`, a handback's `report` and `successor`, a
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
-document version's `body`, and an overseas service's `service`, `receives`,
-`where`, `trainsOnIt` and `contract`, holding U+0000 or an unpaired surrogate, in any string or key, are
+document version's `body`, an overseas service's `service`, `receives`,
+`where`, `trainsOnIt` and `contract`, and a data class's `dataClass`,
+`purpose`, `disclosures`, `retention` and `deletion`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -1568,7 +1569,9 @@ business, nothing published, the breach runbook and any other name all answer
 `{ code: 'NOT_FOUND' }` 404. The privacy policy's answer also carries
 `services`: the overseas-services register's rows in use when that version was
 drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
-register's order.
+register's order, and `dataClasses`: the data-class register's classes in use
+when it was drafted, each `{ dataClass, purpose, disclosures, retention,
+deletion }`, in the register's order.
 
 ### The overseas-services register (C81, SP-25)
 
@@ -1586,3 +1589,21 @@ it. Approving or publishing that version is `LEGAL_REGISTER_CHANGED` 409 once
 the register has changed since the draft (draft again), and
 `LEGAL_REGISTER_UNCONFIRMED` 409 while any of its rows is `toConfirm`. The
 other documents do not read the register.
+
+### The data-class register (C81)
+
+`privacy.set_data_class` takes `{ operationId, dataClass, purpose,
+disclosures, retention, deletion, inUse }`, every field each time, under
+`privacy:manage` and never an agent's. It sets the row of that class of
+personal information (its name matched in any letter case) and answers
+`{ dataClassId }`; each change is its own audited operation. `dataClass` is 1
+to 120 characters and the other four 1 to 2,000 each, all required, so a class
+missing its purpose, disclosures, retention or deletion is refused; `inUse` is
+a boolean. A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A
+class no longer held is set `inUse: false` and kept.
+
+A privacy-policy draft takes the classes in use and their digest with it.
+Approving or publishing that version is `LEGAL_DATA_CLASSES_CHANGED` 409 once
+the classes have changed since the draft (draft again). The other documents do
+not read the classes. C62's retention table and the privacy-request workflows
+read the same rows through the records package (`readDataClasses`).

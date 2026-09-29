@@ -16,9 +16,14 @@
 // before reading it (`overseas-services.ts`), after the version's row lock;
 // setting a row takes the register's lock alone, so the two never wait on
 // each other in a cycle.
+//
+// The data-class register (migration 0036) is read the same way under the
+// same lock: a policy is drafted with the classes in use and their digest, and
+// approving or publishing it is refused once they have changed since.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { readDataClasses, type ListedDataClass } from './data-classes.ts';
 import { lockRegister, readRegister, type ListedService } from './overseas-services.ts';
 
 /** The documents a business keeps versions of, as the gate names them. */
@@ -51,6 +56,8 @@ export interface PublishedVersion {
   readonly publishedAt: Date;
   /** The privacy policy's services, from the register as it was drafted. */
   readonly services?: readonly ListedService[];
+  /** The privacy policy's data classes, from the register as it was drafted. */
+  readonly dataClasses?: readonly ListedDataClass[];
 }
 
 /** Why a version could not be approved or published, or `undefined` when it was. */
@@ -61,11 +68,13 @@ export type VersionRefusal =
   | 'not-approved'
   | 'already-published'
   | 'register-changed'
+  | 'data-classes-changed'
   | 'register-unconfirmed';
 
 interface LockedRow {
   readonly document: LegalDocument;
   readonly register_digest: string | null;
+  readonly data_classes_digest: string | null;
   readonly body_digest: string;
   readonly approved_at: Date | null;
   readonly published_at: Date | null;
@@ -81,16 +90,19 @@ export async function draftLegalVersion(
   actorId: string,
 ): Promise<DraftedVersion | undefined> {
   let register: { readonly listed: string; readonly digest: string } | undefined;
+  let classes: { readonly listed: string; readonly digest: string } | undefined;
   if (draft.document === 'privacy-policy') {
     await lockRegister(tx);
     const state = await readRegister(tx);
     register = { listed: JSON.stringify(state.listed), digest: state.digest };
+    const held = await readDataClasses(tx);
+    classes = { listed: JSON.stringify(held.listed), digest: held.digest };
   }
   const rows = await tx.query<{ readonly id: string; readonly body_digest: string }>(
     `insert into public.legal_document_versions
        (business_id, id, document, version, body, body_digest, drafted_by_actor,
-        register, register_digest)
-     values ($1, $2, $3, $4, $5, '', $6, $7::text::jsonb, $8)
+        register, register_digest, data_classes, data_classes_digest)
+     values ($1, $2, $3, $4, $5, '', $6, $7::text::jsonb, $8, $9::text::jsonb, $10)
      on conflict (business_id, document, version) do nothing
      returning id, body_digest`,
     [
@@ -102,6 +114,8 @@ export async function draftLegalVersion(
       actorId,
       register?.listed ?? null,
       register?.digest ?? null,
+      classes?.listed ?? null,
+      classes?.digest ?? null,
     ],
   );
   const row = rows[0];
@@ -110,7 +124,8 @@ export async function draftLegalVersion(
 
 async function lockVersion(tx: TenantQuery, versionId: string): Promise<LockedRow | undefined> {
   const rows = await tx.query<LockedRow>(
-    `select document, register_digest, body_digest, approved_at, published_at
+    `select document, register_digest, data_classes_digest, body_digest, approved_at,
+            published_at
        from public.legal_document_versions
       where business_id = $1 and id = $2
       for update`,
@@ -121,7 +136,8 @@ async function lockVersion(tx: TenantQuery, versionId: string): Promise<LockedRo
 
 /**
  * For a privacy policy, under the register's lock: refused while the register
- * has moved since the draft or holds a row to confirm. Other documents pass.
+ * or the data classes have moved since the draft, or the register holds a row
+ * to confirm. Other documents pass.
  */
 async function registerRefusal(
   tx: TenantQuery,
@@ -131,6 +147,8 @@ async function registerRefusal(
   await lockRegister(tx);
   const state = await readRegister(tx);
   if (state.digest !== row.register_digest) return 'register-changed';
+  const classes = await readDataClasses(tx);
+  if (classes.digest !== row.data_classes_digest) return 'data-classes-changed';
   return state.unconfirmed ? 'register-unconfirmed' : undefined;
 }
 
@@ -188,8 +206,9 @@ export async function readPublishedLegal(
     readonly body_digest: string;
     readonly published_at: Date;
     readonly register: readonly ListedService[] | null;
+    readonly data_classes: readonly ListedDataClass[] | null;
   }>(
-    `select version, body, body_digest, published_at, register
+    `select version, body, body_digest, published_at, register, data_classes
        from public.legal_document_versions
       where business_id = $1 and document = $2 and published_at is not null
       order by published_at desc, drafted_at desc
@@ -206,5 +225,6 @@ export async function readPublishedLegal(
         digest: row.body_digest,
         publishedAt: row.published_at,
         ...(row.register === null ? {} : { services: row.register }),
+        ...(row.data_classes === null ? {} : { dataClasses: row.data_classes }),
       };
 }

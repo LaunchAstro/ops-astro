@@ -23,6 +23,7 @@ import { setBusinessSetting } from './settings-write.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { setService } from './overseas-write.ts';
+import { setClass } from './data-class-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -97,6 +98,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'legal.approve_version': approveVersion,
   'legal.publish_version': publishVersion,
   'privacy.set_overseas_service': setService,
+  'privacy.set_data_class': setClass,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

@@ -96,6 +96,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'nowhere', 'no',
             'none', false, true, id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a data class, so one is written here.
+  'public.data_classes': `insert into public.data_classes
+       (business_id, id, data_class, purpose, disclosures, retention, deletion, in_use,
+        updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'no one',
+            'a day', 'deleted', true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id
