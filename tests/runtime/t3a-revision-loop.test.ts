@@ -18,6 +18,8 @@
 // found, and a person whose decide grant is on another task is refused.
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
+import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import type { EntryPoint } from '../../packages/core-records/src/tasks/placement.ts';
@@ -29,6 +31,7 @@ import {
   asAgent,
   asPerson,
   codeOf,
+  createTask,
   openSchedules,
   propose,
   proposeBody,
@@ -47,6 +50,7 @@ if (serverUrl === undefined) {
 }
 
 const SURFACES: readonly EntryPoint[] = ['app', 'api', 'cli'];
+const noop = (): void => undefined;
 
 /** A revision's ceiling: inside what the settled envelope has left (2500 held, 1800 spent). */
 const REVISION = 500;
@@ -223,6 +227,100 @@ describe.skipIf(serverUrl === undefined)('T3a the revision loop over settled wor
     );
     expect(row?.state).toBe('cancelled');
   });
+
+  it('Sol proof, criterion 2: a version insert cannot cross a concurrent terminal transition', async () => {
+    const taskId = await createTask(s, `terminal race ${randomUUID()}`);
+    const first = await propose(s, taskId);
+    const lineageId = String(first['lineageId']);
+    const newVersionId = randomUUID();
+    const lockKey = 73003036;
+    const ownerUrl = new URL(String(serverUrl));
+    ownerUrl.pathname = `/${s.db.name}`;
+    const owner = postgres(ownerUrl.toString(), { max: 2 });
+    await s.db.admin.execute(
+      `create function public.sol_pause_after_lineage_check() returns trigger language plpgsql as $$
+       begin
+         perform pg_advisory_xact_lock(${lockKey});
+         return new;
+       end $$`,
+    );
+    await s.db.admin.execute(
+      `create trigger zz_sol_pause_after_lineage_check before insert on public.proposal_versions
+       for each row execute function public.sol_pause_after_lineage_check()`,
+    );
+    let release = noop;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = owner.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(${lockKey})`;
+      await released;
+    });
+    let inserted: Promise<readonly unknown[]> | undefined;
+    try {
+      // Wait for the owner to take the advisory lock before starting the insert.
+      for (let tries = 0; tries < 200; tries += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const locks = await owner<{ readonly n: string }[]>`
+          select count(*)::text as n from pg_locks
+           where locktype = 'advisory' and granted and objid = ${lockKey}`;
+        if (Number(locks[0]?.n) > 0) break;
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(25);
+      }
+      inserted = s.db.admin.execute(
+        `insert into public.proposal_versions
+           (business_id, id, lineage_id, version, payload, payload_digest, purpose,
+            maximum_minor, currency, proposed_by_actor_id, superseded_at)
+         select business_id, $3, lineage_id, version + 1, payload, payload_digest, purpose,
+                maximum_minor, currency, proposed_by_actor_id, clock_timestamp()
+           from public.proposal_versions where business_id = $1 and lineage_id = $2
+           order by version desc limit 1`,
+        [s.business, lineageId, newVersionId],
+      );
+      let waiting = false;
+      for (let tries = 0; tries < 200; tries += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const locks = await owner<{ readonly n: string }[]>`
+          select count(*)::text as n from pg_locks l
+            join pg_stat_activity a on a.pid = l.pid
+           where a.datname = current_database() and l.locktype = 'advisory' and not l.granted
+             and l.objid = ${lockKey}`;
+        if (Number(locks[0]?.n) > 0) {
+          waiting = true;
+          break;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(25);
+      }
+      expect(waiting).toBe(true);
+      expect(codeOf(await asPerson(s, cancelBody(taskId, lineageId)))).toBe('applied');
+    } finally {
+      release();
+      await held;
+    }
+    try {
+      let outcome = 'inserted';
+      try {
+        await inserted;
+      } catch (error) {
+        if (!/LINEAGE_TERMINAL/u.test(String(error))) throw error;
+        outcome = 'terminal refusal';
+      }
+      const count = await rows<{ readonly n: number }>(
+        s,
+        `select count(*)::int as n from public.proposal_versions where business_id = $1 and id = $2`,
+        [s.business, newVersionId],
+      );
+      expect({ outcome, count }).toEqual({ outcome: 'terminal refusal', count: [{ n: 0 }] });
+    } finally {
+      await s.db.admin.execute(
+        `drop trigger zz_sol_pause_after_lineage_check on public.proposal_versions`,
+      );
+      await s.db.admin.execute(`drop function public.sol_pause_after_lineage_check()`);
+      await owner.end();
+    }
+  }, 60_000);
 
   describe('T3 decide authority', () => {
     /** Everything a decision, a restart or a cancel could write. */

@@ -209,6 +209,19 @@ describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
     expect(await gateOf(v1['gateId'])).toMatchObject({ state: 'pending', escalated: false });
   });
 
+  it('Sol proof, criterion 2: approve refuses a carried null escalation recipient', async () => {
+    const taskId = await createTask(s, `t3a null recipient ${randomUUID()}`);
+    const v1 = await propose(s, taskId);
+    const attempted = await asPerson(s, decideBody(v1, 'approve', { recipientPersonId: null }));
+    expect(codeOf(attempted)).toBe('FIELD_VALUE_INVALID');
+    expect(await gateOf(v1['gateId'])).toMatchObject({ state: 'pending', decisions: 0 });
+  });
+
+  it('Sol proof, criterion 2: a task-scoped decider can approve at the bound before escalation', async () => {
+    const { v3, approver } = await atTheBound();
+    expect(codeOf(await as(approver, decideBody(v3, 'approve')))).toBe('applied');
+  });
+
   it('replays by operation identifier, and is refused to an agent and to a person without decide on every surface', async () => {
     const { taskId, v3 } = await atTheBound();
     const body = decideBody(v3, 'escalate', { recipientPersonId: holder.personId });

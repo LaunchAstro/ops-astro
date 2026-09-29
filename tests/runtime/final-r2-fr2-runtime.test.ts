@@ -327,6 +327,44 @@ describe.skipIf(serverUrl === undefined)('FR2-RUNTIME: final review round 2', ()
   });
 
   describe('T3a task.cancel and a revocation of the canceller’s decide', () => {
+    it('Sol proof, criterion 3: cancel refuses decide authority that expires while runtime locks are held', async () => {
+      const task = await c.createTask('decide expires while cancel waits');
+      const proposal = await c.propose(task.id, task.revision);
+      const { member, decideGrantId } = await holderOf('write');
+      await c.fixture.db.admin.execute(
+        `update public.grants set expires_at = clock_timestamp() + interval '2 seconds'
+          where id = $1`,
+        [decideGrantId],
+      );
+      const [run] = await c.fixture.db.admin.execute<{ readonly run_id: string }>(
+        `select run_id from public.gates where id = $1`,
+        [proposal['gateId']],
+      );
+      const blocker = hold(owner, async (sql) => {
+        await sql`select 1 from public.planned_runs where id = ${String(run?.run_id)} for update`;
+      });
+      const [cancelling] = await whileHeld(blocker, async () => {
+        await sleep(50);
+        const request = second.asPerson(
+          'task.cancel',
+          { recordId: task.id, lineageId: proposal['lineageId'], reason: 'stand down' },
+          member,
+        );
+        await waitersReach(owner, 1);
+        await sleep(2_500);
+        return [request] as const;
+      });
+
+      const cancelled = await cancelling;
+      expect(cancelled.body['code'], JSON.stringify(cancelled.body)).toBe('SCOPE_NOT_GRANTED');
+      expect(
+        await c.fixture.db.admin.execute<{ readonly state: string }>(
+          `select state from public.proposal_lineages where id = $1`,
+          [proposal['lineageId']],
+        ),
+      ).toEqual([{ state: 'live' }]);
+    }, 60_000);
+
     it('a revocation that locks the decide grant first is seen with the grants held: SCOPE_NOT_GRANTED', async () => {
       const task = await c.createTask('decide revoked while the cancel waits');
       const proposal = await c.propose(task.id, task.revision);
