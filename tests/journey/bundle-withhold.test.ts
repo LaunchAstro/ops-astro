@@ -50,6 +50,7 @@ function bundleWith(details: readonly string[], extra: Record<string, string> = 
 const both = (bundle: { json: string; markdown: string }): string =>
   `${bundle.json}\n${bundle.markdown}`;
 
+// eslint-disable-next-line max-lines-per-function -- one bundle shape, the hostile cases that share it
 describe('the bundle withholds what a person wrote, wherever it arrives', () => {
   it('withholds a body quoted in a separation leak, and keeps the identifiers it holds elsewhere', () => {
     const text = both(
