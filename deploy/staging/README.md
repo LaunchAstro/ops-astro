@@ -19,11 +19,12 @@ unset. The values and the machine's layout (ports, service names, data paths)
 live in the private staging runbook, never in this repository.
 
 Staging's database holds made-up data only. `scripts/local-seed.mjs` marks a
-database it seeds from empty with the businesses it made there, and refuses
-one holding any other business, an unmarked one holding data, or a sign-in
-that is not a made-up `.local` address: what a restored production backup
-looks like (`S0-1 no production data`). A database seeded before the mark is
-confirmed once by a person, with `LOCAL_SEED_MADE_UP=confirm`.
+database with the businesses and people it made there, and refuses one
+holding any other business or person, an unmarked one holding data, or a
+sign-in that is not a made-up `.local` address: what a restored production
+backup looks like (`S0-1 no production data`). A database seeded before the
+mark is confirmed once by a person, with `LOCAL_SEED_MADE_UP=confirm`, which
+still refuses any business or person the seed does not make.
 
 Before staging is prepared, and again after, the owner runs
 `scripts/ops/service-report.mjs` on the machine:

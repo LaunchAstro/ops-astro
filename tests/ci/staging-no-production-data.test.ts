@@ -161,7 +161,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([]);
     await business('harbour-freight-canary');
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([
-      'it holds a business the seed does not make',
+      'it holds a business the seed did not make',
     ]);
   });
 

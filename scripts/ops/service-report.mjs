@@ -14,10 +14,9 @@
 // Apple's own launchd jobs start and stop on demand and are not services of
 // this installation, so they are left out. What it keeps is names, state,
 // start times, images, ports and a 16-hex digest of each container's whole
-// configuration, so a changed limit, mount or setting shows without a restart.
-// It never copies a container's environment or arguments, which is where
-// credentials live, so neither snapshot nor report can carry one
-// (`S0-1 credentials canary`).
+// configuration and networks, so a changed limit, mount or network shows
+// without a restart. It never copies an environment or arguments, where
+// credentials live, so no snapshot or report carries one (credentials canary).
 //
 // Usage:
 //   node scripts/ops/service-report.mjs snapshot [--docker-inspect <file>] [--launchctl <file>]
@@ -59,6 +58,7 @@ function dockerInspect() {
 
 function fromDocker(raw) {
   return JSON.parse(raw).map((container) => {
+    const networks = Object.entries(container.NetworkSettings?.Networks ?? {});
     const bindings = container.HostConfig?.PortBindings ?? {};
     const ports = Object.entries(bindings).flatMap(([inside, hosts]) =>
       (hosts ?? []).map((h) => `${h.HostIp || '0.0.0.0'}:${h.HostPort}->${inside}`),
@@ -71,7 +71,13 @@ function fromDocker(raw) {
       image: container.Image ?? null,
       ports: ports.toSorted(),
       config: createHash('sha256')
-        .update(JSON.stringify([container.Config ?? null, container.HostConfig ?? null]))
+        .update(
+          JSON.stringify([
+            container.Config ?? null,
+            container.HostConfig ?? null,
+            networks.map(([name, network]) => [name, network?.NetworkID ?? null]).toSorted(),
+          ]),
+        )
         .digest('hex')
         .slice(0, 16),
     };
