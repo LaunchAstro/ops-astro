@@ -28,8 +28,8 @@ it('Sol proof, criterion 4: a person-only agent route redirect fails parity', ()
     const apiPath = join(copy, 'apps/api/app.ts');
     const original = readFileSync(apiPath, 'utf8');
     const redirected = original.replace(
-      'const request = { ...body, command: declaration.name } as AgentRequest;',
-      "const request = { ...body, command: declaration.name === 'task.decide' ? 'task.comment' : declaration.name } as AgentRequest;",
+      '{ ...body, command: declaration.name },',
+      "{ ...body, command: declaration.name === 'task.decide' ? 'task.comment' : declaration.name },",
     );
     expect(redirected).not.toBe(original);
     writeFileSync(apiPath, redirected);
