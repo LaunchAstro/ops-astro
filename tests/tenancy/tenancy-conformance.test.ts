@@ -9,7 +9,7 @@
 // so every rule is broken here on purpose, inside a transaction that is rolled
 // back, and the set is required to name the rule it caught.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import {
   describeFindings,
   lintCompositeKeys,
@@ -23,7 +23,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -100,6 +100,7 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
 
     it('refuses a migration whose file changed after it was applied', async () => {
       const directory = mkdtempSync(join(tmpdir(), 'tenancy-'));
+      onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
       const original = readFileSync('migrations/0001_tenancy.sql', 'utf8');
       writeFileSync(join(directory, '0001_tenancy.sql'), `${original}\n-- edited after the fact\n`);
       await expect(migrate(db.admin, directory)).rejects.toThrow(/applied as .* but the file now/u);

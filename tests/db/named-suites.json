@@ -277,6 +277,7 @@
     "tests/commands/final-r3-place.test.ts",
     "tests/runtime/final-r3-decide.test.ts",
     "tests/runtime/final-r3-decide-seed-race.test.ts",
-    "tests/ci/cq-15-security-gate.test.ts"
+    "tests/ci/cq-15-security-gate.test.ts",
+    "tests/support/fresh-database-leak.test.ts"
   ]
 }

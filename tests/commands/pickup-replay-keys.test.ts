@@ -8,10 +8,10 @@
 // and a delegation's scheme and key id cannot be rewritten after minting.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import {
   ACTIVE_KEY_VARIABLE,
@@ -101,7 +101,9 @@ describe('the credential derivation (group 5)', () => {
   });
 
   it('provisions a key file once, 0600, and never rewrites it', () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'pickup-replay-')), 'delegation.env');
+    const dir = mkdtempSync(join(tmpdir(), 'pickup-replay-'));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const file = join(dir, 'delegation.env');
     const first = ensureCredentialKeyFile(file);
     const text = readFileSync(file, 'utf8');
     expect(statSync(file).mode & 0o777).toBe(0o600);

@@ -23,10 +23,15 @@ FAILED=0
 pass() { printf '  PASS  %s\n' "$1"; PASSED=$((PASSED + 1)); }
 fail() { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; FAILED=$((FAILED + 1)); }
 
+# Every case folder lives under one scratch folder, removed however the run
+# ends, so an interrupted or failing run leaves nothing in the temp folder.
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/hook-exit-cases.XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 # selftest_code range_code literal_code -> hook output plus HOOK_EXIT=n
 run_hook_with() {
   local dir
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<STUB
 #!/bin/sh
 mode="\$1"
@@ -88,7 +93,7 @@ check 0 0 0        1  "public-content"   "public policy 3: refuses a scanner fai
 stdin_case() {
   local label="$1" line="$2" expect_scan="$3"
   local dir out
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
 #!/bin/sh
 echo "stub gate: $*"
@@ -126,7 +131,7 @@ stdin_case "a branch deletion scans nothing, and does not fall back" \
 same_refs_case() {
   local label="$1" line="$2"
   local dir out range_args literal_args
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
 #!/bin/sh
 echo "stub gate: $*"
@@ -159,7 +164,7 @@ same_refs_case "both scanners get the same refs on a later push" \
 # scanner should fall back to every outgoing branch.
 deletion_case() {
   local dir out
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
 #!/bin/sh
 echo "stub gate: $*"

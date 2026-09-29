@@ -6,11 +6,11 @@
 
 import { execFile, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import {
@@ -35,6 +35,7 @@ const GATE = 'scripts/security-gate.mjs';
 /** The gate's arguments on a report and an exceptions file, in a scratch directory with a.ts. */
 function scratch(report: unknown, exceptions: object, source = LINES.join('\n')) {
   const dir = mkdtempSync(join(tmpdir(), 'cq15-'));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   const [r, x] = [join(dir, 'report.json'), join(dir, 'exceptions.json')];
   writeFileSync(r, typeof report === 'string' ? report : JSON.stringify(report));
   writeFileSync(x, JSON.stringify({ audit: [], semgrep: [], ...exceptions }));
