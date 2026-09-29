@@ -5,7 +5,7 @@
 // names a client, person or stage outside the reader's scope.
 
 import type { Facet } from './types.ts';
-import type { ProjectRow } from './projects.ts';
+import type { ProjectRow } from './project-row.ts';
 import { pad } from './project-words.ts';
 
 const slug = (value: string): string => value.toLowerCase().replaceAll(/[^a-z0-9]+/gu, '-');

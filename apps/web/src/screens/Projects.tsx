@@ -15,9 +15,7 @@
 // (MP-4-6's time entries), the comment counts (INB-1) and starring (P-20).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Empty, type BoardRow } from '@launchastro/ui';
-import { ProjectsBoard } from '../../../../packages/ui/src/surfaces/ProjectsBoard.tsx';
-import type { ProjectRow } from '../../../../packages/ui/src/board/projects.ts';
+import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { BoardTask, TaskBoardResult } from '../../../../packages/core-wire/src/index.ts';
