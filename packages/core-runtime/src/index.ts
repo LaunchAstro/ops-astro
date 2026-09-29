@@ -26,6 +26,25 @@ export {
 } from './propose.ts';
 export { restart, type Restarted, type RestartRequest } from './restart.ts';
 export {
+  admitActivation,
+  captureManifest,
+  identityOf,
+  isInstructionPath,
+  pinBootstrapFile,
+  readPinned,
+  setDigest,
+  type ActivationMode,
+  type ActivationRequest,
+  type Activator,
+  type AdmittedActivation,
+  type CapturedManifest,
+  type FileIdentity,
+  type InstructionSource,
+  type PinnedRead,
+  type ReadAuditNote,
+  type ReadRequest,
+} from './definitions.ts';
+export {
   heartbeat,
   MAXIMUM_LEASE_LIFETIME_SECONDS,
   MAXIMUM_RENEWAL_SECONDS,
