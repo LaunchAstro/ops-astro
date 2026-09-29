@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// THE COMMAND CATALOGUE (API-1, CS-15.18): every command with its UI entry
-// points, its API endpoints and its CLI verb, generated from the command
-// surface and from the uses a scan of the app finds (`scripts/command-parity.mjs`),
-// never kept by hand. The parity check below fails the build when a UI action
-// that reads or changes state has no API and CLI equivalent, or when one
-// surface can do what another cannot. It replaces the first slice's
-// capability-map discovery, which was not ported (product issue 55):
-// `reachableBy` answers which commands a principal may call, and through which
-// surface.
-// It reads no record and writes nothing at run time; a row holds names, keys
-// and addresses with the business left as `:businessKey`.
+// THE COMMAND CATALOGUE (API-1, CS-15.18): each command's UI entry points, API
+// endpoints and CLI verb, generated (`scripts/command-parity.mjs`), never kept
+// by hand, and the parity check that holds every surface to the owning command.
+// It replaces capability-map discovery, not ported (issue 55). Reads no record.
 
 import {
   COMMAND_SURFACE,
@@ -42,7 +35,6 @@ export interface Profile {
 export interface CatalogueRow extends Profile {
   readonly command: CommandName;
   readonly kind: 'read' | 'write';
-  /** The key the grant model is asked, from the key catalogue. */
   readonly permissionKey: string;
   readonly api: { readonly person: string; readonly agent: string | null };
   readonly cli: string;
@@ -139,11 +131,7 @@ function compare(surface: string, command: string, owned: Profile, asked: Profil
   return failures;
 }
 
-/**
- * Every way the catalogue and the surfaces disagree, as plain lines. Empty is
- * parity. `rows` is the catalogue as generated; it is held to the owning
- * commands too, so a row that drops a marker or a part fails here.
- */
+/** Every way the catalogue and surfaces disagree, as plain lines; empty is parity. */
 export function checkParity(
   rows: readonly CatalogueRow[],
   surfaces: Surfaces,
@@ -191,14 +179,21 @@ export function checkParity(
   return failures;
 }
 
-/** Which commands `principal` may call, and through which surface (issue 55). */
+export interface HeldGrant {
+  readonly key: string;
+  readonly scope: { readonly kind: 'business' | 'party' | 'record'; readonly id: string | null };
+}
+
+/** Which commands `principal` may call, and where (issue 55). A business-scoped command needs business-wide keys. */
 export function reachableBy(
   rows: readonly CatalogueRow[],
-  principal: { readonly kind: 'person' | 'agent'; readonly keys: ReadonlySet<string> },
+  principal: { readonly kind: 'person' | 'agent'; readonly grants: readonly HeldGrant[] },
 ): { readonly command: CommandName; readonly surfaces: readonly string[] }[] {
+  const holds = (key: string, wide: boolean) =>
+    principal.grants.some((one) => one.key === key && (!wide || one.scope.kind === 'business'));
   return rows
     .filter((row) => principal.kind === 'person' || !row.personOnly)
-    .filter((row) => row.authority.every((key) => principal.keys.has(key)))
+    .filter((row) => row.authority.every((key) => holds(key, row.authorisedOn === 'business')))
     .map((row) => ({
       command: row.command,
       surfaces: [...(row.ui.length > 0 ? ['app'] : []), 'API', 'CLI'],
