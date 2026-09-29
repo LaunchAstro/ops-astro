@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const source = (name: string): string => readFileSync(join(import.meta.dirname, name), 'utf8');
 
 describe('T3c and T3f isolation review proofs', () => {
-  it('Sol proof, criterion 3: T3c crosses two granted clients on write-off', () => {
+  it('T3c crosses two granted clients on write-off', () => {
     const suite = source('t3c-write-off-isolation.test.ts');
     const start = suite.indexOf('it("client to client:');
     const end = suite.indexOf('it("task to task:', start);
@@ -22,7 +22,7 @@ describe('T3c and T3f isolation review proofs', () => {
     expect((caseSource.match(/\bwriteOffBody\s*\(/gu) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('Sol proof, criterion 3: T3f crosses two clients on expired observation', () => {
+  it('T3f crosses two clients on expired observation', () => {
     const suite = source('t3f-expired-lease.test.ts');
     expect(
       (suite.match(/\.client\s*\(/gu) ?? []).length,

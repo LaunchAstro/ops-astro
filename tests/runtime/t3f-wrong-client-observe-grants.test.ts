@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('T3f client isolation fix review', () => {
-  it('Sol proof, criterion 3: wrong-client observe callers hold the relevant write grants', () => {
+  it('wrong-client observe callers hold the relevant write grants', () => {
     const source = readFileSync(join(import.meta.dirname, 't3f-expired-lease.test.ts'), 'utf8');
     const start = source.indexOf('it("client to client:');
     const end = source.indexOf('it("business to business:', start);
