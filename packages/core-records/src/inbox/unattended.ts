@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `unattended` (INB-1e, CS-16.10): an open, owed item that no path reaches, so
-// a broken delivery path reads as a state and never as quiet.
+// `unattended` (INB-1e, CS-16.10): an open item that no path reaches, so a
+// broken delivery path reads as a state and never as quiet. A finished run's
+// item asks no response and is not counted, but a person who can no longer be
+// reached about it is still a path broken, so it is listed too.
 //
 // A path is one recipient of the obligation who can sign in (the three facts
 // login resolution asks: an active login, standing as a member or on a share,
@@ -26,7 +28,7 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsOnTask, taskAccess, type InboxFactKind, type InboxReason } from './items.ts';
+import { holdsOnTask, readScopes, type InboxFactKind, type InboxReason } from './items.ts';
 
 export interface UnattendedItem {
   readonly id: string;
@@ -48,14 +50,16 @@ type OpenRow = UnattendedItem & {
 };
 
 /**
- * Every unattended item of this business whose task the viewer can read now:
- * the viewer's own read is the client separation, and the business's is the
- * tenancy every query here runs under.
+ * Every unattended item of this business whose task the viewer can read now.
+ * The viewer's read scopes filter inside the query, so no row of a task they
+ * cannot read (another client's) is ever returned to this read: that is the
+ * client separation, and the business's is the tenancy every query runs under.
  */
 export async function readUnattended(
   tx: TenantQuery,
   viewerPersonId: string,
 ): Promise<readonly UnattendedItem[]> {
+  const viewer = await readScopes(tx, viewerPersonId);
   const rows = await tx.query<OpenRow>(
     `select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
@@ -72,9 +76,10 @@ export async function readUnattended(
        from public.inbox_items i
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
-      where i.business_id = $1 and i.work_state = 'open' and i.owed
+      where i.business_id = $1 and i.work_state = 'open'
+        and ($2::boolean or r.id = any($3::uuid[]) or r.uuid_7 = any($4::uuid[]))
       order by i.raised_at, i.id`,
-    [tx.businessId],
+    [tx.businessId, viewer.business, viewer.records, viewer.parties],
   );
   const attended = new Set<string>();
   for (const row of rows) {
@@ -86,8 +91,6 @@ export async function readUnattended(
   const unattended: UnattendedItem[] = [];
   for (const row of rows) {
     if (attended.has(obligationOf(row))) continue;
-    // oxlint-disable-next-line no-await-in-loop
-    if ((await taskAccess(tx, viewerPersonId, row.subjectRecordId)) !== 'readable') continue;
     const { id, recipientPersonId, subjectRecordId, reason, factKind, factId, raisedAt } = row;
     unattended.push({ id, recipientPersonId, subjectRecordId, reason, factKind, factId, raisedAt });
   }
