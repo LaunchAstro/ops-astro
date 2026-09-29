@@ -15,6 +15,7 @@
 // passed on the server's clock, which the read already derived), never a
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
+import { unknownOf, type UnknownAttempt } from './run-projection.ts';
 import type { RunCheck, RunLineage, RunReservation, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
@@ -82,6 +83,11 @@ export interface RunStory {
   readonly cancellable: boolean;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
+  /**
+   * The attempt a person answers for (C54): the newest one, held with its
+   * effect unknown. Null when there is none, or the read names no attempt id.
+   */
+  readonly unknownAttempt: UnknownAttempt | null;
 }
 
 const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
@@ -107,6 +113,8 @@ function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (lineage.state === 'cancelled') return 'cancelled';
   const reservation = latest(lineage.reservations);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
+  // T3b's unknown effect: held until a person records what happened (C54).
+  if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
   if (reservation?.state === 'abandoned') return 'dropped';
   if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
   if (reservation?.attempt?.state === 'handed_back') return 'done';
@@ -282,6 +290,7 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
         cancellable: lineage.state === 'live',
         heldMinor: reservation?.heldMinor ?? 0,
         actualMinor: reservation?.actualMinor ?? null,
+        unknownAttempt: unknownOf(reservation),
       },
     ];
   });

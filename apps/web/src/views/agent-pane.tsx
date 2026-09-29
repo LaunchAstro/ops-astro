@@ -8,11 +8,15 @@
 // evidence, and the server compares that version under its locks: a page that
 // has gone stale is told so and reads again, never decides by accident.
 // Reject is the decide path's `reject`, pressed from the proposal header.
-// Cancel is `task.cancel`, which asks `gate:decide`. Every outcome ends in a
-// reread, as the proposals section's does.
+// Cancel is `task.cancel`, which asks `gate:decide`. A person's word on an
+// unknown effect (C54) is `budget.record_outcome` (T3d1) or `budget.write_off`
+// (T3c), naming the attempt the read showed; both ask `billing:decide`, and the
+// write-off's second approver above the band is the server's. The top-up is
+// the task page's own (T2e). Every outcome ends in a reread, as the proposals
+// section's does.
 
 import { useState, type ReactElement } from 'react';
-import { AgentPane, type GateDecision } from '@launchastro/ui';
+import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView,
@@ -39,14 +43,33 @@ interface AgentControls {
     decision: GateDecision | 'reject',
   ) => void;
   readonly cancel: (lineageId: string) => void;
+  readonly recordOutcome: (attemptId: string, outcome: RecordedOutcome) => void;
+  readonly writeOff: (attemptId: string, amountMinor: number, reason: string) => void;
+  /** The server's word that the last write-off waits on a second person, or null. */
+  readonly awaiting: string | null;
 }
+
+/** The `detail.state` a command's answer carries, if any. */
+const stateOf = (value: unknown): unknown =>
+  typeof value === 'object' && value !== null
+    ? (value as { readonly detail?: Readonly<Record<string, unknown>> }).detail?.['state']
+    : undefined;
+
+const AWAITING =
+  'Your write-off is recorded. Above the four-eyes threshold a second person approves it too.';
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
   const { busy, run } = useCommand();
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [awaiting, setAwaiting] = useState<string | null>(null);
   const settle = (settlement: Settlement): void => {
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
+    setAwaiting(
+      settlement.kind === 'ok' && stateOf(settlement.value) === 'awaiting_second_approver'
+        ? AWAITING
+        : null,
+    );
     props.onChanged();
   };
   const decide: AgentControls['decide'] = (gate, decision) => {
@@ -74,11 +97,46 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  return { busy, refusal, decide, cancel };
+  const { recordOutcome, writeOff } = unknownControls(props, busy, (call) => {
+    run(call, settle);
+  });
+  return { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting };
+}
+
+/** C54's two acts on an unknown effect, each on its owning command (T3d1, T3c). */
+function unknownControls(
+  props: AgentSectionProps,
+  busy: boolean,
+  send: (call: () => ReturnType<OperationsClient['mutate']>) => void,
+): Pick<AgentControls, 'recordOutcome' | 'writeOff'> {
+  return {
+    recordOutcome: (attemptId, outcome) => {
+      if (busy) return;
+      send(() =>
+        props.client.mutate('budget.record_outcome', {
+          recordId: props.recordId,
+          attemptId,
+          outcome,
+        }),
+      );
+    },
+    writeOff: (attemptId, amountMinor, reason) => {
+      if (busy) return;
+      send(() =>
+        props.client.mutate('budget.write_off', {
+          recordId: props.recordId,
+          attemptId,
+          amountMinor,
+          reason,
+        }),
+      );
+    },
+  };
 }
 
 export function AgentSection(props: AgentSectionProps): ReactElement {
-  const { busy, refusal, decide, cancel } = useAgentControls(props);
+  const { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting } =
+    useAgentControls(props);
   // The person's own choice for this view. It is saved through the one
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
@@ -105,6 +163,9 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         // draws on without a link; the ledger's route supplies one when it lands.
         ledgerHref={null}
         ledger={props.ledger ?? null}
+        onOutcome={recordOutcome}
+        onWriteOff={writeOff}
+        writeOffAwaiting={awaiting}
       />
     </section>
   );

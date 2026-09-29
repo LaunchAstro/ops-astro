@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C54, run money and unknown outcomes as a person's acts on the Agent pane.
-// The pane builds no second command: its controls call `budget.record_outcome`
-// (T3d1) and `budget.write_off` (T3c) through the page's real client, naming
-// the task and the attempt the read showed, and every outcome ends in a
-// reread. The server here is a stand-in for the HTTP boundary only; what each
-// command does under its locks is proven against Postgres by its own suites
-// (`tests/runtime/t3d1-*`, `t3c-write-off*`).
+// C54 on the Agent pane: its controls call `budget.record_outcome` (T3d1) and
+// `budget.write_off` (T3c) through the page's real client, naming the task and
+// the attempt the read showed, then read again. The HTTP boundary is stood in;
+// what each command does under its locks is proven against Postgres by its
+// own suites (`tests/runtime/t3d1-*`, `t3c-write-off*`).
 
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the pane's own tests do */
 
@@ -219,6 +217,7 @@ describe('C54 the three outcomes on the Agent pane', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one page, each write-off case on it
 describe('C54 the write-off on the Agent pane', () => {
   it('C54 write-off amount and reason: sends the amount to charge and the written reason, then reads again', async () => {
     const { page, sent, reads } = await open(UNKNOWN);

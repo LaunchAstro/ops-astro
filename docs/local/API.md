@@ -1355,6 +1355,13 @@ whole hold and resumes the work on a new hold; it happened spends the whole
 hold; it happened differently spends it and reopens the work. A retry under the
 same `operationId` replays the stored answer.
 
+The task page's Agent pane offers the three outcomes, and the write-off below,
+on the newest attempt of the run it shows when that attempt is held
+`liability_unknown` (C54): it sends the attempt id the read showed and reads
+the task again after every answer. It offers no fourth outcome; an effect not
+yet known keeps its stop. The top-up on the same page is `budget.top_up`'s own
+control (T2e).
+
 ### `budget.write_off` (T3c)
 
 `POST /api/b/<key>/budget/write_off` with `recordId` (the task), `attemptId`,

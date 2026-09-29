@@ -21,8 +21,10 @@ import { StagedOutput } from './agent/staged.tsx';
 import { scopeStamp } from '../state/agent-scope.ts';
 import type { TaskLedger } from '../state/token-ledger.ts';
 import { TokenTracked } from './agent/tokens.tsx';
+import { UnknownOutcome, type RecordedOutcome } from './agent/unknown.tsx';
 
 export type { GateDecision } from './agent/gate.tsx';
+export type { RecordedOutcome } from './agent/unknown.tsx';
 
 export interface AgentPaneProps {
   /** `task.read`'s proposals; absent on a read that carries none. */
@@ -44,6 +46,15 @@ export interface AgentPaneProps {
   readonly ledgerHref: ((grantId: string) => string) | null;
   /** `task.read`'s token ledger (MP-6-5); null for a reader it is not shown to. */
   readonly ledger: TaskLedger | null;
+  /**
+   * A person's word on an unknown effect (C54): one of the three outcomes, or
+   * a write-off at an amount with a reason. Absent where the host offers
+   * neither, and then no control is drawn.
+   */
+  readonly onOutcome?: (attemptId: string, outcome: RecordedOutcome) => void;
+  readonly onWriteOff?: (attemptId: string, amountMinor: number, reason: string) => void;
+  /** The server's word that a write-off waits on a second person, or null. */
+  readonly writeOffAwaiting?: string | null;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -98,6 +109,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         ledgerHref={props.ledgerHref}
       />
       <Summary story={shown} />
+      <Unknown {...props} shown={shown} />
       <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
       <StagedOutput story={shown} />
       <Gate
@@ -110,5 +122,20 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
       />
       <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
     </>
+  );
+}
+
+/** C54's controls on the shown run, where the host offers both acts. */
+function Unknown(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement | null {
+  if (props.onOutcome === undefined || props.onWriteOff === undefined) return null;
+  return (
+    <UnknownOutcome
+      key={props.shown.unknownAttempt?.id ?? 'none'}
+      story={props.shown}
+      busy={props.busy}
+      awaiting={props.writeOffAwaiting ?? null}
+      onOutcome={props.onOutcome}
+      onWriteOff={props.onWriteOff}
+    />
   );
 }

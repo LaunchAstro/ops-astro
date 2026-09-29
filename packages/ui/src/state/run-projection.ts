@@ -54,7 +54,11 @@ export interface RunReservation {
   readonly actualMinor: number | null;
   readonly classifiedCause: string | null;
   readonly lease: { readonly state: string } | null;
-  readonly attempt: { readonly state: string } | null;
+  /**
+   * The step's attempt. Its id names it to `budget.record_outcome` and
+   * `budget.write_off` (C54); absent on a read that does not carry it.
+   */
+  readonly attempt: { readonly id?: string; readonly state: string } | null;
 }
 
 /** What a run was allowed to touch: its lease's delegation, set by the broker (MP-6-4). */
@@ -92,4 +96,19 @@ export interface RunLineage {
   readonly reservations: readonly RunReservation[];
   /** Oldest lease first. Absent from a read made before MP-6-4, which reads as none. */
   readonly scopes?: readonly RunScope[];
+}
+
+/** An attempt held with its effect unknown, as a person answers for it (C54). */
+export interface UnknownAttempt {
+  readonly id: string;
+  readonly heldMinor: number;
+}
+
+/** The newest attempt, when it is held with its effect unknown and named (C54). */
+export function unknownOf(reservation: RunReservation | undefined): UnknownAttempt | null {
+  const id = reservation?.attempt?.id;
+  if (reservation?.state !== 'held' || reservation.attempt?.state !== 'liability_unknown') {
+    return null;
+  }
+  return typeof id === 'string' ? { id, heldMinor: reservation.heldMinor } : null;
 }
