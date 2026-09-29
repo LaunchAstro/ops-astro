@@ -84,6 +84,13 @@ export function liveRenderer(browser: Browser): Renderer {
   };
 }
 
+/** How the browser is launched. Not built yet (MP-1-7). */
+export type Mode = { headless: boolean; channel?: string };
+
+export function rendererOf(_base: Renderer, _mode: Mode): Renderer {
+  throw new Error('MP-1-7: not built');
+}
+
 export function checkRenderer(packet: Packet, live: Renderer): void {
   for (const key of Object.keys(packet.renderer) as (keyof Renderer)[]) {
     if (live[key] !== packet.renderer[key]) {
