@@ -19,8 +19,17 @@
 -- store writes a receipt for every add, read and delete: action, id, time,
 -- size and login; no bytes, no fingerprint.
 --
--- The retention window, and how old the last passed restore drill may be,
--- are one row, `backups.settings`, here and nowhere else.
+-- The retention window, how old the last passed restore drill may be, and
+-- the most the store may hold are one row, `backups.settings`, here and
+-- nowhere else.
+--
+-- The store is the one persistent place staging has (S0-1's disk row names its
+-- volume as the only exception), so it bounds itself: an archive that would
+-- take the stored total past `max_bytes` is refused (53400), whatever the job
+-- does. The total is one row, `backups.stored`, that every insert updates only
+-- while it stays within the cap: its row lock judges two archives written at
+-- once one after the other, and a second that holds an older snapshot fails
+-- rather than reading around the first. A delete gives its bytes back.
 
 create schema backups;
 revoke all on schema backups from public;
@@ -28,9 +37,17 @@ revoke all on schema backups from public;
 create table backups.settings (
   one boolean primary key default true check (one),
   retention_days integer not null check (retention_days between 1 and 365),
-  restore_days integer not null check (restore_days between 1 and 365)
+  restore_days integer not null check (restore_days between 1 and 365),
+  max_bytes bigint not null check (max_bytes > 0)
 );
-insert into backups.settings (retention_days, restore_days) values (35, 35);
+insert into backups.settings (retention_days, restore_days, max_bytes)
+values (35, 35, 4 * 1024 * 1024 * 1024::bigint);
+
+create table backups.stored (
+  one boolean primary key default true check (one),
+  bytes bigint not null check (bytes >= 0)
+);
+insert into backups.stored (bytes) values (0);
 
 create table backups.archives (
   id uuid primary key default gen_random_uuid(),
@@ -73,6 +90,23 @@ begin
   return old;
 end $$;
 
+-- Counts the archive's bytes in, or out, under the total's row lock.
+create function backups.archive_bounded() returns trigger
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  if tg_op = 'DELETE' then
+    update backups.stored set bytes = bytes - old.bytes;
+    return old;
+  end if;
+  update backups.stored set bytes = bytes + length(new.body)
+  where bytes + length(new.body) <= (select max_bytes from backups.settings);
+  if not found then
+    raise exception 'the backup store is full: this archive would take it past backups.settings.max_bytes'
+      using errcode = 'configuration_limit_exceeded';
+  end if;
+  return new;
+end $$;
+
 create function backups.receipts_append_only() returns trigger
   language plpgsql set search_path = pg_catalog as $$
 begin
@@ -81,12 +115,17 @@ end $$;
 
 revoke execute on function backups.archive_stamped() from public;
 revoke execute on function backups.archive_receipt() from public;
+revoke execute on function backups.archive_bounded() from public;
 revoke execute on function backups.receipts_append_only() from public;
 
 create trigger archive_stamped before insert on backups.archives
   for each row execute function backups.archive_stamped();
 create trigger archive_receipt after insert or delete on backups.archives
   for each row execute function backups.archive_receipt();
+create trigger archive_bounded before insert on backups.archives
+  for each row execute function backups.archive_bounded();
+create trigger archive_unbounded after delete on backups.archives
+  for each row execute function backups.archive_bounded();
 create trigger receipts_append_only before update or delete or truncate on backups.receipts
   for each statement execute function backups.receipts_append_only();
 
