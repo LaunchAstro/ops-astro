@@ -56,6 +56,13 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   // T3e2: an outage's one report and the runs it dropped, kept with them.
   outage_reports: 'runtime',
   outage_runs: 'runtime',
+  // AW-02 (skill-migration contract 4.4): the audit copy of a run's
+  // instruction bytes may hold client material, so it retains exactly as the
+  // run records it copies and goes only with them; the pin and the read
+  // ledger it answers for retain alike.
+  bootstrap_bytes: 'runtime',
+  bootstrap_reads: 'runtime',
+  run_definition_pins: 'runtime',
 };
 
 /**

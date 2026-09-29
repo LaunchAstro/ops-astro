@@ -1468,6 +1468,12 @@ itself is never rewritten either: 0033 takes back the application's update on
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
 
+The audit copy may hold client material, so it retains as the run records it
+copies (skill-migration contract 4.4; #27 row 5, retained and never deleted):
+the retention register (`core-records/src/tasks/trash.ts`) puts it, the pin
+and the read ledger in the `runtime` class beside `runs`, and the purge answers
+each of them exactly as it answers the runs.
+
 `core-runtime/src/definitions.ts` holds the operations, all first used by
 AW-04's plan accept, the only activation. `admitActivation` refuses anything
 but a person's manual act before a run exists (`ACTIVATION_MODE_NOT_PERMITTED`
