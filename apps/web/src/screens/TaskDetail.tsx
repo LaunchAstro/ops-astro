@@ -104,10 +104,10 @@ import {
   PanelDoorButton,
   perspectiveCounts,
   Perspectives,
-  TeamWork,
   type PanelDoor,
   type Perspective,
 } from './task/Perspectives.tsx';
+import { stepMarks, TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -199,6 +199,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
@@ -236,6 +237,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onTopUpNote={setTopUpNote}
                 perspective={perspective ?? 'team'}
                 onPerspective={setPerspective}
+                showFinished={showFinished ?? false}
+                onShowFinished={setShowFinished}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -530,6 +533,9 @@ interface LoadedProps {
   /** Which side of the task this reading shows, held above the read (MP-4-3). */
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
+  /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
+  readonly showFinished: boolean;
+  readonly onShowFinished: (next: boolean) => void;
   readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
@@ -538,9 +544,6 @@ interface LoadedProps {
   readonly onDiscard: () => void;
   readonly onChanged: () => void;
 }
-
-/** The subtasks the Team side counts: none until the read carries them (MP-4-4). */
-const STEPS: readonly [] = [];
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
@@ -591,10 +594,10 @@ function Loaded(props: LoadedProps): ReactElement {
     deps: [],
   });
 
-  // No subtasks are carried on the read until MP-4-4, and no staged output
-  // until the agent's output lands: both counts follow the same rule then.
+  // The subtasks the read carries (MP-4-4); no staged output until the
+  // agent's output lands, when it follows the same rule.
   const counts = perspectiveCounts({
-    steps: STEPS,
+    steps: stepMarks(task.steps),
     proposals: task.proposals ?? [],
     stagedOutput: false,
   });
@@ -655,7 +658,7 @@ function Loaded(props: LoadedProps): ReactElement {
 
             <DescriptionSection description={task.description} />
 
-            <TeamWork steps={STEPS} onOpenPanel={props.onOpenPanel} />
+            <TeamSubtasks {...props} />
 
             <Comments
               client={client}

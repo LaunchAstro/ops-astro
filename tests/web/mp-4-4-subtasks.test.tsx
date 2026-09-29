@@ -8,7 +8,7 @@
 // are the steps the server sent, redrawn from the reread, and the page's Team
 // badge counts the same steps (MP-4-3's one rule).
 
-import { act } from 'react';
+import { act, useState, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { StepView } from '../../packages/core-wire/src/index.ts';
 import { SubtaskList } from '../../apps/web/src/screens/task/Subtasks.tsx';
@@ -61,27 +61,26 @@ function commands() {
 
 /** The list under a parent that rereads on change: it redraws the server's next steps. */
 async function list(client: OperationsClient, steps: readonly StepView[], next = steps) {
-  let view: Mounted | undefined;
-  let rereads = 0;
-  let open = false;
-  const draw = (now: readonly StepView[]) => (
-    <SubtaskList
-      client={client}
-      parentId={TASK_ID}
-      steps={now}
-      showFinished={open}
-      onShowFinished={(value) => {
-        open = value;
-        void view?.render(draw(now));
-      }}
-      onChanged={() => {
-        rereads += 1;
-        void view?.render(draw(next));
-      }}
-    />
-  );
-  view = await mount(draw(steps));
-  return { view, rereads: () => rereads };
+  const counter = { rereads: 0 };
+  function Parent(): ReactElement {
+    const [shown, setShown] = useState(steps);
+    const [open, setOpen] = useState(false);
+    return (
+      <SubtaskList
+        client={client}
+        parentId={TASK_ID}
+        steps={shown}
+        showFinished={open}
+        onShowFinished={setOpen}
+        onChanged={() => {
+          counter.rereads += 1;
+          setShown(next);
+        }}
+      />
+    );
+  }
+  const view = await mount(<Parent />);
+  return { view, rereads: () => counter.rereads };
 }
 
 const typeInto = async (view: Mounted, value: string) => {
@@ -105,7 +104,9 @@ const click = async (view: Mounted, selector: string) => {
 };
 
 const rows = (view: Mounted): readonly string[] =>
-  [...view.host.querySelectorAll('[data-step]')].map((row) => row.getAttribute('data-step') ?? '');
+  [...view.host.querySelectorAll<HTMLElement>('[data-step]')].map(
+    (row) => row.dataset['step'] ?? '',
+  );
 
 describe('MP-4-4 enter adds', () => {
   it('CS-4.25: Enter adds under this parent, clears the box and keeps it ready', async () => {
@@ -206,7 +207,7 @@ describe('MP-4-4 archived shows why', () => {
     expect(view.find('[data-step-count]')?.textContent).toBe('0 of 1 done · 0%');
     await click(view, '[data-steps-finished]');
     const row = view.find('[data-step="44"]');
-    expect(row?.textContent).toContain('Archived 30 Sep 2026');
+    expect(row?.textContent).toContain('Archived 30 Sept 2026');
     expect(row?.textContent).toContain('The parent task was completed');
     expect(view.find('[data-step-tick="44"]')).toBeNull();
   });
