@@ -7,8 +7,11 @@
 //
 // - `field_defs_owning_operation_not_empty`: an empty list is the same absence
 //   as null wearing a different shape.
-// - `field_defs_operation_names_are_operations`: every element is a
-//   `family.verb` operation name, and none is null.
+// - `field_defs_operation_names_are_operations`: every element is spelled as
+//   a `family.verb` operation name, and none is null. It reads the spelling
+//   only (0009's pattern): a well-formed name no command owns, such as
+//   `task.no_such_operation`, passes it, and so does `preset.plan`. Nothing in
+//   the product refuses such a name yet; that is a follow-up, not this suite.
 //
 // A valid list is written alongside as the control, so each refusal is about
 // the value and not about the row around it. An empty list fails both checks,
@@ -87,7 +90,7 @@ describe.skipIf(serverUrl === undefined)('CQ-14 owning operation constraints', (
     expect(kept[0]?.n, 'the dropped check came back with the rollback').toBe('1');
   });
 
-  it('refuses an unknown operation name by field_defs_operation_names_are_operations', async () => {
+  it('refuses a malformed operation name by field_defs_operation_names_are_operations', async () => {
     await expect(operationField('owned_by_nothing', ['complete'])).rejects.toThrow(
       /field_defs_operation_names_are_operations/u,
     );
