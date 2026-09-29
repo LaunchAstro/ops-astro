@@ -18,9 +18,11 @@
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
 //    a refusal of the facts themselves writes nothing.
-// 2. Start. The call is marked `dispatched` with its route and credential
-//    kind before custody is asked, so a crash after this point leaves a call
-//    the sweep holds as unknown liability and never releases.
+// 2. Start. The six facts are read again under their locks, and a call whose
+//    authority went since the hold is released unsent. The call is marked
+//    `dispatched` with its route and credential kind before custody is
+//    asked, so a crash after this point leaves a call the sweep holds as
+//    unknown liability and never releases.
 // 3. Send, through custody, with a request the adapter built from registered
 //    fields. The broker's process opens no connection.
 // 4. Settle, under the same locks, with the audit event in the same
@@ -427,27 +429,48 @@ export async function reserveModelCall(
   };
 }
 
+/**
+ * Step 2, as the effect applies: the six facts again under their locks, so a
+ * lease, delegation or reservation lost since the hold sends nothing. The
+ * hold is then released, never started, with the route it would have taken
+ * and no start time. Only then is the call marked `dispatched`.
+ */
 async function markStarted(
   database: Database,
   businessId: BusinessId,
+  caller: ModelCaller,
+  request: ModelCallRequest,
   reserved: ReservedCall,
-): Promise<boolean> {
+  broker: Broker,
+): Promise<'started' | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    if (!(await promptCopyRegistered(tx, reserved.callId))) return false;
+    const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
+    const checked = await lockFacts(tx, caller, request, false);
+    if (!checked.ok) {
+      await tx.query(
+        `update public.model_calls
+            set state = 'released', ended_at = clock_timestamp(),
+                route_key = $3, route_reach = $4, credential_kind = $5
+          where business_id = $1 and id = $2 and state = 'reserved'`,
+        [tx.businessId, reserved.callId, ...route],
+      );
+      await broker.audit(tx, {
+        action: 'model.call_released',
+        outcome: 'refused',
+        refusalCode: checked.code,
+        detail: { callId: reserved.callId, code: checked.code },
+      });
+      return checked.code;
+    }
+    if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';
     await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
               route_key = $3, route_reach = $4, credential_kind = $5
         where business_id = $1 and id = $2 and state = 'reserved'`,
-      [
-        tx.businessId,
-        reserved.callId,
-        reserved.route.key,
-        reserved.route.reach,
-        reserved.route.credentialKind,
-      ],
+      [tx.businessId, reserved.callId, ...route],
     );
-    return true;
+    return 'started';
   });
 }
 
@@ -607,9 +630,8 @@ export async function sendReservedCall(
   reserved: ReservedCall,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  if (!(await markStarted(database, businessId, reserved))) {
-    return { ok: false, code: 'COPY_NOT_REGISTERED', callId: reserved.callId };
-  }
+  const started = await markStarted(database, businessId, caller, request, reserved, broker);
+  if (started !== 'started') return { ok: false, code: started, callId: reserved.callId };
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
   const values = Object.fromEntries(request.fields.map((field) => [field.name, field.value]));
