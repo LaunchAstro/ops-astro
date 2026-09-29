@@ -7,6 +7,7 @@
 // origin is caught by its shape as well.
 
 const held = new Set<string>();
+const SIGNED = /eyJ[\w-]+\.[\w-]+\.[\w-]+/gu;
 
 export function holdSecret(value: string): string {
   if (value !== '') held.add(value);
@@ -14,5 +15,7 @@ export function holdSecret(value: string): string {
 }
 
 export function redact(text: string): string {
-  return text;
+  let out = text;
+  for (const secret of held) out = out.replaceAll(secret, '<credential>');
+  return out.replaceAll(SIGNED, '<token>');
 }

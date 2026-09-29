@@ -30,6 +30,7 @@
 // name.
 
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
@@ -82,7 +83,7 @@ const ports = {
 const onlyJourney = flag('--only', '') === 'journey';
 const evidence = resolve(flag('--evidence', join(ROOT, '.local', 'journey', stamp)));
 const container = `ops-astro-journey-${stamp.toLowerCase()}`;
-const password = `journey_${stamp.replaceAll('-', '').slice(0, 14)}`;
+const password = `journey_${randomUUID().replaceAll('-', '')}`;
 const admin = `postgres://postgres:${password}@127.0.0.1:${String(pg)}/journey`;
 const pidfile = join(evidence, 'journey.pids');
 const lines = [];
@@ -91,7 +92,9 @@ function say(line) {
   console.log(`journey: ${line}`);
 }
 
-function record(name, status, detail) {
+function record(name, status, raw) {
+  // The container's password never reaches a line, whatever a failure quotes.
+  const detail = raw.replaceAll(password, '<password>');
   lines.push({ case: name, status, detail });
   appendFileSync(
     join(evidence, 'cases.jsonl'),
@@ -128,10 +131,19 @@ async function journey() {
       record(one.case, one.status, one.detail);
     }
   });
-  child.stderr.on('data', (chunk) => appendFileSync(join(evidence, 'run.stderr'), chunk));
+  // Whole lines, so the password cannot be split across two writes and pass the scrub.
+  let errors = '';
+  const scrubbed = (text) => text.replaceAll(password, '<password>');
+  child.stderr.on('data', (chunk) => {
+    errors += chunk.toString('utf8');
+    const cut = errors.lastIndexOf('\n') + 1;
+    appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors.slice(0, cut)));
+    errors = errors.slice(cut);
+  });
   const code = await new Promise((done) => {
     child.once('close', done);
   });
+  appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors));
   // Exit 1 is the run's own verdict, already on its case lines; anything else is the run breaking.
   if (seen === 0 || (code !== 0 && code !== 1)) {
     const detail = `exit ${String(code)}, ${String(seen)} cases; stderr in ${join(evidence, 'run.stderr')}`;

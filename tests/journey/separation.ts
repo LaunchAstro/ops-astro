@@ -19,6 +19,7 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { DELEGATION_HEADER, PREFIX, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { enrolExternal, type Caller } from '../acceptance/world.ts';
 import { delegate, personOn, type PassContext, type PassResult } from './passes.ts';
+import { holdSecret } from './redact.ts';
 
 export interface Cast {
   readonly canary: { readonly id: string; readonly title: string };
@@ -40,6 +41,7 @@ export async function castSeparation(context: PassContext): Promise<Cast> {
   }
   const shared = String(made.body['recordId']);
   const external = await enrolExternal(world);
+  holdSecret(external.token);
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     const sharer = { personId: world.ada.personId as string, actorId: world.ada.actorId as string };
     const request = { collection: 'task', recordId: shared, personId: external.personId as string };

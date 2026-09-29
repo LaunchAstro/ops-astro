@@ -23,6 +23,7 @@ import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import type { World } from '../acceptance/world.ts';
 import { runCli } from '../cli/cli-process-harness.ts';
 import { readFacts, type JourneyFacts } from './facts.ts';
+import { holdSecret } from './redact.ts';
 
 export type Surface = 'app' | 'cli';
 
@@ -123,7 +124,7 @@ export async function delegate(world: World, taskId: string): Promise<string> {
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!minted.ok) throw new Error(`journey: delegation refused ${minted.refusal.code}`);
-    return minted.value.credential;
+    return holdSecret(minted.value.credential);
   });
 }
 
