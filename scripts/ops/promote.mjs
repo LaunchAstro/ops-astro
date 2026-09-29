@@ -10,12 +10,13 @@
 //   node scripts/ops/promote.mjs --dry-run --version <id> --artefacts <store> --line "<text>"
 //   node scripts/ops/promote.mjs --version <id> --artefacts <store> --line "<text>" \
 //     --api docker:<name>|launchd:<label> --auth docker:<name>|launchd:<label> --current <link>
-//     [--docker-inspect <file>] [--launchctl <file>]
 //
 // A dry run reads only the store: it asks nothing of the service manager and
 // changes nothing. The record is printed as one JSON line. Exit 0 when promoted
 // or dry-run, 1 when refused or failed, 2 when the arguments are unusable.
-// The two file flags hand the service report a command's saved output instead.
+// A promotion reads the live service manager, never a saved report: a report
+// file handed in could say stopped while the API runs, so the report's file
+// flags are refused here, and so is any argument the step does not know.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { renameSync, rmSync, symlinkSync } from 'node:fs';
@@ -29,16 +30,30 @@ function usage(message) {
   process.exit(2);
 }
 
-function flag(args, name) {
-  const at = args.indexOf(name);
-  if (at === -1) return undefined;
-  const value = args[at + 1];
-  if (value === undefined || value.startsWith('--')) usage(`${name} needs a value`);
-  return value;
+const VALUED = new Set(['--version', '--artefacts', '--line', '--api', '--auth', '--current']);
+const SAVED_REPORT = new Set(['--docker-inspect', '--launchctl']);
+
+const given = new Map();
+let dryRun = false;
+const args = process.argv.slice(2);
+for (let at = 0; at < args.length; at += 1) {
+  const arg = args[at];
+  if (arg === '--dry-run') dryRun = true;
+  else if (SAVED_REPORT.has(arg)) {
+    console.error(
+      `promote: REFUSED: ${arg} hands in a saved report; a promotion reads the live service manager, never a saved report`,
+    );
+    process.exit(1);
+  } else if (VALUED.has(arg)) {
+    const value = args[at + 1];
+    if (value === undefined || value.startsWith('--')) usage(`${arg} needs a value`);
+    given.set(arg, value);
+    at += 1;
+  } else usage(`${arg} is not an argument of the promotion step`);
 }
 
-function service(args, name) {
-  const text = flag(args, name);
+function service(name) {
+  const text = given.get(name);
   if (text === undefined) return undefined;
   try {
     return parseService(text);
@@ -47,33 +62,20 @@ function service(args, name) {
   }
 }
 
-const args = process.argv.slice(2);
-const version = flag(args, '--version');
-const store = flag(args, '--artefacts');
-const line = flag(args, '--line');
+const [version, store, line] = ['--version', '--artefacts', '--line'].map((n) => given.get(n));
 if (version === undefined || store === undefined || line === undefined) {
   usage('--version, --artefacts and --line are all needed');
 }
-const request = { version, store, line, dryRun: args.includes('--dry-run') };
-for (const [key, name] of [
-  ['api', '--api'],
-  ['auth', '--auth'],
-]) {
-  const named = service(args, name);
-  if (named) request[key] = named;
-}
-const current = flag(args, '--current');
-if (current !== undefined) request.current = current;
+const request = { version, store, line, dryRun };
+const api = service('--api');
+if (api) request.api = api;
+const auth = service('--auth');
+if (auth) request.auth = auth;
+if (given.has('--current')) request.current = given.get('--current');
 
 const effects = {
   services() {
-    const passed = ['--docker-inspect', '--launchctl'].flatMap((name) => {
-      const file = flag(args, name);
-      return file === undefined ? [] : [name, file];
-    });
-    const out = execFileSync(process.execPath, [REPORT, 'snapshot', ...passed], {
-      encoding: 'utf8',
-    });
+    const out = execFileSync(process.execPath, [REPORT, 'snapshot'], { encoding: 'utf8' });
     return JSON.parse(out).services;
   },
   migrate() {

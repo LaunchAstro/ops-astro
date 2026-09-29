@@ -103,6 +103,23 @@ const fixture = (name: string, text: string): string => {
   writeFileSync(path, text);
   return path;
 };
+/** A PATH whose docker and launchctl answer as the live service manager would. */
+const liveManager = ({ apiRunning }: { apiRunning: boolean }): string => {
+  const bin = mkdtempSync(join(scratch, 'manager-'));
+  const inspect = JSON.stringify([
+    { Name: '/prod-api', State: { Running: apiRunning }, HostConfig: {} },
+  ]);
+  writeFileSync(
+    join(bin, 'docker'),
+    `#!/bin/sh\nif [ "$1" = ps ]; then echo api-id; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nexit 2\n`,
+  );
+  writeFileSync(
+    join(bin, 'launchctl'),
+    `#!/bin/sh\nprintf 'PID\\tStatus\\tLabel\\n-\\t0\\torg.example.prod-auth\\n'\n`,
+  );
+  for (const command of ['docker', 'launchctl']) chmodSync(join(bin, command), 0o755);
+  return `${bin}:${process.env['PATH'] ?? ''}`;
+};
 
 // ---- S0-1 promotion same artefact (the invariant) --------------------------
 
@@ -198,43 +215,45 @@ describe('S0-1 promotion refuses running app', () => {
     }
   });
 
-  it('the command refuses from the service manager, not open connections, and leaves production pointing where it was', () => {
+  it('the command refuses from the live service manager, not open connections, and leaves production pointing where it was', () => {
     const current = join(scratch, 'current-refused');
     symlinkSync(join(scratch, 'previous-build'), current);
-    const docker = fixture(
-      'inspect-running.json',
-      JSON.stringify([
-        {
-          Name: '/prod-api',
-          Image: `sha256:${'a'.repeat(64)}`,
-          State: { Running: true, StartedAt: '2026-09-29T01:00:00Z' },
-          HostConfig: {},
-        },
-      ]),
+    const result = run(
+      [
+        '--version',
+        STAGED,
+        '--artefacts',
+        STORE(),
+        '--line',
+        LINE,
+        '--api',
+        'docker:prod-api',
+        '--auth',
+        'launchd:org.example.prod-auth',
+        '--current',
+        current,
+      ],
+      {
+        PATH: liveManager({ apiRunning: true }),
+        DATABASE_ADMIN_URL: 'postgres://nobody@127.0.0.1:1/never',
+      },
     );
-    const launchd = fixture('launchctl.txt', 'PID\tStatus\tLabel\n-\t0\torg.example.prod-auth\n');
-    const result = run([
-      '--version',
-      STAGED,
-      '--artefacts',
-      STORE(),
-      '--line',
-      LINE,
-      '--api',
-      'docker:prod-api',
-      '--auth',
-      'launchd:org.example.prod-auth',
-      '--current',
-      current,
-      '--docker-inspect',
-      docker,
-      '--launchctl',
-      launchd,
-    ]);
     expect(result.status, result.out).toBe(1);
     expect(result.out).toMatch(/docker:prod-api is running/u);
-    expect(result.out).not.toMatch(/promotion recorded/u);
+    expect(result.out).not.toMatch(/promotion recorded|db-migrate/u);
     expect(readlinkSync(current)).toBe(join(scratch, 'previous-build'));
+  });
+
+  it('the command takes no saved report and no argument it does not know', () => {
+    const base = ['--version', STAGED, '--artefacts', STORE(), '--line', LINE];
+    for (const saved of ['--docker-inspect', '--launchctl']) {
+      const result = run([...base, saved, fixture('saved.json', '[]')]);
+      expect(result.status, result.out).toBe(1);
+      expect(result.out).toMatch(/never a saved report/u);
+    }
+    const typo = run([...base, '--dryrun']);
+    expect(typo.status, typo.out).toBe(2);
+    expect(typo.out).toMatch(/--dryrun is not an argument/u);
   });
 
   it('names services only as docker:<name> or launchd:<label>', () => {
