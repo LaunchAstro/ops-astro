@@ -11,3 +11,7 @@ tests/gate/canary.txt
 .claude/skills
 .codex
 skills-lock.json
+
+# Sol's review proofs, committed byte-for-byte as the review patch held them
+# so a reader can compare them with the patch. See issue #174.
+tests/runtime/t2d-proof-body-byte-identity.test.ts
