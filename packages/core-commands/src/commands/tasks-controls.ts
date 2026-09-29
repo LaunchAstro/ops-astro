@@ -15,6 +15,7 @@ import {
   raiseDecision,
   raiseIncident,
   subjectsOf,
+  withdrawEndedGates,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
@@ -125,6 +126,8 @@ export async function cancelOnTask(
   });
   if (!result.ok) return refused(result.refusal);
   await raiseIncident(tx, result.value);
+  // INB-1: the cancelled lineage's pending gate can no longer be decided.
+  await withdrawEndedGates(tx, found.taskId);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',

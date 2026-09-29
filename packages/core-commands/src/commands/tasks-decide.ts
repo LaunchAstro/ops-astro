@@ -4,7 +4,7 @@
 // unchanged when the one task-runtime module was divided (thermo review
 // b483399, H2).
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
+import { clearDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -108,6 +108,9 @@ export async function decideOnGate(
   }
 
   const decided = result.value;
+  // INB-1: the gate's decision items close in this transaction, naming the
+  // decider; a fault here throws and takes the decision down with it.
+  await clearDecision(tx, { gateId: decided.gateId, decisionId: decided.decisionId });
   return applied(null, null, {
     decisionId: decided.decisionId,
     gateId: decided.gateId,
