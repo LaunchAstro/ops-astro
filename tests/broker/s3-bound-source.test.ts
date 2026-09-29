@@ -2,9 +2,9 @@
 //
 // AW-01 personal information stays local, S3: a field's business-internal
 // source is the broker's finding from the row it is bound to, never the
-// caller's claim (owner line 72). A caller's claim alone, a client's row, a
-// row entered by anyone but the business's own people or written to by an
-// agent, and a foreign, made-up or trashed row never reach a cloud route.
+// caller's claim (owner line 72). A bound field reads only the run's own
+// task, and only a field the agent is shown; the task is business-internal
+// only when a person of the business entered it and no agent wrote to it.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -22,6 +22,7 @@ import {
   racer,
   revisionOf,
   seedSchedules,
+  type Work,
 } from '../runtime/schedules-harness.ts';
 import {
   noDatabase,
@@ -49,9 +50,24 @@ const bound = (recordId: string, key = 'title'): ModelCallField => ({
   from: { recordId, key },
 });
 
-/** A staff person's own task through the API, its title the planted value. */
-const internalRow = async (title: string = `s3-${randomUUID()}`): Promise<string> =>
-  await createTask(s, title);
+const setData = async (recordId: string, patch: Readonly<Record<string, string>>) =>
+  await s.db.admin.execute(
+    `update public.records set data = data || $2::text::jsonb where id = $1`,
+    [recordId, JSON.stringify(patch)],
+  );
+
+/** An applied operation by the agent on the task, as the register records one. */
+const AGENT_WROTE = `insert into public.operations
+    (business_id, id, operation_id, command, actor_id, payload_digest, outcome, result, record_id, revision)
+  values ($1, $2, $3, 'task.update', $4, $5, 'applied', '{}'::jsonb, $6, 2)`;
+const agentWrote = (taskId: string): readonly unknown[] => [
+  s.business,
+  randomUUID(),
+  `s3-${randomUUID()}`,
+  s.agentActorId,
+  '0'.repeat(64),
+  taskId,
+];
 
 it('AW-01 personal information stays local (S3): a caller that only claims business_internal goes local', async () => {
   const work = await liveWork(s, 's3 a claim alone', 2_000);
@@ -74,12 +90,11 @@ it('AW-01 personal information stays local (S3): a caller that only claims busin
   ]);
 }, 120_000);
 
-it('AW-01 personal information stays local (S3): a field bound to a staff-entered task with no client reaches the cloud, with the row value', async () => {
-  const work = await liveWork(s, 's3 a bound internal row', 2_000);
-  world.provider.mode('answer');
+it("AW-01 personal information stays local (S3): the run's own task, entered by a person, reaches the cloud with its own value", async () => {
   const value = `s3-internal-${randomUUID()}`;
-  const row = await internalRow(value);
-  const answer = await call(work, { fields: [bound(row)] }, withRoutes([CLOUD]));
+  const work = await liveWork(s, value, 2_000);
+  world.provider.mode('answer');
+  const answer = await call(work, { fields: [bound(work.taskId)] }, withRoutes([CLOUD]));
   expect(answer.ok).toBe(true);
   expect(await rowsOf((answer as { callId: string }).callId)).toMatchObject([
     { route_key: 'replay', route_reach: 'cloud' },
@@ -88,52 +103,36 @@ it('AW-01 personal information stays local (S3): a field bound to a staff-entere
   expect(world.provider.seen.at(-1)?.body).toContain(value);
 }, 120_000);
 
-it('AW-01 personal information stays local (S3): a bound row a client is on goes local', async () => {
-  const work = await liveWork(s, 's3 a client row', 2_000);
-  world.provider.mode('answer');
-  const row = await internalRow();
-  await s.db.admin.execute(
-    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
-    [row, randomUUID()],
-  );
-  const seen = world.provider.seen.length;
-  expect(await call(work, { fields: [bound(row)] }, withRoutes([CLOUD]))).toMatchObject({
-    ok: false,
-    code: 'LOCAL_MODEL_REQUIRED',
-  });
-  expect(world.provider.seen.length).toBe(seen);
-  const local = await call(work, { fields: [bound(row)] }, withRoutes([CLOUD, LOCAL]));
-  expect(await rowsOf((local as { callId: string }).callId)).toMatchObject([
-    { route_reach: 'local' },
-  ]);
-}, 120_000);
-
-it('AW-01 personal information stays local (S3): rows entered by an agent, an import, an outside party or an integration go local', async () => {
-  const work = await liveWork(s, 's3 entered elsewhere', 2_000);
+it('AW-01 personal information stays local (S3): a task entered by an agent, an import, an outside party or an integration goes local', async () => {
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
   for (const entered of ['agent:api', 'person:import', 'external_party:app', 'integration:api']) {
-    // eslint-disable-next-line no-await-in-loop
-    const row = await internalRow();
-    // eslint-disable-next-line no-await-in-loop
-    await s.db.admin.execute(
-      `update public.records set data = data || jsonb_build_object('source', $2::text) where id = $1`,
-      [row, entered],
-    );
-    // eslint-disable-next-line no-await-in-loop
-    expect(await call(work, { fields: [bound(row)] }, withRoutes([CLOUD])), entered).toMatchObject({
-      ok: false,
-      code: 'LOCAL_MODEL_REQUIRED',
-    });
+    /* eslint-disable no-await-in-loop -- one work per provenance */
+    const work = await liveWork(s, `s3 entered as ${entered}`, 2_000);
+    await setData(work.taskId, { source: entered });
+    const answer = await call(work, { fields: [bound(work.taskId)] }, withRoutes([CLOUD]));
+    /* eslint-enable no-await-in-loop */
+    expect(answer, entered).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
   }
   expect(world.provider.seen.length).toBe(seen);
 }, 120_000);
 
-it("AW-01 personal information stays local (S3): a comment, a row of another type, goes local even with a person's source", async () => {
-  const work = await liveWork(s, 's3 a comment', 2_000);
+it("AW-01 personal information stays local (S3): a person's task an agent then wrote to goes local", async () => {
+  const work = await liveWork(s, 's3 an agent wrote', 2_000);
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
-  const commented = await internalRow();
+  await s.db.admin.execute(AGENT_WROTE, agentWrote(work.taskId));
+  expect(await call(work, { fields: [bound(work.taskId)] }, withRoutes([CLOUD]))).toMatchObject({
+    ok: false,
+    code: 'LOCAL_MODEL_REQUIRED',
+  });
+  expect(world.provider.seen.length).toBe(seen);
+}, 120_000);
+
+/** Every source the agent may not read, each refused in the same bytes. */
+async function unreadable(work: Work): Promise<readonly [string, ModelCallField][]> {
+  const other = await seedSchedules(s.db, `s3other${randomUUID().slice(0, 8)}`, 1_000_000);
+  const commented = await createTask(s, `s3-commented-${randomUUID()}`);
   const comment = await asPerson(s, {
     command: 'task.comment',
     operationId: randomUUID(),
@@ -144,89 +143,57 @@ it("AW-01 personal information stays local (S3): a comment, a row of another typ
   });
   expect(codeOf(comment)).toBe('applied');
   const [commentRow] = await s.db.admin.execute<{ id: string }>(
-    `select r.id::text as id from public.records r
-       join public.record_types ty on ty.id = r.record_type_id
-      where r.business_id = $1 and ty.key <> 'task' and r.data->>'body' like 's3-comment-%'
-      order by r.created_at desc limit 1`,
+    `select id::text as id from public.records where business_id = $1 and data->>'body' like 's3-comment-%'
+      order by created_at desc limit 1`,
     [s.business],
   );
-  if (commentRow === undefined) throw new Error('no comment row');
-  // Even stamped with a person's source, so only its type keeps it local.
-  await s.db.admin.execute(
-    `update public.records set data = data || '{"source":"person:api"}'::jsonb where id = $1`,
-    [commentRow.id],
-  );
-  expect(
-    await call(work, { fields: [bound(commentRow.id, 'body')] }, withRoutes([CLOUD])),
-  ).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
-  expect(world.provider.seen.length).toBe(seen);
-}, 120_000);
+  await setData(work.taskId, { description: `s3-not-shown-${randomUUID()}` });
+  return [
+    ['a task of this business it does not work', bound(await createTask(s, 's3 another task'))],
+    ["another business's task", bound(await createTask(other, 's3 foreign'))],
+    ['a comment', bound(String(commentRow?.id), 'body')],
+    ['a made-up id', bound(randomUUID())],
+    ['a malformed id', bound('not-a-uuid')],
+    ['a field it is not shown', bound(work.taskId, 'description')],
+    ['a key the task lacks', bound(work.taskId, 'no_such_key')],
+  ];
+}
 
-it("AW-01 personal information stays local (S3): a person's row an agent then wrote to goes local", async () => {
-  const work = await liveWork(s, 's3 an agent wrote', 2_000);
-  world.provider.mode('answer');
-  const seen = world.provider.seen.length;
-  // The register names the agent on the row.
-  const edited = await internalRow();
-  await s.db.admin.execute(
-    `insert into public.operations
-       (business_id, id, operation_id, command, actor_id, payload_digest, outcome, result, record_id, revision)
-     values ($1, $2, $3, 'task.update', $4, $5, 'applied', '{}'::jsonb, $6, 2)`,
-    [s.business, randomUUID(), `s3-${randomUUID()}`, s.agentActorId, '0'.repeat(64), edited],
-  );
-  expect(await call(work, { fields: [bound(edited)] }, withRoutes([CLOUD]))).toMatchObject({
-    ok: false,
-    code: 'LOCAL_MODEL_REQUIRED',
-  });
-  expect(world.provider.seen.length).toBe(seen);
-}, 120_000);
-
-it('AW-01 personal information stays local (S3): a foreign, made-up, trashed or unreadable source is refused alike, and nothing is sent', async () => {
+it('AW-01 personal information stays local (S3): a source the agent may not read is refused alike, and nothing is sent', async () => {
   const work = await liveWork(s, 's3 unreadable', 2_000);
   world.provider.mode('answer');
-  const other = await seedSchedules(s.db, `s3other${randomUUID().slice(0, 8)}`, 1_000_000);
-  const foreign = await createTask(other, `s3-foreign-${randomUUID()}`);
-  const trashed = await internalRow();
-  const trashing = await asPerson(s, {
-    command: 'task.trash',
-    operationId: randomUUID(),
-    recordId: trashed,
-    expectedRevision: await revisionOf(s, trashed),
-  });
-  expect(codeOf(trashing)).toBe('applied');
-  const live = await internalRow();
+  const cases = await unreadable(work);
   const seen = world.provider.seen.length;
-  const cases: readonly ModelCallField[] = [
-    bound(foreign),
-    bound(randomUUID()),
-    bound('not-a-uuid'),
-    bound(trashed),
-    // A key the row does not hold as a string.
-    bound(live, 'no_such_key'),
-  ];
-  const answers = [];
-  for (const field of cases) {
+  const shapes = new Set<string>();
+  for (const [label, field] of cases) {
     // eslint-disable-next-line no-await-in-loop
-    answers.push(await call(work, { fields: [field] }, withRoutes([CLOUD, LOCAL])));
-  }
-  for (const answer of answers) {
-    expect(answer).toMatchObject({ ok: false, code: 'SOURCE_UNREADABLE' });
-    // Same bytes whoever's row it was: no id, title or count of it.
+    const answer = await call(work, { fields: [field] }, withRoutes([CLOUD, LOCAL]));
+    expect(answer, label).toMatchObject({ ok: false, code: 'SOURCE_UNREADABLE' });
     const { callId: _callId, ...shape } = answer as { callId: string };
-    expect(JSON.stringify(shape)).toBe(
-      JSON.stringify((({ callId: _c, ...rest }) => rest)(answers[1] as { callId: string })),
-    );
-    expect(JSON.stringify(answer)).not.toContain(foreign);
+    shapes.add(JSON.stringify(shape));
   }
+  // Same bytes whoever's row it was: no id, title or count of it.
+  expect(shapes.size).toBe(1);
   expect(world.provider.seen.length).toBe(seen);
 }, 120_000);
 
-it('AW-01 personal information stays local (S3) race: a client put on the source row between the hold and the start releases the call unsent', async () => {
-  const work = await liveWork(s, 's3 hold then link', 2_000);
+it('AW-01 personal information stays local (S3): a trashed task is not a source', async () => {
+  const work = await liveWork(s, 's3 trashed', 2_000);
+  await s.db.admin.execute(
+    `update public.records set deleted_at = now(), deleted_by_actor_id = $2, trash_batch_id = $3
+      where id = $1`,
+    [work.taskId, s.decider.actorId, randomUUID()],
+  );
+  expect(
+    await call(work, { fields: [bound(work.taskId)] }, withRoutes([CLOUD, LOCAL])),
+  ).toMatchObject({ ok: false, code: 'SOURCE_UNREADABLE' });
+}, 120_000);
+
+it('AW-01 personal information stays local (S3) race: an agent write between the hold and the start releases the call unsent', async () => {
+  const work = await liveWork(s, 's3 hold then write', 2_000);
   await stepOf(work);
   world.provider.mode('answer');
-  const row = await internalRow();
-  const request = requestFor(work, { fields: [bound(row)] });
+  const request = requestFor(work, { fields: [bound(work.taskId)] });
   const cloud = withRoutes([CLOUD]);
   const reserving = await s.db.app.withBusiness(
     s.business,
@@ -235,10 +202,7 @@ it('AW-01 personal information stays local (S3) race: a client put on the source
   if (!reserving.ok) throw new Error(`the hold was refused ${reserving.code}`);
   expect(reserving.reserved.route.reach).toBe('cloud');
   const seen = world.provider.seen.length;
-  await s.db.admin.execute(
-    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
-    [row, randomUUID()],
-  );
+  await s.db.admin.execute(AGENT_WROTE, agentWrote(work.taskId));
   const sent = await sendReservedCall(
     s.db.app,
     s.business,
@@ -258,13 +222,12 @@ it('AW-01 personal information stays local (S3) race: a client put on the source
   ]);
 }, 120_000);
 
-it('AW-01 personal information stays local (S3) race: a call waits on a client link in flight on its source row, then goes local', async () => {
-  const work = await liveWork(s, 's3 a link in flight', 2_000);
+it("AW-01 personal information stays local (S3) race: a call waits on an agent's edit in flight on its task, then goes local", async () => {
+  const work = await liveWork(s, 's3 an edit in flight', 2_000);
   await stepOf(work);
   world.provider.mode('answer');
-  const row = await internalRow();
   const seen = world.provider.seen.length;
-  const linker = racer(s);
+  const editor = racer(s);
   let commit!: () => void;
   const gate = new Promise<void>((resolve) => {
     commit = resolve;
@@ -273,27 +236,29 @@ it('AW-01 personal information stays local (S3) race: a call waits on a client l
   const ready = new Promise<void>((resolve) => {
     written = resolve;
   });
-  const linking = linker.withBusiness(s.business, async (tx) => {
+  // The edit and its register row, held uncommitted as a command in flight holds them.
+  const editing = editor.withBusiness(s.business, async (tx) => {
     await tx.query(
-      `update public.records set data = data || jsonb_build_object('client', $3::text)
+      `update public.records set data = data || '{"title":"s3 edited"}'::jsonb
         where business_id = $1 and id = $2`,
-      [s.business, row, randomUUID()],
+      [s.business, work.taskId],
     );
+    await tx.query(AGENT_WROTE, agentWrote(work.taskId));
     written();
     await gate;
   });
   try {
     await ready;
-    const answering = call(work, { fields: [bound(row)] }, withRoutes([CLOUD]));
-    // Parked on the source row: nothing is decided until the link commits.
+    const answering = call(work, { fields: [bound(work.taskId)] }, withRoutes([CLOUD]));
+    // Parked on the task row: nothing is decided until the edit commits.
     await awaitParked(s, 'records', 1);
     commit();
-    await linking;
+    await editing;
     expect(await answering).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
     expect(world.provider.seen.length).toBe(seen);
   } finally {
     commit();
-    await linking.catch(() => {});
-    await linker.close();
+    await editing.catch(() => {});
+    await editor.close();
   }
 }, 120_000);

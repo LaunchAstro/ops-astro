@@ -40,7 +40,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 useBrokerWorld('aw01limits');
 
 it('AW-01 personal information stays local, on the broker: refused before any route, then only the local one', async () => {
-  const work = await liveWork(s, 'personal information', 2_000);
+  const work = await liveWork(s, `personal information ${PLANTED_PROMPT}`, 2_000);
   world.provider.mode('answer');
   const before = world.provider.seen.length;
   const personal: readonly ModelCallField[] = [

@@ -79,7 +79,9 @@ it('AW-01 recovery: the sweep holds a started call and releases one never sent',
 
 it('AW-01 copy register: every sent prompt was registered first, and a registration is never rewritten', async () => {
   world.provider.mode('answer');
-  expect((await call(await liveWork(s, 'a registered copy', 2_000))).ok).toBe(true);
+  expect((await call(await liveWork(s, `a registered copy ${PLANTED_PROMPT}`, 2_000))).ok).toBe(
+    true,
+  );
   const sent = await s.db.admin.execute<{ id: string }>(
     `select id from public.model_calls where state = 'settled' and business_id = $1`,
     [s.business],
