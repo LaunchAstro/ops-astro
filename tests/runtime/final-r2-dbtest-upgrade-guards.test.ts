@@ -20,6 +20,7 @@
 // with its rows as they were, and the ledger does not record 0031.
 
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLICATION_ROLE,
@@ -41,6 +42,12 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+
+const HEAD_MIGRATION = readdirSync('migrations')
+  .filter((file) => /^\d{4}_.*\.sql$/u.test(file))
+  .toSorted()
+  .at(-1)
+  ?.slice(0, 4);
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -203,7 +210,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      // The head is the newest migration on disk, whichever later part added it.
+      expect(await lastApplied(on)).toBe(HEAD_MIGRATION);
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;
