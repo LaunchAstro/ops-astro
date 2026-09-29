@@ -21,7 +21,7 @@ import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { StepView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
-import type { StepMark } from './perspective-counts.ts';
+import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelDoor } from './Perspectives.tsx';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
@@ -209,11 +209,6 @@ export function SubtaskList(props: {
       )}
     </div>
   );
-}
-
-/** What MP-4-3's one counting rule reads of each step. */
-export function stepMarks(steps: readonly StepView[]): readonly StepMark[] {
-  return steps.map((step) => ({ done: step.done, retired: step.archived !== null }));
 }
 
 /** The Team side's subtask section with the list placed in it, as the task page draws it. */

@@ -5,7 +5,7 @@
 // markup here, so a server-side test can hold a real read to it. The reasons
 // are at the head of `Perspectives.tsx`.
 
-import type { ProposalView } from '../../../../../packages/core-wire/src/index.ts';
+import type { ProposalView, StepView } from '../../../../../packages/core-wire/src/index.ts';
 
 export type Perspective = 'team' | 'agent';
 
@@ -13,6 +13,11 @@ export type Perspective = 'team' | 'agent';
 export interface StepMark {
   readonly done: boolean;
   readonly retired: boolean;
+}
+
+/** What the Team count reads of each step the task read carries (MP-4-4). */
+export function stepMarks(steps: readonly StepView[]): readonly StepMark[] {
+  return steps.map((step) => ({ done: step.done, retired: step.archived !== null }));
 }
 
 export interface PerspectiveCounts {
