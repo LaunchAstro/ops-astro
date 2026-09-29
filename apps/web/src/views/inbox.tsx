@@ -12,7 +12,7 @@
 // and nothing says delivered when only an attempt was asked or accepted. A
 // gone entry names nothing and links nowhere.
 
-import type { MouseEvent, ReactElement } from 'react';
+import { useEffect, type MouseEvent, type ReactElement } from 'react';
 import { CountBadge, Empty } from '@launchastro/ui';
 import type {
   InboxCountResult,
@@ -21,6 +21,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import type { FollowInbox } from '../data/board-live.ts';
 import { RecordState } from './record-state.tsx';
 import { titleOf } from './task-title.ts';
 import { pathTo } from '../routes.ts';
@@ -62,6 +63,8 @@ export interface InboxProps {
   readonly grantKey: string;
   /** Where opening goes once the stamp settles; the page's own address bar. */
   readonly go?: (href: string) => void;
+  /** The tab's stream (INB-1f): the list and the count re-read when it says the inbox changed. */
+  readonly follow?: FollowInbox;
 }
 
 export function Inbox(props: InboxProps): ReactElement {
@@ -72,6 +75,8 @@ export function Inbox(props: InboxProps): ReactElement {
     isEmpty: (value) => value.inbox.length === 0,
     deps: [],
   });
+  const { follow } = props;
+  useEffect(() => follow?.(list.reload), [follow, list.reload]);
   // Stamp seen, then go: the stamp is attention only, so a refused or lost one
   // still opens the task.
   const open = async (entry: InboxEntry, href: string): Promise<void> => {
@@ -81,7 +86,7 @@ export function Inbox(props: InboxProps): ReactElement {
 
   return (
     <section className="card inbox" aria-labelledby="inbox-heading">
-      <Owed client={client} grantKey={props.grantKey} />
+      <Owed client={client} grantKey={props.grantKey} follow={props.follow} />
       <RecordState
         state={list.state}
         subject="inbox"
@@ -110,6 +115,7 @@ export function Inbox(props: InboxProps): ReactElement {
 function Owed(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  readonly follow: FollowInbox | undefined;
 }): ReactElement {
   const client = props.client;
   const count = useRead<InboxCountResult>({
@@ -117,6 +123,8 @@ function Owed(props: {
     run: () => client.read<InboxCountResult>('inbox.count', {}),
     deps: [],
   });
+  const { follow } = props;
+  useEffect(() => follow?.(count.reload), [follow, count.reload]);
   const owed = count.state.outcome === 'ready' ? count.state.value.owed : null;
   return (
     <>

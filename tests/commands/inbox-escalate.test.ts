@@ -58,6 +58,7 @@ interface ItemRow {
 const itemOf = (items: readonly ItemRow[], person: string, subject: string) =>
   items.find((item) => item.recipient === person && item.subject === subject);
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
   let s: Schedules;
   let holder: Member;
