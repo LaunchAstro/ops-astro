@@ -78,90 +78,106 @@ const plant = (css: string, tsx?: string): ReturnType<typeof run> => {
 const ok =
   '.x {\n  font: var(--type-body);\n  letter-spacing: var(--type-body-tracking);\n  text-transform: var(--type-body-case);\n}\n';
 
+// It bites, and names the rule, on every stray the census must refuse.
+const REFUSED: readonly [string, string, string?][] = [
+  ['a literal size', '.a { font-size: 13px }', '.a'],
+  ['an em size', '.b { font-size: 0.78em }', '.b'],
+  ['a size token alone', '.c { font-size: var(--text-sm) }', '.c'],
+  ['a weight alone', '.d { font-weight: 600 }', '.d'],
+  ['a family alone', '.e { font-family: var(--font-mono) }', '.e'],
+  ['a line height alone', '.f { line-height: 1.4 }', '.f'],
+  ['tracking alone', '.g { letter-spacing: 0.02em }', '.g'],
+  ['case alone', '.h { text-transform: uppercase }', '.h'],
+  ['a literal shorthand', '.k { font: 500 13px/1 sans-serif }', '.k'],
+  [
+    'an undeclared style',
+    '.l { font: var(--type-nope); letter-spacing: 0; text-transform: none }',
+    '.l',
+  ],
+  [
+    'another style’s tracking',
+    '.m { font: var(--type-chip); letter-spacing: var(--type-body-tracking); text-transform: var(--type-chip-case) }',
+    '.m',
+  ],
+  [
+    'a style without its case',
+    '.n { font: var(--type-chip); letter-spacing: var(--type-chip-tracking) }',
+    '.n',
+  ],
+  ['upper-case property', '.o { FONT-SIZE: 13px }', '.o'],
+  ['important', '.p { font-size: 13px !important }', '.p'],
+  ['nested in a media query', '@media (width <= 640px) { .q { font-size: 28px } }', '.q'],
+  ['nested twice', '@supports (display: grid) { @media print { .r { font-weight: 700 } } }', '.r'],
+  ['after a brace in a string', ".s::after { content: '}' ; font-size: 9px }", '.s::after'],
+  ['after a comment holding a brace', '.t { /* } */ font-size: 9px }', '.t'],
+  ['a marker with no ruling', '.u { /* type-exception: looks nicer */ font-size: 9px }', '.u'],
+  [
+    'a marker in the neighbouring rule',
+    '.v { /* type-exception DR-6: run hero */ }\n.w { font-size: 20px }',
+    '.w',
+  ],
+  ['tracking tab-separated', '.y {\tletter-spacing:\t0.02em\t}', '.y'],
+];
+
+/** The product's own sheets and components pass the census. */
+function productPasses(): void {
+  const product = run();
+  expect(product.stderr).toBe('');
+  expect(product.status).toBe(0);
+  expect(census().violations).toEqual([]);
+}
+
+/** Whole styles, inherited form controls and a font face all pass. */
+function positiveControls(): void {
+  // Positive controls: a whole style, form controls inheriting, a font face.
+  expect(plant(ok).status).toBe(0);
+  expect(
+    plant(
+      '.i { font: inherit; letter-spacing: inherit; text-transform: inherit }\n@font-face { font-family: X; font-weight: 300; src: url(x.woff2) }\n',
+    ).status,
+  ).toBe(0);
+}
+
+/** Each planted stray fails the census, naming its rule. */
+function straysRefused(): void {
+  for (const [what, css, selector] of REFUSED) {
+    const out = plant(css);
+    expect(out.status, `${what}: ${out.stderr}`).toBe(1);
+    expect(out.stderr, what).toContain(selector);
+  }
+}
+
+/** A component file's inline font style or SVG font attribute fails; a plain class passes. */
+function componentFilesRefused(): void {
+  // Component files: an inline font style or an SVG font attribute is refused.
+  const inline = plant(ok, 'export const A = () => <span style={{ fontSize: 13 }}>a</span>;\n');
+  expect(inline.status).toBe(1);
+  expect(inline.stderr).toContain('fontSize');
+  const svg = plant(ok, 'export const B = () => <text fontSize="10">b</text>;\n');
+  expect(svg.status).toBe(1);
+  expect(svg.stderr).toContain('fontSize');
+  const dashed = plant(ok, "export const C = () => <text font-weight='600'>c</text>;\n");
+  expect(dashed.status).toBe(1);
+  expect(dashed.stderr).toContain('font-weight');
+  expect(plant(ok, 'export const D = () => <span className="x">fontless</span>;\n').status).toBe(0);
+}
+
 describe('MP-1-4 type scale', () => {
   it.todo(
     "MP-1-4 visual match: matches mockup the ten census routes in the shell inventory at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those routes' pages in later slices and T4b1's signed-in fixture)",
   );
+});
 
+describe('MP-1-4 type scale', () => {
   it('MP-1-4 every text style maps to a declared type token', () => {
-    const product = run();
-    expect(product.stderr).toBe('');
-    expect(product.status).toBe(0);
-    expect(census().violations).toEqual([]);
-
-    // Positive controls: a whole style, form controls inheriting, a font face.
-    expect(plant(ok).status).toBe(0);
-    expect(
-      plant(
-        '.i { font: inherit; letter-spacing: inherit; text-transform: inherit }\n@font-face { font-family: X; font-weight: 300; src: url(x.woff2) }\n',
-      ).status,
-    ).toBe(0);
-
-    // It bites, and names the rule, on every stray the census must refuse.
-    const refused: readonly [string, string, string?][] = [
-      ['a literal size', '.a { font-size: 13px }', '.a'],
-      ['an em size', '.b { font-size: 0.78em }', '.b'],
-      ['a size token alone', '.c { font-size: var(--text-sm) }', '.c'],
-      ['a weight alone', '.d { font-weight: 600 }', '.d'],
-      ['a family alone', '.e { font-family: var(--font-mono) }', '.e'],
-      ['a line height alone', '.f { line-height: 1.4 }', '.f'],
-      ['tracking alone', '.g { letter-spacing: 0.02em }', '.g'],
-      ['case alone', '.h { text-transform: uppercase }', '.h'],
-      ['a literal shorthand', '.k { font: 500 13px/1 sans-serif }', '.k'],
-      [
-        'an undeclared style',
-        '.l { font: var(--type-nope); letter-spacing: 0; text-transform: none }',
-        '.l',
-      ],
-      [
-        'another style’s tracking',
-        '.m { font: var(--type-chip); letter-spacing: var(--type-body-tracking); text-transform: var(--type-chip-case) }',
-        '.m',
-      ],
-      [
-        'a style without its case',
-        '.n { font: var(--type-chip); letter-spacing: var(--type-chip-tracking) }',
-        '.n',
-      ],
-      ['upper-case property', '.o { FONT-SIZE: 13px }', '.o'],
-      ['important', '.p { font-size: 13px !important }', '.p'],
-      ['nested in a media query', '@media (width <= 640px) { .q { font-size: 28px } }', '.q'],
-      [
-        'nested twice',
-        '@supports (display: grid) { @media print { .r { font-weight: 700 } } }',
-        '.r',
-      ],
-      ['after a brace in a string', ".s::after { content: '}' ; font-size: 9px }", '.s::after'],
-      ['after a comment holding a brace', '.t { /* } */ font-size: 9px }', '.t'],
-      ['a marker with no ruling', '.u { /* type-exception: looks nicer */ font-size: 9px }', '.u'],
-      [
-        'a marker in the neighbouring rule',
-        '.v { /* type-exception DR-6: run hero */ }\n.w { font-size: 20px }',
-        '.w',
-      ],
-      ['tracking tab-separated', '.y {\tletter-spacing:\t0.02em\t}', '.y'],
-    ];
-    for (const [what, css, selector] of refused) {
-      const out = plant(css);
-      expect(out.status, `${what}: ${out.stderr}`).toBe(1);
-      expect(out.stderr, what).toContain(selector);
-    }
-
-    // Component files: an inline font style or an SVG font attribute is refused.
-    const inline = plant(ok, 'export const A = () => <span style={{ fontSize: 13 }}>a</span>;\n');
-    expect(inline.status).toBe(1);
-    expect(inline.stderr).toContain('fontSize');
-    const svg = plant(ok, 'export const B = () => <text fontSize="10">b</text>;\n');
-    expect(svg.status).toBe(1);
-    expect(svg.stderr).toContain('fontSize');
-    const dashed = plant(ok, "export const C = () => <text font-weight='600'>c</text>;\n");
-    expect(dashed.status).toBe(1);
-    expect(dashed.stderr).toContain('font-weight');
-    expect(plant(ok, 'export const D = () => <span className="x">fontless</span>;\n').status).toBe(
-      0,
-    );
+    productPasses();
+    positiveControls();
+    straysRefused();
+    componentFilesRefused();
   });
+});
 
+describe('MP-1-4 type scale', () => {
   it('MP-1-4 a census over the same ten routes shows 20 or fewer styles, or lists each exception', () => {
     const got = census();
     const used = Object.keys(got.used);
@@ -180,7 +196,9 @@ describe('MP-1-4 type scale', () => {
     );
     expect(marked.status, marked.stderr).toBe(0);
   });
+});
 
+describe('MP-1-4 type scale', () => {
   it('MP-1-4 the canonical scale has 23 (TOKENS.md), and the three exceptions above 20 are --type-num-lg, --type-num-md and --type-num-sm', () => {
     const got = census();
     expect(fixture.styles).toHaveLength(23);
