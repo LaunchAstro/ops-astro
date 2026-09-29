@@ -14,8 +14,10 @@
 // the clipboard said yes, for 1.2 s. A clipboard that refuses, or none at all,
 // is said in words beside the control with the address to copy by hand.
 //
-// **The run line has three shapes** worked out from the attempts on the
-// task's proposals: running, finished, or no agent at all.
+// **The run line has three shapes** (TP-07), worked out from the attempts on
+// the task's proposals: running, finished, or no agent at all. The running
+// shape's client, steps and owner wait on the client model and the steps
+// (U16).
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Spill } from '@launchastro/ui';
@@ -86,12 +88,15 @@ export function runLineOf(
   const attempts = proposals
     .flatMap((proposal) => proposal.reservations)
     .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
-  if (attempts.length === 0) return { shape: 'none', words: 'No agent has worked on this task' };
+  if (attempts.length === 0) {
+    return { shape: 'none', words: 'No agent has run this task. It is a person’s work so far.' };
+  }
   const running = attempts.some(
     (attempt) => attempt.state === 'reserved' || attempt.state === 'dispatched',
   );
-  const shape = running ? 'running' : 'finished';
-  return { shape, words: `Attempt ${attempts.length} · ${shape}` };
+  return running
+    ? { shape: 'running', words: `Attempt ${attempts.length} · running` }
+    : { shape: 'finished', words: 'Every run on this task has finished.' };
 }
 
 /**
