@@ -41,20 +41,31 @@ const shaped = (row: FactorRow): SecondFactor => ({
 });
 
 /**
- * The person's live factor, locked for the rest of the transaction when
- * `lock` is set, so an enrolment, a verification and a removal of the same
- * person's factor queue behind each other instead of interleaving.
+ * The person's live factor. With `lock`, the person's own row is locked for
+ * the rest of the transaction first, so an enrolment, a verification and a
+ * removal for the same person queue behind each other instead of
+ * interleaving. The lock is on the person, not the factor row, because a
+ * first enrolment has no factor row to lock: two tabs would both find none
+ * and both insert. It is `no key update`, the strength the mirror's own
+ * update takes, because rows this transaction has already written reference
+ * the person and hold a key-share lock on it, which `for update` would wait
+ * on in the other transaction and deadlock.
  */
 export async function liveFactor(
   tx: TenantQuery,
   personId: string,
   options: { readonly lock?: boolean } = {},
 ): Promise<SecondFactor | undefined> {
+  if (options.lock === true) {
+    await tx.query(
+      'select 1 from public.people where business_id = $1 and id = $2 for no key update',
+      [tx.businessId, personId],
+    );
+  }
   const rows = await tx.query<FactorRow>(
     `select id, person_id, provider, provider_factor_id, status
        from public.second_factors
-      where business_id = $1 and person_id = $2 and status <> 'removed'
-      ${options.lock === true ? 'for update' : ''}`,
+      where business_id = $1 and person_id = $2 and status <> 'removed'`,
     [tx.businessId, personId],
   );
   const row = rows[0];
