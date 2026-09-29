@@ -78,7 +78,7 @@
     "wf-2-inbox.test.ts is NOT named: its one case (the WF-2 decision item) is a held skip until the inbox lands with SL04 U99, and the runner refuses a skip; it is named at that rebase.",
     "AGENT CLI (SL14, API-3) adds api-3 (one case per checklist line through the verb CLI over the composed API), api-3-isolation (the three crossings), api-3-budget (the token budgets over a 40-ticket fixture map) and api-3-process (the real entry as a process). api-3-world.ts is a harness, not a suite.",
     "API-3 read audit (SL14): api-3-read-audit replaces the held TR-S-B3-1 todo (orchestrator decision 29 Sep 2026: I13 wins, every read writes an audit event); it holds each agent CLI read to exactly one audit event, applied or refused, read back from audit_events.",
-    "API-4 (SL14) adds api-4: map status (frontier, fog and counts in one call, one query on the read models, current after a write, detail levels, the three isolation crossings); its budget, quota and read-audit lines sit in the api-3 budget, quota and read-audit suites.",
+    "API-4 (SL14) adds api-4: map status (frontier, fog and counts in one call, one query on the read models, current after a write, detail levels, the three isolation crossings); its budget, quota and read-audit lines sit in the api-3 budget, quota and read-audit suites. api-4-context: work this ticket (the whole bundle in one call and one statement, current after a write, detail levels, withheld parts named, the scripted run with zero follow-up reads, a refusal per key, the three isolation crossings).",
     "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table."
   ],
   "invariant": [
@@ -304,6 +304,7 @@
     "tests/cli/api-3-process.test.ts",
     "tests/cli/api-3-quota.test.ts",
     "tests/cli/api-3-read-audit.test.ts",
-    "tests/cli/api-4.test.ts"
+    "tests/cli/api-4.test.ts",
+    "tests/cli/api-4-context.test.ts"
   ]
 }

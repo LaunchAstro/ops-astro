@@ -7,7 +7,8 @@
 // event"), decided for this slice by the orchestrator on 29 Sep 2026. This
 // suite holds each agent CLI read to exactly its one event, applied or
 // refused, read back from `audit_events`, and API-4's map status with them.
-// API-4's context and changes join it as they land.
+// API-4's work this ticket (`task.context`) with them; changes since joins
+// it when it lands.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -50,6 +51,7 @@ describe.skipIf(serverUrl === undefined)('API-3 reads and the audit chain', () =
     ['map.view', () => ['map', 'view', map]],
     ['map.frontier', () => ['map', 'frontier', map]],
     ['map.status', () => ['map', 'status', map]],
+    ['task.context', () => ['task', 'context', ticket]],
   ];
 
   /** Run one read and return the audit events it added, in chain order. */
