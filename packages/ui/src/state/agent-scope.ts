@@ -4,8 +4,8 @@
 //
 // The stamp reads the lease's delegation and nothing else: the broker set it
 // when the agent picked the work up, and no field a person edits on the task
-// reaches it (R76). So the lane is the delegation's purpose, never the task's
-// work label, and the stamp offers no control.
+// reaches it (R76). So the stamp's middle part is the delegation's purpose,
+// never the task's work label, and the stamp offers no control.
 
 import type { RunLineage, RunScope } from './run-projection.ts';
 
@@ -20,7 +20,7 @@ export type ScopeStamp =
       readonly delegation: NonNullable<RunScope['delegation']>;
       /** The one resource the delegation reaches, in words. */
       readonly reach: string;
-      /** The purpose, read as words: the lane. */
+      /** The purpose, read as words: the stamp's middle part. */
       readonly lane: string;
       /** The actions it carries: the clearance. */
       readonly clearance: string;
