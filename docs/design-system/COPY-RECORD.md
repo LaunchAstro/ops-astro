@@ -16,3 +16,4 @@ Every file and its SHA-256. A test in this repository fails when a file here dif
 | `TASK-PAGE.md` | `f99606980415788c8b76ad548391c6dc1beccbf37fdf52276fe7b93406756c79` |
 | `CAPABILITY-SLICES.md` | `5a67a42057066ddf813770cb12cba356bbf80d062548915b687c622a92848961` |
 | `PLACEHOLDERS.md` | `28afe91de84a1e24e1d231a9885d4e7d88e8d7c3200d9bf60a0b12404cf5fd70` |
+| `RETAKE-REPORT.md` | `27d5b711403b908409d970924602aa54ce7c397c0a1d62e03062ed10e8bcd4e1` |
