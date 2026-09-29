@@ -127,6 +127,13 @@ rm -rf "$dir"
 dir="$(new_repo)"; write_block "$dir" "src/big.ts" 1 500; commit_all "$dir" "base"
 rm "$dir/src/big.ts"; write_block "$dir" "src/a.ts" 1 250; write_block "$dir" "src/b.ts" 251 500
 commit_all "$dir" "split big.ts"
+raw_max="$(git -C "$dir" diff --numstat HEAD~1 HEAD | awk '{ changed = $1 + $2; if (changed > max) max = changed } END { print max + 0 }')"
+if [ "$raw_max" -gt 400 ]; then
+  pass "Sol proof, criterion 2: the named pure-move case crosses the raw per-file cap"
+else
+  fail "Sol proof, criterion 2: the named pure-move case crosses the raw per-file cap" \
+    "largest raw per-file change is $raw_max, so this case only exercises the total"
+fi
 run_last_commit "$dir" ""; status="$STATUS"
 [ "$status" = "0" ] && pass "a pure move of 500 lines into two files passes (exit 0)" \
   || fail "a pure move of 500 lines into two files passes" "expected 0, got $status: $REPORT"
@@ -191,6 +198,27 @@ commit_all "$dir" "move test code into the product"
 run_last_commit "$dir" "size-waiver-coherence"; status="$STATUS"
 [ "$status" = "1" ] && pass "code moved out of a test file counts in full (exit 1)" \
   || fail "code moved out of a test file counts in full" "expected 1, got $status: $REPORT"
+rm -rf "$dir"
+
+# A literal filename can equal the report name of a rename. Its new lines
+# must not inherit the rename's moved-line count through that shared name.
+dir="$(new_repo)"
+mkdir -p "$dir/src/a.ts => src"
+write_block "$dir" "src/a.ts" 1 1200
+printf 'const literal = true;\n' > "$dir/src/a.ts => src/b.ts"
+commit_all "$dir" "base with colliding names"
+write_block "$dir" "src/b.ts" 1 700
+rm "$dir/src/a.ts"
+write_block "$dir" "src/c.ts" 701 1200
+write_block "$dir" "src/a.ts => src/b.ts" 3001 3500
+commit_all "$dir" "rename, move, and add handwritten lines"
+run_last_commit "$dir" "size-waiver-coherence"; status="$STATUS"
+if [ "$status" = "1" ] && [[ "$REPORT" == *'over the per-file cap'* ]]; then
+  pass "Sol proof, criterion 1: a filename matching a rename cannot hide 500 new lines"
+else
+  fail "Sol proof, criterion 1: a filename matching a rename cannot hide 500 new lines" \
+    "expected per-file refusal for 500 new lines, got status $status: $REPORT"
+fi
 rm -rf "$dir"
 
 # Removing a waiver label must change the result, which is only true if the
