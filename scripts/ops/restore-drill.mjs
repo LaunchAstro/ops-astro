@@ -29,6 +29,8 @@ import { openArchive } from './archive-seal.mjs';
 const RESTORE_ROLE = 'ops_astro_backup_restore';
 const SCHEMAS = ['public', 'ops'];
 const DB = 'drill';
+// Its own path, not the image's volume, so every major takes it.
+const PGDATA = '/var/lib/postgresql/drill';
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -113,7 +115,8 @@ export async function restoreDrill({
     await timed('start', async () => {
       started = true;
       // No network and no published port: nothing outside can reach it, and it
-      // can reach nothing. Local trust is safe for the same reason.
+      // can reach nothing. Local trust is safe for the same reason. The data
+      // directory is memory only, so restored rows never reach the disk.
       await must(
         run([
           'run',
@@ -123,6 +126,10 @@ export async function restoreDrill({
           'none',
           '--name',
           name,
+          '--tmpfs',
+          PGDATA,
+          '-e',
+          `PGDATA=${PGDATA}`,
           '-e',
           'POSTGRES_HOST_AUTH_METHOD=trust',
           '-e',
@@ -200,7 +207,8 @@ export async function restoreDrill({
   } catch {
     record.stage = stage;
   } finally {
-    if (started) await run(['rm', '-f', name]);
+    // With its volumes: an image's declared volume outlives `rm -f` alone.
+    if (started) await run(['rm', '-f', '-v', name]);
   }
   return record;
 }
