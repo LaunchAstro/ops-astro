@@ -27,7 +27,8 @@ node scripts/local/verify-slice.mjs
 container name, pinned digest, port and volume `db-up.sh` uses, so the two
 converge whichever runs first. Like `db-up.sh`, it replaces a container on
 another image or volume (one made before the local database moved to
-Postgres 17) and keeps every volume. Neither script touches the Hub's `supabase_*`
+Postgres 17) and keeps every volume. Whenever it starts Postgres afresh, it
+starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster. Neither script touches the Hub's `supabase_*`
 containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,

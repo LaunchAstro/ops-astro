@@ -70,6 +70,7 @@ if [ "${pg_replaced:-no}" = yes ] || ! running "${PG_CONTAINER}"; then
     docker start "${PG_CONTAINER}" >/dev/null
   else
     echo "auth-up: ${PG_CONTAINER} is absent; starting it with the contract's identity"
+    pg_new=yes
     docker volume inspect "${PG_VOLUME}" >/dev/null 2>&1 || docker volume create "${PG_VOLUME}" >/dev/null
     docker run -d \
       --name "${PG_CONTAINER}" \
@@ -147,6 +148,13 @@ ENV
 signs_with_key() {
   [ "$(docker inspect -f '{{index .Config.Labels "ops-astro.signing-key"}}' "$1" 2>/dev/null)" = "${KEY_LABEL}" ]
 }
+# GoTrue migrates schema `auth` when it starts, so a Postgres container this run
+# started (a new cluster, or one on the 17 volume it has never served) gets a
+# new GoTrue too, however right the old one's issuer and key are.
+if [ "${pg_new:-no}" = yes ] && exists "${AUTH_CONTAINER}"; then
+  echo "auth-up: ${PG_CONTAINER} was started afresh; replacing ${AUTH_CONTAINER} so it migrates it"
+  docker rm -f "${AUTH_CONTAINER}" >/dev/null
+fi
 if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
