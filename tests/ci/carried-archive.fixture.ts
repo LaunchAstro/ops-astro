@@ -18,13 +18,15 @@ type DrillModule = {
   restoreDrill: Act;
   drillAsOperator: Act;
   exportArchive: Act;
+  recordCarried: Act;
   RECEIPT_FIELDS: readonly string[];
 };
-export type Held = { takenAt: string; sha256: string; bytes: number };
+export type Held = { archiveId: string; takenAt: string; sha256: string; bytes: number };
 type CarriedModule = {
   readCarried: (file: string, into?: string) => Held;
   writeCarried: (file: string, fetchInto: (into: string) => Promise<Held>) => Promise<Held>;
-  readCarriedReceipt: (file: string, operator: string) => Receipt;
+  readCarriedReceipt: (file: string, operator: { personId: string; business: string }) => Receipt;
+  readChallenge: (file: string) => string | null;
   digestOf: (body: Buffer) => string;
 };
 
@@ -50,6 +52,8 @@ export const keys: { publicKey: string; privateKey: string } = pair();
 export const CANARY: string = `canary-${randomBytes(8).toString('hex')}`;
 const DUMP = Buffer.from(`-- a made-up dump\ninsert into tasks values ('${CANARY}');\n`);
 export const TAKEN = '2026-09-29T02:00:00.000Z';
+/** The store's id of the archive the fixture's store hands out. */
+export const ARCHIVE_ID: string = randomUUID();
 export const scope: { business: string; client: string; person: string } = {
   business: randomUUID(),
   client: randomUUID(),
@@ -100,6 +104,7 @@ export const fetchOf =
   (into: string): Promise<Held> => {
     writeFileSync(into, archive.body, { mode: 0o600, flag: 'wx' });
     return Promise.resolve({
+      archiveId: ARCHIVE_ID,
       takenAt: archive.takenAt,
       sha256: archive.sha256,
       bytes: archive.body.length,

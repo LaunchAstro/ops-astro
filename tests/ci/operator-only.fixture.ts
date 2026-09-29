@@ -116,6 +116,8 @@ export const environment = (
 } => ({
   PATH: path,
   OPS_ASTRO_BUSINESS: 'alpha',
+  // The installation's operating business: the restore drill's modes are its operator's alone.
+  OPS_ASTRO_OPERATING_BUSINESS: 'alpha',
   OPS_ASTRO_DEPLOYMENTS: at.records,
   DATABASE_URL: db.appUrl,
   DATABASE_ADMIN_URL: adminUrl(),
