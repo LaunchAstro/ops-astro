@@ -7,16 +7,18 @@
 // facts. A comparison with a pass missing, or with a pass that recorded
 // nothing, is a failure, never agreement.
 //
-// Separation (T4a's two businesses): bravo's person is refused the task each
-// pass made, on the same surface, and no answer either pass was given carries
-// bravo's canary task.
+// Separation (`separation.ts`): another business, another client of the same
+// business and the agent under a live delegation on another task are each
+// refused every pass's task, beside a positive control, and no answer either
+// pass was given carries bravo's canary task.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
 import { compareFacts, type JourneyFacts } from './facts.ts';
-import { personOn, runPass, type PassContext, type PassResult } from './passes.ts';
+import { runPass, type PassContext, type PassResult } from './passes.ts';
+import { castSeparation, crossings, type Cast } from './separation.ts';
 
 const FACTS: JourneyFacts = {
   decisions: [{ decision: 'approve' }],
@@ -57,7 +59,7 @@ describe.skipIf(serverUrl === undefined)('journey_twice_same_facts: app and CLI'
   let world: World;
   let served: ServedApi;
   let context: PassContext;
-  let canary: { id: string; title: string };
+  let cast: Cast;
   const passes: Record<'app' | 'cli', PassResult | undefined> = { app: undefined, cli: undefined };
   const broken: string[] = [];
 
@@ -65,18 +67,7 @@ describe.skipIf(serverUrl === undefined)('journey_twice_same_facts: app and CLI'
     world = await createWorld('t4b1');
     served = await serveApi(world);
     context = { world, api: served.origin, app: served.origin, title: `Journey ${randomUUID()}` };
-    const title = `Bravo canary ${randomUUID()}`;
-    const made = await personOn(
-      'app',
-      context,
-      world.bea.token,
-      'bravo',
-    )('task.create', {
-      operationId: randomUUID(),
-      fields: { title },
-    });
-    canary = { id: String(made.body['recordId']), title };
-    expect(made.outcome, made.text).toBe('ok');
+    cast = await castSeparation(context);
     // A pass that throws is kept as absent, so the comparison below refuses it
     // as one-sided and says why, rather than the whole suite erroring first.
     for (const surface of ['app', 'cli'] as const) {
@@ -101,27 +92,9 @@ describe.skipIf(serverUrl === undefined)('journey_twice_same_facts: app and CLI'
     expect(passes.app?.taskId).not.toBe(passes.cli?.taskId);
   });
 
-  it('bravo is refused each pass task on the same surface, and no answer carries its canary', async () => {
-    for (const surface of ['app', 'cli'] as const) {
-      const pass = passes[surface];
-      expect(pass, `the ${surface} pass did not run`).toBeDefined();
-      if (pass === undefined) continue;
-      // eslint-disable-next-line no-await-in-loop -- one surface at a time
-      const foreign = await personOn(
-        surface,
-        context,
-        world.bea.token,
-        'bravo',
-      )('task.read', {
-        recordId: pass.taskId,
-      });
-      expect(foreign.outcome, foreign.text).toBe('refused');
-      expect(foreign.text).not.toContain(pass.taskId);
-      expect(foreign.text).not.toContain(context.title);
-      for (const answer of pass.answers) {
-        expect(answer).not.toContain(canary.id);
-        expect(answer).not.toContain(canary.title);
-      }
-    }
+  it('three crossings refused on each surface, each beside its positive control', async () => {
+    const ran = [passes.app, passes.cli].filter((pass) => pass !== undefined);
+    expect(ran).toHaveLength(2);
+    expect(await crossings(context, cast, ran)).toStrictEqual([]);
   });
 });

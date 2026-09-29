@@ -18,6 +18,7 @@ import { join, resolve } from 'node:path';
 import { createWorld, type World } from '../acceptance/world.ts';
 import { serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
 import { everyDeclaration, liveWithin2s } from './checks.ts';
+import { castSeparation, crossings } from './separation.ts';
 import { compareFacts, readFacts } from './facts.ts';
 import { personOn, runPass, type PassContext, type PassResult } from './passes.ts';
 
@@ -152,14 +153,7 @@ async function restartCases(world: World, passes: readonly PassResult[], context
 }
 
 async function passCases(context: PassContext): Promise<PassResult[]> {
-  const { world } = context;
-  const canary = `Bravo canary ${crypto.randomUUID()}`;
-  const bravo = personOn('app', context, world.bea.token, 'bravo');
-  const made = await bravo('task.create', {
-    operationId: crypto.randomUUID(),
-    fields: { title: canary },
-  });
-  const canaryId = String(made.body['recordId']);
+  const cast = await castSeparation(context);
   const passes: PassResult[] = [];
   for (const surface of ['app', 'cli'] as const) {
     try {
@@ -178,26 +172,12 @@ async function passCases(context: PassContext): Promise<PassResult[]> {
     compared.ok,
     compared.ok ? same : compared.failures.join(' | '),
   );
-  await check(
-    'separation: bravo refused each pass task, no answer carries its canary',
-    async () => {
-      const leaks: string[] = [];
-      for (const pass of passes) {
-        const foreign = personOn(pass.surface, context, world.bea.token, 'bravo');
-        // eslint-disable-next-line no-await-in-loop -- one surface at a time
-        const read = await foreign('task.read', { recordId: pass.taskId });
-        if (read.outcome !== 'refused' || read.text.includes(pass.taskId)) {
-          leaks.push(`${pass.surface}: ${read.text}`);
-        }
-        if (pass.answers.some((text) => text.includes(canary) || text.includes(canaryId))) {
-          leaks.push(`${pass.surface}: an answer carries the canary`);
-        }
-      }
-      if (passes.length < 2) leaks.push('a pass did not run');
-      if (leaks.length > 0) throw new Error(leaks.join(' | '));
-      return 'two businesses, two surfaces, one canary: nothing crossed';
-    },
-  );
+  await check('separation: business, client and delegation crossings refused', async () => {
+    const leaks = await crossings(context, cast, passes);
+    if (passes.length < 2) leaks.push('a pass did not run');
+    if (leaks.length > 0) throw new Error(leaks.join(' | '));
+    return 'bravo, an external party of alpha and the agent under another task delegation each refused both passes tasks beside a positive control; no answer carries the canary';
+  });
   return passes;
 }
 
