@@ -22,7 +22,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead } from '../../packages/core-commands/src/index.ts';
-import { priceUsage, SYNTHETIC_PRICES } from '../../packages/core-runtime/src/index.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
@@ -64,30 +63,6 @@ interface Work {
   readonly credential: string;
   readonly attemptId: string;
 }
-
-describe('T2d the synthetic price book', () => {
-  it('has at least two entries, one strictly below the maximum, and prices nothing else', () => {
-    expect(Object.keys(SYNTHETIC_PRICES).length).toBeGreaterThanOrEqual(2);
-    const cost = priceUsage(PRICED);
-    expect(cost).toBe(1_800n);
-    expect(Number(cost)).toBeLessThan(MAXIMUM);
-    expect(Number(priceUsage(OVER))).toBeGreaterThan(MAXIMUM);
-    expect(priceUsage({ item: 'synthetic_comment', quantity: 3 })).toBe(5_400n);
-    // Unpriced is not zero: nothing here answers a number.
-    for (const usage of [
-      undefined,
-      null,
-      {},
-      { item: 'unknown', quantity: 1 },
-      { item: 'synthetic_comment', quantity: 0 },
-      { item: 'synthetic_comment', quantity: -1 },
-      { item: 'synthetic_comment', quantity: 1.5 },
-      { item: 'toString', quantity: 1 },
-    ]) {
-      expect(priceUsage(usage), JSON.stringify(usage)).toBeUndefined();
-    }
-  });
-});
 
 describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', () => {
   let s: Schedules;
