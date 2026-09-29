@@ -200,7 +200,7 @@ describe('T2g the run on the task page', () => {
     await page.unmount();
   });
 
-  it('Sol proof, criterion 2: the task page reaches a run event after the first execution page', async () => {
+  it('the task page reaches a run event after the first execution page', async () => {
     const cursors: unknown[] = [];
     const fetch = (async (url: string | URL, init?: RequestInit) => {
       const at = String(url);
