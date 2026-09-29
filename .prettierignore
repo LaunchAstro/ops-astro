@@ -26,3 +26,7 @@ tests/ci/moved-snapshot-proof-argv-path.test.ts
 tests/support/fixture-race-vitest.config.mjs
 tests/support/fixture-template-race-hook.mjs
 tests/ci/ownership-proof-keeps-other-runs-template.test.ts
+
+# Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
+# attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
+tests/ci/sol-proof-s0-7-auth-major.test.mjs
