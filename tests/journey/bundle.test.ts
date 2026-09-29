@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T4d's invariant, `bundle_names_the_approval` (split section 3.2, T4-R7): the
-// evidence bundle's approved action is the decision row the run wrote, byte
-// for byte, carried the way the command carries it (a `journey-approval` line
-// from the run, parsed by the command, written by the bundle writer). A run
-// with no decision in it writes no bundle. `T4 bundle scan`: the bundle holds
+// evidence bundle's approved action is the decision row the run wrote, bound
+// byte for byte by the digest of its exact payload, with its identifiers shown
+// and its note withheld (a person's words, possibly a client's), carried the
+// way the command carries it (a `journey-approval` line from the run, parsed
+// by the command, written by the bundle writer). A run with no decision in it
+// writes no bundle. `T4 bundle scan`: the bundle holds
 // no credential, no canary and no claim of acceptance.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { writeBundle, type Approval } from '../../scripts/local/journey-bundle.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
@@ -67,10 +69,24 @@ describe.skipIf(serverUrl === undefined)('bundle_names_the_approval', () => {
         where d.business_id = $1 and l.task_id = $2`,
       [world.alpha, taskId],
     );
-    const written = JSON.parse(bundle.json) as { approval: Approval };
+    const written = JSON.parse(bundle.json) as {
+      approval: { decisionId: string; actionSha256: string; action: Record<string, unknown> };
+    };
+    const exact = String(row?.action);
     expect(written.approval.decisionId).toBe(row?.id);
-    expect(Buffer.from(written.approval.action)).toStrictEqual(Buffer.from(String(row?.action)));
-    expect(bundle.markdown).toContain(String(row?.action));
+    // Byte for byte: the digest of the row's exact payload bytes.
+    expect(written.approval.actionSha256).toBe(
+      createHash('sha256').update(exact, 'utf8').digest('hex'),
+    );
+    const stored = JSON.parse(exact) as Record<string, unknown>;
+    for (const field of ['id', 'gate', 'version', 'decision', 'round']) {
+      expect(written.approval.action[field]).toStrictEqual(stored[field]);
+    }
+    // The note is a person's words and may be a client's: withheld, named by its digest.
+    expect(String(written.approval.action['note'])).toMatch(/^withheld \(sha256 [0-9a-f]{16}\)$/u);
+    expect(bundle.json).not.toContain('approve this version');
+    expect(bundle.markdown).not.toContain('approve this version');
+    expect(bundle.markdown).toContain(written.approval.actionSha256);
   });
 
   it('T4 bundle scan: no credential, no canary, no claim of acceptance', async () => {
