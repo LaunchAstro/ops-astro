@@ -33,6 +33,8 @@ export interface HubOptions {
 export interface LiveHub {
   /** Hear `topic` until the returned function is called. */
   follow(topic: string, onChange: OnChange): () => void;
+  /** Hear `topic`'s presence (C2): each seat the stream is handed, and each change on the task. */
+  presence(topic: string, onSeat: (seat: string | null) => void): () => void;
   /** When the stream went down, or null while it is open or none is needed (`LiveStatus`). */
   readonly downSince: number | null;
 }
@@ -104,6 +106,10 @@ class TabStream implements LiveHub {
       }
       queueMicrotask(this.#rejoin);
     };
+  }
+
+  presence(_topic: string, _onSeat: (seat: string | null) => void): () => void {
+    return () => {};
   }
 
   #tell(topic: string, change: LiveChange): void {
