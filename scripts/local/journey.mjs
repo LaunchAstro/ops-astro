@@ -101,6 +101,7 @@ const lines = [];
 /** What the run hands the bundle beside its case lines (T4d). */
 const carried = { approval: undefined, budgets: [], measures: {} };
 const begun = performance.now();
+const loadAtStart = os.loadavg()[0];
 
 function say(line) {
   console.log(`journey: ${line}`);
@@ -214,10 +215,10 @@ function afterJourney() {
 /** T4d: the budgets the command measures itself, then the bundle beside the case lines. */
 function bundle() {
   const { migrateMs, seedMs } = carried.measures;
-  const own = commandBudgets(migrateMs, performance.now() - begun, seedMs);
+  const own = commandBudgets(migrateMs, performance.now() - begun, seedMs, loadAtStart);
   const budgets = [...carried.budgets, ...own];
-  for (const one of budgets) {
-    say(`budget ${one.status.padEnd(8)} ${one.operation}: ${one.measured} against ${one.budget}`);
+  for (const { status, operation, measured, budget, load } of budgets) {
+    say(`budget ${status.padEnd(8)} ${operation}: ${measured} against ${budget} (${load})`);
   }
   const proofs = join(evidence, 'runtime-proofs.txt');
   const name = 'evidence bundle written (bundle_names_the_approval)';

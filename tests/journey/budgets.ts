@@ -10,6 +10,7 @@
 // provider that drops makes the worker hand back after its pickup (T3e1).
 
 import { randomUUID } from 'node:crypto';
+import { availableParallelism, loadavg } from 'node:os';
 import { httpTransport, type Transport } from '../../apps/cli/client.ts';
 import { ProviderFault } from '../../apps/worker/usage.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
@@ -22,9 +23,20 @@ export interface Budget {
   readonly measured: string;
   readonly status: 'pass' | 'fail' | 'unrun';
   readonly against: string;
+  /** The machine's load while it was measured, so load can be told from a regression. */
+  readonly load: string;
 }
 
 export const RUNS = 100;
+
+/**
+ * The 1-minute load average when a measurement began and when it ended,
+ * beside the CPU count (Sol, review 1 on #164): lanes share this machine.
+ */
+function loadSince(start: number): string {
+  const end = loadavg()[0] ?? 0;
+  return `1-min load ${start.toFixed(2)} at start, ${end.toFixed(2)} at end, ${String(availableParallelism())} CPUs`;
+}
 const PAYLOAD_CAP = 256 * 1024;
 const WORLD = `the journey's world, p95 over ${String(RUNS)} runs through the served API`;
 
@@ -33,7 +45,12 @@ function p95(samples: readonly number[]): number {
   return sorted[Math.ceil(sorted.length * 0.95) - 1] ?? Number.NaN;
 }
 
-function line(operation: string, budgetMs: number, samples: readonly number[]): Budget {
+function line(
+  operation: string,
+  budgetMs: number,
+  samples: readonly number[],
+  load: string,
+): Budget {
   const measured = p95(samples);
   return {
     operation,
@@ -41,6 +58,7 @@ function line(operation: string, budgetMs: number, samples: readonly number[]): 
     measured: `${measured.toFixed(1)} ms (n ${String(samples.length)})`,
     status: samples.length === RUNS && measured <= budgetMs ? 'pass' : 'fail',
     against: WORLD,
+    load,
   };
 }
 
@@ -57,6 +75,7 @@ async function personBudgets(person: Person): Promise<Budget[]> {
     if (answer.outcome !== 'ok') throw new Error(`budget ${name}: ${answer.text.slice(0, 300)}`);
     return answer.body;
   };
+  const began = loadavg()[0] ?? 0;
   const samples: Record<string, number[]> = { create: [], update: [], read: [], board: [] };
   const created: string[] = [];
   for (let run = 0; run < RUNS; run += 1) {
@@ -80,16 +99,18 @@ async function personBudgets(person: Person): Promise<Budget[]> {
     // eslint-disable-next-line no-await-in-loop -- one timed call at a time
     samples['board']?.push(await timed(async () => await ok('task.board', { board: null })));
   }
+  const load = loadSince(began);
   return [
-    line('Board first page', 150, samples['board'] ?? []),
-    line('Task detail read', 200, samples['read'] ?? []),
-    line('task.create', 100, samples['create'] ?? []),
-    line('task.update with expected_revision', 100, samples['update'] ?? []),
+    line('Board first page', 150, samples['board'] ?? [], load),
+    line('Task detail read', 200, samples['read'] ?? [], load),
+    line('task.create', 100, samples['create'] ?? [], load),
+    line('task.update with expected_revision', 100, samples['update'] ?? [], load),
   ];
 }
 
 /** Pickup, hand-back and the run read, on the real agent routes, with the payload's size. */
 async function agentBudgets(context: PassContext, person: Person): Promise<Budget[]> {
+  const began = loadavg()[0] ?? 0;
   const timings: Record<string, number[]> = { pickup: [], handback: [], execution: [] };
   let largest = 0;
   const measuring: Transport = async (path, body, bearer, held) => {
@@ -115,6 +136,7 @@ async function agentBudgets(context: PassContext, person: Person): Promise<Budge
     // eslint-disable-next-line no-await-in-loop -- the pickup's delegation, ended as the passes end it
     await revokePickup(context, withId);
   }
+  const load = loadSince(began);
   const payload: Budget = {
     operation: 'task.pickup payload size',
     budget: `${String(PAYLOAD_CAP)} bytes`,
@@ -122,11 +144,12 @@ async function agentBudgets(context: PassContext, person: Person): Promise<Budge
     status: largest > 0 && largest <= PAYLOAD_CAP ? 'pass' : 'fail',
     against:
       "the journey's world: one step, no comments, so the cap's overflow path is not reached here",
+    load,
   };
   return [
-    line('task.pickup, the whole one-call payload', 300, timings['pickup'] ?? []),
-    line('task.handback', 300, timings['handback'] ?? []),
-    line('readTaskExecution first page', 250, timings['execution'] ?? []),
+    line('task.pickup, the whole one-call payload', 300, timings['pickup'] ?? [], load),
+    line('task.handback', 300, timings['handback'] ?? [], load),
+    line('readTaskExecution first page', 250, timings['execution'] ?? [], load),
     payload,
   ];
 }
@@ -167,7 +190,14 @@ async function revokePickup(context: PassContext, withId: Person): Promise<void>
 }
 
 function unrun(operation: string, budget: string, reason: string): Budget {
-  return { operation, budget, measured: 'not measured', status: 'unrun', against: reason };
+  return {
+    operation,
+    budget,
+    measured: 'not measured',
+    status: 'unrun',
+    against: reason,
+    load: 'not measured',
+  };
 }
 
 /** Every budget in 10.2, measured, carried from elsewhere in the run, or unrun with its reason. */
@@ -192,6 +222,7 @@ export async function measureBudgets(
       status: liveMs === undefined ? 'unrun' : liveMs <= 2000 ? 'pass' : 'fail',
       against:
         'the live-update case of this run, an in-process event-stream client on the web origin',
+      load: 'not recorded for the one live-update run',
     },
     unrun(
       'The full six-role, nine-case isolation enumeration',
