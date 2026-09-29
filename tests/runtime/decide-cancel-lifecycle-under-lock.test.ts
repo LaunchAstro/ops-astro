@@ -245,23 +245,23 @@ describe.skipIf(serverUrl === undefined)(
       }, 60_000);
     });
 
+    async function pendingLineage(title: string) {
+      const task = await c.createTask(title);
+      const proposal = await c.propose(task.id, task.revision);
+      const runs = await c.fixture.db.admin.execute<{ readonly run_id: string }>(
+        `select run_id from public.gates where id = $1`,
+        [proposal['gateId']],
+      );
+      return { task, proposal, runId: String(runs[0]?.run_id) };
+    }
+
+    const lineageState = async (lineageId: unknown) =>
+      await c.fixture.db.admin.execute<{ readonly state: string; readonly terminal_at: unknown }>(
+        `select state, terminal_at from public.proposal_lineages where id = $1`,
+        [lineageId],
+      );
+
     describe('task.cancel and a revocation of the canceller’s write', () => {
-      async function pendingLineage(title: string) {
-        const task = await c.createTask(title);
-        const proposal = await c.propose(task.id, task.revision);
-        const runs = await c.fixture.db.admin.execute<{ readonly run_id: string }>(
-          `select run_id from public.gates where id = $1`,
-          [proposal['gateId']],
-        );
-        return { task, proposal, runId: String(runs[0]?.run_id) };
-      }
-
-      const lineageState = async (lineageId: unknown) =>
-        await c.fixture.db.admin.execute<{ readonly state: string; readonly terminal_at: unknown }>(
-          `select state, terminal_at from public.proposal_lineages where id = $1`,
-          [lineageId],
-        );
-
       it('a revocation that locks the grant first is seen under the locks: SCOPE_NOT_GRANTED', async () => {
         const { task, proposal, runId } = await pendingLineage('revoked while the cancel waits');
         const { member, grantId } = await holderOf('write');
@@ -289,7 +289,9 @@ describe.skipIf(serverUrl === undefined)(
           { state: 'live', terminal_at: null },
         ]);
       }, 60_000);
+    });
 
+    describe('task.cancel and a revocation of the canceller’s write', () => {
       it('a revocation that comes second waits for the cancellation to commit', async () => {
         const { task, proposal, runId } = await pendingLineage(
           'cancelled while a revocation arrives',
@@ -367,7 +369,9 @@ describe.skipIf(serverUrl === undefined)(
           ),
         ).toEqual([{ state: 'live' }]);
       }, 60_000);
+    });
 
+    describe('T3a task.cancel and a revocation of the canceller’s decide', () => {
       it('a revocation that locks the decide grant first is seen with the grants held: SCOPE_NOT_GRANTED', async () => {
         const task = await c.createTask('decide revoked while the cancel waits');
         const proposal = await c.propose(task.id, task.revision);
@@ -400,12 +404,12 @@ describe.skipIf(serverUrl === undefined)(
       }, 60_000);
     });
 
-    describe('task.decide on a trashed task', () => {
-      const envelopes = async (taskId: string): Promise<number> =>
-        await c.count(`select count(*)::text as n from public.task_envelopes where task_id = $1`, [
-          taskId,
-        ]);
+    const envelopes = async (taskId: string): Promise<number> =>
+      await c.count(`select count(*)::text as n from public.task_envelopes where task_id = $1`, [
+        taskId,
+      ]);
 
+    describe('task.decide on a trashed task', () => {
       it('answers NOT_FOUND in the bytes of an unknown gate, and writes nothing', async () => {
         const task = await c.createTask('decided after trash');
         const proposal = await c.propose(task.id, task.revision);
@@ -425,7 +429,9 @@ describe.skipIf(serverUrl === undefined)(
         expect(await gateDecisions(proposal['gateId'])).toBe(0);
         expect(await envelopes(task.id)).toBe(0);
       }, 60_000);
+    });
 
+    describe('task.decide on a trashed task', () => {
       it('a trash that commits while the decision waits on the cap is seen under the locks', async () => {
         const task = await c.createTask('trashed while it is decided');
         const proposal = await c.propose(task.id, task.revision);
@@ -507,23 +513,23 @@ describe.skipIf(serverUrl === undefined)(
       }, 60_000);
     });
 
+    async function completed(title: string): Promise<{ id: string; revision: number }> {
+      const task = await c.createTask(title);
+      const done = await c.asPerson('task.complete', {
+        recordId: task.id,
+        expectedRevision: task.revision,
+      });
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      return { id: task.id, revision: Number(done.body['revision']) };
+    }
+
+    const stampOf = async (taskId: string) =>
+      await c.fixture.db.admin.execute<{ readonly ts_2: unknown }>(
+        `select ts_2 from public.records where id = $1`,
+        [taskId],
+      );
+
     describe('the completion stamp has one clearer', () => {
-      async function completed(title: string): Promise<{ id: string; revision: number }> {
-        const task = await c.createTask(title);
-        const done = await c.asPerson('task.complete', {
-          recordId: task.id,
-          expectedRevision: task.revision,
-        });
-        expect(done.status, JSON.stringify(done.body)).toBe(200);
-        return { id: task.id, revision: Number(done.body['revision']) };
-      }
-
-      const stampOf = async (taskId: string) =>
-        await c.fixture.db.admin.execute<{ readonly ts_2: unknown }>(
-          `select ts_2 from public.records where id = $1`,
-          [taskId],
-        );
-
       it('task.start on a completed task is refused and the stamp stays', async () => {
         const task = await completed('started after completion');
         const before = await stampOf(task.id);
@@ -564,7 +570,9 @@ describe.skipIf(serverUrl === undefined)(
         },
         60_000,
       );
+    });
 
+    describe('the completion stamp has one clearer', () => {
       it('task.reopen with a reason still applies', async () => {
         const task = await completed('reopened with a reason');
         const reopened = await c.asPerson('task.reopen', {

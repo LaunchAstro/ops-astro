@@ -175,6 +175,21 @@ export async function cancelOnTask(
   });
 }
 
+/**
+ * T3a: a restart opens a new envelope. The task's open one keeps its settled
+ * spend and funds nothing new: it is closed here, under the envelope lock
+ * `propose` took for it, so the new lineage's approval opens its own. The
+ * cap still counts what it holds and spent, and a hold still in flight
+ * settles against it by id.
+ */
+async function closeOpenEnvelope(tx: TenantQuery, taskId: string): Promise<void> {
+  await tx.query(
+    `update public.task_envelopes set state = 'closed', closed_at = now()
+      where business_id = $1 and task_id = $2 and state = 'open'`,
+    [tx.businessId, taskId],
+  );
+}
+
 export async function restartOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -208,16 +223,7 @@ export async function restartOnTask(
   // its own locks).
   const lapsed = await decideHeld(tx, context, found.taskId);
   if (lapsed !== null) return lapsed;
-  // T3a: a restart opens a new envelope. The task's open one keeps its settled
-  // spend and funds nothing new: it is closed here, under the envelope lock
-  // `propose` took for it, so the new lineage's approval opens its own. The
-  // cap still counts what it holds and spent, and a hold still in flight
-  // settles against it by id.
-  await tx.query(
-    `update public.task_envelopes set state = 'closed', closed_at = now()
-      where business_id = $1 and task_id = $2 and state = 'open'`,
-    [tx.businessId, found.taskId],
-  );
+  await closeOpenEnvelope(tx, found.taskId);
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,

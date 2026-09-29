@@ -362,7 +362,7 @@ async function approved(page, first) {
   const controls = await page.locator('[data-decide="controls"] button').allInnerTexts();
   const bound = await page
     .locator('[data-decide="controls"] button')
-    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-version-id')));
+    .evaluateAll((buttons) => buttons.map((button) => button.dataset.versionId ?? null));
   const notice = await page
     .locator('[data-decide="controls"] [data-gate="notice"]')
     .innerText()

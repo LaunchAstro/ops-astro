@@ -77,7 +77,7 @@ function server(versions: readonly ReturnType<typeof version>[], state = 'live')
     comments: [],
     proposals: [{ lineageId: 'l-1', state, versions, decisions: [], reservations: [] }],
   };
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const answer = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
@@ -86,7 +86,9 @@ function server(versions: readonly ReturnType<typeof version>[], state = 'live')
       return json({ recordId: task.id, revision: 7, detail: {} });
     }
     return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
-  }) as unknown as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL, init?: RequestInit) =>
+    Promise.resolve(answer(url, init))) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',

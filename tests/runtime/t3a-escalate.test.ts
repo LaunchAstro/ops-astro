@@ -53,105 +53,106 @@ const decideBody = (version: Detail, decision: string, extra: Body = {}): Body =
   ...extra,
 });
 
-describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
-  let s: Schedules;
-  let holder: Member;
-  const { work, applied, observeOf } = t2dHarness(() => s);
+let s: Schedules;
+let holder: Member;
+const { work, applied, observeOf } = t2dHarness(() => s);
 
-  beforeAll(async () => {
-    s = await openSchedules('t3a_escalate', 1_000_000);
-    // The escalation role: decide at business scope, held by a second person.
-    holder = await enrol(s.db.app, s.business, 'escalation-holder');
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      for (const action of ['read', 'decide'] as const) {
-        // eslint-disable-next-line no-await-in-loop
-        await grantTo(tx, holder, action);
-      }
-    });
-  }, 180_000);
-
-  afterAll(async () => {
-    await s?.db.drop();
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  s = await openSchedules('t3a_escalate', 1_000_000);
+  // The escalation role: decide at business scope, held by a second person.
+  holder = await enrol(s.db.app, s.business, 'escalation-holder');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'decide'] as const) {
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, holder, action);
+    }
   });
+}, 180_000);
 
-  const as = async (member: Member, body: Body, surface: EntryPoint = 'api') =>
-    await executeCommand(s.db.app, s.business, member.presented, surface, body as never);
+afterAll(async () => {
+  await s?.db.drop();
+});
 
-  /** A person holding read, write and decide on exactly one task: the approver's role. */
-  async function approverOn(taskId: string): Promise<Member> {
-    const member = await enrol(s.db.app, s.business, `approver-${randomUUID()}`);
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      for (const action of ['read', 'write', 'decide'] as const) {
-        // eslint-disable-next-line no-await-in-loop
-        await grantTo(tx, member, action, { kind: 'record', id: taskId });
-      }
-    });
-    return member;
-  }
+const as = async (member: Member, body: Body, surface: EntryPoint = 'api') =>
+  await executeCommand(s.db.app, s.business, member.presented, surface, body as never);
 
-  /** A task whose third version's gate is at the bound: two rounds of changes used. */
-  async function atTheBound() {
-    const taskId = await createTask(s, `t3a escalate ${randomUUID()}`);
-    const approver = await approverOn(taskId);
-    const v1 = await propose(s, taskId);
-    appliedDetail(await asPerson(s, decideBody(v1, 'request_changes')), 'round 1');
-    const v2 = await propose(s, taskId, { lineageId: String(v1['lineageId']) });
-    appliedDetail(await asPerson(s, decideBody(v2, 'request_changes')), 'round 2');
-    const v3 = await propose(s, taskId, { lineageId: String(v1['lineageId']) });
-    expect(codeOf(await asPerson(s, decideBody(v3, 'request_changes')))).toBe(
-      'CHANGE_ROUNDS_EXHAUSTED',
-    );
-    return { taskId, v3, approver };
-  }
+/** A person holding read, write and decide on exactly one task: the approver's role. */
+async function approverOn(taskId: string): Promise<Member> {
+  const member = await enrol(s.db.app, s.business, `approver-${randomUUID()}`);
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'write', 'decide'] as const) {
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, member, action, { kind: 'record', id: taskId });
+    }
+  });
+  return member;
+}
 
-  /**
-   * The runtime's own decide, as the record-scoped approver. The command
-   * entry asks decide at business scope before it; the runtime asks it on the
-   * task, which is where the approver's role and the escalation role differ.
-   */
-  async function decidesAsApprover(
-    approver: Member,
-    version: Detail,
-    decision: 'approve' | 'reject',
-  ): Promise<string> {
-    const signingKey = gateSigningKey();
-    if (signingKey === undefined) throw new Error('no signing key in the fixture');
-    const result = await s.db.app.withBusiness(
-      s.business,
-      async (tx) =>
-        await decide(tx, {
-          gateId: String(version['gateId']),
-          versionId: String(version['versionId']),
-          decidedByPersonId: approver.personId,
-          decidedByActorId: approver.actorId,
-          subjects: [
-            { kind: 'person', id: approver.personId },
-            { kind: 'actor', id: approver.actorId },
-          ],
-          collection: 'task',
-          decision,
-          note: 'the approver deciding',
-          signingKey,
-          capId: s.capId,
-        }),
-    );
-    return result.ok ? 'applied' : result.refusal.code;
-  }
+/** A task whose third version's gate is at the bound: two rounds of changes used. */
+async function atTheBound() {
+  const taskId = await createTask(s, `t3a escalate ${randomUUID()}`);
+  const approver = await approverOn(taskId);
+  const v1 = await propose(s, taskId);
+  appliedDetail(await asPerson(s, decideBody(v1, 'request_changes')), 'round 1');
+  const v2 = await propose(s, taskId, { lineageId: String(v1['lineageId']) });
+  appliedDetail(await asPerson(s, decideBody(v2, 'request_changes')), 'round 2');
+  const v3 = await propose(s, taskId, { lineageId: String(v1['lineageId']) });
+  expect(codeOf(await asPerson(s, decideBody(v3, 'request_changes')))).toBe(
+    'CHANGE_ROUNDS_EXHAUSTED',
+  );
+  return { taskId, v3, approver };
+}
 
-  async function gateOf(gateId: unknown) {
-    return (
-      await rows<Record<string, unknown>>(
-        s,
-        `select g.state, g.escalated_to_person_id as "to", g.escalated_by_person_id as "by",
-                (g.escalated_at is not null) as escalated,
-                (select count(*)::int from public.gate_decisions d
-                  where d.business_id = g.business_id and d.gate_id = g.id) as decisions
-           from public.gates g where g.business_id = $1 and g.id = $2`,
-        [s.business, gateId],
-      )
-    )[0];
-  }
+/**
+ * The runtime's own decide, as the record-scoped approver. The command
+ * entry asks decide at business scope before it; the runtime asks it on the
+ * task, which is where the approver's role and the escalation role differ.
+ */
+async function decidesAsApprover(
+  approver: Member,
+  version: Detail,
+  decision: 'approve' | 'reject',
+): Promise<string> {
+  const signingKey = gateSigningKey();
+  if (signingKey === undefined) throw new Error('no signing key in the fixture');
+  const result = await s.db.app.withBusiness(
+    s.business,
+    async (tx) =>
+      await decide(tx, {
+        gateId: String(version['gateId']),
+        versionId: String(version['versionId']),
+        decidedByPersonId: approver.personId,
+        decidedByActorId: approver.actorId,
+        subjects: [
+          { kind: 'person', id: approver.personId },
+          { kind: 'actor', id: approver.actorId },
+        ],
+        collection: 'task',
+        decision,
+        note: 'the approver deciding',
+        signingKey,
+        capId: s.capId,
+      }),
+  );
+  return result.ok ? 'applied' : result.refusal.code;
+}
 
+async function gateOf(gateId: unknown) {
+  return (
+    await rows<Record<string, unknown>>(
+      s,
+      `select g.state, g.escalated_to_person_id as "to", g.escalated_by_person_id as "by",
+              (g.escalated_at is not null) as escalated,
+              (select count(*)::int from public.gate_decisions d
+                where d.business_id = g.business_id and d.gate_id = g.id) as decisions
+         from public.gates g where g.business_id = $1 and g.id = $2`,
+      [s.business, gateId],
+    )
+  )[0];
+}
+
+describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
   it('moves the decision to a business-scope decider, records actor and recipient, and decides nothing', async () => {
     const { v3, approver } = await atTheBound();
     const escalated = appliedDetail(
@@ -194,7 +195,9 @@ describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
     // Approve and reject stay performable: the approver's decide still reaches it.
     expect(await decidesAsApprover(approver, v3, 'approve')).toBe('applied');
   });
+});
 
+describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
   it('is not offered before the bound, and a recipient on another decision is refused', async () => {
     const taskId = await createTask(s, `t3a early ${randomUUID()}`);
     const v1 = await propose(s, taskId);
@@ -221,7 +224,9 @@ describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
     const { v3, approver } = await atTheBound();
     expect(codeOf(await as(approver, decideBody(v3, 'approve')))).toBe('applied');
   });
+});
 
+describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
   it('replays by operation identifier, and is refused to an agent and to a person without decide on every surface', async () => {
     const { taskId, v3 } = await atTheBound();
     const body = decideBody(v3, 'escalate', { recipientPersonId: holder.personId });
@@ -247,7 +252,9 @@ describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
     expect(codeOf(await asAgent(s, escalate(), w.credential))).not.toBe('applied');
     expect(await gateOf(v3['gateId'])).toEqual(before);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('T3a escalate at the bound', () => {
   it('answers PROPOSAL_SUPERSEDED for a superseded version and PROPOSAL_SCOPE_EXCEEDED past the envelope', async () => {
     const taskId = await createTask(s, `t3a codes ${randomUUID()}`);
     const v1 = await propose(s, taskId);
