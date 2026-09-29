@@ -86,6 +86,21 @@ describe('MP-1-1 tokens', () => {
         !STATUS_ALIASES.test(name),
     );
     expect(unlisted).toEqual([]);
+
+    // Nothing is declared in dark alone: every dark token has a light value.
+    expect(Object.keys(sets.dark).filter((name) => sets.light[name] === undefined)).toEqual([]);
+    const darkOnly = read(tokensCss).replace(
+      "[data-theme='dark'] {",
+      "[data-theme='dark'] {\n  --unpaired: oklch(0.9 0 0);",
+    );
+    const path = join(scratch, 'dark-only.css');
+    writeFileSync(path, darkOnly);
+    const planted = JSON.parse(run('--print', '--css', path).stdout) as Sets;
+    expect(planted.dark['--unpaired']).toBe('oklch(0.9 0 0)');
+    expect(planted.light['--unpaired']).toBeUndefined();
+    const bitten = run('--css', path);
+    expect(bitten.status).toBe(1);
+    expect(bitten.stderr).toContain('dark --unpaired: declared in dark only');
   });
 
   it('MP-1-1 token diff', () => {
