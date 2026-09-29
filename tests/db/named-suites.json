@@ -99,7 +99,7 @@
     "T4b2 names t4-worker-role as an invariant (T4 worker role, RN-04: catalogue, the worker role and a login in it hold no privilege on any table, view, sequence or function in the installation's schemas, security-definer ones included, and no CREATE or USAGE on ops, and PUBLIC may execute no function; the catalogue mutation, SELECT granted on reservations, is found while behaviour alone stays refused 42501; behaviour, a login in the worker role is refused 42501 on every table, sequence and callable function beside the application login reading the same tables; structure is tests/worker/worker-boundary.test.ts).",
     "T4b2 names t4-no-notify as an invariant (RN-01: a whole journey through the application, create, propose, approve, pickup, dispatch, effect, observe, settle and receipt, leaves no NOTIFY and no pg_notify in the runtime statement log, whose capture holds the journey's decision, reservation and run-event writes; a pg_notify planted on the runtime pool is caught).",
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
-    "MP-6-1 (SL12) names mp-6-1-checks (check provenance under the worker lease, check recorded, a check racing a handback), mp-6-1-controls (gate before effect, records, and gate:decide on cancel and restart) and mp-6-1-preferences (the job list preference; it runs once the one preference store is in) as conformance, and mp-6-1-isolation (the awaiting-review read and the checks across another business, another client in the same business and another person's work under a live delegation) as an invariant, listed in isolation-suites.json too."
+    "MP-6-1 (SL12) names mp-6-1-checks (check provenance under the worker lease, check recorded, a check racing a handback), mp-6-1-controls (gate before effect, records, and gate:decide on cancel and restart) as conformance, leaves mp-6-1-preferences.test.ts deliberately unnamed (its three tests skip until preference.save is on the command surface, SL05's MP-2-11a, and the runner refuses a skip; it joins the conformance list when the store lands), and mp-6-1-isolation (the awaiting-review read and the checks across another business, another client in the same business and another person's work under a live delegation) as an invariant, listed in isolation-suites.json too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -365,7 +365,6 @@
     "tests/cli/t3c-write-off-surfaces.test.ts",
     "tests/cli/t3f-two-workers.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
-    "tests/api/mp-6-1-controls.test.ts",
-    "tests/api/mp-6-1-preferences.test.ts"
+    "tests/api/mp-6-1-controls.test.ts"
   ]
 }
