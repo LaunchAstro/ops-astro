@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createWorld, type World } from '../acceptance/world.ts';
 import { serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
-import { everyDeclaration, liveWithin2s } from './checks.ts';
+import { everyDeclaration, liveWithin2s, type Checked } from './checks.ts';
 import { castSeparation, crossings } from './separation.ts';
 import { measureBudgets } from './budgets.ts';
 import { approvalLine } from './run-approval.ts';
@@ -45,15 +45,26 @@ const pause = async (ms: number): Promise<void> => {
 
 let failed = 0;
 
-function report(name: string, ok: boolean, detail: string): void {
+function report(name: string, ok: boolean, detail: string, facts?: Checked['facts']): void {
   if (!ok) failed += 1;
-  const line = { case: name, status: ok ? 'pass' : 'fail', detail: redact(detail) };
+  const status = ok ? 'pass' : 'fail';
+  const line = {
+    case: name,
+    status,
+    detail: redact(detail),
+    ...(facts === undefined ? {} : { facts }),
+  };
   console.log(`journey-case ${JSON.stringify(line)}`);
 }
 
-async function check(name: string, run: () => Promise<string> | string): Promise<void> {
+async function check(
+  name: string,
+  run: () => Promise<string | Checked> | string | Checked,
+): Promise<void> {
   try {
-    report(name, true, await run());
+    const outcome = await run();
+    if (typeof outcome === 'string') report(name, true, outcome);
+    else report(name, true, outcome.detail, outcome.facts);
   } catch (error) {
     report(name, false, String(error).slice(0, 600));
   }
@@ -93,14 +104,20 @@ async function serveWeb(api: string): Promise<() => void> {
 }
 
 /** T2b's served-identity check, the web origin and the API compared with this tree. */
-function identity(api: string): string {
+function identity(api: string): Checked {
   const run = spawnSync(process.execPath, ['scripts/local/identity-check.mjs'], {
     cwd: ROOT,
     env: { PATH: process.env['PATH'] ?? '', API_ORIGIN: api, WEB_ORIGIN: WEB },
     encoding: 'utf8',
   });
   if (run.status !== 0) throw new Error(`identity: ${run.stdout}${run.stderr}`.trim());
-  return run.stdout.trim();
+  // The facts are the check's own typed fields, not words read out of its line.
+  const answer = JSON.parse(run.stdout) as Record<string, unknown>;
+  const typed = ['apiTree', 'webTree', 'migrationHead', 'clean'].flatMap((key) => {
+    const value = answer[key];
+    return typeof value === 'string' || typeof value === 'boolean' ? [[key, value] as const] : [];
+  });
+  return { detail: run.stdout.trim(), facts: Object.fromEntries(typed) };
 }
 
 /** The same JSON with its keys sorted: tells a key-order difference from a content one. */
@@ -224,17 +241,17 @@ async function main(): Promise<void> {
   const title = `Journey ${new Date().toISOString()}`;
   const context: PassContext = { world, api: served.origin, app: WEB, title };
   const passes = await passCases(context);
-  let live = '';
+  let liveMs: number | undefined;
   await check('live update within 2 s (RN-01)', async () => {
-    live = await liveWithin2s(context, WEB);
+    const live = await liveWithin2s(context, WEB);
+    liveMs = Number(live.facts['ms']);
     return live;
   });
-  const liveMs = /after (\d+) ms/u.exec(live)?.[1];
   await check(
     'one command-line process per declaration (RN-10)',
     async () => await everyDeclaration(context),
   );
-  await evidenceLines(context, passes, liveMs === undefined ? undefined : Number(liveMs), seedMs);
+  await evidenceLines(context, passes, liveMs, seedMs);
   await served.stop();
   const restarted = spawnSync(DOCKER, ['restart', CONTAINER], { encoding: 'utf8' });
   if (restarted.status !== 0) throw new Error(`docker restart ${CONTAINER}: ${restarted.stderr}`);

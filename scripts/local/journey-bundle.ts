@@ -13,7 +13,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { availableParallelism, loadavg } from 'node:os';
-import { approvalOf, digestOf, privateDetail, scrub, withhold } from './journey-withhold.ts';
+import { approvalOf, digestDetail, digestOf, scrub, withhold } from './journey-withhold.ts';
 
 export interface Approval {
   readonly taskId: string;
@@ -129,6 +129,17 @@ export function commandBudgets(
   ];
 }
 
+/** Facts as typed: strings, numbers and booleans only, whatever else a caller passes. */
+function typedFacts(
+  facts: Readonly<Record<string, unknown>>,
+): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    Object.entries(facts).filter(([, value]) =>
+      ['string', 'number', 'boolean'].includes(typeof value),
+    ),
+  ) as Record<string, string | number | boolean>;
+}
+
 const OWNER = /\b(T\d[a-z]\d?|CQ-\d+|INB-\d+|U\d\d|#\d+)\b/u;
 const NOT_ESTABLISHED =
   "This is a local run: it establishes the journey observed on this revision, on this machine, on this date. Deployed access, real provider behaviour and readiness for a client are not established, and acceptance is the owner's click-through on staging (U01).";
@@ -159,7 +170,12 @@ function openItemsOf(input: BundleInput): readonly Record<string, string>[] {
     .filter((line) => line.status !== 'pass')
     .map((line) => ({
       item: line.case,
-      owner: OWNER.exec(`${line.case} ${line.detail}`)?.[1] ?? 'the journey (T4)',
+      // The owner the command typed, else a name in the case's own title, which
+      // the command's code wrote; never read out of the detail.
+      owner:
+        (typeof line.facts?.['owner'] === 'string' ? line.facts['owner'] : undefined) ??
+        OWNER.exec(line.case)?.[1] ??
+        'the journey (T4)',
       state: `${line.status}: ${line.detail}`,
     }));
   const g5 = {
@@ -187,8 +203,14 @@ export function writeBundle(raw: BundleInput): Bundle {
     ...raw,
     identity: withhold(raw.identity, held),
     environment: fields(raw.environment),
-    // A case detail is free text: private at this boundary, JSON or not (Sol, review 3).
-    cases: raw.cases.map((line) => ({ ...line, detail: privateDetail(line.detail) })),
+    // A case detail is free text: its digest alone crosses this boundary; the
+    // command's typed facts stand beside it (Sol, review 3 and REV164D).
+    cases: raw.cases.map((line) => ({
+      case: line.case,
+      status: line.status,
+      detail: digestDetail(line.detail),
+      ...(line.facts === undefined ? {} : { facts: typedFacts(line.facts) }),
+    })),
     budgets: raw.budgets.map((row) => fields(row)),
   };
   const shown = approvalOf(approval, held);
@@ -215,9 +237,19 @@ export function writeBundle(raw: BundleInput): Bundle {
   };
 }
 
+/** A table cell: typed facts as JSON, anything else as its text. */
+function cell(value: unknown): string {
+  return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+}
+
 /** One line per row, its values in order. */
 function table(rows: readonly Readonly<Record<string, unknown>>[]): string[] {
-  return rows.map((row) => `- ${Object.values(row).map(String).join(' | ')}`);
+  return rows.map(
+    (row) =>
+      `- ${Object.values(row)
+        .map((value) => cell(value))
+        .join(' | ')}`,
+  );
 }
 
 function markdownOf(

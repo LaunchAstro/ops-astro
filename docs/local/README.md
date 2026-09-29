@@ -414,9 +414,10 @@ beside each, the crash points the restart legs recorded and the open completion
 items with their owner. Whatever a person wrote (a note, a body, a title) is
 carried only as a digest (`scripts/local/journey-withhold.ts`): the approval
 shows its identifiers and withholds the rest, and a case line's detail, being
-free text, is carried as its digest and only its safe tokens (identifiers,
-refusal codes, ticket names, repository paths, times). The full detail stays
-in `cases.jsonl` beside it, where the digest finds it. The end-to-end budget is timed only when
+free text, is carried as its digest alone: no word in it is safe for how it is
+spelled. Beside it the bundle shows only the facts the command's own code typed
+for that case (an owner, a pull request, a time, a tree hash). The full detail
+stays in `cases.jsonl` beside the bundle, where the digest finds it. The end-to-end budget is timed only when
 the journey ran to its end. A run with no decision writes no bundle, and nothing
 in it claims acceptance. The
 database is kept for inspection unless `--remove`, and the last line says how

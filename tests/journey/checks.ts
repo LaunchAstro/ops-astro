@@ -37,7 +37,13 @@ async function approvedTask(context: PassContext): Promise<{
 }
 
 /** RN-01: an in-process event-stream client on the web origin sees the pickup within 2 s. */
-export async function liveWithin2s(context: PassContext, web: string): Promise<string> {
+/** A check's line: its words, and the facts its own code typed beside them. */
+export interface Checked {
+  readonly detail: string;
+  readonly facts: Readonly<Record<string, string | number | boolean>>;
+}
+
+export async function liveWithin2s(context: PassContext, web: string): Promise<Checked> {
   const { taskId, worker } = await approvedTask(context);
   const response = await fetch(`${web}/api/b/alpha/live/task/${taskId}`, {
     headers: { authorization: `Bearer ${context.world.ada.token}` },
@@ -66,11 +72,11 @@ export async function liveWithin2s(context: PassContext, web: string): Promise<s
   await applied;
   await reader.cancel();
   if (ms > 2000) throw new Error(`${kind} after ${String(ms)} ms, over 2000`);
-  return `live update: ${kind} after ${String(ms)} ms (budget 2000)`;
+  return { detail: `live update: ${kind} after ${String(ms)} ms (budget 2000)`, facts: { ms } };
 }
 
 /** RN-10: one command-line process per declaration; an invented verb sends nothing. */
-export async function everyDeclaration(context: PassContext): Promise<string> {
+export async function everyDeclaration(context: PassContext): Promise<Checked> {
   const cli = { OPS_ASTRO_TOKEN: context.world.ada.token, OPS_ASTRO_API_URL: context.api };
   const faults: string[] = [];
   const started = performance.now();
@@ -89,8 +95,8 @@ export async function everyDeclaration(context: PassContext): Promise<string> {
   if ((await audited()) !== before) faults.push('task.invented reached the API');
   if (faults.length > 0) throw new Error(faults.join('; '));
   const visualOnly = COMMAND_SURFACE.filter(({ name }) => !accepts(name)).length;
-  return (
+  const detail =
     `${String(COMMAND_SURFACE.length)} declarations, one process each, ${String(ms)} ms; ` +
-    `invented verb exit 2, nothing sent; visual-only operations, derived from accepts(): ${String(visualOnly)}`
-  );
+    `invented verb exit 2, nothing sent; visual-only operations, derived from accepts(): ${String(visualOnly)}`;
+  return { detail, facts: { declarations: COMMAND_SURFACE.length, ms, visualOnly } };
 }
