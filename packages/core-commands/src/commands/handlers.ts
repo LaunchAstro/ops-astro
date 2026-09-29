@@ -26,6 +26,7 @@ import { issueCredential, revokeCredential } from './credential-write.ts';
 import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { endAccessOnSettings } from './access-end.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -114,6 +115,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'client.create': createClientRecord,
   'access.grant': grantOnAccess,
   'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
+  'access.end': endAccessOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),

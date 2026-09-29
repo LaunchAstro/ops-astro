@@ -66,7 +66,8 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
 
 1. A missing, forged, unsigned or subject-less bearer is `AUTH_UNKNOWN_LOGIN` 401.
 2. An expired bearer is `AUTH_SESSION_EXPIRED` 401, before the business key or
-   the body is read.
+   the body is read. So is a session past its 12-hour absolute limit (C58,
+   "Sessions" below).
 3. A body that is not a JSON object is `COMMAND_BODY_INVALID` 400, whatever
    business the key names. Admission writes one `authentication_attempts` row
    only when the key resolved to a business. Its owner is `person_login` or
@@ -230,6 +231,16 @@ verify is `AUTH_UNKNOWN_LOGIN` whatever its `exp` says. `hono/jwt` checks `exp`
 before the signature, so the adapter verifies a bearer Hono calls expired again,
 with the expiry check off, before it answers `AUTH_SESSION_EXPIRED`
 (`signatureVerifies`, `apps/api/auth/supabase.ts`).
+
+**Sessions (C58).** A session has no idle limit and an absolute limit of 12
+hours from the first sign-in, `SESSION_ABSOLUTE_SECONDS`
+(`core-records/src/identity/verified-subject.ts`), set there and nowhere else.
+The first sign-in is the `amr` first-factor time GoTrue stamps, which a refresh
+carries unchanged; never `iat`, which every refresh moves. A verified bearer
+one second past the limit, with no first-sign-in time, or with one more than a
+minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
+(`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
+served.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
@@ -1083,7 +1094,7 @@ exactly the one task it was minted for.
 | Answer                          | Status | When                                                                                                                                                                                                                                                     |
 | ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit (C58)                                                                                                                                                 |
 | `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
 | `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
 | `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
@@ -1608,6 +1619,36 @@ this route and on `grant.revoke`.
 
 `task.set_party`'s `client` must name a client of this business: another
 business's or a made-up one is `NOT_FOUND` 404 naming `client`.
+
+### Ending a person's access (C58)
+
+`access.end` takes `{ operationId, holderId }` under `access:manage`, never an
+agent's: the tracked action `access ended (person: login, sessions, grants)`,
+audited. In one transaction, under the access lock, the person's membership
+and acting identity end, every live grant they hold and every delegation they
+gave are revoked with one authority-loss classification, and one access ending
+is written per login mapped to them. It answers `{ personId, grantsRevoked,
+delegationsRevoked, classifiedHolds, endingIds }`. A person with no active
+membership in this business, another business's included, is `NOT_FOUND` 404
+naming `holderId`; a malformed id is `FIELD_VALUE_INVALID` 422. Ending the last
+business-wide `access:manage` of a person who can sign in is
+`ACCESS_LAST_MANAGER` 409.
+
+From the commit the person's next call is `AUTH_NO_MEMBERSHIP` 403, whatever
+the sign-in provider has done. Each ending owes the provider two steps, never
+taken inside a transaction: end every session of the login (GoTrue's
+`/logout?scope=global`, which revokes their refresh tokens), then deactivate the
+login (a 100-year ban through GoTrue's admin API). Both bearers are minted by
+the server from the secret it verifies sessions with and live a minute
+(`apps/api/server.ts`, `goTrueLogins`). Every answer is shaped as C59's are
+(`apps/api/auth/logins.ts`): one destination, no redirect, a time limit the
+answer cannot stretch, a size limit, a shape per call; anything else is a fault
+by its kind and the step stays owed. The route tries the act's own endings as
+soon as it commits; the server retries every owed ending each
+`ACCESS_ENDING_RETRY_SECONDS` (60), business by business under each one's
+tenancy (`retryAccessEndings`). A 30-second claim on the row stops two retries
+calling the provider at once, and a step done is stamped once and never asked
+again (`settleAccessEndings`, `commands/access-end.ts`).
 
 ### The overseas-services register (C81, SP-25)
 

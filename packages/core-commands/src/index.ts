@@ -32,6 +32,7 @@ export {
   type ProviderFault,
 } from './commands/account-factor-provider.ts';
 export {
+  ACCESS_ENDING_CLAIM_SECONDS,
   settleAccessEndings,
   type LoginProvider,
   type SettleReport,

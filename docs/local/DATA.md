@@ -538,6 +538,17 @@ check a client is of this business before writing its id. The application may
 select and insert; nothing updates or deletes a row. Tenancy-keyed with the
 restrictive policy.
 
+## Access endings (0037, C58)
+
+`access_endings` holds one row per login of a person whose access was ended
+(`access.end`): who ended it and when, and the two provider steps it owed,
+each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
+`attempts`, `attempt_started_at` (a retry's 30-second claim) and `last_fault`
+(the kind of the last failure, one of five words, never the provider's text)
+record the retries. The application may select, insert and update; nothing
+deletes a row. Tenancy-keyed with the restrictive policy. The partial index
+`access_endings_owed` is what the server's retry looks for.
+
 ## Overseas-services register (0035, C81)
 
 `overseas_services` holds one row per outside service that receives personal

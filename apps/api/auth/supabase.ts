@@ -17,7 +17,8 @@
 // missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
 // `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
 // which of their guesses was closer. The one exception is a bearer whose
-// signature verifies against this secret and whose `exp` has passed: it
+// signature verifies against this secret and whose `exp` has passed, or whose
+// session is past its 12-hour absolute limit (C58, `pastAbsoluteLimit`): it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
 // `Verified` and `signatureVerifies`).
 //
@@ -28,7 +29,11 @@
 
 import type { Context } from 'hono';
 import { verify } from 'hono/jwt';
-import type { Assurance, VerifiedSubject } from '../../../packages/core-records/src/index.ts';
+import {
+  SESSION_ABSOLUTE_SECONDS,
+  type Assurance,
+  type VerifiedSubject,
+} from '../../../packages/core-records/src/index.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -41,6 +46,8 @@ export interface SupabaseVerifierOptions {
   readonly secret: string;
   /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
   readonly issuer: string;
+  /** The time in whole seconds, injected for tests; the clock otherwise. */
+  readonly now?: () => number;
 }
 
 /**
@@ -73,6 +80,7 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  */
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
   const { secret, issuer } = options;
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   if (secret === '') throw new Error('createSupabaseVerifier: the JWT secret is empty');
   const expected = { alg: 'HS256', aud: SUPABASE_AUDIENCE, iss: issuer } as const;
 
@@ -106,7 +114,10 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // `user_metadata` are the provider's business and carry no authority here:
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
-    return { provider: SUPABASE_PROVIDER, subject, assurance: assuranceOf(claims) };
+    const assurance = assuranceOf(claims);
+    return pastAbsoluteLimit(assurance.signedInAt, now())
+      ? 'expired'
+      : { provider: SUPABASE_PROVIDER, subject, assurance };
   };
 }
 
@@ -140,6 +151,21 @@ function assuranceOf(claims: Readonly<Record<string, unknown>>): Assurance {
     return { level: 'aal2', signedInAt, factorAt };
   }
   return { level: 'aal1', signedInAt, factorAt: null };
+}
+
+/**
+ * The session's absolute limit (C58): 12 hours from the first sign-in, set in
+ * `SESSION_ABSOLUTE_SECONDS` and nowhere else, with no idle limit. The first
+ * sign-in is the `amr` first-factor time, which a refresh carries unchanged,
+ * never `iat`, which every refresh moves. A token with no first-sign-in time,
+ * or one more than a minute ahead of this clock, cannot be shown to be inside
+ * the limit, so it is past it: the same `AUTH_SESSION_EXPIRED`, whose answer
+ * is to sign in again.
+ */
+function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
+  if (signedInAt === null) return true;
+  const age = now - signedInAt;
+  return age > SESSION_ABSOLUTE_SECONDS || age < -60;
 }
 
 /** GoTrue's `amr` methods that begin a session: the first factor. */
