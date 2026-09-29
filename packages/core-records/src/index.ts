@@ -78,6 +78,7 @@ export { taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
+  raiseEscalation,
   raiseIncident,
   raiseMentions,
   raiseRunSettled,
