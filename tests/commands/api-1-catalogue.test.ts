@@ -121,6 +121,28 @@ describe('API-1 command catalogue', () => {
     ]);
   });
 
+  it('API-1 planted parity failure: the scanner parses code, and a file it cannot parse fails', () => {
+    const files = webFiles();
+    const detail = files.get('screens/TaskDetail.tsx') as string;
+    const jsx = "export const Tip = () => <p>Don't {client.mutate('task.nudge', {})}</p>;";
+    files.set('screens/TaskDetail.tsx', `${detail}\n${jsx}\n`);
+    files.set('screens/task/Broken.tsx', 'export const = ;');
+    const unparsed: string[] = [];
+    const uses = scanUses(files, NAMESPACES, unparsed);
+    expect(unparsed).toEqual([
+      'screens/task/Broken.tsx does not parse, so its commands cannot be checked',
+    ]);
+    expect(uses.map((use: { command: string }) => use.command)).toContain('task.nudge');
+    expect(uses.map((use: { command: string }) => use.command)).not.toContain('task.fake');
+    files.set(
+      'screens/Projects.tsx',
+      `${files.get('screens/Projects.tsx') as string}\n// \`task.fake\`\n`,
+    );
+    expect(
+      scanUses(files, NAMESPACES).map((use: { command: string }) => use.command),
+    ).not.toContain('task.fake');
+  });
+
   it('API-1 grant skip caught: a CLI verb or API endpoint that skips a grant the app checks fails', () => {
     const rows = buildCatalogue([]);
     expect(checkParity(rows, planted('cli', 'task.update', { authority: [] }))).toEqual([
