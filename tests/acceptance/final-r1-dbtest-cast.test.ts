@@ -40,9 +40,11 @@ const held = (role: string): readonly string[] =>
  * What each declaration asks the grant model about. `preset.plan` takes
  * `manage` on the family the request names (surface.ts), and the seeded
  * family is `task`. `session.capabilities` asks about nothing: it reports
- * what the caller holds.
+ * what the caller holds; nor does `client.list` (C32), which answers the
+ * clients the caller's grants reach.
  */
-const asked = COMMAND_SURFACE.filter((each) => each.name !== 'session.capabilities')
+const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
+const asked = COMMAND_SURFACE.filter((each) => !ASKS_NOTHING.has(each.name))
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )

@@ -79,16 +79,17 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|access|operations|privacy|legal)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|access|operations|privacy|legal|client)\/[a-z_]+$/u.test(
           path,
         ),
       ),
     ).toBe(true);
   });
 
-  it('declares the nine reads as reads, and everything else as a write', () => {
+  it('declares the ten reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'access.read',
+      'client.list',
       'operations.read',
       'person.list',
       'preset.plan',

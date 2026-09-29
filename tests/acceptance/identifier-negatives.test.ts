@@ -242,6 +242,22 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     }
   }, 300_000);
 
+  /** C32: a person and a client of bravo's, each named in an alpha grant. */
+  const accessGrantCells = (
+    person: string,
+    client: string,
+  ): [CommandName, ReturnType<typeof pair>][] => {
+    const key = { collection: 'task', action: 'read' };
+    const own = w.h.world.ada.personId;
+    return [
+      ['access.grant', pair('holderId', person, (holderId) => ({ holderId, ...key }))],
+      [
+        'access.grant',
+        pair('clientId', client, (clientId) => ({ holderId: own, clientId, ...key })),
+      ],
+    ];
+  };
+
   it(
     CASE.control,
     async () => {
@@ -274,6 +290,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'legal.publish_version',
           pair('versionId', f.legalVersionId, (versionId) => ({ versionId })),
         ],
+        ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ...accessGrantCells(f.admin.personId as string, f.clientId),
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

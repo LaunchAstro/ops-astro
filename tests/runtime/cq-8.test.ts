@@ -93,6 +93,10 @@ describe('CQ-8 runtime structure', () => {
       .toSorted();
     expect(callers).toEqual([
       'packages/core-commands/src/commands/prepare.ts',
+      // C32: the business's one access lock, taken first by every change to
+      // who may do what (a grant given, a grant revoked, access ended),
+      // inside the handler's transaction.
+      'packages/core-records/src/authority/access.ts',
       // C81: the overseas-services register's one lock per business, taken
       // by a change and by a privacy policy's draft, approval and publication
       // before reading the register, inside the handler's transaction.

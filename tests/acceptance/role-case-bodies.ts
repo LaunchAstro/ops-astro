@@ -96,6 +96,18 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
 }
 
 /** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+/** Clients made by the matrix, each under a name of its own (one name per business). */
+let clientsMade = 0;
+const nextClientName = (): string =>
+  `A made-up client ${String((clientsMade += 1))} ${randomUUID()}`;
+
+/** A client of the context's business, made by its admin (C32). */
+async function madeClient(context: BodyContext): Promise<string> {
+  const made = await context.asPerson('client.create', { name: nextClientName() });
+  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
+  return String((made.body['detail'] as Record<string, unknown>)['clientId']);
+}
+
 /** Legal document versions drafted by the matrix, each under a label of its own. */
 let legalDrafts = 0;
 
@@ -175,13 +187,9 @@ export function createPositiveBody(
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), so the admin
+        // makes one first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -244,9 +252,33 @@ export function createPositiveBody(
       case 'session.capabilities':
       // `access:manage`, which the fixture admin holds on every collection.
       case 'access.read':
-      // `operations:read`, which the fixture admin holds as the owner does (C55).
+      // `operations:read`, which the fixture admin holds as the owner does
+      // (C55); and `client.list` (C32), any live grant, which the admin holds.
       case 'operations.read':
+      case 'client.list':
         return { body: {} };
+      // C32: `record:write`, a name no other call has used.
+      case 'client.create':
+        return { body: { name: nextClientName() } };
+      // C32: `access:manage`. The key is one the member already holds over
+      // the whole business, so the answer is that grant and no caller's
+      // holdings change under the cases that read them.
+      case 'access.grant':
+        return {
+          body: { holderId: context.assigneePersonId, collection: 'task', action: 'read' },
+        };
+      // C32: a grant the admin has just given over one client, revoked. The
+      // member already holds the same key over the whole business.
+      case 'access.revoke': {
+        const given = await context.asPerson('access.grant', {
+          holderId: context.assigneePersonId,
+          collection: 'task',
+          action: 'read',
+          clientId: await madeClient(context),
+        });
+        if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
+        return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'settings.set_four_eyes_threshold':

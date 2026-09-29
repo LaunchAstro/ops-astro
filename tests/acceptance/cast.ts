@@ -102,6 +102,9 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   // default is the owner and administrators.
   'operations',
   'privacy',
+  // C32: the client record (`record:write`), whose install default is the
+  // owner and administrators.
+  'record',
 ];
 
 export async function tokenFor(

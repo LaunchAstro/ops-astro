@@ -124,6 +124,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     in_use: true,
     updated_by_actor: randomUUID(),
   },
+  // 0036 (C32): no journey makes a client.
+  'public.clients': {
+    name: `restricted calls seed ${randomUUID()}`,
+    created_by_actor_id: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

@@ -77,6 +77,7 @@ export interface IdentWorld {
     batchId: string;
     grantId: string;
     legalVersionId: string;
+    clientId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -237,6 +238,13 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     [world.bravo, world.bea.actorId],
   );
 
+  // C32: a client of bravo's, for the grant an alpha caller could name it in.
+  const bravoClient = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, gen_random_uuid(), 'A bravo client', $2) returning id`,
+    [world.bravo, world.bea.actorId],
+  );
+
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
   const otherPicked = await pickUpAs(world.ada, secondAgent, 'the second agent’s work', 'alpha');
@@ -266,6 +274,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
       legalVersionId: String(bravoLegal[0]?.id),
+      clientId: String(bravoClient[0]?.id),
     },
     otherPicked,
     rhea,

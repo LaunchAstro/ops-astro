@@ -116,6 +116,12 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
+  revokeGrantOnAccess: recorder('revokeGrantOnAccess'),
+}));
+vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (original) => ({
+  ...(await original<object>()),
+  createClientRecord: recorder('createClientRecord'),
+  grantOnAccess: recorder('grantOnAccess'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
@@ -130,6 +136,9 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'access.grant': ['holderId', 'clientId'],
+  'access.revoke': ['grantId'],
+  'client.create': [],
   'delegation.revoke': [],
   'grant.revoke': [],
   'legal.approve_version': ['versionId'],
@@ -152,7 +161,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'access.grant',
   'access.read',
+  'access.revoke',
+  'client.create',
+  'client.list',
   'delegation.revoke',
   'grant.revoke',
   'legal.approve_version',
@@ -277,6 +290,16 @@ const REQUESTS: readonly CommandRequest[] = [
     toConfirm: false,
     inUse: true,
   },
+  { command: 'client.create', operationId: 'op', name: 'n' },
+  {
+    command: 'access.grant',
+    operationId: 'op',
+    holderId: 'person',
+    collection: 'task',
+    action: 'read',
+    clientId: null,
+  },
+  { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -330,6 +353,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'legal.approve_version': ['approveVersion', 'request'],
   'legal.publish_version': ['publishVersion', 'request'],
   'privacy.set_overseas_service': ['setService', 'request'],
+  'client.create': ['createClientRecord', 'request'],
+  'access.grant': ['grantOnAccess', 'request'],
+  'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
