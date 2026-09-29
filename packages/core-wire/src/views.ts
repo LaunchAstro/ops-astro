@@ -370,3 +370,13 @@ export interface SettingsReadResult {
 export interface CapabilitiesResult extends SessionCapabilities {
   readonly ok: true;
 }
+
+/**
+ * Who is signed in (C23): the caller's own name, for the person menu, and
+ * nothing else about anybody. No identifier: the menu needs none, and an answer
+ * that carries only a name cannot carry someone else's.
+ */
+export interface SessionPersonResult {
+  readonly ok: true;
+  readonly person: { readonly name: string };
+}

@@ -95,18 +95,18 @@ describe('C23 CS-2.9: show who is signed in, sign out, and reach the person’s 
     expect(view.find('.who__menu .who__email')?.textContent).toBe('mia@alpha.local');
     const items = view.all('.who__menu [role="menuitem"]');
     expect(items.map((item) => item.textContent)).toEqual(['Your settings', 'Sign out']);
-    expect(items[0]?.getAttribute('href')).toBe('/settings/');
+    expect(items[0]?.getAttribute('href')).toBe('/settings');
     expect(document.activeElement).toBe(items[0]);
     await view.unmount();
   });
 
-  it('the settings link goes to /settings/ and closes the menu', async () => {
+  it('the settings link goes to /settings (You) and closes the menu', async () => {
     const { fetch } = transport();
     const { view, seen } = await open('/projects/', { fetch });
     await settle();
     await view.click(TRIGGER);
     await view.click('.who__menu a[role="menuitem"]');
-    expect(seen.at(-1)).toBe('/settings/');
+    expect(seen.at(-1)).toBe('/settings');
     expect(view.find('.who__menu')).toBeNull();
     await view.unmount();
   });
@@ -119,7 +119,7 @@ describe('C23 CS-2.9: show who is signed in, sign out, and reach the person’s 
     await view.click('.who__menu button[role="menuitem"]');
     await settle();
     expect(sessions.session).toBeNull();
-    expect(seen.at(-1)).toBe('/sign-in/');
+    expect(seen.at(-1)).toBe('/sign-in');
     const end = asked.find((each) => each.url.endsWith('/session/end'));
     expect(end).toMatchObject({
       url: '/api/b/alpha/session/end',
@@ -201,7 +201,7 @@ describe('C23 sign-out: check first, then act; it ends only its own session', ()
     await view.click('.who__menu button[role="menuitem"]');
     await settle();
     expect(sessions.session).toBeNull();
-    expect(seen.at(-1)).toBe('/sign-in/');
+    expect(seen.at(-1)).toBe('/sign-in');
     await view.unmount();
   });
 
@@ -216,7 +216,8 @@ describe('C23 sign-out: check first, then act; it ends only its own session', ()
     await view.click('.who__menu button[role="menuitem"]');
     await settle();
     expect(sessions.session).toBeNull();
-    expect(document.body.textContent).not.toMatch(/offline|no\b/u);
+    expect(document.body.textContent).not.toContain('offline');
+    expect(view.find('form')).not.toBeNull();
     await view.unmount();
   });
 

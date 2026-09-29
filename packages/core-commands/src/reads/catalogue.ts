@@ -26,7 +26,7 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
-import { listPeople } from './people.ts';
+import { listPeople, readOwnName } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
@@ -70,8 +70,11 @@ interface RowBase<K extends ReadName> {
    * action, at the subject's record scope or the business's. A function: the
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
+   * `self`: no grant is asked; the answer is about the caller alone and names
+   * nobody else (`session.person`).
    */
-  readonly authority: 'declared' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
+  readonly authority:
+    'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -346,6 +349,21 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (capabilities.grants.length === 0) return NO_GRANT_AT_ALL;
       return { ok: true, ...capabilities };
     },
+  },
+  // The person menu's name (C23). Answered to anyone signed in, a member with
+  // no grant and a client outside the business included, because it is only
+  // ever their own: the statement reads the caller's own person row and takes
+  // no operand that could name another.
+  'session.person': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      person: { name: await readOwnName(tx, session.personId) },
+    }),
   },
 };
 

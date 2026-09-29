@@ -40,6 +40,19 @@ and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
+### Signing out
+
+The person menu (C23) is the circle at the far right of the app strip, on both
+faces: it shows who is signed in (their name from `session.person`, the email
+until that answers), a link to `/settings` and Sign out
+(`packages/ui/src/surfaces/PersonMenu.tsx`). Sign out forgets the session in
+the tab first, so a server that never answers cannot keep anyone signed in,
+then sends two calls with the ended session's own bearer: `session.end`, which
+records the sign-out on the audit chain, and GoTrue's `logout?scope=local`,
+which ends this session and leaves the person's others alone
+(`apps/web/src/App.tsx`, `endIdentitySession` in `session/sign-in.ts`).
+Neither answer is waited for.
+
 ### When the session ends
 
 A local access token lives for one hour. The API refuses a bearer it will not

@@ -123,7 +123,9 @@ describe('MP-2-4 CS-2.5 a labelled "view as client" preview, client writes disab
     // An agency member's `task.read` answers the internal detail, never the
     // shared projection a client login gets, so the preview asks for nothing
     // until MP-11-1 serves the portal from the shared projection server-side.
-    expect(asked).toEqual([]);
+    // The one read is the person menu's own name (C23), which a client login is
+    // served too (`tests/commands/c23-session-end.test.ts`).
+    expect(asked.filter((url) => !url.endsWith('/session/person'))).toEqual([]);
   });
 });
 

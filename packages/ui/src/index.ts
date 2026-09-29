@@ -30,6 +30,7 @@
 // the package before its own sheet, so the order holds in the bundle.
 import './styles/1-tokens.css';
 import './styles/2-primitives.css';
+import './styles/2b-kit-standin.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
@@ -41,5 +42,6 @@ export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Frame.tsx';
+export * from './surfaces/PersonMenu.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';

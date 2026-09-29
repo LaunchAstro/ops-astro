@@ -27,6 +27,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   CapabilitiesResult,
+  SessionPersonResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
@@ -96,6 +97,8 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** Who is signed in: the caller's own name (C23). It takes no grant either. */
+  readonly 'session.person': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -120,4 +123,5 @@ export type ReadResult =
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | SessionPersonResult;

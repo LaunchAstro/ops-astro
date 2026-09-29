@@ -77,6 +77,8 @@ export const READ_NAMES = [
   'preset.plan',
   // Search over what the caller may read (C1); the ⌘K surface is C1b's.
   'task.search',
+  // Who is signed in, for the person menu (C23).
+  'session.person',
 ] as const;
 
 /**

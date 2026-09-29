@@ -27,3 +27,17 @@ export async function listPeople(tx: TenantQuery): Promise<readonly PersonView[]
   );
   return rows.map((row) => ({ personId: row.id, name: row.display_name }));
 }
+
+/**
+ * The caller's own name, for the person menu (C23). By the session's own
+ * person, in the session's own business: there is no other row it could read.
+ */
+export async function readOwnName(tx: TenantQuery, personId: string): Promise<string> {
+  const rows = await tx.query<{ readonly display_name: string }>(
+    `select display_name from public.people where business_id = $1 and id = $2`,
+    [tx.businessId, personId],
+  );
+  const name = rows[0]?.display_name;
+  if (name === undefined) throw new Error('readOwnName: the resolved session has no person row');
+  return name;
+}

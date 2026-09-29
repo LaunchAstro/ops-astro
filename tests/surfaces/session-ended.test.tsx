@@ -115,6 +115,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     seenTokens.push(headers['authorization'] ?? null);
 
+    if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return unknownLogin();
@@ -283,6 +284,8 @@ function byBearer(): {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
 
+    // The person menu's name (C23) answers on either token, like the task read.
+    if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
@@ -369,6 +372,7 @@ function perBusiness(): typeof globalThis.fetch {
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
+    if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
     if (at.endsWith('/task/board')) return json({ ok: true, tasks: [task] });

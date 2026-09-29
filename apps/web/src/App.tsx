@@ -10,7 +10,7 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { AppStrip, Shell, type StripSteps } from '@launchastro/ui';
+import { AppStrip, PersonMenu, Shell, type StripSteps } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearchKey } from './search.tsx';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
@@ -28,6 +28,7 @@ import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
+import { endIdentitySession } from './session/sign-in.ts';
 import { drawScreen } from './screen-registry.tsx';
 
 export interface AppProps {
@@ -134,13 +135,6 @@ export function App(props: AppProps): ReactElement {
     [props],
   );
 
-  const onSignOut = useCallback(() => {
-    props.sessions.clear();
-    setSession(null);
-    setNotice(null);
-    props.navigate(pathTo('agency:sign-in'));
-  }, [props]);
-
   // **The session ending is a fact about the application, not about a screen.**
   // The client raises it once, from wherever the refusal arrived, and this is
   // the only handler. Held in a ref rather than closed over by the client's
@@ -188,6 +182,45 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+
+  // Sign-out (C23). The tab forgets the session first, so a server or an
+  // identity provider that never answers cannot keep the person signed in.
+  // Then, with the ended session's own client and bearer, never the next
+  // session's: `session.end` records the sign-out on the audit chain, and the
+  // identity provider ends this session and no other. Neither answer is
+  // waited for or acted on; a refusal from the old client is ignored by the
+  // session-ended handler because the session it names is no longer in hand.
+  const onSignOut = (): void => {
+    const ended = session;
+    props.sessions.clear();
+    setSession(null);
+    setNotice(null);
+    props.navigate(pathTo('agency:sign-in'));
+    if (ended === null) return;
+    void client.mutate('session.end', {});
+    void endIdentitySession({ gotrueUrl: props.gotrueUrl, token: ended.token, fetch: props.fetch });
+  };
+
+  // Who is signed in, for the person menu: the server's name for this session's
+  // person, kept only while it is still this session's.
+  const [person, setPerson] = useState<{ readonly of: Session; readonly name: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (session === null) return undefined;
+    let current = true;
+    void client.read<unknown>('session.person', {}).then((answer) => {
+      // Read as the server's answer, not as the type it should have: a body
+      // without a name leaves the email standing in, and never throws.
+      const name = 'value' in answer ? nameIn(answer.value) : null;
+      if (current && name !== null) setPerson({ of: session, name });
+      return answer;
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, session]);
+  const personName = person !== null && person.of === session ? person.name : null;
 
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
@@ -282,23 +315,25 @@ export function App(props: AppProps): ReactElement {
                     navigate(next === 'client' ? `/portal/${slug}/` : `/clients/${slug}/`);
                   }
             }
-          />
+          >
+            {session === null ? null : (
+              <PersonMenu
+                name={personName}
+                email={session.email}
+                settingsHref={pathTo('agency:settings')}
+                onSettings={() => {
+                  navigate(pathTo('agency:settings'));
+                }}
+                onSignOut={onSignOut}
+              />
+            )}
+          </AppStrip>
         }
         tabs={tabs}
         freshness={online ? null : 'offline'}
         nav={{ open: navOpen, onToggle: setNavOpen }}
         onNavigate={navigate}
         title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-        meta={
-          session === null ? null : (
-            <span className="topbar__who">
-              {session.email} · {session.businessKey}
-              <button className="btn" type="button" onClick={onSignOut}>
-                Sign out
-              </button>
-            </span>
-          )
-        }
         // The panel registry is the dock. Each registration names the address
         // that draws its surface, and the tab navigates there rather than
         // opening a drawer over the page: the surface has a real address, and an
@@ -394,4 +429,13 @@ function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
       </button>
     </div>
   );
+}
+
+/** The name in a `session.person` answer, or null for anything else. */
+function nameIn(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const person = (value as { readonly person?: unknown }).person;
+  if (typeof person !== 'object' || person === null) return null;
+  const name = (person as { readonly name?: unknown }).name;
+  return typeof name === 'string' && name.trim() !== '' ? name : null;
 }

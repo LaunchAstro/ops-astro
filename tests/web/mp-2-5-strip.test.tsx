@@ -156,7 +156,12 @@ describe('MP-2-5 search and Start timer ship disabled with a tooltip on the agen
 describe('MP-2-5 presence avatars are left out until real presence exists (R30)', () => {
   it('draws no avatar or viewer in the strip', async () => {
     const { view } = await open('/clients/acme-dental/');
-    expect(view.all('.appbar .viewers, .appbar .av, .appbar img')).toHaveLength(0);
+    // The signed-in person's own circle (C23, `.who`) is not presence: it is
+    // who is signed in, drawn whether or not anyone else is looking.
+    const presence = view
+      .all('.appbar .viewers, .appbar .av, .appbar img')
+      .filter((each) => each.closest('.who') === null);
+    expect(presence).toHaveLength(0);
     await view.unmount();
   });
 });

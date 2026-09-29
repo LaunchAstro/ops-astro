@@ -319,6 +319,71 @@
   text-align: right;
   white-space: nowrap;
 }
+/* The signed-in person (C23): the strip's last element, its circle in the
+   strip's on-dark ink; the menu opens under it, flush right. */
+.who {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+}
+.who__trigger {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.who__trigger .av {
+  background: color-mix(in oklch, var(--on-dark) 16%, transparent);
+  color: var(--on-dark);
+}
+.who__trigger:hover .av,
+.who__trigger[aria-expanded='true'] .av {
+  background: color-mix(in oklch, var(--on-dark) 28%, transparent);
+}
+.who__menu {
+  /* Clear of the strip: the circle sits 7.5px above the strip's bottom edge. */
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  min-width: 14rem;
+}
+.who__menu .menu__opt {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: none;
+  font-family: var(--font-sans);
+  text-align: start;
+  text-decoration: none;
+}
+.who__menu .menu__opt:hover,
+.who__menu .menu__opt:focus-visible {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.who__head {
+  display: grid;
+  gap: 2px;
+  padding: 6px 12px var(--s-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--s-1);
+}
+.who__name {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.who__email {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
 /* The face switch: the strip's dress of the segmented control. */
 .facesw {
   display: inline-flex;
