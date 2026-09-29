@@ -212,7 +212,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the inbox names what it points 
         { operationId: randomUUID(), reservationId: detail['reservationId'] },
         authorised(agentToken),
       );
-      expect(pickedUp.status, JSON.stringify(pickedUp.body)).toBe(200);
+      expect(pickedUp.status, String(pickedUp.body['code'])).toBe(200);
       const picked =
         (pickedUp.body['detail'] as Record<string, unknown> | undefined) ?? pickedUp.body;
       const credential = String(picked['credential']);
