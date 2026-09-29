@@ -35,7 +35,7 @@ Ticket C82, under the ruling of 29 September 2026: the design system's screensho
 | SG-1 | `sidebar/DS-SIDE-1` | 6 | 1700, 1480 | light, dark |
 | SG-1 | `sidebar/DS-SIDE-7` | 16 | 2240, 1700, 1480, 1100, 390 | light, dark |
 | SG-1 | `sidebar/DS-SIDE-7/motion` | 61 | 2240, 1700, 1480, 1100, 390 | light, dark |
-| SG-1 | `sidebar/DS-SIDE-11/motion` | 30 | 900, 390 | light, dark |
+| SG-1 | `sidebar/DS-SIDE-11/motion` | 60 | 900, 390 (30 with no width in the name) | light, dark |
 | SG-1 | `task/ANN-S1-panel-head` | 2 | 1480 | light, dark |
 | SG-1 | `task/ANN-S2-team-pane` | 2 | 1480 | light, dark |
 | SG-1 | `task/ANN-S4-draft` | 2 | 1480 | light, dark |
