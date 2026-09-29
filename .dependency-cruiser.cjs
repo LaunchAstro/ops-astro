@@ -81,6 +81,25 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
     },
     {
+      name: 'custody-process-imports-no-package',
+      severity: 'error',
+      comment:
+        "Custody's process holds every provider credential, so adapter, connector and " +
+        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'import no other package.',
+      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      to: { path: '^packages/', pathNot: '^packages/core-custody/' },
+    },
+    {
+      name: 'connectors-are-a-leaf',
+      severity: 'error',
+      comment:
+        'Provider operations say what a call is, what it may carry and to where. They hold ' +
+        'no credential and open no connection, so they import no other package.',
+      from: { path: '^packages/core-connectors/' },
+      to: { path: '^packages/', pathNot: '^packages/core-connectors/' },
+    },
+    {
       name: 'index-only',
       severity: 'error',
       comment:
