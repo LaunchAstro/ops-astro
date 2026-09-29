@@ -28,24 +28,9 @@ const tick = async (): Promise<void> => {
   });
 };
 
-function server(refuse = false): {
-  readonly fetch: typeof globalThis.fetch;
-  readonly sent: string[];
-} {
-  const sent: string[] = [];
-  const activation = {
-    id: 'a-1',
-    versionId: 'v-2',
-    versionNumber: 2,
-    mode: 'scheduled',
-    everyMinutes: 60,
-    eventKind: null,
-    enabled: true,
-    changedBy: 'p-1',
-    changedAt: '2026-09-29T00:00:00.000Z',
-    revision: 3,
-  };
-  const registry = (): unknown => ({
+/** The registry the stub serves: one automation, two versions, one activation. */
+function registryOf(activation: Readonly<Record<string, unknown>>): unknown {
+  return {
     ok: true,
     definitions: [
       {
@@ -64,14 +49,33 @@ function server(refuse = false): {
         activations: [activation],
       },
     ],
-  });
+  };
+}
+
+function server(refuse = false): {
+  readonly fetch: typeof globalThis.fetch;
+  readonly sent: string[];
+} {
+  const sent: string[] = [];
+  const activation = {
+    id: 'a-1',
+    versionId: 'v-2',
+    versionNumber: 2,
+    mode: 'scheduled',
+    everyMinutes: 60,
+    eventKind: null,
+    enabled: true,
+    changedBy: 'p-1',
+    changedAt: '2026-09-29T00:00:00.000Z',
+    revision: 3,
+  };
   const answer = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
     if (at.endsWith('/automation/registry')) {
       return refuse
         ? json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: ['ask'] }, 403)
-        : json(registry());
+        : json(registryOf(activation));
     }
     if (at.endsWith('/activation/change')) {
       Object.assign(activation, {
@@ -97,12 +101,15 @@ describe('C33 Workflow triggers panel', () => {
     const client = clientOf(stub.fetch);
     const page = await mount(<TriggersPanel client={client} />);
     await tick();
-    const row = '[data-activation="a-1"]';
-    expect(page.find(row)?.getAttribute('data-mode')).toBe('scheduled');
-    expect(page.find(`${row} [data-trigger="version"]`)?.textContent).toContain('v2');
-    expect(page.find(`${row} [data-trigger="mode"]`)?.textContent).toContain('every 60 minutes');
+    expect(page.find('[data-activation="a-1"]')?.getAttribute('data-mode')).toBe('scheduled');
+    expect(page.find('[data-activation="a-1"] [data-trigger="version"]')?.textContent).toContain(
+      'v2',
+    );
+    expect(page.find('[data-activation="a-1"] [data-trigger="mode"]')?.textContent).toContain(
+      'every 60 minutes',
+    );
     expect(page.find('[data-definition="d-1"]')?.textContent).toContain('Weekly report');
-    await page.click(`${row} button`);
+    await page.click('[data-activation="a-1"] button');
     await tick();
     const change = stub.sent.find((call) => call.includes('/activation/change')) ?? '';
     const body = JSON.parse(change.slice(change.indexOf(' ') + 1)) as Record<string, unknown>;
@@ -118,8 +125,8 @@ describe('C33 Workflow triggers panel', () => {
     await page.unmount();
     const again = await mount(<TriggersPanel client={client} />);
     await tick();
-    expect(again.find(row)?.getAttribute('data-mode')).toBe('manual');
-    expect(again.find(`${row} button`)).toBeNull();
+    expect(again.find('[data-activation="a-1"]')?.getAttribute('data-mode')).toBe('manual');
+    expect(again.find('[data-activation="a-1"] button')).toBeNull();
     await again.unmount();
   });
 

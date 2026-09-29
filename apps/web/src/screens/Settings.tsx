@@ -40,6 +40,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { CapabilityBanner, ConflictBlock, ReadBanner, ValueLine } from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 import { KeysPanel } from './settings/keys.tsx';
+import { TriggersPanel } from './settings/triggers.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -257,6 +258,14 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         (grant) => grant.collection === 'custody' && grant.action === 'manage',
       ) ? (
         <KeysPanel client={props.client} />
+      ) : null}
+
+      {/* Workflow triggers (C33) for a caller the server says holds settings:read. */}
+      {(model.capabilities.outcome === 'ready' || model.capabilities.outcome === 'empty') &&
+      model.capabilities.value.grants.some(
+        (grant) => grant.collection === 'settings' && grant.action === 'read',
+      ) ? (
+        <TriggersPanel client={props.client} />
       ) : null}
     </div>
   );
