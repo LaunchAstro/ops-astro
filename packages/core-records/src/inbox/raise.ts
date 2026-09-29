@@ -17,7 +17,7 @@ import { grantHolders } from '../authority/grant-reach.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { withdrawEndedGates } from './clear.ts';
 import { taskAccess } from './access.ts';
-import { raiseInboxItem } from './items.ts';
+import { raiseInboxItem, type InboxReason } from './items.ts';
 
 /**
  * A new pending gate. The task's superseded or ended gates have their open
@@ -189,13 +189,20 @@ export interface Mentioned {
   readonly readable: boolean;
   /** Staff, as opposed to an outside party with no membership. */
   readonly member: boolean;
+  /**
+   * An outside party entitled to CS-16.8's client comment: a stored
+   * entitlement on the client's party, never a login. This head stores none,
+   * so `readMentions` answers false until the party model lands.
+   */
+  readonly paidClient: boolean;
 }
 
 /**
  * Who a comment names, and whether each can read it: the task, and for a
  * team-only comment a membership too, since an outside party never reads one.
  * A person of another business is not found here and is named back only by
- * the identifier the caller sent.
+ * the identifier the caller sent. An identifier matches in any letter case, as
+ * the database compares it, and a found person comes back by their stored one.
  */
 export async function readMentions(
   tx: TenantQuery,
@@ -211,18 +218,20 @@ export async function readMentions(
     [tx.businessId, personIds],
   );
   const named: Mentioned[] = [];
-  for (const personId of new Set(personIds)) {
-    const person = people.find((row) => row.id === personId);
+  const asked = new Map(personIds.map((sent) => [sent.toLowerCase(), sent] as const));
+  for (const [canonical, sent] of asked) {
+    const person = people.find((row) => row.id.toLowerCase() === canonical);
     const readable =
       person !== undefined &&
       (person.member || comment.audience === 'client') &&
       // oxlint-disable-next-line no-await-in-loop
-      (await taskAccess(tx, personId, comment.taskId)) === 'readable';
+      (await taskAccess(tx, person.id, comment.taskId)) === 'readable';
     named.push({
-      personId,
-      label: person?.name ?? personId,
+      personId: person?.id ?? sent,
+      label: person?.name ?? sent,
       readable,
       member: person?.member ?? false,
+      paidClient: false,
     });
   }
   return named;
@@ -230,11 +239,10 @@ export async function readMentions(
 
 /**
  * A comment saved: each staff member it names is raised a mention, never the
- * comment's own author. An outside party is raised nothing. CS-16.8's client
- * comment is owed only to a paid client, which is a stored entitlement on the
- * client's party, not a login (a login authenticates and entitles nothing).
- * This head stores no such entitlement and carries no party model, so no
- * client comment is raised until one lands.
+ * comment's own author. CS-16.8's client comment is owed only to a paid
+ * client (`Mentioned.paidClient`, a stored entitlement on the client's party,
+ * not a login): an outside party named in a client-visible comment they can
+ * read is raised one when they are a paid client, and nothing otherwise.
  */
 export async function raiseMentions(
   tx: TenantQuery,
@@ -242,6 +250,7 @@ export async function raiseMentions(
     readonly taskId: string;
     readonly commentId: string;
     readonly authorActorId: string;
+    readonly audience: string;
   },
   named: readonly Mentioned[],
 ): Promise<void> {
@@ -251,13 +260,21 @@ export async function raiseMentions(
   );
   const author = authors[0]?.person_id ?? null;
   for (const person of named) {
-    if (person.personId === author || !person.member) continue;
+    const reason = mentionReason(person, comment.audience);
+    if (person.personId === author || reason === undefined) continue;
     // oxlint-disable-next-line no-await-in-loop
     await raiseInboxItem(tx, {
       recipientPersonId: person.personId,
       subjectRecordId: comment.taskId,
-      reason: 'mention',
+      reason,
       fact: { kind: 'record', id: comment.commentId },
     });
   }
+}
+
+/** Staff are owed a mention; a paid client reading a client-visible comment, a client comment. */
+function mentionReason(person: Mentioned, audience: string): InboxReason | undefined {
+  if (person.member) return 'mention';
+  if (person.paidClient && person.readable && audience === 'client') return 'client_comment';
+  return undefined;
 }
