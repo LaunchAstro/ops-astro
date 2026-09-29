@@ -22,7 +22,7 @@
 // The suites share backup-identity.fixture.ts. `S0-3 identity scope` is here
 // and in backup-identity-grants.test.ts; the store's suites are in
 // backup-store.test.ts, backup-store-drills.test.ts and
-// backup-store-restore.test.ts.
+// backup-store-encryption.test.ts.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
