@@ -119,7 +119,7 @@ async function pinnedAddress(host: string, resolve: Resolver): Promise<Fenced<st
   }
   // Every answer is checked, not only the one used: a mixed answer is a
   // rebinding attempt waiting for the resolver's order to change.
-  if (answers.length === 0 || answers.some(isDeniedAddress)) {
+  if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer))) {
     return { ok: false, code: 'CAPTURE_ADDRESS_DENIED' };
   }
   return { ok: true, value: answers[0] ?? '' };

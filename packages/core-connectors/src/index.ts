@@ -45,6 +45,7 @@ export {
   type FenceCode,
   type FenceRefusal,
   type Fenced,
+  type FetchOptions,
   type Fetched,
 } from './capture/fence.ts';
 export {

@@ -10,6 +10,7 @@
 import { BlockList, isIP } from 'node:net';
 import { lookup as systemLookup } from 'node:dns/promises';
 import { request } from 'node:https';
+import type { IncomingMessage } from 'node:http';
 import type { LookupFunction } from 'node:net';
 
 export interface TransportRequest {
@@ -107,72 +108,91 @@ export interface PinnedTransportOptions {
   readonly ca?: string;
 }
 
+/** A lookup that answers every name with the one address already checked. */
+function pinnedLookup(address: string, family: 4 | 6): LookupFunction {
+  return (_host, lookupOptions, callback) => {
+    if ((lookupOptions as { all?: boolean }).all === true) {
+      (callback as (error: null, all: { address: string; family: number }[]) => void)(null, [
+        { address, family },
+      ]);
+      return;
+    }
+    callback(null, address, family);
+  };
+}
+
+/** Reads the body under the byte cap, settling as soon as it is passed. */
+function collect(
+  response: IncomingMessage,
+  maxBytes: number,
+  finish: (answer: TransportAnswer) => void,
+): void {
+  if (Number(response.headers['content-length'] ?? '0') > maxBytes) {
+    finish({ kind: 'oversized' });
+    return;
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  response.on('data', (chunk: Buffer) => {
+    size += chunk.length;
+    if (size > maxBytes) finish({ kind: 'oversized' });
+    else chunks.push(chunk);
+  });
+  response.on('end', () =>
+    finish({
+      kind: 'answer',
+      status: response.statusCode ?? 0,
+      headers: flatten(response.headers),
+      body: new Uint8Array(Buffer.concat(chunks)),
+    }),
+  );
+  response.on('error', () => finish({ kind: 'failed' }));
+}
+
+function send(
+  presented: TransportRequest,
+  options: PinnedTransportOptions,
+  settle: (answer: TransportAnswer) => void,
+): void {
+  let settled = false;
+  const finish = (answer: TransportAnswer) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(deadline);
+    outgoing.destroy();
+    settle(answer);
+  };
+  const { url } = presented;
+  const outgoing = request(
+    {
+      host: url.hostname,
+      servername: url.hostname,
+      port: url.port === '' ? 443 : Number(url.port),
+      path: `${url.pathname}${url.search}`,
+      method: presented.method ?? 'GET',
+      headers: { ...presented.headers, host: url.host },
+      lookup: pinnedLookup(presented.address, presented.family),
+      agent: false,
+      ...(options.ca === undefined ? {} : { ca: options.ca }),
+    },
+    (response) => collect(response, presented.maxBytes, finish),
+  );
+  const deadline = setTimeout(() => finish({ kind: 'timeout' }), presented.timeoutMs);
+  outgoing.on('socket', (socket) => {
+    socket.once('connect', () => {
+      if (socket.remoteAddress !== presented.address) finish({ kind: 'address_changed' });
+    });
+  });
+  // Any transport error, a refused certificate included, says nothing a
+  // caller may act on beyond "no answer"; its text can carry the host.
+  outgoing.on('error', () => finish({ kind: 'failed' }));
+  outgoing.end(presented.body === undefined ? undefined : Buffer.from(presented.body));
+}
+
 /** HTTPS to the pinned address only, with the byte cap and the deadline enforced while reading. */
 export function pinnedTransport(options: PinnedTransportOptions = {}): Transport {
   return (presented) =>
     new Promise<TransportAnswer>((settle) => {
-      let settled = false;
-      const finish = (answer: TransportAnswer) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        outgoing.destroy();
-        settle(answer);
-      };
-      const pinned: LookupFunction = (_host, lookupOptions, callback) => {
-        if ((lookupOptions as { all?: boolean }).all === true) {
-          (callback as (error: null, all: { address: string; family: number }[]) => void)(null, [
-            { address: presented.address, family: presented.family },
-          ]);
-          return;
-        }
-        callback(null, presented.address, presented.family);
-      };
-      const outgoing = request(
-        {
-          host: presented.url.hostname,
-          servername: presented.url.hostname,
-          port: presented.url.port === '' ? 443 : Number(presented.url.port),
-          path: `${presented.url.pathname}${presented.url.search}`,
-          method: presented.method ?? 'GET',
-          headers: { ...presented.headers, host: presented.url.host },
-          lookup: pinned,
-          agent: false,
-          ...(options.ca === undefined ? {} : { ca: options.ca }),
-        },
-        (response) => {
-          const declared = Number(response.headers['content-length'] ?? '0');
-          if (declared > presented.maxBytes) {
-            finish({ kind: 'oversized' });
-            return;
-          }
-          const chunks: Buffer[] = [];
-          let size = 0;
-          response.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > presented.maxBytes) finish({ kind: 'oversized' });
-            else chunks.push(chunk);
-          });
-          response.on('end', () =>
-            finish({
-              kind: 'answer',
-              status: response.statusCode ?? 0,
-              headers: flatten(response.headers),
-              body: new Uint8Array(Buffer.concat(chunks)),
-            }),
-          );
-          response.on('error', () => finish({ kind: 'failed' }));
-        },
-      );
-      const deadline = setTimeout(() => finish({ kind: 'timeout' }), presented.timeoutMs);
-      outgoing.on('socket', (socket) => {
-        socket.once('connect', () => {
-          if (socket.remoteAddress !== presented.address) finish({ kind: 'address_changed' });
-        });
-      });
-      // Any transport error, a refused certificate included, says nothing a
-      // caller may act on beyond "no answer"; its text can carry the host.
-      outgoing.on('error', () => finish({ kind: 'failed' }));
-      outgoing.end(presented.body === undefined ? undefined : Buffer.from(presented.body));
+      send(presented, options, settle);
     });
 }

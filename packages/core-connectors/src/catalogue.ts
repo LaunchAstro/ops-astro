@@ -134,7 +134,7 @@ function nonEmptyString(value: unknown): value is string {
 }
 
 function stringList(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every(nonEmptyString);
+  return Array.isArray(value) && value.every((entry) => nonEmptyString(entry));
 }
 
 function validSeam(value: unknown, mode: unknown): boolean {

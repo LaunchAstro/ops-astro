@@ -44,6 +44,49 @@ function change(after: string, before = ABOUT, path = TARGET.path) {
   return { files: [{ path, before, after }] };
 }
 
+const refusals: [string, ProposedChange][] = [
+  ['two words', change(edit(ABOUT, 'walk alongside you', 'walk beside us'))],
+  ['a second line', change(edit(AGREED, 'works alongside', 'works beside'))],
+  ['a markup change on the same line', change(edit(AGREED, '<p>We walk', '<p class="x">We walk'))],
+  ['a class change', change(edit(AGREED, 'class="intro"', 'class="lead"'))],
+  ['the word inside an attribute', change(edit(ABOUT, 'class="intro"', 'class="intro beside"'))],
+  ['the word in the frontmatter', change(edit(ABOUT, "'About alongside'", "'About beside'"))],
+  ['a different replacement word', change(edit(ABOUT, 'walk alongside you', 'walk next you'))],
+  ['a case variant of the word', change(edit(ABOUT, 'walk alongside you', 'walk Beside you'))],
+  ['part of a longer word', change(edit(ABOUT, 'walk alongside you', 'walk besideyou'))],
+  ['whitespace moved', change(edit(ABOUT, 'walk alongside you', 'walk  beside you'))],
+  ['a tab for a space', change(edit(ABOUT, 'walk alongside you', 'walk\tbeside you'))],
+  ['a line ending changed', change(AGREED.replaceAll('\n', '\r\n'))],
+  ['a line added', change(`${AGREED}<p>new</p>\n`)],
+  [
+    'another file',
+    change(edit(ABOUT, 'walk alongside you', 'walk beside you'), ABOUT, 'src/styles/site.css'),
+  ],
+  [
+    'a stylesheet beside the one line',
+    {
+      files: [
+        { path: TARGET.path, before: ABOUT, after: AGREED },
+        { path: 'src/styles/site.css', before: 'p{}', after: 'p{color:red}' },
+      ],
+    },
+  ],
+  [
+    'a rename',
+    {
+      files: [
+        { path: TARGET.path, before: ABOUT, after: null },
+        { path: 'src/pages/about-us.astro', before: null, after: AGREED },
+      ],
+    },
+  ],
+  ['no change at all', change(ABOUT)],
+  [
+    'a combining mark after the word',
+    change(edit(ABOUT, 'walk alongside you', 'walk beside\u0301 you')),
+  ],
+];
+
 describe('C80 envelope refusal', () => {
   it('accepts the agreed change: one file, one line, one word in a text node', () => {
     expect(checkEnvelope(change(AGREED), TARGET)).toEqual({
@@ -51,52 +94,6 @@ describe('C80 envelope refusal', () => {
       value: { path: TARGET.path, line: 6, before: 'alongside', after: 'beside' },
     });
   });
-
-  const refusals: [string, ProposedChange][] = [
-    ['two words', change(edit(ABOUT, 'walk alongside you', 'walk beside us'))],
-    ['a second line', change(edit(AGREED, 'works alongside', 'works beside'))],
-    [
-      'a markup change on the same line',
-      change(edit(AGREED, '<p>We walk', '<p class="x">We walk')),
-    ],
-    ['a class change', change(edit(AGREED, 'class="intro"', 'class="lead"'))],
-    ['the word inside an attribute', change(edit(ABOUT, 'class="intro"', 'class="intro beside"'))],
-    ['the word in the frontmatter', change(edit(ABOUT, "'About alongside'", "'About beside'"))],
-    ['a different replacement word', change(edit(ABOUT, 'walk alongside you', 'walk next you'))],
-    ['a case variant of the word', change(edit(ABOUT, 'walk alongside you', 'walk Beside you'))],
-    ['part of a longer word', change(edit(ABOUT, 'walk alongside you', 'walk besideyou'))],
-    ['whitespace moved', change(edit(ABOUT, 'walk alongside you', 'walk  beside you'))],
-    ['a tab for a space', change(edit(ABOUT, 'walk alongside you', 'walk\tbeside you'))],
-    ['a line ending changed', change(AGREED.replace(/\n/g, '\r\n'))],
-    ['a line added', change(`${AGREED}<p>new</p>\n`)],
-    [
-      'another file',
-      change(edit(ABOUT, 'walk alongside you', 'walk beside you'), ABOUT, 'src/styles/site.css'),
-    ],
-    [
-      'a stylesheet beside the one line',
-      {
-        files: [
-          { path: TARGET.path, before: ABOUT, after: AGREED },
-          { path: 'src/styles/site.css', before: 'p{}', after: 'p{color:red}' },
-        ],
-      },
-    ],
-    [
-      'a rename',
-      {
-        files: [
-          { path: TARGET.path, before: ABOUT, after: null },
-          { path: 'src/pages/about-us.astro', before: null, after: AGREED },
-        ],
-      },
-    ],
-    ['no change at all', change(ABOUT)],
-    [
-      'a combining mark after the word',
-      change(edit(ABOUT, 'walk alongside you', 'walk beside\u0301 you')),
-    ],
-  ];
 
   it.each(refusals)('refuses %s with CHANGE_ENVELOPE_EXCEEDED', (_name, proposed) => {
     const result = checkEnvelope(proposed, TARGET);
@@ -182,6 +179,19 @@ describe('C80 one word only', () => {
       }),
     ).toMatchObject({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['stylesheets'] });
   });
+});
+
+describe('C80 one word only', () => {
+  const before = page();
+  const after = page({
+    documentDigest: 'sha256:doc-after',
+    text: 'About us. We walk beside you from the first call. Our team.',
+  });
+  const decoy = page({
+    url: 'https://www.example.com/services',
+    text: 'We work alongside your team.',
+    documentDigest: 'sha256:decoy',
+  });
 
   it('fails when a stylesheet was added or removed, not only changed', () => {
     const added = page({
@@ -204,6 +214,19 @@ describe('C80 one word only', () => {
     expect(
       compareCaptures({ before, after, decoyBefore: decoy, decoyAfter, target: TARGET }),
     ).toMatchObject({ ok: false, fields: ['decoy'] });
+  });
+});
+
+describe('C80 one word only', () => {
+  const before = page();
+  const after = page({
+    documentDigest: 'sha256:doc-after',
+    text: 'About us. We walk beside you from the first call. Our team.',
+  });
+  const decoy = page({
+    url: 'https://www.example.com/services',
+    text: 'We work alongside your team.',
+    documentDigest: 'sha256:decoy',
   });
 
   it('fails when other text on the page moved beside the word', () => {
