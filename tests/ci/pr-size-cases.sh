@@ -124,8 +124,11 @@ rm -rf "$dir"
 # ones is read as a move by a reviewer, so it is measured as one: only the
 # lines git does not mark as moved (indentation changes allowed) count
 # towards the per-file cap and the total.
-dir="$(new_repo)"; write_block "$dir" "src/big.ts" 1 500; commit_all "$dir" "base"
-rm "$dir/src/big.ts"; write_block "$dir" "src/a.ts" 1 250; write_block "$dir" "src/b.ts" 251 500
+# big.ts keeps one line of its own, so git reads it as a 500-line deletion,
+# over the per-file cap on its own, rather than as a rename of one half.
+dir="$(new_repo)"; mkdir -p "$dir/src"; printf '// big\n' > "$dir/src/big.ts"
+write_block "$dir" "src/big.ts" 1 500; commit_all "$dir" "base"
+printf '// big\n' > "$dir/src/big.ts"; write_block "$dir" "src/a.ts" 1 250; write_block "$dir" "src/b.ts" 251 500
 commit_all "$dir" "split big.ts"
 raw_max="$(git -C "$dir" diff --numstat HEAD~1 HEAD | awk '{ changed = $1 + $2; if (changed > max) max = changed } END { print max + 0 }')"
 if [ "$raw_max" -gt 400 ]; then

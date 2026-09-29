@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
 # Sol proof, criterion 5: the PR body records the complete CQ-8 size report.
 set -euo pipefail
 

@@ -95,7 +95,14 @@ const diffRecords = (args) => {
     // A binary file shows as "-\t-\t<path>".
     const added = addedRaw === '-' ? 0 : Number(addedRaw);
     const deleted = deletedRaw === '-' ? 0 : Number(deletedRaw);
-    records.push({ paths, path: paths.join(' => '), changed: added + deleted });
+    // `path` is for the report; `key` is the real path pair, which a literal
+    // filename such as "a => b" cannot share with a rename.
+    records.push({
+      paths,
+      path: paths.join(' => '),
+      key: JSON.stringify(paths),
+      changed: added + deleted,
+    });
   }
   return records;
 };
@@ -159,9 +166,7 @@ const movedLines = () => {
     );
     process.exit(2);
   }
-  return new Map(
-    records.map((record, i) => [record.path, { ...record, moved: sections[i].moved }]),
-  );
+  return new Map(records.map((record, i) => [record.key, { ...record, moved: sections[i].moved }]));
 };
 
 const moved = movedLines();
@@ -171,7 +176,7 @@ let total = 0;
 let movedTotal = 0;
 let testTotal = 0;
 
-for (const { paths, path, changed } of diffRecords([mergeBase, head])) {
+for (const { paths, path, key, changed } of diffRecords([mergeBase, head])) {
   if (paths.every(isTest)) {
     testTotal += changed;
     tests.push({ path, changed });
@@ -179,7 +184,7 @@ for (const { paths, path, changed } of diffRecords([mergeBase, head])) {
   }
   // A file the non-test diff pairs differently, such as one renamed from a
   // test file, finds no matching entry here, and every one of its lines counts.
-  const entry = moved.get(path);
+  const entry = moved.get(key);
   const movedHere = entry?.changed === changed ? entry.moved : 0;
   const counted = changed - movedHere;
   total += counted;
