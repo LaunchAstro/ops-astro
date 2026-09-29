@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Settings ▸ Workflow triggers (C33): each automation with its activations,
-// each showing its mode and the version it is pinned to.
+// Settings ▸ Workflow triggers (C33, C52-A): each automation with its
+// activations, each showing its mode, the version it is pinned to and the
+// standing approval it names.
 //
-// The panel reads `automation.registry` and writes through `activation.change`,
-// sending back the revision the registry showed, so a change made elsewhere in
-// between is refused rather than overwritten. Switching to manual is the one
-// change drawn here; the server refuses anyone without `settings:manage`, and
-// the refusal is shown as it came.
+// The panel reads `automation.registry` and writes through each change's own
+// command, sending back the revision the registry showed, so a change made
+// elsewhere in between is refused rather than overwritten: switching to manual
+// (`activation.change`, `settings:manage`), and adopting a newer version,
+// rolling back, revoking the approval and turning off (C52-A, each
+// `automation:manage`). Rollback and revocation are two controls. The server
+// refuses anyone without the key, and the refusal is shown as it came.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
@@ -15,6 +18,7 @@ import type {
   ActivationView,
   AutomationDefinitionView,
   AutomationRegistryResult,
+  CommandName,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 
@@ -32,10 +36,19 @@ function modeOf(activation: ActivationView): string {
   return 'manual';
 }
 
+function approvalOf(activation: ActivationView): string {
+  const { approval } = activation;
+  if (approval === null) return 'not approved to run';
+  if (approval.revoked) return 'approval revoked';
+  return approval.act === 'rolled_back' ? 'rolled back, approved to run' : 'approved to run';
+}
+
+type Change = (command: CommandName, body: Readonly<Record<string, unknown>>) => void;
+
 function useRegistry(client: OperationsClient): {
   readonly listing: Listing;
   readonly because: string | null;
-  readonly toManual: (activation: ActivationView) => Promise<void>;
+  readonly change: (command: CommandName, body: Readonly<Record<string, unknown>>) => Promise<void>;
 } {
   const [listing, setListing] = useState<Listing>({ state: 'loading' });
   const [because, setBecause] = useState<string | null>(null);
@@ -52,26 +65,100 @@ function useRegistry(client: OperationsClient): {
     void load();
   }, [load]);
 
-  const toManual = async (activation: ActivationView): Promise<void> => {
-    const answer = await client.mutate('activation.change', {
-      activationId: activation.id,
-      versionId: activation.versionId,
-      mode: 'manual',
-      enabled: activation.enabled,
-      expectedRevision: activation.revision,
-    });
+  const change = async (
+    command: CommandName,
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<void> => {
+    const answer = await client.mutate(command, body);
     if (isUnavailable(answer)) setBecause(answer.because);
     else if (isRefusal(answer)) setBecause(`${answer.code}: ${answer.names.join(', ')}`);
     else setBecause(null);
     await load();
   };
 
-  return { listing, because, toManual };
+  return { listing, because, change };
+}
+
+/** The newest version that permits the activation's mode, if newer than the pin. */
+function newerOf(
+  definition: AutomationDefinitionView,
+  activation: ActivationView,
+): AutomationDefinitionView['versions'][number] | undefined {
+  return definition.versions
+    .filter((version) => version.modes.includes(activation.mode))
+    .findLast((version) => version.number > activation.versionNumber);
+}
+
+/** A newer version to adopt; with none, the pinned one to approve as it is; or null. */
+function adoptOf(
+  definition: AutomationDefinitionView,
+  activation: ActivationView,
+  standing: boolean,
+): { readonly versionId: string; readonly label: string } | null {
+  const newer = newerOf(definition, activation);
+  if (newer !== undefined) return { versionId: newer.id, label: `Adopt v${String(newer.number)}` };
+  if (standing || !activation.enabled) return null;
+  return {
+    versionId: activation.versionId,
+    label: `Approve v${String(activation.versionNumber)}`,
+  };
+}
+
+const controlButton = (control: string, label: string, run: () => void): ReactElement => (
+  <button key={control} type="button" data-control={control} onClick={run}>
+    {label}
+  </button>
+);
+
+function Controls(props: {
+  readonly definition: AutomationDefinitionView;
+  readonly activation: ActivationView;
+  readonly change: Change;
+}): ReactElement {
+  const { activation, change } = props;
+  const { approval } = activation;
+  const at = { activationId: activation.id, expectedRevision: activation.revision };
+  const standing = approval !== null && !approval.revoked;
+  const adopt = adoptOf(props.definition, activation, standing);
+  return (
+    <>
+      {activation.mode === 'manual'
+        ? null
+        : controlButton('manual', 'Switch to manual', () => {
+            change('activation.change', {
+              ...at,
+              versionId: activation.versionId,
+              mode: 'manual',
+              enabled: activation.enabled,
+            });
+          })}
+      {adopt === null
+        ? null
+        : controlButton('adopt', adopt.label, () => {
+            change('activation.adopt', { ...at, versionId: adopt.versionId });
+          })}
+      {activation.versionNumber > 1
+        ? controlButton('roll-back', 'Roll back', () => {
+            change('activation.roll_back', at);
+          })
+        : null}
+      {standing
+        ? controlButton('revoke', 'Revoke approval', () => {
+            change('approval.revoke', { approvalId: approval.id });
+          })
+        : null}
+      {activation.enabled
+        ? controlButton('turn-off', 'Turn off', () => {
+            change('activation.turn_off', at);
+          })
+        : null}
+    </>
+  );
 }
 
 function Definition(props: {
   readonly definition: AutomationDefinitionView;
-  readonly toManual: (activation: ActivationView) => void;
+  readonly change: Change;
 }): ReactElement {
   const { definition } = props;
   return (
@@ -80,21 +167,17 @@ function Definition(props: {
       <span className="card__sub">{definition.kind}</span>
       <ul className="stack">
         {definition.activations.map((activation) => (
-          <li key={activation.id} data-activation={activation.id} data-mode={activation.mode}>
+          <li
+            key={activation.id}
+            data-activation={activation.id}
+            data-mode={activation.mode}
+            data-enabled={String(activation.enabled)}
+          >
             <span data-trigger="mode">{modeOf(activation)}</span>{' '}
             <span data-trigger="version">pinned to v{activation.versionNumber}</span>{' '}
             <span>{activation.enabled ? 'on' : 'off'}</span>{' '}
-            {activation.mode === 'manual' ? null : (
-              <button
-                type="button"
-                data-control="manual"
-                onClick={() => {
-                  props.toManual(activation);
-                }}
-              >
-                Switch to manual
-              </button>
-            )}
+            <span data-trigger="approval">{approvalOf(activation)}</span>{' '}
+            <Controls definition={definition} activation={activation} change={props.change} />
           </li>
         ))}
       </ul>
@@ -103,7 +186,7 @@ function Definition(props: {
 }
 
 export function TriggersPanel(props: { readonly client: OperationsClient }): ReactElement {
-  const { listing, because, toManual } = useRegistry(props.client);
+  const { listing, because, change } = useRegistry(props.client);
   return (
     <section className="sb__sect" data-settings="triggers">
       <div className="sb__sh">
@@ -111,8 +194,9 @@ export function TriggersPanel(props: { readonly client: OperationsClient }): Rea
       </div>
       <p className="card__sub">
         Each automation runs by hand, on a schedule or on an event, always on the version it is
-        pinned to. Turning one to a schedule or an event starts nothing until its version is
-        approved to run.
+        pinned to. Turning one to a schedule or an event starts nothing until a person adopts that
+        version, which approves it to run; revoking the approval or turning the automation off stops
+        the next run.
       </p>
       {listing.state === 'loading' ? <p className="card__sub">Reading triggers…</p> : null}
       {listing.state === 'refused' ? (
@@ -135,8 +219,8 @@ export function TriggersPanel(props: { readonly client: OperationsClient }): Rea
             <Definition
               key={definition.id}
               definition={definition}
-              toManual={(activation) => {
-                void toManual(activation);
+              change={(command, body) => {
+                void change(command, body);
               }}
             />
           ))}
