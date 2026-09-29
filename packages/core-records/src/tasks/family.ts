@@ -96,7 +96,7 @@ export async function readTaskFamily(
       order by r.num_2 nulls last, r.created_at, r.id`,
     [tx.businessId, taskTypeId, parentId],
   );
-  const family = rows.map(familyRow);
+  const family = rows.map((row) => familyRow(row));
   return {
     parent: family.find((row) => row.id === parentId),
     children: family.filter((row) => row.id !== parentId),
