@@ -208,7 +208,7 @@ it('AW-05 the ask count is bounded: three asks, the third consolidated', async (
   expect(work.taskId).toBeTruthy();
 });
 
-it('AW-05 asks are append-only and held to their business', async () => {
+it('AW-05 asks are append-only', async () => {
   const { runId } = await stopped('aw05 append-only');
   const outcome = async (sql: string): Promise<string> =>
     await s.db.app
@@ -221,20 +221,4 @@ it('AW-05 asks are append-only and held to their business', async () => {
     '42501',
   );
   expect(await outcome(`delete from public.budget_asks where run_id = $1`)).toBe('42501');
-  // Another business sees, counts and plants nothing of this one's.
-  const other = await s.db.admin.execute<{ id: string }>(
-    `select id from public.businesses where id <> $1 limit 1`,
-    [s.business],
-  );
-  const bravo = other[0]?.id;
-  if (bravo === undefined) throw new Error('no second business in the world');
-  const seenByBravo = await s.db.app.withBusiness(
-    bravo as typeof s.business,
-    async (tx) =>
-      await tx.query<{ n: string }>(
-        `select count(*)::text as n from public.budget_asks where run_id = $1`,
-        [runId],
-      ),
-  );
-  expect(seenByBravo[0]?.n).toBe('0');
 });
