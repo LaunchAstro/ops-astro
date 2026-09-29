@@ -19,6 +19,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -46,6 +47,8 @@ export interface DockPanel {
   readonly door: string;
   readonly canBack: boolean;
   readonly canForward: boolean;
+  /** Where the last walk of the dock's history puts this panel's scroll, if anywhere. */
+  readonly scrollTop?: number | undefined;
   readonly body: ReactNode;
 }
 
@@ -68,6 +71,10 @@ export interface DockProps {
   readonly onResize?: (width: number) => void;
   /** The width the grip was let go at, to keep. */
   readonly onResizeEnd?: (width: number) => void;
+  /** Which walk of the history the panels' scrollTop belongs to; each new walk applies it once. */
+  readonly restoreWalk?: number;
+  /** A panel's body scrolled. */
+  readonly onScroll?: (id: string, top: number) => void;
   /** One line saying why the dock changed on its own (R39), or null. */
   readonly stamp?: string | null;
   /** The open panels, in the order they are drawn. */
@@ -265,6 +272,12 @@ function DockPanelView(props: {
   readonly grip: ReactNode;
 }): ReactElement {
   const { panel, dock } = props;
+  const body = useRef<HTMLDivElement>(null);
+  const top = panel.scrollTop;
+  // A walk of the history puts the panel's scroll back, once per walk.
+  useLayoutEffect(() => {
+    if (top !== undefined && body.current !== null) body.current.scrollTop = top;
+  }, [dock.restoreWalk, top]);
   return (
     <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
       {props.grip}
@@ -303,9 +316,13 @@ function DockPanelView(props: {
           a link walks the panel. Keyboard activation of a link is a click. */}
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
+        ref={body}
         className="dpanel__body"
         onClick={(event) => {
           dock.onBodyClick?.(panel.id, event);
+        }}
+        onScroll={(event) => {
+          dock.onScroll?.(panel.id, event.currentTarget.scrollTop);
         }}
       >
         {panel.body}

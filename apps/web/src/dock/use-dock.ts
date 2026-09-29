@@ -14,7 +14,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { dockTabs, isPanelId, type PanelRegistry } from '../panels.ts';
+import { dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
 import { grantKeyOf, type Session, type StorageLike } from '../session/token.ts';
 import {
   closedBy,
@@ -26,18 +26,33 @@ import {
   openByGesture,
   type DockState,
 } from './open-set.ts';
+import {
+  back as stepBack,
+  canBack,
+  canForward,
+  forward as stepForward,
+  record,
+  seal,
+  start,
+  type DockEntry,
+  type DockHistory,
+} from './history.ts';
 
 export interface DockModel {
   readonly state: DockState;
   readonly change: (next: (state: DockState) => DockState) => void;
   /** Every click inside the application, for the doors into the dock. */
   readonly onDoor: (event: ReactMouseEvent<HTMLElement>) => void;
-  /** MP-3-5 stub. */
+  /** Where the whole dock was (MP-3-5), in memory only. */
   readonly history: {
     readonly canBack: boolean;
     readonly canForward: boolean;
     readonly back: () => void;
     readonly forward: () => void;
+    /** A panel scrolled: sealed into the entry in hand, never a new one. */
+    readonly seal: (id: PanelId, top: number) => void;
+    /** The scroll each panel is put back to by the last walk, and which walk it was. */
+    readonly restored: { readonly walk: number; readonly scroll: DockEntry['scroll'] };
   };
 }
 
@@ -64,19 +79,57 @@ export function useDock(
   if (current !== held) setHeld(current);
   const ref = useRef(current);
   ref.current = current;
+  // The history is kept beside the state rather than in it, so a scroll can
+  // be sealed into it without drawing the page again. It is the owner's too:
+  // another person or business starts with one entry.
+  const walked = useRef<{ readonly owner: string; history: DockHistory } | null>(null);
+  if (walked.current?.owner !== current.owner) {
+    walked.current = { owner: current.owner, history: start(current.state) };
+  }
+  const trail = walked.current;
+  const [restored, setRestored] = useState<DockModel['history']['restored']>({
+    walk: 0,
+    scroll: {},
+  });
 
-  const change = useCallback(
-    (next: (state: DockState) => DockState) => {
+  const apply = useCallback(
+    (after: DockState) => {
       const before = ref.current;
-      const after = next(before.state);
       if (after === before.state) return;
       const moved = { owner: before.owner, state: after };
       ref.current = moved;
+      // A walk lands on the entry in hand, which record() leaves as it is.
+      trail.history = record(trail.history, after);
       dockSlot(storage, session).write(after);
       setHeld(moved);
       for (const id of closedBy(before.state, after)) registry[id]?.onClose?.();
     },
-    [storage, session, registry],
+    [storage, session, registry, trail],
+  );
+
+  const change = useCallback(
+    (next: (state: DockState) => DockState) => {
+      apply(next(ref.current.state));
+    },
+    [apply],
+  );
+
+  const walk = useCallback(
+    (step: (history: DockHistory) => DockHistory) => {
+      const moved = step(trail.history);
+      const entry = moved.entries[moved.at];
+      if (moved === trail.history || entry === undefined) return;
+      trail.history = moved;
+      const tabs = new Set(dockTabs({}, registry).map((tab) => tab.id));
+      apply(
+        only(
+          entry,
+          entry.open.filter((id) => tabs.has(id)),
+        ),
+      );
+      setRestored((last) => ({ walk: last.walk + 1, scroll: entry.scroll }));
+    },
+    [apply, registry, trail],
   );
 
   // Escape closes the last opened panel, one per press, and never an Escape
@@ -124,6 +177,19 @@ export function useDock(
     state: current.state,
     change,
     onDoor,
-    history: { canBack: false, canForward: false, back: () => undefined, forward: () => undefined },
+    history: {
+      canBack: canBack(trail.history),
+      canForward: canForward(trail.history),
+      back: () => {
+        walk(stepBack);
+      },
+      forward: () => {
+        walk(stepForward);
+      },
+      seal: (id, top) => {
+        trail.history = seal(trail.history, id, top);
+      },
+      restored,
+    },
   };
 }

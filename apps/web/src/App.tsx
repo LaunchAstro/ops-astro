@@ -313,8 +313,9 @@ function dockProps(input: {
           label: panel.label,
           ariaLabel: panel.ariaLabel,
           door,
-          canBack: false,
-          canForward: false,
+          canBack: dock.history.canBack,
+          canForward: dock.history.canForward,
+          scrollTop: dock.history.restored.scroll[id],
           body: view === null ? null : drawScreen(view.match, input.screen),
         },
       ];
@@ -330,8 +331,13 @@ function dockProps(input: {
     onCloseAll: () => {
       dock.change(closeAll);
     },
-    onBack: () => undefined,
-    onForward: () => undefined,
+    onBack: dock.history.back,
+    onForward: dock.history.forward,
+    restoreWalk: dock.history.restored.walk,
+    onScroll: (id, top) => {
+      const panel = byId(id);
+      if (panel !== null) dock.history.seal(panel, top);
+    },
     onDoor: input.navigate,
     onBodyClick: (id, event) => {
       const panel = byId(id);
