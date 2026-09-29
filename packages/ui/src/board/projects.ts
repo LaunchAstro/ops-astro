@@ -8,6 +8,7 @@
 // or derived at read; nothing here is typed or stored.
 
 import type { ColumnSpec } from './types.ts';
+import type { ProjectRow } from './project-row.ts';
 import { burnRatio, pad, waiting } from './project-words.ts';
 
 export {
@@ -21,34 +22,7 @@ export {
   type Burn,
 } from './project-words.ts';
 
-export type Estimate =
-  | { readonly kind: 'time'; readonly minutes: number }
-  | { readonly kind: 'tokens'; readonly tokens: number; readonly by: string };
-
-export type Actual =
-  | { readonly kind: 'time'; readonly minutes: number }
-  | { readonly kind: 'tokens'; readonly tokens: number; readonly runs: number };
-
-export interface ProjectRow {
-  readonly id: string;
-  readonly key: string;
-  readonly name: string;
-  readonly rank: { readonly number: number | null; readonly calc: string };
-  readonly starred: boolean;
-  readonly client: string | null;
-  readonly assignee: { readonly name: string; readonly agent: boolean } | null;
-  readonly due: string | null;
-  readonly completed: boolean;
-  readonly stage: string | null;
-  readonly status: string;
-  readonly estimate: Estimate | null;
-  readonly actual: Actual | null;
-  readonly comments: {
-    readonly client: number;
-    readonly mentions: number;
-    readonly latest: string | null;
-  };
-}
+export type { Actual, Estimate, ProjectRow } from './project-row.ts';
 
 /** Token rows sort after every time row (P-27). */
 const TOKENS_AFTER = 1e12;

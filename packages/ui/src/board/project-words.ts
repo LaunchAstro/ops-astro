@@ -3,7 +3,7 @@
 // The words the Projects board's cells draw (MP-5-8, BOARDS P-20, P-25, P-27,
 // P-28, P-36). Pure; the column declarations are in `projects.ts`.
 
-import type { Actual, Estimate, ProjectRow } from './projects.ts';
+import type { Actual, Estimate, ProjectRow } from './project-row.ts';
 
 const NOT_RANKED = 'Not ranked yet — it is in the review queue';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
