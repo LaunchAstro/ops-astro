@@ -204,7 +204,15 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
 
   it('a worker names only a provider or connection cause; anything else is refused and writes nothing', async () => {
     const w = await work(s);
-    for (const report of [{ dropCause: 'worker_lost' }, { dropCause: 'nonsense' }, {}]) {
+    for (const report of [
+      { dropCause: 'worker_lost' },
+      { dropCause: 'nonsense' },
+      {},
+      { dropCause: 'PROVIDER_UNAVAILABLE' },
+      { dropCause: ' provider_unavailable' },
+      { dropCause: ['provider_unavailable'] },
+      { dropCause: 7 },
+    ]) {
       // eslint-disable-next-line no-await-in-loop
       expect(codeOf(await dropBack(w, report))).toBe('FIELD_VALUE_INVALID');
     }
@@ -251,5 +259,38 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
     expect(await digest(other)).toStrictEqual(before);
     expect(await attempts(other, away.taskId)).toMatchObject([{ state: 'dispatched' }]);
     expect((await attempts(s, w.taskId))[0]).toMatchObject({ drop_cause: 'worker_lost' });
+  });
+  it("another holder's dropped hand-back on this lease is refused and writes nothing", async () => {
+    const w = await work(s);
+    const intruder = await work(s);
+    const refused = await asAgent(
+      s,
+      { ...handbackBody(w.picked), outcome: 'dropped', report: { dropCause: 'connection_lost' } },
+      intruder.credential,
+    );
+    expect(codeOf(refused)).not.toBe('ok');
+    expect(await attempts(s, w.taskId)).toMatchObject([{ state: 'dispatched', drop_cause: null }]);
+    expect((await events(s, w.taskId)).map((one) => one.kind)).toStrictEqual(['claimed']);
+    expect(await alerts(s, w.taskId)).toStrictEqual([]);
+  });
+
+  it('two sweeps at once over one lost worker record one drop and bring the work back once', async () => {
+    const w = await work(s, 1);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1_300);
+    });
+    const both = await Promise.allSettled([sweep(s), sweep(s)]);
+    expect(both.some((one) => one.status === 'fulfilled')).toBe(true);
+    await sweep(s);
+    expect(await attempts(s, w.taskId)).toMatchObject([
+      { state: 'dropped', drop_cause: 'worker_lost' },
+      { state: 'reserved' },
+    ]);
+    expect((await events(s, w.taskId)).map((one) => one.kind)).toStrictEqual([
+      'claimed',
+      'dropped',
+      'reactivated',
+    ]);
+    expect(await alerts(s, w.taskId)).toStrictEqual(['dropped']);
   });
 });
