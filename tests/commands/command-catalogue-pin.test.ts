@@ -106,6 +106,15 @@ vi.mock('../../packages/core-commands/src/commands/automation-approvals.ts', asy
   turnOffActivationAsPerson: recorder('turnOffActivationAsPerson'),
   revokeStandingApproval: recorder('revokeStandingApproval'),
 }));
+vi.mock('../../packages/core-commands/src/commands/record-create.ts', async (original) => ({
+  ...(await original<object>()),
+  createRecord: recorder('createRecord'),
+}));
+vi.mock('../../packages/core-commands/src/commands/onboarding.ts', async (original) => ({
+  ...(await original<object>()),
+  startOnboarding: recorder('startOnboarding'),
+  recordStepResult: recorder('recordStepResult'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -182,6 +191,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'grant.revoke': [],
   'mandate.file': ['clientId'],
   'mandate.revoke': ['mandateId'],
+  'onboarding.start': ['clientId'],
+  'onboarding.step_result': ['recordId'],
+  'record.create': [],
   'secret.clear': ['secretId'],
   'secret.set': ['clientId'],
   'settings.set_client_sign_off': [],
@@ -220,8 +232,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'grant.revoke',
   'mandate.file',
   'mandate.revoke',
+  'onboarding.start',
+  'onboarding.step_result',
   'person.list',
   'preset.plan',
+  'record.create',
   'secret.clear',
   'secret.list',
   'secret.set',
@@ -248,6 +263,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'onboarding.step_result',
   'session.capabilities',
   'task.comment',
   'task.decide',
@@ -334,6 +350,9 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
   { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
   { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
+  { command: 'record.create', operationId: 'op', type: 'client', fields: { name: 'n' } },
+  { command: 'onboarding.start', operationId: 'op', clientId: 'c', templateKey: 'standard' },
+  { command: 'onboarding.step_result', operationId: 'op', recordId: 'r', outcome: 'done' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -413,6 +432,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'activation.roll_back': ['rollBackActivation', 'request'],
   'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
   'approval.revoke': ['revokeStandingApproval', 'request'],
+  'record.create': ['createRecord', 'request'],
+  'onboarding.start': ['startOnboarding', 'request'],
+  'onboarding.step_result': ['recordStepResult', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -462,13 +484,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-four from an expected revision', () => {
+  it('exempts the same forty-seven from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eleven, two of them before a pickup', () => {
+  it('lets an agent reach the same twelve, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

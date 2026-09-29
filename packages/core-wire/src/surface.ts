@@ -193,7 +193,8 @@ export interface CommandDeclaration {
    * - `target`: the row the command revokes (a grant, a delegation), asked at
    *   that row's own scope. A business-wide check would refuse a manager whose
    *   authority is exactly the target's scope; the handler then asks the full
-   *   ceiling against the same row.
+   *   ceiling against the same row. An onboarding step's result is asked the
+   *   same way, at the scope of the step's client.
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
@@ -684,8 +685,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // agent hold them inside its delegation, but a delegation is narrowed to
   // one task (0016), so none reaches a business-wide create: both are a
   // person's until an agent's reach widens. A step's result is `task:write`
-  // on the step's own task, so a holder scoped to one client, or an agent
-  // delegated on that task, writes that step and no other.
+  // asked at the step's client (`target`: `prepare.ts` reads the step's
+  // onboarding), so a holder scoped to one client writes that client's steps
+  // and no other's; an agent's is asked on the task it is delegated on.
   declare('record.create', 'write', {
     collection: RECORD_COLLECTION,
     targetsExistingRecord: false,
@@ -698,7 +700,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   declare('onboarding.step_result', 'write', {
     targetsExistingRecord: false,
-    authorisedOn: 'record',
+    authorisedOn: 'target',
     untargetedIdentifiers: ['recordId'],
     agent: 'delegated',
   }),

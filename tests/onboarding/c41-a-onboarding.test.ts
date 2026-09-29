@@ -32,10 +32,14 @@ const path = (business: string, name: string): string =>
 const detail = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] ?? {}) as Record<string, unknown>;
 
-const commentBodies = (task: Record<string, unknown>): readonly string[] =>
-  ((task['comments'] ?? []) as readonly Record<string, unknown>[]).map((one) =>
-    String(one['body']),
-  );
+// A task read answers `{ task }`, the detail carrying its comments.
+const commentBodies = (read: Record<string, unknown>): readonly string[] =>
+  (
+    ((read['task'] as Record<string, unknown> | undefined)?.['comments'] ?? []) as readonly Record<
+      string,
+      unknown
+    >[]
+  ).map((one) => String(one['body']));
 
 interface StepView {
   readonly key: string;
@@ -108,7 +112,7 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
       'select revision::text as revision from public.records where id = $1',
       [taskId],
     );
-    const proposal = await controls.propose(taskId, Number(task[0]?.revision));
+    const proposal = await controls.propose(taskId, Number(task[0]?.revision), 'onboarding_step');
     const picked = await controls.pickup(await controls.approve(proposal));
     const answer = await controls.asAgent(
       'onboarding.step_result',
@@ -117,6 +121,17 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     );
     answers.push(answer);
     return answer;
+  };
+
+  // A step of this onboarding that takes a result now, read at the time
+  // (earlier cases close steps of the shared onboardings).
+  const readyStep = async (started: Answer): Promise<string> => {
+    const rows = await controls.fixture.db.admin.execute<{ readonly task_id: string }>(
+      `select task_id from public.onboarding_steps
+        where onboarding_id = $1 and state = 'ready' order by position limit 1`,
+      [String(detail(started)['onboardingId'])],
+    );
+    return String(rows[0]?.task_id);
   };
 
   const tableRows = async (table: string): Promise<number> =>
@@ -162,6 +177,7 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     });
     startedA = await start(clientA);
     startedB = await start(clientB);
+    (await import('node:fs')).writeFileSync('.local/said.txt', said.join(''));
 
     const bravo = await insertBusiness(db.app, 'bravo');
     await installSpine(db.app, bravo);
@@ -177,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
   });
 
   it('C41-A owner check: Start onboarding for a made-up client lays its tasks out in phases, first agent step first', () => {
-    expect(startedA.status).toBe(200);
+    expect(startedA.status, JSON.stringify(startedA.body)).toBe(200);
     const steps = stepsOf(startedA);
     const template = ONBOARDING_TEMPLATES['standard'];
     expect(template).toBeDefined();
@@ -215,9 +231,14 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
       for (const needed of one.dependsOn) expect(keys.has(needed)).toBe(true);
       // eslint-disable-next-line no-await-in-loop -- one task read per step
       const task = await readTask(admin, one.taskId);
-      const fields = task['task'] as Record<string, unknown>;
-      expect(fields['client']).toBe(clientA);
-      expect(String(fields['title'])).toContain(one.phase);
+      expect(String((task['task'] as Record<string, unknown>)['title'])).toContain(one.phase);
+      // The party link is not on the task detail; its slot is.
+      // eslint-disable-next-line no-await-in-loop -- one task per step
+      const link = await controls.fixture.db.admin.execute<{ readonly client: string }>(
+        'select uuid_7::text as client from public.records where id = $1',
+        [one.taskId],
+      );
+      expect(link[0]?.client).toBe(clientA);
     }
     expect(new Set(steps.map((one) => one.kind))).toStrictEqual(
       new Set(['agent', 'person', 'client']),
@@ -425,11 +446,9 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
   });
 
   it('C41-A isolation: a holder scoped to one client writes its steps and never another client’s', async () => {
-    const ownStep = stepsOf(startedA).find((one) => one.state === 'ready' && one.kind === 'agent');
-    const foreignStep = stepsOf(startedB).find((one) => one.state === 'ready');
-    const own = await result(clientAWriter, String(ownStep?.taskId), 'failed', 'Retry later');
+    const own = await result(clientAWriter, await readyStep(startedA), 'failed', 'Retry later');
     expect(own.status, JSON.stringify(own.body)).toBe(200);
-    const foreign = await result(clientAWriter, String(foreignStep?.taskId), 'done', 'crossing');
+    const foreign = await result(clientAWriter, await readyStep(startedB), 'done', 'crossing');
     expect(foreign.status).toBe(403);
     expect(foreign.body['code']).toBe('SCOPE_NOT_GRANTED');
     expect(JSON.stringify(foreign.body)).not.toContain(RECORD_CANARY);

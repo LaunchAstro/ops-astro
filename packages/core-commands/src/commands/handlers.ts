@@ -30,7 +30,8 @@ import {
   rollBackActivation,
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
-import { createRecord, recordStepResult, startOnboarding } from './onboarding.ts';
+import { recordStepResult, startOnboarding } from './onboarding.ts';
+import { createRecord } from './record-create.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
