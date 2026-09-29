@@ -130,6 +130,39 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 checks and run controls', () =>
     });
   });
 
+  describe('MP-6-1 check provenance under a race', () => {
+    it('a check and a handback on one lease at once serialise on the lease lock', async () => {
+      for (let round = 0; round < 3; round += 1) {
+        // eslint-disable-next-line no-await-in-loop -- one race at a time
+        const work = await pickedUp(`race_${String(round)}`);
+        // eslint-disable-next-line no-await-in-loop -- as above
+        const [checked, handedBack] = await Promise.all([
+          c.asAgent(
+            'task.check',
+            { leaseId: work.leaseId, fence: work.fence, name: 'racing', outcome: 'passed' },
+            work.credential,
+          ),
+          c.asAgent(
+            'task.handback',
+            {
+              leaseId: work.leaseId,
+              fence: work.fence,
+              outcome: 'completed',
+              report: { wrote: 'x' },
+            },
+            work.credential,
+          ),
+        ]);
+        expect(handedBack.status, JSON.stringify(handedBack.body)).toBe(200);
+        expect([200, 401, 403, 410], JSON.stringify(checked.body)).toContain(checked.status);
+        // Either the check won the lease lock and was written, or the handback
+        // did and the check was refused with nothing written: never both, never a fault.
+        // eslint-disable-next-line no-await-in-loop -- as above
+        expect(await c.count(checkRows, [work.taskId])).toBe(checked.status === 200 ? 1 : 0);
+      }
+    }, 60_000);
+  });
+
   describe('MP-6-1 check recorded', () => {
     it('each check is read back with its outcome against the version it ran on', async () => {
       const work = await pickedUp('checks_read_back');
@@ -188,6 +221,91 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 checks and run controls', () =>
         expect(answer.status).toBe(422);
       }
       expect(await c.count(checkRows, [work.taskId])).toBe(0);
+    });
+  });
+
+  describe('MP-6-1 gate before effect', () => {
+    it('no work goes out on an undecided version, nor on one a newer version replaced', async () => {
+      const pickups = `select count(*)::text as n from public.leases where task_id = $1`;
+      // Undecided: nothing is queued and nothing can be picked up.
+      const task = await c.createTask('a proposal nobody has decided');
+      const proposal = await c.propose(task.id, task.revision, 'undecided_work');
+      const queue = await c.asAgent('task.queue', {});
+      expect(JSON.stringify(queue.body)).not.toContain(task.id);
+      expect(await c.count(pickups, [task.id])).toBe(0);
+
+      // Stale: v1 approved, then v2 replaces it before anyone picks v1 up.
+      const approvedTask = await c.createTask('a version replaced after its approval');
+      const v1 = await c.propose(approvedTask.id, approvedTask.revision, 'replaced_work');
+      const reservationId = await c.approve(v1);
+      const read = await c.asPerson('task.read', { recordId: approvedTask.id });
+      const revision = Number((read.body['task'] as { revision: number }).revision);
+      const v2 = await c.asPerson('task.propose', {
+        recordId: approvedTask.id,
+        expectedRevision: revision,
+        lineageId: v1['lineageId'],
+        purpose: 'replaced_work',
+        maximumMinor: 2_500,
+        currency: 'AUD',
+        payload: { instruction: 'the second version' },
+        step: { kind: 'compose', payload: {} },
+      });
+      expect(v2.status, JSON.stringify(v2.body)).toBe(200);
+      const stale = await c.asAgent('task.pickup', { reservationId });
+      expect(stale.status).toBe(409);
+      expect(stale.body['code']).toBe('RESERVATION_NOT_CLAIMABLE');
+      expect(await c.count(pickups, [approvedTask.id])).toBe(0);
+
+      // And the stale gate itself cannot be decided on the old version.
+      const late = await c.asPerson('task.decide', {
+        gateId: proposal['gateId'],
+        versionId: v1['versionId'],
+        decision: 'approve',
+        note: 'the wrong version',
+      });
+      expect(late.status).toBeGreaterThanOrEqual(400);
+    });
+  });
+
+  describe('MP-6-1 records', () => {
+    it('each change is recorded, and the audited ones join the chain', async () => {
+      const work = await pickedUp('recorded_changes');
+      const checkId = 'check-recorded';
+      const checked = await c.asAgent(
+        'task.check',
+        {
+          operationId: checkId,
+          leaseId: work.leaseId,
+          fence: work.fence,
+          name: 'spelling',
+          outcome: 'passed',
+        },
+        work.credential,
+      );
+      expect(checked.status).toBe(200);
+      const audited = `select count(*)::text as n from public.audit_events
+                        where command = $1 and outcome = 'applied' and operation_id = $2`;
+      expect(await c.count(audited, ['task.check', checkId])).toBe(1);
+
+      const task = await c.createTask('a run that is cancelled on the record');
+      const proposal = await c.propose(task.id, task.revision, 'cancel_on_record');
+      const cancelId = 'cancel-recorded';
+      const cancelled = await c.asPerson('task.cancel', {
+        operationId: cancelId,
+        recordId: task.id,
+        lineageId: proposal['lineageId'],
+        reason: 'recorded',
+      });
+      expect(cancelled.status).toBe(200);
+      expect(await c.count(audited, ['task.cancel', cancelId])).toBe(1);
+      const restartId = 'restart-recorded';
+      const restarted = await c.asPerson('task.restart', {
+        operationId: restartId,
+        recordId: task.id,
+        lineageId: proposal['lineageId'],
+      });
+      expect(restarted.status).toBe(200);
+      expect(await c.count(audited, ['task.restart', restartId])).toBe(1);
     });
   });
 
