@@ -19,10 +19,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
-import {
-  createFreshDatabase,
-  type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';

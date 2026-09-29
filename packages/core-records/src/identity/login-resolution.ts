@@ -146,7 +146,7 @@ export async function resolveLogin(
 // their acting identity, which is what `shareRecord` issues and all R4 reaches.
 // A scoped `comment` or `write` grant is not a share and stands for nothing
 // here, so a row a share would never carry cannot turn a non-member into a
-// session (Sol 6 AUTHORITY-2). A live *business* grant disqualifies rather than helps: it
+// session. A live *business* grant disqualifies rather than helps: it
 // is a member's grant, and a person holding one without a membership is a
 // former member whose grants outlived them, who stays refused here exactly as
 // before. The per-call check in the serving transaction still decides what the

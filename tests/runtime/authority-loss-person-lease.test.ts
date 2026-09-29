@@ -23,7 +23,7 @@
 // classification, which the fixed handler can no longer produce.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/recovery.ts';
 import { enrol, grantTo, TASK_COLLECTION, type Member } from '../commands/fixture.ts';

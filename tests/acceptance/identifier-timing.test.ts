@@ -62,8 +62,14 @@ const PAIRS = 30;
 const Z_LIMIT = 3.29;
 const FLOOR_MS = 2;
 const SHARE = 0.2;
-/** The delay injected on one arm to prove the comparator can say "outside". */
+/** The least delay injected on one arm to prove the comparator can say "outside". */
 const INJECTED_MS = 15;
+/**
+ * The injected delay as a multiple of the bound this machine's medians give
+ * just before. Under load the medians grow and the bound with them, and a
+ * fixed 15 ms read as within (16.66 ms against 17.88 ms, product issue 56).
+ */
+const INJECTED_BOUNDS = 3;
 
 /** The operations that name no identifier, from the list the matrix and SC2 case share. */
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
@@ -338,9 +344,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ recordId: w.foreign.task.id }),
       fabricated: () => ({ recordId: randomUUID() }),
     };
-    const { foreign, fabricated } = await sample(cell, INJECTED_MS);
+    const baseline = await sample(cell);
+    const delay = Math.max(
+      INJECTED_MS,
+      Math.ceil(INJECTED_BOUNDS * compare(baseline.foreign, baseline.fabricated).bound),
+    );
+    const { foreign, fabricated } = await sample(cell, delay);
     const verdict = compare(foreign, fabricated);
-    console.log(line(cell, PAIRS, verdict));
-    expect(verdict.within, `a ${String(INJECTED_MS)} ms oracle must be flagged`).toBe(false);
+    console.log(`${line(cell, PAIRS, verdict)} injected=${String(delay)}ms`);
+    expect(verdict.within, `a ${String(delay)} ms oracle must be flagged`).toBe(false);
   }, 120_000);
 });

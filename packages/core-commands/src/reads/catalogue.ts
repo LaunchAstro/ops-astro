@@ -2,13 +2,11 @@
 //
 // The read catalogue: every fact about a read, on one row keyed by its name.
 //
-// A read's facts used to live in ten places across four files: the
-// identifiers it takes, whether it needs the task spine, how its authority is
-// asked, whether an outsider is told NOT_FOUND, its operand check (a second
-// switch in `commands/operands.ts`) and what it serves, with four checks on
-// the read's name outside the switch (thermo review b483399, H3). Each is now
-// a field of the read's row, and `reads/dispatch.ts` runs one pipeline over
-// the row with no branch on the name. It is the read-path twin of the command
+// The identifiers a read takes, whether it needs the task spine, how its
+// authority is asked, whether an outsider is told NOT_FOUND, its operand
+// check and what it serves are each a field of the read's row, and
+// `reads/dispatch.ts` runs one pipeline over the row with no branch on the
+// name. It is the read-path twin of the command
 // catalogue (`core-wire/src/surface.ts`), and keyed by every read name, so a read
 // added to the union is a type error here until someone says what it takes.
 //
@@ -86,7 +84,7 @@ interface RowBase<K extends ReadName> {
 /**
  * A read that needs the installed task type's identifiers. The pipeline reads
  * them before the grant check, and `subject` and `serve` are handed them, so
- * neither has a missing spine to answer (thermo recheck 9ddfa09, NA2).
+ * neither has a missing spine to answer.
  */
 export interface SpineRow<K extends ReadName> extends RowBase<K> {
   readonly spine: true;
@@ -200,7 +198,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     identifiers: ['board'],
     // `null` is a real board: the list of tasks on none. An absent key is
     // not, and answering it with that list gave a body that asked nothing
-    // the answer to a question it never put (I14-SEAM U1). A string is
+    // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
     parse: ({ board }) =>
       typeof board === 'string' || board === null
@@ -261,23 +259,24 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     },
     spine: false,
     // The collection is the family the request names, because that is the
-    // grant the plan actually needs: L2's `planPresetSync` checks `manage` on
-    // the family of `recordTypeKey`, so a blanket `manage` on `preset` in
-    // front of it would be a wider question than the operation asks and a
-    // caller holding only it would be let through here and refused there. The
-    // declaration's own `preset` is what the route is about rather than what
-    // it takes; see `CommandDeclaration.collection`.
+    // grant the plan actually needs: the planner's `planPresetSync` checks
+    // `manage` on the family of `recordTypeKey`, so a blanket `manage` on
+    // `preset` in front of it would be a wider question than the operation asks
+    // and a caller holding only it would be let through here and refused there.
+    // The declaration's own `preset` is what the route is about rather than
+    // what it takes; see `CommandDeclaration.collection`.
     //
-    // Today the record type key *is* the family (L2's `familyOf`, private to
-    // the planner because it is the one place a real type-to-collection
-    // mapping has to land). This is the same key, not a second copy of that
-    // mapping: should the two ever differ, the planner still asks its own
-    // question afterwards, so this check can only be redundant or narrower --
-    // never wider than the authority the plan is granted under.
+    // Today the record type key *is* the family (the planner's `familyOf`,
+    // private to the planner because it is the one place a real
+    // type-to-collection mapping has to land). This is the same key, not a
+    // second copy of that mapping: should the two ever differ, the planner
+    // still asks its own question afterwards, so this check can only be
+    // redundant or narrower -- never wider than the authority the plan is
+    // granted under.
     authority: (operands) => operands.recordTypeKey,
     outsiderNotFound: false,
     async serve(tx, session, operands) {
-      // L2's planner checks the same authority again, from its own module, and
+      // The planner checks the same authority again, from its own module, and
       // that repetition is deliberate: the guarantee "this plan was authorised"
       // belongs to the planner whichever surface reaches it, and the guarantee
       // "every operation is authorised before it runs" belongs here. Neither is

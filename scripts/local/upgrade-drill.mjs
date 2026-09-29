@@ -35,7 +35,7 @@ import {
   applyMigrations,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { createEmptyDatabase } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 
@@ -43,6 +43,82 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 const LEDGER = 'ops.schema_migrations';
 
 const say = (line) => console.log(`upgrade-drill: ${line}`);
+
+/**
+ * The drill's own throwaway database: a new database, and a login of its own
+ * in the application's group role that the migrations grant to. It is built
+ * here, not borrowed from the test harness, because a check that imports a
+ * test fixture proves the fixture (.dependency-cruiser.cjs). The login's
+ * password is random base64url, whose alphabet holds no quote, and the names
+ * are generated here, so nothing a caller supplies reaches the SQL.
+ */
+async function throwawayDatabase(serverUrl) {
+  const name = `t1_drill_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const login = `${name}_app`;
+  const password = randomBytes(24).toString('base64url');
+  const urlFor = (user, secret) => {
+    const url = new URL(serverUrl);
+    url.pathname = `/${name}`;
+    if (user !== undefined) url.username = encodeURIComponent(user);
+    if (secret !== undefined) url.password = encodeURIComponent(secret);
+    return url.toString();
+  };
+  const drops = [`drop database if exists "${name}" with (force)`, `drop role if exists "${login}"`];
+  const dropAll = async () => {
+    const server = connectAsAdmin(serverUrl, { source: 'harness' });
+    try {
+      for (const statement of drops) {
+        // oxlint-disable-next-line no-await-in-loop -- the database before its role
+        await server.execute(statement);
+      }
+    } finally {
+      await server.close();
+    }
+  };
+  const server = connectAsAdmin(serverUrl, { source: 'harness' });
+  try {
+    await server.execute(
+      `do $$ begin
+         if not exists (select 1 from pg_roles where rolname = 'ops_astro_app') then
+           create role ops_astro_app nologin;
+         end if;
+       end $$`,
+    );
+    await server.execute(`create database "${name}"`);
+    await server.execute(`revoke temporary on database "${name}" from public`);
+    await server.execute(
+      `create role "${login}" login password '${password}' ` +
+        'nosuperuser nocreatedb nocreaterole nobypassrls inherit in role ops_astro_app',
+    );
+  } catch (error) {
+    await server.close();
+    await dropAll();
+    throw error;
+  }
+  await server.close();
+  const admin = connectAsAdmin(urlFor(), { source: 'migration' });
+  let pool = connect(urlFor(login, password), { source: 'runtime' });
+  return {
+    admin,
+    // A fixed face over the pool `closeSessions` replaces.
+    app: {
+      get log() {
+        return pool.log;
+      },
+      withBusiness: async (business, run) => await pool.withBusiness(business, run),
+      close: async () => await pool.close(),
+    },
+    async closeSessions() {
+      await pool.close();
+      pool = connect(urlFor(login, password), { source: 'runtime' });
+    },
+    async drop() {
+      await pool.close();
+      await admin.close();
+      await dropAll();
+    },
+  };
+}
 
 class Refused extends Error {}
 /** A failure whose message the drill wrote itself, so it carries no record data. */
@@ -249,7 +325,7 @@ async function drill({ url, from, directory }) {
   // The seed's approval is signed. A throwaway key for this process, unless one is set.
   process.env.GATE_SIGNING_KEY_ID ??= 'upgrade-drill/throwaway@1';
   process.env.GATE_SIGNING_SECRET ??= randomBytes(32).toString('hex');
-  const db = await createEmptyDatabase({ serverUrl: url, part: 'drill' });
+  const db = await throwawayDatabase(url);
   try {
     // Row security would hide rows from the snapshot and the drill would pass
     // over what it could not see, so the owner must be above it.

@@ -115,8 +115,7 @@ export async function enter(
   // `RegExp.prototype.test` coerces its argument to a string, so an omitted
   // `operationId` -- the field an ordinary HTTP caller leaves out most easily
   // -- would coerce to the nine-character `"undefined"` and pass the pattern,
-  // and a number or a one-element array would pass as the string it prints as
-  // (Sol 6 AUTHORITY-4).
+  // and a number or a one-element array would pass as the string it prints as.
   if (!hasIdentity(request)) {
     const refusal = refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES);
     return await settle(tx, caller, request, digest, refusal, 'none');
@@ -314,7 +313,7 @@ const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
  * A payload with no canonical form (a non-finite number from a direct caller;
  * the HTTP door refuses one before this) is often why the attempt failed, and
  * taking its digest again would throw inside the fallback and lose the event
- * (final review round 1, #11). It gets the all-zero digest instead, which the
+ * with it. It gets the all-zero digest instead, which the
  * column's shape admits and no SHA-256 of a payload will realistically be.
  */
 function failedDigest(request: UncheckedRequest): string {
@@ -347,9 +346,8 @@ async function replay(
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
   // for two different commands differs here without a second comparison. A
-  // separate check on `seen.command` was written first and then removed: a
-  // mutation showed it could not fail, which means it was a claim about the
-  // digest rather than a check on the request.
+  // separate check on `seen.command` could not fail under mutation, so it
+  // would be a claim about the digest rather than a check on the request.
   if (seen.payload_digest !== digest) {
     const refusal = refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES);
     // The register already holds this identity, so nothing is written to it.
@@ -361,7 +359,7 @@ async function replay(
   const stored = seen.result as unknown as CommandResult;
   // A stored refusal carries nothing protected. A stored success is released
   // only to the rights held now: a revocation bites on the next call, and a
-  // replay is a call (Sol 6 AUTHORITY-1).
+  // replay is a call.
   const released = isCommandRefusal(stored) ? undefined : await release(stored);
   if (released !== undefined && isCommandRefusal(released)) {
     return await settle(tx, caller, request, digest, released, 'registered');

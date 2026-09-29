@@ -19,7 +19,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -41,7 +41,7 @@ describe.skipIf(serverUrl === undefined)('preset.plan', () => {
     });
 
   const plan = async (fields: readonly unknown[]) =>
-    await db.app.withBusiness(business, async (tx) =>
+    await db.app.withBusiness(business, (tx) =>
       planPresetSync(
         tx,
         { personId, actorId },
@@ -117,7 +117,7 @@ describe.skipIf(serverUrl === undefined)('preset.plan', () => {
     ]);
     expect(result.ok).toBe(false);
     expect(await countFields()).toBe(before);
-    const survived = await db.app.withBusiness(business, async (tx) =>
+    const survived = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly n: string }>(
         `select count(*)::text as n from field_defs where business_id = $1 and key = $2`,
         [business, 'valid_beside_it'],

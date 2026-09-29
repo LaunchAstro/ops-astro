@@ -260,7 +260,7 @@ async function withDecideGrant(database, businessId, person, work) {
   try {
     return await work();
   } finally {
-    await database.withBusiness(businessId, async (tx) => revokeGrant(tx, id));
+    await database.withBusiness(businessId, (tx) => revokeGrant(tx, id));
   }
 }
 

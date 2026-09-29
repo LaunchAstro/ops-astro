@@ -20,7 +20,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
@@ -160,7 +160,7 @@ describe.skipIf(serverUrl === undefined)('command_shape', () => {
       const again = await create('replayed', identity);
       expect(again).toStrictEqual(first);
 
-      const rows = await db.app.withBusiness(business, async (tx) =>
+      const rows = await db.app.withBusiness(business, (tx) =>
         tx.query<{ readonly count: string }>(
           `select count(*)::text as count from records
             where business_id = $1 and record_type_id = $2 and data ->> 'title' = 'replayed'`,
@@ -263,7 +263,7 @@ describe.skipIf(serverUrl === undefined)('command_shape', () => {
       const identity = `reused-nothing-${randomUUID()}`;
       await create('kept', identity);
       await create('discarded', identity);
-      const rows = await db.app.withBusiness(business, async (tx) =>
+      const rows = await db.app.withBusiness(business, (tx) =>
         tx.query<{ readonly count: string }>(
           `select count(*)::text as count from records
             where business_id = $1 and data ->> 'title' = 'discarded'`,
@@ -329,7 +329,7 @@ describe.skipIf(serverUrl === undefined)('command_shape', () => {
       await create('agreement', identity);
       const events = await auditEvents();
       const event = events.at(-1);
-      const registered = await db.app.withBusiness(business, async (tx) =>
+      const registered = await db.app.withBusiness(business, (tx) =>
         tx.query<{ readonly payload_digest: string; readonly outcome: string }>(
           `select payload_digest, outcome from operations
             where business_id = $1 and operation_id = $2`,

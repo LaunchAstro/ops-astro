@@ -41,7 +41,7 @@ function scripted(): { readonly tx: TenantQuery; readonly writes: string[] } {
   return { tx, writes };
 }
 
-describe('reserve against a cap it cannot read (thermo O2)', () => {
+describe('reserve against a cap it cannot read', () => {
   it('refuses BUDGET_UNAVAILABLE and writes nothing', async () => {
     const { tx, writes } = scripted();
     const result = await reserve(tx, {

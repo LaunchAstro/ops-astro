@@ -2,8 +2,9 @@
 //
 // CQ-6, a body field its surface row does not describe (Sol's review 1 on
 // #91, criterion 6), on both prefixes through the real application. Kept
-// apart from `tests/api/cq-6.test.ts` so neither file passes the per-file
-// size cap. Boundaries: none crossed; the refusal names no caller key.
+// apart from `tests/api/cq-6.test.ts`, one readable file each (the per-file
+// size cap it once kept under is retired, FU-400). Boundaries: none crossed;
+// the refusal names no caller key.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

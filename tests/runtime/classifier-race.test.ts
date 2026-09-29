@@ -36,14 +36,14 @@
 // them before either can read a stale `held`, so that guarded update is
 // defence in depth underneath the locks rather than the thing the locks leave
 // to chance. Making it fire would mean a caller holding an incomplete set,
-// which `LockSet.require` throws on — `review-fixes.test.ts` covers that.
+// which `LockSet.require` throws on — `handback-propose-decide-invariants.test.ts` covers that.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
@@ -175,7 +175,7 @@ async function approveOn(
   fixture: RuntimeFixture,
   of: Proposed,
 ): Promise<{ readonly reservationId: string; readonly envelopeId: string }> {
-  const decided = await database.app.withBusiness(fixture.businessId, async (tx) =>
+  const decided = await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,
@@ -222,7 +222,7 @@ interface RacedHold {
  * version row, because the product's own supersession classifies in the same
  * transaction (R8) and would leave nothing to race over; a committed
  * transition with no committed classification is exactly the crash state
- * recovery exists for, and `review-fixes.test.ts` stages a fenced lease the
+ * recovery exists for, and `handback-propose-decide-invariants.test.ts` stages a fenced lease the
  * same way.
  */
 async function racedHold(database: FreshDatabase, fixture: RuntimeFixture): Promise<RacedHold> {
@@ -312,7 +312,7 @@ describe.skipIf(serverUrl === undefined)('two classifiers on one reservation', (
 
   /** The envelope's two totals and the terminal facts both cases assert. */
   async function terminalFacts(work: RacedHold): Promise<TerminalRow> {
-    const rows = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const rows = await database.app.withBusiness(fixture.businessId, (tx) =>
       tx.query<TerminalRow>(
         `select res.state, res.classified_cause as cause, res.classified_cause_id::text as cause_id,
                 att.state as attempt_state, att.outcome as attempt_outcome,
@@ -339,7 +339,7 @@ describe.skipIf(serverUrl === undefined)('two classifiers on one reservation', (
     readonly actual: number;
     readonly maximum: number;
   }> {
-    return await database.app.withBusiness(fixture.businessId, async (tx) =>
+    return await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, work.envelopeId),
     );
   }

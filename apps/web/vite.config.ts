@@ -14,7 +14,7 @@
 // `/api` is proxied to the API's own port, so the browser makes same-origin
 // requests and there is no CORS configuration standing between a person and
 // the acceptance cases. The API's address is a variable, because the port is
-// the API lane's to own.
+// set where the API is started.
 //
 // Every unknown path falls back to `index.html`. `/task/<key>` is a real
 // address that a person reloads (checklist B5), and a dev server that 404s it
@@ -121,13 +121,12 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
     // The dev server serves any file under the workspace root through `/@fs/`,
-    // which is how a source import reaches `packages/ui`. On 23 September a
-    // probe of the running server got 200 and real content for
-    // `/@fs/<worktree>/.local/db.env`, and the same for `.local/auth.env` and
+    // which is how a source import reaches `packages/ui`. Without a deny list
+    // that includes `/@fs/<worktree>/.local/db.env`, `.local/auth.env` and
     // `.local/synthetic-users.json`: the generated database password, the
     // GoTrue secret and every synthetic login, readable by anything that can
-    // reach the port. Loopback-only binding is what kept that local rather
-    // than remote; it is not a reason to serve them.
+    // reach the port. Loopback-only binding keeps that local rather than
+    // remote; it is not a reason to serve them.
     //
     // Listing `deny` replaces Vite's default list, so the defaults are
     // repeated here rather than lost. Source imports are untouched: `.local/`

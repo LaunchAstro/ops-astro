@@ -22,7 +22,7 @@ import { configuredCredentialKeys } from '../../packages/core-records/src/author
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
@@ -274,7 +274,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     expect((await Promise.all(tries(b, first, b.member)))[4]?.status).toBe(200);
   });
 
-  it('Sol proof, criterion 4: isolation catches another client task ID', () => {
+  it('isolation catches another client task ID', () => {
     const other: Task = { title: 'hidden title', recordId: randomUUID(), client: 'client-b' };
     const leaked = JSON.stringify([[200, { taskId: other.recordId }]]);
     expect(() => expectOtherClientHidden(leaked, other)).toThrow();

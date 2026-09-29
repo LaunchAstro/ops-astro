@@ -11,8 +11,8 @@
 // suite's own throwaway database. It is stopped with SIGTERM, observed to have
 // exited and to have released its port, and started again as a new process.
 //
-// Split out of `restart-harness.ts` for the per-file cap, and like that file
-// it asserts nothing about the product: it starts, stops and reads.
+// Split out of `restart-harness.ts` so each file stays readable, and like
+// that file it asserts nothing about the product: it starts, stops and reads.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFileSync } from 'node:fs';

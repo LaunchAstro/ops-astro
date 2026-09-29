@@ -58,7 +58,7 @@ step cannot be written, so it cannot be decided (ledger G01).
 
 Since migration 0030 its evidence pack is bound as well
 (`migrations/0030_gate_pack_bound_to_version.sql`;
-`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`).
+`tests/runtime/gate-pack-binding.test.ts`).
 `gates_pack_in_same_version` requires the gate's pack to be a pack of its
 version, a foreign key on `(business_id, evidence_pack_id, version_id)`. The
 trigger `gates_version_fixed_once_decided` runs before an update of
@@ -72,7 +72,7 @@ An expired gate is stored as `pending`: no runtime path writes the state
 past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the
-trigger's creation (`tests/runtime/final-r3r-0030-upgrade-race.test.ts`).
+trigger's creation (`tests/runtime/decided-gate-upgrade-race.test.ts`).
 Before that it takes SHARE on `proposal_versions`. A proposal writes
 `evidence_packs` and `gates` in either order (a first version writes its pack
 and then its gate; a successor supersedes the old gate first), but always
@@ -123,8 +123,8 @@ write, a new lineage's row included, so a lineage on another task is
 `LINEAGE_NOT_ON_TASK` whatever its ceiling. A version in another currency, or a
 ceiling past either room, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written.
 Caller lineage ids are lower-cased in `lockProposal`
-(`tests/runtime/final-r2-fr2-propose.test.ts`,
-`tests/runtime/final-r3-propose.test.ts`). With no envelope and no cap there is
+(`tests/runtime/propose-operands-and-authority.test.ts`,
+`tests/runtime/propose-open-envelope-and-lineage.test.ts`). With no envelope and no cap there is
 no ceiling to check, and the decision answers `BUDGET_UNAVAILABLE`.
 
 Grants stay outside that order. `task.pickup` share-locks the grant chain behind
@@ -147,10 +147,10 @@ locks, after `lockedInstant` and before the first write (`decide`,
 `decide.ts`). A revocation that locks the grant first is seen by that check,
 and the decision is refused `SCOPE_NOT_GRANTED` with nothing written. One that
 arrives second waits for the decision to commit
-(`tests/runtime/final-r1-fr1-runtime.test.ts`). The check judges the decide
+(`tests/runtime/decide-cancel-revoke-races.test.ts`). The check judges the decide
 grant again at the locked instant (`checkAuthorityAt`, `lockedAt`), so a grant
 that expires while the decision waits on the chain or the cap does not count
-(`checkAuthorityAt`, `recovery.ts`; `tests/runtime/final-r2-fr2-runtime.test.ts`).
+(`checkAuthorityAt`, `recovery.ts`; `tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`).
 
 The runtime's other person checks under the locks are judged the same way. In
 pickup, heartbeat and handback, a person's write on the task, and for an agent
@@ -159,7 +159,7 @@ instant (`checkAuthorityAt`, `lockedAt`). A grant that expires while the call
 waits on its locks does not count. An agent pickup refused this way answers
 `DELEGATION_WIDENS`, in `mintDelegation`'s own words, before anything is minted
 (`pickup`, `pickup.ts`; `heartbeat.ts`; `handback.ts`;
-`tests/runtime/final-r2-fr2-runtime-cont.test.ts`).
+`tests/runtime/grants-at-locked-instant.test.ts`).
 
 `decide.ts` once opened the task's envelope before acquiring its locks, a
 write before the lock set. Two approvals racing one task both found no
@@ -360,7 +360,7 @@ fixed sentences). `queue`, pickup's discovery and its re-read under the locks
 each read only a live task (`deleted_at is null`, `pickup.ts`), so a trash that
 commits while a pickup waits on the task lock is caught too. Cancellation still
 reaches the lineage, so its hold can be released, and restoring the task brings
-the work back (`tests/runtime/final-r1-fr1-runtime-cont.test.ts`).
+the work back (`tests/runtime/trashed-task-work-and-notes.test.ts`).
 
 `LEASE_HELD` is reachable. Two lineages approved on one task, under an envelope
 an earlier handback left open, give two held reservations, and the second pickup
@@ -393,7 +393,7 @@ on an `abandoned` row. Since migration 0026, Nathan's approved backstop,
 `planned_steps_undispatched`) refuses an `actual` row in this head, and
 `reservations_actual_positive` refuses a zero or negative actual in any head
 (`migrations/0026_reservation_first_head_no_actual.sql`;
-`tests/runtime/final-r1-fr1-migrations.test.ts`).
+`tests/runtime/storage-backstop-migrations.test.ts`).
 
 `BUDGET_UNAVAILABLE` and `BUDGET_EXHAUSTED` are separate because a caller told
 the wrong one raises the wrong ceiling. The first is the task's envelope, the
@@ -439,7 +439,7 @@ If the cap row cannot be read at commit, the commit is refused
 `budget_caps_ceiling` whether or not the total fits. A ceiling that cannot be
 read is not room, the same rule as `BUDGET_UNAVAILABLE` above
 (`budget_caps_ceiling_holds`, `migrations/0029_cap_ceiling_fails_closed.sql`;
-`tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`). A transaction that
+`tests/runtime/cap-ceiling-fails-closed.test.ts`). A transaction that
 keeps its setting, as every command path does, is judged as before.
 
 Migration 0031 checks the rule once against rows already written. A database
@@ -449,7 +449,7 @@ row, and
 does not record 0031, because a file and its ledger row commit together
 (`scripts/db-migrate.mjs`). The owner resolves the total and migrates again
 (`migrations/0031_upgrade_guards.sql`;
-`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`). 0031's loop revokes
+`tests/runtime/upgrade-guards.test.ts`). 0031's loop revokes
 TEMPORARY from every login in the application group that still exists when it
 reaches it; a login dropped while the loop runs is skipped rather than failing
 the upgrade (FR8-0031).
@@ -458,7 +458,7 @@ the upgrade (FR8-0031).
 pending migration while any other client session is connected to the database
 (the API, GoTrue, a `psql`), names each by pid, login, application, address and
 start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
-`tests/tenancy/final-r6-runner-guard.test.ts`). Stop the API and GoTrue, run
+`tests/tenancy/migration-runner-guard.test.ts`). Stop the API and GoTrue, run
 `pnpm db:migrate`, and start them again. With nothing pending the check does not
 run. An upgrade run is all or nothing: `db:migrate` applies every pending
 migration in one transaction, so a refusal (another session connected) or a
@@ -564,7 +564,7 @@ before it is decoded (`verify`, `signing.ts`). `canonicalise` writes an own
 `__proto__` member like any other key, at every depth, so the digest covers
 it. A stored payload that is not a JSON object declares no link version
 (`linkVersionOf`) and answers `DECISION_INTEGRITY`
-(`tests/reads/final-r1-api-sign-read.test.ts`).
+(`tests/reads/decision-signature-read.test.ts`).
 
 The chain and the gate and lineage facts it is checked against are read in one
 statement, so they are one snapshot (`readSnapshot`). The read runs
@@ -614,7 +614,7 @@ Its limits:
   still hash to it, and the body's version, lineage, ceiling and currency must
   match the version row. Anything else is `DECISION_INTEGRITY`
   (`unboundEvidence`, `verified-decisions.ts`;
-  `tests/reads/final-r2-fr2-runtime-integrity.test.ts`). The version and pack
+  `tests/reads/decision-evidence-binding.test.ts`). The version and pack
   rows themselves stay mutable: the read detects a change, it does not prevent
   one. Since migration 0030 storage also stops the application role moving a
   decided gate to another version or pointing a gate at another version's pack.
@@ -643,7 +643,7 @@ a restart replay. The task's live leases, their held reservations and those
 holds' envelopes, caps, runs and lineages are part of pickup's rediscovered
 lock set (`covered`), so a lease that appears between discovery and the locks
 rolls the pickup back for one retry (`pickup`, `pickup.ts`;
-`tests/runtime/final-r1-fr1-runtime.test.ts`).
+`tests/runtime/decide-cancel-revoke-races.test.ts`).
 
 Leases end through `endLease` in `recovery.ts`, as `released` or `expired`, and
 only a live lease is ended. One already ended keeps the end and the
@@ -734,7 +734,7 @@ admits a lost identity claim (`operations_identity_key`), a lost unique-value
 claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
 `AffectedSetChanged`. A deadlock victim was rolled back whole by the server, so
 it is retried once, like a lost unique race, and a second one faults
-(`tests/commands/final-r1-fr1-jsonb-cont.test.ts` holds the retry). The
+(`tests/commands/unstorable-values-direct-callers.test.ts` holds the retry). The
 identity case is the one an agent reaches. A same-operationId retry in flight
 behind its original loses `operations_identity_key` to the original's commit, and its whole
 transaction rolls back. The second attempt reads the committed register row and
@@ -747,7 +747,7 @@ or reparent its target, outside that order. So nested trashes, or a trash
 against a move, reparent or restore, can deadlock. The server rolls the victim
 back whole, and the envelope's one `40P01` retry answers from what the winner
 committed: a nested trash applies without the winner's batch
-(`tests/commands/final-r3-place.test.ts`, R4-RUNTIME-7).
+(`tests/commands/placement-case-and-restore.test.ts`, R4-RUNTIME-7).
 
 Discover, lock and recheck is one module, `core-runtime/src/rediscovery.ts`.
 `lockRediscovered` discovers without locks, takes the complete set in
@@ -932,7 +932,7 @@ A `dispatch_marker` or an `observed` attempt always keeps its full hold, as
 refuses to let either flag be lowered. Work refusal must never erase a real
 liability. The same trigger keeps an attempt's provenance fixed and settles
 `actual_minor` and `outcome` once, and 0010's keeps a version's content fixed
-and sets `superseded_at` once. `tests/db/final-r1-dbtest-triggers.test.ts`
+and sets `superseded_at` once. `tests/db/storage-triggers.test.ts`
 breaks each branch of both on purpose, as the application role and as the
 owner.
 
@@ -984,7 +984,7 @@ each hold once (one completes; the other exits 1 on the changed discovery).
 ## The proofs
 
 `tests/runtime/gate.test.ts`, `tests/runtime/lease.test.ts`,
-`tests/runtime/review-fixes.test.ts`, `tests/runtime/classifier-race.test.ts`
+`tests/runtime/handback-propose-decide-invariants.test.ts`, `tests/runtime/classifier-race.test.ts`
 and `tests/runtime/decision-abort.test.ts`, 42 cases, all against a real
 Postgres migrated from empty.
 
@@ -1150,12 +1150,12 @@ direct SQL.
   set, run before lineage, so it serialises with `task.decide`, which takes the
   same order, rather than deadlocking. A run added between discovery and the
   locks rolls the cancellation back for one retry (`cancelAndClassify`;
-  `tests/runtime/final-r1-fr1-runtime.test.ts`). Cancellation reaches a trashed
+  `tests/runtime/decide-cancel-revoke-races.test.ts`). Cancellation reaches a trashed
   task's lineage, so a trashed task's approved hold can still be released, and
   `task.restart` and `task.propose` on a trashed task stay `NOT_FOUND`
   (`lineageOnTask`, `commands/tasks-controls.ts`; `proposeOnTask`,
-  `commands/tasks-propose.ts`; `tests/commands/final-r1-fr1-trash.test.ts`,
-  `tests/runtime/final-r2-fr2-propose.test.ts`).
+  `commands/tasks-propose.ts`; `tests/commands/trash-purge-cancel-scope.test.ts`,
+  `tests/runtime/propose-operands-and-authority.test.ts`).
   The delegation's recorded cause is `work_retired` (`retireWork`). A run already handed back
   keeps that state. The cancelled agent's next call answers
   `DELEGATION_NOT_LIVE`, and the same agent can pick up a restarted lineage
@@ -1176,7 +1176,7 @@ direct SQL.
   (`holdCoveringGrants` and `checkAuthorityAt` in `cancelAndClassify`). A
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
-  commit (`tests/runtime/final-r2-fr2-runtime.test.ts`).
+  commit (`tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`).
 - **Authority** for `task.cancel` and `task.restart` is `write` on the task
   named in `recordId`, so a record-scoped writer controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
@@ -1192,7 +1192,7 @@ direct SQL.
   task and lineage (`lineageOnTask`), `task.decide` the gate and version
   (`decide`, `decide.ts`), and `task.assign` the person it names
   (`commands/tasks-state.ts`), so an upper-case id of the right row is that row
-  (`tests/runtime/final-r2-fr2-runtime.test.ts`). `task.rank` lower-cases
+  (`tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`). `task.rank` lower-cases
   `afterId` and `beforeId` (`rankTask`, `commands/tasks-place.ts`).
 - **Authority loss** is classified by the revocation that caused it.
   `grant.revoke` and `delegation.revoke` end in `classifyAuthorityLoss`
@@ -1298,7 +1298,7 @@ under a dedicated delegation credential key
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
   environment, the API server does not read `.local/delegation.env` at all
   (`localEnvironment`, `apps/api/server.ts`;
-  `tests/api/final-r2-fr2-api-keyring.test.ts`).
+  `tests/api/delegation-keyring-file.test.ts`).
   The database stores only `credential_hash` (SHA-256) and the nonsecret
   `credential_scheme` and `credential_key_id` (migration 0022).
 - **Backup.** Back up the delegation key file with the database. A database

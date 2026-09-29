@@ -48,8 +48,8 @@ export type ReadState<T> =
       /**
        * The previous answer, kept on screen while the next read is in flight.
        * Null on the first read, and null after a denial or an outage, because
-       * those already dropped it. Named for what it is (thermo review
-       * b483399, M13): it is never this read's answer.
+       * those already dropped it. Named for what it is: it is never this
+       * read's answer.
        */
       readonly previous: T | null;
       readonly refusal: null;

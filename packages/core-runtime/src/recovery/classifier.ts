@@ -42,7 +42,7 @@ export interface ClassifyRequest {
  * The classifier proper. Its caller holds cap, envelope, task, run, lineage,
  * lease and reservation; this takes none of them, and it re-reads under them.
  *
- * R1. `locks` is required, not advisory. The reviewer's case was two
+ * R1. `locks` is required, not advisory. The race it closes is two
  * classifiers both reading `held`, both updating an attempt and both
  * subtracting one hold from one envelope, which the non-negative constraint
  * catches only when the second subtraction drives the total below zero. A
@@ -110,7 +110,7 @@ export async function classifyUnderLocks(
   // set as well. Discovering it here and taking it here would be the late
   // envelope lock the contract forbids.
   locks.require('envelope', row.envelope_id);
-  // F4. The revocation this cause names is a delegation row, and the contract
+  // The revocation this cause names is a delegation row, and the contract
   // locks it after the lease. Reading `revoked_at` as the fact means reading
   // it under that lock, not beside it.
   if (request.cause === 'authority_revoked' && row.delegation_id !== null) {
@@ -242,7 +242,7 @@ function supportsCause(cause: NonclaimableCause, row: CauseRow): string | null {
     case 'version_superseded':
       return row.superseded ? null : "this attempt's version is still the live one";
     case 'authority_revoked':
-      // F4. The durable fact is the revocation of the delegation this
+      // The durable fact is the revocation of the delegation this
       // attempt's lease was issued under. A grant revocation reaches here only
       // through the delegation it cost its authority, which `grant.revoke`
       // revokes in the same transaction, so one fact covers both.
@@ -350,7 +350,7 @@ export async function discoverEligible(
         and ($2::uuid is null or lin.id = $2::uuid)
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
-             -- F4. A revocation that committed without its classification:
+             -- A revocation that committed without its classification:
              -- the delegation row records it, and the lease may still be live.
              or held_delegation.revoked_at is not null
              -- R5. A hold still bound to a lease the server has already fenced
@@ -410,10 +410,10 @@ export async function affectedByVersions(
 }
 
 /**
- * The revocation race (RUNTIME-LIFECYCLE F4 residual). `grant.revoke` takes
+ * The revocation race. `grant.revoke` takes
  * `for update` on the grant row before any runtime lock, then rediscovers the
  * live leases its loss affects. A pickup that read the grant before that
- * revocation and committed after its rediscovery was a live claim nobody
+ * revocation and committed after its rediscovery would be a live claim nobody
  * classified. Holding `for share` on every grant the claim's authority could
  * rest on -- the subjects' own grants in this collection and each grant they
  * descend from -- makes the two serialise: a revocation that locked first is
@@ -422,7 +422,7 @@ export async function affectedByVersions(
  *
  * It is taken before the runtime set, where `grant.revoke` takes its own, so
  * neither side ever waits on a grant row while holding a runtime lock.
- * `task.decide` holds its decide grants the same way (final review R1 #4),
+ * `task.decide` holds its decide grants the same way,
  * which is why this lives here, beside the authority-loss classifier
  * `grant.revoke` runs, rather than in either caller.
  */
@@ -458,8 +458,7 @@ export async function holdCoveringGrants(
 /**
  * `checkAuthority` judged at `at`, the instant read once the locks are held
  * (`clock.ts`), rather than at `now()`, the transaction's start. A grant that
- * lapsed while the caller waited on its locks no longer counts (final review
- * R2-RUNTIME-4).
+ * lapsed while the caller waited on its locks no longer counts.
  *
  * The effective set already applies every ancestor's revocation and expiry as
  * of `now()`, and a child never outlives its parent (`grants.ts`, EFFECTIVE),

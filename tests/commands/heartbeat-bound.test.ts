@@ -10,7 +10,7 @@
 // naming the operand, audited, and moves neither the lease nor its delegation.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../packages/core-runtime/src/heartbeat.ts';
 import { createControls, detailOf, type Controls } from '../api/controls-fixture.ts';
 

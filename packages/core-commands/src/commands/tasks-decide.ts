@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.decide`: a person's decision on a gate. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// `task.decide`: a person's decision on a gate.
 
 import { subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';

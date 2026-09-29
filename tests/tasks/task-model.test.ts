@@ -14,7 +14,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { taskSpineConformance } from '../../packages/core-records/src/tasks/conformance.ts';
 import { domainModelConformance } from '../../packages/core-records/src/records/conformance.ts';

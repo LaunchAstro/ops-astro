@@ -104,7 +104,7 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
     // off does not apply, and RESET comes back to on. The server reports each
     // change of it however it was made (SET, SET LOCAL, set_config, a function
     // body), and a change away from on is recorded as a point the log cannot
-    // read past (SOL-FR11-2).
+    // read past.
     connection: { standard_conforming_strings: 'on' },
     onparameter: (key: string, value: unknown) => {
       if (key === 'standard_conforming_strings' && value !== 'on') {
@@ -114,7 +114,7 @@ function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: 
   });
   // postgres.js puts a URL's query parameters into the startup packet after
   // `connection` above, so one naming the setting, in any case and with any
-  // value or none, would have its way (SOL-FR11B-1, SOL-FR11D-1). The wrapper
+  // value or none, would have its way. The wrapper
   // owns the setting instead of refusing the URL: it rewrites the parameters
   // postgres.js resolved, which every connection of this handle shares and
   // reads when it builds its startup packet (connection.js, StartupMessage),

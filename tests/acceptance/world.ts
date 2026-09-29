@@ -38,7 +38,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertBusiness,
@@ -59,7 +59,7 @@ import {
 } from './cast.ts';
 
 // Re-exported so every proof keeps one import for the fixture. The cast lives
-// next door for the per-file cap's sake, not because it is a separate concern.
+// next door so each file stays readable, not because it is a separate concern.
 export { ACCEPTANCE_ISSUER, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
@@ -231,6 +231,8 @@ export interface Answer {
   readonly body: Record<string, unknown>;
   /** The refusal code, or `ok` when the answer was a success. */
   readonly code: string;
+  /** The body exactly as it came back, so a replay can be compared byte for byte. */
+  readonly text: string;
 }
 
 /**
@@ -261,7 +263,7 @@ export async function call(
     parsed = { raw: text };
   }
   const code = parsed['refused'] === true ? String(parsed['code']) : 'ok';
-  return { status: response.status, body: parsed, code };
+  return { status: response.status, body: parsed, code, text };
 }
 
 export const bearer = (token: string): Record<string, string> => ({

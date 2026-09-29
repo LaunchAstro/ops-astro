@@ -47,7 +47,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { tenancyConformance } from '../../packages/core-records/src/tenancy/conformance.ts';
 import * as shippedEnvelope from '../../packages/core-commands/src/commands/envelope.ts';
 import * as shippedRefusal from '../../packages/core-commands/src/commands/refusal.ts';

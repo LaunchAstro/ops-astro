@@ -19,7 +19,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { gateSigningKey } from '../../packages/core-runtime/src/runtime-config.ts';
 import { parseCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
@@ -344,7 +344,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(read.status).toBe(200);
 
       // And the serving transaction committed, so the attempt is in the chain.
-      const audited = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+      const audited = await fixture.db.app.withBusiness(fixture.business, (tx) =>
         tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
           `select outcome, refusal_code from public.audit_events
             where business_id = $1 and operation_id = $2`,
@@ -408,7 +408,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(fresh.status).toBe(200);
 
       // The projection shows the abandoned hold beside the fresh one.
-      const holds = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+      const holds = await fixture.db.app.withBusiness(fixture.business, (tx) =>
         tx.query<{ readonly id: string; readonly state: string }>(
           `select res.id, res.state from public.reservations res
              join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id

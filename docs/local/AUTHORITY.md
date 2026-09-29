@@ -34,7 +34,7 @@ Nathan's approved backstop, the application role holds no `delete` on
 `person_logins` or `person_merges`, which matches `actor_logins` (granted without
 it in 0008). No code deletes either
 (`migrations/0028_identity_history_no_delete.sql`;
-`tests/runtime/final-r1-fr1-migrations.test.ts`).
+`tests/runtime/storage-backstop-migrations.test.ts`).
 
 `AgentSession` has no `personId` field. It is absent, not null. A field that
 is sometimes a person is a field some later `??` fills in.
@@ -233,7 +233,7 @@ mint reads the approving person's live grants when the agent picks the work
 up, not when the person approved it (`mintDelegation`,
 `authority/delegations.ts`), so a grant revoked or expired in between leaves
 the pickup asking for authority the person no longer holds
-(`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`).
+(`tests/commands/delegation-widens.test.ts`).
 
 **`DELEGATION_EXCLUDES_OPERATION`** is not an L2 code. The agent envelope
 (`commands/agent-envelope.ts`) raises it, not `checkDelegatedAuthority`. It
@@ -323,9 +323,9 @@ fields and client-audience comments only".
   without one is `SCOPE_NOT_GRANTED`. `revokeShare` (same file) takes it back.
   `revokeShare` withdraws a share whether the record is live or in the trash;
   `shareRecord` shares live records only, and a trashed or unknown record is
-  `NOT_FOUND` (`refuseShare`; `tests/authority/final-r2-fr2-trash-cont.test.ts`).
+  `NOT_FOUND` (`refuseShare`; `tests/authority/share-revoke-on-trashed-task.test.ts`).
   A purge revokes the shares on what it removes
-  (`tests/commands/final-r2-fr2-trash.test.ts`).
+  (`tests/commands/trash-restore-purge.test.ts`).
 - **Standing is a live scoped `read` grant.** `STANDING` in
   `identity/login-resolution.ts` counts unrevoked, unexpired grants below
   business scope whose action is `read`, held by the person or their acting
@@ -358,7 +358,7 @@ fields and client-audience comments only".
   `assign` row is not shown, since the R4 gate refuses every write but
   `task.comment` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
   with `person.list` refused and naming no member, by
-  `tests/authority/final-r2-fr2-api-capabilities.test.ts`.
+  `tests/authority/party-capability-reads.test.ts`.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts`: the
   login refused until a share exists, the `sharedTask` read, a sibling task and
   the board `NOT_FOUND`, and every write refused. The matrix's case (g) holds
@@ -607,7 +607,7 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   would take back a grant a live lease rests on stops before it revokes
   anything and names the grant (`leasesResting`, `scripts/local-seed.mjs`).
   Hand the work back or use `grant.revoke` first.
-  `tests/runtime/final-r1-dbtest-seed-revoke.test.ts` holds it.
+  `tests/runtime/seed-revoke-live-lease.test.ts` holds it.
 - After authority loss the run returns to `planned`. The abandoned hold is
   never revived; a claimant with current authority gets a fresh hold and
   attempt.

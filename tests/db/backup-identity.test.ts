@@ -30,7 +30,7 @@ import {
   databaseUrlFromEnvironment,
   type EmptyDatabase,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 
 /** The job as the machine runs it; loaded per test so a missing job fails its own tests only. */
 const job = async (): Promise<{

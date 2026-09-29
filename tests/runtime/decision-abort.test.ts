@@ -33,7 +33,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
@@ -94,7 +94,7 @@ async function proposeOn(
 }
 
 async function approveOn(database: FreshDatabase, fixture: RuntimeFixture, of: Proposed) {
-  return await database.app.withBusiness(fixture.businessId, async (tx) =>
+  return await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,

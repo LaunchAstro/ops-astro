@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.pickup`: an agent or a person claims an approved reservation. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// `task.pickup`: an agent or a person claims an approved reservation.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { pickup } from '../../../core-runtime/src/index.ts';
@@ -70,7 +68,7 @@ export async function pickupReservation(
 
 /**
  * A `reservationId` that is not a string, in one body for both entries
- * (THERMO-RECHECK-2 NNA4; the agent's `pickupOperands`). No attempted value:
+ * (the agent's `pickupOperands`). No attempted value:
  * the two audit rows are the same row (`tests/api/id-operand-shape.test.ts`).
  */
 export function refuseReservationBody(): Refused {

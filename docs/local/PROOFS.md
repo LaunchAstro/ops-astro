@@ -78,7 +78,7 @@ The final live verification at the final head is owed and has not been run.
 The 24 skipped in `pnpm test` include three groups. The suites that spawn the
 real `server.ts` skip without `SURFACE_API_PORT`
 (`tests/api/server-onerror.test.ts`, `tests/cli/mounted-cli.test.ts`).
-`tests/runtime/pickup-replay-restart.test.ts` skips without its own declared
+`tests/pickup/pickup-replay-restart.test.ts` skips without its own declared
 container. The restart cases skip without their disposable container.
 RESTART-LEGS added five restart cases, which is why the skipped count went from
 19 at `9f61aa6` to 24 at `d8746a2` with the same 5,199 passed.
@@ -189,22 +189,24 @@ the running slice's database.
 | `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)                                                                                                                              | green, 5 cases       |
 | `comment-rulings.test.ts`   | the comment rulings: agent comments internal only on both prefixes; a trashed task `NOT_FOUND` to a comment on both                                                                    | tested, 2 cases      |
 
-## The per-file cap, and why two files are harnesses
+## Readable files, and why two files are harnesses
 
-`scripts/pr-size.mjs` blocks at a per-file cap of 400 changed lines, and its
-own error text says no label lifts that cap. `restart-and-expiry.test.ts`
-reached 436 and was split, not trimmed, because SPEC section 6's T1h row
-answers this case: "split the file, not the change". It names the two things
-not to do: delete the comments that say why each assertion is the assertion,
-or add the file to the gate's generated list. The lane did neither.
+`restart-and-expiry.test.ts` reached 436 lines and was split, not trimmed,
+because SPEC section 6's T1h row answers this case: "split the file, not the
+change". At the time `scripts/pr-size.mjs` capped a file at 400 changed
+lines; since FU-400 (29 September 2026) the size is reported, not limited,
+and about 400 lines is a guide for a readable file, never a gate. The row
+names the two things not to do: delete the comments that say why each
+assertion is the assertion, or hide the file from the size report. The lane
+did neither.
 
 `world.ts` and `restart-harness.ts` assert nothing about the product. A failure
 in either is a broken fixture; a failure in a `.test.ts` file is a finding.
 That is also why neither belongs in `tests/db/named-suites.json`.
 
-The lane as a whole is over the 400-line total. It is a test directory, and
-the coherence waiver exists for that total. This file records it instead of
-working around it, and the coordinator decides it at landing time.
+The lane as a whole is over 400 lines. It is a test directory, and test
+lines are not counted in the size report; the size is reported, not limited,
+so there is nothing to waive.
 
 ## Item 1: the inventory
 
@@ -660,7 +662,7 @@ lane does not own.
   is `read`, `write`, `assign` and `comment` on `task` only. The matrix does
   not depend on it, because it reads grants back out of the `grants` table
   rather than trusting the list, but `mia` is not the same person in the two
-  places. `tests/acceptance/final-r1-dbtest-cast.test.ts` now pins that
+  places. `tests/acceptance/seeded-role-grants.test.ts` now pins that
   difference: `task:comment` added and the `person` and `settings` reads left
   out. It also checks that the seeded admin holds every grant a
   `COMMAND_SURFACE` declaration asks for.
@@ -1101,7 +1103,7 @@ trial ran the named suite green, nothing more.
 
 ## The migration runner's connection guard (FR6-RUNNER)
 
-`tests/tenancy/final-r6-runner-guard.test.ts` (invariant, named in
+`tests/tenancy/migration-runner-guard.test.ts` (invariant, named in
 `tests/db/named-suites.json`) holds real sessions open against databases at
 0023 and at the head. A pending migration is refused with an application-login
 session held, and with another client backend held, with the ledger and a
@@ -1181,17 +1183,17 @@ The three storage backstops the final review proposed are off it too: Nathan
 approved them on 24 September 2026, and they are written as 0026 (no `actual`
 reservation in this head, and no zero or negative actual), 0027 (a business key
 unique across businesses) and 0028 (no `delete` on `person_logins` or
-`person_merges`), proved by `tests/runtime/final-r1-fr1-migrations.test.ts`.
+`person_merges`), proved by `tests/runtime/storage-backstop-migrations.test.ts`.
 Nathan approved 0029 (the cap ceiling fails closed when the cap cannot be read
 at commit) as well, proved by
-`tests/runtime/final-r2-dbtest-cap-fails-closed.test.ts`
+`tests/runtime/cap-ceiling-fails-closed.test.ts`
 ([RUNTIME.md, "Why the money is two columns"](RUNTIME.md#why-the-money-is-two-columns)).
 Nathan approved 0030 (a gate's evidence pack is its version's, and a decided
 gate keeps its version; FR2-P2) as well, proved by
-`tests/runtime/final-r2-dbtest-gate-pack-binding.test.ts`. Nathan approved 0031
+`tests/runtime/gate-pack-binding.test.ts`. Nathan approved 0031
 (`TEMPORARY` revoked on upgrade, and an over-ceiling cap refuses the upgrade;
 FR2-P3, SOL-R3-2 and SOL-R3-1) as well, proved by
-`tests/runtime/final-r2-dbtest-upgrade-guards.test.ts`. That suite also proves
+`tests/runtime/upgrade-guards.test.ts`. That suite also proves
 0031 survives a member login dropped mid-loop, on a fixed schedule (the loop
 blocks on a `pg_shdepend` row lock held by the dropping session until the drop
 commits); it was red 3 of 3 at 0feeaca, before the loop skipped a dropped

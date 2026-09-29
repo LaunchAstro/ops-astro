@@ -19,7 +19,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';

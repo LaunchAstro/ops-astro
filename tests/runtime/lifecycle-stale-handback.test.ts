@@ -14,7 +14,7 @@
 // Every step goes through the HTTP command entry the product runs.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createControls, detailOf, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

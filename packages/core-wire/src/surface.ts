@@ -26,8 +26,8 @@
 // revision, which identifiers an untargeted write may carry, which identifier
 // the runtime shapes itself, and whether an agent may reach it. `prepare.ts`,
 // the envelope and the agent path read the row rather than a list of names of
-// their own, so adding a command is one row (architecture review d8746a2,
-// candidate 1). The handlers stay in `handlers.ts`, keyed by the same name,
+// their own, so adding a command is one row. The handlers stay in
+// `handlers.ts`, keyed by the same name,
 // because the web client imports this table and must not import the database.
 
 import type { Action } from '../../core-records/src/index.ts';
@@ -102,16 +102,14 @@ export interface CommandDeclaration {
   /**
    * Whether this operation writes.
    *
-   * The draft typed this `mutating: true` and said in a comment that nothing
-   * in the surface is a read. That has stopped being true: the local slice
-   * needs `task.read`, `task.board` and `person.list`, and declaring them
-   * `mutating` so the field could keep its literal type would have made the
-   * table lie about the rows added for the purpose. A read carries no
+   * Not the literal `true`: the local slice serves `task.read`, `task.board`
+   * and `person.list` from this table, and declaring them `mutating` would
+   * make the table lie about them. A read carries no
    * `operation_id` and no `expected_revision` and writes no record, and it is
    * served by `reads/dispatch.ts` rather than by the command dispatch.
    *
-   * **A read does write an audit event.** This comment said it wrote none, and
-   * I13 is explicit that every successful *and* refused production operation
+   * **A read does write an audit event.** I13 is explicit that every
+   * successful *and* refused production operation
    * is audited — a read that leaves no trace is the one way to look at a
    * business's work without the business ever learning it happened. So
    * `reads/dispatch.ts` writes one event per read, of the same shape the
@@ -134,7 +132,7 @@ export interface CommandDeclaration {
   readonly targetsExistingRecord: boolean;
   /**
    * What the authority check is asked about, separately from revision and
-   * locking (review finding: the one flag used to decide both).
+   * locking, which one flag cannot decide for both.
    *
    * - `record`: the task the body names in `recordId`, so a record- or
    *   party-scoped grant on that task answers it. Work control names its task
@@ -154,7 +152,7 @@ export interface CommandDeclaration {
    * the revision before the handler runs, the ordinary task-write path.
    * `runtime`: the operation's own ordered lock set takes the task after the
    * cap and envelope (TRANSACTION-CONTRACT line 9), so the envelope only reads
-   * it, and the handler compares the revision once those locks are held (F1).
+   * it, and the handler compares the revision once those locks are held.
    */
   readonly targetLock: 'command' | 'runtime';
   /**
@@ -357,7 +355,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),
-  // F1. The runtime takes cap, envelope, then task; an envelope lock on the
+  // The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
   declare('task.propose', 'write', { targetLock: 'runtime' }),
   // In the agent's reach so a delegated agent is refused by the decision
@@ -490,7 +488,7 @@ const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]
 /**
  * The row a name declares. Total: every `CommandName` has a row, and
  * `command-surface.test.ts` holds the table to the installed model, so no
- * caller guards a miss (THERMO-RECHECK H4). A name with no row is this file's
+ * caller guards a miss. A name with no row is this file's
  * own defect, answered here once as the fault it is.
  */
 export function declarationOf(name: CommandName): CommandDeclaration {
@@ -503,11 +501,10 @@ export function declarationOf(name: CommandName): CommandDeclaration {
  * The commands with no existing record to be stale against: the rows that
  * target none.
  *
- * It was once derived, then written by hand, because a test comparing the two
- * was comparing a derivation with its source and could not fail. It is derived
- * again now that `tests/commands/command-catalogue-pin.test.ts` holds the list
- * as a literal: that test is the check the hand-written copy was, and a new
- * exemption is still a diff to it.
+ * It is derived from the rows, and
+ * `tests/commands/command-catalogue-pin.test.ts` holds the list as a literal,
+ * so a new exemption is still a diff to that test. A test comparing a
+ * derivation with its own source could not fail.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal
@@ -545,7 +542,7 @@ export function pathOf(name: CommandName): string {
 /**
  * The two mounts the API serves the surface under and the command line sends
  * to, each followed by the business key and then `pathOf(name)`. One copy for
- * both sides (thermo review b483399, M11). The agent's is its own so that an
+ * both sides. The agent's is its own so that an
  * agent asking and a person asking cannot be mistaken for each other.
  */
 export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;

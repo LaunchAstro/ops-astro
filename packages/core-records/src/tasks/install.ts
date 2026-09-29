@@ -87,8 +87,8 @@ function declaredVisibility(field: SpineField): VisibilityClass {
 const RECONCILED_VISIBILITY: ReadonlySet<string> = new Set(['title', 'state']);
 
 /**
- * Bring title and state on an installed task type to their declared class
- * (SURFACE-R-1), the one field rows the existing-type path touches.
+ * Bring title and state on an installed task type to their declared class,
+ * the one field rows the existing-type path touches.
  *
  * A business installed before 035967b holds both `internal`, because the
  * installer then declared no class and wrote the deny-by-default one, and the

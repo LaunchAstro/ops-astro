@@ -2,9 +2,9 @@
 //
 // The application: which address is open, who is signed in, and nothing else.
 //
-// **There is no demonstration state and no way to ask for one.** The draft's
-// entry read a `?state=` parameter and selected one of seven seeded corpora,
-// which is how a mockup demonstrates itself and is not how a product reports.
+// **There is no demonstration state and no way to ask for one.** A `?state=`
+// parameter selecting a seeded corpus is how a mockup demonstrates itself,
+// not how a product reports.
 // Every screen below reads through the real client, and a read that fails draws
 // the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
 // — the words and tones a state may print — and not as a source of rows.

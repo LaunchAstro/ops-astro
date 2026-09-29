@@ -24,7 +24,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
@@ -50,7 +50,7 @@ if (serverUrl === undefined) {
  * refuses this on any path (`gates_pack_in_same_version`), so the move is made
  * with the gate's triggers off, which is what reaches the runtime's own
  * EVIDENCE_MISMATCH check. The storage refusal itself is proved in
- * `final-r2-dbtest-gate-pack-binding.test.ts`.
+ * `gate-pack-binding.test.ts`.
  */
 async function repointPack(world: GateWorld, gateId: string, packId: string): Promise<void> {
   await world.db.admin.execute('alter table public.gates disable trigger all');

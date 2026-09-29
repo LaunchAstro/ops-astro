@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The authority surface L3 wires into the command registry.
+// The authority surface the command layer wires into the command registry.
 //
-// This file exists to be a contract rather than a convenience. L3 builds the
-// handlers for `task.comment`, `task.pickup`, `task.handback` and the gate
-// against the names below; pinning them in one place means the consumer reads
-// an interface instead of a module layout, and a later rearrangement of
-// `delegations.ts` is not a change to what L3 imports.
+// This file exists to be a contract rather than a convenience. The command
+// layer builds the handlers for `task.comment`, `task.pickup`, `task.handback`
+// and the gate against the names below; pinning them in one place means the
+// consumer reads an interface instead of a module layout, and a later
+// rearrangement of `delegations.ts` is not a change to what the command layer
+// imports.
 //
 // Two things are deliberately not here. There is no "current permissions"
 // object, because a permission held across a call is the thing purpose

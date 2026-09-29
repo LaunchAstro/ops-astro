@@ -15,7 +15,7 @@ import {
   type Database,
   type ObservedPool,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { enrol } from '../commands/fixture.ts';
 import {

@@ -21,7 +21,7 @@ import {
   createEmptyDatabase,
   databaseUrlFromEnvironment,
   type EmptyDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   defaultDenyConformance,
   type StorageRoles,
@@ -33,7 +33,7 @@ import {
   spliceAfter,
   syntheticMigration,
   type PrefixProof,
-} from '../../packages/core-records/src/tenancy/testing/prefix-harness.ts';
+} from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

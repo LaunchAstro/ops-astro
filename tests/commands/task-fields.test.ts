@@ -10,8 +10,8 @@
 //
 // The companion file, `task-lifecycle.test.ts`, carries the cases about what a
 // command *does*: the state, the placement, the trash and the audit event
-// T1e handed on. They are two files because the per-file cap is 400
-// hand-written lines and no waiver lifts it.
+// T1e handed on. They are two files so each stays readable: about 400 lines
+// a file is this repository's guide, never a gate (FU-400).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,7 +20,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';

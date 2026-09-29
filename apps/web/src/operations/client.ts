@@ -39,9 +39,8 @@
 // returned unchanged: this module reports, it does not swallow.
 //
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
-// matching the draft's `commands/requests.ts`. The slice contract named it in
-// prose as `operation_id` and the coordinator ruled on the camelCase spelling
-// at 22:53Z; there is one spelling on the wire and this is it.
+// matching `commands/requests.ts`, though the slice contract's prose writes
+// `operation_id`. There is one spelling on the wire and this is it.
 
 import {
   CSRF_HEADER,

@@ -19,8 +19,8 @@
 // the instant the server last wrote it, so the number beside a setting is the
 // business's and not this browser's memory of its own last write. That memory
 // is still kept and it is still written, but it is drawn in one case only: when
-// the read is refused or the API has none, which is the case this screen used
-// to be in permanently. Two numbers with two provenances on one page, one of
+// the read is refused or the API has none. Two numbers with two provenances
+// on one page, one of
 // them possibly stale, is exactly the ambiguity the read removes — so where the
 // server answers, the browser's copy is not on the page at all.
 //

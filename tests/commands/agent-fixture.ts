@@ -7,10 +7,7 @@
 // hold one live delegation per purpose, and every case picks up its own task.
 
 import { randomUUID } from 'node:crypto';
-import {
-  createFreshDatabase,
-  type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';

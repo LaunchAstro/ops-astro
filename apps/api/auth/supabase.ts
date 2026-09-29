@@ -71,8 +71,7 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  * Build the verifier the API is constructed with.
  *
  * It is a factory taking the key set's address rather than a module reading
- * the environment, for the reason the draft's boundary gives about its own
- * authentication seam: what an operator can set, an operator can set by
+ * the environment, because what an operator can set, an operator can set by
  * accident. The composition root supplies it once.
  */
 const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
