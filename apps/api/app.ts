@@ -119,11 +119,7 @@ export interface ApiOptions {
   readonly live?: LiveOptions;
 }
 
-/**
- * The live task channel (T2f). Absent, the event route is not mounted.
- * `recheckMs` is how often an open stream asks again whether its caller may
- * still watch, besides before every delivery.
- */
+/** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
 export interface LiveOptions {
   readonly topics: LiveTopics;
   readonly recheckMs?: number;
@@ -286,9 +282,8 @@ export function createApi(options: ApiOptions): Hono {
     });
   }
 
-  // The live task channel (T2f): a GET beside the surface, whose rows are POST
-  // only, through the same door. It takes no surface row, so it has its own
-  // isolation case (`tests/api/t2f-live-channel.test.ts`).
+  // T2f: a GET beside the POST-only surface, through the same door; no surface
+  // row, so its own isolation case (`tests/api/t2f-live-channel.test.ts`).
   const { live } = options;
   if (live !== undefined) {
     api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
@@ -307,10 +302,9 @@ export function createApi(options: ApiOptions): Hono {
 }
 
 /**
- * Whether this caller may watch the task, asked of `task.read` itself: the
- * bearer verified again, so an expired session is refused, then the read's own
- * grant and client checks, so a revoked grant is. The answer is the task's
- * identifier, which is the topic.
+ * Whether this caller may watch the task, asked of `task.read` itself after
+ * verifying the bearer again: expiry, a revoked grant and another client's
+ * task all refuse. The answer is the task's identifier, the topic.
  */
 async function mayWatch(
   options: ApiOptions,
@@ -335,10 +329,9 @@ const RECHECK_MS = 30_000;
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
- * One open stream: `resync` once subscribed, then each signal after the
- * caller is asked again, and `closed` the first time the answer is no.
- * Signals that arrive while one is being checked merge into one, the
- * strongest kept.
+ * One open stream: `resync` once subscribed, then each signal once the caller
+ * is asked again, and `closed` the first time the answer is no. Signals that
+ * arrive while one is pending merge into it, the strongest kept.
  */
 async function follow(
   stream: SSEStreamingApi,
@@ -347,41 +340,27 @@ async function follow(
   taskId: string,
   may: () => Promise<string | CommandRefusal>,
 ): Promise<void> {
-  let wanted: LiveSignal | 'check' | null = null;
-  let draining = false;
-  const ended: { resolve?: () => void } = {};
-  const finished = new Promise<void>((resolve) => {
-    ended.resolve = resolve;
-  });
-  const finish = (): void => ended.resolve?.();
-  const drain = async (): Promise<void> => {
-    draining = true;
-    while (wanted !== null && !stream.aborted) {
-      const signal: LiveSignal | 'check' = wanted;
-      wanted = null;
-      // eslint-disable-next-line no-await-in-loop -- one check at a time, in order.
-      if (typeof (await may()) !== 'string') {
-        // eslint-disable-next-line no-await-in-loop
-        await stream.writeSSE({ event: 'closed', data: taskId });
-        finish();
-        return;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
-    }
-    draining = false;
+  const ended = new Promise<void>((resolve) => stream.onAbort(resolve));
+  let pending: LiveSignal | 'check' | null = null;
+  let chain = Promise.resolve();
+  const send = async (): Promise<void> => {
+    const signal = pending;
+    pending = null;
+    if (signal === null || stream.aborted) return;
+    if (typeof (await may()) !== 'string') {
+      await stream.writeSSE({ event: 'closed', data: taskId });
+      stream.abort();
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
   };
   const want = (signal: LiveSignal | 'check'): void => {
-    if (wanted === null || RANK[signal] > RANK[wanted]) wanted = signal;
-    if (!draining) void drain().catch(finish);
+    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
+    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
   };
-
   const unsubscribe = live.topics.subscribe(businessId, taskId, want);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
-  stream.onAbort(finish);
   try {
     await stream.writeSSE({ event: 'resync', data: taskId });
-    await finished;
+    await ended;
   } finally {
     clearInterval(timer);
     unsubscribe();

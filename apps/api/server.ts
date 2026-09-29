@@ -305,9 +305,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // The live task channel's own session connection. LISTEN needs a direct or
-  // session-mode connection, so a hosted deployment names one in
-  // `DATABASE_LISTEN_URL`; locally it is the application's own.
+  // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
 
