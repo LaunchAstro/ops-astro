@@ -6,6 +6,7 @@
 // part draws what it draws.
 
 import type { ReactElement } from 'react';
+import { drawRunState } from '@launchastro/ui';
 import type {
   DecisionLink as ProposalDecision,
   ReservationView as ProposalReservation,
@@ -133,6 +134,16 @@ function ReservationRow(props: { readonly reservation: ProposalReservation }): R
       ) : (
         <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
           attempt {reservation.attempt.state}
+          {/* T3e1: a drop is drawn in its own words, one per cause, and never
+              as a person's cancellation. */}
+          {reservation.attempt.dropCause === undefined || reservation.attempt.dropCause === null
+            ? null
+            : ` · ${
+                drawRunState({
+                  state: 'waiting',
+                  waitReason: `dropped_${reservation.attempt.dropCause}`,
+                }).word
+              }`}
         </span>
       )}
     </div>

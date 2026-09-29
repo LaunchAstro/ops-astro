@@ -169,6 +169,8 @@ export function startWorker(options: {
   readonly parkAt: string;
   readonly leaseSeconds: number;
   readonly appName: string;
+  /** A provider fault injected at construction (T3e1), or `none`. */
+  readonly fault?: string;
 }): WorkerProcess {
   const child = spawn(process.execPath, ['tests/support/parking-worker.ts'], {
     env: {
@@ -180,6 +182,7 @@ export function startWorker(options: {
       PARK_TASK: options.taskId,
       PARK_AT: options.parkAt,
       PARK_LEASE_SECONDS: String(options.leaseSeconds),
+      PARK_FAULT: options.fault ?? 'none',
       PGAPPNAME: options.appName,
     },
     stdio: ['ignore', 'pipe', 'inherit'],

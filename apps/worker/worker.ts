@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
-import type { UsageReporter } from './usage.ts';
+import { ProviderFault, SYNTHETIC_PROVIDER, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
   readonly transport: Transport;
@@ -27,6 +27,8 @@ export interface WorkerOptions {
   /** The one delegation it acts under, from `OPS_ASTRO_DELEGATION` as the command line takes it. */
   readonly delegation: string;
   readonly reporter: UsageReporter;
+  /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
+  readonly provider?: Provider;
 }
 
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
@@ -46,6 +48,8 @@ export type WorkerOutcome =
         readonly commentId: string;
       };
     }
+  /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
+  | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
   | { readonly idle: { readonly taskId: string } }
   | { readonly refused: { readonly code: string; readonly names: readonly string[] } }
@@ -163,6 +167,19 @@ async function effectOnce(
   { lease, attemptId, credential }: Held,
 ): Promise<WorkerOutcome> {
   const call = agentCall(options, credential);
+  // T3e1: the provider first, before the mark. A fault under the worker is
+  // handed back as a drop with its cause, never as a failure of the work.
+  try {
+    await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
+  } catch (fault) {
+    if (!(fault instanceof ProviderFault)) throw fault;
+    const back = await call('task.handback', {
+      ...lease,
+      outcome: 'dropped',
+      report: { dropCause: fault.dropCause },
+    });
+    return 'body' in back ? { dropped: { taskId, cause: fault.dropCause } } : back;
+  }
   const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
   const effect = await call('task.comment', {

@@ -220,6 +220,8 @@ export interface AttemptView {
   readonly state: string;
   readonly dispatchMarker: boolean;
   readonly observed: boolean;
+  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
+  readonly dropCause: string | null;
 }
 
 export interface GateView {
