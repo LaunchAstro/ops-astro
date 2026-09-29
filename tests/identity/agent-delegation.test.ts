@@ -26,7 +26,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertAgentActor,
@@ -134,7 +134,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
 
   describe('the agent login is its own', () => {
     it('resolves the agent credential to the agent actor and to no person', async () => {
-      const session = await db.app.withBusiness(business, async (tx) =>
+      const session = await db.app.withBusiness(business, (tx) =>
         resolveAgentLogin(tx, { provider: 'supabase', subject: 'agent-subject' }),
       );
       expect('refused' in session).toBe(false);
@@ -145,17 +145,17 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
     });
 
     it('refuses the agent subject on the person login path', async () => {
-      const person = await db.app.withBusiness(business, async (tx) =>
+      const person = await db.app.withBusiness(business, (tx) =>
         resolveLogin(tx, { provider: 'supabase', subject: 'agent-subject' }),
       );
       expect('refused' in person && person.code).toBe('AUTH_NO_MEMBERSHIP');
     });
 
     it("refuses a person's subject on the agent login path, in the same words", async () => {
-      const agent = await db.app.withBusiness(business, async (tx) =>
+      const agent = await db.app.withBusiness(business, (tx) =>
         resolveAgentLogin(tx, { provider: 'supabase', subject: 'ada-subject' }),
       );
-      const unknown = await db.app.withBusiness(business, async (tx) =>
+      const unknown = await db.app.withBusiness(business, (tx) =>
         resolveAgentLogin(tx, { provider: 'supabase', subject: randomUUID() }),
       );
       expect('refused' in agent && agent.code).toBe('AUTH_NO_AGENT_IDENTITY');
@@ -166,7 +166,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
   describe('the purpose', () => {
     it('permits a call the purpose names and the person holds', async () => {
       const delegation = await liveDelegation();
-      const decision = await db.app.withBusiness(business, async (tx) =>
+      const decision = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'write',
@@ -178,7 +178,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
 
     it('refuses a collection the purpose does not name, before reading a grant', async () => {
       const delegation = await liveDelegation();
-      const decision = await db.app.withBusiness(business, async (tx) =>
+      const decision = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: 'invoice',
           action: 'write',
@@ -194,7 +194,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
   describe('I07: the decision is excluded', () => {
     it('refuses a decision on its own ground, not as an ungranted scope', async () => {
       const delegation = await liveDelegation();
-      const decision = await db.app.withBusiness(business, async (tx) =>
+      const decision = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'decide',
@@ -208,7 +208,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
     });
 
     it('cannot be written into a delegation at all', async () => {
-      const minted = await db.app.withBusiness(business, async (tx) =>
+      const minted = await db.app.withBusiness(business, (tx) =>
         mintDelegation(tx, {
           agentActorId: agentActor,
           delegatePersonId: adaPerson,
@@ -229,7 +229,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
   describe('I08: the narrowing collapses on the next call', () => {
     it('narrows by name when the underlying person grant is revoked', async () => {
       const delegation = await liveDelegation();
-      const before = await db.app.withBusiness(business, async (tx) =>
+      const before = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'write',
@@ -264,7 +264,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       await db.app.withBusiness(business, async (tx) => {
         await revokeDelegation(tx, delegationId);
       });
-      const resolved = await db.app.withBusiness(business, async (tx) =>
+      const resolved = await db.app.withBusiness(business, (tx) =>
         resolveDelegation(tx, agentActor, credential),
       );
       expect(resolved.ok).toBe(false);
@@ -286,7 +286,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       scopeId: string,
       expiresAt = new Date(Date.now() + 3_600_000),
     ) =>
-      await db.app.withBusiness(business, async (tx) =>
+      await db.app.withBusiness(business, (tx) =>
         mintDelegation(tx, {
           agentActorId: agentActor,
           delegatePersonId: adaPerson,
@@ -322,7 +322,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       expect(second.refusal.fixes[1]?.length).toBeGreaterThan(0);
       // Refused, not faulted: nothing was inserted and the first hold stands.
       expect(await liveRows('dup_same_task')).toBe(1);
-      const stillResolves = await db.app.withBusiness(business, async (tx) =>
+      const stillResolves = await db.app.withBusiness(business, (tx) =>
         resolveDelegation(tx, agentActor, first.value.credential),
       );
       expect(stillResolves.ok).toBe(true);
@@ -351,7 +351,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       // The spent one was settled in the same transaction, so the index holds
       // one row and the old credential answers on its own ground.
       expect(await liveRows('dup_expiring')).toBe(1);
-      const old = await db.app.withBusiness(business, async (tx) =>
+      const old = await db.app.withBusiness(business, (tx) =>
         resolveDelegation(tx, agentActor, first.value.credential),
       );
       expect(old.ok).toBe(false);
@@ -384,7 +384,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       });
       expect(delegation.purposeScope).toStrictEqual({ kind: 'record', id: taskA });
 
-      const onTaskA = await db.app.withBusiness(business, async (tx) =>
+      const onTaskA = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'read',
@@ -394,7 +394,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       expect(onTaskA.ok).toBe(true);
 
       // The same call, the same grant, a different task.
-      const onTaskB = await db.app.withBusiness(business, async (tx) =>
+      const onTaskB = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'read',
@@ -407,7 +407,7 @@ describe.skipIf(serverUrl === undefined)('the agent, its login and its delegatio
       expect(onTaskB.refusal.code).not.toBe('SCOPE_NOT_GRANTED');
 
       // And the business-wide request the person's own grant would satisfy.
-      const wide = await db.app.withBusiness(business, async (tx) =>
+      const wide = await db.app.withBusiness(business, (tx) =>
         checkDelegatedAuthority(tx, delegation, {
           collection: COLLECTION,
           action: 'read',

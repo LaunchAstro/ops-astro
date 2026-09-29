@@ -206,7 +206,7 @@ export async function lockSiblings(
   board: string | null,
 ): Promise<void> {
   // A uuid names one set in either case, as the sibling reads (uuid-typed
-  // slots) see it, so the key takes the lower-case form (R2-RUNTIME-58).
+  // slots) see it, so the key takes the lower-case form.
   const set =
     parentId === null
       ? `board:${board?.toLowerCase() ?? 'none'}`

@@ -81,7 +81,7 @@ export type CommandRequest =
       readonly command: 'task.comment';
       readonly body: string;
       /** `internal` or `client`. Two fields, because who sees it and what it is
-       * are two questions (L2 `tasks/comments.ts`). */
+       * are two questions (`core-records/src/tasks/comments.ts`). */
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
@@ -128,10 +128,10 @@ export type CommandRequest =
       readonly outcome: string;
       readonly report?: FieldValues;
       /**
-       * Declared so it can be refused rather than dropped on the floor. L4's
-       * `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any non-null
-       * value and this head never dispatches, so there is no honest number to
-       * put here; `null` and absent are the same thing.
+       * Declared so it can be refused rather than dropped on the floor. The
+       * runtime's `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any
+       * non-null value and this head never dispatches, so there is no honest
+       * number to put here; `null` and absent are the same thing.
        */
       readonly actualMinor?: number | null;
       /**
@@ -142,11 +142,12 @@ export type CommandRequest =
        * same lineage, written in the settlement's own transaction.
        *
        * `proposedByActorId` is absent for the same reason `actorId` is absent
-       * from the envelope. L4 records the version as coming from whoever that
-       * field names, so a body that could fill it would choose whose authority
-       * the successor is recorded under; it is the agent actor of the session
-       * and the surface refuses a body carrying it rather than overwriting it
-       * silently. The four durable handles come back in the command's detail.
+       * from the envelope. The runtime records the version as coming from
+       * whoever that field names, so a body that could fill it would choose
+       * whose authority the successor is recorded under; it is the agent actor
+       * of the session and the surface refuses a body carrying it rather than
+       * overwriting it silently. The four durable handles come back in the
+       * command's detail.
        */
       readonly successor?: {
         /** The slug shape `delegations.purpose` carries, as `task.propose` takes it. */

@@ -1,75 +1,66 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The pull request size gate.
+// The pull request size report.
 //
-// Warn at 300 changed lines of non-test code, block at 400. The ceiling is
-// not arbitrary: past about that size, review stops finding defects, and a
-// reviewer who cannot really review is worse than no reviewer at all.
+// It measures and prints; no size fails it. The owner dropped the 400-line
+// limit on 29 September 2026 (FU-400): the size is reported, not limited.
+// About 400 lines stays a guide for a readable chunk, never a gate, and
+// nothing is split into separate sessions, lanes or review queues to meet
+// it. The script exits 0 whatever the size, so the required check 'pull
+// request size' keeps its name and no size fails a pull request. Waiver
+// labels and the per-file cap are gone; the report stays, for the rate data
+// a reviewer or a planner can use. A failure to measure is not a size, and
+// still fails with exit 2 (Sol, review 1 on #143): a green check always
+// carries a report.
 //
-// Test files are listed but never counted, towards the total or the per-file
-// cap (CQ-16, the owner's process fix of 29 September 2026): the reviewer's
-// proof tests were pushing reviewed pull requests over the cap. A test file
-// is a path under `tests/` or a file named `*.test.*` or `*.spec.*`; that
-// takes in `tests/db/named-suites.json`, the manifest the suites read.
-// Anything else counts, fixtures and scripts outside `tests/` included, and
-// a file moved between code and tests counts unless both of its paths are
-// tests.
+// Test files are listed but never counted, in the total or per file (CQ-16,
+// the owner's process fix of 29 September 2026). A test file is a path under
+// `tests/` or a file named `*.test.*` or `*.spec.*`; that takes in
+// `tests/db/named-suites.json`, the manifest the suites read. Anything else
+// counts, fixtures and scripts outside `tests/` included, and a file moved
+// between code and tests counts unless both of its paths are tests.
 //
-// Moved lines are not counted either, towards the total or the per-file cap
-// (issue 110): a reviewer reads a block cut from one place and pasted into
-// another, or re-indented when it is wrapped into a named step, as moved,
-// not as new. A line is moved when git's own move detection says so
+// Moved lines are not counted either, in the total or per file (issue 110):
+// a reviewer reads a block cut from one place and pasted into another, or
+// re-indented when it is wrapped into a named step, as moved, not as new. A
+// line is moved when git's own move detection says so
 // (`--color-moved=plain --color-moved-ws=allow-indentation-change`). A moved
 // line that is then edited is new text and counts. Moves are only looked for
 // between non-test files, so code cannot enter a test file uncounted and then
 // be moved out of it uncounted as well.
-//
-// Two waivers, each a label, each needing a reason written on the pull
-// request. Two anti-gaming rules come with them: a per-file cap, and the
-// requirement that a split names the invariant test that only passes once
-// every part has landed. The second one is a human check at merge; this
-// script does the first.
 //
 // The rule is written for people in CONTRIBUTING.md. This file must agree
 // with it.
 
 import { execFileSync } from 'node:child_process';
 
-const WARN_AT = 300;
-const BLOCK_AT = 400;
-const PER_FILE_CAP = 400;
+const annotate = (level, message) => console.log(`::${level}::${message}`);
 
-const MECHANICAL_LABEL = 'size-waiver-mechanical';
-const COHERENCE_LABEL = 'size-waiver-coherence';
-
-// Files a human did not hand-write. They still count towards the total,
-// because a reviewer still has to look at the pull request, but they do not
-// trip the per-file cap.
-const GENERATED = [
-  /(^|\/)pnpm-lock\.yaml$/u,
-  /(^|\/)package-lock\.json$/u,
-  /(^|\/)yarn\.lock$/u,
-  /(^|\/)LICENSE$/u,
-  /\.snap$/u,
-  /(^|\/)dist\//u,
-  /\.generated\.[a-z]+$/u,
-];
+// Anything that stops the measuring, a missing revision, a git failure or a
+// patch that disagrees with the numstat, is an error and exit 2, with no
+// report. The message is put on one line so nothing in it can start a
+// workflow command of its own.
+process.on('uncaughtException', (error) => {
+  const message = String(error?.message ?? error).replace(/\s+/gu, ' ');
+  annotate('error', `pr-size could not measure this pull request: ${message}`);
+  process.exit(2);
+});
 
 const TEST = [/^tests\//u, /(^|\/)[^/]+\.(test|spec)\.[^/]+$/u];
 const isTest = (path) => TEST.some((r) => r.test(path));
 
 const base = process.env.BASE_SHA;
 const head = process.env.HEAD_SHA;
-const labels = (process.env.PR_LABELS ?? '')
-  .split(',')
-  .map((l) => l.trim())
-  .filter(Boolean);
+if (!base || !head) throw new Error('BASE_SHA and HEAD_SHA must both be set.');
 
-if (!base || !head) {
-  console.error('pr-size: BASE_SHA and HEAD_SHA must both be set.');
-  process.exit(2);
-}
-
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1024 ** 3 });
+// git's stderr is captured, not inherited: on a failure it reaches the log
+// only inside the one-line warning above, so nothing git echoes back, such
+// as a revision holding a line break, can start a workflow command.
+const git = (args) =>
+  execFileSync('git', args, {
+    encoding: 'utf8',
+    maxBuffer: 1024 ** 3,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
 // The merge base, not the base branch tip, or every commit that landed on
 // main since the branch started would be counted against the author.
@@ -171,12 +162,8 @@ const movedLines = () => {
   const agree =
     records.length === sections.length &&
     records.every((record, i) => record.changed === sections[i].changed);
-  if (!agree) {
-    console.error(
-      'pr-size: the coloured patch and the numstat disagree; cannot count moved lines.',
-    );
-    process.exit(2);
-  }
+  if (!agree)
+    throw new Error('the coloured patch and the numstat disagree; cannot count moved lines.');
   return new Map(records.map((record, i) => [record.key, { ...record, moved: sections[i].moved }]));
 };
 
@@ -200,20 +187,8 @@ for (const { paths, path, key, changed } of diffRecords([mergeBase, head])) {
   const counted = changed - movedHere;
   total += counted;
   movedTotal += movedHere;
-  files.push({
-    path,
-    changed,
-    moved: movedHere,
-    counted,
-    generated: GENERATED.some((r) => r.test(paths.at(-1))),
-  });
+  files.push({ path, changed, moved: movedHere, counted });
 }
-
-const hasMechanical = labels.includes(MECHANICAL_LABEL);
-const hasCoherence = labels.includes(COHERENCE_LABEL);
-const waived = hasMechanical || hasCoherence;
-
-const annotate = (level, message) => console.log(`::${level}::${message}`);
 
 console.log(`pr-size: ${total} changed lines of non-test code across ${files.length} file(s).`);
 console.log(`pr-size: ${movedTotal} moved lines of non-test code, not counted.`);
@@ -227,63 +202,4 @@ for (const file of files) {
   );
 }
 for (const test of tests) console.log(`pr-size:   ${test.path} (${test.changed}, test)`);
-console.log(`pr-size: warn at ${WARN_AT}, block at ${BLOCK_AT}, per-file cap ${PER_FILE_CAP}.`);
-if (labels.length > 0) console.log(`pr-size: labels: ${labels.join(', ')}`);
-
-const failures = [];
-
-if (total > BLOCK_AT) {
-  if (waived) {
-    const which = hasMechanical ? MECHANICAL_LABEL : COHERENCE_LABEL;
-    annotate(
-      'warning',
-      `This pull request is ${total} changed lines of non-test code, over the ${BLOCK_AT} line ceiling, ` +
-        `and is allowed through by ${which}. The reason must be written on the pull request.`,
-    );
-  } else {
-    failures.push(
-      `${total} changed lines of non-test code is over the ${BLOCK_AT} line ceiling. Split it, or apply ` +
-        `${MECHANICAL_LABEL} or ${COHERENCE_LABEL} with a reason. If you split it, name the ` +
-        `invariant test that only passes once every part has landed. See CONTRIBUTING.md.`,
-    );
-  }
-} else if (total >= WARN_AT) {
-  annotate(
-    'warning',
-    `This pull request is ${total} changed lines of non-test code. The ceiling is ${BLOCK_AT}. Consider splitting it.`,
-  );
-}
-
-// The per-file cap. **No label lifts it.**
-//
-// Round four found the mechanical waiver lifting this as well as the total,
-// so one label let a single unreadable file through. The two limits exist for
-// different reasons: the total is about how much a reviewer can hold in one
-// sitting, and the per-file cap is about a file nobody can read at all. A
-// genuinely generated file is caught by its pattern below without anyone
-// applying a label, which is the honest route. If a file is generated and its
-// pattern is missing, add the pattern.
-for (const file of files) {
-  if (file.counted <= PER_FILE_CAP) continue;
-  if (file.generated) {
-    annotate(
-      'warning',
-      `${file.path} changes ${file.counted} lines, over the per-file cap of ${PER_FILE_CAP}, ` +
-        'allowed because it matches a generated-file pattern.',
-    );
-    continue;
-  }
-  failures.push(
-    `${file.path} changes ${file.counted} hand-written lines, not counting moved ones, over the per-file cap of ` +
-      `${PER_FILE_CAP}. Splitting the pull request without splitting this file does not help ` +
-      'a reviewer, and no label lifts this cap. If the file is generated, add its pattern ' +
-      'to GENERATED in this script rather than labelling around it.',
-  );
-}
-
-if (failures.length > 0) {
-  for (const failure of failures) annotate('error', failure);
-  process.exit(1);
-}
-
-console.log('pr-size: within the rule.');
+console.log('pr-size: the size is reported, not limited; no size fails this check.');

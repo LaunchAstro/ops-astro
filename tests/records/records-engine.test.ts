@@ -21,7 +21,7 @@ import {
   type RecordsRefusal,
 } from '../../packages/core-records/src/records/refusals.ts';
 import type { Slot, SlotValueType } from '../../packages/core-records/src/records/slots.ts';
-import { MAX_PAGE_SIZE, validateView } from '../../packages/core-records/src/records/views.ts';
+import { MAX_PAGE_SIZE, validateView } from '../support/saved-views.ts';
 
 /** The shipped table: 38 slots, the 16 reserved ones indexed and the 22 free ones not. */
 const SLOTS: readonly Slot[] = [

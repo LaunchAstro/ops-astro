@@ -32,8 +32,8 @@ company than the builder's reviews the actual revision in a fresh context.
 Copilot reviews the hosted revision. An agent then invokes the merge on
 Nathan's credential once every required check is green on that revision and
 every finding is closed, and notifies him afterwards. The production deploy,
-the five protected parts, a coherence waiver, a tier reduction, and the
-sandbox contract stay his own decision, as
+the five protected parts, a tier reduction, and the sandbox contract stay his
+own decision, as
 [Contributing](CONTRIBUTING.md) sets out.
 The merge rule: an agent merges on Nathan's credential once every required
 check is green on the head being merged; a change touching one of the eight

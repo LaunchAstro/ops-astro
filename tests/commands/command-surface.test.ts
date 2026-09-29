@@ -21,7 +21,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { installSpine } from './fixture.ts';
 import { readFieldDefinitions } from '../../packages/core-records/src/records/field-store.ts';
 import {

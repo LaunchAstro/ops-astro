@@ -84,25 +84,25 @@ container (`restart-and-expiry.test.ts:135-139`), which `pnpm verify:restart`
 does. Each runs as its own step with its variable set.
 `tests/acceptance/restart-http.test.ts` is unnamed for the same reason: it skips
 unless `L5_RESTART_CONTAINER_NAME` and `L5_RESTART_API_PORT` are both set
-(`restart-http.test.ts:53-55`). `tests/runtime/pickup-replay-restart.test.ts`
+(`restart-http.test.ts:53-55`). `tests/pickup/pickup-replay-restart.test.ts`
 skips unless `PICKUP_REPLAY_API_PORT` names a port and
 `PICKUP_REPLAY_PG_CONTAINER` names its own container
 (`pickup-replay-restart.test.ts:27-35`).
 
-`tests/db/final-r1-dbtest-manifest.test.ts` fails when a suite that reaches
-`packages/core-records/src/tenancy/testing/fresh-database.ts` through its
+`tests/db/named-suite-manifest.test.ts` fails when a suite that reaches
+`tests/support/fresh-database.ts` through its
 imports is neither named in the manifest nor listed there as unnamed with its
 reason (`NOT_NAMED`), or is listed but missing from the manifest's comment. It
 opens no database itself, so it is not named.
-`tests/cli/final-r1-cli.test.ts` is listed there as a pure unit suite: it runs
+`tests/cli/operation-id-login-and-stdout.test.ts` is listed there as a pure unit suite: it runs
 the CLI against HTTP stand-ins, moves the counter by 0, and its terminal case
-skips without a terminal (`final-r1-cli.test.ts:186`).
+skips without a terminal (`operation-id-login-and-stdout.test.ts:186`).
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
 `DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
 child vitest process. The named suites then build their own throwaway
 databases through `databaseUrlFromEnvironment` in
-`packages/core-records/src/tenancy/testing/fresh-database.ts`, which takes
+`tests/support/fresh-database.ts`, which takes
 `DATABASE_ADMIN_URL` first and falls back to `DATABASE_URL`. Creating a
 database and a login role is the owner's work, and the local contract gives
 `DATABASE_URL` to the runtime role `app`, which owns nothing and may create

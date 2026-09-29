@@ -2,9 +2,10 @@
 //
 // The cast, enrolled the way a deployment enrols people.
 //
-// Split out of `world.ts` because that file reached 408 changed lines against
-// this repository's 400-line per-file cap, which no waiver lifts. SPEC section
-// 6's T1h row is the answer to exactly that: split the file, not the change.
+// Split out of `world.ts` because that file reached 408 changed lines, past
+// the 400-line per-file cap of the time (since FU-400, about 400 lines is a
+// guide for a readable file, never a gate). SPEC section 6's T1h row is the
+// answer to exactly that: split the file, not the change.
 //
 // Everything here is written through the application role inside the tenancy
 // wrapper, so a fixture that only works as a superuser fails here rather than
@@ -12,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sign } from 'hono/jwt';
-import type { FreshDatabase } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import type { FreshDatabase } from '../support/fresh-database.ts';
 import {
   insertActor,
   insertLogin,
@@ -62,7 +63,7 @@ export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `final-r1-dbtest-cast.test.ts`
+ * four collections where the seed names ten pairs. `seeded-role-grants.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a

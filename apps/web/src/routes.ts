@@ -19,10 +19,10 @@
 // report sixteen duplicates that are not duplicates or silently collapse the
 // agency and portal pairs into one entry.
 //
-// The working slice registers the four addresses it serves. The draft also
-// registers `/agent/`; that surface draws records no part of this build stores,
-// so it is not registered here — a route that resolves to nothing is a worse
-// answer than an address that does not resolve.
+// The working slice registers the four addresses it serves. `/agent/` is not
+// one: that surface draws records no part of this build stores, and a route
+// that resolves to nothing is a worse answer than an address that does not
+// resolve.
 
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';

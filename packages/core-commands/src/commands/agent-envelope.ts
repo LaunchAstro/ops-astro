@@ -38,8 +38,9 @@
 // `DELEGATION_OUT_OF_PURPOSE` — not `NOT_FOUND`, because the task is really
 // there and the agent really may not reach it — and so is a call on the right
 // task with an action the purpose does not carry. `task.decide` is refused
-// `DELEGATION_EXCLUDES_DECISION` by L4's `decideAsAgent`, which asks L2 and
-// returns L2's answer rather than inventing a runtime code for it.
+// `DELEGATION_EXCLUDES_DECISION` by the runtime's `decideAsAgent`, which asks
+// the delegation check and returns its answer rather than inventing a runtime
+// code for it.
 //
 // **What this path does not duplicate.** The repeat-request identity, the
 // register lookup, the replay and the settling of a refusal are the person
@@ -105,7 +106,7 @@ export async function executeAgentCommand(
   database: Database,
   businessId: BusinessId,
   // Verified, never `'expired'`: the one door answers an expired bearer
-  // before any executor is reached (`apps/api/app.ts`, THERMO-RECHECK NC2).
+  // before any executor is reached (`apps/api/app.ts`).
   presented: VerifiedSubject,
   credential: string | undefined,
   request: AgentRequest,
@@ -115,8 +116,8 @@ export async function executeAgentCommand(
   // identity claim: a same-operationId retry in flight behind its original
   // read no register row, then lost `operations_identity_key` to the
   // original's commit; its whole transaction is gone, so the second attempt
-  // reads the committed row and replays it rather than answering a fault
-  // (DB-PROOF-GAPS-B F1). The predicate is not identity-only: it also admits
+  // reads the committed row and replays it rather than answering a fault.
+  // The predicate is not identity-only: it also admits
   // `AffectedSetChanged` and a lost unique-value claim, under the same single
   // retry. A second retryable failure of any kind propagates. There is no
   // `onFinalFailure` here: an agent attempt that raised is answered by the
@@ -142,9 +143,9 @@ export async function executeAgentCommand(
  * `session.capabilities` answers flattened beside `ok` on the person prefix,
  * which is the shape the mounted app reads (`reads/capabilities.ts`,
  * `SessionCapabilities`). Here the envelope nests every payload under
- * `detail`, so the same read arrived in two shapes and a client had to know
- * which prefix it was on (L5-PROOFS handback, "Defects" 4). It is flattened
- * here, at the wire, rather than in `serve`: the register row keeps the handle
+ * `detail`. Left nested, the same read would arrive in two shapes and a
+ * client would have to know which prefix it was on. This flattens it here,
+ * at the wire, rather than in `serve`: the register row keeps the handle
  * every other agent answer is stored as, so a replay reads the same record and
  * is shaped the same way on the way out. A refusal never reaches here: the
  * boundary answers it first (`apps/api/app.ts`).
@@ -196,7 +197,7 @@ async function runAgentCommand(
   });
 }
 
-/** The rest of a call, generic over the row's operands (`AgentOperation`, NNA3). */
+/** The rest of a call, generic over the row's operands (`AgentOperation`). */
 async function runRow<O extends object>(
   tx: TenantQuery,
   call: AgentCall,

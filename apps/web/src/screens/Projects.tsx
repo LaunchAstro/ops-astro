@@ -50,7 +50,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   // may well have committed on the server, so its identity and its exact
   // payload are kept here and presented again on the next submission. Minting
   // a fresh id instead would make the server's replay register unreachable and
-  // the retry would create a second task (review finding 1).
+  // the retry would create a second task.
   const [pending, setPending] = useState<PendingCreate | null>(null);
 
   const { state, reload } = useRead<TaskBoardResult>({

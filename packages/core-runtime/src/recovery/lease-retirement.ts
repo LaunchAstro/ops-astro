@@ -40,8 +40,8 @@ type LiveWorkTarget =
  * Read-only: the live leases on a lineage's runs, or on the runs of a set of
  * versions. Cancellation and supersession both end the work these leases
  * authorise, so their leases and delegations belong to the lock set those
- * operations take, discovered here before any lock (F2, F3). Authority loss
- * reads the same leases by the delegations and person leases it may cost (F4).
+ * operations take, discovered here before any lock. Authority loss
+ * reads the same leases by the delegations and person leases it may cost.
  *
  * The run join filters nothing: every lease names a run in its own business.
  */
@@ -103,7 +103,7 @@ export async function endLease(
  * each live lease, and revoke the delegation it was issued under. T5 names
  * both halves for cancellation ("releases the live lease and revokes the
  * delegation"); supersession retires the old version's work the same way, so
- * a holder of superseded work has nothing left to settle with (F3). Revoked
+ * a holder of superseded work has nothing left to settle with. Revoked
  * rather than settled: nothing was handed back, and the next call the agent
  * makes on that credential re-evaluates it and is refused.
  *
@@ -183,8 +183,8 @@ export async function replayRecordedTransitions(
     locks,
     (row) => ({ reservationId: row.reservation_id, cause: row.cause, causeId: row.cause_id }),
     async (row) => {
-      // F4. A revocation that committed without its classification also left
-      // its lease live, because the old handler wrote only the timestamp. The
+      // A revocation that committed without its classification leaves its
+      // lease live, because only the revocation timestamp was written. The
       // lease and delegation are already in this set, so finishing the
       // transition here fences them rather than leaving an inert live claim on
       // the task until it expires.
@@ -202,16 +202,16 @@ export async function replayRecordedTransitions(
 /**
  * The cancellation path's entry point: record the person's cancellation on the
  * lineage, fence and release the live lease, revoke the delegation it was
- * issued under, end its runs as cancelled (F2), then classify **its own**
+ * issued under, end its runs as cancelled, then classify **its own**
  * reservations. Exported because T5 names cancellation as one of the owning
- * transitions, and L3 wires it.
+ * transitions, and the command layer wires it.
  *
  * R1. Everything is discovered and locked before the first write, and the
- * classification is scoped to this lineage. The old shape updated the lineage,
- * then the leases, then reached the envelope through the classifier — a
+ * classification is scoped to this lineage. Updating the lineage, then the
+ * leases, then reaching the envelope through the classifier would leave a
  * cancellation holding the lineage waiting on an envelope a handback already
- * held — and then classified every eligible lineage in the business rather
- * than the one it was asked about.
+ * held, and classifying every eligible lineage in the business would reach
+ * work it was not asked about.
  */
 export async function cancelAndClassify(
   tx: TenantQuery,
@@ -219,9 +219,9 @@ export async function cancelAndClassify(
     readonly lineageId: string;
     readonly reason: string;
     /**
-     * The person's write on the task (T5), held and re-read under the locks
-     * (final review R2-RUNTIME-5). A recovery caller acting for no person
-     * passes none, and keeps the path it had.
+     * The person's write on the task (T5), held and re-read under the locks.
+     * A recovery caller acting for no person passes none, and keeps the path
+     * it had.
      */
     readonly authority?: {
       readonly subjects: readonly Subject[];
@@ -243,7 +243,7 @@ export async function cancelAndClassify(
 
   // Discovery before the locks: every reservation this lineage owns, whatever
   // its version's own state, because cancellation makes all of them
-  // nonclaimable; and (F2) every live lease on its runs with the delegation it
+  // nonclaimable; and every live lease on its runs with the delegation it
   // was issued under, because cancellation ends that authority too.
   const discover = async (): Promise<readonly Affected[]> => {
     const rows = await tx.query<Affected>(
@@ -261,12 +261,13 @@ export async function cancelAndClassify(
   // than extending its locks backwards; a set that only shrank (a handback
   // committed in between, N1) is covered by the locks held and goes on.
   //
-  // Final review R1 #3. The runs this cancellation ends are in the set too,
+  // The runs this cancellation ends are in the set too,
   // every planned or claimed one on the lineage, not only those behind a hold
-  // or a live lease. Updating a run it had not locked took that row after the
-  // lineage, which is backwards: `task.decide` takes run before lineage, and
-  // the two closed a cycle that Postgres broke with 40P01. A run a concurrent
-  // proposal adds in between needs a lock not held, and rolls back here.
+  // or a live lease. Updating a run it had not locked would take that row after
+  // the lineage, which is backwards: `task.decide` takes run before lineage,
+  // and the two would close a cycle that Postgres breaks with 40P01. A run a
+  // concurrent proposal adds in between needs a lock not held, and rolls back
+  // here.
   const openRuns = async (): Promise<readonly string[]> =>
     (
       await tx.query<{ readonly id: string }>(
@@ -277,7 +278,7 @@ export async function cancelAndClassify(
       )
     ).map((row) => row.id);
 
-  // Final review R2-RUNTIME-5. The envelope checked write before any lock.
+  // The envelope checks write before any lock.
   // Held for share before the runtime set, as decide and pickup hold theirs:
   // a revocation that locked first is seen by the re-check below, and one
   // that comes second waits for this cancellation to commit.

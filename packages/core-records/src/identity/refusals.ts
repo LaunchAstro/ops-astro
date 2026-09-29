@@ -32,9 +32,10 @@ export type IdentityRefusalCode = 'AUTH_UNKNOWN_LOGIN' | 'AUTH_NO_MEMBERSHIP' | 
  * widened into `IdentityRefusalCode`.
  *
  * `core-records/src/register.ts` derives its `RefusalCode` from that union, and the
- * register is L3's. Widening it here would reach into the command surface from
- * the identity module, which is the coupling the register exists to prevent.
- * These are exported for L3 to register with the rest.
+ * register decides what a caller sees. Widening it here would reach into the
+ * command surface from the identity module, which is the coupling the register
+ * exists to prevent. These are exported for the register to declare with the
+ * rest.
  *
  * `AUTH_NO_AGENT_IDENTITY` is the agent login path's one refusal: no login
  * here, a login that belongs to a person, a deactivated mapping and a

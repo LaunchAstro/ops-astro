@@ -101,7 +101,7 @@ export async function heartbeat(
     ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
   ]);
 
-  // Sol 6 RUNTIME-3: `now()` is when this transaction began, and a heartbeat
+  // `now()` is when this transaction began, and a heartbeat
   // that waited on the lease lock past the expiry would still see the lease
   // live. The clock read here, after the locks, is the one instant the expiry,
   // the delegation's liveness and the renewal below all use.

@@ -3,9 +3,9 @@
 // The positive control: the minimal valid body each declaration needs.
 //
 // It is its own file for T1h's reason, which is the same reason the harness is
-// its own file: the per-file review cap is 400 changed lines, no waiver lifts
-// it, and the repository's answer is to split the file rather than the change
-// or the comments. The seam is a real one — this is the only part of the
+// its own file: about 400 lines is the guide for a readable file, and the
+// repository's answer is to split the file rather than the change or the
+// comments. The seam is a real one — this is the only part of the
 // matrix that knows what a *task* is, as opposed to what a caller is — so
 // `role-case-harness.ts` stays about identity and the ledger and this stays
 // about the domain.

@@ -35,11 +35,8 @@ import {
   createEmptyDatabase,
   databaseUrlFromEnvironment,
   type EmptyDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import {
-  describePrefix,
-  proveEachPrefix,
-} from '../../packages/core-records/src/tenancy/testing/prefix-harness.ts';
+} from '../support/fresh-database.ts';
+import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';

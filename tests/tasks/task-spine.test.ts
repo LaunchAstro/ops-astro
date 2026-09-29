@@ -15,7 +15,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
 import { planTaskPlacement } from '../../packages/core-records/src/tasks/placement.ts';
@@ -47,7 +47,7 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
 
   describe('every slot-assigned spine field has a write mode', () => {
     it('installs each spine field into the slot the reservation names', async () => {
-      const rows = await db.app.withBusiness(businessId, async (tx) =>
+      const rows = await db.app.withBusiness(businessId, (tx) =>
         tx.query<{ key: string; slot: string | null; write_mode: string }>(
           `select f.key, f.slot, f.write_mode
              from field_defs f join record_types t

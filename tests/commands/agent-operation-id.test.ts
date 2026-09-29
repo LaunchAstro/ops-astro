@@ -11,7 +11,7 @@
 // register row. Only the string identity registers.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { agentWorld, codeOf, type AgentWorld } from './agent-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

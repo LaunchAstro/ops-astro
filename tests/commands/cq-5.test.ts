@@ -17,7 +17,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertBusiness,
@@ -86,7 +86,7 @@ describe('CQ-5 the source', () => {
     ).toStrictEqual(['alias.ts:Second']);
   });
 
-  it('Sol proof, criterion 5: the web declares no second refusal shape', () => {
+  it('the web declares no second refusal shape', () => {
     const declarations = sourcesOf(['apps/web', 'apps/cli'])
       .flatMap((file) => refusalShapes(file, readFileSync(file, 'utf8')))
       .filter((shape) => !shape.endsWith(':literal'))
@@ -94,7 +94,7 @@ describe('CQ-5 the source', () => {
     expect(declarations).toStrictEqual([]);
   });
 
-  it('Sol proof, criterion 5: composed refusal declaration fails uniqueness check', () => {
+  it('composed refusal declaration fails uniqueness check', () => {
     const planted =
       'export type SplitRefusal = { readonly refused: true } & { readonly code: string };';
     expect(refusalShapes('planted.ts', planted)).toStrictEqual(['planted.ts:SplitRefusal']);
@@ -116,7 +116,7 @@ describe('CQ-5 the source', () => {
     expect(converts(planted)).toBe(true);
   });
 
-  it('Sol proof, criterion 6: share authority denial is not rebuilt', () => {
+  it('share authority denial is not rebuilt', () => {
     const source = readFileSync('packages/core-records/src/authority/shares.ts', 'utf8');
     const rebuilt =
       /refusal:\s*refuseCommand\(\s*'SCOPE_NOT_GRANTED',\s*\[\],\s*authorised\.refusal\.fixes\)/u;
@@ -255,7 +255,7 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
     }
   });
 
-  it('Sol proof, criterion 4: client isolation exercises the external shared view', async () => {
+  it('client isolation exercises the external shared view', async () => {
     const [task] = bravo.tasks as [Task];
     const answer = await read(bravo.id, task.client, { read: 'task.read', recordId: task.id });
     expect(answer).toHaveProperty('sharedTask');
@@ -268,7 +268,7 @@ describe.skipIf(serverUrl === undefined)('CQ-5 refusals through the command entr
       { kind: 'person', id: holder.personId },
       { kind: 'actor', id: holder.actorId },
     ] as const;
-    const decision = await db.app.withBusiness(charlie.id, async (tx) =>
+    const decision = await db.app.withBusiness(charlie.id, (tx) =>
       checkAuthority(tx, subjects, {
         collection: 'task',
         action: 'write',

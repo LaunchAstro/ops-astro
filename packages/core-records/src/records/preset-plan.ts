@@ -33,10 +33,9 @@ import type { TenantQuery } from '../tenancy/database.ts';
 /**
  * This module's own codes, not widened into the records register.
  *
- * `commands/register.ts` derives its `RefusalCode` from that register and the
- * register is L3's; a planner reaching into the command surface to add a code
- * is the coupling the register exists to prevent. L3 registers these with the
- * rest when it wires the endpoint.
+ * `core-records/src/register.ts` derives its `RefusalCode` from its own rows;
+ * a planner reaching into the register to add a code is the coupling the
+ * register exists to prevent. The register declares these with the rest.
  */
 export type PresetPlanRefusalCode =
   /** A field arrived with no `write_mode`, or with one the model does not have. */

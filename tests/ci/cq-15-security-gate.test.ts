@@ -17,7 +17,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -114,7 +114,7 @@ describe('CQ-15 security gate', () => {
     ]);
   });
 
-  it('Sol proof, criterion 6: a changed caller or missing file binding invalidates an exception', () => {
+  it('a changed caller or missing file binding invalidates an exception', () => {
     const expression = 'new RegExp(name)';
     const baseline = [
       'function parse(name: string) {',

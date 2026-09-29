@@ -193,13 +193,13 @@ joined them later. A body with no `board` used to be answered the unboarded
 list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 `task.update` and `task.reparent` joined after final review round 1
-(`tests/commands/final-r1-place.test.ts`). A `parentId` string that is not an
+(`tests/commands/placement-operands.test.ts`). A `parentId` string that is not an
 identifier is the envelope's `NOT_FOUND` (`refuseMalformedIdentifier`,
 `commands/prepare.ts`). The five owning operations (`task.assign` and the rest)
 joined next: `writeOwnedFields` (`commands/tasks-state.ts`) calls
 `refuseUpdateOperands` first, so an absent, null, string or array `fields` is
 refused naming `fields` and nothing is written. An empty map stays
-`FIELD_UNKNOWN` (`tests/commands/final-r1-place-owned.test.ts`).
+`FIELD_UNKNOWN` (`tests/commands/owning-operation-fields.test.ts`).
 On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. A
 `recordId` that is present and not a string is refused before any authority,
 in the person prefix's bytes. That is `FIELD_VALUE_INVALID` 422 naming
@@ -241,7 +241,7 @@ bytes as a key nobody holds, and the answer is not cached
 approved backstop, `businesses_key_global_idx` makes a business key unique across
 businesses, so storage refuses a second business under a held key with `23505`
 (`migrations/0027_business_key_global.sql`;
-`tests/runtime/final-r1-fr1-migrations.test.ts`). The resolver's refusal stays
+`tests/runtime/storage-backstop-migrations.test.ts`). The resolver's refusal stays
 as the check at request time.
 
 `AUTH_NO_MEMBERSHIP` 403 also refuses a mapped person of the business who holds
@@ -490,7 +490,7 @@ comment record type.
 does: `RESERVATION_NOT_CLAIMABLE` 409 with the same two fixed sentences, and no
 lease is written (`queue` and `pickup`, `core-runtime/src/pickup.ts`).
 Restoring the task brings the work back.
-`tests/runtime/final-r1-fr1-runtime-cont.test.ts` holds it.
+`tests/runtime/trashed-task-work-and-notes.test.ts` holds it.
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
@@ -665,7 +665,7 @@ person. `versionBinding` has no operand. The lease is bound to `versionId`, and 
 report, when that version was superseded or its lineage is no longer live
 (`handback`, `core-runtime/src/handback.ts`). `task.handback` takes no
 `expectedVersions` and no record revision; `expectedVersions.taskRevision` is
-the task as read at pickup. `tests/commands/agent-pickup-payload.test.ts`
+the task as read at pickup. `tests/pickup/agent-pickup-payload.test.ts`
 asserts the answer field by field against the rows it names, for both
 principals. `authorisedByPersonId` is read from the approving decision, never
 from the body.
@@ -725,7 +725,7 @@ digest covers the value as received. On both prefixes, a refusal name that
 echoes a caller key holding such a code unit is registered as its JSON escape
 text (`storable`, called by `registerAttempt` in `commands/register-store.ts`).
 Both prefixes answer it in that form the first time and on replay, so the bytes
-match (`settle` in `commands/envelope.ts` and in `commands/agent-settle.ts`).
+match (`settle` in `commands/envelope.ts`, which both prefixes call).
 
 ## The support controls
 
@@ -1112,8 +1112,8 @@ is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
 was. A request the register already holds is answered by `answerReplay` in the
 same file, which releases a stored success through `releaseReplay`. An agent
-call that does not apply ends in `settle` (register row and audit row) or
-`writeCallEvent` (audit row only), both in `commands/agent-settle.ts`.
+call that does not apply ends in `settle` in `commands/envelope.ts`, which
+writes the register row and the audit row, as a person's call does.
 
 **A replayed pickup derives its credential again.** The register keeps the
 pickup's answer with a null credential (`storable`). A replay of a lost pickup
@@ -1125,8 +1125,8 @@ Otherwise it answers the current refusal and no receipt content. A delegation
 minted before migration 0022 (`legacy-random`) replays its handles with
 `credential: null` and `credentialNote: "CREDENTIAL_NOT_REPLAYED"`
 (`CREDENTIAL_NOT_REPLAYED`, `replayPickup`).
-`tests/commands/pickup-replay-lost-response.test.ts` holds the derived replay,
-and `tests/commands/pickup-replay-keys.test.ts` the legacy row and the key
+`tests/pickup/pickup-replay-lost-response.test.ts` holds the derived replay,
+and `tests/pickup/pickup-replay-keys.test.ts` the legacy row and the key
 cases. The key, and what happens when it is missing, are in
 [RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key).
 

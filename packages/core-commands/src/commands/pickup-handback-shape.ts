@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The `task.handback` operand shape a pickup hands its claimant. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// The `task.handback` operand shape a pickup hands its claimant.
 
 import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';
@@ -61,7 +59,7 @@ const HANDBACK_OPERANDS: { readonly [K in keyof HandbackFields]-?: OperandShape<
  * It describes and grants nothing. It names where the claimant's credential
  * travels, never the credential; the operands are the ones `task.handback`
  * reads; and the version binding is the check that exists
- * (`core-runtime/src/handback.ts`, F3): the lease is bound to one approved
+ * (`core-runtime/src/handback.ts`): the lease is bound to one approved
  * version, and a version superseded or a lineage no longer live since pickup
  * is refused `LEASE_NOT_OWNED` with the report retained. `expectedVersions`
  * in this answer is what the work was read at, not an operand of the handback.

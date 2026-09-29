@@ -6,10 +6,10 @@ name: ci
 
 on:
   pull_request:
-    # A label change must rerun the checks. Without `labeled` and `unlabeled`,
-    # adding a size waiver leaves the old red result standing and removing one
-    # leaves the old green result standing, so the waiver means whatever it
-    # meant at the last push. Round four found it.
+    # `labeled` and `unlabeled` were added in round four for the size
+    # waivers. The waivers are retired (FU-400, 29 September 2026): the size
+    # is reported, not limited, and no check reads a label. The triggers stay
+    # as they were, so no required check changes when it runs.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -397,7 +397,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/command-parity.mjs --check
-      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/sol-api-1-proof.test.ts tests/commands/sol-api-1-review2.test.ts
+      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/api-1-parity-bypasses.test.ts tests/commands/api-1-parity-redirects-and-agent-discovery.test.ts
 
   visual-drift:
     # MP-1-7: drift proved on the app's own page in the pinned headless shell on
