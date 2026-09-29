@@ -14,13 +14,9 @@
 
 import { plainAlert } from '../../apps/api/alerts/catalogue.ts';
 import { alertEvent, dsnTransport, sinkFrom } from '../../apps/api/alerts/sink.ts';
+import { UNREACHABLE } from './heartbeat.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
-// What a watcher off the machine cannot reach: loopback, private, shared, link-local
-// (the metadata address), IPv6 literals and local names. URL has already
-// normalised case and numeric forms (2130706433 and 0x7f.0.0.1 read as 127.0.0.1).
-const UNREACHABLE =
-  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|\[)|(^|\.)(localhost|local|internal|lan)\.?$/u;
 
 class Refusal extends Error {}
 
@@ -50,6 +46,7 @@ function monitorsFor(where, base) {
     check('web', 'http', base, 'web-down'),
     check('api', 'http', `${base}api/health`, 'api-down'),
     check('backup', 'heartbeat', undefined, 'backup-silent'),
+    check('restore', 'heartbeat', undefined, 'restore-stale'),
   ];
 }
 

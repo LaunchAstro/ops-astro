@@ -18,7 +18,13 @@
 // person and client there.
 //
 // It stays out of apps/cli, which never opens a database (apps/cli/main.ts:7).
-// Who may run it (`operations:manage`) and where its receipt is kept are S0-3d's.
+// It is a person's act under `operations:manage` (S0-3d): the operator gate
+// (`operator.ts`, with OPS_ASTRO_TOKEN, OPS_ASTRO_BUSINESS and the rest the
+// runbook sets) answers before the key, the store or Docker is touched, and a
+// refusal writes nothing. A drill that ran, passed or failed, leaves one
+// receipt in the store (`backups.drills`, where the operations view reads the
+// date of the last tested restore) and one line in the operator's record
+// folder, with the fields `RECEIPT_FIELDS` names and no other.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -30,6 +36,7 @@ import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
+import { recordDeployment, requireOperator } from './operator.ts';
 
 const RESTORE_ROLE = 'ops_astro_backup_restore';
 const APP_ROLE = 'ops_astro_app';
@@ -204,6 +211,70 @@ export async function restoreDrill({
   return record;
 }
 
+/** The fields every drill receipt carries, and no other: no record data, key, credential, fingerprint or path. */
+export const RECEIPT_FIELDS = [
+  'action',
+  'outcome',
+  'stage',
+  'at',
+  'target',
+  'productionMajor',
+  'sourceMajor',
+  'targetMajor',
+  'archiveTakenAt',
+  'tables',
+  'readAs',
+  'timings',
+  'lastTestedRestore',
+  'business',
+  'operator',
+];
+
+/**
+ * The drill's receipt in the store, as the restore identity: the store stamps
+ * the time, and a passed drill's time is the date of the last tested restore.
+ */
+export async function recordDrill(storeUrl, operator, record) {
+  const sql = postgres(storeUrl, { max: 1, onnotice: () => {}, connect_timeout: 10 });
+  try {
+    return await sql.begin(async (tx) => {
+      await tx.unsafe(`set local role ${RESTORE_ROLE}`);
+      const [row] = await tx`select backups.record_drill(
+        ${record.outcome}, ${record.stage ?? null}, ${operator}, ${record.archiveTakenAt ?? null},
+        ${record.productionMajor}, ${record.sourceMajor}, ${record.targetMajor},
+        ${record.tables ?? null}, ${sql.json(record.timings)}) as at`;
+      return row.at === null ? null : row.at.toISOString();
+    });
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+/**
+ * The drill as the operator the gate admitted runs it: the drill, then its
+ * receipt in the store, then the operator's record. Returns the receipt.
+ */
+export async function drillAsOperator({ gate, storeUrl, privateKey, scope, drill = restoreDrill }) {
+  const {
+    event: _event,
+    at: _at,
+    ...result
+  } = await drill({
+    fetchArchive: () => fetchLatest(storeUrl),
+    privateKey,
+    scope,
+  });
+  const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null };
+  const act = { action: 'restore drill recorded', ...empty, ...result };
+  try {
+    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act);
+  } catch {
+    // The store's own message can name its host; the operator is told the step.
+    throw new Error('the drill ran, but its receipt could not be written to the store');
+  }
+  return await recordDeployment(gate, act);
+}
+
 function need(name) {
   const value = process.env[name];
   if (value === undefined || value === '') throw new Error(`${name} is unset`);
@@ -212,7 +283,14 @@ function need(name) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    if (process.argv[2] !== '--drill') throw new Error('usage: restore-drill.mjs --drill');
+    if (process.argv[2] !== '--drill' || process.argv.length !== 3) {
+      throw new Error('usage: restore-drill.mjs --drill');
+    }
+    const gate = await requireOperator();
+    if (!gate.ok) {
+      process.stderr.write(`restore-drill: REFUSED: ${gate.reason}\n`);
+      process.exit(1);
+    }
     const storeUrl = need('RESTORE_STORE_URL');
     let privateKey;
     try {
@@ -225,13 +303,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       client: process.env.DRILL_CLIENT_ID,
       person: process.env.DRILL_PERSON_ID,
     };
-    const record = await restoreDrill({
-      fetchArchive: () => fetchLatest(storeUrl),
-      privateKey,
-      scope,
-    });
-    process.stdout.write(`${JSON.stringify(record)}\n`);
-    process.exitCode = record.outcome === 'passed' ? 0 : 1;
+    const receipt = await drillAsOperator({ gate, storeUrl, privateKey, scope });
+    process.stdout.write(`${JSON.stringify(receipt)}\n`);
+    process.exitCode = receipt.outcome === 'passed' ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 2;

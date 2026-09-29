@@ -10,13 +10,20 @@
 //     BACKUP_STORE_URL   the same login, on the backup store
 //     BACKUP_PUBLIC_KEY_FILE  the operator's public key; its private half is
 //                        held apart, never on this job's machine account
+//     OPS_BACKUP_HEARTBEAT_URL  the watcher's backup heartbeat, pinged once a
+//                        backup is recorded
 //   node --env-file=<retention env> scripts/ops/backup.mjs expire
 //     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention
+//     OPS_RESTORE_HEARTBEAT_URL  the watcher's restore heartbeat, pinged only
+//                        while a restore drill passed inside the store's window
 //
 // `run` takes one pg_dump of the product's schemas and `auth`, in a throwaway
 // container of staging's own pinned Postgres image, seals it (archive-seal.mjs)
 // and adds only the sealed artefact to the store. `expire` deletes every
-// backup past the store's window. What each may do is held by the server
+// backup past the store's window, then asks the store whether a restore drill
+// passed inside its window: yes pings the restore heartbeat, no stays silent,
+// and the watcher mails the owner and the second operator (heartbeat.mjs).
+// What each may do is held by the server
 // (deploy/staging/backup-store.sql), which writes receipts.
 //
 // Each run prints one JSON line, recorded or failed, and exits 0 or 1. A
@@ -28,6 +35,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { sealArchive } from './archive-seal.mjs';
+import { ping } from './heartbeat.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
@@ -95,7 +103,7 @@ function failed(event, stage) {
 }
 
 /** One scheduled backup. Returns the run's record; never throws. */
-export async function runBackup({ dump, storeUrl, publicKey }) {
+export async function runBackup({ dump, storeUrl, publicKey, heartbeat, send = ping }) {
   const at = new Date().toISOString();
   let body;
   try {
@@ -117,25 +125,30 @@ export async function runBackup({ dump, storeUrl, publicKey }) {
   } catch {
     return failed('backup run', 'store');
   }
-  return { event: 'backup run', outcome: 'recorded', at, bytes: body.length };
+  const record = { event: 'backup run', outcome: 'recorded', at, bytes: body.length };
+  return { ...record, heartbeat: await send(heartbeat) };
 }
 
 /**
  * Deletes every backup past the window. The store's policy is what holds the
  * window; the job asks for everything and the server deletes only what it may.
  */
-export async function expireBackups({ storeUrl }) {
+export async function expireBackups({ storeUrl, restoreHeartbeat, send = ping }) {
   const at = new Date().toISOString();
+  let upkeep;
   try {
-    const deleted = await asRole(
-      storeUrl,
-      RETENTION_ROLE,
-      (sql) => sql`delete from backups.archives returning id`,
-    );
-    return { event: 'backup expired', outcome: 'recorded', at, count: deleted.count };
+    upkeep = await asRole(storeUrl, RETENTION_ROLE, async (sql) => {
+      const deleted = await sql`delete from backups.archives returning id`;
+      const [{ fresh }] = await sql`select backups.restore_fresh() as fresh`;
+      return { count: deleted.count, fresh };
+    });
   } catch {
     return failed('backup expired', 'store');
   }
+  const record = { event: 'backup expired', outcome: 'recorded', at, count: upkeep.count };
+  // A stale restore is told by silence: the watcher mails when the ping is late.
+  const beat = upkeep.fresh ? await send(restoreHeartbeat) : 'withheld';
+  return { ...record, restoreFresh: upkeep.fresh, restoreHeartbeat: beat };
 }
 
 /** An unset or empty variable reads as unset. */
@@ -159,12 +172,13 @@ async function main(command) {
     if (source === undefined || storeUrl === undefined || publicKey === undefined) {
       return failed('backup run', 'config');
     }
-    return await runBackup({ dump: () => pgDump(source), storeUrl, publicKey });
+    const heartbeat = env('OPS_BACKUP_HEARTBEAT_URL');
+    return await runBackup({ dump: () => pgDump(source), storeUrl, publicKey, heartbeat });
   }
   if (command === 'expire') {
     const storeUrl = env('BACKUP_RETENTION_URL');
     if (storeUrl === undefined) return failed('backup expired', 'config');
-    return await expireBackups({ storeUrl });
+    return await expireBackups({ storeUrl, restoreHeartbeat: env('OPS_RESTORE_HEARTBEAT_URL') });
   }
   return undefined;
 }
