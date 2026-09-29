@@ -54,23 +54,23 @@ interface InboxItemAxes {
   readonly workState: InboxWorkState;
   readonly raisedAt: Date;
   readonly closedAt: Date | null;
-  readonly closedByPersonId: string | null;
   readonly seenAt: Date | null;
   readonly lastDelivery: DeliveryState | null;
 }
 
 /**
- * The pointers come back only while the task is readable. A withheld or gone
- * item says that it is owed and why, and names neither the task nor the fact,
- * so an item on another client's task leaks no identifier of theirs.
+ * Pointers and identities come back only while the task is readable: a withheld
+ * or gone item keeps the recipient's own facts and names neither the task, the
+ * fact nor who closed it, so another client's item leaks no identifier of theirs.
  */
 export type InboxItem =
-  | (InboxItemAxes & Pointers & { readonly access: 'readable' })
+  | (InboxItemAxes & Disclosed & { readonly access: 'readable' })
   | (InboxItemAxes & { readonly access: 'withheld' | 'gone' });
 
-interface Pointers {
+interface Disclosed {
   readonly subjectRecordId: string;
   readonly factId: string;
+  readonly closedByPersonId: string | null;
 }
 
 /** Only a finished run asks nothing back; the schema holds the same rule. */
@@ -137,7 +137,7 @@ export async function recordDeliveryAttempt(
 
 /** A row as read: the axes, the pointers, and the two facts access is derived from. */
 type ItemRow = InboxItemAxes &
-  Pointers & {
+  Disclosed & {
     readonly trashed: boolean;
     readonly clientId: string | null;
   };
@@ -170,11 +170,13 @@ export async function readInboxItems(
   );
   const subjects = await recipientSubjects(tx, recipientPersonId);
   const items: InboxItem[] = [];
-  for (const { trashed, clientId, subjectRecordId, factId, ...axes } of rows) {
+  for (const { trashed, clientId, subjectRecordId, factId, closedByPersonId, ...axes } of rows) {
     // oxlint-disable-next-line no-await-in-loop
     const access = await accessOf(tx, subjects, subjectRecordId, trashed, clientId);
     items.push(
-      access === 'readable' ? { ...axes, access, subjectRecordId, factId } : { ...axes, access },
+      access === 'readable'
+        ? { ...axes, access, subjectRecordId, factId, closedByPersonId }
+        : { ...axes, access },
     );
   }
   return items;
