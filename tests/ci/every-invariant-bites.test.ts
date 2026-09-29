@@ -24,6 +24,7 @@ import {
   deleteOneMigration,
   everyInvariantBites,
   keeps,
+  onOwnCluster,
   openScratch,
   type Ran,
 } from './self-test/mutations.ts';
@@ -141,6 +142,30 @@ describe('every_invariant_bites: the verdict', () => {
     expect(whole.detail).not.toContain('T4-N1');
     expect(everyInvariantBites([]).status).toBe('fail');
     expect(everyInvariantBites([classify('T4-N1', ran({}))]).status).toBe('pass');
+  });
+});
+
+describe('every_invariant_bites: the mutations run on the command’s own Postgres only', () => {
+  const published = '0.0.0.0:54470\n[::]:54470\n';
+  it('accepts this machine’s port the container publishes', () => {
+    expect(onOwnCluster('postgres://postgres:x@127.0.0.1:54470/journey', published)).toBe(true);
+    expect(onOwnCluster('postgres://postgres:x@localhost:54470/journey', published)).toBe(true);
+  });
+
+  it('refuses another port, another host on the same port, and anything malformed', () => {
+    for (const url of [
+      'postgres://postgres:x@127.0.0.1:54390/postgres',
+      'postgres://postgres:x@example.invalid:54470/journey',
+      'postgres://postgres:x@127.0.0.1/journey',
+      'not a url',
+    ]) {
+      expect(onOwnCluster(url, published), url).toBe(false);
+    }
+    const own = 'postgres://postgres:x@127.0.0.1:54470/journey';
+    expect(onOwnCluster(own, '')).toBe(false);
+    expect(onOwnCluster(own, '0.0.0.0:154470\n')).toBe(false);
+    expect(onOwnCluster(own, '0.0.0.0:5447\n')).toBe(false);
+    expect(onOwnCluster(own, '10.0.0.9:54470\n')).toBe(false);
   });
 });
 

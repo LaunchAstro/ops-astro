@@ -31,6 +31,7 @@ import {
   deleteOneMigration,
   edit,
   everyInvariantBites,
+  onOwnCluster,
   openScratch,
   revertPart,
   type CaseLine,
@@ -66,11 +67,9 @@ function report(line: CaseLine): void {
 /** The run's own container, or nothing: the port DATABASE_URL names must be the one it publishes. */
 function refuseAnotherCluster(): void {
   const published = spawnSync(DOCKER, ['port', CLUSTER, '5432/tcp'], { encoding: 'utf8' });
-  const port = new URL(DATABASE_URL).port;
-  const ours =
-    published.status === 0 &&
-    published.stdout.split('\n').some((line) => line.endsWith(`:${port}`));
-  if (!ours) throw new Error(`self-test: DATABASE_URL is not ${CLUSTER}'s published port; refused`);
+  if (published.status !== 0 || !onOwnCluster(DATABASE_URL, published.stdout)) {
+    throw new Error(`self-test: DATABASE_URL is not ${CLUSTER}'s published port; refused`);
+  }
 }
 
 /** T3d2's process proofs on a container of their own, removed after. */

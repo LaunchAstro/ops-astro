@@ -90,6 +90,23 @@ export function everyInvariantBites(lines: readonly CaseLine[]): CaseLine {
   return { case: 'every_invariant_bites', status, detail };
 }
 
+/**
+ * Whether `databaseUrl` is this machine's port that `docker port <cluster>
+ * 5432/tcp` printed: the mutations' databases go on the command's own
+ * container and nowhere else, not a remote host on the same port.
+ */
+export function onOwnCluster(databaseUrl: string, published: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    return false;
+  }
+  if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.port === '') return false;
+  const bound = /^(?:0\.0\.0\.0|127\.0\.0\.1|\[::\]):(\d+)$/u;
+  return published.split('\n').some((line) => bound.exec(line.trim())?.[1] === url.port);
+}
+
 export interface Scratch {
   readonly dir: string;
   readonly branch: string;
