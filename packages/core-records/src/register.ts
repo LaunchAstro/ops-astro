@@ -49,7 +49,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 501;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -296,6 +296,15 @@ const ROWS = [
     status: 401,
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
+  },
+  // A 429 because nothing about the caller or the request was wrong: the same
+  // call answers once the window passes or a call in flight finishes
+  // (`identity/quota.ts`). The names say which quota and whose.
+  {
+    code: 'QUOTA_EXCEEDED',
+    status: 429,
+    meaning: 'A request or concurrency quota is used up; send again later',
+    source: 'API-3 TR-SEC-4',
   },
 
   // Delegation and lease, T1's pickup and handback. No table yet.

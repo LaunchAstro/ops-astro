@@ -53,7 +53,16 @@ export {
   type AgentSession,
 } from './identity/agent-login.ts';
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
-export { QUOTAS, type QuotaLimits, type QuotaOptions } from './identity/quota.ts';
+export {
+  admitQuota,
+  createQuotaGate,
+  QUOTAS,
+  withQuotaScope,
+  type QuotaGate,
+  type QuotaLimits,
+  type QuotaOptions,
+  type QuotaRefusal,
+} from './identity/quota.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   withSession,

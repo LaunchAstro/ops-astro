@@ -8,8 +8,8 @@
 // projection of what the caller may already read, never a wider read.
 
 import type { TaskDetail, TaskSummary } from '../../../core-wire/src/index.ts';
-import { checkAuthority, wayfinderFacts } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import { checkAuthority, QUOTAS, wayfinderFacts } from '../../../core-records/src/index.ts';
+import type { QuotaLimits, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
 export type Detail = 'brief' | 'standard' | 'full';
@@ -18,8 +18,8 @@ const DETAILS: ReadonlySet<string> = new Set(['brief', 'standard', 'full']);
 /** How many of the latest comments a standard read carries; `full` carries them all. */
 export const RECENT_COMMENTS = 5;
 
-/** Page sizes for a list read: the default, and the most one page may ask for. */
-export const PAGE_SIZE = { standard: 20, most: 100 } as const;
+/** Page sizes for a list read: the quota table's (`identity/quota.ts`), the one place they are set. */
+export const PAGE_SIZE: QuotaLimits['pageSize'] = QUOTAS.pageSize;
 
 export interface Paging {
   readonly detail?: Detail;
