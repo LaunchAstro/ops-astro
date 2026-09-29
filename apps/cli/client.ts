@@ -30,8 +30,7 @@ import {
   PREFIX,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
-import type { CommandName } from '../../packages/core-wire/src/index.ts';
-import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
+import type { CommandName, CommandRefusal } from '../../packages/core-wire/src/index.ts';
 
 /**
  * How a caller reaches the API. Injected so a test drives the real Hono app.
