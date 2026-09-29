@@ -78,6 +78,34 @@ export function pictureFault(picture: string, width: number): string | undefined
 export const overflowOf = (metrics: { scrollWidth: number; clientWidth: number }): number =>
   Math.max(0, metrics.scrollWidth - metrics.clientWidth);
 
+/** One page at one width in one theme: its report line and what it counts toward. */
+function shotLine(
+  name: string,
+  width: number,
+  shot: PageShot | undefined,
+): { line: string; failed: boolean; pictured: boolean; sideways: boolean } {
+  const fault =
+    shot === undefined || shot.picture === null ? 'no picture' : pictureFault(shot.picture, width);
+  if (shot === undefined || shot.picture === null || fault !== undefined) {
+    return {
+      line: `FAIL ${name}: ${fault ?? 'no picture'}`,
+      failed: true,
+      pictured: false,
+      sideways: false,
+    };
+  }
+  if (shot.overflow > 0) {
+    return {
+      line: `FAIL ${name}: scrolls sideways by ${shot.overflow} px`,
+      failed: true,
+      pictured: true,
+      sideways: true,
+    };
+  }
+  const line = `ok ${name}: ${basename(shot.picture)}; no sideways scroll`;
+  return { line, failed: false, pictured: true, sideways: false };
+}
+
 export function report(
   packet: Packet,
   pages: readonly string[],
@@ -96,22 +124,11 @@ export function report(
         const shot = shots.find(
           (one) => one.page === page && one.width === width && (one.theme ?? 'light') === theme,
         );
-        const fault =
-          shot?.picture === undefined || shot.picture === null
-            ? 'no picture'
-            : pictureFault(shot.picture, width);
-        if (shot === undefined || fault !== undefined) {
-          failed += 1;
-          lines.push(`FAIL ${name}: ${fault ?? 'no picture'}`);
-        } else if (shot.overflow > 0) {
-          failed += 1;
-          sideways += 1;
-          pictures[theme] += 1;
-          lines.push(`FAIL ${name}: scrolls sideways by ${shot.overflow} px`);
-        } else {
-          pictures[theme] += 1;
-          lines.push(`ok ${name}: ${basename(shot.picture ?? '')}; no sideways scroll`);
-        }
+        const verdict = shotLine(name, width, shot);
+        lines.push(verdict.line);
+        if (verdict.failed) failed += 1;
+        if (verdict.pictured) pictures[theme] += 1;
+        if (verdict.sideways) sideways += 1;
       }
       if (darkPending) lines.push(`pending ${page}@${width}-dark: ${packet.themes.dark}`);
     }

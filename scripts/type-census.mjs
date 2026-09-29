@@ -46,6 +46,32 @@ const NUMBER = /^--type-num-/u;
 const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
 const LIMIT = 20;
 
+/** One declaration's property and value, the value without `!important`; undefined for no colon. */
+function declOf(text) {
+  const at = text.indexOf(':');
+  if (at < 0) return;
+  return {
+    prop: text.slice(0, at).trim().toLowerCase(),
+    value: text
+      .slice(at + 1)
+      .replace(/!\s*important\s*$/iu, '')
+      .replaceAll(/\s+/gu, ' ')
+      .trim(),
+  };
+}
+
+/** The frame a block opens: a style rule, a conditional at-rule that holds rules, or a block skipped whole. */
+function blockOf(prelude, parent) {
+  const context = parent.context ?? '';
+  if (parent.kind === 'skip') return { kind: 'skip' };
+  if (!prelude.startsWith('@'))
+    return { kind: 'rule', selector: prelude, context, decls: [], comments: [] };
+  const name = prelude.slice(1).split(/[\s(]/u)[0].toLowerCase();
+  return CONDITIONAL.has(name)
+    ? { kind: 'at', context: `${context}${prelude} ` }
+    : { kind: 'skip' };
+}
+
 /**
  * Every style rule of a sheet: its selector (with the conditions it sits in),
  * its declarations and the comments inside its own body. Strings, comments and
@@ -62,16 +88,8 @@ export function parseSheet(css) {
     buf = '';
     const frame = top();
     if (text === '' || frame.kind !== 'rule') return;
-    const at = text.indexOf(':');
-    if (at < 0) return;
-    frame.decls.push({
-      prop: text.slice(0, at).trim().toLowerCase(),
-      value: text
-        .slice(at + 1)
-        .replace(/!\s*important\s*$/iu, '')
-        .replaceAll(/\s+/gu, ' ')
-        .trim(),
-    });
+    const decl = declOf(text);
+    if (decl !== undefined) frame.decls.push(decl);
   };
   for (let i = 0; i < css.length; i += 1) {
     const ch = css[i];
@@ -96,17 +114,7 @@ export function parseSheet(css) {
     } else if (ch === '{') {
       const prelude = buf.replaceAll(/\s+/gu, ' ').trim();
       buf = '';
-      const parent = top();
-      const context = parent.context ?? '';
-      if (parent.kind === 'skip') stack.push({ kind: 'skip' });
-      else if (prelude.startsWith('@')) {
-        const name = prelude.slice(1).split(/[\s(]/u)[0].toLowerCase();
-        stack.push(
-          CONDITIONAL.has(name)
-            ? { kind: 'at', context: `${context}${prelude} ` }
-            : { kind: 'skip' },
-        );
-      } else stack.push({ kind: 'rule', selector: prelude, context, decls: [], comments: [] });
+      stack.push(blockOf(prelude, top()));
     } else if (ch === '}') {
       flush();
       const frame = stack.length > 1 ? stack.pop() : top();
