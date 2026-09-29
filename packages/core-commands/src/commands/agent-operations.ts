@@ -13,7 +13,7 @@ import { READ_CATALOGUE } from '../reads/catalogue.ts';
 import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
 import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
-import { blockersOf, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
+import { blockersFor, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
 import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
@@ -492,7 +492,8 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         if (task === undefined) return NOT_FOUND();
         if (level === undefined)
           return { recordId: task.id, revision: task.revision, detail: { task } };
-        const view = taskAt(level, task, await blockersOf(tx, task.id));
+        // Its delegation reaches this task alone, so every blocker is withheld by count.
+        const view = taskAt(level, task, await blockersFor(tx, [], task.id));
         return { recordId: task.id, revision: task.revision, detail: { detail: level, view } };
       },
     }),

@@ -8,7 +8,8 @@
 // projection of what the caller may already read, never a wider read.
 
 import type { TaskDetail, TaskSummary } from '../../../core-wire/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { checkAuthority, wayfinderFacts } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
 export type Detail = 'brief' | 'standard' | 'full';
@@ -55,8 +56,50 @@ export function isRefusal(value: Paging | CommandRefusal): value is CommandRefus
   return 'refused' in value;
 }
 
-/** The tasks this one is blocked by, oldest link first. */
-export async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly string[]> {
+/** A task's blockers as a reader is shown them: the ones it may read, and how many it may not. */
+export interface Blockers {
+  readonly blockedBy: readonly string[];
+  readonly withheld: number;
+}
+
+/**
+ * May these subjects read this task? The read pipeline's own question
+ * (`reads/dispatch.ts`): read on the task at its record scope, or at the scope
+ * of the map it is a ticket of (W12); a business-wide grant answers both.
+ */
+async function mayRead(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  id: string,
+): Promise<boolean> {
+  const asked = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
+  if ((await checkAuthority(tx, subjects, asked)).ok) return true;
+  const map = (await wayfinderFacts(tx, id))?.mapId ?? null;
+  if (map === null || map === id) return false;
+  return (await checkAuthority(tx, subjects, { ...asked, scope: { kind: 'record', id: map } })).ok;
+}
+
+/**
+ * The blockers `subjects` may read, and a count of the rest, which are left
+ * out and named as withheld, never listed by id (standing gate 9). No subjects
+ * (an agent, whose delegation reaches only its own task) withholds them all.
+ */
+export async function blockersFor(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  recordId: string,
+): Promise<Blockers> {
+  const all = await blockersOf(tx, recordId);
+  const shown: string[] = [];
+  for (const id of all) {
+    // eslint-disable-next-line no-await-in-loop -- one grant check per blocker, on one transaction
+    if (subjects.length > 0 && (await mayRead(tx, subjects, id))) shown.push(id);
+  }
+  return { blockedBy: shown, withheld: all.length - shown.length };
+}
+
+/** Every live task this one is blocked by, oldest link first. Never answered as is. */
+async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly id: string }>(
     `select l.from_record_id::text as id from public.record_links l
        join public.records r on r.business_id = l.business_id and r.id = l.from_record_id
@@ -92,14 +135,16 @@ export function standardSummaryOf(task: TaskSummary): Readonly<Record<string, un
 export function taskAt(
   detail: Detail,
   task: TaskDetail,
-  blockedBy: readonly string[],
+  blockers: Blockers,
 ): Readonly<Record<string, unknown>> {
   if (detail === 'brief') return briefOf(task);
-  if (detail === 'full') return { ...task, blockedBy };
+  const { blockedBy, withheld } = blockers;
+  const named = withheld === 0 ? { blockedBy } : { blockedBy, blockersWithheld: withheld };
+  if (detail === 'full') return { ...task, ...named };
   return {
     ...standardSummaryOf(task),
     description: task.description,
-    blockedBy,
+    ...named,
     comments: task.comments.slice(-RECENT_COMMENTS),
     commentCount: task.comments.length,
   };

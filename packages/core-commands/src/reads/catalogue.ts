@@ -14,7 +14,7 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import { planPresetSync, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -32,7 +32,7 @@ import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
-import { blockersOf, isRefusal, pageOf, parsePaging, taskAt } from './detail.ts';
+import { blockersFor, isRefusal, pageOf, parsePaging, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -218,7 +218,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
       if (operands.detail === undefined) return { ok: true, task };
-      const view = taskAt(operands.detail, task, await blockersOf(tx, recordId));
+      const blockers = await blockersFor(tx, subjectsOf(session), recordId);
+      const view = taskAt(operands.detail, task, blockers);
       return { ok: true, detail: operands.detail, view };
     },
   },
