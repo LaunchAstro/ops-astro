@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- one case over one world */
 //
 // `WF-4 isolation` (#637): the three real crossings for the tickets,
 // frontier and fog views and their two writes, statuses checked, canaries
 // absent from every page and answer.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, type CliWorld } from '../cli/api-3-world.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -26,10 +27,16 @@ describe.skipIf(serverUrl === undefined)('WF-4 isolation', () => {
     lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide']);
   }, 180_000);
 
-  afterAll(async () => {
-    await Promise.all(open.map(async (mounted) => await mounted.unmount()));
-    await w?.drop();
+  // Each case's pages go with it, so no two pages share the document; one at
+  // a time, since overlapping act() calls leave the next render unflushed.
+  afterEach(async () => {
+    for (const mounted of open.splice(0)) {
+      // oxlint-disable-next-line no-await-in-loop
+      await mounted.unmount();
+    }
   });
+
+  afterAll(async () => await w?.drop());
 
   const at = async (id: string) => ({ recordId: id, expectedRevision: await w.revisionOf(id) });
 

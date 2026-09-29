@@ -202,7 +202,19 @@ record revision from the same read, so a second writer's edit comes back
 `VERSION_STALE` and the page reads the map again. After an applied edit the
 page rereads: the new version in the history is the server's. A refused edit
 keeps its draft in the editor and names the key it needed (`task:write`), as
-the CLI's refusal line does. The look waits on the accepted prototype W4.
+the CLI's refusal line does.
+
+The map is the first of four views, as tabs (WF-4, `screens/map/Views.tsx`):
+Map; Tickets (`map/Tickets.tsx`: every ticket, each linking its page, with its
+blockers; blocking is `task.set_blocking` on the blocked ticket with its whole
+list, so adding or removing one sends the list with or without it); Frontier
+(`map/Frontier.tsx`: `map.frontier`'s read model in its own order, read while
+its tab is open); and Fog (graduating a patch into tickets through
+`map.graduate`). A type and a text filter narrow the tickets and the frontier.
+The view and the filters are held by the screen above the read, so moving
+between the tabs, and the reread after each write, keep the map and its
+filters. `map.view`'s ticket rows carry each ticket's revision and blockers for
+these writes. The look waits on the accepted prototypes W4 and W5.
 
 ## Comments on a task
 

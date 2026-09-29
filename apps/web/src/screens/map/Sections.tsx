@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The map view's sections (WF-3), in the order the scoping map names them:
+// The map view's sections (WF-3), the first of the four views, in the order
+// the scoping map names them:
 // Destination, Notes, Decisions so far, Not yet specified, Out of scope, and
 // the version history. Every edit is handed up as a `map.revise` body; this
 // file sends nothing itself.
@@ -11,7 +12,7 @@ import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../../routes.ts';
 
 /** One edit: the operands of `map.revise` beyond its target and revision. */
-export type Revise = (map: MapView, body: Readonly<Record<string, unknown>>) => void;
+export type Revise = (body: Readonly<Record<string, unknown>>) => void;
 
 interface SectionsProps {
   readonly map: MapView;
@@ -22,13 +23,13 @@ interface SectionsProps {
 
 export function MapSections(props: SectionsProps): ReactElement {
   const { map, busy } = props;
-  const revise = (body: Readonly<Record<string, unknown>>) => {
-    props.onRevise(map, body);
-  };
+  const revise = props.onRevise;
   return (
-    <div className="stack" data-map={map.id} data-revision={map.revision}>
-      <h1 className="task__title">{map.title ?? map.key ?? 'Map'}</h1>
+    <div className="stack">
       <EditableText
+        // A new version writes a new component: the editor closes on it, and
+        // stays open with its draft on a refusal.
+        key={map.destination?.id ?? 'destination'}
         kind="destination"
         label="Destination"
         text={map.destination?.text ?? null}
@@ -38,6 +39,7 @@ export function MapSections(props: SectionsProps): ReactElement {
         }}
       />
       <EditableText
+        key={map.notes?.id ?? 'notes'}
         kind="notes"
         label="Notes"
         text={map.notes?.text ?? null}
@@ -54,7 +56,7 @@ export function MapSections(props: SectionsProps): ReactElement {
   );
 }
 
-function Section(props: {
+export function Section(props: {
   readonly name: string;
   readonly label: string;
   readonly children: ReactNode;
@@ -148,7 +150,7 @@ function EditForm(
 }
 
 /** A ticket's own address, or nothing for one without a key. */
-function ticketLink(key: string | null, text: string): ReactNode {
+export function ticketLink(key: string | null, text: string): ReactNode {
   return key === null ? text : <a href={pathTo('agency:task-detail', { key })}>{text}</a>;
 }
 

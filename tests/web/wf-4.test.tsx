@@ -7,7 +7,7 @@
 // `wf-4-isolation.test.tsx`; the look (W4, W5, MP-1-7) is held in
 // `wf-4-held.test.tsx`.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, type CliWorld } from '../cli/api-3-world.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -28,11 +28,12 @@ interface Viewed {
 }
 
 const tab = async (page: Mounted, view: string): Promise<void> => {
-  await page.click(`#map-tab-${view}`);
+  // By attribute: jsdom resolves `#id` document-wide first.
+  await page.click(`[role="tab"][id="map-tab-${view}"]`);
 };
 
 const ids = (page: Mounted, selector: string): string[] =>
-  page.all(selector).map((one) => one.getAttribute('data-ticket') ?? '');
+  page.all(selector).map((one) => (one as HTMLElement).dataset['ticket'] ?? '');
 
 describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog views', () => {
   let w: CliWorld;
@@ -44,10 +45,16 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
     lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide']);
   }, 180_000);
 
-  afterAll(async () => {
-    await Promise.all(open.map(async (mounted) => await mounted.unmount()));
-    await w?.drop();
+  // Each case's pages go with it, so no two pages share the document; one at
+  // a time, since overlapping act() calls leave the next render unflushed.
+  afterEach(async () => {
+    for (const mounted of open.splice(0)) {
+      // oxlint-disable-next-line no-await-in-loop
+      await mounted.unmount();
+    }
   });
+
+  afterAll(async () => await w?.drop());
 
   const view = async (map: string): Promise<Viewed['map']> =>
     ((await w.read(lead, { read: 'map.view', recordId: map })) as Viewed).map;
@@ -95,7 +102,13 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
     const page = await openMap(w, open, lead, key);
 
     await graduate(page, patch, ['owner check new one', 'owner check new two']);
-    await until(page, () => page.find(`[data-patch="${patch}"]`) === null, 'the patch to leave');
+    await until(
+      page,
+      () =>
+        page.find('[data-map-section="fog-view"]') !== null &&
+        page.find(`[data-patch="${patch}"]`) === null,
+      'the patch to leave',
+    );
     const made = (await view(map)).tickets.filter((t) => t.title?.startsWith('owner check new'));
     const [one, two] = [made[0]?.id as string, made[1]?.id as string];
 
@@ -138,13 +151,14 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
     await tab(page, 'tickets');
     await page.choose('select[name="filter-type"]', 'research');
     await page.type('input[name="filter-text"]', 'filtered');
-    const rows = () => page.all('[data-ticket-row]').map((r) => r.getAttribute('data-ticket-row'));
+    const rows = () =>
+      page.all('[data-ticket-row]').map((r) => (r as HTMLElement).dataset['ticketRow']);
     expect(rows()).toStrictEqual([tickets['r']]);
 
     for (const next of ['frontier', 'fog', 'map', 'tickets']) {
       // oxlint-disable-next-line no-await-in-loop
       await tab(page, next);
-      expect(page.find('[data-map]')?.getAttribute('data-map')).toBe(map);
+      expect((page.find('[data-map]') as HTMLElement | null)?.dataset['map']).toBe(map);
       expect((page.find('select[name="filter-type"]') as HTMLSelectElement).value).toBe('research');
       expect((page.find('input[name="filter-text"]') as HTMLInputElement).value).toBe('filtered');
     }
@@ -160,7 +174,13 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
     const page = await openMap(w, open, lead, key);
     const before = (await w.audit()).length;
     await graduate(page, patch, ['audited new one', 'audited new two']);
-    await until(page, () => page.find(`[data-patch="${patch}"]`) === null, 'the graduation');
+    await until(
+      page,
+      () =>
+        page.find('[data-map-section="fog-view"]') !== null &&
+        page.find(`[data-patch="${patch}"]`) === null,
+      'the graduation',
+    );
     const made = (await view(map)).tickets.filter((t) => t.title?.startsWith('audited new'));
     const [one, two] = [made[0]?.id as string, made[1]?.id as string];
     await block(page, two, one);

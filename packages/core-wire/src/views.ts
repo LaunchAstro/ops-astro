@@ -396,6 +396,10 @@ export interface MapView {
     readonly title: string | null;
     readonly type: string;
     readonly state: string | null;
+    /** The ticket record's revision, which a write to it sends back. */
+    readonly revision: number;
+    /** The tickets of this map that block it. */
+    readonly blockedBy: readonly string[];
   }[];
   readonly versions: readonly {
     readonly version: number;
