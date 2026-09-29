@@ -260,6 +260,21 @@ jobs:
       - run: pnpm run db:conformance
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # S0-3: a pull request that adds a migration upgrades a database built and
+      # seeded at the base branch's newest migration, with the application
+      # stopped, and every row must come through unchanged. No migration added,
+      # nothing to drill; a push to main has no base to start from.
+      - name: The upgrade drill, when this pull request adds a migration
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          added=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/)
+          if [ -z "$added" ]; then echo "upgrade-drill: no migration added; not run"; exit 0; fi
+          from=$(git ls-tree --name-only "$BASE_SHA" migrations/ | grep '\.sql$' | sort | tail -1)
+          pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)"
 
   licences:
     name: OSI licence allowlist

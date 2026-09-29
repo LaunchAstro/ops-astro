@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// S0-3 no recovery figure (roadmap S0-3a, checklist line C7; ADR 0067).
+//
+// No recovery-time or recovery-point figure is quoted in the product's docs or
+// screens until a restore drill has run and left its receipt. No receipt exists
+// yet: S0-3c writes the drill and S0-3d its receipt, and the part that lands
+// the receipt is the one that may relax this search, naming the receipt it
+// read. Until then any figure is an estimate, and ADR 0067 says an estimate is
+// not recovery proof.
+//
+// The matcher is proved first on sentences written for it, so a search that
+// matches nothing cannot pass by being blind.
+
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const UNIT = String.raw`(?:seconds?|secs?|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?)`;
+const IN_WORDS = String.raw`(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|forty-eight|sixty|ninety|several|a\s+few|a\s+couple\s+of|half\s+an?)`;
+/**
+ * A number and a time unit: digits with any unit, or a number in words with a
+ * whole unit. In words, `second` counts only as `seconds`: "a second operator"
+ * is an ordinal, and "ten seconds" is still a figure.
+ */
+const FIGURE = String.raw`(?:\d+(?:\.\d+)?\s*${UNIT}|\b${IN_WORDS}[\s-]+(?:seconds|minutes?|hours?|days?|weeks?))\b`;
+const RESTORE = String.raw`\b(?:recover(?:y|ies|s|ed|ing)?|restor(?:e|es|ed|ing|ation|ations))\b`;
+
+/**
+ * A recovery figure: a number with a time unit in the same sentence as a
+ * recovery or restore word, either way round, or RTO and RPO with a number.
+ * Broad on purpose (Sol, criterion 11): a figure in any phrasing is still a
+ * figure, and a false match costs a rewording.
+ */
+const RECOVERY_FIGURES: readonly RegExp[] = [
+  // RTO and RPO take FIGURE, so an amount in words gets the same check as a
+  // restore wording (Sol review 3), case-insensitive like the rest; a bare digit still counts.
+  new RegExp(String.raw`\b(?:RTO|RPO)\b[^.]{0,40}?(?:${FIGURE}|\d)`, 'iu'),
+  new RegExp(String.raw`${RESTORE}[^.]{0,60}?${FIGURE}`, 'iu'),
+  new RegExp(String.raw`${FIGURE}[^.]{0,40}?${RESTORE}`, 'iu'),
+  new RegExp(String.raw`${FIGURE}\s+(?:of\s+)?(?:data\s+loss|downtime)`, 'iu'),
+];
+
+/**
+ * Read as sentences, not lines: whitespace, line breaks included, is folded to
+ * one space first, so a figure wrapped onto the next line is still found in
+ * its sentence (Sol review 2, criterion 11).
+ */
+function recoveryFigures(text: string): readonly string[] {
+  return text
+    .replaceAll(/\s+/gu, ' ')
+    .split(/(?<=[.!?])\s/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => RECOVERY_FIGURES.some((pattern) => pattern.test(sentence)));
+}
+
+/** The product's docs and screens: every Markdown file outside dependencies, and the web app. */
+function productText(): readonly string[] {
+  const files: string[] = [];
+  const walk = (directory: string, keep: (name: string) => boolean): void => {
+    for (const name of readdirSync(directory)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue;
+      const path = join(directory, name);
+      if (statSync(path).isDirectory()) walk(path, keep);
+      else if (keep(name)) files.push(path);
+    }
+  };
+  for (const name of readdirSync('.')) if (name.endsWith('.md')) files.push(name);
+  walk('docs', (name) => name.endsWith('.md'));
+  walk('apps/web', (name) => /\.(?:tsx?|html|json|md)$/u.test(name));
+  return files;
+}
+
+describe('S0-3 no recovery figure', () => {
+  it('finds the figures written to be found', () => {
+    for (const planted of [
+      'Recovery time objective: 4 hours.',
+      'Our RPO is 15 minutes.',
+      'A full restore completes in about 2 hours.',
+      'You can recover within 30 minutes of an outage.',
+      'At most 24 hours of data loss.',
+      'The recovery point is 1 day behind.',
+      'Restoration takes 4h.',
+      'Plan for 3 hours to restore the database.',
+      'Restores finish in an hour.',
+      'A four-hour restore window.',
+      'The RPO is half an hour.',
+    ]) {
+      expect(recoveryFigures(planted)).toStrictEqual([planted]);
+    }
+  });
+
+  it('Sol proof, criterion 11: a restoration time quoted in plain English is found', () => {
+    const planted = 'The restoration time is 4 hours.';
+    expect(recoveryFigures(planted)).toStrictEqual([planted]);
+  });
+
+  it('Sol proof, criterion 11: written and wrapped recovery times are found', () => {
+    const inWords = 'We can restore the database in four hours.';
+    const wrapped = 'We can restore the database within\n4 hours.';
+    expect([
+      recoveryFigures(inWords).length > 0,
+      recoveryFigures(wrapped).length > 0,
+    ]).toStrictEqual([true, true]);
+  });
+
+  it('Sol proof, criterion 11: a worded RTO is found', () => {
+    const planted = 'Our RTO is four hours.';
+    expect(recoveryFigures(planted)).toStrictEqual([planted]);
+  });
+
+  it('passes sentences that quote no recovery figure', () => {
+    for (const neutral of [
+      'Publish no recovery-point or recovery-time figure until a restore has been rehearsed.',
+      'Backups are kept for 30 days, the retention window.',
+      'The drill restores the nightly dump into a throwaway container.',
+      'The session expires after 15 minutes.',
+      'I am restoring the draft.',
+      'A second operator restores from the runbook.',
+      'Recovery is one of the four duties; the rota changes every week.',
+    ]) {
+      expect(recoveryFigures(neutral)).toStrictEqual([]);
+    }
+  });
+
+  it('finds no recovery figure in the docs or screens while no drill receipt exists', () => {
+    const files = productText();
+    expect(files.length).toBeGreaterThan(50);
+    const quoted = files.flatMap((file) =>
+      recoveryFigures(readFileSync(file, 'utf8')).map((line) => `${file}: ${line}`),
+    );
+    expect(quoted).toStrictEqual([]);
+  });
+});
