@@ -3,15 +3,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
+import { grantTo } from '../commands/fixture.ts';
 import {
   asAgent,
   awaitParked,
   codeOf,
+  holdRows,
   openSchedules,
   racer,
   type Schedules,
 } from './schedules-harness.ts';
-import { PRICED, t2dHarness } from './t2d-harness.ts';
+import { cq8World, PRICED, t2dHarness } from './t2d-harness.ts';
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('Sol T2d review', () => {
   let s: Schedules;
@@ -116,5 +118,67 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('Sol T2d review', ()
     await observed;
     const outcome = (await money(w))?.['outcome'];
     expect(`${codeOf(answered)}:${String(outcome)}`).not.toBe('applied:failed');
+  }, 60_000);
+
+  it("Sol proof, criterion 3: a wrong-client effect identity never waits on that client's step", async () => {
+    const own = await work();
+    const foreign = await work();
+    await dispatched(foreign);
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, s.decider, 'share');
+    });
+    const world = cq8World(s);
+    await world.client(s.business, s.decider, 'sol-own-client', own.taskId);
+    await world.client(s.business, s.decider, 'sol-foreign-client', foreign.taskId);
+
+    const steps = await s.db.admin.execute<{ readonly step_id: string }>(
+      'select step_id from public.attempts where business_id = $1 and id = $2',
+      [s.business, foreign.attemptId],
+    );
+    const stepId = steps[0]?.step_id;
+    if (stepId === undefined) throw new Error('foreign attempt has no step');
+    const blocker = await holdRows(s, 'planned_steps', [stepId]);
+    const caller = racer(s);
+    let finished = false;
+    const pending = asAgent(
+      s,
+      {
+        command: 'task.comment',
+        operationId: effectOperationId(foreign.attemptId),
+        recordId: own.taskId,
+        body: 'This belongs to another client.',
+        audience: 'internal',
+      },
+      own.credential,
+      caller,
+    ).finally(() => {
+      finished = true;
+    });
+    let crossed = false;
+    try {
+      for (let attempt = 0; attempt < 400; attempt += 1) {
+        if (finished) break;
+        // eslint-disable-next-line no-await-in-loop
+        const waits = await s.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock'
+              and query like '%public.planned_steps%'`,
+        );
+        if (Number(waits[0]?.n ?? 0) > 0) {
+          crossed = true;
+          break;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
+      }
+    } finally {
+      await blocker.release();
+    }
+    const answer = await pending;
+    await caller.close();
+    expect(codeOf(answer)).toBe('EFFECT_NOT_DISPATCHED');
+    expect(crossed).toBe(false);
   }, 60_000);
 });
