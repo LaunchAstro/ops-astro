@@ -78,8 +78,8 @@ const record = async (personId: string, receiptFile: string): Promise<Receipt> =
 let receipt: Receipt;
 let exported: string;
 
-/** One sealed backup in the store, exported, and drilled on the carried file. */
-async function exportedAndDrilled(): Promise<void> {
+/** A new sealed backup in the store, exported, and drilled on the carried file. */
+async function carriedReceipt(): Promise<Receipt> {
   const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
   const job = await asRole(backupLogin.url, BACKUP);
   try {
@@ -94,7 +94,7 @@ async function exportedAndDrilled(): Promise<void> {
   await exportArchive({ gate, storeUrl: restoreLogin.url, file, reach: hostReach });
   const takenAt = (JSON.parse(readFileSync(file, 'utf8')) as { takenAt: string }).takenAt;
   const at = new Date().toISOString();
-  receipt = await drillAsOperator({
+  return await drillAsOperator({
     gate,
     archiveFile: file,
     privateKey: keys.privateKey,
@@ -111,9 +111,12 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
   describe('S0-3 carried archive', () => {
-    beforeAll(exportedAndDrilled, 120_000);
+    beforeAll(async () => {
+      receipt = await carriedReceipt();
+    }, 120_000);
     refusedCases();
     roundTripCases();
+    concurrentCases();
   });
 });
 
@@ -208,5 +211,18 @@ function roundTripCases() {
         await client.end();
       }
     }
+  });
+}
+
+function concurrentCases() {
+  it('two records of one receipt at once: the store takes one and refuses the other', async () => {
+    const before = (await drills()).length;
+    const second = await carriedReceipt();
+    const both = await Promise.allSettled([
+      record(operator, carriedBack(second)),
+      record(operator, carriedBack(second)),
+    ]);
+    expect(both.map((result) => result.status).toSorted()).toStrictEqual(['fulfilled', 'rejected']);
+    expect(await drills()).toHaveLength(before + 1);
   });
 }
