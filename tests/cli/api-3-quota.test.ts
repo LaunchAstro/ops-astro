@@ -284,4 +284,14 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
     expect((await status()).status).toBe(200);
     expectQuotaRefusal(await status(), 'requests', 'credential');
   });
+
+  it('API-4 quota: work this ticket is charged like every call', async () => {
+    const api = app(limits({ requests: { credential: 2 } }));
+    clock += WINDOW + 1;
+    const ticket = (await w.create(ann, { title: 'quota context ticket' })).id;
+    const bundle = async () => await call(api, ann, '/task/context', { recordId: ticket });
+    expect((await bundle()).status).toBe(200);
+    expect((await bundle()).status).toBe(200);
+    expectQuotaRefusal(await bundle(), 'requests', 'credential');
+  });
 });

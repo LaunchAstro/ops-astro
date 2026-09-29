@@ -169,4 +169,12 @@ describe.skipIf(serverUrl === undefined)('API-3 budgets', () => {
     report.push(`map status, standard: ${String(tokens)} (target under 1,000)`);
     expect(tokens).toBeLessThan(1_000);
   });
+
+  it('API-4 budget: work this ticket is under 3,000 tokens at standard', async () => {
+    const answer = await cli.run('task', 'context', tickets[7] as string);
+    expect(answer.exit, answer.out).toBe(0);
+    const tokens = countTokens(answer.out);
+    report.push(`work this ticket, standard: ${String(tokens)} (target under 3,000)`);
+    expect(tokens).toBeLessThan(3_000);
+  });
 });
