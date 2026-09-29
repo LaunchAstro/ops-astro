@@ -126,7 +126,9 @@ describe('C82 the design system crossed as a checked copy', () => {
       expect(row, `${group}: no group row`).toMatch(/synthetic|reserved/u);
     }
     const folders = [
-      ...retake.matchAll(/^\| [^|]+ \| `[^`]+` \| (\d+) \| [\d, ]+ \| ([a-z, ]+) \|$/gmu),
+      ...retake.matchAll(
+        /^\| [^|]+ \| `[^`]+` \| (\d+) \| [\d, ]+(?: \(\d+ with no width in the name\))? \| ([a-z, ]+) \|$/gmu,
+      ),
     ];
     expect(folders).toHaveLength(55);
     for (const [, shots, themes] of folders) {
