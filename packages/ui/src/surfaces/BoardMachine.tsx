@@ -9,11 +9,14 @@
 // It draws only the rows it is handed, which are the rows the viewer may
 // read; the withheld count arrives as a number and is only ever printed.
 // Everything a person changes here is view state: it goes through the
-// machine's history and into the address, and never writes a record.
+// machine's history and into the address, and never writes a record. Column
+// widths (MP-5-6) go through the history too, but not into the address: they
+// are the person's own, handed out through `onWidths` for the one store.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Empty } from '../primitives/Absence.tsx';
 import { layoutColumns } from '../board/columns.ts';
+import { GRIP_STEP, GRIP_STEP_LARGE, widthsAfterDrag } from '../board/widths.ts';
 import { narrowRows, presetCount, readingLine } from '../board/filters.ts';
 import { initialMachine, reduceBoard } from '../board/machine.ts';
 import { sortRows } from '../board/sort.ts';
@@ -92,7 +95,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
     [props.facets, props.columns, props.presets, props.modes],
   );
   const [machine, setMachine] = useState<MachineState>(() =>
-    initialMachine(readView(props.address ?? '', context)),
+    initialMachine({ ...readView(props.address ?? '', context), widths: props.widths ?? null }),
   );
   const dispatch = (action: BoardAction): void => {
     setMachine((current) => reduceBoard(current, action, context));
@@ -108,6 +111,15 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
     written.current = next;
     onAddress?.(next);
   }, [view, onAddress]);
+
+  // The widths to keep follow the view too; the first ones are the saved ones.
+  const reported = useRef(machine.view.widths);
+  const { onWidths } = props;
+  useEffect(() => {
+    if (view.widths === reported.current) return;
+    reported.current = view.widths;
+    onWidths?.(view.widths);
+  }, [view.widths, onWidths]);
 
   // ⌘Z and ⌘⇧Z (Ctrl on other systems) step the view anywhere on the page,
   // except in a field that has its own undo: the search field and any other.
@@ -150,7 +162,53 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const available = props.width ?? measured;
   const viewport =
     props.viewport ?? (typeof window === 'undefined' ? available : window.innerWidth);
-  const layout = layoutColumns(props.columns, { viewport, available });
+  // A drag in progress draws its widths live and is one history step when
+  // the pointer lets go; a cancelled one leaves nothing behind.
+  const [live, setLive] = useState<{
+    readonly key: string;
+    readonly widths: ColumnWidths | null;
+  } | null>(null);
+  const layout = layoutColumns(props.columns, { viewport, available }, live?.widths ?? view.widths);
+  const endDrag = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      endDrag.current?.();
+    },
+    [],
+  );
+  const startDrag = (key: string, startX: number): void => {
+    endDrag.current?.();
+    const from = layout;
+    const previous = view.widths;
+    let latest: ColumnWidths | null = null;
+    const move = (event: MouseEvent): void => {
+      latest = widthsAfterDrag(props.columns, from, previous, key, event.clientX - startX);
+      setLive({ key, widths: latest });
+    };
+    const stop = (keep: boolean): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      endDrag.current = null;
+      setLive(null);
+      if (keep && latest !== null) dispatch({ type: 'resize', key, widths: latest });
+    };
+    const up = (): void => {
+      stop(true);
+    };
+    const cancel = (): void => {
+      stop(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    endDrag.current = cancel;
+    setLive({ key, widths: null });
+  };
+  const nudge = (key: string, dx: number): void => {
+    const widths = widthsAfterDrag(props.columns, layout, view.widths, key, dx);
+    if (widths !== null) dispatch({ type: 'resize', key, widths });
+  };
 
   const narrowed = narrowRows(props.rows, view, props.facets, props.hay);
   const sorted = sortRows(narrowed, view.sort, props.columns);
@@ -184,6 +242,20 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
             dispatch({ type: 'dropLast' });
           }}
         />
+        {view.widths === null ? null : (
+          <button
+            className="cbd__ico"
+            data-reset=""
+            type="button"
+            title="Reset columns"
+            aria-label="Reset columns"
+            onClick={() => {
+              dispatch({ type: 'resetWidths' });
+            }}
+          >
+            ↔
+          </button>
+        )}
         <button
           className="cbd__ico"
           data-undo=""
@@ -297,6 +369,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
           onSort={(key) => {
             dispatch({ type: 'sort', key });
           }}
+          grip={{ live: live?.key ?? null, start: startDrag, nudge }}
         />
       )}
     </div>
@@ -357,6 +430,11 @@ function Table<Row>(props: {
   readonly rowKey: (row: Row) => string;
   readonly cell: (row: Row, key: string) => ReactNode;
   readonly onSort: (key: string) => void;
+  readonly grip: {
+    readonly live: string | null;
+    readonly start: (key: string, clientX: number) => void;
+    readonly nudge: (key: string, dx: number) => void;
+  };
 }): ReactElement {
   const specOf = (key: string): ColumnSpec<Row> | undefined =>
     props.columns.find((column) => column.key === key);
@@ -411,8 +489,9 @@ function Table<Row>(props: {
         </colgroup>
         <thead>
           <tr>
-            {props.layout.map((column) => {
+            {props.layout.map((column, index) => {
               const spec = specOf(column.key);
+              const label = spec?.label ?? column.key;
               const sorted = props.sort?.key === column.key ? props.sort.dir : undefined;
               return (
                 <th
@@ -425,7 +504,7 @@ function Table<Row>(props: {
                   }
                 >
                   <HeadInner
-                    label={spec?.label ?? column.key}
+                    label={label}
                     icon={spec?.icon}
                     tight={column.tight}
                     sorted={sorted}
@@ -434,6 +513,29 @@ function Table<Row>(props: {
                       props.onSort(column.key);
                     }}
                   />
+                  {index === props.layout.length - 1 ? null : (
+                    <span
+                      className={`cbd__grip${props.grip.live === column.key ? ' is-live' : ''}`}
+                      data-grip={column.key}
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${label}`}
+                      aria-valuenow={Math.round(column.px)}
+                      aria-valuemin={spec?.min ?? 0}
+                      tabIndex={0}
+                      title="Drag, or use the arrow keys, to resize"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        props.grip.start(column.key, event.clientX);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                        event.preventDefault();
+                        const step = event.shiftKey ? GRIP_STEP_LARGE : GRIP_STEP;
+                        props.grip.nudge(column.key, event.key === 'ArrowRight' ? step : -step);
+                      }}
+                    />
+                  )}
                 </th>
               );
             })}

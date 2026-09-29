@@ -144,6 +144,15 @@ describe('MP-5-6 on the gallery fixture', () => {
     });
     expect(undoLabel(board)).toBe('Nothing to undo');
     expect(board.all('th[aria-sort="none"]')).toHaveLength(board.all('thead th').length);
+    // A drag the browser cancels leaves no width and no step.
+    await pointer(grip(board, 'due'), 'pointerdown', 300);
+    await pointer(window, 'pointermove', 360);
+    await act(async () => {
+      window.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true }));
+    });
+    expect(shares(board)).toEqual(before);
+    expect(undoLabel(board)).toBe('Nothing to undo');
+    expect(board.find('.cbd__grip.is-live')).toBeNull();
   });
 
   it('MP-5-6 reset: the reset icon appears after a drag and returns the defaults', async () => {
