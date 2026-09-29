@@ -83,6 +83,7 @@ export {
   readMentions,
   type Mentioned,
 } from './inbox/raise.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
