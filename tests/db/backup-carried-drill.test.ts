@@ -76,6 +76,7 @@ const record = async (personId: string, receiptFile: string): Promise<Receipt> =
   });
 
 let receipt: Receipt;
+let exported: string;
 
 /** One sealed backup in the store, exported, and drilled on the carried file. */
 async function exportedAndDrilled(): Promise<void> {
@@ -88,6 +89,7 @@ async function exportedAndDrilled(): Promise<void> {
   }
   const { exportArchive, drillAsOperator } = await drillModule();
   const file = join(mkdtempSync(join(scratch, 'carry-')), 'archive.sealed');
+  exported = file;
   const gate = gateOf(operator);
   await exportArchive({ gate, storeUrl: restoreLogin.url, file, reach: hostReach });
   const takenAt = (JSON.parse(readFileSync(file, 'utf8')) as { takenAt: string }).takenAt;
@@ -97,8 +99,10 @@ async function exportedAndDrilled(): Promise<void> {
     archiveFile: file,
     privateKey: keys.privateKey,
     scope: { business: randomUUID(), client: randomUUID(), person: randomUUID() },
-    drill: () =>
-      Promise.resolve({ event: 'restore drill', at, ...passed, archiveTakenAt: takenAt }),
+    drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+      await options.fetchArchive();
+      return { event: 'restore drill', at, ...passed, archiveTakenAt: takenAt };
+    },
   });
 }
 
@@ -113,7 +117,46 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
   });
 });
 
+/**
+ * The exported file with its sealed backup swapped: another dump sealed to the
+ * same (public) backup key, its own digest, and the real time; then drilled.
+ */
+async function swappedAndDrilled(): Promise<Receipt> {
+  const { sealArchive } = await seal();
+  const { digestOf } = (await import(
+    /* @vite-ignore */
+    '../../scripts/ops/carried-archive.mjs' as string
+  )) as { digestOf: (body: Buffer) => string };
+  const held = JSON.parse(readFileSync(exported, 'utf8')) as Record<string, string>;
+  const body = sealArchive(Buffer.from('-- another dump\n'), keys.publicKey);
+  const file = join(mkdtempSync(join(scratch, 'swap-')), 'archive.sealed');
+  const swapped = { ...held, sha256: digestOf(body), body: body.toString('base64') };
+  writeFileSync(file, `${JSON.stringify(swapped)}\n`);
+  const at = new Date().toISOString();
+  return await (
+    await drillModule()
+  ).drillAsOperator({
+    gate: gateOf(operator),
+    archiveFile: file,
+    privateKey: keys.privateKey,
+    scope: { business: randomUUID(), client: randomUUID(), person: randomUUID() },
+    drill: async (options: { fetchArchive: () => Promise<{ takenAt: string }> }) => {
+      const archive = await options.fetchArchive();
+      return { event: 'restore drill', at, ...passed, archiveTakenAt: archive.takenAt };
+    },
+  });
+}
+
 function refusedCases() {
+  it('a swapped archive, re-sealed to the backup key with its own digest and the real time, is refused at --record and writes nothing', async () => {
+    const swapped = await swappedAndDrilled();
+    expect(swapped['archiveTakenAt']).toBe(receipt['archiveTakenAt']);
+    await expect(record(operator, carriedBack(swapped))).rejects.toThrow(
+      /^(?!.*(?:postgres|s0-3e-)).*$/u,
+    );
+    expect(await drills()).toStrictEqual([]);
+  });
+
   it('the export is a read the store logs, as the restore identity', async () => {
     const reads = await store.admin.execute<{ action: string; actor: string }>(
       "select action, actor from backups.receipts where action = 'backup read'",
@@ -148,8 +191,9 @@ function roundTripCases() {
 
   it('only the restore identity records a carried drill', async () => {
     const at = receipt['archiveTakenAt'];
-    const args = [receipt['outcome'], null, operator, at, 17, 17, 17, 12, { fetch: 1 }];
-    const call = 'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9)';
+    const digest = receipt['archiveDigest'];
+    const args = ['passed', null, operator, at, 17, 17, 17, 12, { fetch: 1 }, digest];
+    const call = 'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)';
     for (const [url, role] of [
       [backupLogin.url, BACKUP],
       [retentionLogin.url, RETENTION],
