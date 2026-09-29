@@ -47,10 +47,17 @@ describe('C82 the design system crossed as a checked copy', () => {
       const text = read(name).toString('utf8');
       // Report the file and the target only, never the surrounding text.
       expect(/<img\b/iu.test(text), `${name}: an HTML image`).toBe(false);
-      for (const [, image, target] of text.matchAll(
-        /(!?)\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\(([^()\s]*)/gu,
-      )) {
-        expect(image, `${name}: an image`).toBe('');
+      expect(text.includes('!['), `${name}: an image, inline or by reference`).toBe(false);
+      expect(
+        text.includes('ops-astro-roadmap'),
+        `${name}: a pointer to the private repository`,
+      ).toBe(false);
+      const targets = [
+        ...[...text.matchAll(/\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\(<?([^()\s<>]*)/gu)].map((m) => m[1]),
+        ...[...text.matchAll(/^ {0,3}\[[^[\]\n]+\]:[ \t]*<?([^\s<>]+)/gmu)].map((m) => m[1]),
+        ...[...text.matchAll(/<a\s[^>]*?href\s*=\s*(["'])(.*?)\1/giu)].map((m) => m[2]),
+      ];
+      for (const target of targets) {
         const path = target!.split('#')[0]!;
         if (!path) continue;
         expect(path.includes('://'), `${name}: ${target} leaves the copy`).toBe(false);
