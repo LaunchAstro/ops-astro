@@ -19,6 +19,12 @@ const ID = '22222222-2222-4222-8222-222222222222';
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** The people this reader can list: not whoever made the last change unseen. */
+const PEOPLE = [
+  { personId: 'p-ana', name: 'Ana Bell' },
+  { personId: 'p-bo', name: 'Bo Reyes' },
+];
+
 /** One task, a stream the case writes into, and an update checked against the revision. */
 function server() {
   const task = {
@@ -39,14 +45,7 @@ function server() {
   const encoder = new TextEncoder();
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   const route = (at: string, body: string): Response => {
-    if (at.endsWith('/person/list'))
-      return json({
-        ok: true,
-        persons: [
-          { personId: 'p-ana', name: 'Ana Bell' },
-          { personId: 'p-bo', name: 'Bo Reyes' },
-        ],
-      });
+    if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.includes('/live?'))
       return new Response(
         new ReadableStream<Uint8Array>({
