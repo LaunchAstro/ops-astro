@@ -407,6 +407,27 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
   });
 
+  it('Sol proof, criterion 4: running API promotion refusal writes no authentication row', async () => {
+    const count = async (): Promise<number> =>
+      await db.app.withBusiness(alphaBusiness, async (tx) => {
+        const rows = await tx.query<{ n: number }>(
+          'select count(*)::int as n from authentication_attempts where business_id = $1',
+          [tx.businessId],
+        );
+        return rows[0]!.n;
+      });
+    const before = await count();
+    const fake = manager(true);
+    const at = marks(fake);
+    const result = COMMANDS['the promotion step']!(
+      environment(at, fake.path, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
+      at,
+    );
+    expect(result.status, result.out).toBe(1);
+    expect(result.out).toMatch(/docker:prod-api is running/u);
+    expect(await count()).toBe(before);
+  });
+
   it('past the gate, the promotion takes no saved report and no argument it does not know', async () => {
     const fake = manager(false);
     const at = marks(fake);
