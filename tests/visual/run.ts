@@ -216,7 +216,13 @@ async function capturePages(width: number, side: Side, origin: URL): Promise<voi
     await page.close();
     const picture = `${name}.page.png`;
     if (shot !== undefined) writeFileSync(`${out}/${picture}`, shot.png);
-    shots.push({ page: id, width, picture: shot === undefined ? null : picture, overflow });
+    shots.push({
+      page: id,
+      width,
+      theme: 'light',
+      picture: shot === undefined ? null : picture,
+      overflow,
+    });
   }
 }
 

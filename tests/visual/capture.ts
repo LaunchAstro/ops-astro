@@ -16,8 +16,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { Browser, BrowserContext, Page, Route } from 'playwright';
-import { fontCache, readAssets, type Packet } from './packet.ts';
+import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
+import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
 export type State = {
   id: string;
@@ -92,6 +92,23 @@ function serveMockup(
   return route.fulfill({ body: bytes, contentType: typeOf(path) });
 }
 
+/** The browser context one capture draws in: the packet's viewport at one width, in one theme. */
+export function contextOptions(
+  packet: Packet,
+  width: number,
+  _theme: Theme,
+): BrowserContextOptions {
+  return {
+    viewport: { width, height: packet.height },
+    deviceScaleFactor: 1,
+    colorScheme: 'light',
+    reducedMotion: 'reduce',
+    locale: 'en-AU',
+    timezoneId: 'Australia/Brisbane',
+    serviceWorkers: 'block',
+  };
+}
+
 /** One side of the comparison: the mockup, or the app at a local address. */
 export async function openSide(
   browser: Browser,
@@ -102,13 +119,7 @@ export async function openSide(
   const context = await browser.newContext({
     // A signed-in local fixture session (T4b1), as Playwright storage state.
     ...('app' in source && source.session !== undefined ? { storageState: source.session } : {}),
-    viewport: { width, height: packet.height },
-    deviceScaleFactor: 1,
-    colorScheme: 'light',
-    reducedMotion: 'reduce',
-    locale: 'en-AU',
-    timezoneId: 'Australia/Brisbane',
-    serviceWorkers: 'block',
+    ...contextOptions(packet, width, 'light'),
   });
   const side: Side = { context, external: new Set(), unresolved: new Set() };
   const blobs = new Map<string, Buffer>();

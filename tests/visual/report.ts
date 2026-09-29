@@ -5,7 +5,7 @@
 // the dark theme (U04, MP-1-1); and no page scrolls sideways. A page is built
 // once its route is registered, so a route added without pictures fails here.
 
-import type { Packet } from './packet.ts';
+import type { Packet, Theme } from './packet.ts';
 
 // Read at run time: the web app's own types sit outside this program (`tsconfig.web.json`).
 const registry = new URL('../../apps/web/src/routes.ts', import.meta.url).href;
@@ -13,7 +13,13 @@ const { ROUTES } = (await import(registry)) as {
   ROUTES: Record<string, { path: string; authenticated: boolean }>;
 };
 
-export type PageShot = { page: string; width: number; picture: string | null; overflow: number };
+export type PageShot = {
+  page: string;
+  width: number;
+  theme: Theme;
+  picture: string | null;
+  overflow: number;
+};
 
 export const DARK_PENDING = 'waiting for the dark theme (U04, MP-1-1)';
 

@@ -37,6 +37,12 @@ export type Packet = {
   clock: string;
   external: Record<string, string>;
 };
+/** A theme the harness draws in. */
+export type Theme = 'light' | 'dark';
+
+/** The themes captured at every width: light, and dark once the dark theme lands (U04, MP-1-1). */
+export const themesOf = (_packet: Packet): Theme[] => ['light'];
+
 export type Asset = {
   name: string;
   kind: string;

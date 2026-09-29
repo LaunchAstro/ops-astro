@@ -46,7 +46,13 @@ beforeAll(() => {
 
 const everyShot = (widths: readonly number[], overflow = 0): PageShot[] =>
   builtPages().flatMap((page) =>
-    widths.map((width) => ({ page, width, picture: `${page}@${width}-light.png`, overflow })),
+    widths.map((width) => ({
+      page,
+      width,
+      theme: 'light' as const,
+      picture: `${page}@${width}-light.png`,
+      overflow,
+    })),
   );
 
 describe('MP-1-7', () => {
