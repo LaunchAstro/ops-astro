@@ -126,4 +126,33 @@ describe.skipIf(serverUrl === undefined)('WF-4 isolation', () => {
     expect(delegated.exit).toBe(1);
     clean('delegated', delegated.out);
   });
+
+  it('WF-4 a blocks link from a record that is not a ticket of the map is never shown', async () => {
+    const m = await chart(w, lead, 'foreign-link', [
+      { ref: 'a', title: 'foreign-link a', type: 'task' },
+    ]);
+    const other = await chart(w, lead, 'other-map', [{ ref: 'o', title: 'other o', type: 'task' }]);
+    const a = m.tickets['a'] as string;
+    // The ticket's own state record and another map's ticket, linked as
+    // blockers behind the commands' back.
+    const [row] = await w.db.admin.execute<{ readonly state: string }>(
+      `select uuid_1::text as state from public.records where business_id = $1 and id = $2`,
+      [w.business, a],
+    );
+    for (const from of [row?.state as string, other.tickets['o'] as string]) {
+      // oxlint-disable-next-line no-await-in-loop
+      await w.db.admin.execute(
+        `insert into public.record_links (business_id, id, link_type, from_record_id, to_record_id)
+         values ($1, $2, 'blocks', $3, $4)`,
+        [w.business, crypto.randomUUID(), from, a],
+      );
+    }
+    const viewed = (await w.read(lead, { read: 'map.view', recordId: m.map })) as {
+      map: { tickets: readonly { id: string; blockedBy: readonly string[] }[] };
+    };
+    expect(viewed.map.tickets.find((t) => t.id === a)?.blockedBy).toStrictEqual([]);
+    const page = await openMap(w, open, lead, m.key);
+    await page.click('[role="tab"][id="map-tab-tickets"]');
+    expect(page.find(`[data-ticket-row="${a}"] [data-blocked-by]`)).toBeNull();
+  });
 });
