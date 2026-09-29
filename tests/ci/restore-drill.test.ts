@@ -436,7 +436,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         'utf8',
       );
       expect(source).not.toMatch(/DATABASE_URL|SUPABASE|--host|PGHOST/u);
-      expect(source).toMatch(/'--network',\s*'none'/u);
+      expect(source).toMatch(/--network none /u);
     });
   });
 
