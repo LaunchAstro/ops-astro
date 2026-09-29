@@ -103,6 +103,8 @@ async function agentBudgets(context: PassContext, person: Person): Promise<Budge
   };
   const withId = async (name: Parameters<Person>[0], body: Record<string, unknown>) =>
     await person(name, { operationId: randomUUID(), ...body });
+  // Whatever ran before (the live-update check) may leave its pickup's delegation live.
+  await revokePickup(context, withId);
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop -- each run is its own task, in order
     const taskId = await droppedRun(context, measuring, withId);
