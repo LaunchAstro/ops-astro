@@ -276,6 +276,10 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     const denied = await executeRead(db.app, alpha, ada.presented, { read: 'access.read' });
     expect(denied).toMatchObject({ refused: true, code: 'SCOPE_NOT_GRANTED' });
     expect('team' in denied).toBe(false);
+    // The refusal names nobody: no client, no other business, no agent.
+    for (const id of [carla, dev, betaPerson, agent.agentActorId, CLIENT_A.id ?? '']) {
+      expect(JSON.stringify(denied)).not.toContain(id);
+    }
   });
 
   it('drops a revoked grant from the preview on the next read, and from the agent with it', async () => {
@@ -309,5 +313,48 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     const refused = await executeRead(db.app, alpha, former.presented, { read: 'task.queue' });
     expect(refused).toMatchObject({ refused: true, code: 'AUTH_NO_MEMBERSHIP' });
     expect(previewOf(await access(), former.personId) ?? []).toStrictEqual([]);
+  });
+  it('shows no permission for a member sign-in refuses ACTOR_INACTIVE', async () => {
+    const idle = await enrol(db.app, alpha, 'Idle');
+    await db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, idle, 'read', WHOLE);
+      await tx.query('update actors set active = false, deactivated_at = now() where id = $1', [
+        idle.actorId,
+      ]);
+    });
+    const refused = await executeRead(db.app, alpha, idle.presented, { read: 'task.queue' });
+    expect(refused).toMatchObject({ refused: true, code: 'ACTOR_INACTIVE' });
+    const answer = await access();
+    expect(answer.team.map((person) => person.personId)).toContain(idle.personId);
+    expect(previewOf(answer, idle.personId)).toStrictEqual([]);
+  });
+
+  it("never carries an agent's delegation credential or its digest", async () => {
+    const credential = await db.app.withBusiness(alpha, async (tx) => {
+      const minted = await mintDelegation(tx, {
+        agentActorId: await insertAgentActor(tx),
+        delegatePersonId: ada.personId,
+        mintedByActorId: ada.actorId,
+        purpose: 'canary_check',
+        collections: ['task'],
+        actions: ['read'],
+        purposeScope: { kind: 'record', id: TASK_ONE.id ?? '' },
+        expiresAt: new Date(Date.now() + HOUR),
+      });
+      if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
+      return minted.value.credential;
+    });
+    const hashes = await db.app.withBusiness(
+      alpha,
+      async (tx) =>
+        await tx.query<{ readonly credential_hash: string }>(
+          'select credential_hash from delegations',
+        ),
+    );
+    const body = JSON.stringify(await access());
+    expect(body).toContain('canary_check');
+    for (const secret of [credential, ...hashes.map((row) => row.credential_hash)]) {
+      expect(body).not.toContain(secret);
+    }
   });
 });
