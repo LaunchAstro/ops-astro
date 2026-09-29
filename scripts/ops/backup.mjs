@@ -8,13 +8,16 @@
 //     BACKUP_SOURCE_URL  a login holding ops_astro_backup (migration 0034),
 //                        its host as staging's network names the database
 //     BACKUP_STORE_URL   the same login, on the backup store
+//     BACKUP_PUBLIC_KEY_FILE  the operator's public key; its private half is
+//                        held apart, never on this job's machine account
 //   node --env-file=<retention env> scripts/ops/backup.mjs expire
 //     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention
 //
 // `run` takes one pg_dump of the product's schemas and `auth`, in a throwaway
-// container of staging's own pinned Postgres image, and adds it to the store.
-// `expire` deletes every backup past the store's window. What each may do is
-// held by the server (deploy/staging/backup-store.sql), which writes receipts.
+// container of staging's own pinned Postgres image, seals it (archive-seal.mjs)
+// and adds only the sealed artefact to the store. `expire` deletes every
+// backup past the store's window. What each may do is held by the server
+// (deploy/staging/backup-store.sql), which writes receipts.
 //
 // Each run prints one JSON line, recorded or failed, and exits 0 or 1. A
 // failed line names the stage and nothing else: an error from pg_dump or the
@@ -24,6 +27,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
+import { sealArchive } from './archive-seal.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
@@ -58,6 +62,7 @@ export function pgDump(sourceUrl) {
     `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
+    '--env=PGSSLMODE',
     staging.services.db.image,
     'pg_dump',
     '--format=custom',
@@ -70,7 +75,8 @@ export function pgDump(sourceUrl) {
   ];
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, {
-      env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password) },
+      // TLS or no dump: the source's bytes are plaintext until the job seals them.
+      env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' },
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     const chunks = [];
@@ -89,13 +95,18 @@ function failed(event, stage) {
 }
 
 /** One scheduled backup. Returns the run's record; never throws. */
-export async function runBackup({ dump, storeUrl }) {
+export async function runBackup({ dump, storeUrl, publicKey }) {
   const at = new Date().toISOString();
   let body;
   try {
     body = await dump();
   } catch {
     return failed('backup run', 'dump');
+  }
+  try {
+    body = sealArchive(body, publicKey);
+  } catch {
+    return failed('backup run', 'seal');
   }
   try {
     await asRole(
@@ -132,11 +143,23 @@ function env(name) {
   return process.env[name] || undefined;
 }
 
+/** The operator's public key, or undefined when its file is unset or unreadable. */
+function readKey(path) {
+  try {
+    return path === undefined ? undefined : readFileSync(path, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
 async function main(command) {
   if (command === 'run') {
     const [source, storeUrl] = [env('BACKUP_SOURCE_URL'), env('BACKUP_STORE_URL')];
-    if (source === undefined || storeUrl === undefined) return failed('backup run', 'config');
-    return await runBackup({ dump: () => pgDump(source), storeUrl });
+    const publicKey = readKey(env('BACKUP_PUBLIC_KEY_FILE'));
+    if (source === undefined || storeUrl === undefined || publicKey === undefined) {
+      return failed('backup run', 'config');
+    }
+    return await runBackup({ dump: () => pgDump(source), storeUrl, publicKey });
   }
   if (command === 'expire') {
     const storeUrl = env('BACKUP_RETENTION_URL');

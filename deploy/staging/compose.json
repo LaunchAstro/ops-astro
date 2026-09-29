@@ -15,7 +15,19 @@
         "POSTGRES_USER": "${STAGING_DB_ADMIN_USER:?set from the staging runbook}",
         "POSTGRES_PASSWORD": "${STAGING_DB_ADMIN_PASSWORD:?set from the staging runbook}"
       },
-      "volumes": ["ops-astro-staging-pgdata:/var/lib/postgresql/data"],
+      "command": [
+        "postgres",
+        "-c",
+        "ssl=on",
+        "-c",
+        "ssl_cert_file=/etc/ops-astro-tls/server.crt",
+        "-c",
+        "ssl_key_file=/etc/ops-astro-tls/server.key"
+      ],
+      "volumes": [
+        "ops-astro-staging-pgdata:/var/lib/postgresql/data",
+        "ops-astro-staging-tls:/etc/ops-astro-tls:ro"
+      ],
       "networks": ["staging"],
       "restart": "unless-stopped",
       "healthcheck": {
@@ -109,6 +121,7 @@
         "device": "tmpfs",
         "o": "size=512m,uid=70,gid=70,mode=0700"
       }
-    }
+    },
+    "ops-astro-staging-tls": { "name": "ops-astro-staging-tls" }
   }
 }

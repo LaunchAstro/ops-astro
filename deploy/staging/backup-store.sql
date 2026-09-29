@@ -9,12 +9,15 @@
 --
 -- after the migrations have made `ops_astro_backup` on the same server.
 --
--- Two identities, held apart by the server rather than by the job.
+-- Three identities, held apart by the server rather than by the job.
 -- `ops_astro_backup` inserts a dump's bytes and nothing else: no list, count,
 -- read, change or delete, and not the time it was taken.
 -- `ops_astro_backup_retention` sees ids and times, never bytes, and deletes
--- only past the window. The store writes a receipt for every add and delete:
--- action, id, time, size and login; no bytes, no fingerprint.
+-- only past the window. `ops_astro_backup_restore` (the restore drill, S0-3c)
+-- takes the newest backup through `backups.read_latest()` and nothing else;
+-- what it gets is sealed, and only the operator's private key opens it. The
+-- store writes a receipt for every add, read and delete: action, id, time,
+-- size and login; no bytes, no fingerprint.
 --
 -- The retention window is one row, `backups.settings`, here and nowhere else.
 
@@ -38,7 +41,7 @@ create table backups.archives (
 create table backups.receipts (
   id bigint generated always as identity primary key,
   at timestamptz not null default now(),
-  action text not null check (action in ('backup recorded', 'backup expired')),
+  action text not null check (action in ('backup recorded', 'backup read', 'backup expired')),
   archive_id uuid not null,
   taken_at timestamptz not null,
   bytes bigint not null,
@@ -89,13 +92,50 @@ do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'ops_astro_backup_retention') then
     create role ops_astro_backup_retention nologin;
   end if;
+  if not exists (select 1 from pg_roles where rolname = 'ops_astro_backup_restore') then
+    create role ops_astro_backup_restore nologin;
+  end if;
 end $$;
 alter role ops_astro_backup_retention nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+alter role ops_astro_backup_restore nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+
+-- A read has no trigger, so the one way to read a backup is a function that
+-- writes its receipt first, on a connection of its own (dblink) that commits
+-- before the bytes are returned: a reader that rolls back keeps its receipt.
+-- dblink connects without a password only for a superuser, so the store is
+-- made by staging's admin, and its functions stay out of every other role's
+-- reach in a schema of their own.
+create schema backups_audit;
+revoke all on schema backups_audit from public;
+create extension dblink schema backups_audit;
+
+create function backups.read_latest()
+  returns table (id uuid, taken_at timestamptz, body bytea)
+  language plpgsql security definer set search_path = pg_catalog as $$
+declare
+  picked backups.archives;
+begin
+  select a.* into picked from backups.archives a order by a.taken_at desc, a.id desc limit 1;
+  if not found then
+    return;
+  end if;
+  perform backups_audit.dblink_exec(
+    format('dbname=''%s'' user=''%s''', current_database(), current_user),
+    format(
+      'insert into backups.receipts (action, archive_id, taken_at, bytes, actor) values (%L, %L, %L, %s, %L)',
+      'backup read', picked.id, picked.taken_at, picked.bytes, session_user
+    )
+  );
+  return query select picked.id, picked.taken_at, picked.body;
+end $$;
+revoke execute on function backups.read_latest() from public;
 
 grant usage on schema backups to ops_astro_backup, ops_astro_backup_retention;
 grant insert (body) on backups.archives to ops_astro_backup;
 grant select (id, taken_at), delete on backups.archives to ops_astro_backup_retention;
 grant select on backups.settings to ops_astro_backup_retention;
+grant usage on schema backups to ops_astro_backup_restore;
+grant execute on function backups.read_latest() to ops_astro_backup_restore;
 
 -- Row security holds the window for the retention identity, and it is forced,
 -- so the backup identity's own bypass of row security on the source reads
