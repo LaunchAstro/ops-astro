@@ -58,6 +58,7 @@ export {
   type Subject,
 } from './authority/grants.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
+export { grantAccess, revokeAccess, type AccessGrant } from './authority/access.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
