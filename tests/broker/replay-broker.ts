@@ -29,6 +29,7 @@ const REPLAY_ROUTE = {
   credentialRef: 'replay_key',
   credentialKind: 'api_key',
   installation: 'here',
+  ceiling: 1_000,
 };
 
 export async function openReplayBroker(): Promise<ReplayBroker> {

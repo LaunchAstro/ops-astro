@@ -1418,7 +1418,8 @@ legacy row as derivable, and 0022's trigger forbids it.
 ## The model call's ledger
 
 `0032_model_calls` (AW-01; numbered again at the rebase) adds two tables,
-both tenancy-scoped with row security forced.
+both tenancy-scoped with row security forced, and the fair share's count
+(`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation. Its
