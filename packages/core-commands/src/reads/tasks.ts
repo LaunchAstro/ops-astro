@@ -255,6 +255,7 @@ export async function readTaskDetail(
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
+    rank: { number: null, score: null, calc: '' },
   };
 }
 

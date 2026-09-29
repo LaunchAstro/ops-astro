@@ -43,6 +43,7 @@ export type {
   ProposalView,
   QueuedWork,
   QueueResult,
+  RankView,
   ReservationView,
   SettingsReadResult,
   SessionCapabilities,

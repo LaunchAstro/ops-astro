@@ -87,6 +87,22 @@ export interface TaskDetail extends TaskSummary {
    * not read the task is told nothing about the cap.
    */
   readonly capCurrency: string | null;
+  /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
+  readonly rank: RankView;
+}
+
+/**
+ * A task's derived rank as its reader is shown it (R70, MP-4-9).
+ *
+ * `number` is the task's place among the open tasks this reader may read, or
+ * null when the task is not ranked; `score` is null exactly then. `calc` is the
+ * line drawn under the rank, worked out on the server so every surface shows the
+ * same words, and it names nothing but this task's own marks and modifiers.
+ */
+export interface RankView {
+  readonly number: number | null;
+  readonly score: number | null;
+  readonly calc: string;
 }
 
 /**
