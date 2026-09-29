@@ -19,11 +19,12 @@ A person's login, an agent login and a delegation credential are distinct
 identity model exists to prevent. It arrives one layer up from the failure
 migration 0002 guards.
 
-| Credential   | Resolves through               | To                                | Confers                                             |
-| ------------ | ------------------------------ | --------------------------------- | --------------------------------------------------- |
-| A person's   | `identity/login-resolution.ts` | `Session` (person, actor, role)   | membership, and nothing else; authority is `grants` |
-| An agent's   | `identity/agent-login.ts`      | `AgentSession` (actor, no person) | nothing at all                                      |
-| A delegation | `authority/delegations.ts`     | `Delegation`                      | nothing stored; an intersection computed per call   |
+| Credential                  | Resolves through                 | To                                          | Confers                                                                      |
+| --------------------------- | -------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| A person's                  | `identity/login-resolution.ts`   | `Session` (person, actor, role)             | membership, and nothing else; authority is `grants`                          |
+| An agent's                  | `identity/agent-login.ts`        | `AgentSession` (actor, no person)           | nothing at all                                                               |
+| A delegation                | `authority/delegations.ts`       | `Delegation`                                | nothing stored; an intersection computed per call                            |
+| An agent credential (API-2) | `authority/agent-credentials.ts` | its row, a fresh agent actor and its issuer | the ticked keys, standing, until expiry or revocation; not served yet (S0-6) |
 
 A login is in `person_logins` or in `actor_logins`, never both. Two triggers in
 0008 hold that from either side, because a login in both would make the order in
@@ -602,6 +603,35 @@ Setting a class of the data-class register (`privacy.set_data_class`) is
 `privacy:manage` too, never an agent's. It takes the same per-business lock as
 the overseas-services register, and a policy's draft, approval and publication
 read the classes under it, so the order above holds for both registers.
+
+## Agent credentials (API-2)
+
+An agent credential is a standing delegation from the person who issues it to
+a fresh agent actor of theirs, with no lease and no run
+(`authority/agent-credentials.ts`, migration 0037). `credential.issue` is
+`credential:write` and is always the caller's own. Its scope is the ticked
+`collection:action` keys, each one the caller holds at business scope when it
+is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
+and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). Its expiry is
+at most `CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
+
+The secret is derived as a delegation's credential is, under the delegation
+credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never
+equal a delegation's. It is in the issue answer only: the row keeps its SHA-256,
+the scheme and the key id, the register keeps the answer with the credential
+null, and the issuer's replay of the same operation derives it again while the
+credential is theirs and live.
+
+`credential.revoke` is `credential:write` too. The issuer revokes their own;
+anyone else needs `access:manage` as well, and without it another person's
+credential is `NOT_FOUND`, as a foreign or made-up one is. It locks the row,
+decides under the lock, sets the revocation once (`CREDENTIAL_ALREADY_REVOKED`
+after) and deactivates the agent actor. Neither command is ever an agent's: an
+agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
+
+Using the credential on the agent route (bearer only, revocation on the next
+call, expiry either side, the actor and the person recorded, the quota) waits
+on S0-6's bearer scheme and is not served yet.
 
 ## Revocation
 
