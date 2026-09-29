@@ -121,6 +121,8 @@ export type BoardAction =
   | { readonly type: 'dropLast' }
   | { readonly type: 'clear' }
   | { readonly type: 'commit'; readonly raw: string }
+  /** A suggested row name: its words become free words, never facets. */
+  | { readonly type: 'phrase'; readonly text: string }
   | { readonly type: 'take'; readonly facetId: string }
   | { readonly type: 'sort'; readonly key: string }
   | { readonly type: 'resize'; readonly widths: readonly number[] }

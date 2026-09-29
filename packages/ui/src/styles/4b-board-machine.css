@@ -1,0 +1,193 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board machine (U09): the command bar, the chip row, the reading line,
+   the typeahead and the table's width model. Rules only the machine draws;
+   the board's shared dialect stays in 4-board.css. */
+
+.cbd__cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cbdm__search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.cbd__barq {
+  width: 100%;
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cbd__barq:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.cbd__ico {
+  font: inherit;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__ico:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cbd__clear:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.cbd__preset,
+.cbd__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__preset:hover {
+  border-color: var(--text);
+}
+
+.cbd__preset.is-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.cbd__mode.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+
+.cbd__count {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8em;
+}
+
+.cbd__read {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* The typeahead: groups are presentation, options are the only stops. */
+.cbdta {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.cbdta__gh,
+.cbdta__more {
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.cbdta__opt {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.cbdta__opt[aria-selected='true'] {
+  background: var(--surface-2);
+}
+
+.cbdta__k {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+/* The width model: when the floors exceed the card the table takes their
+   sum and scrolls here, inside the card; the page never scrolls sideways. */
+.cbd__wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.cbd__tbl th {
+  position: relative;
+}
+
+.cbd__tbl th .cbd__th {
+  font: inherit;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.cbd__tbl th[data-align='end'],
+.cbd__tbl td[data-align='end'] {
+  text-align: end;
+}
+
+.cbd__tbl th[data-align='center'],
+.cbd__tbl td[data-align='center'] {
+  text-align: center;
+}
+
+th:not([data-tight]) .cbd__thi {
+  display: none;
+}
+
+/* Tight: the head drops its words and centres its icon; the label stays the
+   button's accessible name. */
+th[data-tight] .cbd__thl {
+  display: none;
+}
+
+/* Tight cells clip at the column's edge; they never shorten their text. */
+td[data-tight] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+/* The sort arrow sits centred on the head's bottom rule, so a sorted column
+   is never wider than an unsorted one. */
+.cbd__arrow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+  font-size: 8px;
+  line-height: 1;
+  color: var(--text);
+}

@@ -275,7 +275,7 @@ describe('MP-5-5 on the gallery fixture', () => {
   it('MP-5-5 commits stack and Backspace removes the last', async () => {
     const board = await open();
     const field = board.find('[data-board-search]') as HTMLInputElement;
-    await board.type('[data-board-search]', 'overdue');
+    await board.type('[data-board-search]', 'cobalt');
     await key(field, { key: 'Escape' });
     await key(field, { key: 'Enter' });
     await board.type('[data-board-search]', 'copy');
@@ -285,7 +285,7 @@ describe('MP-5-5 on the gallery fixture', () => {
     expect(field.placeholder).toBe('Add another…');
     await key(field, { key: 'Backspace' });
     expect(board.all('.cbd__tag')).toHaveLength(1);
-    expect(board.find('.cbd__tag')?.textContent).toContain('Overdue');
+    expect(board.find('.cbd__tag')?.textContent).toContain('Cobalt Clinic');
   });
 
   it('MP-5-5 facet group visible above the names', async () => {
