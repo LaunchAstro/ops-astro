@@ -1,0 +1,213 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// T4b1: the journey command. One documented command that runs the slice's
+// cases in order against real Postgres of its own and exits non-zero naming
+// every case that did not pass (T4-R1).
+//
+//   pnpm verify:journey [--pg-port N] [--api-port N] [--web-port N]
+//                       [--evidence DIR] [--only journey] [--remove]
+//
+// Before anything starts it refuses an occupied or another stack's port and
+// a pinned Postgres image that is not already on this machine: it never pulls
+// (spike RN-03). Then it starts that image as a container of its own,
+// migrates it at this head, and runs, one line per case:
+//
+//   1. the journey (`tests/journey/run.ts`, run as a process because scripts
+//      may not import tests): the API and web processes it owns, T2b's served
+//      identity at the start and the end, the whole journey through the app
+//      and again through the command line with the facts compared
+//      (`journey_twice_same_facts`), the separation, the live update, one
+//      command-line process per declaration, and a full restart read back and
+//      replayed byte for byte;
+//   2. T3d2's restart legs (`runtime-proofs.sh`, a container of their own);
+//   3. the named suites, T1 to T3's cases (`db-conformance.mjs`, which fails a
+//      skip and a suite that never reached the database);
+//   4. the cases this base cannot run yet, each printed `unrun` with its reason.
+//
+// Any `fail` or `unrun` line fails the command. The database is left for
+// inspection unless `--remove`; the command prints how to remove it. Every
+// process it or its run started is stopped by the pid written down, never by
+// name.
+
+import { spawn } from 'node:child_process';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import {
+  DOCKER,
+  refusalsBeforeStarting,
+  run,
+  startPostgres,
+  stopStarted,
+} from './journey-stack.mjs';
+
+const ROOT = resolve(import.meta.dirname, '../..');
+/**
+ * What this base cannot run yet, with the reason. Each prints `unrun` and
+ * fails the command until the part lands here (Rebase notes on the pull request).
+ */
+const UNRUN = [
+  [
+    'T2g: request changes, the revision round, journey_parity_cli',
+    'T2g (#136) is not on this base; the re-baseline brings it',
+  ],
+  [
+    'T3a: escalate at the bound, reject, cancel and restart',
+    'T3a (#153) is not on this base; the re-baseline brings it',
+  ],
+  [
+    'T4c: the pinned-mockup comparison at 1480, 900 and 390',
+    'T4c (#134) is not on this base; the re-baseline brings it',
+  ],
+  [
+    'the browser pass (slice-acceptance) on this stack',
+    'the web app signs in through GoTrue, which this stack does not start yet',
+  ],
+];
+
+const args = process.argv.slice(2).filter((arg) => arg !== '--');
+const flag = (name, fallback) => {
+  const at = args.indexOf(name);
+  return at === -1 ? fallback : args[at + 1];
+};
+const stamp = new Date().toISOString().replaceAll(/[:.]/gu, '-');
+const pg = Number(flag('--pg-port', '54430'));
+const apiPort = Number(flag('--api-port', '8830'));
+const ports = {
+  pg,
+  api: apiPort,
+  web: Number(flag('--web-port', '5230')),
+  proofsPg: pg + 1,
+  proofsApi: apiPort + 1,
+};
+const onlyJourney = flag('--only', '') === 'journey';
+const evidence = resolve(flag('--evidence', join(ROOT, '.local', 'journey', stamp)));
+const container = `ops-astro-journey-${stamp.toLowerCase()}`;
+const password = `journey_${stamp.replaceAll('-', '').slice(0, 14)}`;
+const admin = `postgres://postgres:${password}@127.0.0.1:${String(pg)}/journey`;
+const pidfile = join(evidence, 'journey.pids');
+const lines = [];
+
+function say(line) {
+  console.log(`journey: ${line}`);
+}
+
+function record(name, status, detail) {
+  lines.push({ case: name, status, detail });
+  appendFileSync(
+    join(evidence, 'cases.jsonl'),
+    `${JSON.stringify({ case: name, status, detail })}\n`,
+  );
+  say(`${status.padEnd(5)} ${name}${detail === '' ? '' : ` -- ${detail}`}`);
+}
+
+/** The journey's own run, one `journey-case` line per case on its stdout. */
+async function journey() {
+  const child = spawn(process.execPath, ['tests/journey/run.ts'], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      DATABASE_URL: admin,
+      DATABASE_ADMIN_URL: admin,
+      JOURNEY_API_PORT: String(ports.api),
+      JOURNEY_WEB_PORT: String(ports.web),
+      JOURNEY_PG_CONTAINER: container,
+      JOURNEY_PIDFILE: pidfile,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  appendFileSync(pidfile, `${String(child.pid)} tests/journey/run.ts\n`);
+  let seen = 0;
+  let buffer = '';
+  child.stdout.on('data', (chunk) => {
+    buffer += chunk.toString('utf8');
+    const complete = buffer.split('\n');
+    buffer = complete.pop() ?? '';
+    for (const line of complete.filter((one) => one.startsWith('journey-case '))) {
+      const one = JSON.parse(line.slice('journey-case '.length));
+      seen += 1;
+      record(one.case, one.status, one.detail);
+    }
+  });
+  child.stderr.on('data', (chunk) => appendFileSync(join(evidence, 'run.stderr'), chunk));
+  const code = await new Promise((done) => {
+    child.once('close', done);
+  });
+  // Exit 1 is the run's own verdict, already on its case lines; anything else is the run breaking.
+  if (seen === 0 || (code !== 0 && code !== 1)) {
+    const detail = `exit ${String(code)}, ${String(seen)} cases; stderr in ${join(evidence, 'run.stderr')}`;
+    record('the journey run itself', 'fail', detail);
+  }
+}
+
+/** T3d2's restart legs, then T1 to T3's named suites, then what this base cannot run. */
+function afterJourney() {
+  const proofs = 'T3d2 restart legs (runtime-proofs)';
+  const suites = 'named suites: T1 to T3 cases (db:conformance)';
+  if (onlyJourney) {
+    record(proofs, 'unrun', 'skipped by --only journey');
+    record(suites, 'unrun', 'skipped by --only journey');
+  } else {
+    const file = join(evidence, 'runtime-proofs.txt');
+    const own = ['--name', `${container}-proofs`, '--port', String(ports.proofsPg)];
+    const legs = run('bash', [
+      'scripts/local/runtime-proofs.sh',
+      ...own,
+      '--api-port',
+      String(ports.proofsApi),
+      '--evidence',
+      file,
+    ]);
+    record(proofs, legs.ok ? 'pass' : 'fail', `evidence ${file}`);
+    const named = run(process.execPath, ['scripts/db-conformance.mjs'], {
+      DATABASE_URL: admin,
+      DATABASE_ADMIN_URL: admin,
+    });
+    record(suites, named.ok ? 'pass' : 'fail', named.out.trim().split('\n').slice(-3).join(' / '));
+  }
+  for (const [name, reason] of UNRUN) record(name, 'unrun', reason);
+}
+
+mkdirSync(evidence, { recursive: true });
+const refusals = await refusalsBeforeStarting(ports, container);
+for (const refusal of refusals) say(`refused: ${refusal}`);
+if (refusals.length > 0) process.exit(2);
+let removed = false;
+const finish = () => {
+  stopStarted(pidfile, say);
+  if (args.includes('--remove') && !removed) {
+    removed = true;
+    run(DOCKER, ['rm', '-f', '-v', container]);
+    say(`removed ${container}`);
+  }
+};
+process.once('SIGINT', () => {
+  finish();
+  process.exit(130);
+});
+process.once('SIGTERM', () => {
+  finish();
+  process.exit(143);
+});
+try {
+  const stack = await startPostgres({ container, password, port: pg, admin });
+  record(
+    'stack: Postgres from the pinned digest, migrated at this head',
+    stack.ok ? 'pass' : 'fail',
+    stack.detail,
+  );
+  if (stack.ok) await journey();
+  afterJourney();
+} finally {
+  finish();
+}
+const short = lines.filter((line) => line.status !== 'pass');
+say(
+  `${String(lines.length - short.length)} passed, ${String(short.length)} not passed; evidence in ${evidence}`,
+);
+for (const line of short) say(`not passed: ${line.case}`);
+if (!args.includes('--remove')) {
+  say(
+    `the database is kept in ${container} on 127.0.0.1:${String(pg)}; remove it with ${DOCKER} rm -f -v ${container}`,
+  );
+}
+process.exitCode = short.length === 0 ? 0 : 1;

@@ -387,6 +387,23 @@ or to `SHOT_DIR` when set. It holds `restart-legs-cases.jsonl` (one row per
 line as recorded), `MANIFEST.json` (rows and exit status) and screenshots. It
 exits 0 only when RL0 and RL-a to RL-d all pass.
 
+`corepack pnpm verify:journey` is the one command over the whole slice
+(T4b1). It refuses an occupied or another stack's port, and a pinned Postgres
+image that is not already on this machine, before it starts anything; it never
+pulls. Then it starts that image as a container of its own, migrates it,
+serves the API and the web app on its own ports (`--pg-port`, `--api-port`,
+`--web-port`; defaults 54430, 8830, 5230), and prints one line per case: the
+served identity at the start and the end, the whole journey through the app's
+own client and again through one command-line process per call with the facts
+compared (`journey_twice_same_facts`), the separation between two businesses,
+the live update within 2 s, every declaration through the command line, a full
+API and Postgres restart read back and replayed, T3d2's restart legs, and the
+named suites. A case this base cannot run prints `unrun` with its reason. Any
+line that is not `pass` fails the command. The database is kept for inspection
+unless `--remove`, and the last line says how to remove it. Evidence goes to
+`.local/journey/<stamp>/` (`cases.jsonl`, the run's stderr). `--only journey`
+skips the restart legs and the named suites, and says so as `unrun`.
+
 `corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
 tooling checks and the test suite together, needs `DATABASE_URL` and
 `DATABASE_ADMIN_URL` exported, and reads the staged tree for its public-content
