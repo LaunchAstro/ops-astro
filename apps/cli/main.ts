@@ -39,6 +39,7 @@ import {
   usage,
   type CliAnswer,
 } from './client.ts';
+import { createVerbCli, VERB_TABLE } from './verbs.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -226,8 +227,60 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   return EXIT.ok;
 }
 
+/** `help`, or two words naming a row of the agent CLI's verb table (API-3). */
+export function isVerbLine(argv: readonly string[]): boolean {
+  const [group, verb] = argv;
+  return group === 'help' || VERB_TABLE.some((row) => row.verb === `${group ?? ''} ${verb ?? ''}`);
+}
+
+/**
+ * A verb line (`pnpm cli task get <id>`): the connection is read as for an
+ * operation, from `--business`, `--api` and `--agent` or the environment,
+ * and the rest of the line goes to the verb CLI (`verbs.ts`) as typed.
+ */
+async function verbLine(argv: readonly string[], env: Environment, io: Io): Promise<number> {
+  const rest: string[] = [];
+  const connection: Record<string, string | true> = {};
+  for (let at = 0; at < argv.length; at += 1) {
+    const argument = argv[at] as string;
+    const name = argument.slice(2);
+    if (argument === '--agent') connection['agent'] = true;
+    else if (argument === '--business' || argument === '--api') {
+      connection[name] = argv[(at += 1)] ?? '';
+    } else rest.push(argument);
+  }
+  const help = rest[0] === 'help';
+  const businessKey = text(connection, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '';
+  const credential =
+    env['OPS_ASTRO_TOKEN'] ?? readOptional(env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile) ?? '';
+  if (!help && (businessKey === '' || credential === '')) {
+    io.err('cli: name the business (--business or OPS_ASTRO_BUSINESS) and sign in (`login`) first');
+    return EXIT.usage;
+  }
+  const agent = connection['agent'] === true || env['OPS_ASTRO_AGENT'] === '1';
+  const delegation = agent
+    ? (env['OPS_ASTRO_DELEGATION'] ??
+      readOptional(env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile))
+    : undefined;
+  const api = (text(connection, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
+    /\/$/u,
+    '',
+  );
+  const cli = createVerbCli({
+    transport: httpTransport(api),
+    businessKey: encodeURIComponent(businessKey),
+    credential,
+    entry: agent ? 'agent' : 'person',
+    ...(delegation === undefined ? {} : { delegation }),
+  });
+  const answer = await cli.run(rest);
+  (answer.exit === EXIT.usage ? io.err : io.out)(answer.out);
+  return answer.exit;
+}
+
 // eslint-disable-next-line max-lines-per-function, max-statements -- one entry, read top to bottom
 export async function main(argv: readonly string[], env: Environment, io: Io): Promise<number> {
+  if (isVerbLine(argv)) return await verbLine(argv, env, io);
   let parsed: Parsed;
   try {
     parsed = parse(argv);

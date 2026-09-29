@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, idOf, type Caller, type CliWorld } from './api-3-world.ts';
 import { must } from '../wayfinder/world.ts';
-import type { Member } from '../commands/fixture.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -84,7 +84,10 @@ describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
     };
 
     // 1. Another business: bravo's person, on bravo's own key, reaches none of alpha's.
-    const bea = await w.person(await w.outsider('bea'), `${w.key}-bravo`);
+    // Bea holds comment too, so each crossing reaches the record and not the key check.
+    const beaMember = await w.outsider('bea');
+    await w.db.app.withBusiness(w.bravo, async (tx) => await grantTo(tx, beaMember, 'comment'));
+    const bea = await w.person(beaMember, `${w.key}-bravo`);
     for (const argv of [
       ['task', 'get', ticketB],
       ['map', 'view', mapB],
