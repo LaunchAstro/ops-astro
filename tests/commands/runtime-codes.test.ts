@@ -32,8 +32,8 @@ import {
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all twenty-four', () => {
-    expect(RUNTIME_CODES).toHaveLength(24);
+  it('registers all twenty-five', () => {
+    expect(RUNTIME_CODES).toHaveLength(25);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
