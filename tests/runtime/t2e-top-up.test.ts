@@ -26,6 +26,8 @@ import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tena
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { topUp as applyTopUp } from '../../packages/core-runtime/src/budget.ts';
+import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import {
@@ -39,6 +41,7 @@ import {
   openSchedules,
   pickup,
   proposeBody,
+  racer,
   revisionOf,
   rows,
   type Detail,
@@ -279,6 +282,107 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
     expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
   });
 
+  it('Sol proof, criterion 2: a first approval revoked before the second decision commits cannot be counted', async () => {
+    const first = await enrol(s.db.app, s.business, 'sol-first');
+    const grantId = await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await grantTo(tx, first, 'decide', undefined, false, 'billing'),
+    );
+    const plan = await planned(planner);
+    appliedDetail(await topUp(first, plan.taskId, LARGE, MAXIMUM), 'budget.top_up');
+
+    let unblock!: () => void;
+    let signal!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    let decisionFinished = false;
+    const decision = s.db.app
+      .withBusiness(s.business, async (tx) => {
+        const intercepted: TenantQuery = {
+          businessId: tx.businessId,
+          query: async <Row>(
+            sql: string,
+            parameters?: readonly unknown[],
+          ): Promise<readonly Row[]> => {
+            const answer = await tx.query<Row>(sql, parameters);
+            const ids = parameters?.[1];
+            if (
+              sql.includes('select id from public.grants') &&
+              Array.isArray(ids) &&
+              ids.includes(grantId)
+            ) {
+              signal();
+              await blocked;
+            }
+            return answer;
+          },
+        };
+        return await applyTopUp(intercepted, {
+          taskId: plan.taskId,
+          amountMinor: BigInt(LARGE),
+          fromMaximumMinor: BigInt(MAXIMUM),
+          personId: second.personId,
+          subjects: [
+            { kind: 'person', id: second.personId },
+            { kind: 'actor', id: second.actorId },
+          ],
+          collection: 'billing',
+        });
+      })
+      .then((result) => {
+        decisionFinished = true;
+        return result;
+      });
+    await reached;
+    let revokeFinished = false;
+    let revokedBeforeDecision = false;
+    const revoker = racer(s);
+    const revocation = revoker
+      .withBusiness(s.business, async (tx) => {
+        await tx.query('update public.grants set revoked_at = now() where id = $1', [grantId]);
+      })
+      .then(() => {
+        revokeFinished = true;
+        revokedBeforeDecision = !decisionFinished;
+        return undefined;
+      });
+    let parked = false;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      if (revokeFinished) break;
+      // Poll the exact revocation, rather than assuming a blocked write finished.
+      // eslint-disable-next-line no-await-in-loop
+      const waiting = await s.db.admin.execute<{ readonly parked: boolean }>(
+        `select exists(select 1 from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'
+            and query like 'update public.grants set revoked_at = now()%') as parked`,
+      );
+      if (waiting[0]?.parked === true) {
+        parked = true;
+        break;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
+    }
+    if (!revokeFinished && !parked)
+      throw new Error('revocation did not finish or wait for its grant');
+    unblock();
+    const outcome = await decision;
+    await revocation;
+    await revoker.close();
+    const applied = outcome.ok && outcome.value.state === 'applied';
+    expect({ revokedBeforeDecision, applied }).not.toStrictEqual({
+      revokedBeforeDecision: true,
+      applied: true,
+    });
+    if (revokedBeforeDecision) expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
+  });
+
   it("client to client: a grant on one client's task does not reach another client's task", async () => {
     const mine = await planned(planner);
     const theirs = await planned(planner);
@@ -289,6 +393,27 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
     expect(await maximumOf(theirs.taskId)).toBe(MAXIMUM);
     appliedDetail(await topUp(clientA, mine.taskId, SMALL, MAXIMUM), 'budget.top_up');
     expect(await maximumOf(mine.taskId)).toBe(MAXIMUM + SMALL);
+  });
+
+  it('Sol proof, criterion 3: the client-isolation actor has a task share but no business membership', async () => {
+    const memberships = await rows<{ readonly id: string }>(
+      s,
+      `select id from public.memberships
+        where business_id = $1 and person_id = $2 and active`,
+      [s.business, clientA.personId],
+    );
+    const shares = await rows<{ readonly id: string }>(
+      s,
+      `select id from public.grants
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and collection = 'task' and action = 'read' and scope_kind = 'record'
+          and revoked_at is null`,
+      [s.business, clientA.personId],
+    );
+    expect({ memberships: memberships.length, taskShares: shares.length }).toStrictEqual({
+      memberships: 0,
+      taskShares: 1,
+    });
   });
 
   it("business to business: a top-up moves only its own business's envelope", async () => {

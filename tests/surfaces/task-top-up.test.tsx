@@ -36,6 +36,7 @@ const json = (body: unknown, status = 200): Response =>
 interface Options {
   readonly envelope?: boolean;
   readonly answer?: 'applied' | 'awaiting' | 'refused';
+  readonly reloadWait?: Promise<void>;
 }
 
 function server(options: Options = {}) {
@@ -70,6 +71,7 @@ function server(options: Options = {}) {
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) {
       reads.push(reads.length + 1);
+      if (reads.length > 1) await options.reloadWait;
       return json({ ok: true, task });
     }
     if (at.endsWith('/budget/top_up')) {
@@ -144,6 +146,24 @@ describe('the top-up control on the task page', () => {
     await page.click('[data-top-up="submit"]');
     await tick();
     expect(page.find('[data-top-up="awaiting"]')?.textContent).toContain('second');
+    await page.unmount();
+  });
+
+  it('Sol proof, criterion 2: a pending second approval remains visible after the task reread', async () => {
+    let finishReload!: () => void;
+    const reloadWait = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+    const { client, reads } = server({ answer: 'awaiting', reloadWait });
+    const page = await mount(screenFor(client));
+    await tick();
+    await page.type('#top-up-amount', '600');
+    await page.click('[data-top-up="submit"]');
+    await tick();
+    expect(reads.length).toBeGreaterThan(1);
+    finishReload();
+    await tick();
+    expect(page.find('[data-top-up="awaiting"]')?.textContent ?? '').toContain('second');
     await page.unmount();
   });
 
