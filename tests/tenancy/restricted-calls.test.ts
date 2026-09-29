@@ -128,6 +128,33 @@ const UNREACHED: Readonly<Record<string, string>> = {
                      gen_random_uuid()),
             1, 'stop', 400, 0, 'AUD'
      returning 1`,
+  // AW-05: an answer stands on an ask the journey raised, with its run and a
+  // person and actor of the business; a business with none gets made-up ids,
+  // which the owner's seed writes with foreign keys off.
+  'public.budget_approvals': `insert into public.budget_approvals
+       (business_id, id, ask_id, run_id, person_id, actor_id, amount_minor, currency)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select run_id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            300, 'AUD'
+     returning 1`,
+  'public.budget_answers': `insert into public.budget_answers
+       (business_id, id, ask_id, run_id, kind, first_person_id)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select run_id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            'end',
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,

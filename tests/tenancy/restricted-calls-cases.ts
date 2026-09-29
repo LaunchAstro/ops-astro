@@ -36,6 +36,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['i', 'bootstrap_bytes'],
   // AW-05: a budget ask is the persisted count and is never rewritten.
   ['si', 'budget_asks'],
+  // AW-05: an answer and its approvals are never rewritten.
+  ['si', 'budget_answers budget_approvals'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its
