@@ -25,7 +25,10 @@
 // seal into the store in parts of 4 MiB, in one transaction, so neither the
 // dump nor the archive is ever held whole: an archive can be as large as the
 // store's cap (REV158S criterion 5). The job hashes the whole ciphertext as it
-// goes and completes the archive with that digest and its size. `expire` deletes every
+// goes and completes the archive with that digest and its size. Before the
+// dump it writes a fresh restore challenge into the database (migration 0034),
+// which the dump then carries, and completes the archive with its sha256 too:
+// a carried drill passes only with the challenge read back from a restore. `expire` deletes every
 // backup past the store's window, then asks the store whether a restore drill
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
@@ -38,11 +41,11 @@
 // failed line names the stage and nothing else: an error from pg_dump or the
 // server can carry a host, a login or a password, so its text is never kept.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sealer } from './archive-seal.mjs';
 import { pgDump } from './backup-dump.mjs';
-import { stagingReach, value } from './backup-store-reach.mjs';
+import { bound, stagingReach, value } from './backup-store-reach.mjs';
 import { ping } from './heartbeat.mjs';
 
 export { pgDump } from './backup-dump.mjs';
@@ -64,7 +67,7 @@ async function* piecesOf(source) {
  * and the sha256 of its whole ciphertext, in one transaction. `failure.stage`
  * names the step that failed if the dump or the seal throws.
  */
-async function* upload(source, seal, failure) {
+async function* upload(source, seal, failure, challengeSha256) {
   yield `set role ${BACKUP_ROLE};\nbegin;\n`;
   const whole = createHash('sha256');
   let [held, size, seq, bytes] = [[seal.header], seal.header.length, 0, 0];
@@ -103,7 +106,8 @@ async function* upload(source, seal, failure) {
   size += held.at(-1).length;
   failure.stage = null;
   yield* flush(true);
-  yield `select backups.complete_archive(${bytes}, '${whole.digest('hex')}');\ncommit;\n`;
+  const challenge = challengeSha256 === null ? 'null' : `'${challengeSha256}'`;
+  yield `select backups.complete_archive(${bytes}, '${whole.digest('hex')}', ${challenge});\ncommit;\n`;
   failure.bytes = bytes;
 }
 
@@ -112,8 +116,25 @@ function failed(event, stage) {
   return { event, outcome: 'failed', stage, at: new Date().toISOString() };
 }
 
-/** One scheduled backup. Returns the run's record; never throws. */
+/**
+ * Writes `challenge` into the source database's one restore challenge row, as
+ * the backup identity, through its one write (migration 0034), bound.
+ */
+export async function writeRestoreChallenge(sourceUrl, challenge, reach = stagingReach) {
+  await reach(
+    sourceUrl,
+    `set role ${BACKUP_ROLE};\n${bound('select ops.set_restore_challenge($1)', [challenge])}`,
+  );
+}
+
+/**
+ * One scheduled backup. Returns the run's record; never throws. With
+ * `challenge` (the job's own: a write into the source database), a fresh
+ * one-use restore challenge is written before the dump, so the dump carries
+ * it, and the store gets only its sha256.
+ */
 export async function runBackup({
+  challenge: writeChallenge,
   dump,
   storeUrl,
   publicKey,
@@ -122,6 +143,16 @@ export async function runBackup({
   reach = stagingReach,
 }) {
   const at = new Date().toISOString();
+  let challengeSha256 = null;
+  if (writeChallenge !== undefined) {
+    const challenge = randomBytes(32).toString('hex');
+    try {
+      await writeChallenge(challenge);
+    } catch {
+      return failed('backup run', 'challenge');
+    }
+    challengeSha256 = createHash('sha256').update(challenge).digest('hex');
+  }
   let source;
   try {
     source = await dump();
@@ -137,7 +168,7 @@ export async function runBackup({
   const failure = { stage: null, bytes: 0 };
   try {
     // The server judges each part as the backup identity, and stamps it.
-    await reach(storeUrl, upload(source, seal, failure));
+    await reach(storeUrl, upload(source, seal, failure, challengeSha256));
   } catch {
     return failed('backup run', failure.stage ?? 'store');
   }
@@ -199,6 +230,7 @@ async function main(command) {
     }
     const heartbeat = env('OPS_BACKUP_HEARTBEAT_URL');
     return await runBackup({
+      challenge: (challenge) => writeRestoreChallenge(source, challenge),
       dump: () => pgDump(source),
       storeUrl,
       publicKey,

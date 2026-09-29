@@ -79,16 +79,25 @@ heartbeat only while a drill passed within `backups.settings.restore_days`
 operator that the restore drill is out of date.
 
 A drill can also run on a host with no route to the store (the runbook's
-clean-host leg), under the same gate: `restore-drill.mjs --export <file>` on
-the machine writes the newest sealed backup and the digest the store recorded
-for it (never the key); `--drill --archive <file>` on the other host checks the
-file against that digest before opening it with the operator's own copy of the
-key, and keeps and prints a receipt that says it ran on a carried archive,
-names the archive's digest and reads `pending`: it is not a passed drill yet;
-`--record <file>` on the machine puts that receipt in the store
-(`backups.record_carried_drill`) as a pass, once, for the operator who ran it,
-and only for an archive the store handed out to the drill's login whose digest
-is the one the store recorded, so an archive swapped on the way is refused.
+clean-host leg), under the same gate. Every drill mode is the installation's
+operating business's act alone (`OPS_ASTRO_OPERATING_BUSINESS`): the backup
+is the whole database, so another business's manager is refused and learns
+nothing. `restore-drill.mjs --export <file>` on the machine writes the newest
+sealed backup and its facts beside it: the store's id for it, its time, size
+and recorded digest (never the key, and no step prints the digest);
+`--drill --archive <file>` on the other host checks the file against that
+digest before opening it with the operator's own copy of the key, keeps and
+prints a receipt that says it ran on a carried archive and reads `pending`
+(it is not a passed drill yet), and keeps beside the file the restore
+challenge it read back from the restored database, which the backup job wrote
+before that dump (migration 0034) and which only a real restore gives;
+`--record <receipt> --archive <file>` on the machine computes the digest
+again from the file and hands it and the challenge to the store as bound
+parameters (`backups.record_carried_drill`). The store takes it once, for the
+operator who ran it in the business it ran in, only for the very archive (by
+its id) it handed out to the drill's login, whose digest is the one it
+recorded, and as a pass only with that archive's challenge, so an archive
+swapped on the way, or a receipt with no restore behind it, is refused.
 
 Before staging is prepared, and again after, the owner runs
 `scripts/ops/service-report.mjs` on the machine:

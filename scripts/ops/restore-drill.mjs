@@ -6,7 +6,7 @@
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --export <file>
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill --archive <file>
-//   node --env-file=<drill env> scripts/ops/restore-drill.mjs --record <receipt file>
+//   node --env-file=<drill env> scripts/ops/restore-drill.mjs --record <receipt file> --archive <file>
 //     RESTORE_STORE_URL  a login holding ops_astro_backup_restore on the store,
 //                        its host as staging's network names the store (backups)
 //     RESTORE_KEY_FILE   the operator's private key, held apart from the store
@@ -35,12 +35,22 @@
 // other.
 //
 // The clean-host leg (S0-3e, recovery contract D-3) runs off the machine,
-// where the store has no route: `--export` writes the newest sealed backup,
-// and beside it the digest the store recorded (carried-archive.mjs), never the
-// key; `--drill --archive <file>` restores that file anywhere, checked against
-// the digest before anything opens it, and its receipt says it ran on a carried
-// archive and is kept and printed, not stored; `--record <file>` takes that
-// receipt back into the store on the machine. Each mode is behind the same gate.
+// where the store has no route: `--export` writes the newest sealed backup
+// and its facts beside it (carried-archive.mjs), never the key; `--drill
+// --archive <file>` restores that file anywhere, checked against its facts
+// before anything opens it, and its receipt says it ran on a carried archive,
+// is kept and printed, not stored, and carries no digest; the restore
+// challenge it read back from the restored database is kept beside the
+// archive, never printed. `--record <file> --archive <file>` takes that
+// receipt back into the store on the machine, with the archive's digest
+// computed again from the file and the challenge, both as bound parameters.
+//
+// Every mode is the installation's appointed operator's act only
+// (REV158K criterion 4): `operations:manage` over the whole of the operating
+// business the installation's drill environment names
+// (OPS_ASTRO_OPERATING_BUSINESS). The archive is the whole database, so
+// another business's manager is refused before anything is read, and learns
+// nothing.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -54,7 +64,7 @@ import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { checkSealedFile, openSealedFile } from './archive-seal.mjs';
 import { drillAsOperator as actAsOperator, exportArchive, recordCarried } from './drill-acts.mjs';
 import { docker, must } from './drill-docker.mjs';
-import { requireOperator } from './operator.ts';
+import { requireOperatingOperator } from './operator.ts';
 
 export { RECEIPT_FIELDS, recordDrill } from './drill-receipt.mjs';
 export { exportArchive, fetchLatest, recordCarried } from './drill-acts.mjs';
@@ -199,6 +209,23 @@ export async function restoreDrill({
         throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;
+      // The restore challenge the job wrote before this dump (migration 0034),
+      // read back as the tenancy role like every read here: evidence only a
+      // restore gives. It is kept off the record's own fields, so no receipt,
+      // line or log can carry it.
+      const kept = await psql(`select to_regclass('ops.restore_challenge') is not null`);
+      if (kept === 't') {
+        await psql(
+          `grant usage on schema ops to ${APP_ROLE}`,
+          `grant select on ops.restore_challenge to ${APP_ROLE}`,
+        );
+        const challenge = await psql(
+          `set role ${APP_ROLE}`,
+          `set app.business_id = '${scope.business}'`,
+          'select challenge from ops.restore_challenge',
+        );
+        Object.defineProperty(record, 'challenge', { value: challenge, enumerable: false });
+      }
     });
     record.outcome = 'passed';
   } catch {
@@ -218,7 +245,7 @@ export async function restoreDrill({
 export const drillAsOperator = (options) => actAsOperator({ drill: restoreDrill, ...options });
 
 const USAGE =
-  'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file>';
+  'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file> --archive <file>';
 
 /** The one mode the command line names, or the usage. */
 function modeOf(args) {
@@ -229,62 +256,81 @@ function modeOf(args) {
     return { mode: 'drill', archiveFile: file };
   }
   if (flag === '--export' && rest.length === 1 && file !== '') return { mode: 'export', file };
-  if (flag === '--record' && rest.length === 1 && file !== '') return { mode: 'record', file };
+  if (flag === '--record' && rest.length === 3 && rest[0] !== '' && rest[1] === '--archive' && file !== '') {
+    return { mode: 'record', file: rest[0], archiveFile: file };
+  }
   throw new Error(USAGE);
 }
 
-function need(name) {
-  const value = process.env[name];
+function need(environment, name) {
+  const value = environment[name];
   if (value === undefined || value === '') throw new Error(`${name} is unset`);
   return value;
 }
 
 /** `--drill`, from the store or from a carried archive: the drill's receipt. */
-async function drillFromHere(gate, archiveFile) {
-  const storeUrl = archiveFile === undefined ? need('RESTORE_STORE_URL') : undefined;
+async function drillFromHere(gate, archiveFile, environment, reach) {
+  const storeUrl = archiveFile === undefined ? need(environment, 'RESTORE_STORE_URL') : undefined;
   let privateKey;
   try {
-    privateKey = readFileSync(need('RESTORE_KEY_FILE'), 'utf8');
+    privateKey = readFileSync(need(environment, 'RESTORE_KEY_FILE'), 'utf8');
   } catch {
     throw new Error('RESTORE_KEY_FILE is unset or unreadable');
   }
   const scope = {
-    business: process.env.DRILL_BUSINESS_ID,
-    client: process.env.DRILL_CLIENT_ID,
-    person: process.env.DRILL_PERSON_ID,
+    business: environment.DRILL_BUSINESS_ID,
+    client: environment.DRILL_CLIENT_ID,
+    person: environment.DRILL_PERSON_ID,
   };
-  return await drillAsOperator({ gate, storeUrl, archiveFile, privateKey, scope });
+  return await drillAsOperator({ gate, storeUrl, archiveFile, privateKey, scope, reach });
+}
+
+/**
+ * One run of the command line `args` in `environment`: the installation's
+ * operator gate first (operator.ts, requireOperatingOperator), then the one
+ * mode. Answers `{ refused }` with the gate's reason, or `{ mode, receipt }`.
+ * `reach` is the store route, staging's unless a test passes its own.
+ */
+export async function runDrillCommand(args, { environment = process.env, reach } = {}) {
+  const run = modeOf(args);
+  const gate = await requireOperatingOperator(environment);
+  if (!gate.ok) return { refused: gate.reason };
+  const route = reach === undefined ? {} : { reach };
+  let receipt;
+  if (run.mode === 'export') {
+    const storeUrl = need(environment, 'RESTORE_STORE_URL');
+    receipt = await exportArchive({ gate, storeUrl, file: run.file, ...route });
+  } else if (run.mode === 'record') {
+    const storeUrl = need(environment, 'RESTORE_STORE_URL');
+    const [receiptFile, archiveFile] = [run.file, run.archiveFile];
+    receipt = await recordCarried({ gate, storeUrl, receiptFile, archiveFile, ...route });
+  } else {
+    receipt = await drillFromHere(gate, run.archiveFile, environment, reach);
+  }
+  return { mode: run.mode, receipt };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const run = modeOf(process.argv.slice(2));
-    const gate = await requireOperator();
-    if (!gate.ok) {
-      process.stderr.write(`restore-drill: REFUSED: ${gate.reason}\n`);
+    const { refused, mode, receipt } = await runDrillCommand(process.argv.slice(2));
+    if (refused !== undefined) {
+      process.stderr.write(`restore-drill: REFUSED: ${refused}\n`);
       process.exit(1);
-    }
-    let receipt;
-    if (run.mode === 'export') {
-      receipt = await exportArchive({ gate, storeUrl: need('RESTORE_STORE_URL'), file: run.file });
-    } else if (run.mode === 'record') {
-      const storeUrl = need('RESTORE_STORE_URL');
-      receipt = await recordCarried({ gate, storeUrl, receiptFile: run.file });
-    } else {
-      receipt = await drillFromHere(gate, run.archiveFile);
     }
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
     if (receipt.outcome === 'pending') {
       process.stderr.write(
-        'restore-drill: restored from a carried archive; its integrity against the store is pending until --record on the machine, and it is not a passed drill until then\n',
+        'restore-drill: restored from a carried archive; it is not a passed drill until --record on the machine takes it with the archive and its restore challenge\n',
       );
     }
     // A drill exits 0 only on a pass, 3 while a carried restore is pending, else
     // 1; an export or a record that ran exits 0.
     const exits = { passed: 0, pending: 3 };
-    process.exitCode = run.mode === 'drill' ? (exits[receipt.outcome] ?? 1) : 0;
+    process.exitCode = mode === 'drill' ? (exits[receipt.outcome] ?? 1) : 0;
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
+    // A system error's text names its file; the operator is told the step alone.
+    const said = error?.code === undefined ? error.message : 'a file or system step failed';
+    process.stderr.write(`restore-drill: ${said}\n`);
     process.exitCode = 2;
   }
 }

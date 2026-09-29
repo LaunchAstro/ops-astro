@@ -4,15 +4,19 @@
 // leg, recovery contract D-3). The store has no route from outside staging's
 // network, so a drill on another host runs from a file: the newest sealed
 // backup as the store handed it out (`restore-drill.mjs --export <file>`).
-// `<file>` holds the sealed bytes exactly as the store holds them, so the
-// operator's own `sha256sum <file>` prints the digest the store recorded when
-// it took the backup; `<file>.json` holds the format, that time, the size and
-// that digest. Both are ciphertext and facts only; the key never travels with
-// them, it comes from the operator's own copy. On the other host
-// (`--drill --archive <file>`) the file is checked against that digest, read
-// in pieces into the drill's own copy, before anything is opened. The drill's
-// receipt, carried back, is read here too (`--record <file>`) before the store
-// records it.
+// `<file>` holds the sealed bytes exactly as the store holds them;
+// `<file>.json` holds the format, the store's id of the archive, the time it
+// was taken, the size and the digest the store recorded, for the other host's
+// check against corruption.
+// Both are ciphertext and facts only; the key never travels with them, it
+// comes from the operator's own copy, and the digest is never printed or
+// logged (S0-3 criterion 14). On the other host (`--drill --archive <file>`)
+// the file is checked against that digest, read in pieces into the drill's
+// own copy, before anything is opened; a drill that restored it writes the
+// restore challenge it read back from the restored database into
+// `<file>.challenge` (mode 600), never printed. Back on the machine,
+// `--record <receipt file> --archive <file>` reads the receipt here, hashes
+// `<file>` again itself and reads the challenge, and the store checks both.
 //
 // Nothing a refusal says names the file, its folder or anything in it.
 
@@ -25,13 +29,14 @@ import {
   readFileSync,
   readSync,
   unlinkSync,
+  writeFileSync,
   writeSync,
 } from 'node:fs';
 import { RECEIPT_FIELDS } from './drill-receipt.mjs';
 
-export const CARRIED_FORMAT = 'ops-astro-sealed-archive/2';
+export const CARRIED_FORMAT = 'ops-astro-sealed-archive/3';
 
-const ARCHIVE_KEYS = ['bytes', 'format', 'sha256', 'takenAt'];
+const ARCHIVE_KEYS = ['archiveId', 'bytes', 'format', 'sha256', 'takenAt'];
 const RECEIPT_KEYS = [...RECEIPT_FIELDS].toSorted();
 const HEX64 = /^[0-9a-f]{64}$/u;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -55,7 +60,9 @@ function removeAll(...files) {
 }
 
 const refused = () =>
-  new Error('the archive file could not be written: it exists, or its folder is not writable');
+  new Error(
+    'the archive file could not be written: it exists, its folder is not writable, or the disk is full',
+  );
 
 /**
  * Writes the archive the store handed out: `fetchInto(file)` writes its sealed
@@ -77,11 +84,13 @@ export async function writeCarried(file, fetchInto) {
   } catch (error) {
     closeSync(fd);
     removeAll(facts);
-    throw ['EEXIST', 'EACCES', 'ENOENT', 'ELOOP'].includes(error?.code) ? refused() : error;
+    // A system error names the file; the operator is told the step alone.
+    throw error?.code === undefined ? error : refused();
   }
   try {
-    const { takenAt, bytes, sha256 } = archive;
-    writeSync(fd, `${JSON.stringify({ format: CARRIED_FORMAT, takenAt, bytes, sha256 })}\n`);
+    const { archiveId, takenAt, bytes, sha256 } = archive;
+    const line = { format: CARRIED_FORMAT, archiveId, takenAt, bytes, sha256 };
+    writeSync(fd, `${JSON.stringify(line)}\n`);
   } catch {
     removeAll(facts, file);
     throw refused();
@@ -139,6 +148,8 @@ function factsOf(file) {
   const held = exactly(readOwn(`${file}.json`, 'archive file'), ARCHIVE_KEYS, 'archive file');
   if (
     held.format !== CARRIED_FORMAT ||
+    typeof held.archiveId !== 'string' ||
+    !ID.test(held.archiveId) ||
     typeof held.takenAt !== 'string' ||
     !ISO.test(held.takenAt) ||
     typeof held.sha256 !== 'string' ||
@@ -188,38 +199,44 @@ export function readCarried(file, into) {
     closeSync(fd);
     if (copy !== undefined) closeSync(copy);
   }
-  return { takenAt: held.takenAt, sha256: held.sha256, bytes: held.bytes };
+  return { archiveId: held.archiveId, takenAt: held.takenAt, sha256: held.sha256, bytes: held.bytes };
 }
 
 const isInteger = (v) => Number.isInteger(v);
 const orNull = (test) => (v) => v === null || test(v);
-const isText = (v) => typeof v === 'string';
 const isTime = (v) => typeof v === 'string' && ISO.test(v);
+const STAGES = ['scope', 'fetch', 'open', 'start', 'target', 'restore', 'check'];
+const TIMED = new Set(['fetch', 'open', 'start', 'restore', 'check']);
 
-/** Each field's shape; the store checks the rest (stage names, timings, majors). */
+/** Each field's one shape: a carried drill writes nothing else, and nothing is echoed. */
 const RECEIPT_SHAPE = {
   action: (v) => v === 'restore drill recorded',
   outcome: (v) => v === 'pending' || v === 'failed',
-  stage: orNull(isText),
+  stage: (v) => v === null || STAGES.includes(v),
   at: isTime,
-  target: isText,
+  target: (v) => v === 'throwaway container',
   productionMajor: isInteger,
   sourceMajor: orNull(isInteger),
   targetMajor: orNull(isInteger),
   archiveTakenAt: isTime,
   tables: orNull(isInteger),
-  readAs: orNull(isText),
-  timings: (v) => v !== null && typeof v === 'object' && !Array.isArray(v),
+  readAs: (v) => v === null || v === 'ops_astro_app',
+  timings: (v) =>
+    v !== null &&
+    typeof v === 'object' &&
+    !Array.isArray(v) &&
+    Object.entries(v).every(([step, ms]) => TIMED.has(step) && Number.isSafeInteger(ms) && ms >= 0),
   lastTestedRestore: (v) => v === null,
-  business: isText,
+  business: (v) => typeof v === 'string',
   operator: (v) => typeof v === 'string' && ID.test(v),
   ranOn: (v) => v === 'carried archive',
-  archiveDigest: orNull((v) => typeof v === 'string' && HEX64.test(v)),
 };
 
 /**
  * A carried drill's receipt, as the operator who ran it brings it back: one
- * whole receipt of a drill on a carried archive, not yet recorded, theirs.
+ * whole receipt of a drill on a carried archive, not yet recorded, each field
+ * of its one shape, run by this person in this business. A refusal names the
+ * field, never its value.
  */
 export function readCarriedReceipt(file, operator) {
   const receipt = exactly(readOwn(file, 'receipt file'), RECEIPT_KEYS, 'receipt');
@@ -228,10 +245,43 @@ export function readCarriedReceipt(file, operator) {
       throw new Error(`the receipt's ${field} is not one a carried drill writes`);
     }
   }
-  if (receipt.operator !== operator) {
+  if (receipt.operator !== operator.personId || receipt.business !== operator.business) {
     throw new Error(
-      'the receipt is of another person: only the operator who ran it brings it back',
+      'the receipt is of another person or business: only the operator who ran it brings it back, in the business it ran in',
     );
   }
   return receipt;
 }
+
+const CHALLENGE = /^[0-9a-f]{64}$/u;
+
+/**
+ * Keeps the restore challenge a drill read back from the database it
+ * restored, beside the carried archive: `<file>.challenge`, mode 600, made
+ * fresh (a link or an older one there is removed first, never written through).
+ */
+export function writeChallenge(file, challenge) {
+  if (!CHALLENGE.test(challenge ?? '')) return;
+  const kept = `${file}.challenge`;
+  removeAll(kept);
+  try {
+    writeFileSync(kept, `${challenge}\n`, { mode: 0o600, flag: 'wx' });
+  } catch {
+    throw new Error('the restore challenge could not be kept beside the archive file');
+  }
+}
+
+/** The restore challenge kept beside `file`, or null when there is none of its shape. */
+export function readChallenge(file) {
+  let text;
+  try {
+    text = readOwn(`${file}.challenge`, 'challenge file');
+  } catch {
+    return null;
+  }
+  const challenge = text.trim();
+  return CHALLENGE.test(challenge) ? challenge : null;
+}
+
+/** Removes the kept challenge once the store has taken it. */
+export const forgetChallenge = (file) => removeAll(`${file}.challenge`);
