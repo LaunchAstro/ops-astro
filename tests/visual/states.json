@@ -6,8 +6,8 @@
     "page": "agency:sign-in",
     "control": ".signin__form .btn--primary",
     "token": "--border",
-    "theme": "light",
-    "note": "The one page drawn without a session at this head, and the app draws no dark theme yet; U04 (SL03) moves this to agency:gallery in dark once the gallery and the dark theme land."
+    "theme": "dark",
+    "note": "The one page drawn without a session at this head, in dark: the theme step in apps/web/index.html (taken byte for byte from SL03's MP-1-1) sets data-theme from the system before first paint, and the mode proves each width is drawn in dark, not as light. U04 (SL03) moves this to agency:gallery once the gallery lands."
   },
   "states": [
     {
