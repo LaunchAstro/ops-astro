@@ -6,9 +6,11 @@
 // pinned mockup, is `node tests/visual/run.ts --prove-drift`, run locally
 // where the mockup is (T4c's split).
 
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparePng } from './compare.ts';
 import { checkRenderer, readPacket, rendererOf, themesOf, type Packet } from './packet.ts';
 import { builtPages, DARK_PENDING, overflowOf, report, type PageShot } from './report.ts';
@@ -40,9 +42,21 @@ function capture(width: number, control: { x: number; colour: Rgb }): Buffer {
 const WIDTHS = [1480, 900, 390, 1279, 1649, 1650, 1700];
 
 let packet: Packet;
+let pictures: string;
 beforeAll(() => {
   packet = readPacket();
+  pictures = mkdtempSync(join(tmpdir(), 'mp-1-7-pictures-'));
 });
+afterAll(() => {
+  rmSync(pictures, { recursive: true, force: true });
+});
+
+/** A picture file as wide as its width, written once: the report reads the file, not the name. */
+function picture(page: string, width: number, theme: string): string {
+  const path = join(pictures, `${page}@${width}-${theme}.png`);
+  if (!existsSync(path)) writeFileSync(path, capture(width, { x: 0, colour: WHITE }));
+  return path;
+}
 
 const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet): PageShot[] =>
   builtPages().flatMap((page) =>
@@ -51,7 +65,7 @@ const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet)
         page,
         width,
         theme,
-        picture: `${page}@${width}-${theme}.png`,
+        picture: picture(page, width, theme),
         overflow,
       })),
     ),

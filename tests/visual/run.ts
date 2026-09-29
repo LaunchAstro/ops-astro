@@ -227,8 +227,8 @@ async function capturePages(width: number, theme: Theme, side: Side, origin: URL
     const [shot] = await shoot(page, name, { page: 'viewport' }, catalogue.mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));
     await page.close();
-    const picture = `${name}.page.png`;
-    if (shot !== undefined) writeFileSync(`${out}/${picture}`, shot.png);
+    const picture = `${out}/${name}.page.png`;
+    if (shot !== undefined) writeFileSync(picture, shot.png);
     shots.push({
       page: id,
       width,
