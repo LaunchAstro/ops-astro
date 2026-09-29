@@ -46,14 +46,6 @@ import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
-/** One other person on a task, as `live/presence` answers (C2). */
-export interface PresenceView {
-  readonly personId: string;
-  readonly name: string;
-  readonly state: 'viewing' | 'changing';
-  readonly field: string | null;
-}
-
 export { READ_NAMES } from './read-names.ts';
 export type { NotARead, ReadName } from './read-names.ts';
 
@@ -195,14 +187,18 @@ export class OperationsClient {
     }
   }
 
-  /** Who else is on `topic`, seen from this tab's seat (C2), or null when refused or unreachable. */
-  async readPresence(_seat: string, _topic: string): Promise<readonly PresenceView[] | null> {
-    return await Promise.resolve(null);
-  }
-
-  /** Mark the field this tab's seat is changing, or null when it stops (C2). */
-  async markPresence(_seat: string, _topic: string, _field: string | null): Promise<void> {
-    await Promise.resolve();
+  /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
+  async live(path: string, init: RequestInit): Promise<unknown> {
+    const { origin, businessKey, token } = this.#options;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/${path}`;
+    const headers = new Headers(init.headers);
+    if (token !== null) headers.set('authorization', `Bearer ${token}`);
+    try {
+      const response = await this.#options.fetch(url, { ...init, headers });
+      return response.ok ? ((await response.json()) as unknown) : null;
+    } catch {
+      return null;
+    }
   }
 
   async #post<T>(
