@@ -326,7 +326,11 @@ describe('MP-5-4 undo and redo', () => {
       } else {
         machine = reduceBoard(
           machine,
-          { type: 'resize', widths: [40 + index, 60 - index] },
+          {
+            type: 'resize',
+            key: 'name',
+            widths: { name: 400 + index, client: 250, due: 200, cmt: 50, actual: 100 },
+          },
           CONTEXT,
         );
       }

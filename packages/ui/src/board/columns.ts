@@ -8,7 +8,7 @@
 // words and centres its icon, and the cells follow (clipped, never ellipsed,
 // in `4-board.css`).
 
-import type { ColumnSpec, Layout } from './types.ts';
+import type { ColumnSpec, ColumnWidths, Layout } from './types.ts';
 
 /** The columns a viewport this wide draws, in their declared order. */
 export function visibleColumns<Row>(
@@ -51,6 +51,7 @@ export function resolveShares<Row>(
 export function layoutColumns<Row>(
   columns: readonly ColumnSpec<Row>[],
   size: { readonly viewport: number; readonly available: number },
+  _widths: ColumnWidths | null = null,
 ): Layout {
   const shown = visibleColumns(columns, size.viewport);
   const floors = shown.reduce((sum, column) => sum + column.min, 0);
