@@ -22,6 +22,7 @@ import type {
   BoardAction,
   BoardContext,
   ColumnSpec,
+  ColumnWidths,
   Facet,
   LaidColumn,
   MachineState,
@@ -62,6 +63,10 @@ export interface BoardMachineProps<Row> {
   readonly width?: number;
   /** The window's width, for `hideBelow`; read from the window when absent. */
   readonly viewport?: number;
+  /** The person's saved column widths the board opens on (MP-5-6); null is the defaults. */
+  readonly widths?: ColumnWidths | null;
+  /** Told the widths to keep whenever a drag, an arrow step, a reset or an undo changes them. */
+  readonly onWidths?: (widths: ColumnWidths | null) => void;
 }
 
 const STACK_TIP = ' · shift-click to add it to what is already on';
