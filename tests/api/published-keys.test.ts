@@ -206,7 +206,7 @@ function publishedKeysOnlyCases1() {
 }
 
 function publishedKeysOnlyCases2() {
-  it('Sol proof, criterion 6: a hosted issuer cannot use a loopback key set', async () => {
+  it('a hosted issuer cannot use a loopback key set', async () => {
     const hostedIssuer = 'https://provider.example.test/auth/v1';
     const elsewhere = await startServer({
       DATABASE_URL: 'postgres://app:unused@127.0.0.1:1/none',

@@ -95,12 +95,12 @@ function noRecoveryFigureCases1() {
     }
   });
 
-  it('Sol proof, criterion 11: a restoration time quoted in plain English is found', () => {
+  it('a restoration time quoted in plain English is found', () => {
     const planted = 'The restoration time is 4 hours.';
     expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });
 
-  it('Sol proof, criterion 11: written and wrapped recovery times are found', () => {
+  it('written and wrapped recovery times are found', () => {
     const inWords = 'We can restore the database in four hours.';
     const wrapped = 'We can restore the database within\n4 hours.';
     expect([
@@ -109,7 +109,7 @@ function noRecoveryFigureCases1() {
     ]).toStrictEqual([true, true]);
   });
 
-  it('Sol proof, criterion 11: a worded RTO is found', () => {
+  it('a worded RTO is found', () => {
     const planted = 'Our RTO is four hours.';
     expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });

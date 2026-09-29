@@ -90,7 +90,7 @@ function operatorOnlyCases1() {
   }
 
   Object.entries(COMMANDS).forEach(([commandName, command]) => {
-    it(`Sol proof, criterion 4: refused ${commandName} writes no authentication row`, async () => {
+    it(`refused ${commandName} writes no authentication row`, async () => {
       const count = async (): Promise<number> =>
         await db.app.withBusiness(alphaBusiness, async (tx) => {
           const rows = await tx.query<{ n: number }>(
@@ -114,7 +114,7 @@ function operatorOnlyCases1() {
 
 function operatorOnlyCases2() {
   Object.entries(COMMANDS).forEach(([commandName, command]) => {
-    it(`Sol proof, criterion 4: refused ${commandName} without a record folder writes no authentication row`, async () => {
+    it(`refused ${commandName} without a record folder writes no authentication row`, async () => {
       const count = async (): Promise<number> =>
         await db.app.withBusiness(alphaBusiness, async (tx) => {
           const rows = await tx.query<{ n: number }>(

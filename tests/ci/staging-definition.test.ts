@@ -137,7 +137,7 @@ it('S0-1 services unchanged: a report it cannot read is refused, never green', (
   expect(run(['compare', before]).status).toBe(2);
 });
 
-it('Sol proof, criterion 5: a live container configuration change makes the report red', () => {
+it('a live container configuration change makes the report red', () => {
   const container = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
   const before = run([
     'snapshot',
@@ -164,7 +164,7 @@ it('Sol proof, criterion 5: a live container configuration change makes the repo
   expect(report.out).toMatch(/CONFIG|RECONFIGURED|MEMORY CHANGED/u);
 });
 
-it('Sol proof, criterion 5: a live network attachment change makes the report red', () => {
+it('a live network attachment change makes the report red', () => {
   const containers = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
   containers[0]!['NetworkSettings'] = { Networks: { live: { NetworkID: 'live-network' } } };
   const before = run([
@@ -192,7 +192,7 @@ it('Sol proof, criterion 5: a live network attachment change makes the report re
   expect(report.out).toMatch(/RECONFIGURED docker live-runner/u);
 });
 
-it('Sol proof, criterion 5: a live network endpoint address change makes the report red', () => {
+it('a live network endpoint address change makes the report red', () => {
   const withAddress = (address: string): string => {
     const containers = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
     containers[0]!['NetworkSettings'] = {

@@ -20,7 +20,7 @@ function rowPassesItsPageToIdentity(path: string, name: string): boolean {
   return /\b(?:servedIdentity|servedBuild)\(\s*page\s*,/u.test(body);
 }
 
-it('Sol proof, criterion 12: I10 R4 and N6 stamp the page they exercise', () => {
+it('I10 R4 and N6 stamp the page they exercise', () => {
   for (const [label, path, name] of [
     ['I10', 'tests/browser/i10-open-page.mjs', 'casesI10OpenPage'],
     ['R4', 'tests/browser/r4-shared-page.mjs', 'casesR4SharedPage'],
@@ -30,7 +30,7 @@ it('Sol proof, criterion 12: I10 R4 and N6 stamp the page they exercise', () => 
   }
 });
 
-it('Sol proof, criterion 6: a forged environment identifier cannot name a web build', async () => {
+it('a forged environment identifier cannot name a web build', async () => {
   const expected = buildIdentifier(root);
   const forged = expected.startsWith('0') ? 'ffffffffffff' : '000000000000';
   const previous = process.env['OPS_ASTRO_BUILD_ID'];

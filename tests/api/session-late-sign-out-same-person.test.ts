@@ -48,7 +48,7 @@ async function tokenFor(session: string): Promise<string> {
 }
 
 describe('S0-6 session cookie across tabs', () => {
-  it('Sol proof, criterion 16: late sign-out cannot clear a newer session for the same person', async () => {
+  it('late sign-out cannot clear a newer session for the same person', async () => {
     const jar = new Map<string, string>();
     const land = (response: Response) => {
       for (const line of response.headers.getSetCookie()) {

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 10: a scanner that cannot start raises the failed-scan alert', async () => {
+it('a scanner that cannot start raises the failed-scan alert', async () => {
   const repo = mkdtempSync(join(tmpdir(), 'sol-s0-2-scan-'));
   const bin = mkdtempSync(join(tmpdir(), 'sol-s0-2-bin-'));
   const received: Record<string, unknown>[] = [];

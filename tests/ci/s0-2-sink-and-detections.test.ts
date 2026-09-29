@@ -17,7 +17,7 @@ import { times } from './s0-2-plain.ts';
 
 const ROOT = process.cwd();
 
-it('Sol proof, criterion 4: planted words in an error name and forged in-app frame never reach the sink', async () => {
+it('planted words in an error name and forged in-app frame never reach the sink', async () => {
   const events: SinkEvent[] = [];
   const alerts = createAlerts({
     where: 'staging',
@@ -39,7 +39,7 @@ it('Sol proof, criterion 4: planted words in an error name and forged in-app fra
   }).toEqual({ secretInSink: false, recordInSink: false });
 });
 
-it('Sol proof, criterion 6: a malformed stack frame cannot prevent an application error reaching the sink', async () => {
+it('a malformed stack frame cannot prevent an application error reaching the sink', async () => {
   const events: SinkEvent[] = [];
   const alerts = createAlerts({
     where: 'staging',
@@ -56,7 +56,7 @@ it('Sol proof, criterion 6: a malformed stack frame cannot prevent an applicatio
   expect(events[0]?.level).toBe('error');
 });
 
-it('Sol proof, criterion 7: the watcher plan carries effects and next steps for its alerts', () => {
+it('the watcher plan carries effects and next steps for its alerts', () => {
   const result = spawnSync(process.execPath, ['scripts/ops/alerts.mjs', 'plan'], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -78,7 +78,7 @@ it('Sol proof, criterion 7: the watcher plan carries effects and next steps for 
   }
 });
 
-it('Sol proof, criterion 10: every security detection has a production signal source', () => {
+it('every security detection has a production signal source', () => {
   const sourceFiles = ['apps', 'packages', 'scripts'].flatMap((directory) =>
     readdirSync(resolve(ROOT, directory), { recursive: true })
       .map((relative) => resolve(ROOT, directory, String(relative)))
@@ -99,7 +99,7 @@ it('Sol proof, criterion 10: every security detection has a production signal so
   expect(missing).toEqual([]);
 });
 
-it('Sol proof, criterion 10: repeated agent cross-business refusals raise a burst alert', async () => {
+it('repeated agent cross-business refusals raise a burst alert', async () => {
   const events: SinkEvent[] = [];
   const alerts = createAlerts({
     where: 'staging',
@@ -134,7 +134,7 @@ it('Sol proof, criterion 10: repeated agent cross-business refusals raise a burs
   expect(events.map((event) => event.tags['alert'])).toEqual(['cross-scope-burst']);
 });
 
-it('Sol proof, criterion 10: an agent queue download contributes to the volume alert', async () => {
+it('an agent queue download contributes to the volume alert', async () => {
   const events: SinkEvent[] = [];
   const alerts = createAlerts({
     where: 'staging',

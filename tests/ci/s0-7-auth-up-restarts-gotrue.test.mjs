@@ -9,7 +9,7 @@ import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '../..');
 
-test('Sol proof, criterion 6: replacing Postgres restarts GoTrue on the new cluster', () => {
+test('replacing Postgres restarts GoTrue on the new cluster', () => {
   const scratch = mkdtempSync(join(tmpdir(), 'sol-s0-7-gotrue-'));
   try {
     const scriptDir = join(scratch, 'scripts/local');

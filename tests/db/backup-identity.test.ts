@@ -123,7 +123,7 @@ function identityScopeCases1() {
 }
 
 function identityScopeCases2() {
-  it('Sol proof, criterion 4: backup identity reads auth data in the source database', async () => {
+  it('backup identity reads auth data in the source database', async () => {
     await db.admin.execute('create schema auth');
     await db.admin.execute(
       'create table auth.users (id integer primary key, marker text not null)',

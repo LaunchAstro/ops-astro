@@ -33,7 +33,7 @@ function Page(props: {
 }
 
 describe('S0-6 session cookie', () => {
-  it('Sol proof, criterion 16: a delayed sign-out cannot clear the next person’s session', async () => {
+  it('a delayed sign-out cannot clear the next person’s session', async () => {
     const sessions = new SessionStore(null);
     sessions.set({ businessKey: 'alpha', email: 'first@example.test' });
     let cookie: string | null = 'first-person-token';

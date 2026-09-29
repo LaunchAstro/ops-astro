@@ -55,7 +55,7 @@ function Page(props: {
 }
 
 describe('S0-6 isolation', () => {
-  it('Sol proof, criterion 6: another person’s cookie cannot show their client data in the first person’s tab', async () => {
+  it('another person’s cookie cannot show their client data in the first person’s tab', async () => {
     const otherToken = await tokenFor('second-person');
     const database = {
       withBusiness: () => Promise.reject(new Error('unexpected database call')),
