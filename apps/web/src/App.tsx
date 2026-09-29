@@ -206,6 +206,7 @@ export function App(props: AppProps): ReactElement {
           : PANELS.map((panel) => ({
               id: panel.id,
               label: panel.label,
+              icon: panel.icon,
               open: panel.route !== null && here === pathTo(panel.route),
             }))
       }
