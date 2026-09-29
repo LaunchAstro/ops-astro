@@ -9,8 +9,8 @@
 //
 // Two companion files carry the rest: `task-fields.test.ts` is what a payload
 // may carry, and `task-trash-commands.test.ts` is the trash family and
-// revocation. Three files because the per-file cap is 400 hand-written lines
-// and no waiver lifts it.
+// revocation. Three files so each stays readable: about 400 lines a file is
+// this repository's guide, never a gate (FU-400).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

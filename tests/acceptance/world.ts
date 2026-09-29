@@ -60,7 +60,7 @@ import {
 } from './cast.ts';
 
 // Re-exported so every proof keeps one import for the fixture. The cast lives
-// next door for the per-file cap's sake, not because it is a separate concern.
+// next door so each file stays readable, not because it is a separate concern.
 export { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';

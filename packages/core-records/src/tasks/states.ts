@@ -9,8 +9,8 @@
 // without a migration.
 //
 // It is a separate file from `spine.ts` for the reason 0005 is separate from
-// 0004: the per-file review cap is 400 hand-written lines, no waiver lifts it,
-// and the seam is the one the model already has.
+// 0004: each stays readable at about 400 lines, the repository's guide, and
+// the seam is the one the model already has.
 
 import type { SpineField } from './spine.ts';
 

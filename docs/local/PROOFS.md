@@ -189,22 +189,24 @@ the running slice's database.
 | `external-party.test.ts`    | R4 over HTTP: the shared read and nothing else (I01, I09)                                                                                                                              | green, 5 cases       |
 | `comment-rulings.test.ts`   | the comment rulings: agent comments internal only on both prefixes; a trashed task `NOT_FOUND` to a comment on both                                                                    | tested, 2 cases      |
 
-## The per-file cap, and why two files are harnesses
+## Readable files, and why two files are harnesses
 
-`scripts/pr-size.mjs` blocks at a per-file cap of 400 changed lines, and its
-own error text says no label lifts that cap. `restart-and-expiry.test.ts`
-reached 436 and was split, not trimmed, because SPEC section 6's T1h row
-answers this case: "split the file, not the change". It names the two things
-not to do: delete the comments that say why each assertion is the assertion,
-or add the file to the gate's generated list. The lane did neither.
+`restart-and-expiry.test.ts` reached 436 lines and was split, not trimmed,
+because SPEC section 6's T1h row answers this case: "split the file, not the
+change". At the time `scripts/pr-size.mjs` capped a file at 400 changed
+lines; since FU-400 (29 September 2026) the size is reported, not limited,
+and about 400 lines is a guide for a readable file, never a gate. The row
+names the two things not to do: delete the comments that say why each
+assertion is the assertion, or hide the file from the size report. The lane
+did neither.
 
 `world.ts` and `restart-harness.ts` assert nothing about the product. A failure
 in either is a broken fixture; a failure in a `.test.ts` file is a finding.
 That is also why neither belongs in `tests/db/named-suites.json`.
 
-The lane as a whole is over the 400-line total. It is a test directory, and
-the coherence waiver exists for that total. This file records it instead of
-working around it, and the coordinator decides it at landing time.
+The lane as a whole is over 400 lines. It is a test directory, and test
+lines are not counted in the size report; the size is reported, not limited,
+so there is nothing to waive.
 
 ## Item 1: the inventory
 

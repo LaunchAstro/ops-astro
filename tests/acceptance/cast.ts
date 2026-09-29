@@ -2,9 +2,10 @@
 //
 // The cast, enrolled the way a deployment enrols people.
 //
-// Split out of `world.ts` because that file reached 408 changed lines against
-// this repository's 400-line per-file cap, which no waiver lifts. SPEC section
-// 6's T1h row is the answer to exactly that: split the file, not the change.
+// Split out of `world.ts` because that file reached 408 changed lines, past
+// the 400-line per-file cap of the time (since FU-400, about 400 lines is a
+// guide for a readable file, never a gate). SPEC section 6's T1h row is the
+// answer to exactly that: split the file, not the change.
 //
 // Everything here is written through the application role inside the tenancy
 // wrapper, so a fixture that only works as a superuser fails here rather than

@@ -14,6 +14,10 @@ merges on Nathan's credential once every required check is green on the head
 being merged; a change touching one of the eight protected components merges
 only on that component's green conformance proof and Nathan's acceptance; the
 production deploy is the one other human gate.
+**Amended 29 September 2026** (FU-400): the size is reported, not limited, so
+the coherence waiver on the size cap is retired and leaves Nathan's list
+below; about 400 changed lines stays a guide for a readable chunk, never a
+gate.
 
 Use merge commits only. Disable squash, rebase merge, linear history, and
 all automatic merging. Preserve reviewed signed commits and require that the
@@ -32,8 +36,7 @@ person presses the button.
 
 **What is not reachable by a green check**, and stays Nathan's own decision:
 the production deploy, the five protected parts (T1a, T1d1, T1d2, T1e, T1i),
-a coherence waiver on the size cap, a reduction of any check's tier, and the
-sandbox's final contract. Nathan merged the governance change carrying this
+a reduction of any check's tier, and the sandbox's final contract. Nathan merged the governance change carrying this
 amendment himself.
 
 Separate the non-bypassable main protections from any solo-maintainer exemption
@@ -50,7 +53,7 @@ The human checklist has seven questions, defined in
 [Contributing](../../CONTRIBUTING.md). A green conformance proof for each
 protected component that a change affects is a separate before-merge hold.
 The intended initial foundation and later coherent local demo do not waive
-size limits, signatures, or review.
+signatures or review.
 The exact initial-upload procedure requires separate approval and must state
 how the initial candidate receives review before normal hosted PR controls
 can apply.
