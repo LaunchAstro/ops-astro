@@ -17,8 +17,13 @@ export type PaintView = {
   spark: { line: string; area: string; end: string };
 };
 
-/** Runs in the page: the computed paint of the three chart units. */
-function read(): Omit<PaintView, 'name'> {
+/**
+ * Runs in the page: the computed paint of the three chart units, read once no
+ * transition is running (a colour read mid-transition, even between equal
+ * colours, is given in the transition's space, oklab, not the token's).
+ */
+async function read(): Promise<Omit<PaintView, 'name'>> {
+  await Promise.all(document.getAnimations().map((animation) => animation.finished));
   // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function alone
   const state = (unit: string, label: string): string =>
     `[data-catalogue-id="${unit}"] [data-gallery-state="${label}"]`;
