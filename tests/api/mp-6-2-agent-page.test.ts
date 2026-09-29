@@ -76,7 +76,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 agent page', () => {
   // Every read writes its one audit event, `task.read`'s own (the standing
   // rule). What the page draws from it (hero, artefacts, log, side column)
   // adds none: two opens are two events, both the read's.
-  it('MP-6-2 no audit event', async () => {
+  it('MP-6-2 no audit event beyond task.read’s own', async () => {
     const events = async (): Promise<readonly string[]> =>
       (
         await c.fixture.db.admin.execute<{ readonly id: string; readonly command: string }>(
