@@ -6,7 +6,8 @@
 // table their sum so it scrolls inside the card and the page never scrolls
 // sideways. A column under its label width goes tight: the head hides its
 // words and centres its icon, and the cells follow (clipped, never ellipsed,
-// in `4-board.css`).
+// in `4-board.css`). A person's dragged widths (MP-5-6) replace the declared
+// shares and go through the same floors.
 
 import type { ColumnSpec, ColumnWidths, Layout } from './types.ts';
 
@@ -51,9 +52,15 @@ export function resolveShares<Row>(
 export function layoutColumns<Row>(
   columns: readonly ColumnSpec<Row>[],
   size: { readonly viewport: number; readonly available: number },
-  _widths: ColumnWidths | null = null,
+  widths: ColumnWidths | null = null,
 ): Layout {
-  const shown = visibleColumns(columns, size.viewport);
+  const visible = visibleColumns(columns, size.viewport);
+  // A person's widths stand in for the shares only when they name every
+  // column drawn here; widths from another board's shape are the defaults.
+  const own = widths ?? {};
+  const shown = visible.every((column) => Object.hasOwn(own, column.key))
+    ? visible.map((column) => ({ ...column, share: own[column.key] ?? column.share }))
+    : visible;
   const floors = shown.reduce((sum, column) => sum + column.min, 0);
   const overflow = floors > size.available;
   const width = overflow ? floors : size.available;
