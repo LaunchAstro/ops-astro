@@ -8,17 +8,20 @@ deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
-| Thing     | Identity                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| Container | `ops-astro-local-pg`                                                                                  |
-| Image     | `postgres@sha256:77f5851…a1873`, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
-| Address   | `127.0.0.1:54390`                                                                                     |
-| Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
-| Database  | `ops_astro_local`                                                                                     |
+| Thing     | Identity                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Container | `ops-astro-local-pg`                                                                                              |
+| Image     | `postgres@sha256:b0f9560…2b24`, Postgres 17, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
+| Address   | `127.0.0.1:54390`                                                                                                 |
+| Volume    | `ops-astro-local-pgdata-17`, mounted at `/var/lib/postgresql/data`                                                |
+| Database  | `ops_astro_local`                                                                                                 |
 
-Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
-the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
-in a directory it does not use, and refuses to start.
+The local database runs the hosted database's major, 17 (S0-7). Its volume is
+named for the major because a cluster one major wrote, the other refuses to
+open. A tree from before S0-7 ran 18 on `ops-astro-local-pgdata`, mounted at
+`/var/lib/postgresql`; `db-up.sh` replaces that container, starts an empty 17
+cluster on the new volume and leaves the old volume as it was. Migrate and
+seed again after the switch.
 
 ## Roles, and the two URLs
 
@@ -51,7 +54,7 @@ pnpm exec vitest run             # the whole suite, against this server
 ```
 
 `db-down.sh` never removes the volume. To delete the data, run
-`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17`.
 
 ## Upgrade
 

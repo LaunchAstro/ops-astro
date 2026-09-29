@@ -130,7 +130,7 @@ describe('S0-7 CI on the hosted major', () => {
   });
 
   it('S0-7 the watch line: one ticket moves production, staging, CI and the restore drill to 18', () => {
-    expect(read('docs/supply-chain-pins.md')).toMatch(
+    expect(read('docs/supply-chain-pins.md').replaceAll(/\s+/gu, ' ')).toMatch(
       /When the provider offers Postgres 18, one ticket moves production, staging, CI and the restore drill \(S0-3\) to it together\./u,
     );
   });
@@ -186,7 +186,7 @@ describe.skipIf(serverUrl === undefined)('S0-7 the database under test', () => {
       )[0]?.t;
     if (EXPECTED_MAJOR < 18) {
       // undefined_function: the server, not a check of ours, refuses it.
-      await expect(run).rejects.toMatchObject({ code: '42883' });
+      await expect(run).rejects.toMatchObject({ cause: { code: '42883' } });
       expect(await ledger()).not.toContain('9999_planted_uuidv7');
       expect(await table()).toBeNull();
     } else {
