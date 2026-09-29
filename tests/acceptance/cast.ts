@@ -63,7 +63,7 @@ export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `seeded-role-grants.test.ts`
+ * six collections where the seed names twelve pairs. `seeded-role-grants.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
@@ -99,6 +99,7 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
+  'access',
 ];
 
 export async function tokenFor(

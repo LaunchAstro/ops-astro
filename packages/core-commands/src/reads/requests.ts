@@ -26,6 +26,7 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
+  AccessReadResult,
   CapabilitiesResult,
   PersonListResult,
   PresetPlanResult,
@@ -102,6 +103,8 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -127,4 +130,5 @@ export type ReadResult =
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | AccessReadResult;

@@ -463,3 +463,39 @@ export interface ReceiptResult {
       | { readonly state: string; readonly heldMinor: number };
   };
 }
+
+/** One permission in effect: an action on a collection, over the scope it reaches. */
+export interface AccessPermission {
+  readonly collection: string;
+  readonly action: Action;
+  /** `id` is null exactly at business scope; a client is a `party`. */
+  readonly scope: { readonly kind: 'business' | 'party' | 'record'; readonly id: string | null };
+}
+
+/** A person on Team or Clients, with the preview of what they may do now. */
+export interface AccessPerson extends PersonView {
+  readonly permissions: readonly AccessPermission[];
+}
+
+/** An agent on a live delegation, under the person record it draws on. */
+export interface AccessAgent {
+  readonly agentActorId: string;
+  readonly delegationId: string;
+  readonly purpose: string;
+  readonly person: PersonView;
+  readonly expiresAt: string;
+  /** Its delegation's narrowing of its person's grants, on the one record it is for. */
+  readonly permissions: readonly AccessPermission[];
+}
+
+/**
+ * `access.read`'s answer (C32). The three lists are one set of `people` rows:
+ * Team is the assignee list, Clients the people without a membership who
+ * stand on a live grant, and each agent names its person rather than copying it.
+ */
+export interface AccessReadResult {
+  readonly ok: true;
+  readonly team: readonly AccessPerson[];
+  readonly clients: readonly AccessPerson[];
+  readonly agents: readonly AccessAgent[];
+}

@@ -27,7 +27,7 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
-import { listPeople } from './people.ts';
+import { listPeople, readAccess } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
@@ -377,6 +377,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: true,
     serve: serveReceipt,
+  },
+  // Every person's authority, so it asks the key that changes it: `manage` on
+  // `access`, which no agent holds. No subject record, as for `task.queue`.
+  'access.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readAccess(tx)) }),
   },
 };
 

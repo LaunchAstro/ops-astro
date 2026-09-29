@@ -40,6 +40,8 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
 ] as const;
 
 /**
