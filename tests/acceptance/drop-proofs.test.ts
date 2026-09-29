@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T3e1: `drop_is_not_cancel` with real processes, from the kill harness and
+// T3e1 and T3e2: `drop_is_not_cancel`, and `one_report_per_outage`, with real processes, from the kill harness and
 // never from row writes. Each drop comes from what really happens to a
 // worker: the provider fault injected into it at construction, its SIGKILL,
 // or its SIGSTOP past its lease and then SIGCONT. Each keeps its own cause and
@@ -154,4 +154,36 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
     expect(await p.effects(w.taskId)).toBe(0);
     evidence({ proof: 'drop_is_not_cancel', cause: 'cancelled', result: 'pass' });
   }, 60_000);
+  it('one_report_per_outage: five real workers dropped by one outage give one report, and every run comes back', async () => {
+    const five = await Promise.all(Array.from({ length: 5 }, async () => await fresh()));
+    const runs = five.map((w, at) =>
+      p.worker(w, 'none', `t3e2-worker-${String(at)}`, 900, 'provider_unavailable'),
+    );
+    for (const run of runs) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await run.exited()).toBeNull();
+    }
+    const reports = await p.admin.execute<{ id: string; tasks: string[]; back: boolean }>(
+      `select r.id, array_agg(o.task_id::text order by o.task_id) as tasks, bool_and(o.reactivated) as back
+         from public.outage_reports r
+         join public.outage_runs o on o.business_id = r.business_id and o.outage_id = r.id
+        where r.business_id = $1 and o.task_id = any($2::uuid[])
+        group by r.id`,
+      [p.world.alpha, five.map((w) => w.taskId)],
+    );
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.tasks).toStrictEqual(five.map((w) => w.taskId).toSorted());
+    expect(reports[0]?.back).toBe(true);
+    const raised = await p.admin.execute<{ kind: string }>(
+      'select distinct kind from public.alerts where business_id = $1 and task_id = any($2::uuid[])',
+      [p.world.alpha, five.map((w) => w.taskId)],
+    );
+    // Each run's settlement is its own transition; the drop raised none.
+    expect(raised.map((row) => row.kind)).toStrictEqual(['settled']);
+    for (const w of five) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await p.effects(w.taskId)).toBe(1);
+    }
+    evidence({ proof: 'one_report_per_outage', runs: 5, result: 'pass' });
+  }, 90_000);
 });
