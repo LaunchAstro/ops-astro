@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T3d1: the reconciliation phase of the one pass T3b built (`sweep.ts`), and
-// the outcome a person records for an unknown step. No second pass.
+// T3d1: the reconciliation phase of the one pass T3b built (`sweep.ts`). No
+// second pass.
 //
 // **Did it happen? The register answers.** A step the sweep held
 // `liability_unknown` (dispatched, never confirmed, its lease no longer live)
@@ -20,22 +20,15 @@
 //   recheck like any other work.
 // - No answer: nothing is written; the step waits for a person.
 //
-// A person records one of three outcomes (O7, O8) under `billing:decide`:
-// nothing happened (the hold goes back, the work resumes), it happened (the
-// whole hold is spent, the work is finished) or it happened differently (the
-// whole hold is spent, the work reopens). An unknown effect not yet known is
-// no fourth outcome: it keeps its stop.
+// A person's recorded outcome is `outcome.ts`, beside this.
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
-import { settleAtObserved, settledAt, type Settlement } from '../budget.ts';
-import { lockedInstant } from '../clock.ts';
+import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { settleAtObserved, type Settlement } from '../budget.ts';
 import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
 import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
-import { refuse, type RuntimeResult } from '../refusals.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 
 /** The register's answer for one unknown step: true, false, or `undefined` when it cannot answer. */
 export type EffectLookup = (
@@ -49,10 +42,7 @@ export interface Reconciled {
   readonly reason: string;
 }
 
-export const RECORDED_OUTCOMES = ['nothing_happened', 'happened', 'happened_differently'] as const;
-export type RecordedOutcome = (typeof RECORDED_OUTCOMES)[number];
-
-interface Unknown {
+export interface Unknown {
   readonly attempt_id: string;
   readonly reservation_id: string;
   readonly envelope_id: string;
@@ -75,7 +65,7 @@ interface Unknown {
   readonly approval_current: boolean;
 }
 
-const UNKNOWN_SELECT = `select att.id as attempt_id, res.id as reservation_id, res.envelope_id, env.cap_id,
+export const UNKNOWN_SELECT = `select att.id as attempt_id, res.id as reservation_id, res.envelope_id, env.cap_id,
             run.task_id, run.id as run_id, att.step_id, run.lineage_id, res.version_id,
             l.id as lease_id, l.delegation_id, l.holder_actor_id, step.kind as step_kind,
             res.held_minor::text as held_minor, att.price_book, env.currency,
@@ -110,7 +100,7 @@ async function discoverUnknown(tx: TenantQuery): Promise<readonly Unknown[]> {
   );
 }
 
-function locksOf(rows: readonly Unknown[]): readonly LockRequest[] {
+export function locksOf(rows: readonly Unknown[]): readonly LockRequest[] {
   return rows.flatMap((row): LockRequest[] => [
     { lockClass: 'cap', id: row.cap_id },
     { lockClass: 'envelope', id: row.envelope_id },
@@ -193,7 +183,7 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
   return { attemptId, answer: 'present', reason: `settled once at ${cost.toString()} by the book` };
 }
 
-const settle = async (
+export const settle = async (
   tx: TenantQuery,
   row: Unknown,
   costMinor: bigint,
@@ -210,32 +200,6 @@ const settle = async (
   });
 
 /**
- * Nothing happened, in a person's word: the whole hold goes back, by amount,
- * and nothing is spent. The reservation is abandoned under the recorded
- * outcome (0013: an abandonment names its cause, and an actual is never zero).
- */
-async function release(tx: TenantQuery, row: Unknown): Promise<Settlement> {
-  await tx.query(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = 'outcome_recorded',
-            classified_cause_id = $3, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'`,
-    [tx.businessId, row.reservation_id, row.attempt_id],
-  );
-  await tx.query(
-    `update public.attempts set state = 'abandoned', outcome = 'abandoned'
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.attempt_id],
-  );
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, row.held_minor],
-  );
-  return settledAt(BigInt(row.held_minor), 0n);
-}
-
-/**
  * The step again, as a new attempt on its own hold, on the still-approved
  * version. `keep` marks the old hold absence-proved first, so it stays held
  * beside the replacement (0035); a hold a person has just settled needs no
@@ -243,7 +207,7 @@ async function release(tx: TenantQuery, row: Unknown): Promise<Settlement> {
  * moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again).
  */
-async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
+export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
   await tx.query('savepoint t3d1_resume');
   if (keep) {
@@ -271,81 +235,4 @@ async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<str
   // replacement's pickup.
   if (row.delegation_id !== null) await revokeDelegation(tx, row.delegation_id, 'work_retired');
   return `resumed as attempt ${replaced.value.attemptId}; the old identity is fenced`;
-}
-
-export interface OutcomeRequest {
-  readonly taskId: string;
-  readonly attemptId: string;
-  readonly outcome: RecordedOutcome;
-  readonly subjects: readonly Subject[];
-  readonly collection: string;
-}
-
-export interface OutcomeRecorded {
-  readonly attemptId: string;
-  readonly outcome: RecordedOutcome;
-  readonly settlement: Settlement;
-  readonly resumed: string | null;
-}
-
-/**
- * A person's recorded outcome, under the step's locks with their covering
- * grants held, and `billing:decide` on the task judged again at the locked
- * instant. Only a step still held unknown takes one.
- */
-export async function recordOutcome(
-  tx: TenantQuery,
-  request: OutcomeRequest,
-): Promise<RuntimeResult<OutcomeRecorded>> {
-  await holdCoveringGrants(tx, request.subjects, request.collection);
-  const discover = async () =>
-    await tx.query<Unknown>(
-      `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
-      [tx.businessId, request.attemptId, request.taskId],
-    );
-  const { found } = await lockRediscovered(tx, {
-    discover,
-    locks: locksOf,
-    rule: 'exact',
-    changed: 'outcome: the step changed under discovery; roll back and record it again',
-  });
-  const row = found[0];
-  const decides = await checkAuthorityAt(
-    tx,
-    request.subjects,
-    {
-      collection: request.collection,
-      action: 'decide',
-      scope: { kind: 'record', id: request.taskId },
-    },
-    await lockedInstant(tx),
-  );
-  if (!decides.ok) {
-    return refuse(
-      'SCOPE_NOT_GRANTED',
-      'no live grant to decide money on this task covers the outcome',
-      'A person holding budget permission on this task records it.',
-    );
-  }
-  if (row?.attempt_state !== 'liability_unknown' || row.reservation_state !== 'held') {
-    return refuse(
-      'LIABILITY_NOT_UNKNOWN',
-      'this attempt is not held as an unknown liability',
-      'Nothing was recorded. Read the task: its outcome is already settled or never was unknown.',
-    );
-  }
-  const settlement =
-    request.outcome === 'nothing_happened'
-      ? await release(tx, row)
-      : await settle(tx, row, BigInt(row.held_minor), 'completed');
-  const resumes = request.outcome !== 'happened' && !row.absence_proved;
-  return {
-    ok: true,
-    value: {
-      attemptId: row.attempt_id,
-      outcome: request.outcome,
-      settlement,
-      resumed: resumes ? await resume(tx, row, false) : null,
-    },
-  };
 }
