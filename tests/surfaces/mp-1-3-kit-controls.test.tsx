@@ -48,7 +48,7 @@ afterEach(async () => {
 });
 
 const key = async (element: Element | null, name: string): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     element?.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
   });
 };
@@ -65,7 +65,9 @@ it('MP-1-3 the component gallery page is registered and draws the kit', async ()
   });
   expect(typeof (SCREENS as Readonly<Record<string, unknown>>)['agency:gallery']).toBe('function');
   mounted = await mount(<Gallery />);
-  const ids = mounted.all('[data-catalogue-id]').map((e) => e.getAttribute('data-catalogue-id'));
+  const ids = mounted
+    .all('[data-catalogue-id]')
+    .map((e) => (e as HTMLElement).dataset['catalogueId']);
   expect(ids).toEqual(GALLERY.map((e) => e.id));
   expect(new Set(ids).size).toBe(ids.length);
   for (const entry of GALLERY) {
@@ -189,7 +191,7 @@ it('MP-1-3 fields: text input, textarea, select menu and search', async () => {
   expect(title).toBe('Write the brief');
   await mounted.unmount();
 
-  mounted = await mount(<TextField label="Brief" value="" onChange={() => undefined} multiline />);
+  mounted = await mount(<TextField label="Brief" value="" onChange={() => {}} multiline />);
   expect(mounted.find('textarea.ta')).not.toBeNull();
   await mounted.unmount();
 
@@ -238,7 +240,7 @@ it('MP-1-3 fields: text input, textarea, select menu and search', async () => {
     <SearchBox
       label="Search tasks"
       value=""
-      onChange={() => undefined}
+      onChange={() => {}}
       placeholder="Search"
       keycap="⌘K"
     />,
@@ -285,13 +287,7 @@ it('MP-1-3 checkbox, switch and disclosure', async () => {
   expect(on).toBe(true);
   await mounted.unmount();
   const off = renderToStaticMarkup(
-    <Switch
-      label="Email me"
-      on={false}
-      onChange={() => undefined}
-      disabled
-      reason="Not built yet"
-    />,
+    <Switch label="Email me" on={false} onChange={() => {}} disabled reason="Not built yet" />,
   );
   expect(off).toContain('disabled=""');
   expect(off).toContain('title="Not built yet"');

@@ -77,7 +77,7 @@ it('MP-1-3 every catalogue primitive and the four composites are on the gallery 
       // Every state draws something beside its caption.
       expect(
         figure.children.length,
-        `${entry.id} ${String(figure.getAttribute('data-gallery-state'))}`,
+        `${entry.id} ${String((figure as HTMLElement).dataset['galleryState'])}`,
       ).toBeGreaterThan(1);
     }
   }
@@ -89,7 +89,7 @@ it('MP-1-3 table, card, banner, meter and stat', () => {
       caption="Hours"
       columns={[
         { key: 'name', label: 'Work' },
-        { key: 'hours', label: 'Hours', align: 'end', sort: 'descending', onSort: () => undefined },
+        { key: 'hours', label: 'Hours', align: 'end', sort: 'descending', onSort: () => {} },
       ]}
       rows={[{ name: 'Homepage', hours: '6.5' }]}
     />,
@@ -175,10 +175,10 @@ it('MP-1-3 the task page assignee field shows the field-shaped placeholder while
   mounted = await mount(
     <Assignee
       people={{ outcome: 'loading', previous: null, refusal: null, because: null, grantKey: 'g' }}
-      onRetry={() => undefined}
+      onRetry={() => {}}
       assignee={null}
       disabled={false}
-      onAssign={() => undefined}
+      onAssign={() => {}}
     />,
   );
   const status = mounted.find('[data-outcome="loading"]');
@@ -210,7 +210,7 @@ it('MP-1-3 mock mark, locate flash, door card, list row and form layout', async 
   locate(target);
   expect(target.classList.contains('flash-target')).toBe(true);
   expect(scroll).toHaveBeenCalledWith({ block: 'center' });
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(new Event('animationend'));
   });
   expect(target.classList.contains('flash-target')).toBe(false);

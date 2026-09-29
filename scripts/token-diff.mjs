@@ -27,7 +27,7 @@ const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
  * compared as text, never built into a pattern.
  */
 function block(css, selector) {
-  const bare = css.replace(/\/\*[\s\S]*?\*\//gu, '');
+  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
   const chunk = bare.split('}').find((part) => {
     const open = part.indexOf('{');
     return open >= 0 && part.slice(0, open).trim() === selector;
@@ -43,7 +43,7 @@ function block(css, selector) {
       name,
       line
         .slice(at + 1)
-        .replace(/\s+/gu, ' ')
+        .replaceAll(/\s+/gu, ' ')
         .trim(),
     );
   }
@@ -55,8 +55,8 @@ function resolve(declared) {
   const out = {};
   const value = (name, depth) => {
     const raw = declared.get(name);
-    if (raw === undefined || depth > 20) return undefined;
-    return raw.replace(/var\((--[\w-]+)\)/gu, (whole, ref) => value(ref, depth + 1) ?? whole);
+    if (raw === undefined || depth > 20) return;
+    return raw.replaceAll(/var\((--[\w-]+)\)/gu, (whole, ref) => value(ref, depth + 1) ?? whole);
   };
   for (const name of declared.keys()) out[name] = value(name, 0);
   return out;
@@ -72,8 +72,8 @@ export function resolveTokens(css) {
 /** One spelling per value: hex in lower case, no trailing zeros, as the formatter writes it. */
 const spelling = (value) =>
   value
-    .replace(/#[0-9a-f]+\b/giu, (hex) => hex.toLowerCase())
-    .replace(/(\d)\.(\d*?)0+\b/gu, (_whole, whole, digits) =>
+    .replaceAll(/#[0-9a-f]+\b/giu, (hex) => hex.toLowerCase())
+    .replaceAll(/(\d)\.(\d*?)0+\b/gu, (_whole, whole, digits) =>
       digits ? `${whole}.${digits}` : whole,
     );
 
@@ -95,7 +95,7 @@ export function diffTokens(css, expected) {
   return problems;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === import.meta.filename) {
   const args = process.argv.slice(2);
   const option = (flag, fallback) => {
     const at = args.indexOf(flag);

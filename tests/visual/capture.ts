@@ -184,9 +184,7 @@ export async function load(
   // Each capture is proved to draw in its side's theme: the mockup marks the
   // body, the app the root element, before first paint.
   const drawn = await page.evaluate(
-    () =>
-      document.body.getAttribute('data-theme') ??
-      document.documentElement.getAttribute('data-theme'),
+    () => document.body.dataset['theme'] ?? document.documentElement.dataset['theme'] ?? null,
   );
   if (drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
