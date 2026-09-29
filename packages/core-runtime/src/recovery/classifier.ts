@@ -42,7 +42,7 @@ export interface ClassifyRequest {
  * The classifier proper. Its caller holds cap, envelope, task, run, lineage,
  * lease and reservation; this takes none of them, and it re-reads under them.
  *
- * R1. `locks` is required, not advisory. The reviewer's case was two
+ * R1. `locks` is required, not advisory. The race it closes is two
  * classifiers both reading `held`, both updating an attempt and both
  * subtracting one hold from one envelope, which the non-negative constraint
  * catches only when the second subtraction drives the total below zero. A
@@ -410,10 +410,10 @@ export async function affectedByVersions(
 }
 
 /**
- * The revocation race (RUNTIME-LIFECYCLE F4 residual). `grant.revoke` takes
+ * The revocation race. `grant.revoke` takes
  * `for update` on the grant row before any runtime lock, then rediscovers the
  * live leases its loss affects. A pickup that read the grant before that
- * revocation and committed after its rediscovery was a live claim nobody
+ * revocation and committed after its rediscovery would be a live claim nobody
  * classified. Holding `for share` on every grant the claim's authority could
  * rest on -- the subjects' own grants in this collection and each grant they
  * descend from -- makes the two serialise: a revocation that locked first is
@@ -422,7 +422,7 @@ export async function affectedByVersions(
  *
  * It is taken before the runtime set, where `grant.revoke` takes its own, so
  * neither side ever waits on a grant row while holding a runtime lock.
- * `task.decide` holds its decide grants the same way (final review R1 #4),
+ * `task.decide` holds its decide grants the same way,
  * which is why this lives here, beside the authority-loss classifier
  * `grant.revoke` runs, rather than in either caller.
  */
@@ -458,8 +458,7 @@ export async function holdCoveringGrants(
 /**
  * `checkAuthority` judged at `at`, the instant read once the locks are held
  * (`clock.ts`), rather than at `now()`, the transaction's start. A grant that
- * lapsed while the caller waited on its locks no longer counts (final review
- * R2-RUNTIME-4).
+ * lapsed while the caller waited on its locks no longer counts.
  *
  * The effective set already applies every ancestor's revocation and expiry as
  * of `now()`, and a child never outlives its parent (`grants.ts`, EFFECTIVE),

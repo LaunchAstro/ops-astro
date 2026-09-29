@@ -54,7 +54,7 @@ interface AgentOperationRow<O extends object> {
   /**
    * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
    * so the two entries refuse the same stray field in the same words. Any
-   * other is refused before the operands (Sol 6 AUTHORITY-3). Absent on a
+   * other is refused before the operands. Absent on a
    * command, whose identifiers its own operands and handler read.
    */
   readonly identifiers?: readonly string[];
@@ -74,7 +74,7 @@ interface AgentOperationRow<O extends object> {
 /**
  * One agent operation over its own operands `O`, by the check `authorise`
  * (`agent-authority.ts`) asks, so a row says whether it runs under a
- * delegation and nothing has to find out again (THERMO-RECHECK NA1):
+ * delegation and nothing has to find out again:
  *
  * - `beforePickup`, the pair an agent login reaches holding nothing, served
  *   under no delegation;
@@ -105,8 +105,7 @@ export type TypedOperation<O extends object> =
       /**
        * Under the delegation, on the task the check was made on, or
        * `undefined` when the call named none and the check fell back to the
-       * delegation's own scope. Never the body read again (THERMO-RECHECK-2
-       * NNA1).
+       * delegation's own scope. Never the body read again.
        */
       readonly serve: (
         tx: TenantQuery,
@@ -119,7 +118,7 @@ export type TypedOperation<O extends object> =
   | (AgentOperationRow<O> & { readonly authority: 'decision' });
 
 /**
- * A row, with its operands type closed over (THERMO-RECHECK-2 NNA3).
+ * A row, with its operands type closed over.
  *
  * The table holds rows of different operand types, so what it keeps is the
  * row behind `open`: a step that takes the row runs generic over its `O`,
@@ -169,7 +168,7 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => LeaseO
     const seconds = request['leaseSeconds'];
     if (typeof seconds !== 'number' || !Number.isSafeInteger(seconds) || seconds <= 0) {
       // The person entry's words for the same route (`readLeaseSeconds`), so
-      // the two entries tell a caller one thing (thermo O4).
+      // the two entries tell a caller one thing.
       return refused(
         refuseCommand('FIELD_VALUE_INVALID', ['leaseSeconds'], leaseSecondsFixes(maximum)),
         {
@@ -184,7 +183,7 @@ function leaseSecondsOperand(maximum: number): (request: AgentRequest) => LeaseO
 /**
  * The reservation a pickup names, as the string it was sent as. Anything else
  * is the person entry's refusal in its words (`pickupAsPerson`): `String(...)`
- * would have turned `[id]` into the id and claimed it (Sol 6 AUTHORITY-2).
+ * would turn `[id]` into the id and claim it.
  * Whether the string names a claimable reservation is the handler's.
  */
 function pickupOperands(request: AgentRequest): PickupOperands | Refused {
@@ -199,8 +198,8 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   // The outcome and the fence by their JSON type, in the order and words the
   // person handler asks them (`tasks-handback.ts`), and passed on as sent:
   // `String(["completed"])` is `"completed"` and `Number("1")` is `1`, which
-  // settled a lease and, past a lapsed grant, kept a report the restricted
-  // intake keeps only when otherwise valid (Sol 6 AUTHORITY-2). Whether the
+  // would settle a lease and, past a lapsed grant, keep a report the restricted
+  // intake keeps only when otherwise valid. Whether the
   // string is an outcome and the number a fence is the handler's.
   const outcome = request['outcome'];
   if (typeof outcome !== 'string') return refuseOutcome(outcome);
@@ -218,14 +217,14 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   // A report or successor the stores cannot hold, by name and before any
   // authority is read, so a refusal that would retain the report never
   // reaches the insert that raised on it: the person path's rule, at its door
-  // (`prepare.ts`, `values.ts`; final review round 2, R1-THERMO-12 (b)).
+  // (`prepare.ts`, `values.ts`).
   const unstorable = unstorableOperands(request, ['report', 'successor']);
   if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
   // Any non-null actual is refused here, before authority is read, and not
   // only by the runtime past it. A handback refused on authority reaches the
   // restricted report intake (`retainLateHandback`), which keeps an otherwise
   // valid report; one claiming spend nothing in this head can have made is
-  // not one, and is kept by no path (API.md; Sol 6 AUTHORITY-3). `null` and
+  // not one, and is kept by no path (API.md). `null` and
   // absent are the same request.
   if ('actualMinor' in request) {
     const actualMinor = request['actualMinor'];
@@ -239,10 +238,10 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
  * A `recordId` that is present and not a string, refused before any authority
  * in the words the person prefix answers the same body with (`refusal`).
  *
- * `String(["<sibling>"])` is the sibling's id: the check used to take the
- * agent's own task for a non-string and `serve` then acted on the id the value
- * printed as, so an agent commented on and read a sibling task
- * (THERMO-RECHECK-2 NNA1). Absent stays absent: it is checked on the
+ * `String(["<sibling>"])` is the sibling's id: checking the agent's own task
+ * for a non-string while `serve` acted on the id the value prints as would let
+ * an agent comment on and read a sibling task. Absent stays absent: it is
+ * checked on the
  * delegation's own task and names nothing to serve.
  */
 function recordIdOperand(
@@ -340,7 +339,7 @@ async function serveComment(
   // The agent's own picked-up task: `authorise` has already held the
   // delegation's purpose scope to this record and its `comment` action to
   // the delegating person's live grant. The task is locked by the person
-  // path's own `lockTask`, the same statement and filter (thermo O8), and the
+  // path's own `lockTask`, the same statement and filter, and the
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
   if (taskId === undefined) return NOT_FOUND();

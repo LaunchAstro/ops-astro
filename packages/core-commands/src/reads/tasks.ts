@@ -138,7 +138,7 @@ async function historyOf(
     // A reader outside the business is not shown that a comment was written:
     // its comments carry only what the catalogue shares, and an internal
     // note's author and time in the history would be the note, hidden rather
-    // than absent (API.md, the agent's task.read; final review R1 #68).
+    // than absent (API.md, the agent's task.read).
     [tx.businessId, recordId, internal ? READ_COMMANDS : [...READ_COMMANDS, 'task.comment']],
   );
   return rows.map((row) => ({

@@ -69,8 +69,8 @@ export interface ProposeRequest {
    * (`readBusinessCapId`). T1 validates existing budget authority at the
    * proposal, so the proposal needs the cap before its first write; a task
    * with an open envelope is checked against that envelope's own cap instead.
-   * Absent, `lockProposal` reads the business cap itself (R2-RUNTIME-26
-   * residual (b), `restart`); with no cap at all and no envelope open there is
+   * Absent, `lockProposal` reads the business cap itself (`restart`); with
+   * no cap at all and no envelope open there is
    * no ceiling to check against here, and the decision answers
    * `BUDGET_UNAVAILABLE`.
    */
@@ -126,10 +126,10 @@ export async function lockProposal(
   tx: TenantQuery,
   request: ProposeRequest,
 ): Promise<HeldProposal> {
-  // Final review round 3, R3-AUTHORITY-19: the caller's lineage id is the lock
-  // key, and `writeProposal` requires the lineage by the database's own
-  // lower-case id. An upper-case spelling of the same uuid found the lineage
-  // through the cast and then faulted at the lock-set check (R2-AUTHORITY-33).
+  // The caller's lineage id is the lock key, and `writeProposal` requires the
+  // lineage by the database's own lower-case id. Unfolded, an upper-case
+  // spelling of the same uuid would find the lineage through the cast and then
+  // fault at the lock-set check.
   const lineageId = request.lineageId?.toLowerCase() ?? null;
   const restarts = lineageId === null ? (request.restartsLineageId?.toLowerCase() ?? null) : null;
   // T4's "preallocate any new successor identities before lock acquisition;
@@ -140,12 +140,11 @@ export async function lockProposal(
   // `writeProposal` can require a lineage lock unconditionally.
   const openingId = randomUUID();
   // Everything the set is built from is read inside `discover`, so all of it is
-  // read again under the locks and compared. Final review round 2,
-  // R2-RUNTIME-25: the live version itself was read once, outside, so a
-  // version proposed and approved in the window was superseded under locks
-  // never taken for its hold, and the classifier met that hold as a plain
-  // lock-order `Error`. RUNTIME.md "an approval ... between a proposal's
-  // discovery and its locks costs one retry": the recheck has to see which
+  // read again under the locks and compared, the live version included. Read
+  // once, outside, a version proposed and approved in the window would be
+  // superseded under locks never taken for its hold, and the classifier would
+  // meet that hold as a plain lock-order `Error`. RUNTIME.md "an approval
+  // ... between a proposal's discovery and its locks costs one retry": the recheck has to see which
   // version is live, not only what the first-found version holds.
   //
   // - The live versions: the lineage's `superseded_at is null` rows.
@@ -163,7 +162,7 @@ export async function lockProposal(
   //   discovering those parents after the lineage lock would be the backwards
   //   acquisition T5 forbids.
   //
-  // Thermo O3: a lease picked up or released in between, or a hold an approval
+  // A lease picked up or released in between, or a hold an approval
   // of the superseded version opened, is a set this transaction did not lock
   // for, and it rolls back as `AffectedSetChanged` rather than extend it.
   // Discovery first, acquisition second, writes third.
@@ -189,7 +188,7 @@ export async function lockProposal(
         open === undefined ? null : { id: open.id, cap_id: open.capId },
         await discoverLiveWork(tx, { versionIds: versions }),
         await affectedByVersions(tx, versions),
-        // R2-RUNTIME-26 residual (b): a caller that passes no cap, which is
+        // A caller that passes no cap, which is
         // `restart`, is checked against the cap `decide` would draw on, as
         // `task.propose` is. Read here so it is locked and rechecked with the set.
         request.capId ?? (await readBusinessCapId(tx)),
@@ -270,7 +269,7 @@ export async function proposeUnderLocks(
     // describe two different pieces of work. Tenancy does not prevent it:
     // both tasks are in one business.
     if (row.task_id !== request.taskId) {
-      // Final review round 2, R2-AUTHORITY-34: the reason is the rule's, not
+      // The reason is the rule's, not
       // the caller's data. The other task may be outside the caller's grant,
       // so neither its id nor the presented lineage id is echoed.
       return refuse(
@@ -291,10 +290,10 @@ export async function proposeUnderLocks(
     lineage = row;
   }
 
-  // Final review round 3, R3-AUTHORITY-20: after a named lineage is known to be
-  // on this task and live, and before any write. Priced first, a lineage on another task released that
+  // After a named lineage is known to be on this task and live, and before
+  // any write. Priced first, a lineage on another task would release that
   // task's hold into the refusal's committed figure, and whether the answer
-  // was LINEAGE_NOT_ON_TASK depended on the ceiling.
+  // was LINEAGE_NOT_ON_TASK would depend on the ceiling.
   const outOfBudget = await refuseBeyondBudget(
     tx,
     request,
@@ -367,10 +366,10 @@ export async function proposeUnderLocks(
 
 /**
  * T1's "validate ... existing budget authority" (TRANSACTION-CONTRACT lines 44
- * and 46), under the locks and before the first write. Final review round 2,
- * R2-RUNTIME-26: a version in another currency than the cap, or asking more
- * than the cap has room for, was written with a gate every approval of which
- * is refused, until it expired. The handback successor already refused the
+ * and 46), under the locks and before the first write. A version in another
+ * currency than the cap, or asking more than the cap has room for, would
+ * otherwise be written with a gate every approval of which is refused, until
+ * it expired. The handback successor already refuses the
  * same operands (`withinBounds` in `handback.ts`); this is the same two checks.
  *
  * The room excludes what the superseded version still holds: that hold is
@@ -379,10 +378,10 @@ export async function proposeUnderLocks(
  * and no `capId`), there is no ceiling here, and the decision answers
  * `BUDGET_UNAVAILABLE`.
  *
- * Final review round 3, SOL-R3-3: the open envelope is authority too, and
- * `budgetRoom` in `decide.ts` asks it before the cap. A ceiling within the cap
- * but past the envelope's room, less the superseded version's own hold in it,
- * was written with a gate every approval refused `BUDGET_UNAVAILABLE`. The
+ * The open envelope is authority too, and `budgetRoom` in `decide.ts` asks it
+ * before the cap. A ceiling within the cap but past the envelope's room, less
+ * the superseded version's own hold in it, would otherwise be written with a
+ * gate every approval refused `BUDGET_UNAVAILABLE`. The
  * envelope was locked and rediscovered exactly with the rest of the set, so
  * the envelope read here is the one `accounting` names.
  */
@@ -436,7 +435,7 @@ async function refuseBeyondBudget(
 }
 
 /**
- * SOL-R3-3's half of `refuseBeyondBudget`: the task's open envelope, which
+ * The envelope half of `refuseBeyondBudget`: the task's open envelope, which
  * `budgetRoom` asks before the cap. `fromEnvelope` is what the superseded
  * version holds in it, released by this transaction.
  */

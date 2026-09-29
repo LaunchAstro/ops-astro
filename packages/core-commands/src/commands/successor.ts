@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The successor a handback may ask for, read from the caller's body. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// The successor a handback may ask for, read from the caller's body.
 
 import { type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import { refuseCommand } from './refusal.ts';
@@ -101,9 +99,9 @@ export function readSuccessor(raw: unknown, proposer: string): ReadSuccessor {
   }
 
   // A duration, turned into an instant here exactly as `proposeOnTask` turns
-  // its own, so the caller never names the instant. The absolute spelling this
-  // field used to take is refused by name rather than ignored: a caller still
-  // sending it would otherwise get the default week while believing it had
+  // its own, so the caller never names the instant. An absolute `expiresAt`
+  // is refused by name rather than ignored: a caller sending it would
+  // otherwise get the default week while believing it had
   // chosen a date. L4's `SuccessorRequest` still takes the instant.
   if ('expiresAt' in raw) {
     return invalidSuccessor(

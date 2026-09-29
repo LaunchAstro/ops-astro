@@ -30,7 +30,7 @@ const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
  * raise: the driver writes U+FFFD in its place, so what is stored is not what
  * was sent or what the payload digest covers.
  *
- * The one definition of the rule (final review round 2, R2-THERMO-11). The
+ * The one definition of the rule. The
  * field engine applies it to field values below, `prepare.ts` to every other
  * operand at the door, and `tasks-comment.ts` to the comment body the agent
  * entry writes without passing that door.
@@ -94,14 +94,14 @@ function daysIn(year: number, month: number): number {
 /**
  * A timestamp a `timestamptz` column takes, by the column's own limits.
  *
- * `Date.parse` was the second check, and it is more forgiving than the column:
- * it reads '1' as the year 2001, rolls 30 February over into March and takes
- * an offset of +20:00, all of which Postgres refuses. Final review round 2
- * (R2-THERMO-22) found `due: '2026-02-30'` answered as a fault. So the fields
+ * `Date.parse` is more forgiving than the column: it reads '1' as the year
+ * 2001, rolls 30 February over into March and takes an offset of +20:00, all
+ * of which Postgres refuses, so `due: '2026-02-30'` would reach the column
+ * and be answered as a fault. So the fields
  * are read from the shape and held to the column's ranges, measured against
  * Postgres 18: a year from 1, a real day of that month (proleptic Gregorian),
  * an hour to 23 or exactly 24:00:00, a minute to 59, and a zone within 15:59
- * either way. A leap second stays refused, as `Date.parse` refused it: the
+ * either way. A leap second stays refused, as `Date.parse` refuses it: the
  * column would take it, but only by rolling it into the next minute.
  */
 function isTimestamp(value: string): boolean {
@@ -129,8 +129,7 @@ function fits(value: unknown, valueType: FieldDefinition['valueType']): boolean 
       // value carrying one is refused here rather than raised on by the
       // server. It arrives from real clients: a fixed-width field padded with
       // zeros, a C string that kept its terminator. An unpaired surrogate is
-      // the same case: half of a character a client split (final review
-      // round 1, FR1-JSONB continuation).
+      // the same case: half of a character a client split.
       return typeof value === 'string' && storableText(value);
     case 'numeric':
       return typeof value === 'number' && Number.isFinite(value);

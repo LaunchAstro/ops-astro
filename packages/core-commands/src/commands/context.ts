@@ -2,14 +2,14 @@
 //
 // What a command is handed, held apart from the thing that hands it over.
 //
-// In the draft these three types and `readTaskSpine` lived in `handlers.ts`,
-// beside the dispatch. That put every command module in a cycle with the
+// These three types and `readTaskSpine` are not in `handlers.ts`, beside the
+// dispatch, because that would put every command module in a cycle with the
 // dispatch that calls it: `handlers.ts` imports `tasks-write.ts` for the work,
-// and `tasks-write.ts` imported `handlers.ts` back for the shape of its own
-// argument. A cycle has no entry point, and this tree's dependency rules refuse
-// one (`.dependency-cruiser.cjs`, `no-circular`), so the shape moved here —
-// the module both sides depend on — and the dispatch stayed where the exported
-// surface check reads it from.
+// and `tasks-write.ts` would import `handlers.ts` back for the shape of its
+// own argument. A cycle has no entry point, and this tree's dependency rules
+// refuse one (`.dependency-cruiser.cjs`, `no-circular`), so the shape lives
+// here — the module both sides depend on — and the dispatch stays where the
+// exported surface check reads it from.
 
 import {
   readTaskStates,

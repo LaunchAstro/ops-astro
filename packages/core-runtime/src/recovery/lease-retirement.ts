@@ -207,11 +207,11 @@ export async function replayRecordedTransitions(
  * transitions, and L3 wires it.
  *
  * R1. Everything is discovered and locked before the first write, and the
- * classification is scoped to this lineage. The old shape updated the lineage,
- * then the leases, then reached the envelope through the classifier — a
+ * classification is scoped to this lineage. Updating the lineage, then the
+ * leases, then reaching the envelope through the classifier would leave a
  * cancellation holding the lineage waiting on an envelope a handback already
- * held — and then classified every eligible lineage in the business rather
- * than the one it was asked about.
+ * held, and classifying every eligible lineage in the business would reach
+ * work it was not asked about.
  */
 export async function cancelAndClassify(
   tx: TenantQuery,
@@ -219,9 +219,9 @@ export async function cancelAndClassify(
     readonly lineageId: string;
     readonly reason: string;
     /**
-     * The person's write on the task (T5), held and re-read under the locks
-     * (final review R2-RUNTIME-5). A recovery caller acting for no person
-     * passes none, and keeps the path it had.
+     * The person's write on the task (T5), held and re-read under the locks.
+     * A recovery caller acting for no person passes none, and keeps the path
+     * it had.
      */
     readonly authority?: {
       readonly subjects: readonly Subject[];
@@ -261,12 +261,13 @@ export async function cancelAndClassify(
   // than extending its locks backwards; a set that only shrank (a handback
   // committed in between, N1) is covered by the locks held and goes on.
   //
-  // Final review R1 #3. The runs this cancellation ends are in the set too,
+  // The runs this cancellation ends are in the set too,
   // every planned or claimed one on the lineage, not only those behind a hold
-  // or a live lease. Updating a run it had not locked took that row after the
-  // lineage, which is backwards: `task.decide` takes run before lineage, and
-  // the two closed a cycle that Postgres broke with 40P01. A run a concurrent
-  // proposal adds in between needs a lock not held, and rolls back here.
+  // or a live lease. Updating a run it had not locked would take that row after
+  // the lineage, which is backwards: `task.decide` takes run before lineage,
+  // and the two would close a cycle that Postgres breaks with 40P01. A run a
+  // concurrent proposal adds in between needs a lock not held, and rolls back
+  // here.
   const openRuns = async (): Promise<readonly string[]> =>
     (
       await tx.query<{ readonly id: string }>(
@@ -277,7 +278,7 @@ export async function cancelAndClassify(
       )
     ).map((row) => row.id);
 
-  // Final review R2-RUNTIME-5. The envelope checked write before any lock.
+  // The envelope checks write before any lock.
   // Held for share before the runtime set, as decide and pickup hold theirs:
   // a revocation that locked first is seen by the re-check below, and one
   // that comes second waits for this cancellation to commit.

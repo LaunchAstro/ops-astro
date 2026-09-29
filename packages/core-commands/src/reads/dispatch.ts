@@ -159,11 +159,11 @@ async function serveRead<K extends ReadName>(
   const body: Readonly<Record<string, unknown>> = request;
 
   // D06, on the read half, with the commands' own list and the commands' own
-  // code. A read takes no command envelope, so `prepareCommand` never sees it
-  // and the keys used to be dropped in silence -- which is the answer the
-  // accepted ledger rules out: a caller who believed they had set `actor_id`
-  // got a `200` and no correction, so the mistake lived in their client and
-  // this server looked fine. It is first, before the spine is read and before
+  // code. A read takes no command envelope, so `prepareCommand` never sees it,
+  // and dropping the keys in silence is the answer the accepted ledger rules
+  // out: a caller who believed they had set `actor_id` would get a `200` and
+  // no correction, so the mistake would live in their client and this server
+  // would look fine. It is first, before the spine is read and before
   // authority, because nothing about the business has been read yet and a
   // caller learns only that the field they sent is not theirs to send.
   // The installed system fields' keys are refused with them (root ruling 1).
@@ -187,9 +187,8 @@ async function serveRead<K extends ReadName>(
     };
   }
   // An absent or mistyped operand is refused next, before it reaches a bound
-  // parameter and answers a fault (checklist B7). It used to be refused at the
-  // HTTP boundary, which left a refused read with no audit row; here it is
-  // audited like every other refused read (I13).
+  // parameter and answers a fault (checklist B7). Here, rather than at the
+  // HTTP boundary, it is audited like every other refused read (I13).
   const parsed = row.parse(body);
   if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
   const { operands } = parsed;

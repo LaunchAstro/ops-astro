@@ -16,10 +16,9 @@
 //
 // The working slice registers one panel, `settings`, and it is a navigation
 // entry rather than a drawer: `route` names the route that draws the surface,
-// and the dock tab goes there. The draft registers a second, `ai`, whose
-// surface reads conversation records this build does not store; that one stays
-// unregistered, because a dock tab that opens onto nothing is worse than no
-// tab at all.
+// and the dock tab goes there. There is no `ai` panel: its surface reads
+// conversation records this build does not store, and a dock tab that opens
+// onto nothing is worse than no tab at all.
 //
 // **A registration with a route the router does not serve is the failure this
 // registry has to avoid.** `route` is a `StaticRouteId`, so a registration can

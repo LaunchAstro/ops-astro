@@ -58,7 +58,7 @@ import {
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
- * Final review R1 #53. A note that cannot be stored. `FIELD_VALUE_INVALID` is
+ * A note that cannot be stored. `FIELD_VALUE_INVALID` is
  * the request layer's code, not one of the runtime's own register rows, so it
  * is typed here beside `decide` rather than widened into `RuntimeRefusalCode`.
  */
@@ -175,7 +175,7 @@ function gateNotFound(): RuntimeResult<never> {
 }
 
 export async function decide(tx: TenantQuery, presented: DecideRequest): Promise<DecideResult> {
-  // Final review R2-AUTHORITY-33. The ids reach the database through a uuid
+  // The ids reach the database through a uuid
   // cast, which accepts any case, and come back lower-case; the version is
   // then compared with a string. One spelling from here on, so an upper-case
   // id of the gate's own version is that version and not a superseded one.
@@ -246,9 +246,9 @@ interface FoundGate {
  * everything read here is re-read under the locks, and this pass exists only
  * to learn which rows to lock. A trashed task's gate reads as no gate at all.
  *
- * Final review R1 #4. The authority check here runs before any lock, so a
- * revocation could commit while this waited on the chain or the cap and the
- * decision still commit after it. The decide grants are held for share here,
+ * The authority check here runs before any lock, so unheld, a revocation
+ * could commit while this waited on the chain or the cap and the decision
+ * still commit after it. The decide grants are held for share here,
  * before the runtime set, as pickup holds its own: a revocation that locked
  * first is seen by the re-check under the locks, and one that comes second
  * waits for this decision to commit.
@@ -306,14 +306,14 @@ interface LockedDecision {
  * unique-index violation instead of the typed refusal it had earned. So this
  * only reads it, and `openEnvelope` writes under the locks.
  *
- * R8 and thermo O3: the holds a rejection makes nonclaimable are released in
+ * R8: the holds a rejection makes nonclaimable are released in
  * the same transaction, so their accounting parents are discovered before the
  * locks and rediscovered under them. A hold that appeared in between rolls
  * back as `AffectedSetChanged` rather than meeting the classifier as a
  * lock-order fault; a set that only shrank is covered (N1). An approval
  * discovers no holds.
  *
- * G06 and Sol 6 RUNTIME-3: the clock is read after the locks, not `now()`,
+ * G06: the clock is read after the locks, not `now()`,
  * which is when this transaction began, so a decide that waited on its locks
  * past the deadline is refused.
  */
@@ -324,10 +324,10 @@ async function lockDecision(
 ): Promise<RuntimeResult<LockedDecision>> {
   const existing = await openEnvelopeOf(tx, found.task_id);
   // R2. The envelope's own cap is the cap this approval draws on, and the
-  // request's is a claim about it. An existing envelope with room, a requested
-  // cap with room and an exhausted actual cap once passed preflight, wrote the
-  // signed decision and the approved gate, and then refused on a cap nothing
-  // had locked. Refused here, before the locks and the first write, and the
+  // request's is a claim about it. Otherwise an existing envelope with room, a
+  // requested cap with room and an exhausted actual cap would pass preflight,
+  // write the signed decision and the approved gate, and then refuse on a cap
+  // nothing had locked. Refused here, before the locks and the first write, and the
   // canonical cap is what everything below uses.
   if (existing !== undefined && existing.capId !== request.capId) {
     return refuse(
@@ -381,7 +381,7 @@ interface Rechecked {
  * could have revoked the grant, decided this gate, superseded this version or
  * rejected this lineage. "Check current decide grant" (T2) first, now that no
  * revocation of a covering grant can commit around it, and at the locked
- * instant (final review R2-RUNTIME-4), so a grant that lapsed while this
+ * instant, so a grant that lapsed while this
  * waited on the chain or the cap no longer counts.
  */
 async function recheckDecision(
@@ -510,7 +510,7 @@ async function recheckEvidence(
  * live, a third round of changes is not on offer, and an approval's budget has
  * room.
  *
- * Final review R2-RUNTIME-7. A trash that committed while this waited is read
+ * A trash that committed while this waited is read
  * here, under the task lock: a trashed task is gone to the work surface, and
  * an approval would hold budget for work never handed out.
  *
@@ -764,7 +764,7 @@ async function openEnvelope(
     );
   }
 
-  // Sol 6 RUNTIME-1: the cap is a ceiling in one currency. Preflight has
+  // The cap is a ceiling in one currency. Preflight has
   // already refused a version in another; this is the second barrier, at the
   // write that would bind the two.
   if (version.currency !== cap.currency) {

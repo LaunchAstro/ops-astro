@@ -8,7 +8,7 @@
 // tone rather than falling through to nothing. The tones are the ones the
 // pinned step vocabulary gives the matching step word (`pending`, `running`,
 // `waiting`, `done`, `refused`), written out here rather than reached by a
-// round trip through a word whose only use was its tone.
+// round trip through a word whose only use would be its tone.
 
 import type { DrawnState } from '@launchastro/ui';
 import type { TaskStateView } from '../../../../packages/core-wire/src/index.ts';

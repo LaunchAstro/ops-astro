@@ -3,15 +3,14 @@
 // The refusal register. One table of codes, their statuses, and the
 // visibility rule.
 //
-// Three parts before this one each carried their own refusal type and each
-// said the same thing in a comment: the register itself is T1f's. This is it.
-// It does not replace those three unions — a module keeps the codes it can
+// This is T1f's register. It does not replace the modules' own refusal
+// unions — a module keeps the codes it can
 // produce, which is what lets its own types stay narrow — it is the one place
 // that says a code exists, what it means, which contract row owns it, which
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's
 // own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf` (architecture review d8746a2, candidate 2).
+// status column through `statusOf`.
 //
 // **Why a table rather than a union alone.** A union stops a typo. It cannot
 // say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
@@ -784,8 +783,8 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
-  // L4's three review-fix codes are deliberately **not** on this list, and
-  // each is a command path rather than a module one.
+  // Three codes are deliberately **not** on this list, and each is a command
+  // path rather than a module one.
   //
   // `LINEAGE_NOT_ON_TASK`: `task.propose` takes `lineageId` from the caller,
   // so naming a live lineage opened on another task of the same business is an
@@ -795,8 +794,8 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // `CAP_BINDING_MISMATCH`: `decide` still raises it, as the second barrier
   // behind the proposal, and no command case reaches it. The cap half of R2 is
   // not command-reachable, since `readBusinessCapId` hands every decision on a
-  // business the same cap. Nor, since final review round 2 (R2-RUNTIME-26), is
-  // the currency half: `task.propose` checks the currency against the task's
+  // business the same cap. Nor is the currency half: `task.propose` checks
+  // the currency against the task's
   // cap (its envelope's, else the business cap) before the first write, and
   // refuses another currency `PROPOSAL_OUT_OF_SCOPE`, so no version in another
   // currency reaches a decision. It stays off this list because the runtime

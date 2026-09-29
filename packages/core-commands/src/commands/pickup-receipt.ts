@@ -2,9 +2,8 @@
 //
 // Whether a stored pickup receipt is still the caller's claim, which both
 // entries ask before they replay one: the person envelope (`envelope.ts`) and
-// the agent pickup replay (`agent-replay.ts`). Moved unchanged out of
-// `tasks-pickup.ts`, which claims a reservation and never replays one
-// (THERMO-FIX-AGENT N2).
+// the agent pickup replay (`agent-replay.ts`). It is not in `tasks-pickup.ts`,
+// which claims a reservation and never replays one.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { isIdentifier } from './operands.ts';
@@ -28,8 +27,7 @@ export interface PickupReceiptBinding {
 /**
  * Whether a stored pickup receipt is still the caller's claim: one step for
  * the person envelope (`withheldNow`) and the agent pickup replay (step 3 of
- * `replayPickup`), in one statement and one refusal ladder
- * (THERMO-RECHECK-2 NNA2).
+ * `replayPickup`), in one statement and one refusal ladder.
  *
  * The receipt's lease, hold and attempt are still bound to one another, to
  * `holderActorId`, to `delegationId` (`null` for a person's own lease, and

@@ -2,8 +2,8 @@
 //
 // The one shape check for an identifier. Every id column is a uuid, and a
 // string that is not one would reach a bound parameter and be raised on by the
-// server. The regex was copied byte for byte into ten modules (thermo review
-// b483399, M1); this leaf is the copy they import, and it imports nothing.
+// server. Every module imports the regex from this leaf, which imports
+// nothing, so there is one copy of it.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 

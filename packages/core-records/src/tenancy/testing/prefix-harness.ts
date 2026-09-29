@@ -9,7 +9,7 @@
 // opens something a later migration closes again is a failure here, and it
 // stays a failure however clean the end state is.
 //
-// The harness derives its prefixes from the migrations themselves. A lane
+// The harness derives its prefixes from the migrations themselves. A change
 // adding `0008` writes `migrations/0008_*.sql` and nothing else: no list to
 // extend here, in the assertions, or in a manifest. That is deliberate --
 // a prefix proof whose coverage has to be maintained by hand is a proof that

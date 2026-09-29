@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.handback`: a lease settled, with its report and any successor. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// `task.handback`: a lease settled, with its report and any successor.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';
@@ -96,8 +94,8 @@ function holderOf(claimant: Claimant): HandbackHolder {
 }
 
 /*
- * The handback operands' refusals, one source for both entries
- * (THERMO-RECHECK-2 NNA4). The person handler asks them of the value; the
+ * The handback operands' refusals, one source for both entries. The person
+ * handler asks them of the value; the
  * agent entry asks the JSON type first, before any authority
  * (`handbackOperands`), and answers in these same bytes.
  */

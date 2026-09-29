@@ -86,7 +86,7 @@ async function refusePersonNotHere(
   );
   if (named.length === 0) return undefined;
 
-  // Lower-case, as the uuid cast answers (final review R2-AUTHORITY-33): an
+  // Lower-case, as the uuid cast answers: an
   // upper-case id of a member here is that member.
   const wanted = named.map((key) => (fields[key] as string).toLowerCase());
   const found = await tx.query<{ readonly id: string }>(
@@ -143,7 +143,7 @@ export async function setState(
   const target = context.target;
   if (target === undefined) throw new Error('setState: the envelope read no target');
 
-  // Final review R2-RUNTIME-51. `reason` is a required field of task.reopen
+  // `reason` is a required field of task.reopen
   // (API.md), recorded in the applied detail as why the task was reopened, so
   // it is held to task.cancel's rule before anything is written.
   if (
@@ -172,7 +172,7 @@ export async function setState(
       ),
     );
   }
-  // Final review R2-RUNTIME-14. Only task.reopen clears the completion stamp
+  // Only task.reopen clears the completion stamp
   // (SPEC 14.1, DATA.md), and it takes a reason; start on a completed task
   // would clear it with neither.
   if (category === 'started' && current?.machineCategory === 'completed') {

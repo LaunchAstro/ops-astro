@@ -2,13 +2,11 @@
 //
 // The read catalogue: every fact about a read, on one row keyed by its name.
 //
-// A read's facts used to live in ten places across four files: the
-// identifiers it takes, whether it needs the task spine, how its authority is
-// asked, whether an outsider is told NOT_FOUND, its operand check (a second
-// switch in `commands/operands.ts`) and what it serves, with four checks on
-// the read's name outside the switch (thermo review b483399, H3). Each is now
-// a field of the read's row, and `reads/dispatch.ts` runs one pipeline over
-// the row with no branch on the name. It is the read-path twin of the command
+// The identifiers a read takes, whether it needs the task spine, how its
+// authority is asked, whether an outsider is told NOT_FOUND, its operand
+// check and what it serves are each a field of the read's row, and
+// `reads/dispatch.ts` runs one pipeline over the row with no branch on the
+// name. It is the read-path twin of the command
 // catalogue (`core-wire/src/surface.ts`), and keyed by every read name, so a read
 // added to the union is a type error here until someone says what it takes.
 //
@@ -86,7 +84,7 @@ interface RowBase<K extends ReadName> {
 /**
  * A read that needs the installed task type's identifiers. The pipeline reads
  * them before the grant check, and `subject` and `serve` are handed them, so
- * neither has a missing spine to answer (thermo recheck 9ddfa09, NA2).
+ * neither has a missing spine to answer.
  */
 export interface SpineRow<K extends ReadName> extends RowBase<K> {
   readonly spine: true;

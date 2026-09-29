@@ -72,7 +72,7 @@ const UNSTORABLE_UNIT = new RegExp(`${NUL}|[\\ud800-\\udfff]`, 'gu');
  * A jsonb string cannot hold U+0000 or an unpaired surrogate: Postgres refuses
  * the insert (22P05, 22P02), and a refusal whose attempted value or echoed
  * name carried one became a fault, losing the refused row the audit exists to
- * keep (final review round 1, #12 and #18). Those code units, and only those,
+ * keep. Those code units, and only those,
  * are written as the JSON escape a client would have sent for them. The
  * payload digest is taken over the value as received, so it still names the
  * exact attempt.

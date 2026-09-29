@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.propose`: a proposal on a task, through the runtime's locks. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// `task.propose`: a proposal on a task, through the runtime's locks.
 
 import { subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -37,8 +35,7 @@ const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
 /**
  * `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. The
  * payload is a JSON object, not an array: spreading an array or a string into
- * one stores bytes the proposer never sent (final review round 2,
- * R2-RUNTIME-64).
+ * one stores bytes the proposer never sent.
  */
 function isStep(
   step: unknown,
@@ -68,22 +65,22 @@ export async function proposeOnTask(
   if (target === undefined) throw new Error('proposeOnTask: reached without a task');
   // A trashed task is gone to the work surface until its batch is restored,
   // so a proposal on it answers as one on a task that is not there, before
-  // any operand and before the revision (final review round 2, R2-RUNTIME-52;
-  // `task.restart` in `tasks-controls.ts`, RUNTIME.md). Checked again under
+  // any operand and before the revision (`task.restart` in
+  // `tasks-controls.ts`, RUNTIME.md). Checked again under
   // the lock below, for a trash that commits in between.
   if (target.deleted_at !== null) return refused(refuseNotFound());
   // Two shapes the columns constrain, answered here rather than left to the
   // constraint. `proposal_versions_purpose_shape` and `planned_steps.kind not
   // null` both fault at the write, and a fault reaches the caller as
   // `SERVICE_UNAVAILABLE` 503 -- a malformed request shown as a broken server,
-  // which is the difference checklist B7 asks to be real (WEB-PROPOSALS
-  // handback, "Interface gaps for L3" 4). `FIELD_VALUE_INVALID` 422 is already
+  // which is the difference checklist B7 asks to be real.
+  // `FIELD_VALUE_INVALID` 422 is already
   // on this operation's row in `docs/local/API.md`.
   //
   // Each operand's type is checked before its shape, because the body is the
   // caller's JSON and not `ProposeFields`: `RegExp.prototype.test` coerces
   // `undefined`, `null` and `true` to strings the pattern matches, and each
-  // then faulted at the bound parameter (final review round 2, R2-RUNTIME-24).
+  // would then fault at the bound parameter.
   if (typeof fields.purpose !== 'string' || !PURPOSE_SHAPE.test(fields.purpose)) {
     return refused(
       refuseCommand(
@@ -114,8 +111,8 @@ export async function proposeOnTask(
       ),
     );
   }
-  // R2-RUNTIME-64: spread into an object, a string or an array became an
-  // index-keyed object, and absent became `{}`, so the approver signed over a
+  // Spread into an object, a string or an array would become an index-keyed
+  // object, and absent would become `{}`, so the approver would sign over a
   // payload the proposer never sent.
   if (!isFieldMap(fields.payload)) {
     return refused(invalid('payload', 'Send the payload as a JSON object.'));
@@ -151,7 +148,7 @@ export async function proposeOnTask(
     expiresAt,
     ...(typeof lineageId === 'string' ? { lineageId } : {}),
     // T1's existing budget authority, for a task with no envelope open yet:
-    // the cap the decision would draw on (R2-RUNTIME-26).
+    // the cap the decision would draw on.
     ...(await readBusinessCapId(tx).then((capId) => (capId === undefined ? {} : { capId }))),
   };
   // F1. The runtime takes cap, envelope, task and the rest in the contract's

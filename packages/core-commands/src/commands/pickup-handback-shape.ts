@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The `task.handback` operand shape a pickup hands its claimant. Split out
-// unchanged when the one task-runtime module was divided (thermo review
-// b483399, H2).
+// The `task.handback` operand shape a pickup hands its claimant.
 
 import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';

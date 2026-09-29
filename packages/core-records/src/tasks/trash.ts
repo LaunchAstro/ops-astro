@@ -107,7 +107,7 @@ interface RootRow {
  * create or restore under a descendant holds that descendant `for share`
  * while its child is not yet visible, so a walk read once could miss the
  * child and stamp the parent after it commits: a live child under a trashed
- * parent, outside the batch (R1-THERMO-16, R2-RUNTIME-15). Locking waits for
+ * parent, outside the batch. Locking waits for
  * that transaction, and the next walk sees what it committed.
  *
  * The walk is read before anything is written, and `authorise` sees every
@@ -190,7 +190,7 @@ export async function trashSubtree<Denied>(
     // deadlock with this walk. The server rolls the victim back whole and the
     // envelope retries it once (register-store.ts, 40P01), and the retry
     // answers from what the winner committed: a nested trash applies without
-    // the winner's batch (final-r3-place.test.ts, R4-RUNTIME-7). Taking the
+    // the winner's batch (final-r3-place.test.ts). Taking the
     // root in this order would not help, since the envelope holds it before
     // the walk runs.
     // eslint-disable-next-line no-await-in-loop
@@ -251,7 +251,7 @@ interface ParentRow {
  * own because a lock cannot sit on the nullable side of a left join. Without
  * it a trash of the parent committing between this check and the write below
  * leaves the restored child live under a trashed parent and outside the
- * parent's batch (R2-RUNTIME-15). With it, a trash that got there first makes
+ * parent's batch. With it, a trash that got there first makes
  * this read wait and then see the parent trashed, and a trash that comes
  * second waits for this restore and its walk takes the restored child in:
  * the same pair of orders `readParent` gives create and reparent.
@@ -264,7 +264,7 @@ interface ParentRow {
  * or reparent carries the board to the live subtree only, so a row trashed
  * before its root moved still holds the old board. The write therefore takes
  * the board again from the live parent outside the batch, for that row and
- * the batch rows below it (R3-RUNTIME-11). That parent is the row read `for
+ * the batch rows below it. That parent is the row read `for
  * share` above, so a move holding it waits for this restore, whose rows its
  * rewrite then sees live, or this restore waits for the move and reads the
  * board it wrote. A top-level row keeps its own board, and a row whose parent
@@ -455,7 +455,7 @@ export async function purgeTrashedRecords(
   // The candidates are locked, so a restore either commits first and the row
   // drops out here (read committed re-checks the predicate on the new row), or
   // waits for the purge. Without the lock a restore committing between this
-  // read and the delete turned the purge into a key fault (R2-RUNTIME-53).
+  // read and the delete would turn the purge into a key fault.
   const aged = await tx.query<{ readonly id: string }>(
     `select id from records
       where business_id = $1 and record_type_id = $2
@@ -499,7 +499,7 @@ export async function purgeTrashedRecords(
 
   // A purged task's comments are in the work class with it (14.3: "records
   // and their bodies, comments, views"), and nothing reaches them once the
-  // task is gone, so they go in the same act, explicitly (R2-RUNTIME-16).
+  // task is gone, so they go in the same act, explicitly.
   const commentIds =
     options.commentTypeId === undefined
       ? []
@@ -523,7 +523,7 @@ export async function purgeTrashedRecords(
   );
   // A grant's scope carries no foreign key, and 0003 leaves revocation on a
   // deleted record to the operation that deletes it. A grant naming a record
-  // that no longer exists would keep its holder's standing (R2-AUTHORITY-60).
+  // that no longer exists would keep its holder's standing.
   const revoked = await tx.query<{ readonly id: string }>(
     `update public.grants set revoked_at = now()
       where business_id = $1 and scope_kind = 'record' and scope_id = any ($2::uuid[])

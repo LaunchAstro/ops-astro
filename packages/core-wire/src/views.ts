@@ -103,8 +103,8 @@ export interface SharedTaskView {
    * The record's version, which `task.comment` requires as
    * `expectedRevision`. An external party with a provisioned `comment` grant
    * may write a client comment (AUTHORITY.md R4), and without this nothing it
-   * can read carries the revision the write needs (final review round 2,
-   * R2-AUTHORITY-36). It is the record's version, not a field value.
+   * can read carries the revision the write needs. It is the record's
+   * version, not a field value.
    */
   readonly revision: number;
   /**
