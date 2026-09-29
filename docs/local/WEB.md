@@ -110,10 +110,15 @@ browser.
 falls back to `index.html`, and everything on the page is reread from the API.
 
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
-(`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`onDockTab` in
-`apps/web/src/App.tsx`).
+opens the Settings panel beside the page rather than navigating (MP-3-1). A
+plain press shows one panel, shift adds one, each X closes only its own, Close
+all closes every one, and Escape closes the last opened unless a field, menu or
+editor took the key (`apps/web/src/dock/open-set.ts`). An open tab is announced
+as "Close Settings" (`aria-expanded="true"`, `Dock` in
+`packages/ui/src/surfaces/Dock.tsx`). Each panel draws the screen of the view
+it is on, and its door opens that view's own address, or its board's. The open
+set is kept in the tab's session storage per business, names the person it was
+written for, never holds the token, and is removed at sign-out.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
@@ -638,12 +643,13 @@ places this build does not yet reach it.
 - The board draws nine pinned columns; this build stores five of them. Rank,
   client, stage, estimate and actual draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab for them. The records
+- No Agent panel, gate or run surfaces, and no dock tab for them. The dock's
+  frame is built (MP-3-1); its geometry, sheet tiers and history are not. The records
   behind them are stored and read: `task.read` carries every proposal on the
   task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
   projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry stays empty until there is a screen for a tab to open.
+  the panel registry holds only Settings until there is a screen for a tab to open.
 - Subtasks are not built. Comments are, and the task page draws them. The
   mockup's tabbed Internal / Client / All activity conversation is not built:
   the comments are one list with each row's audience on it, and history stays
