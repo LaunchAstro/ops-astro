@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T2f: the page's side of the live task channel. The stream says only that
-// the task changed, and the page re-reads through the ordinary checked read.
-// While it is down, a 30-second floor re-reads a visible page, as does the page
-// becoming visible or coming back online; a hidden page re-reads nothing
-// (`docs/design-system/research/LIVE-SYNC.md`, "The decision"). A stream that
-// ended is joined again, and the server's `resync` on join covers the gap.
+// T2f: the page's side of the live task channel. An event re-reads a visible
+// page through the checked read, as do a 30-second floor while the stream is
+// down, becoming visible and coming back online (LIVE-SYNC.md, "The
+// decision"). `closed`, a revocation, re-reads even a hidden page. An ended
+// stream is joined again; the server's `resync` covers the gap.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const CHANGED = /^event: (?:invalidate|resync|closed)$/mu;
+const EVENT = /^event: (invalidate|resync|closed)$/mu;
+
+export type LiveChange = 'changed' | 'closed';
 
 export interface FollowOptions {
   readonly visible?: () => boolean;
@@ -26,7 +27,7 @@ const wait = (ms: number, signal: AbortSignal): Promise<void> =>
 
 async function readEvents(
   body: ReadableStream<Uint8Array>,
-  onChange: () => void,
+  onEvent: (name: string) => void,
   signal: AbortSignal,
 ) {
   const reader = body.getReader();
@@ -39,20 +40,21 @@ async function readEvents(
     if (done) return;
     const blocks = (buffer + decoder.decode(value, { stream: true })).split('\n\n');
     buffer = blocks.pop() ?? '';
-    if (blocks.some((block) => CHANGED.test(block))) onChange();
+    for (const name of blocks.map((block) => EVENT.exec(block)?.[1])) if (name) onEvent(name);
   }
 }
 
 /** Follow one task's stream until the returned function is called. */
 export function followLive(
   open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>,
-  onChange: () => void,
+  onChange: (change: LiveChange) => void,
   { visible = () => document.visibilityState === 'visible' }: FollowOptions = {},
 ): () => void {
   const abort = new AbortController();
   const refresh = (): void => {
-    if (visible()) onChange();
+    if (visible()) onChange('changed');
   };
+  const onEvent = (name: string): void => (name === 'closed' ? onChange('closed') : refresh());
   let floor: ReturnType<typeof setInterval> | undefined;
   const run = async (): Promise<void> => {
     const body = await open(abort.signal).catch(() => null);
@@ -60,7 +62,7 @@ export function followLive(
     else {
       clearInterval(floor);
       floor = undefined;
-      await readEvents(body, onChange, abort.signal).catch(() => {});
+      await readEvents(body, onEvent, abort.signal).catch(() => {});
     }
     await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
     if (!abort.signal.aborted) await run();

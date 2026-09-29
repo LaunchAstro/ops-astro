@@ -289,13 +289,14 @@ describe.skipIf(serverUrl === undefined)(
       const otherKey = String(otherRow?.key);
       expect((await join(api, otherKey, mine, foreignToken)).status).not.toBe(200);
 
-      // Two clients here, one grant each: each joins its own task and is
-      // refused the other's.
+      // Two clients here, one grant each: each is refused its own task and the
+      // other's.
       const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
       await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
       const first = await world.client(s.business, s.decider, 't2f-client-1', mine);
       const second = await world.client(s.business, s.decider, 't2f-client-2', sibling);
-      expect((await open(mine, first)).status).toBe(200);
+      // External readers stay off the channel entirely (Sol, #111).
+      expect((await open(mine, first)).status).not.toBe(200);
       expect((await open(sibling, first)).status).not.toBe(200);
       expect((await open(mine, second)).status).not.toBe(200);
       const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);

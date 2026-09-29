@@ -219,9 +219,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ok: reachable,
         database: reachable ? 'reachable' : 'unreachable',
         reads: 'mounted',
-        live:
-          config.live === undefined ? 'off' : config.live.topics.listening ? 'listening' : 'down',
-        notificationQueue,
+        ...(config.live === undefined
+          ? {}
+          : { live: config.live.topics.listening ? 'listening' : 'down', notificationQueue }),
         detail,
       },
       reachable ? 200 : 503,

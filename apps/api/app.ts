@@ -302,9 +302,10 @@ export function createApi(options: ApiOptions): Hono {
 }
 
 /**
- * Whether this caller may watch the task, asked of `task.read` itself after
- * verifying the bearer again: expiry, a revoked grant and another client's
- * task all refuse. The answer is the task's identifier, the topic.
+ * Whether this caller may watch the task, asked after verifying the bearer
+ * again of `task.execution`, the internal activity the channel reports:
+ * expiry, a revoked grant and any external reader all refuse (Sol, #111).
+ * The answer is the task's identifier, the topic.
  */
 async function mayWatch(
   options: ApiOptions,
@@ -316,13 +317,12 @@ async function mayWatch(
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   const read = await options.executeRead(options.database, businessId, presented, {
-    read: 'task.read',
+    read: 'task.execution',
     recordId: context.req.param('recordId'),
   });
   if (isCommandRefusal(read)) return read;
-  if ('task' in read) return read.task.id;
-  if ('sharedTask' in read) return read.sharedTask.id;
-  throw new Error('task.read answered something other than a task');
+  if ('execution' in read) return read.execution.taskId;
+  throw new Error('task.execution answered something other than an execution');
 }
 
 const RECHECK_MS = 30_000;
