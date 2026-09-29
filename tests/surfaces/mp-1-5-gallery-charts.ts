@@ -47,10 +47,8 @@ export type ChartView = {
   tip: { hover: string; focus: string };
 };
 
-/** Runs in the page: where each unit and shape is drawn, and what the shapes carry. */
-function read(
-  shapes: Record<string, readonly [string, string, string]>,
-): Omit<ChartView, 'name' | 'sideways' | 'line' | 'tip'> {
+/** Runs in the page: where each unit is drawn, and what the shapes carry. */
+function read(): Omit<ChartView, 'name' | 'sideways' | 'shapes' | 'line' | 'tip'> {
   // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function alone
   const boxOf = (element: Element | null | undefined): Box => {
     const box = element?.getBoundingClientRect();
@@ -67,32 +65,12 @@ function read(
   const units: Record<string, Box> = {};
   for (const unit of ['DS-COMP-27', 'DS-COMP-28', 'DS-COMP-29', 'DS-COMP-40'])
     units[unit] = boxOf(document.querySelector(`[data-catalogue-id="${unit}"]`));
-  // A shape counts only the marks drawn at a size, and its box spans them all.
-  const drawn: Record<string, Box & { count: number }> = {};
-  for (const [shape, [unit, label, selector]] of Object.entries(shapes)) {
-    const found = [...(state(unit, label)?.querySelectorAll(selector) ?? [])]
-      .map(boxOf)
-      .filter((box) => box.width * box.height > 0);
-    const left = Math.min(...found.map((box) => box.left));
-    const right = Math.max(...found.map((box) => box.right));
-    drawn[shape] =
-      found.length === 0
-        ? { ...boxOf(undefined), count: 0 }
-        : {
-            left,
-            right,
-            width: right - left,
-            height: Math.max(...found.map((box) => box.height)),
-            count: found.length,
-          };
-  }
   const columnLine = state('DS-COMP-27', 'Column with dashed line')?.querySelector('.chart__line');
   const axis = document.querySelector('[data-catalogue-id="DS-COMP-27"] text.chart__axis');
   const axisStyle = axis === null ? undefined : getComputedStyle(axis);
   const dials = state('DS-COMP-28', 'Score dials, three bands')?.querySelectorAll('.dial') ?? [];
   return {
     units,
-    shapes: drawn,
     dashed:
       columnLine === null || columnLine === undefined
         ? 'none'
@@ -109,6 +87,33 @@ function read(
       opacity: axisStyle?.opacity ?? '',
     },
   };
+}
+
+/**
+ * Runs in the page: each shape's marks drawn at a size (non-zero area), and
+ * the box that spans them all; a shape with none has count 0.
+ */
+function marksOf(shapes: Record<string, readonly [string, string, string]>): ChartView['shapes'] {
+  const drawn: ChartView['shapes'] = {};
+  for (const [shape, [unit, label, selector]] of Object.entries(shapes)) {
+    const state = `[data-catalogue-id="${unit}"] [data-gallery-state="${label}"]`;
+    const boxes = [...document.querySelectorAll(`${state} ${selector}`)]
+      .map((mark) => mark.getBoundingClientRect())
+      .filter((box) => box.width * box.height > 0);
+    const left = Math.min(...boxes.map((box) => box.left));
+    const right = Math.max(...boxes.map((box) => box.right));
+    drawn[shape] =
+      boxes.length === 0
+        ? { left: -1, right: -1, width: 0, height: 0, count: 0 }
+        : {
+            left,
+            right,
+            width: right - left,
+            height: Math.max(...boxes.map((box) => box.height)),
+            count: boxes.length,
+          };
+  }
+  return drawn;
 }
 
 const LINE = '[data-catalogue-id="DS-COMP-27"] [data-gallery-state="Line"]';
@@ -163,7 +168,8 @@ export async function chartsReport(): Promise<{ views: ChartView[]; sameInDark: 
   const pictures = new Map<string, Buffer>();
   await eachGalleryView(async ({ width, theme, page, sideways }) => {
     const name = `gallery@${String(width)}-${theme}`;
-    const seen = await page.evaluate(read, SHAPES);
+    const seen = await page.evaluate(read);
+    const shapes = await page.evaluate(marksOf, SHAPES);
     const frame = await page.evaluate(lineWidths, LINE);
     for (const unit of UNITS) pictures.set(`${unit}@${name}`, await entryPicture(page, unit));
     const tip = await tips(page);
@@ -171,6 +177,7 @@ export async function chartsReport(): Promise<{ views: ChartView[]; sameInDark: 
       name,
       sideways,
       ...seen,
+      shapes,
       line: { ...frame, narrowed: await narrowed(page, width) },
       tip,
     });
