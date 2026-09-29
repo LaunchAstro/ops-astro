@@ -5,8 +5,6 @@
 // components (chip, marker, status pill, tooltip) and the catalogue entries the
 // line "every primitive is built here once" brings with them.
 
-import { readFileSync } from 'node:fs';
-import { URL as NodeURL, fileURLToPath } from 'node:url';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it } from 'vitest';
@@ -26,10 +24,10 @@ import {
   Term,
 } from '../../packages/ui/src/kit/marks.tsx';
 import { mount, type Mounted } from './mount.tsx';
+import { primitiveSheets } from '../support/primitive-sheets.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
-const root = fileURLToPath(new NodeURL('../..', import.meta.url));
-const sheet = readFileSync(`${root}packages/ui/src/styles/2-primitives.css`, 'utf8');
+const sheet = primitiveSheets();
 const rule = (selector: string): string => {
   const escaped = selector.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   return new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(sheet)?.[1] ?? '';

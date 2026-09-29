@@ -21,11 +21,12 @@ import {
   type Freshness,
 } from '../../packages/ui/src/kit/treatments.tsx';
 import { mount, type Mounted } from './mount.tsx';
+import { primitiveSheets } from '../support/primitive-sheets.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
 const read = (path: string): string => readFileSync(path, 'utf8');
-const sheet = read(`${root}packages/ui/src/styles/2-primitives.css`);
+const sheet = primitiveSheets();
 const html = (element: ReactElement): string => renderToStaticMarkup(element);
 /** Every source file of the interface, for the checks that no page does a thing. */
 const sources = (): readonly { path: string; text: string }[] => {
