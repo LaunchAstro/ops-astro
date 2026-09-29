@@ -101,7 +101,8 @@
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
     "SL07 (U09, MP-5-1 to MP-5-5) adds mp-5-board-isolation (task.board across three crossings with statuses: another business, a client login holding one share, the agent under a live delegation; the withheld count and the scope canary over the board machine).",
     "SL07 (U25, MP-5-8) adds mp-5-8-board-columns (each task.board row reads back the stage and the client mark stored for it, and the crossings into another business and another client's tasks; the rank's cases wait on SL08's U15) and mp-5-8-board-agent (the agent under a live delegation is refused the board with no rank, stage or canary).",
-    "SL07 (U25, MP-5-11) adds mp-5-11-board-status-order and mp-5-11-board-agent (each task.board row carries its state record's stored position, a reordered workflow is the next read's order, and the three crossings: another business reordering its workflow never moves a row here, a reader of one client's tasks gets only their positions, the agent under a live delegation is refused with no position or canary)."
+    "SL07 (U25, MP-5-11) adds mp-5-11-board-status-order and mp-5-11-board-agent (each task.board row carries its state record's stored position, a reordered workflow is the next read's order, and the three crossings: another business reordering its workflow never moves a row here, a reader of one client's tasks gets only their positions, the agent under a live delegation is refused with no position or canary).",
+    "SL07 (U25, MP-5-12) adds mp-5-12-board-review (each task.board row says whether its task waits at an open gate for the caller's decision: pending, not expired, inside the caller's decide grant; a decided gate is off the next read; the three crossings: a record-scoped decider flags only its own task, another business's decider is refused, the agent under a live delegation is refused, no flag or canary)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -291,7 +292,8 @@
     "tests/reads/mp-5-8-board-columns.test.ts",
     "tests/reads/mp-5-8-board-agent.test.ts",
     "tests/reads/mp-5-11-board-status-order.test.ts",
-    "tests/reads/mp-5-11-board-agent.test.ts"
+    "tests/reads/mp-5-11-board-agent.test.ts",
+    "tests/reads/mp-5-12-board-review.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

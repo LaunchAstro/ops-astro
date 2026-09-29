@@ -382,6 +382,12 @@ export interface BoardTask extends TaskSummary {
    * workflow's order. Null when the task has no state.
    */
   readonly statePosition: number | null;
+  /**
+   * True when the task waits at an open gate for the caller's decision
+   * (MP-5-12): a pending gate, not expired, on its live version, inside the
+   * caller's decide grant. The Review mode's rows and its live count.
+   */
+  readonly awaitingDecision: boolean;
 }
 
 export interface TaskBoardResult {

@@ -258,11 +258,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A named board is itself a task: one the caller cannot read is refused
       // as `task.read` refuses it, in-tenant (I05).
       if (unreadable(operands.board)) return refuseScope();
+      // The caller's decide reach, for the Review mode's rows (MP-5-12). It
+      // only marks rows already served under the read scope above.
+      const decide = await readableScope(tx, subjectsOf(session), 'task', 'decide');
       const { tasks, changedAt } = await readBoardStamped(
         tx,
         spine.taskTypeId,
         operands.board,
         scope.business ? null : scope.records,
+        decide.business ? null : decide.records,
       );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a

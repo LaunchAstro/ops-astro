@@ -432,6 +432,16 @@ caller is shown the positions of only the states their readable rows are in,
 never the whole vocabulary. `tests/reads/mp-5-11-board-status-order.test.ts`
 holds the order and the three crossings.
 
+Each row also carries `awaitingDecision` (MP-5-12): true when the task has a
+gate that is pending, not expired, on a version not superseded, and the
+caller's decide grant reaches the task, the grant `task.decide` checks. The
+decide reach comes from `readableScope` with action `decide`, and the gates
+are read only for the rows already served (`awaitingDecision`,
+`reads/awaiting.ts`), so a gate on a task the caller cannot read is never
+read or counted. The Projects board's Review mode draws these rows and counts
+them. `tests/reads/mp-5-12-board-review.test.ts` holds the count and the three
+crossings.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off
