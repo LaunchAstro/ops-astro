@@ -53,6 +53,7 @@ interface TaskRowRead {
   readonly state_key: string | null;
   readonly state_label: string | null;
   readonly state_machine_category: string | null;
+  readonly state_position: string | null;
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
   readonly stage: string | null;
@@ -83,6 +84,7 @@ const SELECT = `
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
          s.data ->> 'machine_category' as state_machine_category,
+         s.data ->> 'position' as state_position,
          p.id as assignee_id,
          p.display_name as assignee_name,
          r.txt_5 as stage,
@@ -385,6 +387,7 @@ export async function readBoardStamped(
       rank: UNRANKED,
       stage: row.stage,
       clientSet: row.client_set,
+      statePosition: row.state_position === null ? null : Number(row.state_position),
     }),
   );
   return { tasks, changedAt: newest?.toISOString() ?? null };

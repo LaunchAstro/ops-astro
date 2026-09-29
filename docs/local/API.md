@@ -423,6 +423,15 @@ its marks and pool are SL08's U15 (MP-4-9), not on main yet, so every row is
 answered unranked until they land. `tests/reads/mp-5-8-board-columns.test.ts`
 reads the stage and client mark back and holds the crossings.
 
+Each row also carries `statePosition` (MP-5-11): the `position` of the
+task's state record, read in the same join as the state, so the Projects
+board groups its rows in the workflow's order and a reordered workflow is the
+next read's order. It is null for a task with no state. It is the row's own
+business's state, so another business's workflow never moves it, and a
+caller is shown the positions of only the states their readable rows are in,
+never the whole vocabulary. `tests/reads/mp-5-11-board-status-order.test.ts`
+holds the order and the three crossings.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off

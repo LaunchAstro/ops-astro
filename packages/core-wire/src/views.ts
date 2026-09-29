@@ -376,6 +376,12 @@ export interface BoardTask extends TaskSummary {
   readonly stage: string | null;
   /** True when the task is put under a client (`task.set_party`). */
   readonly clientSet: boolean;
+  /**
+   * Where the task's state stands in the workflow (MP-5-11): the state
+   * record's `position`, read with the state, so the board groups in the
+   * workflow's order. Null when the task has no state.
+   */
+  readonly statePosition: number | null;
 }
 
 export interface TaskBoardResult {
