@@ -37,6 +37,7 @@ function byField(
 export function projectFacets(
   rows: readonly ProjectRow[],
   now: Date,
+  _viewer: string | null = null,
 ): readonly Facet<ProjectRow>[] {
   // The reader's own calendar day, as the due cell judges it (never the UTC day).
   const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;

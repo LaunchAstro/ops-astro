@@ -33,6 +33,8 @@ const row = (id: string, over: Partial<ProjectRow> = {}): ProjectRow => ({
   status: 'To do',
   statusPosition: null,
   waitReason: null,
+  category: null,
+  awaitingDecision: false,
   estimate: null,
   actual: null,
   comments: { client: 0, mentions: 0, latest: null },
@@ -235,12 +237,12 @@ describe('CS-5.10 sort by each column’s natural order', () => {
     const rows = [
       row('t', {
         estimate: { kind: 'tokens', tokens: 5, by: 'x' },
-        assignee: { name: 'Zed Ames', agent: false },
+        assignee: { id: 'zed-ames', name: 'Zed Ames', agent: false },
       }),
       row('long', {
         estimate: { kind: 'time', minutes: 600 },
         actual: { kind: 'time', minutes: 300 },
-        assignee: { name: 'Ada Park', agent: false },
+        assignee: { id: 'ada-park', name: 'Ada Park', agent: false },
       }),
       row('short', {
         estimate: { kind: 'time', minutes: 60 },

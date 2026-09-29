@@ -211,7 +211,10 @@ function rowOf(task: BoardTask): ProjectRow {
     // The client's name waits on the client model; `clientSet` says only
     // that there is one.
     client: null,
-    assignee: task.assignee === null ? null : { name: task.assignee.name, agent: false },
+    assignee:
+      task.assignee === null
+        ? null
+        : { id: task.assignee.personId, name: task.assignee.name, agent: false },
     due: task.due,
     completed: task.completedAt !== null,
     stage: task.stage,
@@ -220,6 +223,10 @@ function rowOf(task: BoardTask): ProjectRow {
     // No stored field says why a task waits yet (the run lifecycle's
     // approval reason, LEANS-ON), so no banner draws one.
     waitReason: null,
+    // No task category is stored yet (it arrives with named board sections,
+    // LEANS-ON), so no category chip draws.
+    category: null,
+    awaitingDecision: task.awaitingDecision,
     estimate: null,
     actual: null,
     comments: { client: 0, mentions: 0, latest: null },

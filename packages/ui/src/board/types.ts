@@ -78,12 +78,25 @@ export interface Preset {
   /** The glyph its chip keeps when the chip row is down to icons (B-25). */
   readonly icon?: string;
   readonly facetIds: readonly string[];
+  /** Drawn with no count (a category chip, P-13). */
+  readonly uncounted?: boolean;
+  /** When set, the chip is flagged and this says why (P-13's attention). */
+  readonly flag?: string;
+  /** The viewer's own pinned chip (P-11) or a category chip (P-13). */
+  readonly variant?: 'viewer' | 'cat';
 }
 
 /** An alternative surface over the same rows (B-09). */
 export interface Mode {
   readonly id: string;
   readonly label: string;
+  /** Facet kinds whose filters opening the mode drops (P-10's `gateRule`). */
+  readonly drops?: readonly string[];
+}
+
+/** A mode that narrows the table to some rows rather than swapping it. */
+export interface RowMode<Row> extends Mode {
+  readonly narrow?: (row: Row) => boolean;
 }
 
 export interface Filters {
