@@ -168,10 +168,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // (`reads/conversation.ts`), and a caller holding nothing is refused there.
   'conversation.read': {
     identifiers: ['conversationId'],
-    parse: ({ conversationId }) =>
-      isUuid(conversationId)
-        ? parsed({ conversationId })
-        : rejected('conversationId', 'Send conversationId as the conversation’s identifier.'),
+    // Any body parses: a caller holding nothing is refused SCOPE_NOT_GRANTED
+    // before the identifier is looked at (the matrix's case (e)), so the
+    // read checks the identifier itself, after that.
+    parse: ({ conversationId }) => parsed({ conversationId }),
     spine: false,
     authority: 'holds-any-grant',
     // The door asks no grant, so this flag has nothing to answer; the read

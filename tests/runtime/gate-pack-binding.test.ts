@@ -254,14 +254,17 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
 }
 
 /**
- * Every gate, pack, version and decision in the database, as the owner reads them.
- * A gate is read as 0029 knew it: 0041 (T3a) adds the escalation columns after
- * this seed, null on every seeded row, so they are left out on both sides and
- * every column 0029 had is still compared value for value.
+ * Columns a migration after 0030 adds to a table this snapshot reads. A row
+ * that gained a column has not changed what it held, so the snapshot compares
+ * the columns the seed wrote: 0041 (T3a) adds the escalation columns to gates
+ * and 0033 adds `origin_conversation_id`.
  */
+const ADDED_AFTER_0030 = `array['escalated_to_person_id','escalated_by_person_id','escalated_by_actor_id','escalated_at','origin_conversation_id']`;
+
+/** Every gate, pack, version and decision in the database, as the owner reads them. */
 async function seedSnapshot(db: EmptyDatabase): Promise<string> {
   const [row] = await db.admin.execute<{ readonly all: string | null }>(
-    `select coalesce((select string_agg((to_jsonb(g) - '{escalated_to_person_id,escalated_by_person_id,escalated_by_actor_id,escalated_at}'::text[])::text, '|' order by g.id)
+    `select coalesce((select string_agg((to_jsonb(g) - ${ADDED_AFTER_0030})::text, '|' order by g.id)
                         from public.gates g), '') || '#' ||
             coalesce((select string_agg(p::text, '|' order by p.id) from public.evidence_packs p), '') || '#' ||
             coalesce((select string_agg(v::text, '|' order by v.id) from public.proposal_versions v), '') || '#' ||

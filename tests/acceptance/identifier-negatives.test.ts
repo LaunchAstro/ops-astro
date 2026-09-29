@@ -23,6 +23,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
@@ -289,6 +290,26 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       }
     },
     300_000,
+  );
+
+  it(
+    CASE.conversation,
+    async () => {
+      // AW-03: another business's conversation and a made-up id are one answer.
+      const foreign = await foreignConversation(w.h.world.db.admin, bravo);
+      const cells: readonly [CommandName, Body][] = [
+        ['conversation.read', {}],
+        ['conversation.message', { body: NOBODY }],
+      ];
+      for (const [op, extra] of cells) {
+        // eslint-disable-next-line no-await-in-loop -- each operation against its own before and after
+        await refuses(op, 'conversationId', ada, 'NOT_FOUND', {
+          foreign: { conversationId: foreign, ...extra },
+          fabricated: { conversationId: randomUUID(), ...extra },
+        });
+      }
+    },
+    120_000,
   );
 
   it(
