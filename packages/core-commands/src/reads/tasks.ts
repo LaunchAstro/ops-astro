@@ -31,6 +31,7 @@ import type { BoardTask, InternalCommentView } from '../../../core-wire/src/inde
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { awaitingDecision } from './awaiting.ts';
 import { readRanks, readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 
@@ -358,13 +359,16 @@ export async function readBoard(
  * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
  * from one query, so the stamp is of exactly the rows served and a newer task
  * the caller cannot read never moves it; null when no task is served. The
- * ranks are read over the same `readable` scope.
+ * ranks are read over the same `readable` scope. `decidable` is the caller's
+ * decide reach (null for business-wide); a row waits on the caller when its
+ * task has an open gate inside it (MP-5-12). None when not given.
  */
 export async function readBoardStamped(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
   readable: readonly string[] | null,
+  decidable: readonly string[] | null = [],
 ): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
@@ -381,12 +385,20 @@ export async function readBoardStamped(
   // The ranks come from the same scope, so the pool is the reader's own and
   // a task outside it never moves a number on the board (MP-5-8).
   const ranks = await readRanks(tx, taskTypeId, readable);
+  // Asked only of the rows served, so a gate on a task outside the reader's
+  // scope is never read (MP-5-12).
+  const waiting = await awaitingDecision(
+    tx,
+    rows.map((row) => row.id),
+    decidable,
+  );
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
       rank: ranks.get(row.id) ?? UNRANKED,
       stage: row.stage,
       clientSet: row.client_set,
       statePosition: row.state_position === null ? null : Number(row.state_position),
+      awaitingDecision: waiting.has(row.id),
     }),
   );
   return { tasks, changedAt: newest?.toISOString() ?? null };
