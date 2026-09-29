@@ -27,20 +27,16 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
-  approvalsOf,
-  approverHolds,
-  deny,
   invalid,
   NOT_WAITING_FIX,
   openAnswer,
   spentOn,
-  thresholdOf,
-  type Approval,
   type BudgetAnswerRequest,
   type BudgetAnswerResult,
   type Opened,
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
+import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 
 export interface BudgetStopTopUpRequest extends BudgetAnswerRequest {
@@ -144,57 +140,6 @@ async function topUpRefusal(
     wanted: BigInt(request.amountMinor),
     currency: locked.currency,
   });
-}
-
-interface Eyes {
-  readonly threshold: { readonly minor: number; readonly words: string } | null;
-  readonly other: Approval | undefined;
-  readonly mine: Approval | undefined;
-  readonly completing: boolean;
-}
-
-/**
- * Who has approved, and whether this approval completes the top-up. Above the
- * threshold it takes two distinct people approving the same amount; the plan
- * approver is one of them where they hold the permission.
- */
-async function fourEyes(
-  tx: TenantQuery,
-  request: BudgetStopTopUpRequest,
-  opened: Opened,
-): Promise<BudgetAnswerResult<Eyes>> {
-  const threshold = await thresholdOf(tx, opened.locked.currency);
-  const needsTwo = threshold !== null && request.amountMinor > threshold.minor;
-  const pending = await approvalsOf(tx, opened.locked.ask_id);
-  const mine = pending.find((row) => row.person_id === opened.person.personId);
-  const other = pending.find((row) => row.person_id !== opened.person.personId);
-  if (
-    other !== undefined &&
-    (other.amount_minor !== String(request.amountMinor) || other.currency !== request.currency)
-  ) {
-    return invalid(
-      'amountMinor',
-      `A top-up of ${other.amount_minor} ${other.currency} is already approved and waits for a second person; approve that amount, or end the work.`,
-    );
-  }
-  if (needsTwo && other === undefined && mine !== undefined) {
-    return deny(
-      'FOUR_EYES_REQUIRED',
-      `a top-up above the four-eyes threshold of ${threshold.words} needs a second person, and you have approved it already`,
-      'Another person holding billing:decide approves the same top-up.',
-    );
-  }
-  const completing = !needsTwo || other !== undefined;
-  const approver = await approverHolds(tx, opened);
-  const approvers = new Set([opened.person.personId, ...(needsTwo ? [other?.person_id] : [])]);
-  if (approver !== null && completing && !approvers.has(approver)) {
-    return refuse(
-      'SCOPE_NOT_GRANTED',
-      'the plan approver still holds billing:decide, so the plan approver approves this top-up',
-      'Ask the person who approved the plan.',
-    );
-  }
-  return { ok: true, value: { threshold, other, mine, completing } };
 }
 
 async function insertApproval(

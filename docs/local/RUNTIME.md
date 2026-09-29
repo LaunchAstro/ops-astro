@@ -1570,12 +1570,17 @@ or delete.
   (`CAP_BINDING_MISMATCH`) and the amount within the business cap
   (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
   The plan approver approves where they still hold `billing:decide`,
-  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Above
-  `four_eyes_threshold` (T2e's stored setting, in the envelope currency's
-  major unit; no stored row fails closed) the first approval is recorded and
-  applies nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
+  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Four eyes
+  is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
+  write-off use: the band is `four_eyes_threshold` in the envelope currency's
+  major unit, read `for share` under the locks, null is off and no stored row
+  is the shipped 500. Above it the first approval is recorded and applies
+  nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
-  distinct holder approving the same amount completes it. Completing raises
+  distinct holder approving the same amount completes it, but only while the
+  first approver still holds `billing:decide` on the task at the locked
+  instant; a lapsed first approval pairs with no one, and the second is then
+  a first approval of its own (`budget-answer-eyes.ts`). Completing raises
   the envelope's maximum by the amount, moves the spend to date from held to
   actual, sets the reservation's hold to the raised ceiling less that spend,
   and sends the run back to `planned`. Pickup's replacement branch then fences
