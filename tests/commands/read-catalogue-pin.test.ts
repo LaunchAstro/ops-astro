@@ -79,11 +79,6 @@ const plan = (name: string) => ({
   names: [name],
   fixes: [`Send ${name} as a non-empty string.`],
 });
-const CONVERSATION_ID = {
-  code: 'FIELD_VALUE_INVALID',
-  names: ['conversationId'],
-  fixes: ['Send conversationId as the conversation’s identifier.'],
-};
 const PLAN_FIELDS = {
   code: 'FIELD_VALUE_INVALID',
   names: ['fields'],
@@ -124,7 +119,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
-  'conversation.read': BODIES.map(() => CONVERSATION_ID),
+  'conversation.read': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */

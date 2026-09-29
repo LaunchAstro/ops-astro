@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 35. For each of the other 19 this file
+// `recordId`, which reaches 16 of the 40. For each of the other 24 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -21,10 +21,12 @@ export const CASE = {
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  conversation:
+    'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The nine operations that name no identifier, each with a minimal valid body.
+ * The eleven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -42,9 +44,10 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['conversation.start', { body: 'a conversation started while bravo is watched' }],
 ];
 
-/** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The thirteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -59,6 +62,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
+  'conversation.message': ['conversationId', 'conversation'],
+  'conversation.read': ['conversationId', 'conversation'],
 };
 
 /**

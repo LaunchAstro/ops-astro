@@ -24,6 +24,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -192,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 27 cells: the 16 record-targeted operations, then the 11 with their own operand. */
+  /** The 29 cells: the 16 record-targeted operations, then the 13 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -250,6 +251,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
+    const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
+    byAda('conversation.read', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.message', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      body: NOBODY,
+    }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
@@ -297,15 +306,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 27 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 29 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(27);
-    expect(names).toHaveLength(27);
+    expect(new Set(names).size, 'distinct operations').toBe(29);
+    expect(names).toHaveLength(29);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the eleven target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

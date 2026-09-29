@@ -253,10 +253,18 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
   return row?.all ?? '';
 }
 
+/**
+ * Columns a migration after 0030 adds to a table this snapshot reads. A row
+ * that gained a column has not changed what it held, so the snapshot compares
+ * the columns the seed wrote: 0033 adds `origin_conversation_id` to gates.
+ */
+const ADDED_AFTER_0030 = `array['origin_conversation_id']`;
+
 /** Every gate, pack, version and decision in the database, as the owner reads them. */
 async function seedSnapshot(db: EmptyDatabase): Promise<string> {
   const [row] = await db.admin.execute<{ readonly all: string | null }>(
-    `select coalesce((select string_agg(g::text, '|' order by g.id) from public.gates g), '') || '#' ||
+    `select coalesce((select string_agg((to_jsonb(g) - ${ADDED_AFTER_0030})::text, '|' order by g.id)
+                        from public.gates g), '') || '#' ||
             coalesce((select string_agg(p::text, '|' order by p.id) from public.evidence_packs p), '') || '#' ||
             coalesce((select string_agg(v::text, '|' order by v.id) from public.proposal_versions v), '') || '#' ||
             coalesce((select string_agg(d::text, '|' order by d.id) from public.gate_decisions d), '')

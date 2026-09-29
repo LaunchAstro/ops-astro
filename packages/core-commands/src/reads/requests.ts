@@ -101,7 +101,7 @@ export interface ReadOperands {
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
    */
-  readonly 'conversation.read': { readonly conversationId: string };
+  readonly 'conversation.read': { readonly conversationId: unknown };
 }
 
 /** A read about the business as a whole, which takes nothing. */

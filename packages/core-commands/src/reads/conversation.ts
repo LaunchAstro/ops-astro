@@ -19,7 +19,12 @@
 //
 // Each refusal is decided before any title, subject or message is selected.
 
-import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  coveredScopes,
+  isUuid,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationMessageView,
@@ -168,12 +173,41 @@ async function served(tx: TenantQuery, conversationId: string): Promise<Conversa
   };
 }
 
+/**
+ * Whether the caller holds any conversation grant: `write` (their own) or
+ * `read` (the read-any grant) at any scope. A caller holding neither is
+ * refused before the identifier is looked at, in `checkAuthority`'s words.
+ */
+async function holdsAConversationGrant(tx: TenantQuery, session: Session): Promise<boolean> {
+  const subjects = subjectsOf(session);
+  for (const action of ['write', 'read'] as const) {
+    // eslint-disable-next-line no-await-in-loop -- the second is asked only when the first is empty
+    const held = await coveredScopes(tx, subjects, { collection: COLLECTION, action });
+    if (held.business || held.records.length > 0) return true;
+  }
+  return false;
+}
+
+const HOLDS_NOTHING = refuseCommand(
+  'SCOPE_NOT_GRANTED',
+  [],
+  ['no live grant covers it', 'ask a holder who may delegate'],
+);
+
 export async function readConversation(
   tx: TenantQuery,
   session: Session,
-  conversationId: string,
+  conversationId: unknown,
 ): Promise<ConversationReadResult | CommandRefusal> {
   if (session.roleKey === null) return refuseNotFound();
+  if (!(await holdsAConversationGrant(tx, session))) return HOLDS_NOTHING;
+  if (!isUuid(conversationId)) {
+    return refuseCommand(
+      'FIELD_VALUE_INVALID',
+      ['conversationId'],
+      ['Send conversationId as the conversation’s identifier.'],
+    );
+  }
   const doors = await tx.query<Door>(
     `select owner_actor_id, scope_record_id from conversations
       where business_id = $1 and id = $2`,
