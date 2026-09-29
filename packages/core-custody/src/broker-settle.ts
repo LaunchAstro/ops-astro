@@ -11,7 +11,7 @@ import {
 } from '../../core-connectors/src/index.ts';
 import type { CredentialKind } from './credentials.ts';
 import type { CustodyOutcome } from './custody.ts';
-import { lockFacts } from './broker-facts.ts';
+import { lockCall } from './broker-facts.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,
@@ -188,9 +188,7 @@ export async function settle(
   broker: Broker,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
-    const checked = await lockFacts(tx, caller, request, true);
-    if (!checked.ok)
-      throw new Error(`model call ${reserved.callId}: its lease left the caller mid-call`);
+    const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;
     if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
     if (settlement.kind === 'nothing')
@@ -201,7 +199,7 @@ export async function settle(
       return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
-    if (!checked.facts.leaseLive) return { ok: false, code: 'LEASE_EXPIRED', callId };
+    if (work !== 'stands') return { ok: false, code: work, callId };
     return {
       ok: true,
       callId,

@@ -25,12 +25,12 @@
 //    unknown liability and never releases.
 // 3. Send, through custody, with a request the adapter built from registered
 //    fields. The broker's process opens no connection.
-// 4. Settle, under the same locks, with the audit event in the same
-//    transaction: priced within the hold settles and releases the rest;
-//    positive proof that nothing happened releases it all; above the hold, or
-//    no answer, holds the maximum as `liability_unknown` until a person
-//    records an outcome. An expired lease still settles the cost; the work is
-//    refused.
+// 4. Settle, under the same locks taken by the call's own rows, with the
+//    audit event in the same transaction: priced within the hold settles and
+//    releases the rest; positive proof that nothing happened releases it all;
+//    above the hold, or no answer, holds the maximum as `liability_unknown`
+//    until a person records an outcome. A lease that expired or left the
+//    caller mid-call still settles the cost; the work is refused.
 //
 // Step 1 is broker-reserve.ts, the six facts broker-facts.ts, step 4
 // broker-settle.ts; the shapes are broker-types.ts.
@@ -83,7 +83,7 @@ async function markStarted(
 ): Promise<'started' | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
-    const checked = await lockFacts(tx, caller, request, false);
+    const checked = await lockFacts(tx, caller, request);
     if (!checked.ok) {
       await tx.query(
         `update public.model_calls

@@ -15,7 +15,6 @@ export interface Facts {
   readonly delegationId: string | null;
   readonly workForPersonId: string | null;
   readonly heldMinor: number;
-  readonly leaseLive: boolean;
 }
 
 export type Checked =
@@ -38,7 +37,6 @@ async function lockLease(
   tx: TenantQuery,
   caller: ModelCaller,
   request: Pick<ModelCallRequest, 'leaseId' | 'fence'>,
-  forSettlement: boolean,
 ): Promise<{ readonly ok: true; readonly lease: LeaseRow } | Refused> {
   const [lease] = await tx.query<LeaseRow>(
     `select run_id, reservation_id, delegation_id, holder_actor_id, fence::text as fence,
@@ -54,7 +52,7 @@ async function lockLease(
   ) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  if (!lease.live && !forSettlement) return { ok: false, code: 'LEASE_EXPIRED' };
+  if (!lease.live) return { ok: false, code: 'LEASE_EXPIRED' };
   return { ok: true, lease };
 }
 
@@ -62,7 +60,6 @@ async function lockLease(
 async function lockDelegation(
   tx: TenantQuery,
   delegationId: string | null,
-  forSettlement: boolean,
 ): Promise<{ readonly ok: true; readonly personId: string | null } | Refused> {
   if (delegationId === null) return { ok: true, personId: null };
   const [delegation] = await tx.query<{ delegate_person_id: string; live: boolean }>(
@@ -72,7 +69,7 @@ async function lockDelegation(
     [tx.businessId, delegationId],
   );
   if (delegation === undefined) return { ok: false, code: 'AUTHORITY_LOST' };
-  if (!delegation.live && !forSettlement) return { ok: false, code: 'AUTHORITY_LOST' };
+  if (!delegation.live) return { ok: false, code: 'AUTHORITY_LOST' };
   return { ok: true, personId: delegation.delegate_person_id };
 }
 
@@ -81,7 +78,6 @@ async function lockHeld(
   tx: TenantQuery,
   lease: LeaseRow,
   stepId: string,
-  forSettlement: boolean,
 ): Promise<
   | {
       readonly ok: true;
@@ -100,7 +96,7 @@ async function lockHeld(
       for update of r`,
     [tx.businessId, lease.reservation_id, lease.run_id],
   );
-  if (held === undefined || (held.state !== 'held' && !forSettlement)) {
+  if (held === undefined || held.state !== 'held') {
     return { ok: false, code: 'DECISION_STALE' };
   }
   const [step] = await tx.query<{ id: string }>(
@@ -118,25 +114,24 @@ async function lockHeld(
 
 /**
  * The six facts, read under the contract's lock order (lease, delegation,
- * reservation). `forSettlement` accepts an expired lease: the cost settles
- * whatever the lease's state, and the work is refused by the caller.
+ * reservation). Settlement takes the same locks by the call's own rows
+ * instead (`lockCall`).
  */
 export async function lockFacts(
   tx: TenantQuery,
   caller: ModelCaller,
   request: Pick<ModelCallRequest, 'leaseId' | 'fence' | 'stepId'>,
-  forSettlement: boolean,
 ): Promise<Checked> {
   // A malformed identity or fence is refused like a made-up one, before any row is read.
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  const leased = await lockLease(tx, caller, request, forSettlement);
+  const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;
-  const delegation = await lockDelegation(tx, lease.delegation_id, forSettlement);
+  const delegation = await lockDelegation(tx, lease.delegation_id);
   if (!delegation.ok) return delegation;
-  const held = await lockHeld(tx, lease, request.stepId, forSettlement);
+  const held = await lockHeld(tx, lease, request.stepId);
   if (!held.ok) return held;
   return {
     ok: true,
@@ -149,9 +144,60 @@ export async function lockFacts(
       delegationId: lease.delegation_id,
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,
-      leaseLive: lease.live,
     },
   };
+}
+
+/** Whether a settled call's work still stands for its caller. */
+export type WorkStands = 'stands' | 'LEASE_EXPIRED' | 'LEASE_NOT_OWNED';
+
+/**
+ * Settlement's locks, by the call's own rows in the contract's order (lease,
+ * delegation, reservation), so the cost settles whoever holds the work now.
+ * The answer says whether the work stands for this caller: its lease, at its
+ * fence, under its delegation, and still live.
+ */
+export async function lockCall(
+  tx: TenantQuery,
+  callId: string,
+  caller: ModelCaller,
+  fence: number,
+): Promise<WorkStands> {
+  const [call] = await tx.query<{
+    lease_id: string;
+    delegation_id: string | null;
+    reservation_id: string;
+  }>(
+    `select lease_id, delegation_id, reservation_id from public.model_calls
+      where business_id = $1 and id = $2`,
+    [tx.businessId, callId],
+  );
+  if (call === undefined) throw new Error(`model call ${callId}: no row to settle`);
+  const [lease] = await tx.query<Omit<LeaseRow, 'run_id' | 'reservation_id'>>(
+    `select delegation_id, holder_actor_id, fence::text as fence,
+            (state = 'live' and expires_at > clock_timestamp()) as live
+       from public.leases where business_id = $1 and id = $2 for update`,
+    [tx.businessId, call.lease_id],
+  );
+  if (call.delegation_id !== null) {
+    await tx.query(
+      `select 1 from public.delegations where business_id = $1 and id = $2 for update`,
+      [tx.businessId, call.delegation_id],
+    );
+  }
+  await tx.query(
+    `select 1 from public.reservations where business_id = $1 and id = $2 for update`,
+    [tx.businessId, call.reservation_id],
+  );
+  if (
+    lease === undefined ||
+    lease.holder_actor_id !== caller.actorId ||
+    lease.delegation_id !== caller.delegationId ||
+    lease.fence !== String(fence)
+  ) {
+    return 'LEASE_NOT_OWNED';
+  }
+  return lease.live ? 'stands' : 'LEASE_EXPIRED';
 }
 
 /** What the run's calls already hold or spent out of its reservation. */
