@@ -11,8 +11,8 @@
 // current face belong to `apps/web`, because `packages/ui` owns visual controls
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
-import type { MouseEvent, ReactElement, ReactNode } from 'react';
-import { Dock, type DockProps } from './Dock.tsx';
+import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react';
+import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -30,15 +30,28 @@ export interface ShellProps {
   readonly meta?: ReactNode;
   /** The dock, or null where there is none: signed out, and on the client face (R17). */
   readonly dock: DockProps | null;
+  /** The dock's grid track: the seated group's width, or 0 while it floats. */
+  readonly dockWidth?: number;
   /** Every click inside the shell, heard after its target's own handlers. */
   readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   readonly children: ReactNode;
 }
 
 export function Shell(props: ShellProps): ReactElement {
+  const ready = useReadyAfterFirstLayout();
+  const track =
+    props.dockWidth === undefined
+      ? undefined
+      : ({ '--dock-w': `${String(props.dockWidth)}px` } as CSSProperties);
   return (
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- heard, not handled: each door is a button or a link
-    <div className="shell" data-face={props.face} onClick={props.onClick}>
+    <div
+      className="shell"
+      data-face={props.face}
+      style={track}
+      onClick={props.onClick}
+      {...(ready ? { 'data-dock-ready': '' } : {})}
+    >
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
           {/* The wordmark is a mask over an SVG in the pinned estate. No asset

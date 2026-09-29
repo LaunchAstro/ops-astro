@@ -366,6 +366,61 @@
   gap: var(--s-4);
   padding: var(--s-4) var(--s-5);
 }
+/* Seated, the group is a grid track (the shell's --dock-w) and casts no
+   shadow; floating, it lies over the page. The grip is a 6px strip over each
+   panel's left edge, one width for them all (MP-3-2). */
+.dock[data-mode='seated'] .dock__panels {
+  box-shadow: none;
+}
+.dpanel {
+  position: relative;
+}
+.dpanel__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.dpanel__grip:hover,
+.dpanel__grip:focus-visible,
+.dock[data-dragging] .dpanel__grip {
+  background: color-mix(in oklch, var(--accent) 35%, transparent);
+  outline: none;
+}
+/* R39: one line saying which panel closed to make room. */
+.dock__stamp {
+  position: absolute;
+  right: 0;
+  bottom: var(--s-4);
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  background: var(--void);
+  color: var(--on-dark);
+  font-size: 0.78rem;
+}
+/* Nothing animates on the first layout: the shell and dock mark themselves
+   ready two frames after it. A drag suspends every transition. */
+.shell[data-dock-ready] {
+  transition: grid-template-columns var(--dur-2) var(--ease);
+}
+.dock[data-ready] .dock__rail {
+  transition: right var(--dur-2) var(--ease);
+}
+.dock[data-dragging] *,
+.shell:has(.dock[data-dragging]) {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-dock-ready],
+  .dock[data-ready] .dock__rail {
+    transition: none;
+  }
+}
 @media (width <= 900px) {
   .dock {
     top: auto;

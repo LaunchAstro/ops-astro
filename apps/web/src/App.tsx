@@ -19,6 +19,7 @@ import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-addr
 import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from './panels.ts';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './dock/open-set.ts';
 import { useDock } from './dock/use-dock.ts';
+import { useDockLayout } from './dock/use-layout.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -46,6 +47,7 @@ export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
   const registry = props.panels ?? PANELS;
   const dock = useDock(session, props.storage, registry);
+  const layout = useDockLayout(dock, registry);
 
   // The root address is not a screen and it is not a mistake either: it is how
   // a person arrives. It leads to the board when there is a session and to
@@ -249,6 +251,7 @@ export function App(props: AppProps): ReactElement {
         )
       }
       onClick={dock.onDoor}
+      dockWidth={layout.geometry.mode === 'seated' ? layout.geometry.groupWidth : 0}
       // The client face has no dock (R17), and nobody signed out has one.
       dock={
         session === null || at?.page.namespace === 'portal'
@@ -256,6 +259,7 @@ export function App(props: AppProps): ReactElement {
           : dockProps({
               registry,
               dock,
+              layout,
               navigate: props.navigate,
               screen: { client, grantKey, notice: null, storage: props.storage },
             })
@@ -276,10 +280,12 @@ export function App(props: AppProps): ReactElement {
 function dockProps(input: {
   readonly registry: PanelRegistry;
   readonly dock: ReturnType<typeof useDock>;
+  readonly layout: ReturnType<typeof useDockLayout>;
   readonly navigate: (path: string) => void;
   readonly screen: Omit<ScreenContext, 'params'>;
 }): DockProps {
-  const { registry, dock } = input;
+  const { registry, dock, layout } = input;
+  const drawn = new Set(layout.geometry.open);
   const tabs = dockTabs({}, registry);
   const byId = (id: string): PanelId | null =>
     isPanelId(id) && tabs.some((tab) => tab.id === id) ? id : null;
@@ -290,9 +296,14 @@ function dockProps(input: {
       count: tab.count,
       open: dock.state.open.includes(tab.id),
     })),
+    layout: { mode: layout.geometry.mode, panelWidth: layout.geometry.panelWidth },
+    stamp: layout.stamp,
+    onResize: layout.setWidth,
+    onResizeEnd: layout.setWidth,
     panels: ranked(dock.state).flatMap((id) => {
       const panel = registry[id];
-      if (panel === undefined) return [];
+      // A panel R39 is closing draws nothing while the close lands.
+      if (panel === undefined || !drawn.has(id)) return [];
       const place = dock.state.places[id];
       const door = screenAt(place) === null ? pathTo(panel.route) : (place ?? pathTo(panel.route));
       const view = screenAt(door);

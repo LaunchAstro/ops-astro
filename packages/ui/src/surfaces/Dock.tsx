@@ -7,11 +7,27 @@
 //
 // This component holds no session state. Which panels are open, where each
 // one is and what a press means belong to `apps/web`, which hands the result
-// here and hears every press back [ui-reference CONTRACT.md:305 rule 3]. The
-// one thing measured here is layout: whether the rail sits so near the
-// window's left edge that its callout must open to the right.
+// here and hears every press back [ui-reference CONTRACT.md:305 rule 3]. What
+// is measured here is layout: whether the rail sits so near the window's left
+// edge that its callout must open to the right, and where a grip is dragged.
+//
+// The grip sets one width for every panel (MP-3-2). The group is anchored at
+// the right edge, so a pointer moved left by d widens each of n panels by d/n.
+// The keyboard path is the same separator: the arrows step it, shift steps it
+// further, Home resets it. Nothing animates until the first layout is drawn.
 
-import { useId, useState, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 
 export interface DockTab {
   readonly id: string;
@@ -35,15 +51,25 @@ export interface DockPanel {
 
 export interface DockLayout {
   readonly mode: 'rest' | 'seated' | 'floating' | 'sheet';
+  /** The one width every open panel is drawn at. */
   readonly panelWidth: number;
 }
 
+/** The panel floor and default: the grip never offers less, and Home returns to the default. */
+export const DOCK_PANEL_FLOOR = 380;
+export const DOCK_PANEL_DEFAULT = 550;
+const STEP = 16;
+const BIG_STEP = 64;
+
 export interface DockProps {
   readonly tabs: readonly DockTab[];
-  /** MP-3-2 stub. */
   readonly layout?: DockLayout;
+  /** One width for every panel, while the grip moves. */
   readonly onResize?: (width: number) => void;
+  /** The width the grip was let go at, to keep. */
   readonly onResizeEnd?: (width: number) => void;
+  /** One line saying why the dock changed on its own (R39), or null. */
+  readonly stamp?: string | null;
   /** The open panels, in the order they are drawn. */
   readonly panels: readonly DockPanel[];
   readonly onTab: (id: string, shift: boolean) => void;
@@ -64,16 +90,41 @@ export function Dock(props: DockProps): ReactElement {
   const measure = (event: { readonly currentTarget: HTMLElement }): void => {
     setFlip(event.currentTarget.getBoundingClientRect().left < TIP_FLIP_PX);
   };
+  const ready = useReadyAfterFirstLayout();
+  const [dragging, setDragging] = useState(false);
   const anyOpen = props.panels.length > 0;
+  const width = props.layout?.panelWidth ?? DOCK_PANEL_DEFAULT;
   return (
     <div
       className={`dock${flip ? ' dock--tipflip' : ''}`}
       data-open={anyOpen ? String(props.panels.length) : '0'}
+      data-mode={props.layout?.mode ?? (anyOpen ? 'floating' : 'rest')}
+      style={{ '--dock-panel-w': `${String(width)}px` } as CSSProperties}
+      {...(ready ? { 'data-ready': '' } : {})}
+      {...(dragging ? { 'data-dragging': '' } : {})}
     >
+      {props.stamp === undefined || props.stamp === null ? null : (
+        <p className="dock__stamp" role="status">
+          {props.stamp}
+        </p>
+      )}
       {anyOpen ? (
         <div className="dock__panels">
           {props.panels.map((panel) => (
-            <DockPanelView key={panel.id} panel={panel} dock={props} />
+            <DockPanelView
+              key={panel.id}
+              panel={panel}
+              dock={props}
+              grip={
+                <Grip
+                  width={width}
+                  count={props.panels.length}
+                  onDragging={setDragging}
+                  onResize={props.onResize}
+                  onResizeEnd={props.onResizeEnd}
+                />
+              }
+            />
           ))}
         </div>
       ) : null}
@@ -133,13 +184,90 @@ function DockTabButton(props: {
   );
 }
 
+/** False until two frames after the first layout, so the first paint never animates. */
+export function useReadyAfterFirstLayout(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setReady(true);
+    }, 34);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
+  return ready;
+}
+
+function Grip(props: {
+  readonly width: number;
+  readonly count: number;
+  readonly onDragging: (dragging: boolean) => void;
+  readonly onResize: DockProps['onResize'];
+  readonly onResizeEnd: DockProps['onResizeEnd'];
+}): ReactElement {
+  const start = useRef<{ readonly x: number; readonly width: number } | null>(null);
+  const at = (clientX: number): number => {
+    const from = start.current ?? { x: clientX, width: props.width };
+    return Math.max(DOCK_PANEL_FLOOR, Math.round(from.width + (from.x - clientX) / props.count));
+  };
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
+    start.current = { x: event.clientX, width: props.width };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    props.onDragging(true);
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
+    if (start.current !== null) props.onResize?.(at(event.clientX));
+  };
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
+    if (start.current === null) return;
+    const width = at(event.clientX);
+    start.current = null;
+    props.onDragging(false);
+    props.onResizeEnd?.(width);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const step = event.shiftKey ? BIG_STEP : STEP;
+    const next =
+      event.key === 'ArrowLeft'
+        ? props.width + step
+        : event.key === 'ArrowRight'
+          ? props.width - step
+          : event.key === 'Home'
+            ? DOCK_PANEL_DEFAULT
+            : null;
+    if (next === null) return;
+    event.preventDefault();
+    const width = Math.max(DOCK_PANEL_FLOOR, next);
+    props.onResize?.(width);
+    props.onResizeEnd?.(width);
+  };
+  return (
+    <div
+      className="dpanel__grip"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Panel width"
+      aria-valuenow={props.width}
+      aria-valuemin={DOCK_PANEL_FLOOR}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
 function DockPanelView(props: {
   readonly panel: DockPanel;
   readonly dock: DockProps;
+  readonly grip: ReactNode;
 }): ReactElement {
   const { panel, dock } = props;
   return (
     <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
+      {props.grip}
       <header className="dpanel__head">
         <h2 className="dpanel__name">{panel.label}</h2>
         <div className="dpanel__acts">

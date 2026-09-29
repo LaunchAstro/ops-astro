@@ -207,6 +207,10 @@ describe('MP-3-2 layout from geometry', () => {
       'Settings closed: three panels do not fit at this width.',
     );
     expect(page.find('.dock__stamp')?.getAttribute('role')).toBe('status');
+    // Closed through the open set, as any close is: its tab reads closed too.
+    expect(page.find('.dock__tab[data-panel="settings"]')?.getAttribute('aria-expanded')).toBe(
+      'false',
+    );
   });
 });
 
