@@ -11,7 +11,7 @@
 // read as markup.
 
 import type { ReactElement } from 'react';
-import type { AssistantCite, AssistantMessage } from '../AssistantPanel.tsx';
+import type { AssistantCite, AssistantMessage } from './types.ts';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
 export const ownHref = (href: string): boolean =>

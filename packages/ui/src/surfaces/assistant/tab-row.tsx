@@ -9,7 +9,7 @@
 // only the selected tab sits in the tab order.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
-import type { AssistantChat } from '../AssistantPanel.tsx';
+import type { AssistantChat } from './types.ts';
 
 export const TAB_TITLE_LIMIT = 40;
 
