@@ -117,6 +117,17 @@ export function reduceBoard<Row>(
         text: unique([...view.text, ...parsed.text]),
       });
     }
+    case 'phrase': {
+      const words = action.text
+        .toLowerCase()
+        .split(/\s+/u)
+        .filter((word) => word !== '');
+      if (words.length === 0) return state;
+      return record(state, `search “${words.join(' ')}”`, {
+        ...view,
+        text: unique([...view.text, ...words]),
+      });
+    }
     case 'sort': {
       const column = context.columns.find((one) => one.key === action.key);
       if (column?.sortValue === undefined) return state;

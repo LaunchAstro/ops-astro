@@ -32,6 +32,7 @@ import './styles/1-tokens.css';
 import './styles/2-primitives.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
+import './styles/4b-board-machine.css';
 import './styles/5-task.css';
 
 export * from './state/corpus.ts';
@@ -41,4 +42,6 @@ export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
+export * from './surfaces/BoardMachine.tsx';
+export * from './board/index.ts';
 export * from './surfaces/TaskPage.tsx';
