@@ -61,9 +61,13 @@ async function sessionExpiry(page) {
   // The hour running out, expressed the way the server experiences it: the
   // token in the session cookie is no longer one it can vouch for. The page
   // cannot reach the cookie (S0-6c); the test driver replaces it.
+  // Ada's own sign-in's cookie, by the id her tab holds: never another's.
   const context = page.context();
-  const held = (await context.cookies()).find((cookie) =>
-    cookie.name.startsWith('ops-astro-session'),
+  const { sessionId } = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('ops-astro.session')),
+  );
+  const held = (await context.cookies()).find(
+    (cookie) => cookie.name === `ops-astro-session-${String(sessionId)}`,
   );
   if (held !== undefined) await context.addCookies([{ ...held, value: UNVERIFIABLE }]);
 

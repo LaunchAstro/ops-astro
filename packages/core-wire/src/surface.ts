@@ -504,12 +504,12 @@ export const DELEGATION_HEADER = 'x-agent-delegation';
 
 /**
  * The browser's session (S0-6c, `apps/api/auth/session.ts`): the route that
- * makes the cookie, the cookie, the CSRF header and the tab's own person.
+ * makes the cookie, the cookie prefix, the CSRF header and the tab's own session.
  */
 export const SESSION_PATH = '/api/session';
 export const SESSION_COOKIE = 'ops-astro-session';
 export const CSRF_HEADER = 'x-ops-astro-csrf';
-export const SUBJECT_HEADER = 'x-ops-astro-subject';
+export const SESSION_HEADER = 'x-ops-astro-session';
 
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(

@@ -308,7 +308,7 @@ const ROWS = [
   {
     code: 'AUTH_SESSION_MISMATCH',
     status: 403,
-    meaning: 'The session cookie is another person’s than this tab’s',
+    meaning: 'Session cookies arrived and the tab named none of its own',
     source: 'S0-6 isolation',
   },
 

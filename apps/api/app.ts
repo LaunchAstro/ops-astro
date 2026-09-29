@@ -52,7 +52,6 @@ import {
   DELEGATION_HEADER,
   PREFIX,
   SESSION_PATH,
-  SUBJECT_HEADER,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -74,7 +73,9 @@ import {
   crossSiteSession,
   fromOwnPages,
   MISMATCH_FIXES,
-  otherPersonsCookie,
+  namedSession,
+  sessionIdOf,
+  unnamedSession,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
 
@@ -189,7 +190,9 @@ async function admit(
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
   if (presented === undefined) {
-    if (otherPersonsCookie(context.req, undefined)) return refuse(context, MISMATCH());
+    // A tab that names no sign-in of its own reads nothing on the cookies of
+    // others: not them, their business or their clients.
+    if (unnamedSession(context.req)) return refuse(context, MISMATCH());
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -198,9 +201,6 @@ async function admit(
   if (presented === 'expired') {
     return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
-  // A tab reads nothing on another person's cookie: not them, their business
-  // or their clients.
-  if (otherPersonsCookie(context.req, presented.subject)) return refuse(context, MISMATCH());
 
   // The key comes from the path and is resolved by the server.
   const body = await readObject(context);
@@ -233,16 +233,18 @@ export function createApi(options: ApiOptions): Hono {
     }
     // No `Max-Age`: the cookie ends with the browser session and the token's
     // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
-    setCookie(context, cookieNameFor(presented.subject), token, SESSION_COOKIE_OPTIONS);
-    // The tab sends this back as `SUBJECT_HEADER`. An identifier, not a credential.
-    return context.json({ ok: true, subject: presented.subject }, 200);
+    // Each sign-in its own cookie; the tab names it in `SESSION_HEADER`.
+    const session = sessionIdOf(token);
+    setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
+    return context.json({ ok: true, session }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
-    // Only the named person's cookie: a late answer cannot end anyone else's.
-    const subject = context.req.header(SUBJECT_HEADER);
-    if (subject !== undefined)
-      deleteCookie(context, cookieNameFor(subject), SESSION_COOKIE_OPTIONS);
+    // Only the named sign-in's cookie: a late answer cannot end any other.
+    const session = namedSession(context.req);
+    if (session !== undefined) {
+      deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
+    }
     return context.json({ ok: true }, 200);
   });
 

@@ -15,7 +15,7 @@ export {
   READS,
   SESSION_COOKIE,
   SESSION_PATH,
-  SUBJECT_HEADER,
+  SESSION_HEADER,
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';
