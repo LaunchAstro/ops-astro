@@ -67,12 +67,13 @@ async function observeAs(
       ),
     );
   }
+  const attemptId = fields.attemptId;
   const result = await observe(tx, {
     ...holder,
     leaseId: fields.leaseId,
     fence: fields.fence,
-    attemptId: fields.attemptId,
-    effect: await lookupEffect(tx, holder.holderActorId, fields.attemptId),
+    attemptId,
+    effect: async () => await lookupEffect(tx, holder.holderActorId, attemptId),
     usage: fields.usage,
     outcome,
   });

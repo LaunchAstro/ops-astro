@@ -36,6 +36,7 @@
 // dispatch, whichever entry sends it.
 
 import { writeComment } from '../../../core-records/src/index.ts';
+import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,
   CommentAudience,
@@ -137,6 +138,10 @@ const EFFECT_FIXES: readonly string[] = [
  * held it as an unknown liability, its outcome is recorded and a late effect
  * would contradict it (Sol review 1 on #124, criterion 2). A retried effect is
  * unaffected: the register replays it before this runs.
+ *
+ * The attempt's step is locked first, through the one lock helper, and held to
+ * commit: observe takes the same lock, so it cannot settle the attempt between
+ * this check and the comment's write (Sol review 2 on #124, criterion 2).
  */
 async function effectRefusal(
   tx: TenantQuery,
@@ -152,6 +157,13 @@ async function effectRefusal(
       ['The effect is a team-only comment. Send audience as internal.'],
     );
   }
+  const step = await tx.query<{ readonly step_id: string }>(
+    'select step_id from public.attempts where business_id = $1 and id = $2',
+    [tx.businessId, attemptId],
+  );
+  const stepId = step[0]?.step_id;
+  if (stepId === undefined) return refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES);
+  await acquire(tx, [{ lockClass: 'step', id: stepId }]);
   const rows = await tx.query(
     `select 1 from public.attempts att
        join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
