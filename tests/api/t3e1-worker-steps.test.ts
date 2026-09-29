@@ -21,7 +21,7 @@ import { installBusinessSettings } from '../../packages/core-records/src/records
 import { grantTo } from '../commands/fixture.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { readIdentity } from '../../apps/api/identity.ts';
-import { registerEffectLookup } from '../../apps/api/recovery-entry.ts';
+import { passDeployment, registerEffectLookup } from '../../apps/api/recovery-entry.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { createWorker, EFFECT_BODY } from '../../apps/worker/worker.ts';
 import { ProviderFault, SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
@@ -335,5 +335,48 @@ describe.skipIf(serverUrl === undefined)('T3e1: the worker at each step, answers
     expect(await holds(taskId)).toMatchObject([
       { state: 'liability_unknown', held: 'held', held_minor: '2500' },
     ]);
+  });
+
+  it('Sol proof, criterion 3: a lost worker after provider action cannot prove that action absent', async () => {
+    const { taskId, credential } = await approvedWork();
+    const topUp = await asPerson('budget.top_up', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      amountMinor: 2_500,
+      fromMaximumMinor: 2_500,
+    });
+    expect(topUp.status, JSON.stringify(topUp.body)).toBe(200);
+    let providerEffects = 0;
+    const worker = workerOn(credential, transport, {
+      call: async () => {
+        providerEffects += 1;
+        await Promise.resolve();
+        throw new Error('worker stopped after the provider acted');
+      },
+    });
+    await expect(worker.applyOnce(taskId)).rejects.toThrow(
+      'worker stopped after the provider acted',
+    );
+    expect(providerEffects).toBe(1);
+    expect(await effects(taskId)).toBe(0);
+    await fixture.db.admin.execute(
+      `update public.leases set expires_at = clock_timestamp() - interval '1 second'
+        where business_id = $1 and task_id = $2 and state = 'live'`,
+      [fixture.business, taskId],
+    );
+
+    const recovered = await passDeployment(
+      fixture.db.app,
+      async (key) => await Promise.resolve(key === BUSINESS_KEY ? fixture.business : undefined),
+      [BUSINESS_KEY],
+      registerEffectLookup,
+    );
+    expect(recovered).toMatchObject({ ok: true });
+    if (!recovered.ok) return;
+    expect(recovered.businesses[0]?.reconciled).toMatchObject([{ answer: 'unanswered' }]);
+    expect(await holds(taskId)).toMatchObject([
+      { state: 'liability_unknown', held: 'held', held_minor: '2500' },
+    ]);
+    expect(await holds(taskId)).toHaveLength(1);
   });
 });
