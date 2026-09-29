@@ -74,6 +74,11 @@ export const GOOD: Readonly<Record<string, Reply>> = {
     expires_in: 3600,
   }),
   'DELETE /factors/factor-one': json(200, { id: 'factor-one' }),
+  // C58: a factor change ends the person's other sessions at the provider.
+  'POST /logout?scope=others': (_request, response) => {
+    response.writeHead(204);
+    response.end();
+  },
 };
 
 export interface Seen {
