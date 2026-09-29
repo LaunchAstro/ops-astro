@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The dock's Team panel (MP-7-10, C71-D): the people strip, the person's own
-// availability, and the direct conversation with the teammate selected.
+// The dock's Team panel (MP-7-10, C71-D, C71-G): the people strip, the
+// person's own availability, the group list, and the conversation selected,
+// direct or group.
 //
 // Each teammate is two controls, never one control doing two jobs by where it
 // was pressed: the face opens the conversation here, the name is the door to
@@ -10,26 +11,29 @@
 // time or input.
 //
 // Unread is derived from the reader's own read marker and nothing else. The
-// panel opens on the first conversation with anything unread without reading
-// it; the marker moves on a click into the conversation or on the face, and a
+// panel opens on the first conversation with anything unread (direct first,
+// then groups) without reading it; the marker moves on a click into the conversation or on the face, and a
 // send moves it in the comment command's own transaction (R36). Messages are
 // comments on the one comment record, drawn in the task thread's dialect.
 
 import { useState, type ReactElement } from 'react';
 import {
   newestAt,
+  openingGroup,
   openingThread,
   teammatesOf,
   unreadOf,
-  type Availability,
   type AvailabilityChange,
   type DirectThread,
   type GroupAction,
   type GroupThread,
+  type TeamConversation,
   type Teammate,
 } from '../state/team.ts';
 import { follow, type OpenHow } from './gesture.ts';
 import { Conversation } from './TeamConversation.tsx';
+import { Mine } from './TeamAvailability.tsx';
+import { GroupHead, GroupList } from './TeamGroups.tsx';
 
 export interface TeamPanelProps {
   /** Every member the reader works with, the reader included. */
@@ -106,77 +110,6 @@ function Chip(props: {
   );
 }
 
-/** Setting Away: the reason is required, in the person's own words. */
-function AwayForm(props: {
-  readonly onSet: (change: AvailabilityChange) => void;
-  readonly onClose: () => void;
-}): ReactElement {
-  const [reason, setReason] = useState('');
-  const said = reason.trim();
-  return (
-    <form
-      className="tmc__me"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (said === '') return;
-        props.onSet({ away: true, reason: said });
-        props.onClose();
-      }}
-    >
-      <label className="tmc__why">
-        Why you are away
-        <input
-          name="reason"
-          value={reason}
-          onChange={(event) => {
-            setReason(event.target.value);
-          }}
-        />
-      </label>
-      <button type="submit" className="btn btn--primary btn--sm" disabled={said === ''}>
-        Away
-      </button>
-      <button type="button" className="btn btn--sm tmc__cancel" onClick={props.onClose}>
-        Cancel
-      </button>
-    </form>
-  );
-}
-
-/** The reader's own availability: in, or away with their reason. */
-function Mine(props: {
-  readonly away: Availability | null;
-  readonly onSet: (change: AvailabilityChange) => void;
-}): ReactElement {
-  const [editing, setEditing] = useState(false);
-  if (editing) {
-    return (
-      <AwayForm
-        onSet={props.onSet}
-        onClose={() => {
-          setEditing(false);
-        }}
-      />
-    );
-  }
-  const away = props.away;
-  return (
-    <p className="tmc__me">
-      <span>{away === null ? 'You are in' : `You are away: ${away.reason}`}</span>
-      <button
-        type="button"
-        className={`btn btn--sm ${away === null ? 'tmc__set' : 'tmc__back'}`}
-        onClick={() => {
-          if (away === null) setEditing(true);
-          else props.onSet({ away: false });
-        }}
-      >
-        {away === null ? 'Set yourself away' : 'Back in'}
-      </button>
-    </p>
-  );
-}
-
 function Strip(props: {
   readonly teammates: readonly Teammate[];
   readonly selected: string | null;
@@ -202,52 +135,139 @@ function Strip(props: {
   );
 }
 
-export function TeamPanel(props: TeamPanelProps): ReactElement {
-  const [selected, setSelected] = useState<string | null>(() =>
-    openingThread(props.threads, props.me),
+/** What the conversation pane shows: a teammate's direct conversation or a group. */
+type Selected = { readonly kind: 'person' | 'group'; readonly id: string } | null;
+
+function opening(props: TeamPanelProps): Selected {
+  const person = openingThread(props.threads, props.me);
+  if (person !== null) return { kind: 'person', id: person };
+  const group = openingGroup(props.groups, props.me);
+  return group === null ? null : { kind: 'group', id: group };
+}
+
+/** Move the reader's own marker to the newest message, only when something is unread. */
+function markRead(
+  thread: TeamConversation | undefined,
+  me: string,
+  move: (upTo: string) => void,
+): void {
+  const upTo = thread === undefined ? null : newestAt(thread);
+  if (thread !== undefined && upTo !== null && unreadOf(thread, me) > 0) move(upTo);
+}
+
+function OpenConversation(props: {
+  readonly panel: TeamPanelProps;
+  readonly selected: Selected;
+  readonly teammates: readonly Teammate[];
+  readonly threadWith: (id: string) => DirectThread | undefined;
+  readonly read: (selected: Selected) => void;
+}): ReactElement {
+  const { panel, selected } = props;
+  const person =
+    selected?.kind === 'person'
+      ? props.teammates.find((p) => p.personId === selected.id)
+      : undefined;
+  const group =
+    selected?.kind === 'group' ? panel.groups.find((g) => g.id === selected.id) : undefined;
+  const onRead = (): void => {
+    props.read(selected);
+  };
+  if (person !== undefined) {
+    return (
+      <Conversation
+        id={person.personId}
+        to={person.short}
+        thread={props.threadWith(person.personId)}
+        me={panel.me}
+        onRead={onRead}
+        onSend={(body) => {
+          panel.onSend(person.personId, body);
+        }}
+      />
+    );
+  }
+  if (group === undefined) return <p className="dp__empty">Nobody selected.</p>;
+  return (
+    <>
+      <GroupHead group={group} me={panel.me} teammates={props.teammates} onGroup={panel.onGroup} />
+      <Conversation
+        id={group.id}
+        to={group.name}
+        thread={group}
+        me={panel.me}
+        onRead={onRead}
+        onSend={(body) => {
+          panel.onGroup({ do: 'send', id: group.id, body });
+        }}
+      />
+    </>
   );
+}
+
+/** Read the selected conversation: the direct marker by `onMarkRead`, a group's by its `read` action. */
+function reader(props: TeamPanelProps): (which: Selected) => void {
+  return (which) => {
+    if (which?.kind === 'person') {
+      const thread = props.threads.find((t) => t.with === which.id);
+      markRead(thread, props.me, (upTo) => {
+        props.onMarkRead(which.id, upTo);
+      });
+    } else if (which?.kind === 'group') {
+      markRead(
+        props.groups.find((g) => g.id === which.id),
+        props.me,
+        (upTo) => {
+          props.onGroup({ do: 'read', id: which.id, upTo });
+        },
+      );
+    }
+  };
+}
+
+export function TeamPanel(props: TeamPanelProps): ReactElement {
+  const [selected, setSelected] = useState<Selected>(() => opening(props));
   const mine = props.people.find((person) => person.personId === props.me);
   const teammates = teammatesOf(props.people, props.me);
   const threadWith = (id: string): DirectThread | undefined =>
     props.threads.find((thread) => thread.with === id);
-  const read = (id: string): void => {
-    const thread = threadWith(id);
-    const upTo = thread === undefined ? null : newestAt(thread);
-    if (thread !== undefined && upTo !== null && unreadOf(thread, props.me) > 0) {
-      props.onMarkRead(id, upTo);
-    }
+  const read = reader(props);
+  const select = (which: Selected): void => {
+    setSelected(which);
+    read(which);
   };
-  const open = teammates.find((person) => person.personId === selected);
   return (
     <div className="tmc">
       <Mine away={mine?.away ?? null} onSet={props.onSetAvailability} />
       <Strip
         teammates={teammates}
-        selected={selected}
+        selected={selected?.kind === 'person' ? selected.id : null}
         unread={(id) => {
           const thread = threadWith(id);
           return thread === undefined ? 0 : unreadOf(thread, props.me);
         }}
         onSelect={(id) => {
-          setSelected(id);
-          read(id);
+          select({ kind: 'person', id });
         }}
         panel={props}
       />
+      <GroupList
+        groups={props.groups}
+        selected={selected?.kind === 'group' ? selected.id : null}
+        unread={(group) => unreadOf(group, props.me)}
+        onSelect={(id) => {
+          select({ kind: 'group', id });
+        }}
+        teammates={teammates}
+        onGroup={props.onGroup}
+      />
       <div className="tmc__conv">
-        {open === undefined ? (
-          <p className="dp__empty">Nobody selected.</p>
-        ) : (
-          <Conversation
-            to={open}
-            thread={threadWith(open.personId)}
-            me={props.me}
-            onRead={() => {
-              read(open.personId);
-            }}
-            onSend={props.onSend}
-          />
-        )}
+        <OpenConversation
+          panel={props}
+          selected={selected}
+          teammates={teammates}
+          threadWith={threadWith}
+          read={read}
+        />
       </div>
     </div>
   );

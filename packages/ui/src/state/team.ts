@@ -122,6 +122,6 @@ export function openingThread(threads: readonly DirectThread[], me: string): str
 }
 
 /** The group the panel opens on when no direct conversation has anything unread. */
-export function openingGroup(_groups: readonly GroupThread[], _me: string): string | null {
-  return null;
+export function openingGroup(groups: readonly GroupThread[], me: string): string | null {
+  return groups.find((group) => unreadOf(group, me) > 0)?.id ?? null;
 }

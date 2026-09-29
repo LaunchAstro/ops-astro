@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* The Team panel (MP-7-10, C71-D): the pinned mockup's `tmc__` rules. Buttons
+/* The Team panel (MP-7-10, C71-D, C71-G): the pinned mockup's `tmc__` rules. Buttons
    are the kit's `btn`, counts its `cbadge`, the empty line `dp__empty`, and the
    thread the task page's `thread`/`msg` dialect, all placed, never restyled.
-   Away is a dashed ring and the word Away, never a coloured dot. */
+   Away is a dashed ring and the word Away, never a coloured dot. The group
+   list, picker and head (C71-G) are drawn by no mockup surface: spacing only,
+   everything else from the kit. */
 
 .tmc {
   display: flex;
@@ -115,4 +117,74 @@
 }
 .tmc .composer input {
   flex: 1;
+}
+
+/* C71-G group conversations: spacing and layout only. */
+.tmc__groups {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.tmc__glist,
+.tmc__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tmc__glist li,
+.tmc__members li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.tmc__g {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.tmc__g[aria-pressed='true'] {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.tmc__new,
+.tmc__renaming,
+.tmc__adding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+.tmc__pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.8rem;
+}
+.tmc__ghead {
+  flex: none;
+  padding-top: var(--s-3);
+  font-size: 0.8rem;
+}
+.tmc__gname,
+.tmc__with {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+}
+.tmc__with {
+  color: var(--text-muted);
 }
