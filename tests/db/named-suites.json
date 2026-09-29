@@ -83,7 +83,8 @@
     "AGENT CLI (SL14, API-3) adds api-3 (one case per checklist line through the verb CLI over the composed API), api-3-isolation (the three crossings), api-3-budget (the token budgets over a 40-ticket fixture map) and api-3-process (the real entry as a process). api-3-world.ts is a harness, not a suite.",
     "API-3 read audit (SL14): api-3-read-audit replaces the held TR-S-B3-1 todo (orchestrator decision 29 Sep 2026: I13 wins, every read writes an audit event); it holds each agent CLI read to exactly one audit event, applied or refused, read back from audit_events.",
     "API-4 (SL14) adds api-4: map status (frontier, fog and counts in one call, one query on the read models, current after a write, detail levels, the three isolation crossings); its budget, quota and read-audit lines sit in the api-3 budget, quota and read-audit suites. api-4-context: work this ticket (the whole bundle in one call and one statement, current after a write, detail levels, withheld parts named, the scripted run with zero follow-up reads, and, in api-4-context-isolation, a refusal per key and the three isolation crossings).",
-    "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table."
+    "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table.",
+    "WF-6 (SL14) adds tests/wayfinder/wf-6.test.ts (every charting pre-answer cites its source and an uncited one is refused; a pre-answer cites only a closed ticket the charter can read; charting resolves nothing; the agent never resolves a grilling ticket it filed; the audit readback and chain; the task:write refusal) wf-6-isolation.test.ts (the three crossings, a cited source withheld from a reader who may not read it) and wf-6-cli.test.ts (map.chart with pre-answers through the generated client, the same result and refusal as the envelope). wf-6-held.test.ts and wf-7-held.test.ts hold todos only and open no database, so they are neither named nor listed."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -302,6 +303,9 @@
     "tests/wayfinder/wf-1.test.ts",
     "tests/wayfinder/wf-2.test.ts",
     "tests/wayfinder/wf-1-cli.test.ts",
+    "tests/wayfinder/wf-6.test.ts",
+    "tests/wayfinder/wf-6-isolation.test.ts",
+    "tests/wayfinder/wf-6-cli.test.ts",
     "tests/cli/api-3.test.ts",
     "tests/cli/api-3-isolation.test.ts",
     "tests/cli/api-3-budget.test.ts",

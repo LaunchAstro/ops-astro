@@ -140,14 +140,14 @@ describe.skipIf(serverUrl === undefined)('WF-6 charting a map', () => {
       tickets: [{ ref: 'o', title: 'still open', type: 'research' }],
     });
     const openTicket = ticketsOf(open)['o'] as string;
+    // No such record, and another business's record, answer alike.
+    const bravoTicket = (await w.create(await w.outsider('bea'), { title: 'bravo' }, {}, w.bravo))
+      .id;
     const before = await counts();
     // An open ticket is not a recorded decision.
     expect(codeOf(await chart(owner, { title: 'x', preAnswers: cite(openTicket) }))).toBe(
       'FIELD_VALUE_INVALID',
     );
-    // No such record, and another business's record, answer alike.
-    const bravoTicket = (await w.create(await w.outsider('bea'), { title: 'bravo' }, {}, w.bravo))
-      .id;
     for (const id of [randomUUID(), bravoTicket]) {
       const answer = await chart(owner, { title: 'x', preAnswers: cite(id) });
       expect(codeOf(answer)).toBe('NOT_FOUND');

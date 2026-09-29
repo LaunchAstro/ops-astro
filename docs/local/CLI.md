@@ -152,7 +152,9 @@ pnpm cli task.resolve --json '{"recordId":"<ticketId>","expectedRevision":2,"ans
 ```
 
 `task.create` takes `taskType` (map, research, prototype, grilling, task or
-build; `task` when absent). `task.set_type`, `map.revise`, `map.scope`,
+build; `task` when absent). `map.chart` also takes `preAnswers`, a list of
+`{ question, answer, source, vetoOpen? }` where `source` is `{ "recordId": "<closed ticket>" }`
+or `{ "reference": "one line" }`; an uncited one is refused (WF-6). `task.set_type`, `map.revise`, `map.scope`,
 `task.set_blocking`, `map.graduate` and `task.close_out_of_scope` complete the
 set. A grilling or prototype ticket is retyped or resolved only by the map's
 owner, holding `task:decide`. An agent reaches none of these yet: they wait on

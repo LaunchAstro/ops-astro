@@ -237,7 +237,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, session, _operands, { spine, recordId }) {
       // A map never reaches a client surface (WF-1).
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
-      const map = await readMapView(tx, spine.taskTypeId, recordId);
+      const map = await readMapView(tx, spine.taskTypeId, recordId, subjectsOf(session));
       return map === undefined ? await notAMap(tx, recordId) : { ok: true, map };
     },
   },
