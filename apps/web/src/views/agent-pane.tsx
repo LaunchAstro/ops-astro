@@ -14,7 +14,11 @@
 import { useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import type { PersonView, ProposalView } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  PersonView,
+  ProposalView,
+  TaskLedgerView,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 
 export interface AgentSectionProps {
@@ -22,6 +26,8 @@ export interface AgentSectionProps {
   readonly recordId: string;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
+  /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
+  readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
 }
 
@@ -98,7 +104,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         // The access ledger has no screen yet, so the stamp names each grant it
         // draws on without a link; the ledger's route supplies one when it lands.
         ledgerHref={null}
-        ledger={null}
+        ledger={props.ledger ?? null}
       />
     </section>
   );

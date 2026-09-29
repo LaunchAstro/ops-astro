@@ -99,10 +99,9 @@ describe('MP-6-5 token panel', () => {
     const cap = page.find('[data-tokens="cap"]');
     expect(text(cap)).toContain('agent_work');
     expect(text(cap)).toContain('AUD 1000.00');
-    expect(page.all('[data-tokens="skill"]').map((chip) => chip.textContent)).toStrictEqual([
-      'Reply drafting',
-      'Tone check',
-    ]);
+    expect(
+      page.all('[data-tokens="composed"] [data-tokens="skill"]').map((chip) => chip.textContent),
+    ).toStrictEqual(['Reply drafting', 'Tone check']);
   });
 
   it('MP-6-5 allowance composition: no envelope says so in words, and an agent is shown no panel', async () => {
@@ -179,7 +178,7 @@ describe('MP-6-5 token panel', () => {
 
   it('MP-6-5 skill chip unavailable with reason', async () => {
     const page = await pane(world());
-    const chips = page.all('[data-tokens="skill"]');
+    const chips = page.all('[data-tokens="composed"] [data-tokens="skill"]');
     expect(chips).toHaveLength(2);
     for (const chip of chips) {
       expect(chip.tagName).toBe('BUTTON');
@@ -207,10 +206,9 @@ describe('MP-6-5 token panel', () => {
         lineage({ versions: [version({ evidence: hostile })], reservations: [reservation()] }),
       ],
     });
-    expect(page.all('[data-tokens="skill"]').map((chip) => chip.textContent)).toStrictEqual([
-      '<img src=x onerror=alert(1)>',
-      'Real one',
-    ]);
+    expect(
+      page.all('[data-tokens="composed"] [data-tokens="skill"]').map((chip) => chip.textContent),
+    ).toStrictEqual(['<img src=x onerror=alert(1)>', 'Real one']);
     expect(page.find('[data-agent="tokens"] img')).toBeNull();
     expect(page.find('[data-agent="tokens"] a[href]')).toBeNull();
   });

@@ -107,6 +107,7 @@ interface ReservationRow {
   readonly lineage_id: string;
   readonly id: string;
   readonly envelope_id: string;
+  readonly run_id: string;
   readonly state: string;
   readonly held_minor: string;
   readonly actual_minor: string | null;
@@ -175,7 +176,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
 
 const RESERVATIONS = `select row_number() over (order by res.created_at, res.id) as ordinal,
             run.lineage_id,
-            res.id, res.envelope_id, res.state, res.held_minor::text as held_minor,
+            res.id, res.envelope_id, res.run_id, res.state, res.held_minor::text as held_minor,
             res.actual_minor::text as actual_minor, res.classified_cause,
             res.lease_id,
             lease.fence::text as lease_fence, lease.state as lease_state,
@@ -280,6 +281,7 @@ export async function readTaskWork(
         .map((row) => ({
           id: row.id,
           envelopeId: row.envelope_id,
+          runId: row.run_id,
           state: row.state,
           heldMinor: Number(row.held_minor),
           actualMinor: row.actual_minor === null ? null : Number(row.actual_minor),

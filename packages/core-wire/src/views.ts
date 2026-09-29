@@ -205,6 +205,8 @@ export interface ReservationView {
   readonly id: string;
   /** The task envelope it holds against (MP-6-5): the per-run rows add up to it. */
   readonly envelopeId: string;
+  /** The run it holds for: one per-run row of the token panel (MP-6-5). */
+  readonly runId: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
