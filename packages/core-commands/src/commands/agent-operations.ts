@@ -35,6 +35,7 @@ import { writeTaskComment } from './tasks-comment.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
+import { updateTaskText } from './tasks-write.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
@@ -405,9 +406,10 @@ const serveCommentChange =
   };
 
 /**
- * An owned-field write an agent makes on its own task: the three marks
- * (`task.set_scores`) and the Ad hoc mark (`task.set_adhoc`). One entry, so
- * the two refuse a stale write, a missing task and a malformed body alike.
+ * A field write an agent makes on its own task: the three marks
+ * (`task.set_scores`), the Ad hoc mark (`task.set_adhoc`) and the two task
+ * texts (`task.update`, MP-4-7). One entry, so the three refuse a stale
+ * write, a missing task and a malformed body alike.
  */
 const serveOwnedWrite =
   (
@@ -616,6 +618,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       serve: serveCommentChange(
         async (tx, on, request) => await deleteTaskComment(tx, on, request['commentId']),
       ),
+    }),
+  ],
+  [
+    'task.update',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(updateTaskText, '{ agent_brief }'),
     }),
   ],
   [

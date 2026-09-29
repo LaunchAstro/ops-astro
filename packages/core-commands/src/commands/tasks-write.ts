@@ -219,8 +219,8 @@ export async function createTask(
  */
 export async function updateTask(
   tx: TenantQuery,
-  context: CommandContext,
-  request: Extract<CommandRequest, { command: 'task.update' }>,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  request: Pick<Extract<CommandRequest, { command: 'task.update' }>, 'fields'>,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
@@ -266,6 +266,33 @@ export async function updateTask(
   return applied(target.id, Number(written.revision), {
     changed: Object.keys(request.fields).toSorted(),
   });
+}
+
+/** The two task texts an agent writes through `task.update` (MP-4-7). */
+export const AGENT_TEXT_FIELDS: readonly string[] = ['agent_brief', 'description'];
+
+/**
+ * `task.update` as an agent makes it: the description and the brief on its
+ * own delegated task, and nothing else. A body naming any other field is
+ * refused whole, naming those fields, before anything is written: the agent's
+ * reach is the two texts, not the fields a person may edit.
+ */
+export async function updateTaskText(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = Object.keys(fields)
+    .filter((key) => !AGENT_TEXT_FIELDS.includes(key))
+    .toSorted();
+  if (outside.length > 0) {
+    return refused(
+      refuseCommand('SCOPE_NOT_GRANTED', outside, [
+        'An agent writes only the description and the agent brief through task.update.',
+      ]),
+    );
+  }
+  return await updateTask(tx, context, { fields });
 }
 
 /**

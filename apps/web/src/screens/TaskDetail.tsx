@@ -115,6 +115,7 @@ import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
+import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
@@ -630,6 +631,8 @@ function Loaded(props: LoadedProps): ReactElement {
               onSubmit={onFields}
             />
 
+            <DescriptionSection description={task.description} />
+
             <TeamWork steps={STEPS} onOpenPanel={props.onOpenPanel} />
 
             <Comments
@@ -649,20 +652,23 @@ function Loaded(props: LoadedProps): ReactElement {
           </>
         }
         agent={
-          <Proposals
-            capCurrency={task.capCurrency}
-            client={client}
-            note={props.note}
-            onChanged={props.onChanged}
-            onDecided={props.onDecided}
-            onProposeRefused={props.onProposeRefused}
-            proposeRefusal={props.proposeRefusal}
-            proposeDraft={props.proposeDraft}
-            onProposeDraft={props.onProposeDraft}
-            proposals={task.proposals}
-            recordId={task.id}
-            revision={task.revision}
-          />
+          <>
+            <BriefSection brief={task.agentBrief} />
+            <Proposals
+              capCurrency={task.capCurrency}
+              client={client}
+              note={props.note}
+              onChanged={props.onChanged}
+              onDecided={props.onDecided}
+              onProposeRefused={props.onProposeRefused}
+              proposeRefusal={props.proposeRefusal}
+              proposeDraft={props.proposeDraft}
+              onProposeDraft={props.onProposeDraft}
+              proposals={task.proposals}
+              recordId={task.id}
+              revision={task.revision}
+            />
+          </>
         }
       />
     </div>

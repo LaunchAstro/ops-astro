@@ -856,7 +856,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | Operation                                  | Person prefix: owning function                                                            | Agent prefix                                                                                             |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `task.create`                              | `createTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
-| `task.update`                              | `updateTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
+| `task.update`                              | `updateTaskText` (`commands/tasks-write.ts`)                                              | served under a live delegation, on its own task, `description` and `agent_brief` only (MP-4-7)           |
 | `task.complete`                            | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.reopen`                              | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.comment`                             | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (the row's `serve`, `AGENT_AUDIENCES`)          |
@@ -926,6 +926,18 @@ the line prints both as 1 (`reads/rank.ts`, `tests/reads/task-rank.test.ts`).
 Billing reads it, and a new time entry on the task starts from
 `adHocDefault` (`reads/tasks.ts`), which reads the same mark, so the timer
 and the page cannot disagree. The shared view carries no `adHoc`.
+
+## The description and the agent brief
+
+`task.read` carries `description` and `agentBrief` (MP-4-7, CS-4.23, CS-4.24),
+each null when none is written. Both are task text written through
+`task.update` under `task:write`; `agent_brief` is a field of its own
+(migration 0035), unslotted and internal like the description, so the shared
+view carries neither. The audit row names `task.update`; the field changed is
+the result's `changed` list, which the register stores in the same
+transaction. An agent writes the two on its own delegated task and nothing
+else through `task.update` (`updateTaskText`): any other field in the body is
+refused `SCOPE_NOT_GRANTED`, naming it, and nothing is written.
 
 ## The conversation
 
