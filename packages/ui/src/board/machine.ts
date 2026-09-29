@@ -36,6 +36,26 @@ function record(state: MachineState, label: string, view: BoardView): MachineSta
 
 const unique = (list: readonly string[]): readonly string[] => [...new Set(list)];
 
+/** A mode's chip pressed: opening it drops the filters of the kinds it names (P-10). */
+function toggleMode<Row>(
+  state: MachineState,
+  id: string,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  const mode = context.modes.find((one) => one.id === id);
+  if (mode === undefined) return state;
+  const opening = view.mode !== mode.id;
+  const drops = opening ? (mode.drops ?? []) : [];
+  const kindOf = (facetId: string): string =>
+    context.facets.find((facet) => facet.id === facetId)?.kind ?? '';
+  return record(state, `mode ${mode.label}`, {
+    ...view,
+    ids: view.ids.filter((facetId) => !drops.includes(kindOf(facetId))),
+    mode: opening ? mode.id : null,
+  });
+}
+
 export function reduceBoard<Row>(
   state: MachineState,
   action: BoardAction,
@@ -72,12 +92,7 @@ export function reduceBoard<Row>(
       return record(state, `filter ${preset.label}`, { ...view, ids });
     }
     case 'mode': {
-      const mode = context.modes.find((one) => one.id === action.id);
-      if (mode === undefined) return state;
-      return record(state, `mode ${mode.label}`, {
-        ...view,
-        mode: view.mode === mode.id ? null : mode.id,
-      });
+      return toggleMode(state, action.id, context);
     }
     case 'drop': {
       if (!view.ids.includes(action.id)) return state;
