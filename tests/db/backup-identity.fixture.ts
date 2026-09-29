@@ -70,6 +70,7 @@ export const drill = async (): Promise<{
     storeUrl: string,
     file: string,
     reach?: Reach,
+    operator?: { personId: string; business: string },
   ) => Promise<{ takenAt: string; sha256: string; bytes: number }>;
   restoreDrill: (options: {
     fetchArchive: (file: string) => Promise<{ takenAt: string; body?: Buffer }>;

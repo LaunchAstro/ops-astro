@@ -46,7 +46,7 @@ const REFUSED_TO_THE_JOB: Record<string, string> = {
   complete: 'update backups.archives set complete = true',
   delete: 'delete from backups.archives',
   truncate: 'truncate backups.archives, backups.archive_parts',
-  latest: 'select * from backups.read_latest()',
+  latest: "select * from backups.read_latest(gen_random_uuid(), 'made-up')",
   receipts: 'select * from backups.receipts',
   forge: `insert into backups.receipts (action) values ('backup expired')`,
   window: 'update backups.settings set retention_days = 1',

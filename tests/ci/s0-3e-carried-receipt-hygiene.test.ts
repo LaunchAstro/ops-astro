@@ -38,6 +38,7 @@ const pending = (operator: string, business: string): Record<string, unknown> =>
   sourceMajor: 17,
   targetMajor: 17,
   archiveTakenAt: TAKEN,
+  archiveId: '00000000-0000-4000-8000-000000000001',
   tables: 1,
   readAs: 'ops_astro_app',
   timings: { fetch: 1, open: 1, start: 1, restore: 1, check: 1 },

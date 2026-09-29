@@ -40,6 +40,8 @@ describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
   readBindingCases3();
 
   readBindingCases4();
+
+  readBindingCases5();
 });
 
 function readBindingCases1() {
@@ -53,9 +55,12 @@ function readBindingCases1() {
     } finally {
       await writer.end();
     }
-    const reader = await asRole(restoreLogin.url, RESTORE);
+    const reader = await asRole(operatorLogin.url, RESTORE);
     try {
-      const { rows } = await reader.query<{ id: string }>('select id from backups.read_latest()');
+      const { rows } = await reader.query<{ id: string }>(
+        'select id from backups.read_latest($1, $2)',
+        [operator, OPERATING_BUSINESS],
+      );
       const id = rows[0]?.id;
       expect(id).toBeDefined();
       const before = await countReadReceipts();
@@ -124,14 +129,26 @@ const machinePass = (latest: { id: string; taken_at: Date }, sha: string, busine
   sha,
 ];
 
+/** The newest archive as the store holds it, read by the store's admin: no login's read. */
+const newestArchive = async (): Promise<{ id: string; taken_at: Date }[]> => [
+  ...(await store.admin.execute<{ id: string; taken_at: Date }>(
+    'select id::text, taken_at from backups.archives order by taken_at desc, id desc limit 1',
+  )),
+];
+
 /** Through `url`: a pass of the newest archive with its digest is taken only when `allowed`; a wrong digest or business never. */
 async function passesOnMachine(url: string, allowed: boolean, digest: string): Promise<void> {
   const call = 'select backups.record_drill($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)';
   const reader = await asRole(url, RESTORE);
   try {
-    const { rows } = await reader.query<{ id: string; taken_at: Date }>(
-      'select id, taken_at from backups.read_latest()',
-    );
+    // Only the appointed login may read it; the restore identity alone names
+    // the newest archive as the store holds it, with no read of its own.
+    const { rows } = allowed
+      ? await reader.query<{ id: string; taken_at: Date }>(
+          'select id, taken_at from backups.read_latest($1, $2)',
+          [operator, OPERATING_BUSINESS],
+        )
+      : { rows: await newestArchive() };
     const latest = rows[0] ?? { id: '', taken_at: new Date(0) };
     expect(await attempt(reader, call, machinePass(latest, digest, OPERATING_BUSINESS))).toBe(
       allowed ? 'ok' : '42501',
@@ -157,7 +174,8 @@ function readBindingCases2() {
     const reader = await asRole(operatorLogin.url, RESTORE);
     try {
       const { rows } = await reader.query<{ id: string; taken_at: Date; sha256: string }>(
-        'select id, taken_at, sha256 from backups.read_latest()',
+        'select id, taken_at, sha256 from backups.read_latest($1, $2)',
+        [operator, OPERATING_BUSINESS],
       );
       const latest = rows[0];
       expect(latest).toBeDefined();
@@ -185,7 +203,9 @@ function readBindingCases2() {
 // restored challenge" to "without the verified operator" (ORCH-DECISION
 // 22:09Z): the restore challenge is withdrawn, and a pass on the machine is
 // the appointed operator's own act. Its setup no longer completes the archive
-// with a challenge; its call and assertion are Sol's.
+// with a challenge, and since the store now refuses the restore identity's
+// own read (REV158K3 criterion 4), it takes the archive's time from the
+// store's table; its call and assertion are Sol's.
 function readBindingCases3() {
   it('an on-machine pass without the verified operator is refused', async () => {
     const writer = await asRole(backupLogin.url, BACKUP);
@@ -196,9 +216,7 @@ function readBindingCases3() {
     }
     const reader = await asRole(restoreLogin.url, RESTORE);
     try {
-      const { rows } = await reader.query<{ taken_at: Date }>(
-        'select taken_at from backups.read_latest()',
-      );
+      const rows = await newestArchive();
       expect(rows[0]).toBeDefined();
       const code = await attempt(
         reader,
@@ -224,5 +242,26 @@ function readBindingCases4() {
     const digest = createHash('sha256').update(body).digest('hex');
     await passesOnMachine(restoreLogin.url, false, digest);
     await passesOnMachine(operatorLogin.url, true, digest);
+  });
+}
+
+function readBindingCases5() {
+  it('the store hands the appointed login no read for another person, nor in another business, and logs none', async () => {
+    const reader = await asRole(operatorLogin.url, RESTORE);
+    try {
+      const [row] = await store.admin.execute<{ n: number }>(
+        "select count(*)::int as n from backups.receipts where action = 'backup read'",
+      );
+      const latest = 'select id from backups.read_latest($1, $2)';
+      expect(await attempt(reader, latest, [randomUUID(), OPERATING_BUSINESS])).toBe('42501');
+      expect(await attempt(reader, latest, [operator, 'another-business'])).toBe('42501');
+      const [after] = await store.admin.execute<{ n: number }>(
+        "select count(*)::int as n from backups.receipts where action = 'backup read'",
+      );
+      expect(after?.n).toBe(row?.n);
+      expect(await attempt(reader, latest, [operator, OPERATING_BUSINESS])).toBe('ok');
+    } finally {
+      await reader.end();
+    }
   });
 }

@@ -20,6 +20,7 @@ export const RECEIPT_FIELDS = [
   'sourceMajor',
   'targetMajor',
   'archiveTakenAt',
+  'archiveId',
   'tables',
   'readAs',
   'timings',

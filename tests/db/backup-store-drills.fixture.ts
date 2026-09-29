@@ -31,7 +31,8 @@ export async function readNew(client: Client): Promise<Binding> {
     await writer.end();
   }
   const { rows } = await client.query<{ id: string; taken_at: Date; sha256: string }>(
-    'select id, taken_at, sha256 from backups.read_latest()',
+    'select id, taken_at, sha256 from backups.read_latest($1, $2)',
+    [operator, OPERATING_BUSINESS],
   );
   const [read] = rows;
   return {

@@ -70,8 +70,10 @@ end $$;
 -- requireOperatingOperator). It is installation state, one row, written once
 -- by the database's owner at installation (the restore runbook's install
 -- step), never by a request and never from a value the operator's environment
--- sets. No role but the owner is granted anything on it, the backup identity's
--- select through the default privileges aside; it is never changed or removed.
+-- sets. The application group may read it, and nothing more, so the gate
+-- reads it in the same transaction and on the same database as it checks the
+-- grant; the backup identity reads it through the default privileges; no
+-- other role is granted anything, and it is never changed or removed.
 -- It names a business and belongs to none, so it is installation state, not a
 -- business's row: its column is `operating_business`, never `business_id`.
 create table ops.operating_business (
@@ -80,6 +82,7 @@ create table ops.operating_business (
   written_at timestamptz not null default now()
 );
 revoke all on ops.operating_business from public;
+grant select on ops.operating_business to ops_astro_app;
 
 create function ops.operating_business_fixed() returns trigger
   language plpgsql set search_path = pg_catalog as $$

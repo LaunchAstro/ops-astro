@@ -109,10 +109,11 @@ function attestCases1() {
   // Sol's REV158K2 criterion 13 proof, adapted from "without restoring it" to
   // "without the verified operator" (ORCH-DECISION 22:06Z): the export is
   // decrypted and never restored, and its pending receipt, of the exact
-  // accepted shape, is brought back through the restore identity alone.
+  // accepted shape, is brought back through the restore identity alone (the
+  // export itself is the appointed login's: the store refuses any other read).
   it('decrypting an export without restoring it cannot produce a passed drill without the verified operator', async () => {
     const before = (await drills()).length;
-    const held = await exported(`-- ${randomUUID()}\n`, restoreLogin.url);
+    const held = await exported(`-- ${randomUUID()}\n`, operatorLogin.url);
     const plaintext = (await seal()).openArchive(readFileSync(held.file), keys.privateKey);
     expect(plaintext.length).toBeGreaterThan(0);
     await expect(
@@ -140,12 +141,29 @@ function attestCases1() {
   });
 }
 
+/** How many reads the store has logged. */
+const reads = async (): Promise<number | undefined> =>
+  (
+    await store.admin.execute<{ n: number }>(
+      "select count(*)::int as n from backups.receipts where action = 'backup read'",
+    )
+  )[0]?.n;
+
 function attestCases3() {
-  it('the restore identity alone records a failed carried drill, never a pass, and the store keeps who recorded which archive', async () => {
-    const held = await exported('-- failed\n', restoreLogin.url);
-    const client = await asRole(restoreLogin.url, RESTORE);
+  it('the restore identity alone reads no archive and records no carried drill; the appointed login records a failed one, and the store keeps who recorded which archive', async () => {
+    const held = await exported('-- failed\n', operatorLogin.url);
+    const alone = await asRole(restoreLogin.url, RESTORE);
     try {
-      expect(await attempt(client, CALL, argsFor('passed', operator, held))).toBe('42501');
+      const before = await reads();
+      const latest = 'select id from backups.read_latest($1, $2)';
+      expect(await attempt(alone, latest, [operator, OPERATING_BUSINESS])).toBe('42501');
+      expect(await reads()).toBe(before);
+      expect(await attempt(alone, CALL, argsFor('failed', operator, held))).toBe('42501');
+    } finally {
+      await alone.end();
+    }
+    const client = await asRole(operatorLogin.url, RESTORE);
+    try {
       await client.query(CALL, argsFor('failed', operator, held));
     } finally {
       await client.end();
@@ -157,7 +175,7 @@ function attestCases3() {
     expect(row).toStrictEqual({
       outcome: 'failed',
       operator,
-      actor: restoreLogin.name,
+      actor: operatorLogin.name,
       archive_id: held.archiveId,
       business: OPERATING_BUSINESS,
     });
@@ -185,7 +203,8 @@ function attestCases2() {
     const reader = await asRole(operatorLogin.url, RESTORE);
     try {
       const { rows } = await reader.query<{ id: string; taken_at: Date; sha256: string }>(
-        'select id::text, taken_at, sha256 from backups.read_latest()',
+        'select id::text, taken_at, sha256 from backups.read_latest($1, $2)',
+        [operator, OPERATING_BUSINESS],
       );
       const [read] = rows;
       const [unread] = [
@@ -210,8 +229,9 @@ function attestCases2() {
   });
 }
 
+// Sol's REV158K3 criterion 13 proof, retitled by what it proves; its body is Sol's.
 function attestCases4() {
-  it('Sol proof, criterion 13: a carried receipt cannot attest another exported archive with the same timestamp', async () => {
+  it('a carried receipt cannot attest another exported archive with the same timestamp', async () => {
     const before = (await drills()).length;
     const first = await exported('-- first archive\n', operatorLogin.url);
     await store.admin.execute(

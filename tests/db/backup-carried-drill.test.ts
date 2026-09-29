@@ -149,13 +149,14 @@ function concurrentCases2() {
       await drillModule()
     ).exportArchive({
       gate: gateOf(operator),
-      storeUrl: restoreLogin.url,
+      storeUrl: operatorLogin.url,
       file,
       reach: hostReach,
     });
     const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as {
       takenAt: string;
       sha256: string;
+      archiveId: string;
     };
     const fabricated: Receipt = {
       action: 'restore drill recorded',
@@ -167,6 +168,7 @@ function concurrentCases2() {
       sourceMajor: 17,
       targetMajor: 17,
       archiveTakenAt: held.takenAt,
+      archiveId: held.archiveId,
       tables: 12,
       readAs: 'ops_astro_app',
       timings: { fetch: 1, open: 1, start: 1, restore: 1, check: 1 },
