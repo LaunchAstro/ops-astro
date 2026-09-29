@@ -78,7 +78,8 @@
     "C81 adds c81-legal-documents (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)",
     "C81 adds c81-register (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)",
     "C81 adds c81-breach-drill (the 30-day assessment flagged on the database clock on the operations view, the incident's link to the published breach runbook, and privacy.draft_breach_notices under privacy:manage over in-process Hono drafting the OAIC's and each person's notice at the named recipient, refusals, three crossings and the canary)",
-    "C81 adds c81-data-classes and c81-data-classes-isolation (the data-class register under privacy:manage over in-process Hono, each class's purpose, disclosures, retention and deletion required, the privacy policy drafted from it and held back once the classes have moved, the records read C62 and C61-R use, its lock against an approval, refusals, three crossings and the canary)"
+    "C81 adds c81-data-classes and c81-data-classes-isolation (the data-class register under privacy:manage over in-process Hono, each class's purpose, disclosures, retention and deletion required, the privacy policy drafted from it and held back once the classes have moved, the records read C62 and C61-R use, its lock against an approval, refusals, three crossings and the canary)",
+    "C81 adds c81-privacy-runbook (the manual privacy runbook's page, and its dry run on a planted canary person through the runbook's own finder run as a process: every copy found, exported, erased or kept for a lawful reason, then searched again; the backup leg waits on S0-3)"
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -231,7 +232,8 @@
     "tests/operations/c81-register.test.ts",
     "tests/operations/c81-breach-drill.test.ts",
     "tests/operations/c81-data-classes.test.ts",
-    "tests/operations/c81-data-classes-isolation.test.ts"
+    "tests/operations/c81-data-classes-isolation.test.ts",
+    "tests/operations/c81-privacy-runbook.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
