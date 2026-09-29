@@ -14,7 +14,7 @@
 // only the private key, held apart from the store, opens it; the drill restores
 // from the sealed artefact and refuses a plain dump. (The store's half, write
 // only for the backup identity and every read logged, is in
-// tests/db/backup-store-restore.test.ts under the same name.)
+// tests/db/backup-store-encryption.test.ts under the same name.)
 //
 // `S0-3 drill scope` (Sol's review 2, criterion 4, as the orchestrator ruled):
 // the backup and the restored copy stay whole, and the drill reads the copy

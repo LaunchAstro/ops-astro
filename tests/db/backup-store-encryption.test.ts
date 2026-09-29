@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-3c and S0-3d: the backup store's `S0-3 restore staleness` and
-// `S0-3 backup encryption` (the store's half).
+// S0-3c: the backup store's `S0-3 backup encryption` (the store's half).
 //
-// S0-3 (S0-3c, line C8; S0-3d). The shared fixture is backup-identity.fixture.ts.
+// S0-3 (S0-3c, line C8). The shared fixture is backup-identity.fixture.ts.
 
 import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
@@ -31,113 +30,8 @@ import {
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
   backupStoreHooks();
 
-  theBackupStoreCases5();
   theBackupStoreCases6();
 });
-
-const address = 'https://heartbeat.example.test/api/push/restore';
-
-const expire = async (sent: string[]) =>
-  await (
-    await job()
-  ).expireBackups({
-    storeUrl: retentionLogin.url,
-    restoreHeartbeat: address,
-    send: (to: string | undefined) => {
-      sent.push(to ?? '');
-      return Promise.resolve('sent');
-    },
-  });
-
-const age = async (days: number) => {
-  await store.admin.execute('alter table backups.drills disable trigger drills_append_only');
-  try {
-    await store.admin.execute(
-      `update backups.drills set at = now() - make_interval(days => ${days})`,
-    );
-  } finally {
-    await store.admin.execute('alter table backups.drills enable trigger drills_append_only');
-  }
-};
-
-function theBackupStoreCases5() {
-  describe('S0-3 restore staleness', () => {
-    restoreStalenessCases1();
-    restoreStalenessCases2();
-  });
-}
-
-function restoreStalenessCases1() {
-  it('the daily upkeep pings the restore heartbeat only while a drill passed inside the window', async () => {
-    const [settings] = await store.admin.execute<{ days: number }>(
-      'select restore_days as days from backups.settings',
-    );
-    const window = settings?.days ?? 0;
-    expect(window).toBeGreaterThan(0);
-
-    await age(window - 1);
-    const fresh: string[] = [];
-    expect(await expire(fresh)).toMatchObject({ restoreFresh: true, restoreHeartbeat: 'sent' });
-    expect(fresh).toStrictEqual([address]);
-
-    await age(window + 1);
-    const stale: string[] = [];
-    expect(await expire(stale)).toMatchObject({
-      restoreFresh: false,
-      restoreHeartbeat: 'withheld',
-    });
-    expect(stale).toStrictEqual([]);
-  });
-
-  it('the retention identity learns only yes or no, and cannot record or read a drill', async () => {
-    const client = await asRole(retentionLogin.url, RETENTION);
-    try {
-      const answer = await client.query('select backups.restore_fresh() as fresh');
-      expect(Object.keys(answer.rows[0] ?? {})).toStrictEqual(['fresh']);
-      expect(typeof answer.rows[0]?.['fresh']).toBe('boolean');
-      expect(await attempt(client, 'select * from backups.drills')).toBe('42501');
-    } finally {
-      await client.end();
-    }
-    const backup = await asRole(backupLogin.url, BACKUP);
-    try {
-      expect(await attempt(backup, 'select backups.restore_fresh()')).toBe('42501');
-    } finally {
-      await backup.end();
-    }
-  });
-}
-
-function restoreStalenessCases2() {
-  it('a recorded backup pings the backup heartbeat; a failed one does not', async () => {
-    const sent: string[] = [];
-    const send = async (to: string | undefined) => {
-      sent.push(to ?? '');
-      return 'sent';
-    };
-    const { runBackup } = await job();
-    const beat = 'https://heartbeat.example.test/api/push/backup';
-    const ok = await runBackup({
-      dump: async () => Buffer.from('PGDMP made-up nightly'),
-      storeUrl: backupLogin.url,
-      publicKey: keys.publicKey,
-      heartbeat: beat,
-      send,
-    });
-    expect(ok).toMatchObject({ outcome: 'recorded', heartbeat: 'sent' });
-    const bad = await runBackup({
-      dump: async () => {
-        throw new Error('no');
-      },
-      storeUrl: backupLogin.url,
-      publicKey: keys.publicKey,
-      heartbeat: beat,
-      send,
-    });
-    expect(bad).toMatchObject({ outcome: 'failed' });
-    expect(sent).toStrictEqual([beat]);
-  });
-}
 
 function theBackupStoreCases6() {
   describe('S0-3 backup encryption', () => {

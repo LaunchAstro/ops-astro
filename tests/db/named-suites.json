@@ -232,7 +232,7 @@
     "tests/db/backup-identity-grants.test.ts",
     "tests/db/backup-store.test.ts",
     "tests/db/backup-store-drills.test.ts",
-    "tests/db/backup-store-restore.test.ts"
+    "tests/db/backup-store-encryption.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
