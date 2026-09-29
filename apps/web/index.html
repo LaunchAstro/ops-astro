@@ -3,13 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!--
-      The content policy (S0-6c, TR-SEC4-10). Only this origin's own script
-      files run: no inline script, no eval, no other host. A script already in
-      the page could still send requests with the session cookie, so nothing
-      else may get in. Kept first, ahead of every script it governs. The dev
-      server drops it (vite.config.ts), because Vite's fast refresh is inline.
-    -->
+    <!-- S0-6c: only this origin's script files run. First, ahead of every
+      script; the dev server drops it (vite.config.ts). -->
     <meta
       http-equiv="Content-Security-Policy"
       content="script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"

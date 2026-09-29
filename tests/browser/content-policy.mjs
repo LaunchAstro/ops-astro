@@ -17,9 +17,19 @@ import { chromium } from 'playwright';
 const DIST = join(import.meta.dirname, '../../apps/web/dist');
 const PLANTED = [
   '<script>window.plantedInline = true;</script>',
-  '<script src="https://example.com/planted.js"></script>',
+  '<script src="OUTSIDE/planted.js"></script>',
   '<img src="x" onerror="window.plantedHandler = true">',
 ].join('');
+
+// Another origin that would serve the outside script, so a refusal is the
+// policy's and not a failed fetch.
+const outside = createServer((_request, response) => {
+  response
+    .writeHead(200, { 'content-type': 'text/javascript' })
+    .end('window.plantedOutside = true;');
+});
+await new Promise((resolve) => outside.listen(0, '127.0.0.1', resolve));
+const OUTSIDE = `http://127.0.0.1:${String(outside.address().port)}`;
 
 const server = createServer((request, response) => {
   const path = request.url === '/' ? '/index.html' : (request.url ?? '/');
@@ -27,7 +37,10 @@ const server = createServer((request, response) => {
     let body = readFileSync(join(DIST, path));
     if (path === '/index.html') {
       body = Buffer.from(
-        String(body).replace('<div id="app"></div>', `<div id="app"></div>${PLANTED}`),
+        String(body).replace(
+          '<div id="app"></div>',
+          `<div id="app"></div>${PLANTED.replace('OUTSIDE', OUTSIDE)}`,
+        ),
       );
     }
     const type = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[
@@ -53,12 +66,14 @@ try {
   const ran = await page.evaluate(() => ({
     inline: window.plantedInline === true,
     handler: window.plantedHandler === true,
+    outside: window.plantedOutside === true,
     ownBundle: document.getElementById('app')?.children.length ?? 0,
   }));
   const rows = [
     ['the page’s own bundle runs', ran.ownBundle > 0],
     ['a planted inline script does not run', !ran.inline],
     ['a planted inline handler does not run', !ran.handler],
+    ['a planted outside script does not run', !ran.outside],
     ['the browser reports the refusals', refused.length >= 2],
   ];
   for (const [line, held] of rows) console.log(`${held ? 'PASS' : 'FAIL'}  ${line}`);
@@ -67,4 +82,5 @@ try {
 } finally {
   await browser.close();
   server.close();
+  outside.close();
 }

@@ -133,6 +133,7 @@ export function App(props: AppProps): ReactElement {
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
         signedIn: session !== null,
+        ...(session?.subject === undefined ? {} : { subject: session.subject }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it

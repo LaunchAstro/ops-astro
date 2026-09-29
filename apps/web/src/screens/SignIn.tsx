@@ -69,7 +69,12 @@ export function SignIn(props: SignInProps): ReactElement {
         fetch: props.fetch,
       });
       setBusy(false);
-      if (result.ok) props.onSignedIn({ businessKey, email });
+      if (result.ok)
+        props.onSignedIn({
+          businessKey,
+          email,
+          ...(result.subject === undefined ? {} : { subject: result.subject }),
+        });
       else setBecause(result.because);
     })();
   };

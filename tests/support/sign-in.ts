@@ -19,7 +19,7 @@ import type { AddressInfo } from 'node:net';
 import { sign } from 'hono/jwt';
 import type { KeySetFetch } from '../../apps/api/auth/jwks.ts';
 import type { SupabaseVerifierOptions } from '../../apps/api/auth/supabase.ts';
-import { SESSION_COOKIE } from '../../packages/core-wire/src/index.ts';
+import { SESSION_COOKIE, SUBJECT_HEADER } from '../../packages/core-wire/src/index.ts';
 
 export const TEST_KID = 'test-sign-in-es256';
 
@@ -120,8 +120,10 @@ export async function sharedKeySetUrl(): Promise<string> {
 
 /**
  * The web client's `fetch` as a browser runs it after sign-in (S0-6c): the
- * session cookie added to every request, which the page itself never holds.
- * `null` is a browser with no session.
+ * session cookie added to every request, which the page itself never holds,
+ * and the tab's person (`SUBJECT_HEADER`) as the client names it once the API
+ * has told it, unless the client already sent one. `null` is a browser with
+ * no session.
  */
 export function asBrowser(
   token: string | null,
@@ -129,7 +131,15 @@ export function asBrowser(
 ): typeof globalThis.fetch {
   return (async (input: string | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
-    if (token !== null) headers.set('cookie', `${SESSION_COOKIE}=${token}`);
+    if (token !== null) {
+      headers.set('cookie', `${SESSION_COOKIE}=${token}`);
+      const claims = JSON.parse(
+        Buffer.from(token.split('.')[1] ?? '', 'base64url').toString() || '{}',
+      ) as { sub?: string };
+      if (!headers.has(SUBJECT_HEADER) && claims.sub !== undefined) {
+        headers.set(SUBJECT_HEADER, claims.sub);
+      }
+    }
     return await fetch(String(input), { ...init, headers });
   }) as unknown as typeof globalThis.fetch;
 }

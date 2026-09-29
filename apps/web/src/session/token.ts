@@ -101,6 +101,12 @@ export interface Session {
   /** `alpha` or `bravo`. It becomes the path prefix, never a body field. */
   readonly businessKey: string;
   readonly email: string;
+  /**
+   * The person the API said the cookie is, sent back on every call so a tab
+   * never acts on another person's cookie. Absent only for a session kept
+   * before S0-6c, which the API refuses.
+   */
+  readonly subject?: string;
 }
 
 const KEY = 'ops-astro.session';
@@ -254,5 +260,9 @@ function isInterruption(value: unknown): value is Interruption {
 function isSession(value: unknown): value is Session {
   if (!isRecord(value)) return false;
   const body = value;
-  return typeof body['businessKey'] === 'string' && typeof body['email'] === 'string';
+  return (
+    typeof body['businessKey'] === 'string' &&
+    typeof body['email'] === 'string' &&
+    (body['subject'] === undefined || typeof body['subject'] === 'string')
+  );
 }
