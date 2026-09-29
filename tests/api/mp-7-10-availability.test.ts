@@ -17,7 +17,7 @@ import { ISSUER, SECRET, authorised, post, tokenFor, type Answer } from './fixtu
 import { delegatedRead } from './c4-live-support.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { createTask, openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
-import { cq8World } from '../runtime/cq-8-world.ts';
+import { cq8World, type Cq8World } from '../runtime/cq-8-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('api/mp-7-10-availability: DATABASE_URL is unset.');
@@ -112,6 +112,8 @@ async function strip(): Promise<void> {
     name: expect.any(String),
     availability: null,
   });
+  // `you` names the reader's own entry, and nobody else's.
+  expect((await teamList(mate)).body['you']).toBe(mate.personId);
   await setAvailability(me, { state: 'away', reason: 'Out on a shoot' });
   expect(entryOf(await teamList(mate), me)?.availability).toEqual({
     state: 'away',
@@ -153,12 +155,8 @@ async function refusals(): Promise<void> {
   expect(await written()).toEqual(before);
 }
 
-/** MP-7-10 isolation: another business, another client and a person under a delegation */
-async function isolation(): Promise<void> {
-  const me = await teammate();
-  await setAvailability(me, { state: 'away', reason: 'Canary reason 5f1e' });
-  const world = cq8World(s);
-  // Another business: refused at our key, and its own list names nobody of ours.
+/** Another business: refused at our key, and its own list names nobody of ours. */
+async function otherBusiness(me: Member, world: Cq8World): Promise<void> {
   const other = await world.party(`mp710-${randomUUID().slice(0, 8)}`);
   const otherKey = await keyOf(other.id);
   await s.db.app.withBusiness(other.id, async (tx) => {
@@ -175,8 +173,10 @@ async function isolation(): Promise<void> {
     expect([answer.status, JSON.stringify(answer.body).includes('Canary')]).toEqual([403, false]);
   }
   expect((await written(other.id)).rows).toEqual([]);
-  // Two clients of this business, each on a shared task: the Team panel is staff only.
-  const taskId = await createTask(s, `mp710-${randomUUID()}`);
+}
+
+/** Two clients of this business, and a member whose role is not staff: the panel is not theirs. */
+async function notStaff(me: Member, world: Cq8World, taskId: string): Promise<void> {
   await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
   const clientCrossing = async (name: string): Promise<void> => {
     const client = await world.client(s.business, s.decider, name, taskId);
@@ -190,7 +190,6 @@ async function isolation(): Promise<void> {
   };
   await clientCrossing('mp710-client-1');
   await clientCrossing('mp710-client-2');
-  // A member whose role is not staff, holding `person:read`: the panel is still not theirs.
   const guest = await teammate();
   await s.db.admin.execute(
     "update public.memberships set role_key = 'guest' where business_id = $1 and person_id = $2",
@@ -199,6 +198,16 @@ async function isolation(): Promise<void> {
   expect((await teamList(guest)).status).toBe(404);
   expect((await setAvailability(guest, { state: 'away' })).status).toBe(404);
   expect(listed(await teamList(me)).map((person) => person.personId)).not.toContain(guest.personId);
+}
+
+/** MP-7-10 isolation: another business, another client and a person under a delegation */
+async function isolation(): Promise<void> {
+  const me = await teammate();
+  await setAvailability(me, { state: 'away', reason: 'Canary reason 5f1e' });
+  const world = cq8World(s);
+  await otherBusiness(me, world);
+  const taskId = await createTask(s, `mp710-${randomUUID()}`);
+  await notStaff(me, world, taskId);
   // A person under a live delegation from me sets their own row and never mine.
   const delegate = await teammate();
   await s.db.app.withBusiness(

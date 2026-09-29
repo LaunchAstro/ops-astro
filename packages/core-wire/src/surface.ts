@@ -667,6 +667,12 @@ export function pathOf(name: CommandName): string {
 export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
 
 /**
+ * A person's own availability (MP-7-10), on the person prefix alone: their own
+ * account, not a surface command, so no agent route and no grant row.
+ */
+export const ACCOUNT_AVAILABILITY_PATH = '/account/availability';
+
+/**
  * The header an agent presents its delegation credential in.
  *
  * A header rather than a body field for the same reason the bearer token is

@@ -44,4 +44,10 @@ export const PANELS: readonly PanelRegistration[] = [
     ariaLabel: 'Business settings',
     route: 'agency:settings',
   },
+  {
+    id: 'team',
+    label: 'Team',
+    ariaLabel: 'Team: who is here and who is away',
+    route: 'agency:team',
+  },
 ];

@@ -398,6 +398,8 @@ export interface TeamMemberView {
 
 export interface TeamListResult {
   readonly ok: true;
+  /** The reader's own person, so the panel knows which entry is theirs. */
+  readonly you: string;
   readonly people: readonly TeamMemberView[];
 }
 

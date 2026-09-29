@@ -42,7 +42,11 @@
 // matching `commands/requests.ts`, though the slice contract's prose writes
 // `operation_id`. There is one spelling on the wire and this is it.
 
-import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import {
+  ACCOUNT_AVAILABILITY_PATH,
+  PREFIX,
+  pathOf,
+} from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
@@ -147,7 +151,7 @@ export class OperationsClient {
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
-    return this.#post<T>(name, body);
+    return this.#post<T>(pathOf(name), body);
   }
 
   /**
@@ -166,7 +170,12 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return this.#post<CommandOutcome>(name, payload);
+    return this.#post<CommandOutcome>(pathOf(name), payload);
+  }
+
+  /** The person's own availability (MP-7-10), on the path the surface names. */
+  setAvailability(body: Readonly<Record<string, unknown>>): Promise<CallResult<unknown>> {
+    return this.#post(ACCOUNT_AVAILABILITY_PATH, body);
   }
 
   /** One live stream naming every topic (C4), or nothing if the join is refused or unreachable. */
@@ -201,11 +210,8 @@ export class OperationsClient {
     }
   }
 
-  async #post<T>(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<CallResult<T>> {
-    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
+  async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
+    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     // The only credential this client sends. No actor header, no business
     // header, no forwarded host: there is nothing here for a tampered request
