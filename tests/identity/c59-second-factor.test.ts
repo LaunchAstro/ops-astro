@@ -31,7 +31,10 @@ import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 
 const SECRET = 'c59-test-secret-not-any-running-deployment';
 const ISSUER = 'http://127.0.0.1:54391';
-const verify = createSupabaseVerifier({ secret: SECRET, issuer: ISSUER });
+// The server's clock a little after the fixed sign-in times below, so each is
+// inside C58's 12-hour limit whatever the real date.
+const verify = createSupabaseVerifier({ secret: SECRET, issuer: ISSUER, now: () => 1_900_000_200 });
+const SIGNED_IN = { method: 'password', timestamp: 1_900_000_000 };
 
 /** A request as the adapter sees one: only the authorisation header is read. */
 function requestWith(token: string) {
@@ -95,15 +98,20 @@ describe('C59 the adapter passes the assurance through beside sub', () => {
   // Every malformed shape is the lowest assurance, never a guess: a claim the
   // adapter cannot read grants nothing a missing claim would not.
   it.each([
-    ['an unknown level', { aal: 'aal3', amr: [{ method: 'totp', timestamp: 1_900_000_100 }] }],
-    ['aal2 with no factor entry', { aal: 'aal2', amr: [{ method: 'password', timestamp: 1 }] }],
-    ['amr not a list', { aal: 'aal2', amr: 'totp' }],
+    [
+      'an unknown level',
+      { aal: 'aal3', amr: [{ method: 'totp', timestamp: 1_900_000_100 }, SIGNED_IN] },
+    ],
+    ['aal2 with no factor entry', { aal: 'aal2', amr: [SIGNED_IN] }],
     [
       'a factor time that is text',
-      { aal: 'aal2', amr: [{ method: 'totp', timestamp: '1900000100' }] },
+      { aal: 'aal2', amr: [{ method: 'totp', timestamp: '1900000100' }, SIGNED_IN] },
     ],
-    ['a factor time that is not whole', { aal: 'aal2', amr: [{ method: 'totp', timestamp: 1.5 }] }],
-    ['no aal at all', { amr: [{ method: 'totp', timestamp: 1_900_000_100 }] }],
+    [
+      'a factor time that is not whole',
+      { aal: 'aal2', amr: [{ method: 'totp', timestamp: 1.5 }, SIGNED_IN] },
+    ],
+    ['no aal at all', { amr: [{ method: 'totp', timestamp: 1_900_000_100 }, SIGNED_IN] }],
   ])(
     'C59 aal passes through beside sub: %s reads as aal1 with no factor time',
     async (_, claims) => {
@@ -111,6 +119,14 @@ describe('C59 the adapter passes the assurance through beside sub', () => {
       expect(verified).toMatchObject({ assurance: { level: 'aal1', factorAt: null } });
     },
   );
+
+  // An `amr` that is not a list carries no first sign-in either, so the
+  // session cannot be shown to be inside its 12 hours (C58): it is expired.
+  it('C59 aal passes through beside sub: amr not a list is no first sign-in, so an ended session', async () => {
+    expect(await verify(requestWith(await tokenWith({ aal: 'aal2', amr: 'totp' })))).toBe(
+      'expired',
+    );
+  });
 
   it('C59 aal passes through beside sub: a token claiming aal2 under the wrong secret is nobody', async () => {
     const now = Math.floor(Date.now() / 1000);

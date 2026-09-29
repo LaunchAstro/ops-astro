@@ -175,6 +175,12 @@ export function createPositiveBody(
         if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
         return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
       }
+      // C58: `access:manage`, ending a member made for the case, so no
+      // caller's standing changes under the cases that read it.
+      case 'access.end': {
+        if (context.freshMember === undefined) return { exception: 'no member maker here' };
+        return { body: { holderId: await context.freshMember() } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'settings.set_four_eyes_threshold':

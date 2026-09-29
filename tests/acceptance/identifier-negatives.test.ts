@@ -288,6 +288,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         'access.grant',
         pair('clientId', client, (clientId) => ({ holderId: own, clientId, ...key })),
       ],
+      // C58: bravo's person named in an alpha ending.
+      ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
     ];
   };
 

@@ -159,6 +159,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // 0037 (C58): no journey ends a person's access.
+  'public.access_endings': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    ended_by_actor_id: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

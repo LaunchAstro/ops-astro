@@ -66,6 +66,8 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /** C58: a new member of this business with a login, for a case that ends one. */
+  freshMember?(): Promise<string>;
 }
 
 export const batchOf = (answer: Answer): string =>

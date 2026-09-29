@@ -140,6 +140,10 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endAccessOnSettings: recorder('endAccessOnSettings'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -172,6 +176,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
+  'access.end': ['holderId'],
   'client.create': [],
   'delegation.revoke': [],
   'credential.issue': [],
@@ -203,6 +208,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.record_outcome',
   'budget.top_up',
   'budget.write_off',
+  'access.end',
+  'access.grant',
   'access.read',
   'credential.issue',
   'credential.revoke',
@@ -371,6 +378,7 @@ const REQUESTS: readonly CommandRequest[] = [
     clientId: null,
   },
   { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
+  { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -454,6 +462,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'client.create': ['createClientRecord', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
+  'access.end': ['endAccessOnSettings', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -503,7 +512,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-two from an expected revision', () => {
+  it('exempts the same forty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

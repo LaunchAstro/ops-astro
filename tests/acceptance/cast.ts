@@ -123,6 +123,9 @@ export async function tokenFor(
       iss: ACCEPTANCE_ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 3600),
+      // The first sign-in, as GoTrue stamps it: the session's 12-hour limit
+      // is measured from here (C58).
+      amr: [{ method: 'password', timestamp: now }],
     },
     ACCEPTANCE_SECRET,
     'HS256',

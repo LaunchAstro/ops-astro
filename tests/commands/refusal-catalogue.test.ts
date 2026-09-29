@@ -354,6 +354,8 @@ describe('the boundary’s own refusals, as the HTTP response carries them', () 
         iss: ISSUER,
         role: 'authenticated',
         exp: Math.floor(Date.now() / 1000) + 600,
+        // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+        amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
       },
       SECRET,
       'HS256',
