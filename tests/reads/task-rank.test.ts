@@ -309,10 +309,3 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
-
-describe('MP-4-9 harness captures', () => {
-  // SL08 LEANS-ON SL02 (U02, MP-1-7): the width-and-theme harness is on
-  // slice/SL02 and not on main; the rank's captures at 1480, 900 and 390,
-  // light and dark, are taken with it once it lands.
-  it.todo('the task page rank and calc line at 1480, 900 and 390, light and dark');
-});

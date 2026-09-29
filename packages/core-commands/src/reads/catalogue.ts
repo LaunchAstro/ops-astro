@@ -14,7 +14,7 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import { planPresetSync, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -186,10 +186,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         );
         return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
       }
-      const task = await readTaskDetail(tx, spine.taskTypeId, recordId, {
-        commentTypeId: spine.taskCommentTypeId,
-        internal: true,
-      });
+      const task = await readTaskDetail(
+        tx,
+        spine.taskTypeId,
+        recordId,
+        {
+          commentTypeId: spine.taskCommentTypeId,
+          internal: true,
+        },
+        // The rank's pool is every open task this reader's grants reach.
+        { kind: 'grants', subjects: subjectsOf(session) },
+      );
       // Not there, or there in another business: one answer, deliberately.
       return task === undefined ? refuseNotFound() : { ok: true, task };
     },

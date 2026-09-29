@@ -31,6 +31,7 @@ import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { readTaskRank, type RankPool } from './rank.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -230,6 +231,7 @@ export async function readTaskDetail(
   taskTypeId: string,
   recordId: string,
   comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
+  rankPool: RankPool,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -255,7 +257,7 @@ export async function readTaskDetail(
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
-    rank: { number: null, score: null, calc: '' },
+    rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
   };
 }
 

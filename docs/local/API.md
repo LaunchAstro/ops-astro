@@ -898,6 +898,20 @@ its own. It is `null` when the business has no cap. It is read inside the task
 read, so a caller refused the task is told nothing about the cap
 (`tests/api/cq-7.test.ts`).
 
+## The derived rank
+
+`task.read` carries `rank`: `number` (the task's #N), `score` and `calc`, the
+line drawn under it (R70, MP-4-9). It is worked out at read and never stored.
+The score is impact × confidence × ease × priority weight × age boost, rounded
+half up in exact integers; a task missing a mark has `number` and `score` null
+and a `calc` naming the missing marks. `number` is the task's place among the
+open tasks the reader's read grants reach (`readableRecordIds`, inside the
+query), so a task the reader cannot see never moves it; on the agent prefix the
+pool is the agent's one delegated task. A reader outside the business gets the
+shared view, which has no rank. No business names priority stages and no task
+has a start date yet, so every task takes a weight of 1 and no age boost, and
+the line prints both as 1 (`reads/rank.ts`, `tests/reads/task-rank.test.ts`).
+
 ## Proposal projection
 
 `task.read` carries every proposal on the task under `proposals`, newest
