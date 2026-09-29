@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -75,6 +75,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.records a
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+  // AW-01: the copy register, which the journey never reaches.
+  'public.copy_registrations': `insert into public.copy_registrations
+       (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
+     values ($1, gen_random_uuid(), 'outbound_prompt', 'model_call:' || gen_random_uuid(),
+             'call_ended', 'transient') returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
