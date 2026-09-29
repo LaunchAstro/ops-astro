@@ -330,7 +330,7 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     describe('T3a task.cancel and a revocation of the canceller’s decide', () => {
-      it('Sol proof, criterion 3: cancel refuses decide authority that expires while runtime locks are held', async () => {
+      it('cancel refuses decide authority that expires while runtime locks are held', async () => {
         const task = await c.createTask('decide expires while cancel waits');
         const proposal = await c.propose(task.id, task.revision);
         const { member, decideGrantId } = await holderOf('write');

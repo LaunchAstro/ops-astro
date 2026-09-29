@@ -228,7 +228,7 @@ describe.skipIf(serverUrl === undefined)('T3a the revision loop over settled wor
     expect(row?.state).toBe('cancelled');
   });
 
-  it('Sol proof, criterion 2: a version insert cannot cross a concurrent terminal transition', async () => {
+  it('a version insert cannot cross a concurrent terminal transition', async () => {
     const taskId = await createTask(s, `terminal race ${randomUUID()}`);
     const first = await propose(s, taskId);
     const lineageId = String(first['lineageId']);
