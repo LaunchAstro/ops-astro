@@ -5,8 +5,8 @@
 // audit chain; an agent comments to Internal only; and a client message
 // reaches only that task's client while internal notes, and their count,
 // never reach a client session (TR-S-B2-16, a seeded client person until
-// invitations land in U35). Replies, edits, deletes and the signals are the
-// ticket's server step.
+// invitations land in U35). Replies, edits, deletes, the signals and the
+// detail levels are in `task-conversation-replies.test.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
