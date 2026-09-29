@@ -18,15 +18,20 @@
 -- Its other half, write-only on the backup store, is the store's own
 -- definition (`deploy/staging/backup-store.sql`).
 
+-- The role is the cluster's, shared by every database on it, so two databases
+-- migrating at once must not both write it: it is made with every attribute
+-- said out loud, and altered only when a role made earlier by hand differs.
 do $$ begin
-  if not exists (select 1 from pg_roles where rolname = 'ops_astro_backup') then
-    create role ops_astro_backup nologin;
-  end if;
+  create role ops_astro_backup nologin nosuperuser nocreatedb nocreaterole noreplication bypassrls;
+exception when duplicate_object or unique_violation then null;
 end $$;
 
--- Every attribute said out loud, so a role made earlier by hand is brought to
--- the same place.
-alter role ops_astro_backup nologin nosuperuser nocreatedb nocreaterole noreplication bypassrls;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'ops_astro_backup' and (rolcanlogin
+      or rolsuper or rolcreatedb or rolcreaterole or rolreplication or not rolbypassrls)) then
+    alter role ops_astro_backup nologin nosuperuser nocreatedb nocreaterole noreplication bypassrls;
+  end if;
+end $$;
 
 revoke all on schema public from ops_astro_backup;
 revoke all on schema ops from ops_astro_backup;
