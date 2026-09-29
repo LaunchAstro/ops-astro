@@ -25,7 +25,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Context } from 'hono';
 import { sign } from 'hono/jwt';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -267,5 +267,21 @@ describe('S0-6 signing-key canary', () => {
     } finally {
       for (const spy of spies) spy.mockRestore();
     }
+  });
+});
+
+describe('S0-6 published keys only: where the key set is read from', () => {
+  const hosted = 'https://abc.supabase.co/auth/v1';
+  const local = 'http://127.0.0.1:54391';
+  it.each([
+    ['a hosted issuer: its own published set', '', hosted, `${hosted}/.well-known/jwks.json`],
+    ['a trailing slash is not doubled', '', `${local}/`, `${local}/.well-known/jwks.json`],
+    ['a loopback stand-in, for a loopback issuer', `${local}/k.json`, local, `${local}/k.json`],
+    ['a stand-in for a hosted issuer: refused', `${local}/k.json`, hosted, undefined],
+    ['a hosted stand-in: refused', 'https://evil.example/jwks.json', local, undefined],
+    ['a look-alike loopback host: refused', 'http://127.0.0.1.evil.example/k', local, undefined],
+    ['a loopback address without a port: refused', 'http://127.0.0.1/k', local, undefined],
+  ])('%s', (_title, named, issuer, expected) => {
+    expect(keySetUrlFor(named, issuer)).toBe(expected);
   });
 });
