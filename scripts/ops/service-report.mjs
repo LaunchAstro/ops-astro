@@ -7,15 +7,17 @@
 // restarted or reconfigured by it. This is the check the owner runs either
 // side of the preparation: a snapshot before, a snapshot after, and a compare
 // that goes red on any live service that stopped, restarted, vanished, moved
-// port or changed image. Staging's own services, named by the prefix in
-// deploy/staging/compose.json, are listed and never counted against it.
+// port, changed image or was reconfigured. Staging's own services, named by
+// the prefix in deploy/staging/compose.json, are listed and never counted.
 //
 // It reads two service managers: Docker's containers and launchd's jobs.
 // Apple's own launchd jobs start and stop on demand and are not services of
 // this installation, so they are left out. What it keeps is names, state,
-// start times, images and ports. It never copies a container's environment or
-// arguments, which is where credentials live, so neither snapshot nor report
-// can carry one (`S0-1 credentials canary`).
+// start times, images, ports and a 16-hex digest of each container's whole
+// configuration, so a changed limit, mount or setting shows without a restart.
+// It never copies a container's environment or arguments, which is where
+// credentials live, so neither snapshot nor report can carry one
+// (`S0-1 credentials canary`).
 //
 // Usage:
 //   node scripts/ops/service-report.mjs snapshot [--docker-inspect <file>] [--launchctl <file>]
@@ -27,6 +29,7 @@
 // snapshot, so a broken input is never green.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const definition = JSON.parse(
@@ -67,6 +70,10 @@ function fromDocker(raw) {
       started: container.State?.StartedAt ?? null,
       image: container.Image ?? null,
       ports: ports.toSorted(),
+      config: createHash('sha256')
+        .update(JSON.stringify([container.Config ?? null, container.HostConfig ?? null]))
+        .digest('hex')
+        .slice(0, 16),
     };
   });
 }
@@ -84,6 +91,7 @@ function fromLaunchd(raw) {
       started: pid === '-' ? null : pid,
       image: null,
       ports: [],
+      config: null,
     }));
 }
 
@@ -126,6 +134,7 @@ function compare(args) {
       else if (was.running && was.started !== now.started)
         found.push(`RESTARTED ${key} (started ${was.started}, now ${now.started})`);
       if (was.image !== now.image) found.push(`IMAGE CHANGED ${key}`);
+      if (was.config !== now.config) found.push(`RECONFIGURED ${key}`);
       if (was.ports.join() !== now.ports.join())
         found.push(`PORT CHANGED ${key} (${was.ports.join(' ')} -> ${now.ports.join(' ')})`);
     }
