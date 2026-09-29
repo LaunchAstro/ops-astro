@@ -190,13 +190,7 @@ describe.skipIf(serverUrl === undefined)(
 
     it('reads its own task’s facts and nothing of another task', async () => {
       const decider = await world.decider('decider');
-      const revision = async (recordId: string) => {
-        const rows = await world.db.admin.execute<{ readonly revision: string }>(
-          `select revision::text as revision from public.records where id = $1`,
-          [recordId],
-        );
-        return Number(rows[0]?.revision);
-      };
+      const revision = async (recordId: string) => await revisionOf(world.db, recordId);
       const other = await world.asPerson(decider, {
         command: 'task.create',
         operationId: randomUUID(),

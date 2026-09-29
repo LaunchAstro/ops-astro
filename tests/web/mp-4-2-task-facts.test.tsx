@@ -17,7 +17,7 @@ const withFacts = async (over: Readonly<Record<string, unknown>> = {}) =>
   await page('Proj-Verity-Pacing', found(over));
 
 const text = (view: Mounted, selector: string): string =>
-  view.find(selector)?.textContent?.trim() ?? '';
+  view.host.querySelector(selector)?.textContent?.trim() ?? '';
 
 const pendingGate = {
   lineageId: 'l-gated',
