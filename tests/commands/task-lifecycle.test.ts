@@ -166,7 +166,9 @@ describe.skipIf(serverUrl === undefined)(
         });
         expect(isCommandRefusal(refusal) && refusal.code).toBe('TRANSITION_NOT_PERMITTED');
       });
+    });
 
+    describe('completion is a projection of the state', () => {
       it('refuses a second completion of a completed task', async () => {
         const made = await create({ title: 'twice' }, { stateKey: 'active' });
         const completed = await run({
@@ -212,7 +214,9 @@ describe.skipIf(serverUrl === undefined)(
         });
         expect(isCommandRefusal(refusal) && refusal.code).toBe('PLACEMENT_IS_DERIVED');
       });
+    });
 
+    describe('placement stays the server’s', () => {
       it('ranks between neighbours rather than taking a number', async () => {
         const first = await create({ title: 'first' });
         const second = await create({ title: 'second' });

@@ -50,7 +50,7 @@ export function RunProgress(props: RunProgressProps): ReactElement {
   // as unavailable rather than as no run.
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
   const readable = value !== null && Array.isArray(value.runs) && Array.isArray(value.events);
-  const outcome = !settledRead ? state.outcome : readable ? value.outcome : 'unavailable';
+  const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
   return (
     <section className="sb__sect" data-outcome={outcome} data-run-progress="">
       <div className="sb__sh">
@@ -71,25 +71,38 @@ export function RunProgress(props: RunProgressProps): ReactElement {
       ) : value === null ? null : value.outcome === 'no-run' ? (
         <Empty title="No run yet" description="Nothing has been picked up on this task." />
       ) : (
-        <>
-          {value.outcome === 'stale' ? (
-            <p className="card__sub" data-run="stale">
-              This page is behind the run's record; it reads again when the record moves.
-            </p>
-          ) : null}
-          {value.runs.map((run) => (
-            <Run
-              client={client}
-              events={value.events}
-              grantKey={props.grantKey}
-              key={run.runId}
-              readOf={props.readOf}
-              run={run}
-            />
-          ))}
-        </>
+        <Runs client={client} grantKey={props.grantKey} readOf={props.readOf} value={value} />
       )}
     </section>
+  );
+}
+
+/** The run's record: a note when this page is behind it, then each run. */
+function Runs(props: {
+  readonly client: OperationsClient;
+  readonly grantKey: string;
+  readonly readOf: unknown;
+  readonly value: NonNullable<TaskExecutionResult['execution']>;
+}): ReactElement {
+  const { value } = props;
+  return (
+    <>
+      {value.outcome === 'stale' ? (
+        <p className="card__sub" data-run="stale">
+          This page is behind the run's record; it reads again when the record moves.
+        </p>
+      ) : null}
+      {value.runs.map((run) => (
+        <Run
+          client={props.client}
+          events={value.events}
+          grantKey={props.grantKey}
+          key={run.runId}
+          readOf={props.readOf}
+          run={run}
+        />
+      ))}
+    </>
   );
 }
 

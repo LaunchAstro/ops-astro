@@ -127,7 +127,8 @@ const answer = (outcome: string, runs: unknown[] = [], events: unknown[] = []) =
 const drawn = async (execution: Execution): Promise<string | null> => {
   const page = await open(execution);
   await tick();
-  const outcome = page.find('[data-run-progress]')?.getAttribute('data-outcome') ?? null;
+  const outcome =
+    (page.find('[data-run-progress]') as HTMLElement | null)?.dataset['outcome'] ?? null;
   await page.unmount();
   return outcome;
 };

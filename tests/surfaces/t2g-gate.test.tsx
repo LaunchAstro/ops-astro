@@ -140,7 +140,9 @@ describe('T2g the gate on the task page', () => {
     expect(decided[0]?.['gateId']).toBe('g-2');
     await page.unmount();
   });
+});
 
+describe('T2g the gate on the task page', () => {
   it('reads a gate on a version that is no longer the newest as stale, with approve disabled', async () => {
     const { client, decided } = server([
       version('v-3', 3, null),

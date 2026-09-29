@@ -148,7 +148,9 @@ describe('the top-up control on the task page', () => {
     expect(page.find('[data-top-up="awaiting"]')?.textContent).toContain('second');
     await page.unmount();
   });
+});
 
+describe('the top-up control on the task page', () => {
   it('a pending second approval remains visible after the task reread', async () => {
     let finishReload!: () => void;
     const reloadWait = new Promise<void>((resolve) => {

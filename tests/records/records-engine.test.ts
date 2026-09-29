@@ -119,7 +119,9 @@ describe('slot assignment', () => {
       'SLOT_UNKNOWN',
     );
   });
+});
 
+describe('slot assignment', () => {
   it('refuses a slot a deactivated field still holds, because a slot is never reused', () => {
     const held = [
       field('was_here', { valueType: 'uuid', slot: 'uuid_2', deactivatedAt: new Date() }),

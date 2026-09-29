@@ -82,7 +82,9 @@ describe('the served-identity check', () => {
       migrationHead([{ version: '0001_a', checksum: 'aa' }]),
     );
   });
+});
 
+describe('the served-identity check', () => {
   it('reads this checkout: commit, tree, tracked dirty paths only, pid', () => {
     const identity = readIdentity(process.cwd());
     expect(identity.commit).toMatch(/^[0-9a-f]{40}$/u);
