@@ -75,10 +75,13 @@ describe('the surface as a table', () => {
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `model`
-    // is AW-01's call through the broker, asked of the lease's task.
+    // is AW-01's call through the broker, asked of the lease's task. `run` is
+    // AW-05's two answers at the budget stop, asked of the run's task.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|model)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|model|run)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
@@ -125,6 +128,11 @@ describe('the surface as a table', () => {
     expect(declarationOf('settings.read').action).toBe('read');
     expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
     expect(collections.get('session.capabilities')).toBe('session');
+    // AW-05's answers: a top-up is money, the end is a gate, and both decide.
+    expect(collections.get('run.top_up')).toBe('billing');
+    expect(collections.get('run.end_at_budget_stop')).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }

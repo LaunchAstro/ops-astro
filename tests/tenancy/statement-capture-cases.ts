@@ -273,7 +273,7 @@ async function reservation(harness: Harness): Promise<string> {
  * behind, so every recipe that needs a pickup of its own ends that one first,
  * through `delegation.revoke` on the world's application, as its setup.
  */
-async function endLive(harness: Harness): Promise<void> {
+export async function endLive(harness: Harness): Promise<void> {
   const { world } = harness;
   const live = await world.db.admin.execute<{ readonly id: string }>(
     `select id from public.delegations

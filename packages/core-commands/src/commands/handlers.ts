@@ -28,6 +28,7 @@ import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { endOnRun, topUpOnRun } from './run-answers.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -97,6 +98,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   // AW-01: the run's worker's, through the broker, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
+
+  // AW-05: a person's answers to a run waiting at its approved ceiling.
+  'run.top_up': topUpOnRun,
+  'run.end_at_budget_stop': endOnRun,
 };
 
 function writeOwned(

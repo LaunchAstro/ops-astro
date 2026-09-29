@@ -232,6 +232,7 @@
     "tests/broker/aw-05-budget-end.test.ts",
     "tests/broker/aw-05-budget-restart.test.ts",
     "tests/broker/aw-05-budget-answer-races.test.ts",
+    "tests/broker/aw-05-budget-answer-routes.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
     "tests/broker/s3-bound-source.test.ts"

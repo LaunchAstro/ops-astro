@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 35. For each of the other 19 this file
+// `recordId`, which reaches 16 of the 38. For each of the other 22 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -43,7 +43,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
 ];
 
-/** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -58,6 +58,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
+  'run.top_up': ['runId and recordId', 'control'],
+  'run.end_at_budget_stop': ['runId and recordId', 'control'],
 };
 
 /**
