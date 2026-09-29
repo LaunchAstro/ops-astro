@@ -3,7 +3,8 @@
 //
 // MP-5-9: the board row's commands, driven from the Projects screen. The
 // tick sends `task.complete` and a rename `task.update` on the title, each at
-// the revision the board read for that task.
+// the revision the board read for that task. The hover box's timer starts the
+// reader's own clock with `time.start` (MP-4-6's command, SL08-B-2).
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -112,6 +113,30 @@ describe('MP-5-9 the row’s commands from the Projects screen', () => {
           expectedRevision: 7,
         },
       ],
+    ]);
+  });
+});
+
+describe('MP-5-9 the hover box holds timer, add subtask and a door: the timer from the Projects screen', () => {
+  it('the timer sends time.start on the row’s task, and no revision', async () => {
+    const sent: Sent = [];
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      token: 'a-token',
+      fetch: server(sent),
+      newOperationId: () => 'operation-1',
+    });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
+    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    await settle();
+    await mounted.click(`tr[data-row="${TASK_ID}"] [data-route="timer"]`);
+    await settle();
+    const commands = sent
+      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
+      .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
+    expect(commands).toStrictEqual([
+      ['time/start', { taskId: TASK_ID, operationId: 'operation-1' }],
     ]);
   });
 });
