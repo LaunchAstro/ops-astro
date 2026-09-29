@@ -28,7 +28,7 @@ import {
 import { PRICED, t2dHarness, type Work } from './t2d-harness.ts';
 import { cq8World } from './cq-8-world.ts';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { grantTo, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { openSecond } from './t3b-harness.ts';
 
 const url = databaseUrlFromEnvironment();
@@ -60,6 +60,10 @@ const expire = async (on: Schedules, w: Work): Promise<void> => {
     [w.picked['leaseId']],
   );
 };
+
+/** The grant check's own refusal, as against R4's membership refusal. */
+const NO_GRANT = 'no live grant covers it';
+const NO_MEMBERSHIP = 'A person without a membership may read what was shared with them';
 
 /** What of another client's work a refusal must never carry. */
 const foreignOf = (
@@ -143,11 +147,18 @@ describe.skipIf(url === undefined)(
       await h.applied(a);
       await h.applied(b);
       await expire(s, a);
-      const clientA = await world.client(s.business, s.decider, 't3f-client-a', a.taskId);
-      const clientB = await world.client(s.business, s.decider, 't3f-client-b', b.taskId);
+      // Each client's external party, sharing its own task: R4 lets it read and nothing more.
+      const externalA = await world.client(s.business, s.decider, 't3f-external-a', a.taskId);
+      const externalB = await world.client(s.business, s.decider, 't3f-external-b', b.taskId);
+      // The person acting for each client: a member of the business whose only
+      // grant is write on that client's task, which observe asks on its claim.
+      const clientA = await enrol(s.db.app, s.business, 't3f-client-a');
+      const clientB = await enrol(s.db.app, s.business, 't3f-client-b');
       await s.db.app.withBusiness(s.business, async (tx) => {
-        await grantTo(tx, clientA, 'comment', { kind: 'record', id: a.taskId });
-        await grantTo(tx, clientB, 'comment', { kind: 'record', id: b.taskId });
+        await grantTo(tx, clientA, 'write', { kind: 'record', id: a.taskId });
+        await grantTo(tx, clientB, 'write', { kind: 'record', id: b.taskId });
+        await grantTo(tx, externalA, 'write', { kind: 'record', id: a.taskId });
+        await grantTo(tx, externalB, 'write', { kind: 'record', id: b.taskId });
       });
       const moneyBefore = [await h.money(a), await h.money(b)];
       const workBefore = [await workState(s, a), await workState(s, b)];
@@ -178,23 +189,50 @@ describe.skipIf(url === undefined)(
           foreign: foreignOf(a, clientA),
           code: 'DELEGATION_OUT_OF_PURPOSE',
         },
-        // Each client, on the person route, observes the other's work.
+        // Each client's person, on the person route, observes the other client's
+        // work: refused at the grant, because write on its own task covers no other.
         {
           said: await observeAs(clientA, b),
           foreign: foreignOf(b, clientB),
           code: 'SCOPE_NOT_GRANTED',
+          reason: NO_GRANT,
         },
         {
           said: await observeAs(clientB, a),
           foreign: foreignOf(a, clientA),
           code: 'SCOPE_NOT_GRANTED',
+          reason: NO_GRANT,
+        },
+        // Each client's external party, write grant and all: R4 stops it first.
+        {
+          said: await observeAs(externalA, b),
+          foreign: foreignOf(b, clientB),
+          code: 'SCOPE_NOT_GRANTED',
+          reason: NO_MEMBERSHIP,
+        },
+        {
+          said: await observeAs(externalB, a),
+          foreign: foreignOf(a, clientA),
+          code: 'SCOPE_NOT_GRANTED',
+          reason: NO_MEMBERSHIP,
         },
       ];
       for (const crossing of crossings) {
-        // Refused on authority (the delegation's purpose, the client's grant), never on shape.
+        // Refused on authority (the delegation's purpose, the grant, R4), never on shape.
         expect(isCommandRefusal(crossing.said) && crossing.said.code).toBe(crossing.code);
         const body = JSON.stringify(crossing.said);
+        if ('reason' in crossing) expect(body).toContain(crossing.reason);
         for (const foreign of crossing.foreign) expect(body).not.toContain(foreign);
+      }
+      // The control: on its own task each client's grant holds, so the same call
+      // gets past the grant and is refused only because the lease is the worker's.
+      for (const [who, own] of [
+        [clientA, a],
+        [clientB, b],
+      ] as const) {
+        // eslint-disable-next-line no-await-in-loop
+        const mine = await observeAs(who, own);
+        expect(isCommandRefusal(mine) && mine.code).toBe('LEASE_NOT_OWNED');
       }
       expect([await h.money(a), await h.money(b)]).toStrictEqual(moneyBefore);
       expect([await workState(s, a), await workState(s, b)]).toStrictEqual(workBefore);
