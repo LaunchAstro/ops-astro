@@ -226,7 +226,8 @@
     "tests/runtime/aw-02-isolation.test.ts",
     "tests/runtime/aw-02-lease-race.test.ts",
     "tests/broker/aw-01-model-call.test.ts",
-    "tests/broker/c60-egress-before-route.test.ts"
+    "tests/broker/c60-egress-before-route.test.ts",
+    "tests/broker/c60-route-and-carry.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
