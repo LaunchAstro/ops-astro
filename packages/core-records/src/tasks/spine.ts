@@ -290,6 +290,29 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_adhoc'],
     escalatingOperation: null,
   },
+  // A step left out of its parent's count without being done (MP-4-15,
+  // migration 0034): completing a task archives its unfinished subtasks and
+  // reopening it restores them, both in the transition's own transaction.
+  // System, like `completed_at`, because no operation takes either as an
+  // input; unslotted, because no view filters on them.
+  {
+    key: 'archived_at',
+    label: 'Archived at',
+    valueType: 'timestamptz',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    key: 'archived_why',
+    label: 'Archived why',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
   {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
@@ -309,6 +332,8 @@ export const TASK_SPINE: readonly SpineField[] = [
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'ad_hoc',
+  'archived_at',
+  'archived_why',
   'assignee',
   'client',
   'client_visible',

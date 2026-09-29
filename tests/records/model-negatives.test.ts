@@ -180,9 +180,10 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
     const PROTECTED_RULE = 'no field in the protected set is generic';
 
     // Fourteen since MP-4-9 added the three marks `task.set_scores` owns, and
-    // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns.
-    it('is fifteen, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(15);
+    // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns, and
+    // seventeen since MP-4-15 added the two archive fields its transition writes.
+    it('is seventeen, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(17);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
