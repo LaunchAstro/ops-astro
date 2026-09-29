@@ -30,10 +30,34 @@ const at = (minutesAgo: number): string =>
   new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
 
 const HISTORY = [
-  { at: at(3 * 24 * 60), actorId: 'actor-ada', operation: 'task.create' },
-  { at: at(120), actorId: 'actor-ada', operation: 'task.comment' },
-  { at: at(90), actorId: 'actor-ben', operation: 'task.update' },
-  { at: at(5), actorId: 'actor-ben', operation: 'task.comment' },
+  {
+    at: at(3 * 24 * 60),
+    actorId: 'actor-ada',
+    actorName: 'Ada',
+    actorKind: 'person',
+    operation: 'task.create',
+  },
+  {
+    at: at(120),
+    actorId: 'actor-ada',
+    actorName: 'Ada',
+    actorKind: 'person',
+    operation: 'task.comment',
+  },
+  {
+    at: at(90),
+    actorId: 'actor-ben',
+    actorName: 'Ben',
+    actorKind: 'person',
+    operation: 'task.update',
+  },
+  {
+    at: at(5),
+    actorId: 'actor-ben',
+    actorName: 'Ben',
+    actorKind: 'person',
+    operation: 'task.comment',
+  },
 ];
 
 const head = (view: Mounted): string | null =>
@@ -45,7 +69,7 @@ const rows = (view: Mounted): string[] =>
 describe('MP-4-16 latest change head', () => {
   it('the head reads how long ago, who and what of the latest change', async () => {
     const view = await page('Proj-Verity-Pacing', found({ history: HISTORY }));
-    expect(head(view)).toBe('1 hour ago · actor-ben · Details changed');
+    expect(head(view)).toBe('1 hour ago · Ben · Details changed');
   });
 });
 
@@ -53,8 +77,8 @@ describe('MP-4-16 transitions only', () => {
   it('a comment is neither the latest change nor a row of the trail', async () => {
     const view = await page('Proj-Verity-Pacing', found({ history: HISTORY }));
     expect(rows(view)).toStrictEqual([
-      '3 days ago · actor-adaCreated',
-      '1 hour ago · actor-benDetails changed',
+      '3 days ago · AdaCreated',
+      '1 hour ago · BenDetails changed',
     ]);
   });
 });
@@ -71,7 +95,17 @@ describe('MP-4-16 empty line on the page', () => {
   it('with nothing changed the page says so and the head has no latest change', async () => {
     const view = await page(
       'Proj-Verity-Pacing',
-      found({ history: [{ at: at(1), actorId: 'actor-ada', operation: 'task.comment' }] }),
+      found({
+        history: [
+          {
+            at: at(1),
+            actorId: 'actor-ada',
+            actorName: 'Ada',
+            actorKind: 'person',
+            operation: 'task.comment',
+          },
+        ],
+      }),
     );
     expect(head(view)).toBeNull();
     expect(view.find('[data-history="empty"]')?.textContent).toBe(
@@ -90,7 +124,16 @@ describe('MP-4-16 a change on the page appears at once', () => {
         return Promise.resolve(json({ ok: true, task: task({ history }) }));
       }
       if (where.endsWith('/task/complete')) {
-        history = [...HISTORY, { at: at(0), actorId: 'actor-cai', operation: 'task.complete' }];
+        history = [
+          ...HISTORY,
+          {
+            at: at(0),
+            actorId: 'actor-cai',
+            actorName: 'Cai',
+            actorKind: 'person',
+            operation: 'task.complete',
+          },
+        ];
         return Promise.resolve(json({ recordId: 'x', revision: 5 }));
       }
       throw new Error(`unrouted ${where}`);
@@ -102,7 +145,7 @@ describe('MP-4-16 a change on the page appears at once', () => {
     await tick();
     await view.click('[data-lifecycle="complete"]');
     await tick();
-    expect(head(view)).toBe('just now · actor-cai · Completed');
+    expect(head(view)).toBe('just now · Cai · Completed');
   });
 });
 

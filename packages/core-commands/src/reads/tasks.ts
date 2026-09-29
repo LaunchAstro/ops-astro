@@ -138,6 +138,8 @@ async function historyOf(
     readonly occurred_at: Date;
     readonly actor_id: string;
     readonly command: string;
+    readonly actor_kind: string | null;
+    readonly actor_name: string | null;
   }>(
     // The writes only. Reads are audited now (I13) and they carry the record
     // they looked at, which is what makes "who read this" answerable at all —
@@ -145,11 +147,18 @@ async function historyOf(
     // nobody. The two questions share one chain and are not the same question,
     // so the projection names the outcomes it wants rather than taking every
     // row that mentions the record.
-    `select occurred_at, actor_id, command
-       from public.audit_events
-      where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
-        and command <> all($3::text[])
-      order by seq`,
+    //
+    // Who is the actor's kind and, for a person's actor, that person's name,
+    // joined inside this business: an actor or a person of another business
+    // matches nothing (MP-4-16).
+    `select e.occurred_at, e.actor_id, e.command, a.kind as actor_kind,
+            case when a.kind = 'person' then p.display_name end as actor_name
+       from public.audit_events e
+       left join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
+       left join public.people p on p.business_id = a.business_id and p.id = a.person_id
+      where e.business_id = $1 and e.subject_record_id = $2 and e.outcome = 'applied'
+        and e.command <> all($3::text[])
+      order by e.seq`,
     // A reader outside the business is not shown that a comment was written:
     // its comments carry only what the catalogue shares, and an internal
     // note's author and time in the history would be the note, hidden rather
@@ -159,6 +168,8 @@ async function historyOf(
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
+    actorKind: row.actor_kind,
+    actorName: row.actor_name,
     operation: row.command,
   }));
 }
