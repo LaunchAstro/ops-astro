@@ -211,7 +211,6 @@ export {
 } from './automations/occurrences.ts';
 export {
   adoptVersion,
-  dispatchOccurrence,
   listApprovals,
   previousVersion,
   readStandingApproval,
@@ -219,15 +218,18 @@ export {
   turnOffActivation,
   type AdoptionAct,
   type AdoptionResult,
-  type Dispatch,
-  type DispatchOutcome,
-  type DispatchRow,
   type RevokeResult,
-  type RunRequest,
-  type RunStarter,
   type StandingApprovalRow,
   type TurnOffResult,
 } from './automations/approvals.ts';
+export {
+  dispatchOccurrence,
+  type Dispatch,
+  type DispatchOutcome,
+  type DispatchRow,
+  type RunRequest,
+  type RunStarter,
+} from './automations/dispatch.ts';
 export {
   listRegistry,
   type Registry,
