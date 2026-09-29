@@ -26,7 +26,8 @@ export interface UseReadOptions<T> {
   /**
    * The live topic for what this read shows (C4), named from its last answer
    * and followed on the tab's one stream. While `paused` (an unsaved edit) a
-   * change is held until the pause ends; `closed` is read at once.
+   * change is held until the pause ends, and `held` says so (C4 live-sync 4);
+   * `closed` is read at once.
    */
   readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
   readonly paused?: boolean;
@@ -37,6 +38,8 @@ export interface UseReadOptions<T> {
 export interface UseReadResult<T> {
   readonly state: ReadState<T>;
   readonly reload: () => void;
+  /** A live change arrived during the pause and waits for it to end. */
+  readonly held: boolean;
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
@@ -92,12 +95,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const hub = options.live?.hub;
   const pausedRef = useRef(false);
   pausedRef.current = options.paused === true;
-  const heldRef = useRef(false);
+  const [held, setHeld] = useState(false);
 
   useEffect(() => {
     if (hub === undefined || topic === null) return;
     return hub.follow(topic, (change) => {
-      if (pausedRef.current && change === 'changed') heldRef.current = true;
+      if (pausedRef.current && change === 'changed') setHeld(true);
       else reload();
     });
   }, [hub, topic, reload]);
@@ -106,10 +109,10 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
   useEffect(() => {
-    if (options.paused === true || !heldRef.current) return;
-    heldRef.current = false;
+    if (options.paused === true || !held) return;
+    setHeld(false);
     reload();
-  }, [options.paused, reload]);
+  }, [options.paused, held, reload]);
 
-  return { state, reload };
+  return { state, reload, held };
 }

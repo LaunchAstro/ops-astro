@@ -82,6 +82,8 @@ export function ConflictNotice(props: {
 /** The choice an unsaved draft asks for before anything else on the page runs. */
 export function UnsavedBar(props: {
   readonly dirty: boolean;
+  /** The task changed while this edit was unsaved; the save will say whether it still applies. */
+  readonly changed: boolean;
   readonly busy: boolean;
   readonly onDiscard: () => void;
 }): ReactElement | null {
@@ -94,6 +96,12 @@ export function UnsavedBar(props: {
         The title or due date has been edited and not saved. Assigning, changing the state and
         refreshing are unavailable until this is settled — nothing here is merged for you.
       </p>
+      {props.changed ? (
+        <p className="card__sub" role="status" data-live="changed">
+          This task has changed since you started editing. Saving checks your edit against the
+          version you began with; discard to see the change.
+        </p>
+      ) : null}
       <div className="btnrow">
         <button
           className="btn btn--primary"
