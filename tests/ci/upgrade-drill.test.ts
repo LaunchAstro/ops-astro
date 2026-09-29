@@ -143,6 +143,33 @@ describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
     expect(result?.differences.find((d) => d.table === 'public.record_links')?.gone).toBe(true);
   }, 180_000);
 
+  it('Sol proof, criterion 16: a migration that erases existing decisions fails the drill', () => {
+    const planted = withPlanted('9999_planted_decision_loss.sql', 'truncate public.gate_decisions');
+    const { status, result, output } = drill('0023', planted);
+    expect(result, output).toBeDefined();
+    expect(status).toBe(1);
+    expect(result?.differences).toContainEqual(
+      expect.objectContaining({ table: 'public.gate_decisions', gone: false }),
+    );
+  }, 180_000);
+
+  it('Sol proof, criterion 4: a planted record secret never reaches drill errors', () => {
+    const planted = withPlanted(
+      '9999_planted_record_leak.sql',
+      `do $sol$ declare leaked text;
+       begin
+         update public.records set data = data || '{"sol_secret":"sol-canary-record-4"}'::jsonb
+          where id = (select id from public.records order by id limit 1);
+         select data ->> 'sol_secret' into leaked from public.records
+          where data ? 'sol_secret' limit 1;
+         raise exception '%', leaked;
+       end $sol$`,
+    );
+    const { status, output } = drill('0023', planted);
+    expect(status).toBe(1);
+    expect(output).not.toContain('sol-canary-record-4');
+  }, 180_000);
+
   it('stays green when a migration only adds a column, which changes no stored value', () => {
     const planted = withPlanted(
       '9999_planted_column.sql',

@@ -26,7 +26,7 @@
 // Exit 0 when every row is unchanged, 1 when the drill fails, 2 when it is
 // refused before building anything. `--json` adds the result as a last line.
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -45,6 +45,26 @@ const LEDGER = 'ops.schema_migrations';
 const say = (line) => console.log(`upgrade-drill: ${line}`);
 
 class Refused extends Error {}
+/** A failure whose message the drill wrote itself, so it carries no record data. */
+class Failure extends Error {}
+
+/**
+ * What an error may say on the way out. The runner's message quotes the failed
+ * statement and the server's error may quote a row, so a migration failure is
+ * named by its version and SQLSTATE alone, and any other foreign error by its
+ * name and SQLSTATE.
+ */
+function printable(error) {
+  if (error instanceof Refused || error instanceof Failure) return error.message;
+  const code = [error?.cause?.code, error?.code].find((c) => /^[0-9A-Z]{5}$/u.test(c ?? ''));
+  const state = code === undefined ? '' : ` (SQLSTATE ${code})`;
+  const failed = /^migrate: (\S+) (?:failed|ended the run's transaction) on:/u.exec(
+    error?.message ?? '',
+  );
+  if (failed)
+    return `migration ${failed[1]} failed${state}; its statement and the server's message are withheld`;
+  return `${error?.name ?? 'Error'}${state}; its message is withheld, as it may quote a row`;
+}
 
 /** `.local/db.env` is what `scripts/local/db-up.sh` writes. The environment wins. */
 function serverUrl() {
@@ -73,6 +93,11 @@ async function enrolBusiness(app, key) {
         [randomUUID(), person],
       ],
       [
+        `insert into budget_caps (business_id, id, key, limit_minor, currency)
+         values ($1, $2, 'local', 500000, 'AUD')`,
+        [randomUUID()],
+      ],
+      [
         `insert into logins (business_id, id, provider, subject) values ($1, $2, 'supabase', $3)`,
         [login, subject],
       ],
@@ -87,7 +112,7 @@ async function enrolBusiness(app, key) {
       await tx.query(sql, [business, ...values]);
     }
     await installTaskSpine(tx);
-    for (const action of ['read', 'write', 'comment', 'assign']) {
+    for (const action of ['read', 'write', 'comment', 'assign', 'decide']) {
       // oxlint-disable-next-line no-await-in-loop
       const issued = await issueGrant(tx, [], {
         subject: { kind: 'person', id: person },
@@ -99,7 +124,7 @@ async function enrolBusiness(app, key) {
         grantedByActorId: actor,
       });
       if (!issued.ok)
-        throw new Error(`the seed's ${action} grant was refused: ${issued.refusal.code}`);
+        throw new Failure(`the seed's ${action} grant was refused: ${issued.refusal.code}`);
     }
   });
   return { business, presented: { provider: 'supabase', subject } };
@@ -107,25 +132,30 @@ async function enrolBusiness(app, key) {
 
 /** Tasks with a history: created, renamed, started, commented, completed and reopened. */
 async function seedTasks(app, key, { business, presented }) {
-  const revisions = new Map();
+  const revisionOf = async (id) =>
+    await app.withBusiness(business, async (tx) => {
+      const [row] = await tx.query('select revision::int as revision from records where id = $1', [
+        id,
+      ]);
+      return row?.revision;
+    });
   const run = async (request) => {
     const target = request.recordId;
     const outcome = await executeCommand(app, business, presented, 'api', {
       operationId: randomUUID(),
-      ...(target === undefined ? {} : { expectedRevision: revisions.get(target) }),
+      ...(target === undefined ? {} : { expectedRevision: await revisionOf(target) }),
       ...request,
     });
     if (isCommandRefusal(outcome)) {
-      throw new Error(`the seed's ${request.command} was refused: ${outcome.code}`);
+      throw new Failure(`the seed's ${request.command} was refused: ${outcome.code}`);
     }
-    if (outcome.recordId === (target ?? outcome.recordId)) {
-      revisions.set(outcome.recordId, outcome.revision);
-    }
-    return outcome.recordId;
+    return outcome;
   };
-  const first = await run({ command: 'task.create', fields: { title: `${key} first task` } });
-  const second = await run({ command: 'task.create', fields: { title: `${key} second task` } });
-  await run({ command: 'task.create', fields: { title: `${key} third task` } });
+  const created = async (title) =>
+    (await run({ command: 'task.create', fields: { title: `${key} ${title}` } })).recordId;
+  const first = await created('first task');
+  const second = await created('second task');
+  const third = await created('third task');
   await run({
     command: 'task.update',
     recordId: first,
@@ -136,6 +166,19 @@ async function seedTasks(app, key, { business, presented }) {
   await run({ command: 'task.comment', recordId: second, ...note });
   await run({ command: 'task.complete', recordId: second });
   await run({ command: 'task.reopen', recordId: second, reason: 'seeded reopen' });
+  // A gate decision, so decisions and their history are compared too.
+  const { detail } = await run({
+    command: 'task.propose',
+    recordId: third,
+    purpose: 'draft_the_reply',
+    maximumMinor: 1000,
+    currency: 'AUD',
+    payload: { instruction: 'a seeded proposal' },
+    step: { kind: 'compose', payload: { tone: 'plain' } },
+  });
+  const { gateId, versionId } = detail;
+  const decision = { decision: 'approve', note: 'a seeded approval' };
+  await run({ command: 'task.decide', gateId, versionId, ...decision });
 }
 
 /** Two businesses, so the snapshot holds more than one tenant's rows. */
@@ -206,6 +249,9 @@ async function drill({ url, from, directory }) {
   const start = all[at].version;
   const to = all.at(-1).version;
 
+  // The seed's approval is signed. A throwaway key for this process, unless one is set.
+  process.env.GATE_SIGNING_KEY_ID ??= 'upgrade-drill/throwaway@1';
+  process.env.GATE_SIGNING_SECRET ??= randomBytes(32).toString('hex');
   const db = await createEmptyDatabase({ serverUrl: url, part: 'drill' });
   try {
     // Row security would hide rows from the snapshot and the drill would pass
@@ -221,7 +267,7 @@ async function drill({ url, from, directory }) {
     const before = await snapshot(db.admin);
     const rows = [...before.values()].reduce((sum, t) => sum + t.rows.length, 0);
     if (rows === 0)
-      throw new Error('the seed left no row the owner can read, so nothing would be compared');
+      throw new Failure('the seed left no row the owner can read, so nothing would be compared');
     say(`built at ${start} and seeded: ${rows} rows in ${before.size} tables; application stopped`);
     const { applied } = await applyMigrations(db.admin, all);
     say(`upgraded ${start} -> ${to}: applied ${applied.join(', ')}`);
@@ -268,7 +314,7 @@ try {
   process.exitCode = result.ok ? 0 : 1;
 } catch (error) {
   console.error(
-    `upgrade-drill: ${error instanceof Refused ? 'refused' : 'failed'}: ${error.message}`,
+    `upgrade-drill: ${error instanceof Refused ? 'refused' : 'failed'}: ${printable(error)}`,
   );
   process.exitCode = error instanceof Refused ? 2 : 1;
 }
