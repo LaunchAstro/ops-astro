@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
+import { routeRules, sourceOf } from './mockup-routes.ts';
 import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
 export type State = {
@@ -81,20 +82,33 @@ function serveMockup(
   blobs: Map<string, Buffer>,
   side: Side,
 ): Promise<void> {
-  const path = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
-  let bytes = blobs.get(path);
-  if (bytes === undefined) {
+  const blob = (file: string): Buffer | undefined => {
+    const kept = blobs.get(file);
+    if (kept !== undefined) return kept;
     try {
-      bytes = execFileSync(
+      const bytes = execFileSync(
         'git',
-        ['-C', source.mockupDir, 'cat-file', 'blob', `${source.tree}:${path.slice(1)}`],
+        ['-C', source.mockupDir, 'cat-file', 'blob', `${source.tree}:${file.slice(1)}`],
         { stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 },
       );
+      blobs.set(file, bytes);
+      return bytes;
     } catch {
-      side.unresolved.add(url.href);
-      return route.fulfill({ status: 404, body: '' });
+      return undefined;
     }
-    blobs.set(path, bytes);
+  };
+  let path = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
+  let bytes = blob(path);
+  if (bytes === undefined) {
+    // A canonical address has no file of its own: its source draws it (routes.json).
+    const manifest = blob('/routes.json');
+    const rules = manifest === undefined ? [] : routeRules(JSON.parse(manifest.toString('utf8')));
+    const file = sourceOf(url.pathname, rules, (one) => blob(one) !== undefined);
+    if (file !== undefined) [path, bytes] = [file, blob(file)];
+  }
+  if (bytes === undefined) {
+    side.unresolved.add(url.href);
+    return route.fulfill({ status: 404, body: '' });
   }
   return route.fulfill({ body: bytes, contentType: typeOf(path) });
 }
