@@ -28,11 +28,12 @@ import {
 } from '../../packages/ui/src/kit/charts.tsx';
 import { GALLERY } from '../../packages/ui/src/kit/gallery.tsx';
 import { mount, type Mounted } from './mount.tsx';
+import { primitiveSheets } from '../support/primitive-sheets.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
 const read = (path: string): string => readFileSync(path, 'utf8');
-const sheet = read(`${root}packages/ui/src/styles/2-primitives.css`);
+const sheet = primitiveSheets();
 const rule = (selector: string): string => {
   const escaped = selector.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   return new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(sheet)?.[1] ?? '';

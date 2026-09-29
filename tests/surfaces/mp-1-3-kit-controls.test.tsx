@@ -10,8 +10,6 @@
 // I8). The visual match and the three-width captures run on MP-1-7's harness
 // over the gallery, which asks for a session: they wait on T4b1's fixture.
 
-import { readFileSync } from 'node:fs';
-import { URL as NodeURL, fileURLToPath } from 'node:url';
 import { act, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it } from 'vitest';
@@ -31,10 +29,10 @@ import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
 import { ROUTES } from '../../apps/web/src/routes.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 import { mount, type Mounted } from './mount.tsx';
+import { primitiveSheets } from '../support/primitive-sheets.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
-const root = fileURLToPath(new NodeURL('../..', import.meta.url));
-const sheet = readFileSync(`${root}packages/ui/src/styles/2-primitives.css`, 'utf8');
+const sheet = primitiveSheets();
 /** The declarations of the first rule whose selector list is exactly `selector`. */
 const rule = (selector: string): string => {
   const escaped = selector.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');

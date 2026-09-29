@@ -180,6 +180,7 @@ describe('MP-1-1 tokens', () => {
     const colourProperty =
       /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
     const sheets = [
+      `${styles}2-controls-and-marks.css`,
       `${styles}2-primitives.css`,
       `${styles}3-shell.css`,
       `${styles}4-board.css`,

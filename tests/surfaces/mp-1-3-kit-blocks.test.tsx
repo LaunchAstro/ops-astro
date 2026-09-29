@@ -28,11 +28,12 @@ import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
 import { Empty } from '../../packages/ui/src/primitives/Absence.tsx';
 import { Assignee } from '../../apps/web/src/screens/task/Lifecycle.tsx';
 import { mount, type Mounted } from './mount.tsx';
+import { primitiveSheets } from '../support/primitive-sheets.ts';
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
 const read = (path: string): string => readFileSync(path, 'utf8');
-const sheet = read(`${root}packages/ui/src/styles/2-primitives.css`);
+const sheet = primitiveSheets();
 const allSheets = [
   ...readdirSync(`${root}packages/ui/src/styles`).map((f) => `${root}packages/ui/src/styles/${f}`),
   `${root}apps/web/src/styles/6-slice.css`,
