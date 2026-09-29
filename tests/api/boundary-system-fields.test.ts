@@ -114,37 +114,66 @@ describe.skipIf(serverUrl === undefined)('installed system fields at the top lev
     expect(NEWLY_REFUSED).toEqual(expect.arrayContaining(['completed_at', 'key']));
   });
 
+  /**
+   * One refused call with `key` at the top level, and what it wrote. `late`
+   * runs after the call and before the rows are read, which is where another
+   * test's audit write lands when that test ran past its timeout.
+   */
+  const refusedAlone = async (
+    name: CommandName,
+    key: string,
+    late: () => Promise<void> = async () => {},
+  ): Promise<void> => {
+    await refresh();
+    const control = await call(name, bodies[name]!());
+    expect(control.status, JSON.stringify(control.body)).toBe(200);
+    await refresh();
+
+    const value = key.endsWith('_at') ? '1970-01-01T00:00:00.000Z' : `probe-${randomUUID()}`;
+    const before = await state();
+    const answer = await call(name, { ...bodies[name]!(), [key]: value });
+    await late();
+    expect(answer.status).toBe(422);
+    expect(answer.body).toMatchObject({
+      refused: true,
+      code: 'FIELD_NOT_WRITABLE',
+      names: [key],
+    });
+    expect(JSON.stringify(answer.body)).not.toContain(value);
+    const after = await state();
+    expect(after['records']).toBe(before['records']);
+    expect(after['xmin']).toBe(before['xmin']);
+    expect(Number(after['audit'])).toBe(Number(before['audit']) + 1);
+    expect(await lastAudit()).toStrictEqual({
+      command: name,
+      outcome: 'refused',
+      refusal_code: 'FIELD_NOT_WRITABLE',
+      attempted: { [key]: value },
+    });
+  };
+
   for (const name of Object.keys(bodies) as CommandName[]) {
     for (const key of NEWLY_REFUSED) {
       it(`${name} refuses top-level ${key} FIELD_NOT_WRITABLE and changes nothing`, async () => {
-        await refresh();
-        const control = await call(name, bodies[name]!());
-        expect(control.status, JSON.stringify(control.body)).toBe(200);
-        await refresh();
-
-        const value = key.endsWith('_at') ? '1970-01-01T00:00:00.000Z' : `probe-${randomUUID()}`;
-        const before = await state();
-        const answer = await call(name, { ...bodies[name]!(), [key]: value });
-        expect(answer.status).toBe(422);
-        expect(answer.body).toMatchObject({
-          refused: true,
-          code: 'FIELD_NOT_WRITABLE',
-          names: [key],
-        });
-        expect(JSON.stringify(answer.body)).not.toContain(value);
-        const after = await state();
-        expect(after['records']).toBe(before['records']);
-        expect(after['xmin']).toBe(before['xmin']);
-        expect(Number(after['audit'])).toBe(Number(before['audit']) + 1);
-        expect(await lastAudit()).toStrictEqual({
-          command: name,
-          outcome: 'refused',
-          refusal_code: 'FIELD_NOT_WRITABLE',
-          attempted: { [key]: value },
-        });
+        await refusedAlone(name, key);
       });
     }
   }
+
+  it('CQ-14 audit rows scoped: a late audit write from another test is not counted here', async () => {
+    const audited = async (): Promise<number> => Number((await state())['audit']);
+    const start = await audited();
+    await refusedAlone('task.create', 'completed_at', async () => {
+      const neighbour = await call('task.create', {
+        ...bodies['task.create']!(),
+        key: `neighbour-${randomUUID()}`,
+      });
+      expect(neighbour.status).toBe(422);
+    });
+    // Both refusals and the control landed in the window, so the business
+    // count moved by three; the case above still counted only its own.
+    expect(await audited()).toBe(start + 3);
+  });
 
   it('names every system key a body carries, installed and envelope alike, sorted', async () => {
     const answer = await call('task.create', {

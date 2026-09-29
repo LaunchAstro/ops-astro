@@ -320,6 +320,25 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     ]);
   });
 
+  it('CQ-14 replay byte for byte: each replay after the restarts answers its pre-restart receipt', async () => {
+    const receipts = (journey as Journey & { readonly receipts?: Readonly<Record<string, string>> })
+      .receipts;
+    expect(receipts, 'the answers kept before the restart').toBeDefined();
+    const replays = {
+      propose: await asAda(world, api, '/task/propose', journey.proposeBody),
+      decide: await asAda(world, api, '/task/decide', journey.decideBody),
+      pickup: await asAgent(world, api, '/task/pickup', {
+        operationId: journey.pickupOperationId,
+        reservationId: journey.reservationId,
+      }),
+    };
+    for (const [operation, replay] of Object.entries(replays)) {
+      expect((replay as { readonly text?: string }).text, operation).toBe(receipts?.[operation]);
+    }
+    expect(await identities(world)).toStrictEqual(before);
+    report('http replays byte for byte', Object.keys(replays));
+  });
+
   it('refuses the cancelled lineage its pickup over HTTP and mints no hold', async () => {
     const leases = await countLeases(world, lineages.cancelledReservationId);
     const operationId = randomUUID();

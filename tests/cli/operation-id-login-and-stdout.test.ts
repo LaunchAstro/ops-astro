@@ -18,7 +18,7 @@ import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordPid, runCli } from './cli-process-harness.ts';
 
@@ -181,6 +181,48 @@ function underTerminal(command: readonly string[]): readonly string[] | undefine
 }
 
 const TERMINAL = underTerminal(['node']) !== undefined;
+
+describe.skipIf(!TERMINAL)('CQ-14 fixed interpreter', () => {
+  // Arguments a shell would read as syntax: a substitution, a quote, a command end.
+  const command = [
+    process.execPath,
+    '-e',
+    'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+    '--',
+    '$(echo spliced)',
+    "it's",
+    '"; exit 7',
+  ];
+
+  it('spawns the terminal from a fixed, validated path, never a shell', () => {
+    const argv = underTerminal(command) as readonly string[];
+    const program = argv[0] as string;
+    expect(isAbsolute(program), program).toBe(true);
+    expect(existsSync(program), program).toBe(true);
+    expect(['sh', 'bash', 'dash', 'zsh']).not.toContain(basename(program));
+    expect(argv.slice(-command.length), 'the arguments, each as itself').toStrictEqual(command);
+  });
+
+  it('hands arguments carrying shell syntax to the command verbatim', async () => {
+    const argv = underTerminal(command) as readonly string[];
+    const child = spawn(argv[0] as string, argv.slice(1), {
+      cwd: ROOT,
+      env: { PATH: process.env['PATH'] ?? '' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    recordPid('terminal argv echo', child.pid);
+    let screen = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      screen += chunk.toString('utf8');
+    });
+    child.stdin.end();
+    const code = await new Promise<number | null>((resolve) => {
+      child.once('close', resolve);
+    });
+    expect(code, screen).toBe(0);
+    expect(screen).toContain(JSON.stringify(command.slice(4)));
+  }, 30_000);
+});
 
 // eslint-disable-next-line max-lines-per-function -- one terminal session, read top to bottom
 describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
