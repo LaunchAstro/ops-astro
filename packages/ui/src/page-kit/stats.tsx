@@ -5,7 +5,8 @@
 // and its track the kit's stat meter (DS-PRIM-23), so the row places the kit's
 // parts rather than drawing its own.
 
-import { useId, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { PageTerm } from './term.tsx';
 
 export interface StatDelta {
   /** Signed change against `period`. */
@@ -39,18 +40,6 @@ function Delta(props: { readonly delta: StatDelta }): ReactElement {
   );
 }
 
-function Term(props: { readonly definition: string; readonly children: ReactNode }): ReactElement {
-  const id = useId();
-  return (
-    <span className="stat__term" tabIndex={0} aria-describedby={id}>
-      {props.children}
-      <span className="stat__tip" role="tooltip" id={id}>
-        {props.definition}
-      </span>
-    </span>
-  );
-}
-
 export function Stat(props: StatProps): ReactElement {
   const of = props.of;
   const share =
@@ -61,7 +50,7 @@ export function Stat(props: StatProps): ReactElement {
         {props.term === undefined ? (
           props.label
         ) : (
-          <Term definition={props.term}>{props.label}</Term>
+          <PageTerm definition={props.term}>{props.label}</PageTerm>
         )}
       </span>
       <span className="stat__num">
@@ -98,5 +87,5 @@ export function StatRow(props: {
   readonly columns: 2 | 3 | 4 | 5 | 6;
   readonly children: ReactNode;
 }): ReactElement {
-  return <div className={`statrow g${String(props.columns)}`}>{props.children}</div>;
+  return <div className={`statrow statrow--${String(props.columns)}`}>{props.children}</div>;
 }

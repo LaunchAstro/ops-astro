@@ -9,6 +9,7 @@
 // scrolls inside its own box, so a wide one never widens the page.
 
 import { useState, type ReactElement, type ReactNode } from 'react';
+import { PageTerm } from './term.tsx';
 
 export type SortValue = string | number | null | undefined;
 
@@ -80,6 +81,7 @@ export interface DataTableProps<Row> {
 function SortHead(props: {
   readonly id: string;
   readonly label: string;
+  readonly term: string | undefined;
   readonly numeric: boolean;
   readonly sorted: 'ascending' | 'descending' | undefined;
   readonly onSort: () => void;
@@ -91,12 +93,29 @@ function SortHead(props: {
       className={props.numeric ? 'r' : undefined}
       aria-sort={props.sorted}
     >
-      <button type="button" className="table__sort" onClick={props.onSort}>
-        {props.label}
-        <span className="table__arrow" aria-hidden="true">
-          {props.sorted === 'ascending' ? '↑' : '↓'}
-        </span>
-      </button>
+      {/* A glossed label sits outside the button, so reading its tip never sorts. */}
+      {props.term === undefined ? (
+        <button type="button" className="table__sort" onClick={props.onSort}>
+          {props.label}
+          <span className="table__arrow" aria-hidden="true">
+            {props.sorted === 'ascending' ? '↑' : '↓'}
+          </span>
+        </button>
+      ) : (
+        <>
+          <PageTerm definition={props.term}>{props.label}</PageTerm>
+          <button
+            type="button"
+            className="table__sort"
+            aria-label={`Sort by ${props.label}`}
+            onClick={props.onSort}
+          >
+            <span className="table__arrow" aria-hidden="true">
+              {props.sorted === 'ascending' ? '↑' : '↓'}
+            </span>
+          </button>
+        </>
+      )}
     </th>
   );
 }
@@ -120,6 +139,7 @@ export function DataTable<Row>(props: DataTableProps<Row>): ReactElement {
                 key={column.id}
                 id={column.id}
                 label={column.label}
+                term={column.term}
                 numeric={column.numeric === true}
                 sorted={ariaSort(column.id)}
                 onSort={() => setSort((current) => nextSort(current, column.id))}
