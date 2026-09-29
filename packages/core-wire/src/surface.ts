@@ -104,6 +104,8 @@ export type CommandName =
   | 'legal.publish_version'
   // C81: the overseas-services register the privacy policy reads.
   | 'privacy.set_overseas_service'
+  // C81: the data-class register the privacy policy reads.
+  | 'privacy.set_data_class'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -377,6 +379,14 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     toConfirm: 'any',
     inUse: 'any',
   },
+  'privacy.set_data_class': {
+    dataClass: 'any',
+    purpose: 'any',
+    disclosures: 'any',
+    retention: 'any',
+    deletion: 'any',
+    inUse: 'any',
+  },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -526,6 +536,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `privacy:manage`, never by an agent; every change is audited by the
   // envelope.
   declare('privacy.set_overseas_service', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C81: a class of the data-class register is set under `privacy:manage`,
+  // never by an agent; every change is audited by the envelope.
+  declare('privacy.set_data_class', 'manage', {
     collection: 'privacy',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],

@@ -246,6 +246,17 @@ export type CommandRequest =
       readonly toConfirm: unknown;
       readonly inUse: unknown;
     } & Envelope)
+  // C81: one row of the data-class register, every field checked by the
+  // handler in its own words (`data-class-write.ts`).
+  | ({
+      readonly command: 'privacy.set_data_class';
+      readonly dataClass: unknown;
+      readonly purpose: unknown;
+      readonly disclosures: unknown;
+      readonly retention: unknown;
+      readonly deletion: unknown;
+      readonly inUse: unknown;
+    } & Envelope)
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

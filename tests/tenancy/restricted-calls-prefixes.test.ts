@@ -124,6 +124,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     in_use: true,
     updated_by_actor: randomUUID(),
   },
+  // 0036 (C81): no journey sets a data class.
+  'public.data_classes': {
+    data_class: 'restricted calls seed',
+    purpose: 'nothing',
+    disclosures: 'no one',
+    retention: 'a day',
+    deletion: 'deleted',
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

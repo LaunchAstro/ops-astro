@@ -106,6 +106,13 @@ export {
   type VersionRefusal,
 } from './operations/legal-documents.ts';
 export {
+  readDataClasses,
+  setDataClass,
+  type DataClass,
+  type DataClassesState,
+  type ListedDataClass,
+} from './operations/data-classes.ts';
+export {
   readRegister,
   setOverseasService,
   type ListedService,

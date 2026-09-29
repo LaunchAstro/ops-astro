@@ -596,6 +596,11 @@ register, so a change and a policy decision apply in one order. Approval and
 publication take the version's row lock first and the register's second; a
 change takes only the register's, so the two never wait in a cycle.
 
+Setting a class of the data-class register (`privacy.set_data_class`) is
+`privacy:manage` too, never an agent's. It takes the same per-business lock as
+the overseas-services register, and a policy's draft, approval and publication
+read the classes under it, so the order above holds for both registers.
+
 ## Revocation
 
 `grant.revoke` and `delegation.revoke` are the ledger's "existing

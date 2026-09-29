@@ -541,3 +541,18 @@ use as a JSON array) and `register_digest` (SHA-256 over those rows and their
 `to_confirm` marks, in order). A privacy-policy version has both, and no other
 document has either (`legal_document_versions_register_policy_only`). The
 written-once guard now covers them with the rest of the draft.
+
+## Data-class register (0036, C81)
+
+`data_classes` holds one row per class of personal information: the class
+(`data_class`), its purpose, its normal disclosures, its retention and its
+deletion, each required by a check, with `in_use` and who changed it last and
+when. One row per class in any letter case (`data_classes_one_class`). The
+application may select, insert and update; nothing deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+0036 also gives `legal_document_versions` `data_classes` (the classes in use
+as a JSON array) and `data_classes_digest` (SHA-256 over their words, in
+order). A privacy-policy version has both, and no other document has either
+(`legal_document_versions_data_classes_policy_only`). The written-once guard
+covers them with the rest of the draft.
