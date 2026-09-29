@@ -19,7 +19,6 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { createTask } from './tasks-write.ts';
-import { setState } from './tasks-state.ts';
 import { applyRevision, holdsDecide, parseRevision, textOk, type Revision } from './wayfinder.ts';
 
 type RequestOf<K extends CommandRequest['command']> = Extract<CommandRequest, { command: K }>;
@@ -257,7 +256,7 @@ export async function setBlocking(
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = data || jsonb_build_object('blocked_by', $3::jsonb), updated_at = now()
       where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, JSON.stringify(blockers)],
+    [tx.businessId, target.id, blockers],
   );
   return applied(target.id, Number(rows[0]?.revision), { blockedBy: blockers });
 }
@@ -266,6 +265,40 @@ function completed(context: CommandContext, stateId: unknown): boolean {
   return (
     context.spine.states.find((state) => state.id === stateId)?.machineCategory === 'completed'
   );
+}
+
+/**
+ * Complete a ticket and write what its closing records, in one update, so the
+ * revision moves by exactly one as for every other command. The state is the
+ * installation's first `completed` one, as `task.complete` chooses it.
+ */
+async function completeWith(
+  tx: TenantQuery,
+  context: CommandContext,
+  extra: Readonly<Record<string, string>>,
+): Promise<HandlerOutcome> {
+  const target = context.target;
+  if (target === undefined) throw new Error('completeWith: the envelope read no target');
+  const state = context.spine.states.find((candidate) => candidate.machineCategory === 'completed');
+  if (state === undefined) {
+    return refused(
+      refuseCommand('NOT_FOUND', ['completed'], ['This installation seeds no completed state.']),
+    );
+  }
+  const rows = await tx.query<{ readonly revision: string }>(
+    `update records
+        set data = data || jsonb_build_object('state', $3::text, 'completed_at', now()::text)
+                        || $4::jsonb,
+            updated_at = now()
+      where business_id = $1 and id = $2 and deleted_at is null
+      returning revision::text as revision`,
+    [tx.businessId, target.id, state.id, extra],
+  );
+  const written = rows[0];
+  if (written === undefined) {
+    return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
+  }
+  return applied(target.id, Number(written.revision), { state: state.key, ...extra });
 }
 
 /**
@@ -402,15 +435,10 @@ export async function resolveTicket(
       );
     }
   }
-  const moved = await setState(tx, context, 'completed');
-  if ('refusal' in moved) return moved;
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('answer', $3::text, 'gist', $4::text),
-            updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, (answer as string).trim(), (gist as string).trim()],
-  );
-  return applied(target.id, Number(rows[0]?.revision), { gist: (gist as string).trim() });
+  return await completeWith(tx, context, {
+    answer: (answer as string).trim(),
+    gist: (gist as string).trim(),
+  });
 }
 
 /**
@@ -432,8 +460,6 @@ export async function closeOutOfScope(
   if (reason !== undefined && !textOk(reason)) {
     return invalid(['reason'], ['The reason is 1 to 4000 characters, or leave it out.']);
   }
-  const moved = await setState(tx, context, 'completed');
-  if ('refusal' in moved) return moved;
   const title = typeof target.data['title'] === 'string' ? target.data['title'] : 'a ticket';
   const line = typeof reason === 'string' ? `${title}: ${reason.trim()}` : title;
   await applyRevision(tx, context, facts.mapId, {
@@ -441,10 +467,5 @@ export async function closeOutOfScope(
     addOutOfScope: [{ text: line.slice(0, 4000), ticketId: target.id }],
     retire: [],
   });
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('closed_as', 'out_of_scope'), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id],
-  );
-  return applied(target.id, Number(rows[0]?.revision), { closedAs: 'out_of_scope' });
+  return await completeWith(tx, context, { closed_as: 'out_of_scope' });
 }

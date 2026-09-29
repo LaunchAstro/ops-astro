@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The nine operations that name no identifier, each with a minimal valid body.
+ * The ten operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -41,6 +41,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  // Wayfinder (WF-2): a chart files a new map and names no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
 ];
 
 /** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */

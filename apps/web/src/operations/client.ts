@@ -75,6 +75,10 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // Wayfinder (WF-1, WF-2): the map's sections and its frontier, for the
+  // views U29 draws.
+  'map.view',
+  'map.frontier',
 ] as const;
 
 /**

@@ -164,12 +164,14 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     });
     const raced = race['a'] as string;
     const revision = await w.revisionOf(raced);
-    const answers = await Promise.all(
-      [owner, teammate].map(
-        async (who) =>
-          await w.as(who, { command: 'task.claim', recordId: raced, expectedRevision: revision }),
-      ),
-    );
+    const answers = await Promise.all([
+      w.as(owner, { command: 'task.claim', recordId: raced, expectedRevision: revision }),
+      w.asOnSecond(teammate, {
+        command: 'task.claim',
+        recordId: raced,
+        expectedRevision: revision,
+      }),
+    ]);
     expect(answers.map((a) => codeOf(a)).toSorted()).toStrictEqual(['VERSION_STALE', 'applied']);
   });
 
@@ -215,6 +217,34 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     // Clearing the set unblocks.
     must(await block(writer, b, []), 'clear');
     expect(await frontierRows(map)).toStrictEqual([a, b]);
+  });
+
+  it('WF-2 two blocking sets at once cannot close a cycle between them', async () => {
+    const { tickets } = await charted(owner, {
+      title: 'race blocking map',
+      tickets: [
+        { ref: 'a', title: 'a', type: 'research' },
+        { ref: 'b', title: 'b', type: 'research' },
+      ],
+    });
+    const [a, b] = [tickets['a'] as string, tickets['b'] as string];
+    const [atA, atB] = [await at(a), await at(b)];
+    // a blocked by b, and b blocked by a, sent together: the wayfinder.map
+    // lock makes one wait for the other's commit, and the second sees the cycle.
+    const answers = await Promise.all([
+      w.as(writer, { command: 'task.set_blocking', ...atA, blockedBy: [b] }),
+      w.asOnSecond(writer, { command: 'task.set_blocking', ...atB, blockedBy: [a] }),
+    ]);
+    expect(answers.map((x) => codeOf(x)).toSorted()).toStrictEqual([
+      'TRANSITION_NOT_PERMITTED',
+      'applied',
+    ]);
+    const links = await w.db.admin.execute<{ readonly n: string }>(
+      `select count(*)::text as n from public.record_links
+        where business_id = $1 and link_type = 'blocks' and to_record_id = any($2::uuid[])`,
+      [w.business, [a, b]],
+    );
+    expect(links[0]?.n).toBe('1');
   });
 
   it('WF-2 graduating a patch names the patch and the tickets it became, and the patch leaves the fog', async () => {
@@ -426,6 +456,36 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     expect(rows[0]).toStrictEqual({ type: 'grilling', gist: null });
     // The ticket stays open for the map's owner.
     expect(codeOf(await resolve(owner, g))).toBe('applied');
+  });
+
+  it('WF-2 a grilling ticket cannot leave its map to route around its owner', async () => {
+    const { map, tickets } = await charted(owner, {
+      title: 'escape map',
+      tickets: [{ ref: 'g', title: 'owner decides', type: 'grilling' }],
+    });
+    const g = tickets['g'] as string;
+    // The teammate holds business-wide write and decide, and does not own the map.
+    const out = await w.as(teammate, {
+      command: 'task.reparent',
+      ...(await at(g)),
+      parentId: null,
+    });
+    expect(codeOf(out)).toBe('SCOPE_NOT_GRANTED');
+    expect(JSON.stringify(out)).toContain('map owner');
+    expect(codeOf(await resolve(teammate, g))).toBe('SCOPE_NOT_GRANTED');
+    const rows = await w.db.admin.execute<{
+      readonly parent: string;
+      readonly gist: string | null;
+    }>(
+      `select data->>'parent' as parent, data->>'gist' as gist from public.records
+        where business_id = $1 and id = $2`,
+      [w.business, g],
+    );
+    expect(rows[0]).toStrictEqual({ parent: map, gist: null });
+    // The owner may move it.
+    expect(
+      codeOf(await w.as(owner, { command: 'task.reparent', ...(await at(g)), parentId: null })),
+    ).toBe('applied');
   });
 
   // LEANS-ON SL04 U99 (the inbox, `raiseDecision`): enabled at the rebase onto

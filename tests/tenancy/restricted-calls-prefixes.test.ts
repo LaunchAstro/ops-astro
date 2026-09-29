@@ -67,7 +67,7 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -87,6 +87,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
   },
+  // 0032's map tables: the journey charts no map, so each gets one row here.
+  'public.map_components': {
+    map_id: randomUUID(),
+    kind: 'fog',
+    body: 'restricted calls seed',
+    position: 0,
+    created_version: 1,
+  },
+  'public.map_versions': {
+    map_id: randomUUID(),
+    version: 1,
+    changed: [randomUUID()],
+    actor_id: randomUUID(),
+  },
+  'public.map_summaries': {
+    map_id: randomUUID(),
+    version: 0,
+    open_tickets: 0,
+    closed_tickets: 0,
+    fog: 0,
+    out_of_scope: 0,
+  },
+  'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

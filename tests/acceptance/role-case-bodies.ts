@@ -98,6 +98,38 @@ async function freshMap(
   };
 }
 
+/** A charted map with `count` research tickets and one fog patch, read back through the routes. */
+async function chartedMap(
+  context: BodyContext,
+  count: number,
+): Promise<{
+  map: string;
+  revision: number;
+  patch: string;
+  tickets: readonly string[];
+  at: readonly { recordId: string; expectedRevision: number }[];
+}> {
+  const refs = Array.from({ length: count }, (_, index) => `t${String(index)}`);
+  const made = await context.asPerson('map.chart', {
+    title: 'a map for the matrix',
+    tickets: refs.map((ref) => ({ ref, title: ref, type: 'research' })),
+    fog: ['a patch'],
+  });
+  if (made.code !== 'ok') throw new Error(`matrix: map.chart refused ${made.code}`);
+  const detail = made.body['detail'] as { tickets: Record<string, string> };
+  const tickets = refs.map((ref) => detail.tickets[ref] as string);
+  const frontier = await context.asPerson('map.frontier', { recordId: made.body['recordId'] });
+  const fog = frontier.body['fog'] as readonly { id: string }[];
+  // A fresh ticket stands at revision 1: nothing has written it since its create.
+  return {
+    map: String(made.body['recordId']),
+    revision: Number(made.body['revision']),
+    patch: String(fog[0]?.id),
+    tickets,
+    at: tickets.map((recordId) => ({ recordId, expectedRevision: 1 })),
+  };
+}
+
 /** Proposed and approved by the context's person: a reservation on the queue. */
 async function approvedReservationId(context: BodyContext): Promise<string> {
   const gate = await approvableGate(context);
@@ -290,6 +322,44 @@ export function createPositiveBody(
         return { body: { ...(await freshMap(context)), client: randomUUID() } };
       case 'map.view':
         return { body: { recordId: (await freshMap(context)).recordId } };
+      case 'map.frontier':
+        return { body: { recordId: (await freshMap(context)).recordId } };
+      // Wayfinder (WF-2), each on a map and ticket filed through the routes.
+      case 'map.chart':
+        return {
+          body: {
+            title: 'a charted map',
+            tickets: [{ ref: 'a', title: 'a ticket', type: 'research' }],
+            fog: ['a patch'],
+          },
+        };
+      case 'task.set_blocking': {
+        const chart = await chartedMap(context, 2);
+        return { body: { ...chart.at[1], blockedBy: [chart.tickets[0]] } };
+      }
+      case 'task.claim':
+        return { body: (await chartedMap(context, 1)).at[0] ?? {} };
+      case 'task.resolve':
+        return {
+          body: {
+            ...(await chartedMap(context, 1)).at[0],
+            answer: 'found',
+            gist: 'found it',
+          },
+        };
+      case 'task.close_out_of_scope':
+        return { body: { ...(await chartedMap(context, 1)).at[0], reason: 'not now' } };
+      case 'map.graduate': {
+        const chart = await chartedMap(context, 0);
+        return {
+          body: {
+            recordId: chart.map,
+            expectedRevision: chart.revision,
+            patchId: chart.patch,
+            tickets: [{ title: 'from the fog', type: 'task' }],
+          },
+        };
+      }
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

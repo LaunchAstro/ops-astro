@@ -74,6 +74,9 @@ const INJECTED_BOUNDS = 3;
 /** The operations that name no identifier, from the list the matrix and SC2 case share. */
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
+/** The reads that name one record by `recordId`: the task, and a map's two views. */
+const RECORD_READS: ReadonlySet<CommandName> = new Set(['task.read', 'map.view', 'map.frontier']);
+
 const NOBODY = 'text nobody should find in an audit row';
 
 interface Verdict {
@@ -192,7 +195,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 26 cells: the 16 record-targeted operations, then the 10 with their own operand. */
+  /** The 36 cells: the 26 record-targeted operations, then the 10 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -212,11 +215,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.rank': { afterId: w.h.alphaTask.id },
     };
     const targeted = COMMAND_SURFACE.filter(
-      (declaration) => declaration.targetsExistingRecord || declaration.name === 'task.read',
+      (declaration) => declaration.targetsExistingRecord || RECORD_READS.has(declaration.name),
     );
     const out: Cell[] = targeted.map((declaration) => {
       const extra = onRecord[declaration.name] ?? {};
-      const revision = declaration.name === 'task.read' ? {} : { expectedRevision: 1 };
+      const revision = RECORD_READS.has(declaration.name) ? {} : { expectedRevision: 1 };
       return {
         op: declaration.name,
         operand: 'recordId',
@@ -296,15 +299,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 26 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 36 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(26);
-    expect(names).toHaveLength(26);
+    expect(new Set(names).size, 'distinct operations').toBe(36);
+    expect(names).toHaveLength(36);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the ten target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

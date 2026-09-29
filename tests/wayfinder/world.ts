@@ -17,7 +17,11 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  type BusinessId,
+  type Database,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action, Scope } from '../../packages/core-records/src/authority/grants.ts';
 
 /* eslint-disable no-await-in-loop -- grants are issued one after another on one connection */
@@ -38,6 +42,11 @@ export interface WayfinderWorld extends AgentWorld {
   /** One more business-wide grant for a person of the main business. */
   grant(member: Member, action: Action): Promise<void>;
   as(member: Member, body: Body, business?: BusinessId): Promise<CommandResult>;
+  /**
+   * The same call over a second pool of its own. The world's pool has
+   * `max: 1`, so two calls on it queue; a race needs two connections.
+   */
+  asOnSecond(member: Member, body: Body): Promise<CommandResult>;
   read(member: Member, body: Body, business?: BusinessId): Promise<unknown>;
   /** Create, or throw naming the refusal. */
   create(member: Member, fields: Body, extra?: Body, business?: BusinessId): Promise<Made>;
@@ -74,6 +83,15 @@ export async function wayfinderWorld(part: string, key: string): Promise<Wayfind
       ...body,
     } as never);
 
+  let second: Database | undefined;
+  const asOnSecond = async (member: Member, body: Body) => {
+    second ??= connect(world.db.appUrl, { source: 'runtime' });
+    return await executeCommand(second, world.business, member.presented, 'api', {
+      operationId: randomUUID(),
+      ...body,
+    } as never);
+  };
+
   const revisionOf = async (recordId: string, business: BusinessId = world.business) => {
     const rows = await world.db.admin.execute<{ readonly revision: string }>(
       `select revision::text as revision from public.records where business_id = $1 and id = $2`,
@@ -109,6 +127,11 @@ export async function wayfinderWorld(part: string, key: string): Promise<Wayfind
       });
     },
     as,
+    asOnSecond,
+    async drop() {
+      await second?.close();
+      await world.drop();
+    },
     async read(member, body, business = world.business) {
       return await executeRead(world.db.app, business, member.presented, body as never);
     },

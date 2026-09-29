@@ -211,11 +211,13 @@ export async function createHarness(part: string): Promise<Harness> {
    * uniform across the table would have measured that refusal rather than the
    * authority one the case is about.
    */
+  /** The reads that name one record: the task, and a map's two views (WF-1, WF-2). */
+  const RECORD_READS: ReadonlySet<string> = new Set(['task.read', 'map.view', 'map.frontier']);
   function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
     const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
-      ...(targeted || declaration.name === 'task.read' ? { recordId: alphaTask.id } : {}),
+      ...(targeted || RECORD_READS.has(declaration.name) ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'preset.plan'

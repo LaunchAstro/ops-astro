@@ -179,8 +179,10 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
   describe('D02: each protected field relaxed to generic is named by the task set', () => {
     const PROTECTED_RULE = 'no field in the protected set is generic';
 
-    it('is eleven, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(11);
+    it('is nineteen, read from the spine', () => {
+      // Eleven, then eight wayfinder fields (WF-1, WF-2): type, answer, gist and
+      // the five system ones beside them.
+      expect(PROTECTED_TASK_FIELDS.length).toBe(19);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
@@ -277,6 +279,22 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     payload: () => ({}),
     stored: () => null,
   },
+  // Wayfinder (WF-1, WF-2): the ticket type, and the resolution's two fields.
+  type: {
+    command: 'task.set_type',
+    payload: () => ({ taskType: 'build' }),
+    stored: () => 'build',
+  },
+  answer: {
+    command: 'task.resolve',
+    payload: () => ({ answer: 'the answer', gist: 'the gist' }),
+    stored: () => 'the answer',
+  },
+  gist: {
+    command: 'task.resolve',
+    payload: () => ({ answer: 'the answer', gist: 'the gist' }),
+    stored: () => 'the gist',
+  },
 };
 
 describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it owns', () => {
@@ -292,9 +310,10 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
 
   /** The stored row, read as the superuser so row security is not what answers. */
   const stored = async (recordId: string, key: string) => {
-    const slot = spineField(key)?.slot ?? 'null';
+    // An unslotted field has no projection: `null` stands in for the column.
+    const slot = spineField(key)?.slot ?? null;
     const rows = await db.admin.execute<Record<string, unknown>>(
-      `select r.revision::text as revision, r.data ->> $2 as value, r.${slot} as slot,
+      `select r.revision::text as revision, r.data ->> $2 as value, ${slot === null ? 'null' : `r.${slot}`} as slot,
               s.data ->> 'machine_category' as category
          from public.records r
          left join public.records s on s.business_id = r.business_id and s.id = r.uuid_1
@@ -379,8 +398,8 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
         expect(after['value']).toBe(String(expected));
         expect(before['value']).not.toBe(String(expected));
         // The slot is the projection a view filters on. A write that reached
-        // `data` and not the slot is half a write.
-        expect(after['slot']).toStrictEqual(expected);
+        // `data` and not the slot is half a write. An unslotted field has none.
+        expect(after['slot']).toStrictEqual(spineField(key)?.slot === null ? null : expected);
       }
     },
   );
