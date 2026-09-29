@@ -52,20 +52,48 @@ import {
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
  */
+/** The seeds written with foreign keys off: their rows may name ids that key nothing. */
+const REPLICA_SEEDS: ReadonlySet<string> = new Set(['public.run_checks']);
+
+/** One seed row, as the owner; a replica seed with foreign keys off. */
+async function seed(
+  world: World,
+  table: string,
+  text: string,
+  business: string,
+): Promise<readonly unknown[]> {
+  if (!REPLICA_SEEDS.has(table)) return await world.db.admin.execute(text, [business]);
+  return await world.db.admin.transaction(async (execute) => {
+    await execute('set local session_replication_role = replica');
+    return await execute(text, [business]);
+  });
+}
+
 const UNREACHED: Readonly<Record<string, string>> = {
   // The journey records no check (MP-6-1), so one is written against the
-  // business's own lease, its run, version and attempt, as `recordCheck` does.
+  // business's own lease, run, version and attempt where it has one, as
+  // `recordCheck` does; Bravo holds no lease, so its row names ids that key
+  // nothing. Written with foreign keys off (`REPLICA_SEEDS`), as the prefixes
+  // suite writes every reference row.
   'public.run_checks': `insert into public.run_checks
        (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
         fence, name, outcome)
-     select l.business_id, gen_random_uuid(), l.task_id, run.id, run.version_id, l.id, att.id,
-            l.holder_actor_id, l.fence, 'restricted calls seed', 'passed'
-       from public.leases l
-       join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
-       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
-       join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
-      where l.business_id = $1
-      order by l.id limit 1 returning 1`,
+     select $1, gen_random_uuid(), coalesce(w.task_id, gen_random_uuid()),
+            coalesce(w.run_id, gen_random_uuid()), coalesce(w.version_id, gen_random_uuid()),
+            coalesce(w.lease_id, gen_random_uuid()), coalesce(w.attempt_id, gen_random_uuid()),
+            coalesce(w.actor_id, gen_random_uuid()), coalesce(w.fence, 1),
+            'restricted calls seed', 'passed'
+       from (select 1) one
+       left join lateral (
+         select l.task_id, run.id as run_id, run.version_id, l.id as lease_id,
+                att.id as attempt_id, l.holder_actor_id as actor_id, l.fence
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+           join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+          where l.business_id = $1
+          order by l.id limit 1) w on true
+     returning 1`,
   'public.person_identifiers': `insert into public.person_identifiers
        (business_id, id, person_id, kind, value, observed_value, source_system)
      select business_id, gen_random_uuid(), id, 'email', 'restricted-calls-seed',
@@ -149,7 +177,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     for (const business of [world.alpha, world.bravo]) {
       for (const [table, text] of Object.entries(UNREACHED)) {
         // oxlint-disable-next-line no-await-in-loop
-        const seeded = await world.db.admin.execute(text, [business]);
+        const seeded = await seed(world, table, text, business);
         if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
       }
     }
