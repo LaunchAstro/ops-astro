@@ -285,6 +285,7 @@
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/db/inbox-records.test.ts",
+    "tests/db/inbox-conformance.test.ts",
     "tests/commands/inbox-raising.test.ts",
     "tests/commands/inbox-clearing.test.ts",
     "tests/commands/inbox-clearing-guards.test.ts",
