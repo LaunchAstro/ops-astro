@@ -7,8 +7,8 @@
 // are the rights holder's own SVGs. Every bundled asset is named, with its
 // licence, in `packages/ui/assets/licences.json`, and these tests hold that
 // record against what is actually installed and committed, both ways. The
-// visual match runs on MP-1-7's width-and-theme harness over the gallery, which
-// asks for a session, so it is `todo` until T4b1's signed-in fixture.
+// visual match draws the gallery in a real browser on MP-1-7's width-and-theme
+// harness (tests/visual/gallery-views.ts, specimens in mp-1-2-specimens.ts).
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,6 +19,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { loadConfigFromFile } from 'vite';
 import { afterAll, expect, it } from 'vitest';
 import { GLYPH_NAMES, Icon } from '../../packages/ui/src/primitives/Icon.tsx';
+import { comparePng } from '../visual/compare.ts';
+import { eachGalleryView, WIDTHS } from '../visual/gallery-views.ts';
+import { specimens, type Specimens } from './mp-1-2-specimens.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const ui = `${root}packages/ui/`;
@@ -237,6 +240,35 @@ it('MP-1-2 WEB.md points to the licence records, not to #32', () => {
   expect(read(`${ui}src/surfaces/Shell.tsx`)).not.toMatch(/#32\b/u);
 });
 
-it.todo(
-  "MP-1-2 visual match: type and icon specimens at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on T4b1's signed-in fixture, the gallery asks for a session)",
-);
+// The mockup's three families by role (SHELL-2): headings, text and figures.
+const FAMILIES = { display: 'Funnel Display', text: 'Funnel Sans', mono: 'Chivo Mono' } as const;
+
+it('MP-1-2 visual match: type and icon specimens on the gallery at 1480, 900 and 390, light and dark, drawn in a browser in the mockup families and the licensed glyphs', async () => {
+  const views: { name: string; seen: Specimens; shot: Buffer }[] = [];
+  await eachGalleryView(async ({ width, theme, page, sideways }) => {
+    expect(sideways, `gallery@${width}-${theme} scrolls sideways`).toBe(0);
+    const seen = await page.evaluate(specimens, FAMILIES);
+    const shot = await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
+    views.push({ name: `gallery@${width}-${theme}`, seen, shot });
+  });
+  expect(views).toHaveLength(6);
+  for (const { name, seen } of views) {
+    expect(seen.families, name).toEqual(FAMILIES);
+    expect(seen.loaded, name).toEqual(Object.values(FAMILIES));
+    expect(seen.icons, `${name}: icons drawn`).toBeGreaterThan(20);
+    expect(seen.unlicensed, `${name}: an icon not from the licensed set`).toEqual([]);
+    expect(seen.undrawn, `${name}: an icon drawn at no size`).toEqual([]);
+    expect(seen.iconFonts, `${name}: an icon font or emoji`).toEqual([]);
+  }
+  for (const width of WIDTHS) {
+    const [light, dark] = ['light', 'dark'].map((t) =>
+      views.find((v) => v.name === `gallery@${width}-${t}`),
+    );
+    const same = comparePng(
+      `gallery@${width}`,
+      light?.shot ?? Buffer.alloc(0),
+      dark?.shot ?? Buffer.alloc(0),
+    );
+    expect(same.pass, `gallery@${width}: dark draws the same as light`).toBe(false);
+  }
+}, 600_000);

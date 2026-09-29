@@ -3,9 +3,11 @@
 //
 // MP-1-6: the not-connected and unavailable treatments, the freshness marker
 // as an indicator, and the pink mark kept for sample data only (R56, CS-1.4).
-// One test per supporting checklist line; the visual match waits for the
-// pages it names and T4b1's signed-in fixture (the harness, MP-1-7, is here).
+// One test per supporting checklist line. The visual match draws the gallery's
+// treatments in a real browser at three widths in both themes
+// (mp-1-6-gallery-treatments.ts); the pages the ticket names wait on their slices.
 
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
@@ -22,6 +24,9 @@ import {
 } from '../../packages/ui/src/kit/treatments.tsx';
 import { mount, type Mounted } from './mount.tsx';
 import { primitiveSheets } from '../support/primitive-sheets.ts';
+import type { TreatmentView } from './mp-1-6-gallery-treatments.ts';
+
+type TreatmentsReport = { views: TreatmentView[]; sameInDark: number[] };
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
@@ -180,6 +185,30 @@ it('MP-1-6 shown in its own unit on the component gallery', () => {
   ]);
 });
 
+it('MP-1-6 visual match: the treatments on the gallery at 1480, 900 and 390, light and dark, in a browser: not connected with its reason, the outline primary with its tooltip, the freshness marker an indicator, pink on sample data only', () => {
+  const script = new NodeURL('mp-1-6-gallery-treatments.ts', import.meta.url).pathname;
+  const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
+  expect(run.status, run.stderr.slice(-2000)).toBe(0);
+  const { views, sameInDark } = JSON.parse(run.stdout) as TreatmentsReport;
+  expect(views).toHaveLength(6);
+  for (const view of views) {
+    const width = Number(/@(\d+)-/u.exec(view.name)?.[1]);
+    expect(view.sideways, `${view.name} scrolls sideways`).toBe(0);
+    expect(view.unit.left, view.name).toBeGreaterThanOrEqual(0);
+    expect(view.unit.right, view.name).toBeLessThanOrEqual(width);
+    expect(view.notConnected, view.name).toEqual({ word: true, reason: true, hatch: 'none' });
+    expect(view.primary, view.name).toEqual({
+      disabled: true,
+      background: 'rgba(0, 0, 0, 0)',
+      border: '1px',
+      tip: 'Online payment is not available yet',
+    });
+    expect(view.markers, view.name).toEqual({ count: 5, buttons: 0, hoverDraws: [] });
+    expect(view.pink, view.name).toEqual(['Sample data, demo install only']);
+  }
+  expect(sameInDark, 'widths where the unit draws the same in dark').toEqual([]);
+}, 900_000);
+
 it.todo(
-  "MP-1-6 visual match: /clients/:client/account/ and an unconnected workbench tab at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those pages, MP-12-7 and the workbench slices, and T4b1's signed-in fixture)",
+  'MP-1-6 on the pages: /clients/:client/account/ and an unconnected workbench tab at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those pages, MP-12-7 and the workbench slices)',
 );
