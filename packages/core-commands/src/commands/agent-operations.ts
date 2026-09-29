@@ -13,6 +13,7 @@ import { READ_CATALOGUE } from '../reads/catalogue.ts';
 import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
 import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
+import { blockersOf, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
 import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
@@ -550,9 +551,12 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         const read = READ_CATALOGUE['task.read'].parse(request);
         return read.ok ? undefined : read.refusal;
       }),
-      serve: async (tx, _call, _operands, _delegation, taskId) => {
+      serve: async (tx, call, _operands, _delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
+        // The level the person read takes, already checked by its parse above.
+        const paging = parsePaging(call.request as unknown as Readonly<Record<string, unknown>>);
+        const level = isRefusal(paging) ? undefined : paging.detail;
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
           task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
@@ -570,9 +574,11 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
           throw cause;
         }
-        return task === undefined
-          ? NOT_FOUND()
-          : { recordId: task.id, revision: task.revision, detail: { task } };
+        if (task === undefined) return NOT_FOUND();
+        if (level === undefined)
+          return { recordId: task.id, revision: task.revision, detail: { task } };
+        const view = taskAt(level, task, await blockersOf(tx, task.id));
+        return { recordId: task.id, revision: task.revision, detail: { detail: level, view } };
       },
     }),
   ],
