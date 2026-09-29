@@ -313,6 +313,8 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     const decideAgain = await asAda(world, api, '/task/decide', journey.decideBody);
     expect(proposeAgain.code, 'replayed propose').toBe('ok');
     expect(decideAgain.code, 'replayed decide').toBe('ok');
+    expect(proposeAgain.text, 'replayed propose').toBe(journey.receipts.propose);
+    expect(decideAgain.text, 'replayed decide').toBe(journey.receipts.decide);
     expect(await identities(world)).toStrictEqual(before);
     report('http replays', [
       `propose ${String(proposeAgain.status)}`,
@@ -321,9 +323,6 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
   });
 
   it('CQ-14 replay byte for byte: each replay after the restarts answers its pre-restart receipt', async () => {
-    const receipts = (journey as Journey & { readonly receipts?: Readonly<Record<string, string>> })
-      .receipts;
-    expect(receipts, 'the answers kept before the restart').toBeDefined();
     const replays = {
       propose: await asAda(world, api, '/task/propose', journey.proposeBody),
       decide: await asAda(world, api, '/task/decide', journey.decideBody),
@@ -333,7 +332,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       }),
     };
     for (const [operation, replay] of Object.entries(replays)) {
-      expect((replay as { readonly text?: string }).text, operation).toBe(receipts?.[operation]);
+      expect(replay.text, operation).toBe(journey.receipts[operation as keyof Journey['receipts']]);
     }
     expect(await identities(world)).toStrictEqual(before);
     report('http replays byte for byte', Object.keys(replays));
@@ -372,6 +371,7 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
       reservationId: journey.reservationId,
     });
     expect(replayed.code, 'replayed pickup').toBe('ok');
+    expect(replayed.text, 'replayed pickup').toBe(journey.receipts.pickup);
     expect(await countLeases(world, journey.reservationId)).toBe(leases);
     const handback = {
       leaseId: journey.leaseId,
@@ -484,6 +484,8 @@ describe.skipIf(serverUrl === undefined || !asked)('W06 over HTTP after a real r
     expect(await versionsOf()).toBe('1,2');
     const again = await asAda(world, api, '/task/propose', body);
     expect(again.code, 'replayed version 2').toBe('ok');
+    // Proposed after the restart, so no pre-restart receipt: the replay carries its content.
+    expect(JSON.parse(again.text), 'replayed version 2').toStrictEqual(v2.body);
     expect(await versionsOf(), 'no duplicate version').toBe('1,2');
     report('http request changes round', [
       `versions ${await versionsOf()}`,

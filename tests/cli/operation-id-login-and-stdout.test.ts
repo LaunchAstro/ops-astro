@@ -9,12 +9,12 @@
 //    retries; `docs/local/RUNTIME.md`, a lost pickup answered again).
 //  - **R1-SURFACE-39.** `login` at a terminal prompts for the password with
 //    echo off, as `docs/local/CLI.md` reads ("When unset, the first line of
-//    stdin"). The terminal is a pseudo-terminal from `script(1)`.
+//    stdin"). The terminal is a pseudo-terminal from Python's `pty` module.
 //  - **R1-SURFACE-40.** `pnpm cli` prints one JSON value on stdout and nothing
 //    of its own, so it pipes to `jq`; and the check bites when something ahead
 //    of the entry writes a line.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -164,20 +164,44 @@ describe('a write with no answer or a fault names the operationId it was sent wi
 });
 
 /**
- * `script(1)` gives the command a pseudo-terminal; its flags differ by platform.
- * `cat` puts a real pipe in front of it: macOS `script` refuses the socket
- * pair Node hands a child as stdin.
+ * The system Python at a fixed path, checked once, gives the command a
+ * pseudo-terminal through its `pty` module. The command's arguments reach
+ * `os.execv` as they are, with no shell between (CodeQL alert 10). The relay
+ * copies stdin to the terminal and the terminal to stdout until the command
+ * exits, then exits with its code. `pty.spawn` is not used: on macOS it waits
+ * for an end of file the terminal never sends once the command has gone.
  */
+const PYTHON = '/usr/bin/python3';
+const RELAY = `import os, pty, select, sys
+pid, tty = pty.fork()
+if pid == 0:
+    os.execv(sys.argv[1], sys.argv[1:])
+route = {0: tty, tty: 1}
+done = 0
+while tty in route:
+    ready = select.select([tty] if done else list(route), [], [], 0 if done else 0.05)[0]
+    if done and not ready:
+        break
+    for fd in ready:
+        try:
+            data = os.read(fd, 4096)
+        except OSError:
+            data = b''
+        if data:
+            os.write(route[fd], data)
+        else:
+            del route[fd]
+    if not done:
+        done, status = os.waitpid(pid, os.WNOHANG)
+if not done:
+    done, status = os.waitpid(pid, 0)
+sys.exit(os.waitstatus_to_exitcode(status))
+`;
+const PTY_READY =
+  existsSync(PYTHON) && spawnSync(PYTHON, ['-c', 'import pty'], { stdio: 'ignore' }).status === 0;
+
 function underTerminal(command: readonly string[]): readonly string[] | undefined {
-  if (!existsSync('/usr/bin/script')) return undefined;
-  if (process.platform === 'darwin') {
-    return ['/bin/sh', '-c', 'cat | exec /usr/bin/script -q /dev/null "$@"', 'sh', ...command];
-  }
-  if (process.platform === 'linux') {
-    const quoted = command.map((part) => `'${part.replaceAll("'", String.raw`'\''`)}'`).join(' ');
-    return ['/bin/sh', '-c', 'cat | exec /usr/bin/script -qec "$1" /dev/null', 'sh', quoted];
-  }
-  return undefined;
+  return PTY_READY ? [PYTHON, '-c', RELAY, ...command] : undefined;
 }
 
 const TERMINAL = underTerminal(['node']) !== undefined;
@@ -252,7 +276,7 @@ describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
-      recordPid('sh script cli login', child.pid);
+      recordPid('terminal cli login', child.pid);
       let screen = '';
       let typed = false;
       child.stdout.on('data', (chunk: Buffer) => {
