@@ -135,4 +135,42 @@ describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
     const agentList = await agent.run('task', 'list', '--detail', 'brief', '--json');
     clean('agent list', agentList.out);
   });
+
+  it('API-3 isolation: a blocker the reader may not read is withheld, never named', async () => {
+    const lead0 = await w.person(lead);
+    const hidden = idOf(await lead0.run('task', 'create', '--title', 'canary-hidden-blocker'));
+    const mine = idOf(await lead0.run('task', 'create', '--title', 'scoped task'));
+    const link = async (id: string) =>
+      await lead0.run(
+        'task',
+        'link',
+        id,
+        '--revision',
+        String(await w.revisionOf(id)),
+        '--blocked-by',
+        hidden,
+      );
+    expect((await link(mine)).exit).toBe(0);
+    const scoped = await w.person(
+      await w.member('only-mine', ['read'], { kind: 'record', id: mine }),
+    );
+    const picked = await w.pickUp(await w.decider('blocker-delegator'), 'agent blocked task');
+    expect((await link(picked.taskId)).exit).toBe(0);
+    const agent = await w.agent(picked.credential);
+    for (const [who, answer] of [
+      ['scoped standard', await scoped.run('task', 'get', mine, '--json')],
+      ['scoped full', await scoped.run('task', 'get', mine, '--detail', 'full', '--json')],
+      ['agent standard', await agent.run('task', 'get', picked.taskId, '--json')],
+      ['agent full', await agent.run('task', 'get', picked.taskId, '--detail', 'full', '--json')],
+    ] as const) {
+      expect(answer.exit, `${who}: ${answer.out}`).toBe(0);
+      expect(answer.out, who).not.toContain(hidden);
+      expect(JSON.parse(answer.out) as Record<string, unknown>, who).toHaveProperty(
+        'blockersWithheld',
+        1,
+      );
+    }
+    // The lead, who may read it, is shown it.
+    expect((await lead0.run('task', 'get', mine, '--json')).out).toContain(hidden);
+  });
 });
