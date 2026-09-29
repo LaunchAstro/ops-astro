@@ -19,7 +19,7 @@ import {
   withdrawEndedGates,
 } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { clearingWorld, decideBody, ok } from './inbox-clearing-world.ts';
+import { clearingWorld, decideBody, detailOf, ok } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -119,12 +119,25 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
         w.writerToken,
       ),
     );
-    // Business to business: w.bravo cannot clear alpha's items, nor see them.
+    const decided = detailOf(ok(await w.call('task.decide', decideBody(onA), w.reviewerToken)));
+    const real = { gateId: onA.gateId, decisionId: String(decided['decisionId']) };
+
+    // Business to business, against a real committed decision: an item still
+    // open on alpha's decided gate cannot be cleared from bravo's transaction,
+    // which sees neither the decision nor the item, and the same call from
+    // alpha's own transaction clears it.
+    const late = await w.fixture.db.app.withBusiness(
+      w.fixture.business,
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: w.fixture.member.personId,
+          subjectRecordId: onA.task.id,
+          reason: 'decision',
+          fact: { kind: 'gate', id: onA.gateId },
+        }),
+    );
     await expect(
-      w.fixture.db.app.withBusiness(
-        w.bravo,
-        async (tx) => await clearDecision(tx, { gateId: onA.gateId, decisionId: randomUUID() }),
-      ),
+      w.fixture.db.app.withBusiness(w.bravo, async (tx) => await clearDecision(tx, real)),
     ).rejects.toThrow(/no decision/u);
     expect(
       await w.fixture.db.app.withBusiness(
@@ -132,10 +145,24 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
         async (tx) => await readInboxItems(tx, w.bravoPerson),
       ),
     ).toStrictEqual([]);
-
-    ok(await w.call('task.decide', decideBody(onA), w.reviewerToken));
+    const lateState = async (): Promise<string | undefined> =>
+      (
+        await w.fixture.db.admin.execute<{ work_state: string }>(
+          'select work_state from public.inbox_items where id = $1',
+          [late],
+        )
+      )[0]?.work_state;
+    expect(await lateState()).toBe('open');
+    expect(
+      await w.fixture.db.app.withBusiness(
+        w.fixture.business,
+        async (tx) => await clearDecision(tx, real),
+      ),
+    ).toBe(1);
+    expect(await lateState()).toBe('cleared');
 
     expect((await w.itemsOnFact(onA.gateId)).map((i) => i.work_state)).toStrictEqual([
+      'cleared',
       'cleared',
       'cleared',
     ]);
