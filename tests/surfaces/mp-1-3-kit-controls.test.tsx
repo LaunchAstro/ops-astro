@@ -99,6 +99,10 @@ it('MP-1-3 button with its variants', () => {
   expect(primaryDisabled).toMatch(/color:\s*var\(--text-muted\)/u);
   // Secondary inverts to an ink fill on hover; primary hover is the accent.
   expect(rule('.btn--secondary:hover:not(:disabled)')).toMatch(/background:\s*var\(--text\)/u);
+  // The mockup's outline strength: full ink on light, on-dark at 55% in dark
+  // (--btn-outline); hover brings the border up to the ink it fills with.
+  expect(rule('.btn')).toMatch(/border:\s*1px solid var\(--btn-outline\)/u);
+  expect(rule('.btn--secondary:hover:not(:disabled)')).toMatch(/border-color:\s*var\(--text\)/u);
   expect(rule('.btn--primary:hover:not(:disabled)')).toMatch(/background:\s*var\(--accent\)/u);
   // DR-1: one focus ring, the global one; no button draws its own outline.
   expect(sheet).not.toMatch(/\.btn[^{]*:focus[^{]*\{[^}]*outline:\s*(?!none)/u);

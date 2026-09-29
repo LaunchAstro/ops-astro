@@ -62,6 +62,9 @@ it('MP-1-3 chip with its variants', async () => {
   expect(removed).toBe(true);
   // DR-29: chips are pills everywhere, filter tags included.
   expect(rule('.chip')).toMatch(/border-radius:\s*var\(--radius-pill\)/u);
+  // The mockup's box: its line and padding set the height (19.6 px), not a fixed 20.
+  expect(rule('.chip')).not.toMatch(/(?:^|[\s;])height:/u);
+  expect(rule('.chip')).toMatch(/padding:\s*3\.3px 8\.25px/u);
   expect(rule('.chip--filter')).not.toMatch(/border-radius/u);
   expect(rule('.chip--suggestion:hover')).toMatch(/border-color:\s*var\(--accent\)/u);
   // The one pill: the unused Hub pill class is gone.
