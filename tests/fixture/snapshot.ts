@@ -31,8 +31,10 @@ const serverUrl = databaseUrlFromEnvironment() ?? '';
 
 /**
  * A template copy, or, while anything is connected to the template (55006),
- * a dump and restore inside the local server's container (RN-09). Names go
- * in as positional arguments, never into the shell text.
+ * a dump and restore inside the local server's container (RN-09). That
+ * container is `FIXTURE_PG_CONTAINER`, and the copy refuses one that is not
+ * DATABASE_URL's own server. Names go in as positional arguments, never into
+ * the shell text.
  */
 async function copy(target: string): Promise<string> {
   const via = await copyData(target);
@@ -71,13 +73,32 @@ async function copyData(target: string): Promise<string> {
   }
   const user = decodeURIComponent(new URL(serverUrl).username);
   const container = process.env['FIXTURE_PG_CONTAINER'] ?? 'ops-astro-local-pg';
-  const script =
-    'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"';
-  const args = ['exec', container, 'sh', '-c', script, 'copy', user, template, target];
-  const run = spawnSync('docker', args, { stdio: ['ignore', 'ignore', 'inherit'] });
-  if (run.status !== 0) throw new Error(`fixture: dump and restore failed (${String(run.status)})`);
+  const [{ identity } = { identity: '' }] = await server.execute<{ identity: string }>(IDENTITY);
+  // The container proves it runs DATABASE_URL's server before it creates
+  // anything, asking over the socket the copy then uses.
+  const script = [
+    '[ "$(psql -U "$1" -d postgres -XAtc "$5")" = "$4" ] || {',
+    '  printf "fixture: container %s is not the DATABASE_URL server;' +
+      ' set FIXTURE_PG_CONTAINER to its container. Nothing was created." "$6" >&2; exit 1; }',
+    'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"',
+  ].join('\n');
+  const positional = [user, template, target, identity, IDENTITY, container];
+  const args = ['exec', container, 'sh', '-c', script, 'copy', ...positional];
+  const run = spawnSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
+  if (run.status !== 0) {
+    // A docker that never started has no stderr to read.
+    const why = (run.stderr as string | null)?.trim() ?? '';
+    throw new Error(`fixture: dump and restore failed (${String(run.status)})${why && `: ${why}`}`);
+  }
   return 'dump-restore';
 }
+
+/**
+ * A server's identity: its cluster's system identifier and the start of its
+ * postmaster. A copy of the cluster shares the first; its start tells them apart.
+ */
+const IDENTITY = `select system_identifier::text || '|' ||
+  extract(epoch from pg_postmaster_start_time())::text as identity from pg_control_system()`;
 const server = connectAsAdmin(serverUrl, { source: 'harness' });
 const [verb, target] = process.argv.slice(2);
 try {

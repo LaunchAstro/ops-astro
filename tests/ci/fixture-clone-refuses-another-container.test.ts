@@ -4,7 +4,9 @@
 // Pointed at a container that runs another server, the clone refuses, names
 // the container and the variable, and creates nothing on either server. The
 // case needs a second throwaway server: FIXTURE_PROOF_OTHER_URL, with
-// FIXTURE_PG_CONTAINER naming that server's container.
+// FIXTURE_PG_CONTAINER naming that server's container. Run it one file at a
+// time (--no-file-parallelism) beside the other suites that hold a reader on
+// the template: they share its one name, and each makes and drops it.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
