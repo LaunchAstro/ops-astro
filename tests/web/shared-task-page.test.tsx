@@ -184,6 +184,7 @@ describe('the task page for a member', () => {
         history: [],
         comments: [CLIENT_COMMENT],
         proposals: [],
+        board: null,
       },
     });
     const page = await mount(screen(api.fetch));

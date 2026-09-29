@@ -204,18 +204,19 @@ describe.skipIf(serverUrl === undefined)('MP-4-1 the board on the task read', ()
       expect(board).toStrictEqual({ readable: false });
       expect(body).not.toContain(CANARY);
       expect(body).not.toContain(ids['secret']);
+      // The board itself is refused to this reader, so the crumb said no more
+      // than the refusal does.
       const direct = await read(alpha, clientAViewer, ids['secret'] ?? '');
-      expect(isCommandRefusal(direct) ? direct.code : 'answered').toBe('NOT_FOUND');
+      expect(isCommandRefusal(direct) ? direct.code : 'answered').toBe('SCOPE_NOT_GRANTED');
       expect(JSON.stringify(direct)).not.toContain(CANARY);
     });
 
-    it('a record grant on the task alone reaches the task, never its board', async () => {
-      // The same reader holds the Website board; the secret board beside it
-      // stays withheld, so the answer is per board and not per reader.
+    it('a reader holding one board is told that one only, per board and not per reader', async () => {
       const { board } = await boardOf(alpha, boardReader, ids['onWebsite'] ?? '');
       expect(board).toStrictEqual({ readable: true, title: 'Website Projects' });
       const refused = await read(alpha, boardReader, ids['onSecret'] ?? '');
-      expect(isCommandRefusal(refused) ? refused.code : 'answered').toBe('NOT_FOUND');
+      expect(isCommandRefusal(refused) ? refused.code : 'answered').toBe('SCOPE_NOT_GRANTED');
+      expect(JSON.stringify(refused)).not.toContain(CANARY);
     });
   });
 });

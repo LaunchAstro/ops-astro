@@ -104,10 +104,23 @@ browser.
 | `/sign-in`   | Credentials and the business selector                                                            |
 | `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
 | `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
+| `/task/`     | No task named: says so and offers the board (MP-4-1), and reads nothing                          |
 | `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
+
+The task page's header (`screens/task/Header.tsx`, MP-4-1) is the crumb
+("Projects →", the board `task.read` names, the key, the state), Copy link,
+the title and the run line. Copy link copies this origin plus `/task/<key>`,
+shows its tick for 1.2 s only after the clipboard said yes, and says so in
+words, with the address, when it said no or there is no clipboard. The run
+line counts the attempts on the task's proposals: `Attempt N · running`
+while one is reserved or dispatched, `Attempt N · finished` once all have
+ended, and "No agent has worked on this task" with none. An id `task.read`
+refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
+typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
+any other refusal is the denied state. Neither draws another task.
 
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"

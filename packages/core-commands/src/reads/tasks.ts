@@ -32,6 +32,7 @@ import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
+import { readBoardCrumb } from './board-crumb.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -49,6 +50,7 @@ interface TaskRowRead {
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
   readonly ad_hoc: boolean | null;
+  readonly board_id: string | null;
 }
 
 // The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
@@ -76,7 +78,8 @@ const SELECT = `
          s.data ->> 'machine_category' as state_machine_category,
          p.id as assignee_id,
          p.display_name as assignee_name,
-         r.bool_2 as ad_hoc
+         r.bool_2 as ad_hoc,
+         r.uuid_5 as board_id
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
@@ -262,7 +265,7 @@ export async function readTaskDetail(
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
     adHoc: row.ad_hoc === true,
     clientAccess: (await outsideHolders(tx, row.id)).length > 0,
-    board: null,
+    board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
   };
 }
 

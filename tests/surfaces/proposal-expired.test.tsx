@@ -70,6 +70,7 @@ function server(gate: { readonly state: string; readonly expired: boolean }) {
     completedAt: null,
     revision: 3,
     history: [],
+    board: null,
     comments: [],
     proposals: [
       { lineageId: 'l-1', state: 'live', versions: [version], decisions: [], reservations: [] },
