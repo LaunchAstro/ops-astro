@@ -1180,8 +1180,9 @@ direct SQL.
   (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry. A
   changed set there fails the start. `task.cancel` holds the canceller's
   covering grants for share before its runtime set, as decide and pickup do,
-  and re-reads `write` on the task at the locked instant before its first write
-  (`holdCoveringGrants` and `checkAuthorityAt` in `cancelAndClassify`). A
+  and re-reads `write`, and for `task.cancel` `decide` (T3a), on the task at
+  the locked instant before its first write (`holdCoveringGrants` and
+  `checkAuthorityAt` in `cancelAndClassify`). A
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
   commit (`tests/runtime/final-r2-fr2-runtime.test.ts`).

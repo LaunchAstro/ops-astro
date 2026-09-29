@@ -394,6 +394,18 @@ export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Which own row a table's copy case re-sends, where any row would not do.
+ * A version re-sent into a terminal lineage is refused by 0036 (T3a), which
+ * is that migration's rule and not this suite's question, so the copy is a
+ * version on a live lineage.
+ */
+const OWN_ROW_FILTERS: Readonly<Record<string, string>> = {
+  'public.proposal_versions': `and exists (select 1 from public.proposal_lineages l
+                                   where l.business_id = t.business_id and l.id = t.lineage_id
+                                     and l.state = 'live')`,
+};
+
+/**
  * A whole row of the own business, re-sent as it stands. Unlike the bare
  * insert it satisfies every column constraint, so what refuses it from another
  * tenant is the tenancy check (or the trigger above), never a missing value.
@@ -408,7 +420,8 @@ export async function ownRowJson(
   business: string,
 ): Promise<string | undefined> {
   const rows = await admin.execute<{ j: string }>(
-    `select row_to_json(t)::text as j from ${table.qualified} t where business_id = $1 limit 1`,
+    `select row_to_json(t)::text as j from ${table.qualified} t where business_id = $1
+       ${OWN_ROW_FILTERS[table.qualified] ?? ''} limit 1`,
     [business],
   );
   return rows[0]?.j;
