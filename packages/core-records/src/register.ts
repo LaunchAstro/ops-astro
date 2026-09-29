@@ -622,6 +622,22 @@ const ROWS = [
     source: 'T2 T2c1',
     runtime: true,
   },
+  // T2c2: an effect is applied only after its dispatch mark, and observed only
+  // once the operation register holds it (`core-runtime/src/observe.ts`).
+  {
+    code: 'EFFECT_NOT_DISPATCHED',
+    status: 409,
+    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
+    source: 'T2 T2c2',
+  },
+  {
+    code: 'EFFECT_NOT_OBSERVED',
+    status: 409,
+    meaning:
+      'The operation register holds no applied effect for this attempt, so nothing is observed',
+    source: 'T2 T2c2',
+    runtime: true,
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */

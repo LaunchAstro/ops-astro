@@ -166,7 +166,7 @@ export function agentAnswer(
 }
 
 const OUTSIDE_FIXES: readonly string[] = [
-  'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, propose, heartbeat, dispatch, handback and its capabilities.',
+  'An agent reaches the queue and a pickup, then, under the delegation the pickup gave it, its own task: read, comment, propose, heartbeat, dispatch, observe, handback and its capabilities.',
   'Every other operation belongs to a person.',
 ];
 

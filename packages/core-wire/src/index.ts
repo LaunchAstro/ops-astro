@@ -9,6 +9,8 @@
 export {
   COMMAND_SURFACE,
   declarationOf,
+  effectAttemptOf,
+  effectOperationId,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,

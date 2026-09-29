@@ -15,11 +15,11 @@
 // trip through `jsonb` unchanged.
 
 import { randomUUID } from 'node:crypto';
-import { AffectedSetChanged } from '../../../core-runtime/src/index.ts';
+import { AffectedSetChanged, type AppliedEffect } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { isCommandRefusal, type CommandRefusal } from './refusal.ts';
 import { storable } from './audit.ts';
-import type { CommandName } from '../../../core-wire/src/index.ts';
+import { effectOperationId, type CommandName } from '../../../core-wire/src/index.ts';
 
 /** What a caller gets when a command applies: a durable handle, never a record. */
 export interface CommandHandle {
@@ -64,6 +64,29 @@ export async function lookupAttempt(
     [tx.businessId, actorId, operationId],
   );
   return rows[0];
+}
+
+/**
+ * Did the attempt's effect happen? The register answers: the comment `actorId`
+ * applied under the identity derived from the attempt (T2c2), or nothing. A
+ * refused attempt under that identity is not an effect.
+ */
+export async function lookupEffect(
+  tx: TenantQuery,
+  actorId: string,
+  attemptId: string,
+): Promise<AppliedEffect | undefined> {
+  const operationId = effectOperationId(attemptId);
+  const rows = await tx.query<{ readonly task_id: string; readonly comment_id: string | null }>(
+    `select record_id as task_id, result -> 'detail' ->> 'commentId' as comment_id
+       from operations
+      where business_id = $1 and actor_id = $2 and operation_id = $3
+        and command = 'task.comment' and outcome = 'applied'`,
+    [tx.businessId, actorId, operationId],
+  );
+  const row = rows[0];
+  if (row === undefined || row.comment_id === null) return undefined;
+  return { operationId, taskId: row.task_id, commentId: row.comment_id };
 }
 
 /** Record the attempt, whatever it came to. There is no update path. */

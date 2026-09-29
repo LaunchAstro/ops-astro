@@ -36,6 +36,7 @@ import type {
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
+import type { Receipt } from '../../../core-runtime/src/index.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -99,6 +100,8 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** What an observed effect came from, asked on its attempt (T2c2). */
+  readonly 'task.receipt': { readonly attemptId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -123,4 +126,5 @@ export type ReadResult =
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
+  | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult;

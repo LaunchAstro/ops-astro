@@ -98,7 +98,11 @@ export type CommandName =
   | 'task.restart'
   | 'task.heartbeat'
   // The lease holder marks its step dispatched before any effect (T2c1).
-  | 'task.dispatch';
+  | 'task.dispatch'
+  // The lease holder observes its applied effect, and a person reads the
+  // receipt citing the decision it came from (T2c2).
+  | 'task.observe'
+  | 'task.receipt';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -348,6 +352,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  'task.observe': { leaseId: 'any', recordId: 'any', fence: 'any', attemptId: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -496,6 +501,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  // The effect's token is the attempt its dispatch answered; the runtime reads
+  // the operation register for the effect under the lease's own locks (T2c2).
+  declare('task.observe', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId', 'attemptId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // What an observed effect came from, asked on the attempt and checked on
+  // its task; it names no operation to reverse it (T2c2).
+  read('task.receipt', TASK_COLLECTION, { authorisedOn: 'record' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -548,6 +565,21 @@ export const CONTRACT_NINE: readonly CommandName[] = [
   'task.pickup',
   'task.handback',
 ];
+
+/**
+ * The operation identity of an attempt's one effect, derived from the attempt
+ * so a retry replays it and "did it happen?" is the register's answer (T2c2).
+ * The worker and the server derive it here, from one spelling.
+ */
+export function effectOperationId(attemptId: string): string {
+  return `effect:${attemptId}`;
+}
+
+/** The attempt an effect identity names, or `undefined` for any other identity. */
+export function effectAttemptOf(operationId: string): string | undefined {
+  const found = /^effect:([0-9a-f-]{36})$/u.exec(operationId);
+  return found?.[1];
+}
 
 /** The path the HTTP boundary and the command line both derive from the name. */
 export function pathOf(name: CommandName): string {

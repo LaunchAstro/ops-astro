@@ -30,6 +30,7 @@ import {
 import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from './tasks-pickup.ts';
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { dispatchLease } from './tasks-dispatch.ts';
+import { observeLease } from './tasks-observe.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
@@ -336,7 +337,7 @@ async function serveComment(
   tx: TenantQuery,
   { session, request, declaration }: AgentCall,
   _operands: NoOperands,
-  _delegation: Delegation,
+  delegation: Delegation,
   taskId: string | undefined,
 ) {
   // The agent's own picked-up task: `authorise` has already held the
@@ -358,6 +359,8 @@ async function serveComment(
       authorActorId: session.actorId,
       entryPoint: 'api',
       audiences: AGENT_AUDIENCES,
+      operationId: String(request['operationId']),
+      delegationId: delegation.id,
     },
     request['body'],
     request['audience'],
@@ -500,6 +503,25 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         await dispatchLease(
           tx,
           { leaseId: request['leaseId'], fence: request['fence'] },
+          {
+            actorId: session.actorId,
+            delegationId: delegation.id,
+            collection: declaration.collection,
+          },
+        ),
+    }),
+  ],
+  [
+    'task.observe',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request, declaration }, _operands, delegation) =>
+        await observeLease(
+          tx,
+          { leaseId: request['leaseId'], fence: request['fence'], attemptId: request['attemptId'] },
           {
             actorId: session.actorId,
             delegationId: delegation.id,

@@ -8,11 +8,12 @@
 // `task.pickup` and `task.handback` against these names, so a later
 // rearrangement inside this package is not a change to what it imports.
 //
-// Dispatch marks a step (T2c1, `dispatch.ts`); no path here applies an effect
-// or makes a provider call. `RuntimeRefusalCode` is read off the refusal
-// register's rows marked `runtime` (`core-records/src/register.ts`) and passed
-// on here with `SUGGESTED_STATUS`, a view of the same rows' statuses that the
-// tests read.
+// Dispatch marks a step (T2c1, `dispatch.ts`) and observe records the effect the
+// worker applied through its owning operation (T2c2, `observe.ts`); no path
+// here applies an effect or makes a provider call. `RuntimeRefusalCode` is read
+// off the refusal register's rows marked `runtime` (`core-records/src/register.ts`)
+// and passed on here with `SUGGESTED_STATUS`, a view of the same rows' statuses
+// that the tests read.
 
 export {
   lockProposal,
@@ -33,6 +34,8 @@ export {
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
+export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {

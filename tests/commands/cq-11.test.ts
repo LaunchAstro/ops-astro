@@ -122,6 +122,8 @@ describe('CQ-11 the tree', () => {
         authorActorId: randomUUID(),
         entryPoint: 'api',
         audiences: new Set(['internal', 'client']),
+        operationId: randomUUID(),
+        delegationId: null,
       },
       'a body',
       'internal',
