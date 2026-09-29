@@ -48,7 +48,13 @@ export interface ConversationWorld {
   readonly drop: () => Promise<void>;
 }
 
-const WRITES = new Set(['conversation.start', 'conversation.message', 'task.create']);
+const WRITES = new Set([
+  'conversation.start',
+  'conversation.message',
+  'conversation.rename',
+  'conversation.set_scope',
+  'task.create',
+]);
 
 const bodyOf = (name: string, body: Record<string, unknown>): Record<string, unknown> =>
   WRITES.has(name) ? { operationId: randomUUID(), ...body } : body;
