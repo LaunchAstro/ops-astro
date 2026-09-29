@@ -84,6 +84,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
         PATH: process.env['PATH'] ?? '',
         DATABASE_URL: database.appUrl,
         DATABASE_ADMIN_URL: adminUrl,
+        LOCAL_SEED_MADE_UP: 'confirm',
         GOTRUE_URL: 'http://127.0.0.1:9',
       },
     });
@@ -125,6 +126,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
     mkdirSync(join(root, 'scripts'));
     mkdirSync(join(root, '.local'));
     copyFileSync(join(repo, 'scripts/local-seed.mjs'), join(root, 'scripts/local-seed.mjs'));
+    symlinkSync(join(repo, 'scripts/ops'), join(root, 'scripts/ops'));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
     symlinkSync(join(repo, 'node_modules'), join(root, 'node_modules'));
 
@@ -225,6 +227,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
           PATH: process.env['PATH'] ?? '',
           DATABASE_URL: database.appUrl,
           DATABASE_ADMIN_URL: adminUrl,
+          LOCAL_SEED_MADE_UP: 'confirm',
           GOTRUE_URL: 'http://127.0.0.1:9',
         },
       });

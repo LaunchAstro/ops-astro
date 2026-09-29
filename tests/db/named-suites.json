@@ -75,6 +75,7 @@
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked."
   ],
   "invariant": [
+    "tests/ci/staging-no-production-data.test.ts",
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/tenancy/migration-prefixes.test.ts",
     "tests/identity/agent-delegation.test.ts",

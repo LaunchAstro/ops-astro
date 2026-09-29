@@ -18,7 +18,7 @@ bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
 bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
 node scripts/local/auth-seed.mjs   # the five synthetic logins
-node scripts/local-seed.mjs        # SLICE-DATA: businesses, persons, logins, grants
+node scripts/local-seed.mjs        # SLICE-DATA grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```
