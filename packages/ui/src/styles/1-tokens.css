@@ -151,7 +151,7 @@
   /* The page gutter. */
   --pad-x: clamp(20px, 3.2vw, 32px);
 
-  /* -- Type. Three families, named and never vendored. ------------------- */
+  /* -- Type. Three families, loaded by 0-fonts.css. ----------------------- */
   --font-display: 'Funnel Display', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-sans: 'Funnel Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Chivo Mono', ui-monospace, SFMono-Regular, monospace;
@@ -175,6 +175,14 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+
+  /* -- Icon sizes (DS-TOK-102 to DS-TOK-106). A door mark is sized from
+        its host's text. ------------------------------------------------------ */
+  --icon-xs: 8px;
+  --icon-sm: 12px;
+  --icon-md: 16px;
+  --icon-lg: 24px;
+  --icon-door: 0.85em;
 
   /* -- Layout. The rail's own ground is a quiet step off the page so the
         sidebar reads as furniture rather than paper. ---------------------- */

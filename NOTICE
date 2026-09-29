@@ -64,3 +64,26 @@ its licence and the path it sits at, in the same commit that adds it.
              this repository does not vendor.
          .claude/skills/_shared/ is written by this repository and is not
          third-party material.
+
+4. Funnel Display, Funnel Sans and Chivo Mono, the interface's fonts
+   Path: installed as @fontsource/funnel-display, @fontsource/funnel-sans
+         and @fontsource/chivo-mono 5.3.0 (packages/ui/package.json);
+         licence texts at packages/ui/assets/licences/OFL-*.txt
+   Copyright: 2023 The Funnel Project Authors; 2018 The Chivo Project
+              Authors
+   Licence: SIL Open Font License, Version 1.1
+   Source: https://github.com/Dicotype/Funnel,
+           https://github.com/Omnibus-Type/Chivo
+   Note: bundled into the web build with the licence texts beside them.
+         Recorded with every other bundled interface asset in
+         packages/ui/assets/licences.json.
+
+5. Lucide icons
+   Path: installed as lucide-react 1.47.0 (packages/ui/package.json);
+         licence text at packages/ui/assets/licences/ISC-lucide.txt
+   Copyright: 2026 Lucide Icons and Contributors; parts from the Feather
+              project, as that text says
+   Licence: ISC (the Feather-derived icons: MIT, in the same text)
+   Source: https://lucide.dev
+   Note: replaces the mockup's icon font, whose licence does not pass on.
+         Recorded in packages/ui/assets/licences.json.

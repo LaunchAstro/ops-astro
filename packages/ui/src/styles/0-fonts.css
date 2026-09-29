@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/*
+ * The interface's three families (MP-1-2; TOKENS.md DS-TOK-28 to DS-TOK-30),
+ * from pinned OFL-1.1 packages, Latin faces only, in exactly the weights the
+ * tokens use: Funnel Display 400 to 700, Funnel Sans 400 to 600, Chivo Mono
+ * 300 to 500. No italic is drawn anywhere, so none is loaded. Each face uses
+ * `font-display: swap`, so text shows in the fallback stack until it arrives.
+ * The licence texts and the record are in packages/ui/assets.
+ */
+@import '@fontsource/funnel-display/latin-400.css';
+@import '@fontsource/funnel-display/latin-500.css';
+@import '@fontsource/funnel-display/latin-600.css';
+@import '@fontsource/funnel-display/latin-700.css';
+@import '@fontsource/funnel-sans/latin-400.css';
+@import '@fontsource/funnel-sans/latin-500.css';
+@import '@fontsource/funnel-sans/latin-600.css';
+@import '@fontsource/chivo-mono/latin-300.css';
+@import '@fontsource/chivo-mono/latin-400.css';
+@import '@fontsource/chivo-mono/latin-500.css';
