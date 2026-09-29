@@ -1810,12 +1810,26 @@
   margin: var(--s-3) 0 0;
   padding: 0 var(--s-4);
 }
+/* At phone width a stage takes two rows: its label and value, then its
+   true-scale shape across the full width, never hidden. */
 @media (width <= 640px) {
   .funnel__step {
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label val'
+      'shape shape';
+    row-gap: var(--s-1);
+    padding-block: var(--s-2);
+  }
+  .funnel__label {
+    grid-area: label;
+  }
+  .funnel__val {
+    grid-area: val;
   }
   .funnel__shape {
-    display: none;
+    grid-area: shape;
+    min-height: 1.5rem;
   }
 }
 

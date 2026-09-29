@@ -62,8 +62,18 @@ const toneOf = (tone: ChartTone | undefined, index: number): ChartTone =>
 
 // -- Numbers ------------------------------------------------------------------
 
-/** A number with no more than `places` decimals and no trailing zeros. */
-const trim = (value: number, places: number): string => String(Number(value.toFixed(places)));
+/** A number with no more than `places` decimals and no trailing zeros, never in exponent form. */
+function trim(value: number, places: number): string {
+  const fixed = value.toFixed(Math.min(places, 100));
+  const text = fixed.includes('.') ? fixed.replace(/\.?0+$/u, '') : fixed;
+  return text === '-0' ? '0' : text;
+}
+
+/** How many decimals a value needs, read from its exponent so 2.5e-8 needs nine. */
+function decimalsOf(value: number): number {
+  const [mantissa = '', exponent = '0'] = Number(value.toPrecision(12)).toExponential().split('e');
+  return Math.max(0, (mantissa.split('.')[1]?.length ?? 0) - Number(exponent));
+}
 
 /**
  * Round gridline values from `lo` to at least `hi`: about `count` steps of 1, 2,
@@ -104,7 +114,7 @@ export function formatTick(
   const largest = Math.max(...ticks.map((t) => Math.abs(t)));
   const [scale, suffix] = largest >= 1e6 ? [1e6, 'M'] : largest >= 1e3 ? [1e3, 'k'] : [1, ''];
   const step = ticks.length > 1 ? Math.abs((ticks[1] ?? 0) - (ticks[0] ?? 0)) / scale : 1;
-  const places = String(Number(step.toPrecision(12))).split('.')[1]?.length ?? 0;
+  const places = decimalsOf(step);
   const text = tick === 0 ? '0' : `${trim(tick / scale, places)}${suffix}`;
   return unit === 'money' ? `${tick < 0 ? '-' : ''}$${text.replace('-', '')}` : text;
 }
