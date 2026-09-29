@@ -32,9 +32,9 @@ import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 import { readRanks, readTaskRank, type RankPool } from './rank.ts';
+import { readBoardCrumb } from './board-crumb.ts';
 
 const UNRANKED = { number: null, score: null, calc: '' } as const;
-import { readBoardCrumb } from './board-crumb.ts';
 
 interface TaskRowRead {
   readonly id: string;
