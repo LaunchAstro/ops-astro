@@ -413,7 +413,8 @@ Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
 - `task.board { board }` → the tasks on a board that the caller's grants
-  reach, and `withheld`, how many others there are; `null` is the unboarded
+  reach, and, for a collection-wide reader only, `withheld`, how many others
+  there are; `null` is the unboarded
   ones, which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept

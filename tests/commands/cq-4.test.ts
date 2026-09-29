@@ -146,7 +146,7 @@ describe.skipIf(serverUrl === undefined)('CQ-4 the command package entry', () =>
       expect(JSON.stringify(own)).toContain(one.title);
       // Another client's task is answered as a made-up id is, and nothing names it.
       // Every identifier is masked on both sides: the board lists the client's
-      // own task beside a withheld count (MP-5-3), the same for either id.
+      // own task and no count (MP-5-3), the same for either id.
       expect(other.replaceAll(/[0-9a-f-]{36}/gu, 'ID')).toBe(
         none.replaceAll(/[0-9a-f-]{36}/gu, 'ID'),
       );
