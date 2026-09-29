@@ -18,8 +18,9 @@
 // treatments). The gallery side is the component as the gallery renders it,
 // photographed where it stands; nothing is drawn onto the gallery page. The
 // mockup side is that same markup drawn at one fixed place on the mockup page
-// by the mockup's stylesheet, or, for a treatment the ticket redraws, the
-// mockup's own markup for the unit. The two pictures are compared
+// by the mockup's stylesheet, in a host as wide as the gallery's picture, or,
+// for a treatment the ticket redraws, the mockup's own markup for the unit.
+// The two pictures are compared
 // (compare.ts): any difference beyond the harness tolerance fails, and so
 // does a component the mockup page or the gallery does not draw, or one that
 // cannot be photographed. Both pictures are written for a person to set side
@@ -140,14 +141,19 @@ function markupOf(selector: string): string {
   return (drawn ?? all[0])?.outerHTML ?? '';
 }
 
-/** Draws the markup at one fixed place above the page, on the page's ground; returns its box. */
-function place(markup: string): Box {
+/**
+ * Draws the markup at one fixed place above the page, on the page's ground, in
+ * a host as wide as the gallery draws the component: a component with no width
+ * of its own (the meter) fills it, one with its own width keeps it. Returns its box.
+ */
+function place(copy: { markup: string; width: number }): Box {
   document.querySelector('#mockup-compare')?.remove();
   const box = document.createElement('div');
   box.id = 'mockup-compare';
   box.style.cssText =
     'position:fixed;left:8px;top:8px;z-index:2147483647;display:flex;padding:4px;background:var(--bg)';
-  box.innerHTML = markup;
+  box.style.width = `${String(copy.width)}px`;
+  box.innerHTML = copy.markup;
   document.body.append(box);
   const drawn = box.getBoundingClientRect();
   return { x: drawn.x, y: drawn.y, width: Math.ceil(drawn.width), height: Math.ceil(drawn.height) };
@@ -157,6 +163,9 @@ const SHOT = { animations: 'disabled', caret: 'hide', scale: 'css' } as const;
 
 /** A picture of the whole page. */
 const picture = (page: Page): Promise<Buffer> => page.screenshot(SHOT);
+
+/** A PNG's width in pixels, from its header. */
+const pngWidth = (png: Buffer): number => png.readUInt32BE(16);
 
 /** A picture of the first shown element the selector finds, where it stands. */
 const unitPicture = (page: Page, selector: string): Promise<Buffer> =>
@@ -173,10 +182,11 @@ async function pictures(
   const kit = 'gallery' in unit ? unit.gallery : unit.component;
   const galleryMarkup = await gallery.evaluate(markupOf, kit);
   if (galleryMarkup === '') return `${kit} not in the gallery`;
-  await page.evaluate(place, unit.expect === 'redrawn' ? mockupMarkup : galleryMarkup);
   try {
-    const left = await unitPicture(page, '#mockup-compare > *');
-    return { left, right: await unitPicture(gallery, kit) };
+    const right = await unitPicture(gallery, kit);
+    const markup = unit.expect === 'redrawn' ? mockupMarkup : galleryMarkup;
+    await page.evaluate(place, { markup, width: pngWidth(right) });
+    return { left: await unitPicture(page, '#mockup-compare > *'), right };
   } catch (error) {
     return `not photographed (${error instanceof Error ? error.message.split('\n')[0] : 'unknown'})`;
   }
