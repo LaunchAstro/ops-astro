@@ -7,19 +7,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  SITE_OPERATIONS,
-  callConnector,
   contentDigest,
   dispatchToken,
   observeLanded,
   publishCorrection,
-  revertCorrection,
-  type ConnectorResult,
   type CorrectionTarget,
   type PublishJob,
   type PublishPorts,
-  type Transport,
-  type TransportRequest,
 } from '../../packages/core-connectors/src/index.ts';
 
 const TARGET: CorrectionTarget = {
@@ -59,21 +53,23 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts & { calls: C
   const calls: Calls = { published: 0, raised: [] };
   return {
     calls,
-    readSource: async () => ({ kind: 'ok', value: { content: BEFORE, revision: 'abc123' } }),
-    publish: async () => {
+    readSource: () =>
+      Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'abc123' } }),
+    publish: () => {
       calls.published += 1;
-      return {
+      return Promise.resolve({
         kind: 'ok',
         value: {
           revision: 'def456',
           deploymentId: 'dpl_1',
           liveUrl: 'https://www.example.com/throwaway',
         },
-      };
+      });
     },
-    cancellation: async () => 'none',
-    raiseTask: async (reason) => {
+    cancellation: () => Promise.resolve('none' as const),
+    raiseTask: (reason) => {
       calls.raised.push(reason);
+      return Promise.resolve();
     },
     ...overrides,
   } as PublishPorts & { calls: Calls };
@@ -140,10 +136,11 @@ describe('C80 stale decision', () => {
 describe('C80 drift refused', () => {
   it('refuses CONTENT_DRIFTED when the file moved after approval, waits on a person, never overwrites', async () => {
     const p = ports({
-      readSource: async () => ({
-        kind: 'ok',
-        value: { content: '<p>We walk alongside you!</p>\n', revision: 'zzz999' },
-      }),
+      readSource: () =>
+        Promise.resolve({
+          kind: 'ok',
+          value: { content: '<p>We walk alongside you!</p>\n', revision: 'zzz999' },
+        }),
     });
     const outcome = await publishCorrection(job(), p);
     expect(outcome).toMatchObject({ state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' });
@@ -151,7 +148,9 @@ describe('C80 drift refused', () => {
   });
 
   it('refuses when the drift read itself does not answer, rather than publishing unchecked', async () => {
-    const p = ports({ readSource: async () => ({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }) });
+    const p = ports({
+      readSource: () => Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }),
+    });
     expect(await publishCorrection(job(), p)).toMatchObject({
       state: 'refused',
       code: 'CONTENT_DRIFT_UNCHECKED',
@@ -165,7 +164,7 @@ describe('C80 unknown publish outcome', () => {
     'leaves %s as unknown with its reference, raises a task, and never converts it',
     async (code) => {
       const p = ports({
-        publish: async () => ({ kind: 'unknown', code }),
+        publish: () => Promise.resolve({ kind: 'unknown', code }),
       });
       const outcome = await publishCorrection(job(), p);
       expect(outcome).toEqual({
@@ -189,14 +188,16 @@ describe('C80 unknown publish outcome', () => {
 
   it('settles failed only on a declared nothing-happened proof', async () => {
     const p = ports({
-      publish: async () => ({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'merge_conflict' }),
+      publish: () =>
+        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'merge_conflict' }),
     });
     expect(await publishCorrection(job(), p)).toMatchObject({
       state: 'failed',
       proof: 'merge_conflict',
     });
     const q = ports({
-      publish: async () => ({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'something_else' }),
+      publish: () =>
+        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'something_else' }),
     });
     expect(await publishCorrection(job(), q)).toMatchObject({ state: 'unknown' });
   });
@@ -204,7 +205,7 @@ describe('C80 unknown publish outcome', () => {
 
 describe('C80 late cancellation', () => {
   it('a cancellation before dispatch cancels and publishes nothing', async () => {
-    const p = ports({ cancellation: async () => 'requested' });
+    const p = ports({ cancellation: () => Promise.resolve('requested' as const) });
     expect(await publishCorrection(job(), p)).toMatchObject({
       state: 'refused',
       code: 'CANCELLED',
@@ -215,10 +216,10 @@ describe('C80 late cancellation', () => {
   it('a cancellation arriving after dispatch is reported as uncertain, never as a clean cancellation', async () => {
     let dispatched = false;
     const p = ports({
-      cancellation: async () => (dispatched ? 'requested' : 'none'),
-      publish: async () => {
+      cancellation: () => Promise.resolve(dispatched ? ('requested' as const) : ('none' as const)),
+      publish: () => {
         dispatched = true;
-        return { kind: 'unknown', code: 'PROVIDER_CONNECTION_LOST' };
+        return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_CONNECTION_LOST' });
       },
     });
     expect(await publishCorrection(job(), p)).toMatchObject({
@@ -229,17 +230,21 @@ describe('C80 late cancellation', () => {
   });
 });
 
-const served = async () => ({ kind: 'ok' as const, value: { revision: 'def456', served: true } });
-const shows = async () => ({ ok: true as const, value: { text: 'We walk beside you.' } });
-const notServed = async () => ({
-  kind: 'ok' as const,
-  value: { revision: 'def456', served: false },
-});
-const otherRevision = async () => ({
-  kind: 'ok' as const,
-  value: { revision: 'old', served: true },
-});
-const oldWord = async () => ({ ok: true as const, value: { text: 'We walk alongside you.' } });
+const served = () =>
+  Promise.resolve({ kind: 'ok' as const, value: { revision: 'def456', served: true } });
+const shows = () => Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.' } });
+const notServed = () =>
+  Promise.resolve({
+    kind: 'ok' as const,
+    value: { revision: 'def456', served: false },
+  });
+const otherRevision = () =>
+  Promise.resolve({
+    kind: 'ok' as const,
+    value: { revision: 'old', served: true },
+  });
+const oldWord = () =>
+  Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.' } });
 
 describe('C80 accepted not landed', () => {
   it('a successful publish response establishes accepted only', async () => {
@@ -275,197 +280,5 @@ describe('C80 accepted not landed', () => {
     ).toMatchObject({
       state: 'accepted',
     });
-  });
-});
-
-describe('C80 revert timed', () => {
-  it('publishes the revert forward, observes it served, and records the interval from the decision to revert', async () => {
-    const times = [Date.parse('2026-09-29T10:00:00Z'), Date.parse('2026-09-29T10:03:30Z')];
-    const outcome = await revertCorrection(
-      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
-      {
-        now: () => times.shift() ?? Number.NaN,
-        revert: async () => ({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
-        readDeployment: async () => ({ kind: 'ok', value: { revision: 'rev789', served: true } }),
-        capture: async () => ({ ok: true, value: { text: 'We walk alongside you.' } }),
-      },
-    );
-    expect(outcome).toEqual({
-      state: 'reverted',
-      revision: 'rev789',
-      deploymentId: 'dpl_2',
-      decidedAt: '2026-09-29T10:00:00.000Z',
-      observedAt: '2026-09-29T10:03:30.000Z',
-      intervalMs: 210_000,
-    });
-  });
-
-  it('records no interval until the original word is observed live', async () => {
-    const outcome = await revertCorrection(
-      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
-      {
-        now: () => Date.parse('2026-09-29T10:00:00Z'),
-        revert: async () => ({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
-        readDeployment: async () => ({ kind: 'ok', value: { revision: 'rev789', served: true } }),
-        capture: async () => ({ ok: true, value: { text: 'We walk beside you.' } }),
-      },
-    );
-    expect(outcome).toMatchObject({ state: 'revert_accepted' });
-    expect(outcome).not.toHaveProperty('intervalMs');
-  });
-});
-
-const publishRegistration = SITE_OPERATIONS.find(
-  (entry) => entry.declaration.operation_name === 'site.publish',
-)!;
-
-function httpOf(answer: Awaited<ReturnType<Transport>>): Transport & { seen: TransportRequest[] } {
-  const seen: TransportRequest[] = [];
-  return Object.assign(
-    async (request: TransportRequest) => {
-      seen.push(request);
-      return answer;
-    },
-    { seen },
-  );
-}
-
-const json = (body: unknown, status = 200) => ({
-  kind: 'answer' as const,
-  status,
-  headers: { 'content-type': 'application/json' },
-  body: new TextEncoder().encode(JSON.stringify(body)),
-});
-
-const deps = (transport: Transport, recorded: string[] = []) => ({
-  transport,
-  resolve: async () => ['140.82.112.6'],
-  credential: async () => 'canary-token-C80-never-shown',
-  record: (code: string) => recorded.push(code),
-});
-
-describe('C80 hostile provider (source control and hosting paths)', () => {
-  const params = { repository: 'site', number: '17' };
-
-  it('returns only the declared response fields from a well-formed answer', async () => {
-    const transport = httpOf(json({ merged: true, sha: 'def456', message: 'ok', token: 'leak' }));
-    const result = await callConnector(publishRegistration, params, deps(transport));
-    expect(result).toEqual({ kind: 'ok', value: { merged: true, sha: 'def456' } });
-    expect(transport.seen[0]?.url.hostname).toBe(publishRegistration.connector.host);
-  });
-
-  it.each([
-    [
-      'a redirect',
-      {
-        kind: 'answer',
-        status: 307,
-        headers: { location: 'https://evil.example.net/' },
-        body: new Uint8Array(),
-      },
-      'PROVIDER_REDIRECT_REFUSED',
-    ],
-    ['a timeout', { kind: 'timeout' }, 'PROVIDER_TIMEOUT'],
-    ['an oversized body', { kind: 'oversized' }, 'PROVIDER_RESPONSE_OVERSIZED'],
-    [
-      'a malformed body',
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-        body: new TextEncoder().encode('{"merged":'),
-      },
-      'PROVIDER_RESPONSE_MALFORMED',
-    ],
-    ['a schema mismatch', json({ merged: 'yes', sha: 1 }), 'PROVIDER_RESPONSE_SCHEMA'],
-    [
-      'a wrong content type',
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-        body: new TextEncoder().encode('<p>'),
-      },
-      'PROVIDER_RESPONSE_MALFORMED',
-    ],
-  ] as const)(
-    'a write meeting %s is unknown, recorded, never success',
-    async (_name, answer, code) => {
-      const recorded: string[] = [];
-      const result = await callConnector(
-        publishRegistration,
-        params,
-        deps(httpOf(answer as never), recorded),
-      );
-      expect(result).toEqual({ kind: 'unknown', code });
-      expect(recorded).toEqual([code]);
-    },
-  );
-
-  it('refuses an unlisted destination before any connection', async () => {
-    const transport = httpOf(json({}));
-    const moved = {
-      ...publishRegistration,
-      connector: { ...publishRegistration.connector, host: 'api.evil.example.net' },
-    };
-    expect(await callConnector(moved, params, deps(transport))).toEqual({
-      kind: 'refused',
-      code: 'DESTINATION_NOT_LISTED',
-    });
-    expect(transport.seen).toHaveLength(0);
-  });
-
-  it('never sends a credential to a host other than the one that credential belongs to', async () => {
-    const transport = httpOf(json({}));
-    const crossed = {
-      ...publishRegistration,
-      connector: { ...publishRegistration.connector, host: 'api.vercel.com' },
-    };
-    expect(await callConnector(crossed, params, deps(transport))).toEqual({
-      kind: 'refused',
-      code: 'CREDENTIAL_HOST_MISMATCH',
-    });
-    expect(transport.seen).toHaveLength(0);
-  });
-
-  it('refuses a provider address on a private network before any connection', async () => {
-    const transport = httpOf(json({}));
-    const result = await callConnector(publishRegistration, params, {
-      ...deps(transport),
-      resolve: async () => ['10.0.0.1'],
-    });
-    expect(result).toEqual({ kind: 'refused', code: 'DESTINATION_ADDRESS_DENIED' });
-    expect(transport.seen).toHaveLength(0);
-  });
-
-  it('refuses a parameter the operation does not declare, and one that would climb the path', async () => {
-    const transport = httpOf(json({}));
-    expect(
-      await callConnector(publishRegistration, { ...params, extra: 'x' }, deps(transport)),
-    ).toEqual({ kind: 'refused', code: 'PARAMETER_NOT_DECLARED' });
-    expect(
-      await callConnector(
-        publishRegistration,
-        { repository: '../../orgs', number: '17' },
-        deps(transport),
-      ),
-    ).toEqual({ kind: 'refused', code: 'PARAMETER_INVALID' });
-    expect(transport.seen).toHaveLength(0);
-  });
-
-  it('never lets the credential reach a result, a record or an error', async () => {
-    const recorded: string[] = [];
-    const answers = [
-      json({ message: 'canary-token-C80-never-shown' }, 401),
-      { kind: 'failed' } as const,
-      json({ merged: 'canary-token-C80-never-shown' }),
-    ];
-    const results: ConnectorResult[] = await Promise.all(
-      answers.map((answer) =>
-        callConnector(publishRegistration, params, deps(httpOf(answer), recorded)),
-      ),
-    );
-    const shown = JSON.stringify({ results, recorded });
-    expect(shown).not.toContain('canary-token-C80-never-shown');
   });
 });

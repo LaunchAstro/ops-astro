@@ -45,7 +45,9 @@ describe('C80 receipt LP complete', () => {
   it('names fifteen observations, nine cases and fifteen preconditions', () => {
     expect(RECEIPT_L_OBSERVATIONS).toHaveLength(15);
     expect(ACCEPTANCE_CASES.map((entry) => entry.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(PRECONDITIONS.map((entry) => entry.id)).toEqual([...Array(15).keys()].map((n) => n + 1));
+    expect(PRECONDITIONS.map((entry) => entry.id)).toEqual(
+      Array.from({ length: 15 }, (_, n) => n + 1),
+    );
   });
 
   it('is complete only with every observation, case and precondition filled by evidence', () => {
@@ -75,7 +77,9 @@ describe('C80 receipt LP complete', () => {
     (l as unknown as Record<string, unknown>)['after_capture'] = { procedure: 'the plan says so' };
     expect(receiptL(l).missing).toEqual(['post_live_address', 'after_capture']);
   });
+});
 
+describe('C80 receipt LP complete', () => {
   it('keeps an unknown case result unknown, and never a pass', () => {
     const cases = { ...fullCases(), 6: { result: 'unknown' as const, evidence: 'fault injected' } };
     const lp = receiptLP({
@@ -114,7 +118,9 @@ describe('C80 receipt LP complete', () => {
         .missing,
     ).toEqual(['precondition.7']);
   });
+});
 
+describe('C80 receipt LP complete', () => {
   it('needs the measured revert interval, because case 8 passed', () => {
     const lp = receiptLP({
       receiptL: fullL(),

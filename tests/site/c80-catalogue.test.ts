@@ -68,7 +68,9 @@ describe('C80 twelve declarations', () => {
       fields: ['reconcile_mode'],
     });
   });
+});
 
+describe('C80 twelve declarations', () => {
   it('refuses an undeclared thirteenth field rather than ignoring it', () => {
     const candidate = registration('site.capture') as unknown as {
       declaration: Record<string, unknown>;
@@ -106,7 +108,9 @@ describe('C80 twelve declarations', () => {
       });
     }
   });
+});
 
+describe('C80 twelve declarations', () => {
   it('refuses a reconcilable operation with no seam held before dispatch', () => {
     const candidate = registration('site.publish');
     const mutable = candidate as unknown as { declaration: Record<string, unknown> };
@@ -142,7 +146,9 @@ describe('C80 twelve declarations', () => {
       fields: ['credential_tier'],
     });
   });
+});
 
+describe('C80 twelve declarations', () => {
   it('keeps publish at R2 and accepted only, and capture with no credential at all', () => {
     const publish = registration('site.publish').declaration;
     expect(publish.reversibility_strategy).toBe('R2');

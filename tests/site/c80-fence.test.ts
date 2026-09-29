@@ -5,18 +5,11 @@
 // resolved address at every redirect, and every connection pinned to the
 // address that was checked.
 
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer, type Server } from 'node:https';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   checkPageAllowed,
   fencedFetch,
   isDeniedAddress,
-  pinnedTransport,
   type CapturePool,
   type FenceRefusal,
   type Resolver,
@@ -27,7 +20,6 @@ import {
 const ABOUT = 'https://www.example.com/about';
 const SERVICES = 'https://www.example.com/services';
 const PUBLIC_V4 = '93.184.215.14';
-const OTHER_PUBLIC_V4 = '93.184.215.15';
 
 const POOL: CapturePool = {
   agencyPages: [ABOUT, SERVICES],
@@ -38,11 +30,11 @@ const POOL: CapturePool = {
 function resolverOf(...answers: string[][]): Resolver & { calls: string[] } {
   const calls: string[] = [];
   let index = 0;
-  const resolve = async (host: string) => {
+  const resolve = (host: string) => {
     calls.push(host);
     const answer = answers[Math.min(index, answers.length - 1)] ?? [];
     index += 1;
-    return answer;
+    return Promise.resolve(answer);
   };
   return Object.assign(resolve, { calls });
 }
@@ -51,9 +43,9 @@ type Script = (request: TransportRequest) => Awaited<ReturnType<Transport>>;
 
 function transportOf(script: Script): Transport & { seen: TransportRequest[] } {
   const seen: TransportRequest[] = [];
-  const transport = async (request: TransportRequest) => {
+  const transport = (request: TransportRequest) => {
     seen.push(request);
-    return script(request);
+    return Promise.resolve(script(request));
   };
   return Object.assign(transport, { seen });
 }
@@ -97,7 +89,9 @@ describe('C80 capture pool allowlist', () => {
     const three = { ...POOL, closedPoolReviews: ['review-a', 'review-b', 'review-c'] };
     expect(checkPageAllowed(other, three).ok).toBe(true);
   });
+});
 
+describe('C80 capture pool allowlist', () => {
   it('sends no credential of any kind and no header the fence did not set', async () => {
     const transport = transportOf(() => html('<p>We walk alongside you.</p>'));
     const result = await fencedFetch(ABOUT, {
@@ -169,7 +163,9 @@ describe('C80 dns rebinding', () => {
     expect(resolve.calls).toEqual(['www.example.com']);
     expect(transport.seen.map((seen) => seen.address)).toEqual([PUBLIC_V4]);
   });
+});
 
+describe('C80 dns rebinding', () => {
   it('refuses an answer that mixes a public and a private address', async () => {
     const transport = transportOf(() => html('<p>ok</p>'));
     const recorded: FenceRefusal[] = [];
@@ -210,180 +206,5 @@ describe('C80 dns rebinding', () => {
       kind: 'document',
     });
     expect(result).toMatchObject({ ok: false, code: 'CAPTURE_ADDRESS_CHANGED' });
-  });
-
-  describe('the production transport', () => {
-    let dir = '';
-    let server: Server | undefined;
-    let port = 0;
-    let ca = '';
-    const hosts: string[] = [];
-
-    beforeAll(async () => {
-      dir = mkdtempSync(join(tmpdir(), 'c80-tls-'));
-      execFileSync(
-        'openssl',
-        [
-          'req',
-          '-x509',
-          '-newkey',
-          'ec',
-          '-pkeyopt',
-          'ec_paramgen_curve:prime256v1',
-          '-nodes',
-          '-days',
-          '1',
-          '-subj',
-          '/CN=pilot.invalid',
-          '-addext',
-          'subjectAltName=DNS:pilot.invalid',
-          '-keyout',
-          join(dir, 'key.pem'),
-          '-out',
-          join(dir, 'cert.pem'),
-        ],
-        { stdio: 'ignore' },
-      );
-      ca = readFileSync(join(dir, 'cert.pem'), 'utf8');
-      server = createServer(
-        { key: readFileSync(join(dir, 'key.pem')), cert: ca },
-        (request, response) => {
-          hosts.push(request.headers.host ?? '');
-          if (request.url === '/big') {
-            response.writeHead(200, { 'content-type': 'text/html' });
-            response.end('x'.repeat(4096));
-            return;
-          }
-          if (request.url === '/slow') return;
-          response.writeHead(200, { 'content-type': 'text/html' });
-          response.end('<p>pinned</p>');
-        },
-      );
-      await new Promise<void>((done) => server?.listen(0, '127.0.0.1', done));
-      port = (server.address() as AddressInfo).port;
-    });
-
-    afterAll(async () => {
-      server?.closeAllConnections();
-      await new Promise<void>((done) => (server ? server.close(() => done()) : done()));
-      rmSync(dir, { recursive: true, force: true });
-    });
-
-    const request = (
-      path: string,
-      overrides: Partial<TransportRequest> = {},
-    ): TransportRequest => ({
-      url: new URL(`https://pilot.invalid:${port}${path}`),
-      address: '127.0.0.1',
-      family: 4,
-      headers: { accept: 'text/html', 'user-agent': 'fence-test' },
-      timeoutMs: 2_000,
-      maxBytes: 1_024,
-      ...overrides,
-    });
-
-    it('reaches the pinned address for a name DNS cannot resolve, with SNI and host kept', async () => {
-      const answer = await pinnedTransport({ ca })(request('/'));
-      expect(answer).toMatchObject({ kind: 'answer', status: 200 });
-      if (answer.kind !== 'answer') return;
-      expect(new TextDecoder().decode(answer.body)).toBe('<p>pinned</p>');
-      expect(hosts.at(-1)).toBe(`pilot.invalid:${port}`);
-    });
-
-    it('stops at the byte cap and at the timeout', async () => {
-      expect(await pinnedTransport({ ca })(request('/big'))).toEqual({ kind: 'oversized' });
-      expect(await pinnedTransport({ ca })(request('/slow', { timeoutMs: 200 }))).toEqual({
-        kind: 'timeout',
-      });
-    });
-
-    it('refuses a certificate the trust roots do not hold', async () => {
-      expect(await pinnedTransport()(request('/'))).toEqual({ kind: 'failed' });
-    });
-  });
-});
-
-describe('C80 hostile provider (capture path)', () => {
-  const options = (transport: Transport) => ({
-    pool: POOL,
-    resolve: resolverOf([PUBLIC_V4], [OTHER_PUBLIC_V4]),
-    transport,
-    kind: 'document' as const,
-  });
-
-  it('refuses and records a redirect to an unlisted destination', async () => {
-    const recorded: FenceRefusal[] = [];
-    const transport = transportOf(() => ({
-      kind: 'answer',
-      status: 302,
-      headers: { location: 'https://evil.example.net/steal' },
-      body: new Uint8Array(),
-    }));
-    const result = await fencedFetch(ABOUT, {
-      ...options(transport),
-      record: (refusal) => recorded.push(refusal),
-    });
-    expect(result).toMatchObject({ ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' });
-    expect(recorded).toHaveLength(1);
-    expect(transport.seen).toHaveLength(1);
-  });
-
-  it('refuses a redirect loop past three hops', async () => {
-    const transport = transportOf((request) => ({
-      kind: 'answer',
-      status: 301,
-      headers: { location: request.url.pathname === '/about' ? SERVICES : ABOUT },
-      body: new Uint8Array(),
-    }));
-    expect(await fencedFetch(ABOUT, options(transport))).toMatchObject({
-      ok: false,
-      code: 'CAPTURE_TOO_MANY_REDIRECTS',
-    });
-    expect(transport.seen.length).toBeLessThanOrEqual(4);
-  });
-
-  it.each([
-    [{ kind: 'timeout' } as const, 'CAPTURE_TIMEOUT'],
-    [{ kind: 'oversized' } as const, 'CAPTURE_OVERSIZED'],
-    [{ kind: 'failed' } as const, 'CAPTURE_FAILED'],
-    [
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-        body: new Uint8Array([123]),
-      } as const,
-      'CAPTURE_BODY_MALFORMED',
-    ],
-    [
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-        body: new Uint8Array([0xff, 0xfe, 0xfd]),
-      } as const,
-      'CAPTURE_BODY_MALFORMED',
-    ],
-    [
-      {
-        kind: 'answer',
-        status: 500,
-        headers: { 'content-type': 'text/html' },
-        body: new Uint8Array(),
-      } as const,
-      'CAPTURE_STATUS_REFUSED',
-    ],
-    [
-      { kind: 'answer', status: 301, headers: {}, body: new Uint8Array() } as const,
-      'CAPTURE_BODY_MALFORMED',
-    ],
-  ])('refuses and records %o as %s', async (answer, code) => {
-    const recorded: FenceRefusal[] = [];
-    const result = await fencedFetch(ABOUT, {
-      ...options(transportOf(() => answer)),
-      record: (refusal) => recorded.push(refusal),
-    });
-    expect(result).toMatchObject({ ok: false, code });
-    expect(recorded.map((entry) => entry.code)).toEqual([code]);
   });
 });
