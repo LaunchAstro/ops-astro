@@ -24,6 +24,10 @@ export interface ProjectRow {
   readonly completed: boolean;
   readonly stage: string | null;
   readonly status: string;
+  /** Where the status stands in the workflow, from its state record; null when unknown. */
+  readonly statusPosition: number | null;
+  /** Why the task waits, drawn after its group's heading; null for none. */
+  readonly waitReason: string | null;
   readonly estimate: Estimate | null;
   readonly actual: Actual | null;
   readonly comments: {

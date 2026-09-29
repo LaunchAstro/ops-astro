@@ -29,6 +29,8 @@ const row = (id: string, over: Partial<ProjectRow> = {}): ProjectRow => ({
   completed: false,
   stage: null,
   status: 'In progress',
+  statusPosition: null,
+  waitReason: null,
   estimate: null,
   actual: null,
   comments: { client: 0, mentions: 0, latest: null },
@@ -240,6 +242,7 @@ const BOARD_TASKS = [
     },
     stage: 'Launch',
     clientSet: true,
+    statePosition: 2000,
   },
 ];
 
