@@ -81,9 +81,26 @@ async function signedIn(
   return { env, records: at.records };
 }
 
+/** Every mode of the restore drill, as the operator-only suites run it. */
+const drillModes = Object.entries(COMMANDS).filter(([name]) =>
+  /restore drill|archive export|carried/u.test(name),
+);
+
 describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => {
   operatorOnlyHooks(() => {});
 
+  operatingCases1();
+
+  // Sol's REV158S2 criterion 4 export proof, adapted the same way: its title
+  // and its four planted records are Sol's.
+  operatingCases2();
+
+  operatingCases3();
+
+  operatingCases4();
+});
+
+function operatingCases1() {
   it('exported data stays within the operator business, client and person', async () => {
     const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
     const otherRows = ['another-business-record', 'another-client-record', 'another-person-record'];
@@ -101,9 +118,9 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
     expect(otherRows.filter((row) => JSON.stringify(run).includes(row))).toStrictEqual([]);
     expect(run.refused).not.toMatch(/beta|alpha/u);
   });
+}
 
-  // Sol's REV158S2 criterion 4 export proof, adapted the same way: its title
-  // and its four planted records are Sol's.
+function operatingCases2() {
   it('export keeps business, client and person separation', async () => {
     const allowed = `allowed-${randomUUID()}`;
     const otherBusiness = `other-business-${randomUUID()}`;
@@ -135,7 +152,9 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
       expect(JSON.stringify(run)).not.toContain(planted);
     }
   });
+}
 
+function operatingCases3() {
   it("the operating business's operator exports the archive whole, and the record names no digest", async () => {
     const { sealArchive, openArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
     const dump = Buffer.from('own-business-record\nanother-business-record\n');
@@ -153,9 +172,6 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
     expect(JSON.stringify(run)).not.toContain(digestOf(body));
   });
 
-  const drillModes = Object.entries(COMMANDS).filter(([name]) =>
-    /restore drill|archive export|carried/u.test(name),
-  );
   it.each(drillModes)(
     "S0-3 isolation: %s, run by another business's operations:manage holder in their own business, is refused before it acts and learns nothing",
     async (_name, command) => {
@@ -172,7 +188,9 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
       expect(readdirSync(at.records)).toStrictEqual([]);
     },
   );
+}
 
+function operatingCases4() {
   it('with no operating business configured, every drill mode is refused before any lookup', async () => {
     const signIn = await token(subjects.operator);
     for (const [name, command] of drillModes) {
@@ -188,4 +206,4 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
       expect(readdirSync(at.records)).toStrictEqual([]);
     }
   });
-});
+}

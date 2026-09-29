@@ -28,6 +28,12 @@ const countReadReceipts = async (): Promise<number> => {
 describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
   backupStoreHooks();
 
+  readBindingCases1();
+
+  readBindingCases2();
+});
+
+function readBindingCases1() {
   it('every successful read_part access writes an access receipt', async () => {
     const writer = await asRole(backupLogin.url, BACKUP);
     try {
@@ -51,7 +57,9 @@ describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
       await reader.end();
     }
   });
+}
 
+function readBindingCases2() {
   it('a read of one same-time archive cannot attest a different archive', async () => {
     const firstDigest = createHash('sha256')
       .update(Buffer.from([1]))
@@ -88,4 +96,4 @@ describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
       await reader.end();
     }
   });
-});
+}

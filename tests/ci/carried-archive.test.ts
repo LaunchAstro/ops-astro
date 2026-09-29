@@ -78,58 +78,9 @@ const storeOf =
   };
 
 function exportCases() {
-  it('the export writes only the sealed bytes and the recorded digest, mode 600, never over a file', async () => {
-    const archive = await sealed();
-    const dir = folder('export');
-    const file = join(dir, 'archive.sealed');
-    const gate = gateOf();
-    const { exportArchive } = await drillModule();
-    const reach = storeOf(archive);
-    const receipt = await exportArchive({ gate, storeUrl: 'store', file, reach });
-    expect(receipt).toMatchObject({ action: 'archive exported', archiveTakenAt: TAKEN });
-    expect(readdirSync(dir).toSorted()).toStrictEqual(['archive.sealed', 'archive.sealed.json']);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(statSync(`${file}.json`).mode & 0o777).toBe(0o600);
-    // The file is the sealed bytes as the store holds them: an operator's own
-    // sha256 of it is the digest the store recorded.
-    expect(readFileSync(file).equals(archive.body)).toBe(true);
-    expect((await carried()).digestOf(readFileSync(file))).toBe(archive.sha256);
-    const written = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, unknown>;
-    expect(Object.keys(written).toSorted()).toStrictEqual([
-      'archiveId',
-      'bytes',
-      'format',
-      'sha256',
-      'takenAt',
-    ]);
-    expect(written['bytes']).toBe(archive.body.length);
-    expect(written['sha256']).toBe(archive.sha256);
-    for (const text of [everything(dir), JSON.stringify(receipt), everything(gate.records)]) {
-      expect(text).not.toContain(CANARY);
-      expect(text).not.toMatch(/PRIVATE KEY/u);
-    }
-    expect(JSON.stringify(receipt)).not.toContain(archive.sha256);
-    expect(JSON.stringify(receipt)).not.toContain(dir);
-    // Never over a file: the second export is refused and the first stays whole.
-    const before = readFileSync(file);
-    await expect(exportArchive({ gate, storeUrl: 'store', file, reach })).rejects.toThrow(
-      NAMES_NOTHING,
-    );
-    expect(readFileSync(file).equals(before)).toBe(true);
-  });
+  exportCases1();
 
-  it('the export refuses an archive that does not match the digest the store recorded, and writes nothing', async () => {
-    const archive = { ...(await sealed()), sha256: '0'.repeat(64) };
-    const dir = folder('export');
-    const gate = gateOf();
-    const reach = storeOf(archive);
-    const { exportArchive } = await drillModule();
-    await expect(
-      exportArchive({ gate, storeUrl: 'store', file: join(dir, 'a'), reach }),
-    ).rejects.toThrow(NAMES_NOTHING);
-    expect(readdirSync(dir)).toStrictEqual([]);
-    expect(readdirSync(gate.records)).toStrictEqual([]);
-  });
+  exportCases2();
 }
 
 function openCases() {
@@ -235,5 +186,62 @@ function refusalCases() {
     copyFileSync(file, bare);
     expect(() => readCarried(bare), 'no facts').toThrow(NAMES_NOTHING);
     expect(() => readCarried(join(folder('none'), 'none')), 'no file').toThrow(NAMES_NOTHING);
+  });
+}
+
+function exportCases1() {
+  it('the export writes only the sealed bytes and the recorded digest, mode 600, never over a file', async () => {
+    const archive = await sealed();
+    const dir = folder('export');
+    const file = join(dir, 'archive.sealed');
+    const gate = gateOf();
+    const { exportArchive } = await drillModule();
+    const reach = storeOf(archive);
+    const receipt = await exportArchive({ gate, storeUrl: 'store', file, reach });
+    expect(receipt).toMatchObject({ action: 'archive exported', archiveTakenAt: TAKEN });
+    expect(readdirSync(dir).toSorted()).toStrictEqual(['archive.sealed', 'archive.sealed.json']);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(statSync(`${file}.json`).mode & 0o777).toBe(0o600);
+    // The file is the sealed bytes as the store holds them: an operator's own
+    // sha256 of it is the digest the store recorded.
+    expect(readFileSync(file).equals(archive.body)).toBe(true);
+    expect((await carried()).digestOf(readFileSync(file))).toBe(archive.sha256);
+    const written = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(written).toSorted()).toStrictEqual([
+      'archiveId',
+      'bytes',
+      'format',
+      'sha256',
+      'takenAt',
+    ]);
+    expect(written['bytes']).toBe(archive.body.length);
+    expect(written['sha256']).toBe(archive.sha256);
+    for (const text of [everything(dir), JSON.stringify(receipt), everything(gate.records)]) {
+      expect(text).not.toContain(CANARY);
+      expect(text).not.toMatch(/PRIVATE KEY/u);
+    }
+    expect(JSON.stringify(receipt)).not.toContain(archive.sha256);
+    expect(JSON.stringify(receipt)).not.toContain(dir);
+    // Never over a file: the second export is refused and the first stays whole.
+    const before = readFileSync(file);
+    await expect(exportArchive({ gate, storeUrl: 'store', file, reach })).rejects.toThrow(
+      NAMES_NOTHING,
+    );
+    expect(readFileSync(file).equals(before)).toBe(true);
+  });
+}
+
+function exportCases2() {
+  it('the export refuses an archive that does not match the digest the store recorded, and writes nothing', async () => {
+    const archive = { ...(await sealed()), sha256: '0'.repeat(64) };
+    const dir = folder('export');
+    const gate = gateOf();
+    const reach = storeOf(archive);
+    const { exportArchive } = await drillModule();
+    await expect(
+      exportArchive({ gate, storeUrl: 'store', file: join(dir, 'a'), reach }),
+    ).rejects.toThrow(NAMES_NOTHING);
+    expect(readdirSync(dir)).toStrictEqual([]);
+    expect(readdirSync(gate.records)).toStrictEqual([]);
   });
 }

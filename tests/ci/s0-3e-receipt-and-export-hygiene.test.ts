@@ -24,6 +24,16 @@ import {
 } from './carried-archive.fixture.ts';
 
 describe('S0-3e carried receipt and export hygiene', () => {
+  exportHygieneCases1();
+
+  exportHygieneCases2();
+
+  exportHygieneCases3();
+
+  exportHygieneCases4();
+});
+
+function exportHygieneCases1() {
   it('a carried receipt and operator log omit the archive fingerprint', async () => {
     const { file } = await carriedFile();
     const digest = (JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { sha256: string }).sha256;
@@ -55,7 +65,9 @@ describe('S0-3e carried receipt and export hygiene', () => {
     expect(JSON.stringify(receipt)).not.toContain(digest);
     expect(readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8')).not.toContain(digest);
   });
+}
 
+function exportHygieneCases2() {
   it('an export write error never prints its archive path', async () => {
     const file = join(folder('export'), 'archive.sealed');
     const { writeCarried } = await carried();
@@ -74,7 +86,9 @@ describe('S0-3e carried receipt and export hygiene', () => {
     expect(message).not.toBe('');
     expect(message).not.toContain(file);
   });
+}
 
+function exportHygieneCases3() {
   it('a carried receipt from another business is refused before store access', async () => {
     const { file } = await carriedFile();
     const gate = gateOf();
@@ -116,7 +130,9 @@ describe('S0-3e carried receipt and export hygiene', () => {
     await expect(recordCarried({ gate, storeUrl: 'store', receiptFile, reach })).rejects.toThrow();
     expect(storeReads).toBe(0);
   });
+}
 
+function exportHygieneCases4() {
   it('planted content in a carried receipt stays out of responses and logs', async () => {
     const operator = randomUUID();
     const gate = gateOf(operator);
@@ -162,4 +178,4 @@ describe('S0-3e carried receipt and export hygiene', () => {
     const log = join(gate.records, 'deployments.jsonl');
     expect(existsSync(log) ? readFileSync(log, 'utf8') : '').not.toContain(canary);
   });
-});
+}
