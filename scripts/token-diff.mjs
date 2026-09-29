@@ -8,8 +8,8 @@
 // alias declared only in `:root` still follows a primitive the dark block
 // flips. Each expected token is then compared, as text with its whitespace
 // collapsed and one spelling per number and hex, to what that resolution
-// gives. A token that is missing or differs is named with both values and the
-// run exits 1.
+// gives. A token that is missing or differs is named with both values, as is a
+// token declared in dark alone, and the run exits 1.
 //
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
@@ -75,6 +75,10 @@ const spelling = (value) =>
 export function diffTokens(css, expected) {
   const got = resolveTokens(css);
   const problems = [];
+  // A token the dark block declares must have a light value too.
+  for (const name of Object.keys(got.dark)) {
+    if (got.light[name] === undefined) problems.push(`dark ${name}: declared in dark only`);
+  }
   for (const theme of ['light', 'dark']) {
     for (const [name, want] of Object.entries(expected[theme] ?? {})) {
       const have = got[theme][name];
