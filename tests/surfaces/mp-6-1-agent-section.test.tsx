@@ -7,6 +7,8 @@
 // server here is a stand-in for the HTTP boundary only; what the server does
 // with the decision is proven against Postgres in `tests/api/mp-6-1-*`.
 
+/* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the pane's own tests do */
+
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
@@ -36,6 +38,8 @@ interface World {
   readonly running: boolean;
   /** What `task.decide` answers: accepted, or refused with this code. */
   readonly refuse: string | null;
+  /** `task.read`'s token ledger (MP-6-5); absent as on a read made before it. */
+  readonly ledger?: unknown;
 }
 
 function lineageOf(world: World) {
@@ -69,6 +73,9 @@ function lineageOf(world: World) {
     reservations: world.running
       ? [
           {
+            id: 'res-7',
+            envelopeId: 'env-7',
+            runId: 'run-7',
             state: 'held',
             heldMinor: 2_500,
             actualMinor: null,
@@ -96,6 +103,7 @@ function server(world: World) {
     history: [],
     comments: [],
     proposals: [lineageOf(world)],
+    ...(world.ledger === undefined ? {} : { ledger: world.ledger }),
   };
   const sent: { readonly route: string; readonly body: Record<string, unknown> }[] = [];
   let reads = 0;
@@ -148,7 +156,41 @@ async function open(world: World) {
 
 const IN_PANE = '[data-section="agent"]';
 
+// eslint-disable-next-line max-lines-per-function -- one page, each control and the ledger on it
 describe('MP-6-1 agent section on the task page', () => {
+  it('MP-6-5 allowance composition: the task page draws its read’s ledger in the Agent pane', async () => {
+    const ledger = {
+      envelopes: [
+        {
+          id: 'env-7',
+          state: 'open',
+          maximumMinor: 2_500,
+          heldMinor: 2_500,
+          actualMinor: 0,
+          currency: 'AUD',
+          openedAt: '2026-09-29T01:00:00.000Z',
+          closedAt: null,
+          openedBy: { versionId: 'v-7b' },
+          cap: { key: 'agent_work', limitMinor: 50_000, currency: 'AUD' },
+        },
+      ],
+    };
+    const { page } = await open({ gateState: 'approved', running: true, refuse: null, ledger });
+    const panel = page.find(`${IN_PANE} [data-agent="tokens"]`);
+    expect(panel?.getAttribute('data-tokens')).toBe('tracked');
+    expect(page.find(`${IN_PANE} [data-tokens="head"]`)?.textContent).toBe('AUD 0.00 of AUD 25.00');
+    expect(page.find(`${IN_PANE} [data-tokens="opened-by"]`)?.textContent).toContain('version 2');
+    expect(
+      page.all(`${IN_PANE} [data-token-run]`).map((row) => row.getAttribute('data-token-run')),
+    ).toStrictEqual(['res-7']);
+  });
+
+  it('MP-6-5 allowance composition: a read with no ledger draws no panel', async () => {
+    const { page } = await open({ gateState: 'approved', running: true, refuse: null });
+    expect(page.find(`${IN_PANE} [data-agent="pane"]`)).not.toBeNull();
+    expect(page.find(`${IN_PANE} [data-agent="tokens"]`)).toBeNull();
+  });
+
   it('MP-6-1 section decides the exact version, then reads again', async () => {
     const { page, sent, reads } = await open({
       gateState: 'pending',

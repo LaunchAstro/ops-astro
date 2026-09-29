@@ -98,6 +98,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         // The access ledger has no screen yet, so the stamp names each grant it
         // draws on without a link; the ledger's route supplies one when it lands.
         ledgerHref={null}
+        ledger={null}
       />
     </section>
   );
