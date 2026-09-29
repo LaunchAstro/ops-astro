@@ -64,28 +64,72 @@
   color: var(--ink-faint);
 }
 .rail__group {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
+/* One level, items 36 tall (MP-2-2). The railmark takes the place of a
+   border: it is one element that slides, not a border per item that jumps. */
 .rail__item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-2);
-  padding: 0.45rem var(--s-5);
-  border-left: 2px solid transparent;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 var(--s-5);
   color: var(--text-2);
   font-size: 0.875rem;
+  line-height: 1.55;
   text-decoration: none;
 }
 .rail__item:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.rail__item[aria-current='page'] {
+.rail__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.rail__item[data-lit] {
   color: var(--text);
-  border-left-color: var(--accent);
   font-weight: var(--weight-medium);
+}
+/* The railmark: 2px of accent the height of the lit item. It snaps on load
+   (`data-placing`) and slides over 220ms on in-app navigation. */
+.railmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: var(--railmark-h);
+  background: var(--accent);
+  transform: translateY(var(--railmark-y));
+  transition:
+    transform var(--dur-1) var(--ease),
+    height var(--dur-1) var(--ease);
+  pointer-events: none;
+}
+.railmark[data-placing] {
+  transition: none;
+}
+.railmark[hidden] {
+  display: block;
+  opacity: 0;
+}
+/* "Back to Clients" above a client's sections (MP-2-9). */
+.rail__backrow {
+  padding: 0 var(--s-5);
+}
+.rail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+}
+/* The drawer's own close, drawn only while it is open. */
+.navclose {
+  display: none;
 }
 @media (width <= 900px) {
   .rail {
@@ -109,6 +153,70 @@
       transform var(--dur-1) var(--ease),
       visibility 0s;
   }
+  .shell[data-nav='open'] .navclose {
+    display: inline-flex;
+  }
+}
+.rail__brand {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.navclose {
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+/* The drawer's backdrop: 40% black, fading in over 220ms (MP-2-8). */
+.navbackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+  animation: navbackdrop-in var(--dur-1) var(--ease);
+}
+@keyframes navbackdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@media not all and (max-width: 900px) {
+  .navbackdrop {
+    display: none;
+  }
+}
+/* The hamburger: first in the page header, at 900 and below only. */
+.navtoggle {
+  display: none;
+  order: -1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.navtoggle span {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: currentColor;
+}
+@media (width <= 900px) {
+  .navtoggle {
+    display: inline-flex;
+  }
 }
 
 /* -- The page strip and the content column ------------------------------- */
@@ -116,6 +224,182 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+/* The chrome: the app strip, the tab row and the page header, one block,
+   sticky above 900 and scrolling away at 900 and below (MP-2-7). */
+.chrome {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+@media not all and (max-width: 900px) {
+  .chrome {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .topbar__meta {
+    min-height: 34px;
+  }
+}
+
+/* -- The app strip (MP-2-5): dark chrome on the agency face, teal on the
+      client face. Its ink is on-dark on either ground. ------ */
+.appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-height: 45px;
+  box-sizing: border-box;
+  padding: 0.4rem var(--s-4);
+  background: var(--app-chrome);
+  color: var(--on-dark);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.appbar[data-face='client'] {
+  background: var(--client-brand);
+}
+.clienthdr {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.clienthdr__mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  color: var(--on-dark);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+}
+.appbar[data-face='client'] .clienthdr__mark {
+  background: color-mix(in oklch, var(--on-dark) 20%, transparent);
+}
+.clienthdr__name {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.clienthdr__tag {
+  color: color-mix(in oklch, var(--on-dark) 46%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+@media (width <= 900px) {
+  .clienthdr__tag {
+    display: none;
+  }
+}
+
+/* -- The tab row (MP-2-6): the section's pages, an underline that slides
+      over 420ms, and overflow that scrolls with a fade and an arrow at each
+      edge with more past it (R62). It never widens its column. ------------ */
+.tabbar {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.tabbar__scroll {
+  position: relative;
+  display: flex;
+  flex: 1;
+  gap: var(--s-6);
+  min-width: 0;
+  padding: 0 var(--s-6);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabbar__scroll::-webkit-scrollbar {
+  display: none;
+}
+.tabbar[data-more='start'] .tabbar__scroll {
+  mask-image: linear-gradient(to right, transparent, #000 3rem);
+}
+.tabbar[data-more='end'] .tabbar__scroll {
+  mask-image: linear-gradient(to left, transparent, #000 3rem);
+}
+.tabbar[data-more='start end'] .tabbar__scroll {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 3rem,
+    #000 calc(100% - 3rem),
+    transparent
+  );
+}
+.tabbar__t {
+  flex: none;
+  padding: 0.65rem 0 0.525rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tabbar__t:hover {
+  color: var(--text);
+}
+.tabbar__t[aria-current='page'] {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.tabmark {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--tabmark-w);
+  height: 2px;
+  background: var(--accent);
+  transform: translateX(var(--tabmark-x));
+  transition:
+    transform var(--dur-2) var(--ease),
+    width var(--dur-2) var(--ease);
+  pointer-events: none;
+}
+.tabmark[data-placing] {
+  transition: none;
+}
+.tabmark[hidden] {
+  display: none;
+}
+.tabbar__arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.tabbar__arrow:hover {
+  color: var(--text);
+}
+.tabbar__arrow[data-edge='start'] {
+  left: 0;
+}
+.tabbar__arrow[data-edge='end'] {
+  right: 0;
 }
 .topbar {
   display: flex;

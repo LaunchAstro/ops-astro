@@ -86,7 +86,8 @@ describe('MP-2-1 three namespaces', () => {
 describe('MP-2-1 one registry', () => {
   it('builds the Hub rail and the section tabs from the manifest', async () => {
     const { view } = await open('/connections/site-health/');
-    const hub = SECTIONS.filter((section) => section.namespace === 'agency');
+    // The rail leaves out a section with no designed page (R2, MP-2-10).
+    const hub = SECTIONS.filter((section) => section.namespace === 'agency' && section.navigable);
     expect(view.all('.rail a[href]').map((a) => a.getAttribute('href'))).toEqual(
       hub.map((section) => section.path),
     );
@@ -115,6 +116,8 @@ describe('MP-2-1 one registry', () => {
 });
 
 describe('MP-2-1 hard reload', () => {
+  // The shared state names the page and its ticket on the record, not in its
+  // words, since MP-2-10 made it one plain "not here yet" (R2).
   it('lands every address on its page or on a placeholder naming the page and its ticket', async () => {
     for (const page of PAGES) {
       const { view } = await open(filled(page.path));
@@ -122,8 +125,8 @@ describe('MP-2-1 hard reload', () => {
       const built = matchRoute(filled(page.path));
       const placeholder = view.find(`[data-outcome="placeholder"][data-page="${page.id}"]`);
       if (built === null) {
-        expect(placeholder?.textContent, page.path).toContain(page.label);
-        expect(placeholder?.textContent, page.path).toContain(page.ticket);
+        expect(placeholder, page.path).not.toBeNull();
+        expect(placeholder?.getAttribute('data-ticket'), page.path).toBe(page.ticket);
       } else {
         expect(placeholder, page.path).toBeNull();
       }
@@ -199,10 +202,19 @@ describe('MP-2-1 legacy redirects', () => {
     }
   });
 
+  // One ruled exception: Portfolio Command's source goes to `/dashboard/`,
+  // where R1 put it, not to the separate tab the mockup had (MP-2-10).
+  const RULED: Readonly<Record<string, string>> = { '/agency/portfolio/': '/dashboard/' };
+
   it('lands every known legacy address on the page the mockup itself chose for it', () => {
     for (const route of known) {
       const source = route.source ?? '';
       const hash = route.legacyHash ?? '';
+      const ruled = RULED[source];
+      if (ruled !== undefined) {
+        expect(canonicalOf(`${source}${hash}`), source).toBe(ruled);
+        continue;
+      }
       const expected = mockupPick(source, hash);
       expect(expected, source).toBeDefined();
       expect(canonicalOf(`${source}?client=acme-dental${hash}`), `${source}${hash}`).toBe(
@@ -218,7 +230,8 @@ describe('MP-2-1 legacy redirects', () => {
     expect(canonicalOf('/client-portal/projects/?client=acme-dental#roadmap')).toBe(
       '/clients/acme-dental/projects/roadmap/',
     );
-    expect(canonicalOf('/agency/portfolio/')).toBe('/dashboard/portfolio/');
+    // R1, MP-2-10: Portfolio Command sits at /dashboard/.
+    expect(canonicalOf('/agency/portfolio/')).toBe('/dashboard/');
     expect(canonicalOf('/client-portal/home/?client=acme-dental')).toBe('/portal/acme-dental/');
   });
 
