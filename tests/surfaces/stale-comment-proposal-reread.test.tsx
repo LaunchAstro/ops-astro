@@ -224,6 +224,11 @@ const revisionOnPage = (page: Mounted): string | null | undefined =>
   (page.find('[data-revision]') as HTMLElement | null)?.dataset['revision'];
 
 describe('a stale comment or proposal rereads and keeps the text', () => {
+  aStaleCommentCases1();
+  aStaleCommentCases2();
+});
+
+function aStaleCommentCases1() {
   it('comment: VERSION_STALE rereads, keeps the body, and the next press is sent at the new revision', async () => {
     const { client, revisionsOf, task } = server();
     const page = await open(client);
@@ -266,7 +271,9 @@ describe('a stale comment or proposal rereads and keeps the text', () => {
     expect((page.find('#propose-purpose') as HTMLInputElement).value).toBe('');
     expect(page.find('[data-propose="stale"]')).toBeNull();
   });
+}
 
+function aStaleCommentCases2() {
   it('an unrelated reread keeps a comment and a proposal that were never sent', async () => {
     const { client } = server();
     const page = await open(client);
@@ -289,7 +296,7 @@ describe('a stale comment or proposal rereads and keeps the text', () => {
 
     expect((page.find('#comment-body') as HTMLTextAreaElement | null)?.value ?? '').toBe('');
   });
-});
+}
 
 describe('the details save: a lost answer is retried as the same attempt', () => {
   it("replays the stored save rather than calling it somebody else's change", async () => {

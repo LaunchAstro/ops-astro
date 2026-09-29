@@ -89,6 +89,11 @@ describe('route derivation', () => {
 });
 
 describe('the envelope', () => {
+  theEnvelopeCases1();
+  theEnvelopeCases2();
+});
+
+function theEnvelopeCases1() {
   it('spells the envelope in camelCase and sends no second spelling', async () => {
     // The coordinator's 22:53Z ruling: `operationId` and `expectedRevision`,
     // one spelling on the wire. A client sending both would make either
@@ -130,7 +135,9 @@ describe('the envelope', () => {
     await make(fetch).mutate('task.update', { recordId: 'r1', fields: { title: 'x' } });
     expect(calls[0]?.body).not.toHaveProperty('expectedRevision');
   });
+}
 
+function theEnvelopeCases2() {
   it('reuses a caller-supplied identity, so a retry is the same attempt', async () => {
     const { fetch, calls } = stub({ recordId: 'r1', revision: 1 });
     const client = make(fetch);
@@ -166,9 +173,15 @@ describe('the envelope', () => {
       expect(body).not.toHaveProperty(forbidden);
     }
   });
-});
+}
 
 describe('what comes back', () => {
+  whatComesBackCases1();
+  whatComesBackCases2();
+  whatComesBackCases3();
+});
+
+function whatComesBackCases1() {
   it("reports a refusal as a refusal, with the server's own code", async () => {
     const { fetch } = stub({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403);
     const result = await make(fetch).read('task.board', { board: null });
@@ -181,7 +194,9 @@ describe('what comes back', () => {
     const result = await make(fetch).read('task.board', { board: null });
     expect(result).toMatchObject({ unavailable: true });
   });
+}
 
+function whatComesBackCases2() {
   it('ends the session on either 401 code, and only when a token was sent', async () => {
     // The API tells the two apart on purpose — an unplaceable bearer is
     // `AUTH_UNKNOWN_LOGIN` and a verified one past its `exp` is
@@ -224,7 +239,9 @@ describe('what comes back', () => {
     }).read('task.board', { board: null });
     expect(ended).toEqual([]);
   });
+}
 
+function whatComesBackCases3() {
   it('reports a transport failure as unavailable', async () => {
     const fetch = (async () => {
       throw new Error('connection refused');
@@ -232,4 +249,4 @@ describe('what comes back', () => {
     const result = await make(fetch).read('task.read', { recordId: 'r1' });
     expect(result).toMatchObject({ unavailable: true, because: 'connection refused' });
   });
-});
+}

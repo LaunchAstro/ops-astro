@@ -292,6 +292,11 @@ const screenFor = (client: OperationsClient) => (
 );
 
 describe('the proposal evidence on the task page', () => {
+  theProposalEvidenceCases1();
+  theProposalEvidenceCases2();
+});
+
+function theProposalEvidenceCases1() {
   it('draws each version with its purpose, ceiling, digest and stored evidence', async () => {
     const { client } = server();
     const page = await mount(screenFor(client));
@@ -329,7 +334,9 @@ describe('the proposal evidence on the task page', () => {
 
     await page.unmount();
   });
+}
 
+function theProposalEvidenceCases2() {
   it('draws the gate, the stored decision chain and the reservation', async () => {
     const { client } = server({ decidedGate: true });
     const page = await mount(screenFor(client));
@@ -374,9 +381,15 @@ describe('the proposal evidence on the task page', () => {
     expect(second.all('[data-version-id][data-version]')).toHaveLength(0);
     await second.unmount();
   });
-});
+}
 
 describe('the propose form', () => {
+  theProposeFormCases1();
+  theProposeFormCases2();
+  theProposeFormCases3();
+});
+
+function theProposeFormCases1() {
   it('sends the task it is looking at and shows the new version from the server', async () => {
     const { client, proposed, reads } = server();
     const page = await mount(screenFor(client));
@@ -418,7 +431,9 @@ describe('the propose form', () => {
 
     await page.unmount();
   });
+}
 
+function theProposeFormCases2() {
   it('quotes the server code when a proposal is refused and writes nothing', async () => {
     const { client, proposed } = server({
       refusePropose: { code: 'PROPOSAL_OUT_OF_SCOPE', status: 403 },
@@ -464,7 +479,9 @@ describe('the propose form', () => {
 
     await page.unmount();
   });
+}
 
+function theProposeFormCases3() {
   it('will not send a purpose the database would reject', async () => {
     // The column's own check is `^[a-z][a-z0-9_]{0,62}$` (migration 0010), and a
     // violated check arrives from the API as a 503 rather than as a refusal
@@ -483,9 +500,15 @@ describe('the propose form', () => {
 
     await page.unmount();
   });
-});
+}
 
 describe('the exact-version decision control', () => {
+  theExactVersionCases1();
+  theExactVersionCases2();
+  theExactVersionCases3();
+});
+
+function theExactVersionCases1() {
   it('decides the version it displayed, and shows the reservation afterwards', async () => {
     const { client, decided, reads } = server();
     const page = await mount(screenFor(client));
@@ -531,7 +554,9 @@ describe('the exact-version decision control', () => {
 
     await page.unmount();
   });
+}
 
+function theExactVersionCases2() {
   it('offers nothing when the gate has already been decided', async () => {
     const { client, decided } = server({ decidedGate: true });
     const page = await mount(screenFor(client));
@@ -562,7 +587,9 @@ describe('the exact-version decision control', () => {
 
     await page.unmount();
   });
+}
 
+function theExactVersionCases3() {
   it('quotes GATE_ALREADY_DECIDED, rereads, and stops offering the control', async () => {
     const { client, decided, reads } = server({
       refuseDecide: { code: 'GATE_ALREADY_DECIDED', status: 409 },
@@ -601,4 +628,4 @@ describe('the exact-version decision control', () => {
 
     await page.unmount();
   });
-});
+}

@@ -85,6 +85,11 @@ const shared = (fields: Record<string, unknown>) => ({
 });
 
 describe('the task page for a reader outside the business', () => {
+  theTaskPageCases1();
+  theTaskPageCases2();
+});
+
+function theTaskPageCases1() {
   it('draws the shared projection: its fields under their keys and the client comments', async () => {
     const api = server(shared({ summary: 'What the client was told', budget: null }));
     const page = await mount(screen(api.fetch));
@@ -129,7 +134,9 @@ describe('the task page for a reader outside the business', () => {
     expect(page.text()).toContain('No field on this task is shared.');
     await page.unmount();
   });
+}
 
+function theTaskPageCases2() {
   it('offers no control and reads nothing beyond task.read', async () => {
     const api = server(shared({ summary: 'Shared' }));
     const page = await mount(screen(api.fetch));
@@ -164,7 +171,7 @@ describe('the task page for a reader outside the business', () => {
     expect(page.text()).not.toContain('Shared before the revoke');
     await page.unmount();
   });
-});
+}
 
 describe('the task page for a member', () => {
   it('is still the whole page when task.read answers task', async () => {

@@ -123,6 +123,12 @@ describe('the settings controls follow the session capabilities', () => {
     window.sessionStorage.clear();
   });
 
+  theSettingsControlsCases1();
+  theSettingsControlsCases2();
+  theSettingsControlsCases3();
+});
+
+function theSettingsControlsCases1() {
   it('asks session.capabilities on open, with an empty body', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -144,7 +150,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(false);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases2() {
   it('keeps them closed for a member, and asks nothing on their behalf', async () => {
     const api = server({
       capabilities: () =>
@@ -184,7 +192,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(true);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases3() {
   it('falls back to asking once when the API carries no capability read', async () => {
     const api = server({ capabilities: () => json({ error: 'not found' }, 404) });
     const page = await mount(screen(api.fetch));
@@ -221,4 +231,4 @@ describe('the settings controls follow the session capabilities', () => {
     expect(writes(api)).toBe(1);
     await page.unmount();
   });
-});
+}

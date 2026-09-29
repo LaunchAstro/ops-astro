@@ -287,6 +287,11 @@ describe('a refused decision is quoted under its own gate', () => {
 });
 
 describe('a refusal about this reader outlives the reread', () => {
+  aRefusalAboutCases1();
+  aRefusalAboutCases2();
+});
+
+function aRefusalAboutCases1() {
   it('keeps the comment box closed after an unrelated write rereads the task', async () => {
     const { client, count, holdRead, releaseRead } = server({ refuseComment: true });
     const page = await open(client);
@@ -315,7 +320,9 @@ describe('a refusal about this reader outlives the reread', () => {
     expect(count('task/comment')).toBe(1);
     await page.unmount();
   });
+}
 
+function aRefusalAboutCases2() {
   it('keeps the propose form closed after Refresh rereads the task', async () => {
     const { client, count, holdRead, releaseRead } = server({ refusePropose: true });
     const page = await open(client);
@@ -339,7 +346,7 @@ describe('a refusal about this reader outlives the reread', () => {
     expect(page.find('[data-propose="closed"]')).not.toBeNull();
     await page.unmount();
   });
-});
+}
 
 describe('the propose form offers the currency the seeded cap is kept in', () => {
   it('lists AUD and nothing else', async () => {

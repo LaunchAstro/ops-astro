@@ -149,6 +149,11 @@ describe('the routes come from the command surface', () => {
 });
 
 describe('only a verified token says who is calling', () => {
+  onlyAVerifiedCases1();
+  onlyAVerifiedCases2();
+});
+
+function onlyAVerifiedCases1() {
   it('refuses a request with no token', async () => {
     const answer = await post(build(), '/api/b/alpha/task/create', { operationId: 'abcdefgh' });
     expect(answer.status).toBe(401);
@@ -193,7 +198,9 @@ describe('only a verified token says who is calling', () => {
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_SESSION_EXPIRED');
   });
+}
 
+function onlyAVerifiedCases2() {
   it('refuses a token with no subject', async () => {
     const anonymous = await signBearer({
       aud: 'authenticated',
@@ -219,9 +226,14 @@ describe('only a verified token says who is calling', () => {
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
-});
+}
 
 describe('the business is named in the path and verified (N7)', () => {
+  theBusinessIsCases1();
+  theBusinessIsCases2();
+});
+
+function theBusinessIsCases1() {
   it('passes the resolved identifier, never one from the body or a header', async () => {
     const seen: Seen[] = [];
     const api = build({}, seen);
@@ -263,7 +275,9 @@ describe('the business is named in the path and verified (N7)', () => {
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
   });
+}
 
+function theBusinessIsCases2() {
   it('refuses before it reads the body, so a bad body cannot tell you a business exists', async () => {
     const seen: Seen[] = [];
     const token = await tokenFor(MIA);
@@ -271,7 +285,7 @@ describe('the business is named in the path and verified (N7)', () => {
     expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
     expect(seen).toHaveLength(0);
   });
-});
+}
 
 describe('a body that is not an object', () => {
   it('is refused rather than coerced, and its admission refusal recorded once', async () => {
@@ -294,9 +308,14 @@ describe('a body that is not an object', () => {
   });
 });
 
-describe('the read half of the surface', () => {
-  const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
+const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
 
+describe('the read half of the surface', () => {
+  theReadHalfCases1();
+  theReadHalfCases2();
+});
+
+function theReadHalfCases1() {
   it('names the read from the route, not from the body', async () => {
     const first = declared[0];
     if (first === undefined) {
@@ -327,7 +346,9 @@ describe('the read half of the surface', () => {
       { businessId: ALPHA, presented: { provider: 'supabase', subject: MIA }, read: first.name },
     ]);
   });
+}
 
+function theReadHalfCases2() {
   it('passes a read through without an operation identity or a revision', async () => {
     const seenRequests: Array<Readonly<Record<string, unknown>>> = [];
     const passing: ReadExecutor = async (_database, _businessId, _presented, request) => {
@@ -345,4 +366,4 @@ describe('the read half of the surface', () => {
     expect(seenRequests).toEqual([{ read: 'person.list' }]);
     expect(answer).toEqual({ ok: true, persons: [] });
   });
-});
+}

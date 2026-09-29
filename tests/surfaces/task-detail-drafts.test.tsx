@@ -247,6 +247,15 @@ const disabledOf = (host: HTMLElement, selector: string): boolean => {
 };
 
 describe('an unsaved edit is resolved, not merged', () => {
+  anUnsavedEditCases1();
+  anUnsavedEditCases2();
+  anUnsavedEditCases3();
+  anUnsavedEditCases4();
+  anUnsavedEditCases5();
+  anUnsavedEditCases6();
+});
+
+function anUnsavedEditCases1() {
   it('is offered at the revision it began from, so a second writer is not erased', async () => {
     const api = server();
     const view = await mount(
@@ -289,7 +298,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+}
 
+function anUnsavedEditCases2() {
   it('holds the assignee, the lifecycle and Refresh until Save or Discard is answered', async () => {
     const api = server();
     const view = await mount(
@@ -317,7 +328,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+}
 
+function anUnsavedEditCases3() {
   it('is discarded on request, and the saved values come back', async () => {
     const api = server();
     const view = await mount(
@@ -363,7 +376,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+}
 
+function anUnsavedEditCases4() {
   it('cannot be edited while the save it belongs to is in flight', async () => {
     const api = server();
     const view = await mount(
@@ -397,7 +412,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+}
 
+function anUnsavedEditCases5() {
   it('is dropped when the task changes, so one task never shows another one edit', async () => {
     const api = server();
     const held = client(api.fetch);
@@ -432,7 +449,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+}
 
+function anUnsavedEditCases6() {
   it('is dropped when the read is denied', async () => {
     const api = server();
     const held = client(api.fetch);
@@ -457,7 +476,7 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
-});
+}
 
 /**
  * Review finding 1. The resolve bar's Save was `type="button"` outside the
@@ -468,6 +487,11 @@ describe('an unsaved edit is resolved, not merged', () => {
  * same check whichever one is pressed.
  */
 describe("a cleared title is refused by both Save controls, not just the form's", () => {
+  aClearedTitleCases1();
+  aClearedTitleCases2();
+});
+
+function aClearedTitleCases1() {
   for (const control of [
     { what: 'the resolve bar', selector: 'button[data-draft-resolve="save"]' },
     { what: "the form's own submit", selector: 'form#task-fields button[type="submit"]' },
@@ -502,7 +526,9 @@ describe("a cleared title is refused by both Save controls, not just the form's"
       await view.unmount();
     });
   }
+}
 
+function aClearedTitleCases2() {
   it('lets the edit through once a title is put back', async () => {
     const api = server();
     const view = await mount(
@@ -527,4 +553,4 @@ describe("a cleared title is refused by both Save controls, not just the form's"
 
     await view.unmount();
   });
-});
+}

@@ -92,6 +92,11 @@ const tokenFor = async (subject: string): Promise<string> =>
   });
 
 describe('a refusal crossing the boundary into the browser client', () => {
+  aRefusalCrossingCases1();
+  aRefusalCrossingCases2();
+});
+
+function aRefusalCrossingCases1() {
   it('is read as a refusal, not as the API being unavailable', async () => {
     const result = await client(null).mutate('task.create', { fields: { title: 'anything' } });
 
@@ -134,7 +139,9 @@ describe('a refusal crossing the boundary into the browser client', () => {
     // the server's; this case only requires that both reach the client.
     expect(describeRefusal(result)).toContain(result.code);
   });
+}
 
+function aRefusalCrossingCases2() {
   it('is a refusal even when the request body is not an object at all', async () => {
     const response = await api.fetch(
       new Request(`http://api.test/api/b/alpha/task/create`, {
@@ -155,4 +162,4 @@ describe('a refusal crossing the boundary into the browser client', () => {
     expect(Array.isArray(body['fixes'])).toBe(true);
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
-});
+}

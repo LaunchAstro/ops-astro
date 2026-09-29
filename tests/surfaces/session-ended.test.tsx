@@ -177,6 +177,12 @@ async function signInAgain(view: Mounted): Promise<void> {
 const SIGNED_IN = { 'ops-astro.session': JSON.stringify(SESSION) };
 
 describe('a session the API will not vouch for any more', () => {
+  aSessionTheCases1();
+  aSessionTheCases2();
+  aSessionTheCases3();
+});
+
+function aSessionTheCases1() {
   it('a read refused AUTH_UNKNOWN_LOGIN lands on sign-in, says so, and comes back', async () => {
     const api = server({ reads: 'ended' });
     const store = storage(SIGNED_IN);
@@ -212,7 +218,9 @@ describe('a session the API will not vouch for any more', () => {
     expect([...store.held.keys()].some((key) => key.includes('return'))).toBe(false);
     await view.unmount();
   });
+}
 
+function aSessionTheCases2() {
   it('a mutation refused AUTH_UNKNOWN_LOGIN does the same, from the task screen', async () => {
     const api = server();
     const store = storage(SIGNED_IN);
@@ -242,7 +250,9 @@ describe('a session the API will not vouch for any more', () => {
     expect(view.text()).toContain('Wire the board to the API');
     await view.unmount();
   });
+}
 
+function aSessionTheCases3() {
   it('an ordinary denial is drawn as a denial and signs nobody out', async () => {
     const api = server({ reads: 'scope' });
     const store = storage(SIGNED_IN);
@@ -263,7 +273,7 @@ describe('a session the API will not vouch for any more', () => {
     expect(seen).not.toContain('/sign-in');
     await view.unmount();
   });
-});
+}
 
 // A server that judges every call by the bearer it actually carried, rather
 // than by a flag the test flips. That is the whole of this group: two requests

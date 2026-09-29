@@ -178,6 +178,11 @@ const untouched = new Proxy(
 ) as unknown as TenantQuery;
 
 describe('one refusal from each road, byte for byte', () => {
+  oneRefusalFromCases1();
+  oneRefusalFromCases2();
+});
+
+function oneRefusalFromCases1() {
   it('a runtime refusal: reason then fix, into fixes', () => {
     const result = refuseRuntime('LEASE_EXPIRED', 'The lease ended.', 'Pick the work up again.');
     if (result.ok) throw new Error('unreachable');
@@ -222,7 +227,9 @@ describe('one refusal from each road, byte for byte', () => {
       '{"refused":true,"code":"FIELD_UNKNOWN","names":["colour"],"fixes":["Use a field it has."]}',
     ]);
   });
+}
 
+function oneRefusalFromCases2() {
   it('an identity refusal, person and agent, carries no names', () => {
     expect(wire(refuseCommand('ACTOR_INACTIVE', [], ['Ask an admin.']))).toStrictEqual([
       403,
@@ -260,7 +267,7 @@ describe('one refusal from each road, byte for byte', () => {
       /^\{"refused":true,"code":"ACTUAL_EXPENDITURE_UNSUPPORTED","names":\["actualMinor"\],"fixes":\[/u,
     );
   });
-});
+}
 
 const ISSUER = 'http://127.0.0.1:54391';
 const ALPHA = '11111111-1111-4111-8111-111111111111';

@@ -159,6 +159,12 @@ async function choose(host: HTMLElement, selector: string, value: string): Promi
 }
 
 describe('comments on the task page', () => {
+  commentsOnTheCases1();
+  commentsOnTheCases2();
+  commentsOnTheCases3();
+});
+
+function commentsOnTheCases1() {
   it('draws what the read carried, in posted order, with the audience on each', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -197,7 +203,9 @@ describe('comments on the task page', () => {
     expect((page.find('#comment-body') as HTMLTextAreaElement).value).toBe('');
     await page.unmount();
   });
+}
 
+function commentsOnTheCases2() {
   it('locks the form for the length of its own request', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -225,7 +233,9 @@ describe('comments on the task page', () => {
     expect((page.find('[data-comment="post"]') as HTMLButtonElement).disabled).toBe(false);
     await page.unmount();
   });
+}
 
+function commentsOnTheCases3() {
   it('quotes a refused comment and stops offering the control to that reader', async () => {
     const api = server({ refuseComment: true });
     const page = await mount(screen(api.fetch));
@@ -250,4 +260,4 @@ describe('comments on the task page', () => {
     expect(api.posted).toHaveLength(1);
     await page.unmount();
   });
-});
+}

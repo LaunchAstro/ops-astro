@@ -136,6 +136,12 @@ const screen = (fetch: typeof globalThis.fetch) => (
 );
 
 describe('a create whose response was lost', () => {
+  aCreateWhoseCases1();
+  aCreateWhoseCases2();
+  aCreateWhoseCases3();
+});
+
+function aCreateWhoseCases1() {
   it('is retried as the same attempt, and one task exists at the end', async () => {
     const api = server();
     const view = await mount(screen(api.fetch));
@@ -168,7 +174,9 @@ describe('a create whose response was lost', () => {
 
     await view.unmount();
   });
+}
 
+function aCreateWhoseCases2() {
   it('starts a new attempt when the person asks for a different task', async () => {
     const api = server();
     const view = await mount(screen(api.fetch));
@@ -196,7 +204,9 @@ describe('a create whose response was lost', () => {
 
     await view.unmount();
   });
+}
 
+function aCreateWhoseCases3() {
   it('is not editable while it is in flight, so a late success erases nothing', async () => {
     // The second half of the review's finding 2, on the create form. The
     // success handler used to clear the box unconditionally, so a title typed
@@ -229,4 +239,4 @@ describe('a create whose response was lost', () => {
 
     await view.unmount();
   });
-});
+}

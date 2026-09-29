@@ -199,6 +199,11 @@ async function press(page: Mounted, selector: string): Promise<void> {
 }
 
 describe('a lost answer is retried as the same attempt', () => {
+  aLostAnswerCases1();
+  aLostAnswerCases2();
+});
+
+function aLostAnswerCases1() {
   it('propose: an unchanged form resends its operationId, and a changed one mints another', async () => {
     const { client, idsOf } = server({ propose: ['lost', 'lost', 'ok'] });
     const page = await open(client);
@@ -235,7 +240,9 @@ describe('a lost answer is retried as the same attempt', () => {
     expect(second).toBe(first);
     expect(third).not.toBe(first);
   });
+}
 
+function aLostAnswerCases2() {
   for (const reply of ['lost', 'dropped'] as const) {
     it(`comment (${reply}): an unchanged box resends its operationId, and an edited one mints another`, async () => {
       const { client, idsOf } = server({ comment: [reply, reply, 'ok'] });
@@ -269,30 +276,36 @@ describe('a lost answer is retried as the same attempt', () => {
     const [first, second] = idsOf('task/comment');
     expect(second).not.toBe(first);
   });
-});
+}
+
+const before: readonly LineageSpec[] = [
+  { id: 'l-0001', versions: [{ id: 'v-0001', version: 1, gateId: 'g-0001' }] },
+  { id: 'l-0002', versions: [{ id: 'v-0002', version: 1, gateId: 'g-0002' }] },
+];
+
+// Another actor proposed version 2 into l-0001: v-0001 and g-0001 are superseded.
+const superseded: readonly LineageSpec[] = [
+  {
+    id: 'l-0001',
+    versions: [
+      { id: 'v-0003', version: 2, gateId: 'g-0003' },
+      { id: 'v-0001', version: 1, gateId: 'g-0001', gateState: 'superseded', superseded: true },
+    ],
+  },
+  before[1] as LineageSpec,
+];
+
+// A reread that no longer lists the refused gate at all.
+const gone: readonly LineageSpec[] = [
+  { id: 'l-0001', versions: [{ id: 'v-0003', version: 2, gateId: 'g-0003' }] },
+  before[1] as LineageSpec,
+];
 
 describe('a refused decision survives the reread that moved its gate', () => {
-  const before: readonly LineageSpec[] = [
-    { id: 'l-0001', versions: [{ id: 'v-0001', version: 1, gateId: 'g-0001' }] },
-    { id: 'l-0002', versions: [{ id: 'v-0002', version: 1, gateId: 'g-0002' }] },
-  ];
-  // Another actor proposed version 2 into l-0001: v-0001 and g-0001 are superseded.
-  const superseded: readonly LineageSpec[] = [
-    {
-      id: 'l-0001',
-      versions: [
-        { id: 'v-0003', version: 2, gateId: 'g-0003' },
-        { id: 'v-0001', version: 1, gateId: 'g-0001', gateState: 'superseded', superseded: true },
-      ],
-    },
-    before[1] as LineageSpec,
-  ];
-  // A reread that no longer lists the refused gate at all.
-  const gone: readonly LineageSpec[] = [
-    { id: 'l-0001', versions: [{ id: 'v-0003', version: 2, gateId: 'g-0003' }] },
-    before[1] as LineageSpec,
-  ];
+  aRefusedDecisionCases();
+});
 
+function aRefusedDecisionCases() {
   for (const code of ['GATE_ALREADY_DECIDED', 'VERSION_SUPERSEDED']) {
     it(`quotes ${code} once, under the superseded gate in l-0001, and nowhere in l-0002`, async () => {
       const { client } = server({ lineages: before, decide: { code, after: superseded } });
@@ -326,47 +339,52 @@ describe('a refused decision survives the reread that moved its gate', () => {
     expect(quoted[0]?.textContent).toContain('GATE_ALREADY_DECIDED');
     expect(quoted[0]?.closest('[data-lineage-id]')?.getAttribute('data-lineage-id')).toBe('l-0001');
   });
-});
+}
 
 const settingsTab = (page: Mounted): Element | undefined =>
   page.all('.dock__tab').find((tab) => tab.getAttribute('aria-label')?.endsWith(' Settings'));
 
-describe('the settings dock tab does what it announces', () => {
-  const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
-  const storage = (): StorageLike => {
-    const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
-    return {
-      getItem: (key) => held.get(key) ?? null,
-      setItem: (key, value) => {
-        held.set(key, value);
-      },
-      removeItem: (key) => {
-        held.delete(key);
-      },
-    };
+const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
+
+const storage = (): StorageLike => {
+  const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
+  return {
+    getItem: (key) => held.get(key) ?? null,
+    setItem: (key, value) => {
+      held.set(key, value);
+    },
+    removeItem: (key) => {
+      held.delete(key);
+    },
   };
-  // Every read stays in flight: only the dock is under test.
-  const fetch = (() =>
-    new Promise<Response>(() => undefined)) as unknown as typeof globalThis.fetch;
+};
 
-  async function appAt(path: string, went: string[]): Promise<Mounted> {
-    const page = await mount(
-      <App
-        path={path}
-        navigate={(next) => {
-          went.push(next);
-        }}
-        sessions={new SessionStore(storage())}
-        gotrueUrl="http://gotrue.test"
-        apiOrigin=""
-        fetch={fetch}
-        storage={null}
-      />,
-    );
-    live.push(page);
-    return page;
-  }
+// Every read stays in flight: only the dock is under test.
+const fetch = (() => new Promise<Response>(() => undefined)) as unknown as typeof globalThis.fetch;
 
+async function appAt(path: string, went: string[]): Promise<Mounted> {
+  const page = await mount(
+    <App
+      path={path}
+      navigate={(next) => {
+        went.push(next);
+      }}
+      sessions={new SessionStore(storage())}
+      gotrueUrl="http://gotrue.test"
+      apiOrigin=""
+      fetch={fetch}
+      storage={null}
+    />,
+  );
+  live.push(page);
+  return page;
+}
+
+describe('the settings dock tab does what it announces', () => {
+  theSettingsDockCases();
+});
+
+function theSettingsDockCases() {
   it('on /settings, "Close Settings" leaves the settings address', async () => {
     const went: string[] = [];
     const page = await appAt('/settings', went);
@@ -395,4 +413,4 @@ describe('the settings dock tab does what it announces', () => {
 
     expect(went).toEqual(['/settings']);
   });
-});
+}
