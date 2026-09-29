@@ -134,7 +134,7 @@ export async function reserveModelCall(
   request: ModelCallRequest,
   broker: Broker,
 ): Promise<Reservation> {
-  const checked = await lockFacts(tx, caller, request, false);
+  const checked = await lockFacts(tx, caller, request);
   if (!checked.ok) return refusing(checked.code, null);
   const { facts } = checked;
   const operation = broker.operations.get(request.operation);
