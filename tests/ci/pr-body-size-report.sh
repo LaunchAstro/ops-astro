@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-only
-# Sol proof, criterion 5: the PR body records the complete CQ-8 size report.
+# The PR body records the complete CQ-8 size report.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -20,8 +20,8 @@ const report = readFileSync(process.argv[2], 'utf8').trimEnd().split('\n');
 const { body } = JSON.parse(readFileSync(process.argv[3], 'utf8'));
 const missing = report.filter((line) => !body.includes(line));
 if (missing.length > 0) {
-  console.error(`Sol proof, criterion 5: the PR body records the complete CQ-8 size report: FAIL (${missing.length} of ${report.length} printed lines missing)`);
+  console.error(`the PR body records the complete CQ-8 size report: FAIL (${missing.length} of ${report.length} printed lines missing)`);
   process.exit(1);
 }
-console.log('Sol proof, criterion 5: the PR body records the complete CQ-8 size report: PASS');
+console.log('the PR body records the complete CQ-8 size report: PASS');
 NODE

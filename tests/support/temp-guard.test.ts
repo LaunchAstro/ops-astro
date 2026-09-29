@@ -50,7 +50,7 @@ it('passes the same run once the leak is removed, ignoring entries it did not cr
   expect(readdirSync(clean.other)).toHaveLength(1);
 }, 60_000);
 
-it('Sol proof, criterion 2: a test-created node-compile-cache folder fails the run', () => {
+it('a test-created node-compile-cache folder fails the run', () => {
   const leaked = run(false, true);
   expect(leaked.status, leaked.out).not.toBe(0);
   expect(leaked.out).toMatch(
