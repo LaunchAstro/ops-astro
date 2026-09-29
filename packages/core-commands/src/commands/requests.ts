@@ -251,6 +251,17 @@ export type CommandRequest =
   // task is where the work-control authority is asked and the lineage is
   // checked against it. A restart carries no proposal of its own: it is the
   // terminal lineage's last version, proposed again under a new lineage.
+  // C32: the client record and Settings ▸ Access, each field checked by the
+  // handler in its own words (`access-write.ts`).
+  | ({ readonly command: 'client.create'; readonly name: unknown } & Envelope)
+  | ({
+      readonly command: 'access.grant';
+      readonly holderId: unknown;
+      readonly collection: unknown;
+      readonly action: unknown;
+      readonly clientId?: unknown;
+    } & Envelope)
+  | ({ readonly command: 'access.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

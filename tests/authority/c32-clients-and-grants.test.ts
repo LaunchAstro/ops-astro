@@ -20,7 +20,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { checkAuthority } from '../../packages/core-records/src/authority/grants.ts';
-import { grantAccess, revokeAccess } from '../../packages/core-records/src/index.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { grantAccess } from '../../packages/core-records/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { tokenFor } from '../acceptance/cast.ts';
@@ -145,7 +147,7 @@ describe.skipIf(serverUrl === undefined)(
       expect((await previewOf(tia.personId)).permissions).toEqual([]);
 
       const given = await give({
-        personId: tia.personId,
+        holderId: tia.personId,
         collection: 'task',
         action: 'read',
         clientId: one,
@@ -189,7 +191,7 @@ describe.skipIf(serverUrl === undefined)(
 
       // The same grant given again is the same grant.
       const again = await give({
-        personId: tia.personId,
+        holderId: tia.personId,
         collection: 'task',
         action: 'read',
         clientId: one,
@@ -239,7 +241,7 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it('C32 grant changed: the whole business is a grant with no client, and malformed, unknown or self-scoped input is refused by name with nothing written', async () => {
-      const whole = await give({ personId: tia.personId, collection: 'report', action: 'read' });
+      const whole = await give({ holderId: tia.personId, collection: 'report', action: 'read' });
       expect(outcome(whole)).toEqual({ status: 200, code: 'ok' });
       expect((await previewOf(tia.personId)).permissions).toEqual([
         { collection: 'report', action: 'read', scope: { kind: 'business', id: null } },
@@ -250,7 +252,7 @@ describe.skipIf(serverUrl === undefined)(
       });
 
       const before = await rowsOf(harness.world.alpha);
-      const base = { personId: tia.personId, collection: 'task', action: 'read' };
+      const base = { holderId: tia.personId, collection: 'task', action: 'read' };
       const cases: readonly (readonly [
         Readonly<Record<string, unknown>>,
         string,
@@ -284,13 +286,23 @@ describe.skipIf(serverUrl === undefined)(
           422,
           'FIELD_VALUE_INVALID',
         ],
-        [{ ...base, personId: 'not-an-id' }, 'personId', 422, 'FIELD_VALUE_INVALID'],
+        [{ ...base, holderId: 'not-an-id' }, 'holderId', 422, 'FIELD_VALUE_INVALID'],
         [{ ...base, clientId: 'not-an-id' }, 'clientId', 422, 'FIELD_VALUE_INVALID'],
-        [{ ...base, personId: randomUUID() }, 'personId', 404, 'NOT_FOUND'],
+        [{ ...base, holderId: randomUUID() }, 'holderId', 404, 'NOT_FOUND'],
         [{ ...base, clientId: randomUUID() }, 'clientId', 404, 'NOT_FOUND'],
         // Noah's person is a member; the orphan's login has no membership.
-        [{ ...base, personId: harness.world.orphan.personId }, 'personId', 404, 'NOT_FOUND'],
+        [{ ...base, holderId: harness.world.orphan.personId }, 'holderId', 404, 'NOT_FOUND'],
       ];
+      // A former member: the membership is there and ended.
+      const leo = await enrol(harness.world.db.app, harness.world.alpha, 'leo');
+      await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+        await tx.query(
+          'update public.memberships set active = false, ended_at = now() where person_id = $1',
+          [leo.personId],
+        );
+      });
+      const former = await give({ ...base, holderId: leo.personId });
+      expect(outcome(former)).toEqual({ status: 404, code: 'NOT_FOUND' });
       for (const [body, field, status, code] of cases) {
         // oxlint-disable-next-line no-await-in-loop
         const answer = await give(body);
@@ -341,7 +353,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(outcome(last)).toEqual({ status: 409, code: 'ACCESS_LAST_MANAGER' });
 
       // With a second holder, the first may go, and then the second is the last.
-      const second = await give({ personId: tia.personId, collection: 'access', action: 'manage' });
+      const second = await give({ holderId: tia.personId, collection: 'access', action: 'manage' });
       expect(outcome(second)).toEqual({ status: 200, code: 'ok' });
       expect(outcome(await revoke(held[0]?.id))).toEqual({ status: 200, code: 'ok' });
       expect(outcome(await revoke(detailOf(second)['grantId'], tiaToken))).toEqual({
@@ -350,7 +362,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       // Ada's key back, then Tia's gone, as the rest of the file expects.
       const back = await give(
-        { personId: harness.world.ada.personId, collection: 'access', action: 'manage' },
+        { holderId: harness.world.ada.personId, collection: 'access', action: 'manage' },
         tiaToken,
       );
       expect(outcome(back)).toEqual({ status: 200, code: 'ok' });
@@ -393,13 +405,15 @@ describe.skipIf(serverUrl === undefined)(
             ),
         );
         expect(rows[0]?.n).toBe(1);
+        const given = both[0];
+        expect((await revoke(given?.ok === true ? given.value : null)).code).toBe('ok');
       } finally {
         await wide.close();
       }
 
       // Two managers, each revoking the other's key at once, on two connections
       // that truly overlap: one revocation applies, the other is the last.
-      const second = await give({ personId: tia.personId, collection: 'access', action: 'manage' });
+      const second = await give({ holderId: tia.personId, collection: 'access', action: 'manage' });
       const managers = await harness.world.db.app.withBusiness(
         harness.world.alpha,
         async (tx) =>
@@ -411,17 +425,25 @@ describe.skipIf(serverUrl === undefined)(
       );
       expect(managers).toHaveLength(2);
       const pair = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
+      const byPerson = new Map([
+        [harness.world.ada.personId, member(harness.world.ada).presented],
+        [tia.personId, tia.presented],
+      ]);
       let codes: string[];
       try {
+        // Each manager revokes the other's key, through the real command.
         codes = await Promise.all(
-          managers.map(
-            async (held) =>
-              await pair.withBusiness(harness.world.alpha, async (tx) => {
-                const ended = await revokeAccess(tx, held.id);
-                await tx.query('select pg_sleep(0.2)');
-                return ended.ok ? 'ok' : ended.refusal.code;
-              }),
-          ),
+          managers.map(async (held) => {
+            const other = managers.find((one) => one.id !== held.id)?.person as string;
+            const result = await executeCommand(
+              pair,
+              harness.world.alpha,
+              byPerson.get(other) as Member['presented'],
+              'api',
+              { command: 'access.revoke', operationId: randomUUID(), grantId: held.id },
+            );
+            return isCommandRefusal(result) ? result.code : 'ok';
+          }),
         );
       } finally {
         await pair.close();
@@ -440,7 +462,7 @@ describe.skipIf(serverUrl === undefined)(
       // Leave Ada holding it, and Tia not, for the cases after this one.
       if (left[0]?.person !== harness.world.ada.personId) {
         const back = await give(
-          { personId: harness.world.ada.personId, collection: 'access', action: 'manage' },
+          { holderId: harness.world.ada.personId, collection: 'access', action: 'manage' },
           tiaToken,
         );
         expect(back.code).toBe('ok');
@@ -451,7 +473,7 @@ describe.skipIf(serverUrl === undefined)(
     it('C32 refusal access:manage: a task holder, a member with nothing and a client are refused grants and revocations, and record:write guards a new client, with nothing written', async () => {
       const clientId = await createClient(`Refusal Clinic ${randomUUID().slice(0, 6)}`);
       const given = await give({
-        personId: tia.personId,
+        holderId: tia.personId,
         collection: 'task',
         action: 'read',
         clientId,
@@ -462,7 +484,7 @@ describe.skipIf(serverUrl === undefined)(
         const answers = [
           // oxlint-disable-next-line no-await-in-loop
           await give(
-            { personId: tia.personId, collection: 'task', action: 'write', clientId },
+            { holderId: tia.personId, collection: 'task', action: 'write', clientId },
             token,
           ),
           // oxlint-disable-next-line no-await-in-loop
@@ -498,7 +520,7 @@ describe.skipIf(serverUrl === undefined)(
       // Another business. Bea on bravo cannot name alpha's person, client or
       // grant, and each is the same NOT_FOUND as a made-up one.
       const tiaGrant = await give({
-        personId: tia.personId,
+        holderId: tia.personId,
         collection: 'task',
         action: 'read',
         clientId: alphaOne,
@@ -507,13 +529,13 @@ describe.skipIf(serverUrl === undefined)(
       const alphaAfterGrant = await rowsOf(harness.world.alpha);
       const beaAcross = [
         await give(
-          { personId: tia.personId, collection: 'task', action: 'read' },
+          { holderId: tia.personId, collection: 'task', action: 'read' },
           harness.world.bea.token,
           'bravo',
         ),
         await give(
           {
-            personId: harness.world.bea.personId,
+            holderId: harness.world.bea.personId,
             collection: 'task',
             action: 'read',
             clientId: alphaOne,
@@ -523,7 +545,7 @@ describe.skipIf(serverUrl === undefined)(
         ),
         await revoke(tiaGrantId, harness.world.bea.token, 'bravo'),
       ];
-      expect(beaAcross.map(outcome)).toEqual([
+      expect(beaAcross.map((answer) => outcome(answer))).toEqual([
         { status: 404, code: 'NOT_FOUND' },
         { status: 404, code: 'NOT_FOUND' },
         { status: 404, code: 'NOT_FOUND' },
@@ -532,13 +554,13 @@ describe.skipIf(serverUrl === undefined)(
       expect(beaList.body['clients']).toEqual([{ clientId: bravoClient, name: bravoName }]);
       // Bea on alpha's prefix is no member of alpha.
       const onAlpha = await give(
-        { personId: tia.personId, collection: 'task', action: 'read' },
+        { holderId: tia.personId, collection: 'task', action: 'read' },
         harness.world.bea.token,
       );
       expect(outcome(onAlpha)).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
       // Alpha cannot give access to bravo's client.
       const bravoFromAlpha = await give({
-        personId: tia.personId,
+        holderId: tia.personId,
         collection: 'task',
         action: 'read',
         clientId: bravoClient,
@@ -555,15 +577,15 @@ describe.skipIf(serverUrl === undefined)(
         { clientId: alphaOne, name: expect.stringContaining('Alpha One') },
       ]);
       expect(JSON.stringify(tiaList.body)).not.toContain(alphaTwo);
-      // A client person on a share holds no grant, so lists nothing.
+      // A client person stands on a share of one task, which reaches no client.
       const clientList = await listClients(clientToken);
-      expect(outcome(clientList)).toEqual({ status: 403, code: 'SCOPE_NOT_GRANTED' });
-      expect(JSON.stringify(clientList.body)).not.toContain(alphaOne);
+      expect(outcome(clientList)).toEqual({ status: 200, code: 'ok' });
+      expect(clientList.body['clients']).toEqual([]);
 
       // Another person under a live delegation: the agent acting for Ada, who
       // holds access:manage and record:write, is refused all four.
       for (const [path, body] of [
-        ['/access/grant', { personId: tia.personId, collection: 'task', action: 'read' }],
+        ['/access/grant', { holderId: tia.personId, collection: 'task', action: 'read' }],
         ['/access/revoke', { grantId: tiaGrantId }],
         ['/client/create', { name: 'Agent Made' }],
         ['/client/list', {}],
@@ -597,7 +619,7 @@ describe.skipIf(serverUrl === undefined)(
       try {
         clientId = await createClient(`Clinic ${CANARY}`);
         const given = await give({
-          personId: tia.personId,
+          holderId: tia.personId,
           collection: 'task',
           action: 'read',
           clientId,
@@ -609,16 +631,17 @@ describe.skipIf(serverUrl === undefined)(
             { operationId: randomUUID(), name: `Clinic ${CANARY}` },
             harness.world.noah.token,
           ),
-          await give({ personId: randomUUID(), collection: 'task', action: 'read', clientId }),
-          await give({ personId: tia.personId, collection: CANARY, action: 'read', clientId }),
+          await give({ holderId: randomUUID(), collection: 'task', action: 'read', clientId }),
+          await give({ holderId: tia.personId, collection: CANARY, action: 'read', clientId }),
           await revoke(randomUUID()),
           await listClients(harness.world.noah.token),
-          await listClients(clientToken),
         ];
         for (const answer of answers) {
           expect(answer.status).toBeGreaterThanOrEqual(400);
           expect(JSON.stringify(answer.body)).not.toContain(CANARY);
         }
+        // A client person on a share reaches no client, so is shown none.
+        expect((await listClients(clientToken)).body['clients']).toEqual([]);
         expect(
           JSON.stringify((await listClients(harness.world.bea.token, 'bravo')).body),
         ).not.toContain(CANARY);

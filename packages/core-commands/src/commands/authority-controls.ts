@@ -41,6 +41,9 @@ import {
   subjectsOf,
   revokeDelegation,
   isUuid,
+  lastManager,
+  lockAccess,
+  otherManagers,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Action, Scope } from '../../../core-records/src/index.ts';
 import { classifyAuthorityLoss, requireUnchanged } from '../../../core-runtime/src/index.ts';
@@ -196,8 +199,39 @@ export async function revokeGrantAsManager(
   context: CommandContext,
   grantId: unknown,
 ): Promise<HandlerOutcome> {
+  return await revokeGrantRow(tx, context, grantId, 'ceiling');
+}
+
+/**
+ * `access.revoke` (C32): any live grant of the business, under
+ * `access:manage`, which the envelope has asked over the whole business, so
+ * no ceiling is asked here. A grant already revoked is not live, so it is the
+ * same `NOT_FOUND` as a made-up one. The authority loss it causes is
+ * classified exactly as the manager's revocation classifies it.
+ */
+export async function revokeGrantOnAccess(
+  tx: TenantQuery,
+  context: CommandContext,
+  grantId: unknown,
+): Promise<HandlerOutcome> {
+  return await revokeGrantRow(tx, context, grantId, 'access');
+}
+
+/**
+ * The one revocation of a grant row. Both paths take the business's access
+ * lock first (`lockAccess`, the widest, before the grant row), so the last
+ * business-wide `access:manage` of a person who can sign in is never revoked
+ * by either: two revocations that would each leave one holder serialise on it.
+ */
+async function revokeGrantRow(
+  tx: TenantQuery,
+  context: CommandContext,
+  grantId: unknown,
+  authority: 'ceiling' | 'access',
+): Promise<HandlerOutcome> {
   if (typeof grantId !== 'string') return absent('grantId');
   if (!isUuid(grantId)) return NOT_FOUND;
+  await lockAccess(tx);
   const rows = await tx.query<{
     readonly collection: string;
     readonly action: Action;
@@ -220,7 +254,10 @@ export async function revokeGrantAsManager(
   const grant = rows[0];
   if (grant === undefined) return NOT_FOUND;
   const scope: Scope = { kind: grant.scope_kind, id: grant.scope_id };
-  if (!(await withinCeiling(tx, context, grant.collection, grant.action, scope))) {
+  if (
+    authority === 'ceiling' &&
+    !(await withinCeiling(tx, context, grant.collection, grant.action, scope))
+  ) {
     return OUTSIDE_CEILING;
   }
   const already = refused(
@@ -230,7 +267,15 @@ export async function revokeGrantAsManager(
       ['This grant is already revoked. A revocation is written once and never undone.'],
     ),
   );
-  if (grant.revoked) return already;
+  if (grant.revoked) return authority === 'access' ? NOT_FOUND : already;
+  if (
+    grant.collection === 'access' &&
+    grant.action === 'manage' &&
+    grant.scope_kind === 'business' &&
+    (await otherManagers(tx, [grantId])) === 0
+  ) {
+    return refused(lastManager());
+  }
 
   const candidates = await dependents(tx, grantId);
   const loss = await classifyAuthorityLoss(tx, {

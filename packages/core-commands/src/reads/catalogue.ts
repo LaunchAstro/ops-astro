@@ -14,7 +14,12 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import {
+  clientsReached,
+  planPresetSync,
+  isUuid,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -338,6 +343,22 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, ...(await readAccess(tx)) }),
+  },
+  // C32. The clients the caller's live grants reach, asked inside the query:
+  // every client for a business-wide grant of any key, one client for a grant
+  // over it. No one collection is asked, and a caller holding nothing is
+  // refused rather than shown an empty list.
+  'client.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session) {
+      const clients = await clientsReached(tx, subjectsOf(session));
+      if (clients === null) return NO_GRANT_AT_ALL;
+      return { ok: true, clients };
+    },
   },
   // C55. The business's own operations, so no subject record; it asks
   // `read` on `operations`, which no agent holds.

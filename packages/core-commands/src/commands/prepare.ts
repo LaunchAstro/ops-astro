@@ -254,6 +254,7 @@ const FREE_OPERANDS: readonly string[] = [
   'contract',
   'currency',
   'foundBy',
+  'name',
   'note',
   'payload',
   'purpose',

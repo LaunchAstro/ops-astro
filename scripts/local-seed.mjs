@@ -102,6 +102,8 @@ const GRANTS_BY_ROLE = {
     // and administrators hold both on install, and no agent ever does.
     ['operations', 'read'],
     ['privacy', 'manage'],
+    // The client record (C32): the owner and administrators make clients.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],

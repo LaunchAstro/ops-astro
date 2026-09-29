@@ -591,6 +591,26 @@ register, so a change and a policy decision apply in one order. Approval and
 publication take the version's row lock first and the register's second; a
 change takes only the register's, so the two never wait in a cycle.
 
+## Settings ▸ Access (C32)
+
+Giving and revoking a grant on Settings ▸ Access (`access.grant`,
+`access.revoke`) is `access:manage`, the owner's and the administrators' key,
+never an agent's. A grant given here is a root grant, to a person with an
+active membership, over the whole business or over one client of it
+(`scope_kind = 'party'`, `scope_id` the client). Making a client
+(`client.create`) is `record:write`, never an agent's.
+
+Every change to who may do what takes the business's one access lock first
+(`lockAccess`, `access:<business>`), before any grant row: a grant given, a
+grant revoked on either route, and ending a person's access (C58). So the same
+grant given twice is one row, and two revocations that would each leave one
+holder of business-wide `access:manage` cannot both apply: the second is
+`ACCESS_LAST_MANAGER`.
+
+A party-scoped grant is checked at party scope. The task reads and writes ask
+record scope, so they do not yet resolve a grant over a client through the
+task's `client` link; `client.list` and the preview do read it.
+
 ## Revocation
 
 `grant.revoke` and `delegation.revoke` are the ledger's "existing

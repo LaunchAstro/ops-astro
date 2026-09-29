@@ -392,6 +392,20 @@ export interface AccessReadResult {
   readonly team: readonly AccessPerson[];
   readonly clients: readonly AccessPerson[];
   readonly agents: readonly AccessAgent[];
+  /** The business's client records, which a `party` scope in a preview names. */
+  readonly clientRecords: readonly ClientView[];
+}
+
+/** One client record (C32): an organisation the business works for. */
+export interface ClientView {
+  readonly clientId: string;
+  readonly name: string;
+}
+
+/** `client.list`'s answer: the clients the caller's live grants reach. */
+export interface ClientListResult {
+  readonly ok: true;
+  readonly clients: readonly ClientView[];
 }
 
 /** One privacy incident record on the operations view (C55, SP-24). */

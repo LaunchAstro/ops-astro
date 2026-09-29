@@ -27,6 +27,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   AccessReadResult,
+  ClientListResult,
   CapabilitiesResult,
   OperationsReadResult,
   PersonListResult,
@@ -97,6 +98,7 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
   /** What needs the operator's eye: privacy incidents first (C55). */
   readonly 'operations.read': NoOperands;
 }
@@ -124,4 +126,5 @@ export type ReadResult =
   | SettingsReadResult
   | CapabilitiesResult
   | AccessReadResult
+  | ClientListResult
   | OperationsReadResult;
