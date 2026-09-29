@@ -19,16 +19,17 @@
 // **The fetch is to one address and trusts nothing it gets back.** The
 // address is fixed at construction (TLS, or plain HTTP on loopback for the
 // local auth server), redirects are refused, the whole exchange has a time
-// limit, the body has a size cap, and the answer is shape-checked. A set that
-// carries private key material is refused outright. Each refused answer is
-// recorded by its reason alone. A refused refetch leaves the cached set as it
-// was; once that set is older than ten minutes, every token is refused.
+// limit, the body has a size cap, and the answer is shape-checked
+// (key-set-shape.ts). A set that carries private key material is refused
+// outright. Each refused answer is recorded by its reason alone. A refused
+// refetch leaves the cached set as it was; once that set is older than ten
+// minutes, every token is refused.
 //
 // Hono's `verifyWithJwks` is not used: it fetches on every call with no cache
 // and lets a key with no `alg` take the algorithm from the token's header.
 
-import type { webcrypto } from 'node:crypto';
 import { verify } from 'hono/jwt';
+import { type ImportedKey, type KeySet, parseKeySet } from './key-set-shape.ts';
 
 /** The longest a fetched key set is trusted, in milliseconds. */
 export const KEY_SET_CACHE_MS: number = 10 * 60 * 1000;
@@ -38,7 +39,6 @@ export const KEY_SET_COOLDOWN_MS: number = 30 * 1000;
 export const KEY_SET_TIMEOUT_MS: number = 5 * 1000;
 /** The largest key set body read. A real one is well under a kilobyte. */
 export const KEY_SET_MAX_BYTES: number = 64 * 1024;
-const MAX_KEYS = 32;
 
 export type KeySetFetch = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -72,16 +72,9 @@ export type KeySetVerifier = (token: string) => Promise<KeySetVerdict>;
 
 type Refused = Extract<KeySetVerdict, { outcome: 'refused' }>['reason'];
 type Checks = Parameters<typeof verify>[2];
-// The key type `crypto.subtle` itself returns, so the same line typechecks
-// under Node's declarations and under the DOM's (the web program imports this
-// file through the sign-in adapter).
-type ImportedKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
-type KeySet = ReadonlyMap<string, ImportedKey>;
 type Loaded = KeySet | KeySetRefusal['reason'];
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const PRIVATE_MEMBERS = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'k'];
-const COORDINATE = /^[\w-]{43}$/u;
 const SEGMENT = /^[\w-]+$/u;
 const CLAIM_ERRORS = new Set([
   'JwtTokenExpired',
@@ -253,66 +246,4 @@ async function readCapped(response: Response): Promise<Uint8Array | undefined> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
-}
-
-/** The shape check: `{ keys: [...] }`, public members only, one entry per `kid`. */
-async function parseKeySet(body: Uint8Array): Promise<Loaded> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
-  } catch {
-    return 'shape';
-  }
-  const keys = (parsed as { keys?: unknown } | null)?.keys;
-  if (!Array.isArray(keys) || keys.length === 0 || keys.length > MAX_KEYS) return 'shape';
-  if (!keys.every((key) => typeof key === 'object' && key !== null && !Array.isArray(key))) {
-    return 'shape';
-  }
-  const entries = keys as Record<string, unknown>[];
-  if (entries.some((key) => PRIVATE_MEMBERS.some((member) => member in key))) return 'private_key';
-  const kids = entries.map((key) => key['kid']).filter((kid) => typeof kid === 'string');
-  if (new Set(kids).size !== kids.length) return 'shape';
-
-  // An entry that names ES256 is one this verifier would use, so it is whole
-  // or the answer is refused; it is never quietly skipped beside a good key.
-  // Entries naming another algorithm are left alone.
-  const claimed = entries.filter((key) => key['alg'] === 'ES256');
-  if (!claimed.every((key) => isUsable(key))) return 'shape';
-
-  const usable = new Map<string, ImportedKey>();
-  const imports = claimed.map(async (key) => {
-    const imported = await crypto.subtle.importKey(
-      'jwk',
-      { kty: 'EC', crv: 'P-256', x: key['x'], y: key['y'] } as webcrypto.JsonWebKey,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
-      ['verify'],
-    );
-    usable.set(key['kid'] as string, imported);
-  });
-  try {
-    await Promise.all(imports);
-  } catch {
-    // A coordinate pair that is not a point on the curve.
-    return 'shape';
-  }
-  return usable;
-}
-
-/** A complete ES256 public key: the only shape an ES256 entry may have. */
-function isUsable(key: Record<string, unknown>): boolean {
-  const ops = key['key_ops'];
-  return (
-    key['kty'] === 'EC' &&
-    key['crv'] === 'P-256' &&
-    key['alg'] === 'ES256' &&
-    typeof key['kid'] === 'string' &&
-    key['kid'] !== '' &&
-    typeof key['x'] === 'string' &&
-    COORDINATE.test(key['x']) &&
-    typeof key['y'] === 'string' &&
-    COORDINATE.test(key['y']) &&
-    (key['use'] === undefined || key['use'] === 'sig') &&
-    (ops === undefined || (Array.isArray(ops) && ops.includes('verify')))
-  );
 }
