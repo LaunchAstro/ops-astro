@@ -28,6 +28,19 @@ export interface Bundle {
   readonly markdown: string;
 }
 
+/**
+ * A case line as the command hands it over. `detail` is free text and is
+ * private at the bundle boundary; `facts` is metadata the command's own code
+ * typed separately (an owner, a pull request, a time, a tree hash), and it is
+ * the only part of a case the bundle shows beside its name and status.
+ */
+export interface CaseLine {
+  readonly case: string;
+  readonly status: string;
+  readonly detail: string;
+  readonly facts?: Readonly<Record<string, string | number | boolean>>;
+}
+
 export interface BundleInput {
   readonly head: string;
   readonly tree: string;
@@ -35,11 +48,7 @@ export interface BundleInput {
   /** T2b's served-identity line from the end of the run. */
   readonly identity: string;
   readonly environment: Readonly<Record<string, string>>;
-  readonly cases: readonly {
-    readonly case: string;
-    readonly status: string;
-    readonly detail: string;
-  }[];
+  readonly cases: readonly CaseLine[];
   readonly budgets: readonly Readonly<Record<string, string>>[];
   /** The restart legs' evidence, whose `runtime-proof` kill lines are the crash points. */
   readonly crashPoints: string;
@@ -237,7 +246,7 @@ function markdownOf(
     '```',
     '',
     '## Behaviour tested',
-    ...table(input.cases),
+    ...table(input.cases.map((line) => ({ ...line }))),
     '',
     '## Budgets (specification 10.2), each measured, never re-set',
     ...table(input.budgets),
