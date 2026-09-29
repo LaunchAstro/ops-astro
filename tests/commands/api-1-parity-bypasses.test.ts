@@ -11,7 +11,7 @@ import { run } from '../../scripts/command-parity.mjs';
 
 const root = join(import.meta.dirname, '../..');
 
-it('Sol proof, criterion 3: a double-quoted stateful action fails parity', () => {
+it('a double-quoted stateful action fails parity', () => {
   const files = new Map([
     [
       'screen-registry.tsx',
@@ -28,7 +28,7 @@ it('Sol proof, criterion 3: a double-quoted stateful action fails parity', () =>
   );
 });
 
-it('Sol proof, criterion 6: a CLI verb redirected past its grant fails parity', () => {
+it('a CLI verb redirected past its grant fails parity', () => {
   const copy = mkdtempSync(join(tmpdir(), 'sol-api-1-'));
   try {
     for (const directory of ['apps', 'packages', 'scripts']) {
@@ -76,7 +76,7 @@ it('Sol proof, criterion 6: a CLI verb redirected past its grant fails parity', 
   }
 });
 
-it('Sol proof, criterion 9: a record grant does not make business-wide create reachable', () => {
+it('a record grant does not make business-wide create reachable', () => {
   const recordWriter = {
     kind: 'person' as const,
     keys: new Set(['task:write']),

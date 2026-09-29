@@ -12,8 +12,8 @@ function files(folder = ''): string[] {
   );
 }
 
-describe('Sol C82 text-only proof', () => {
-  it('Sol proof, criterion 2: each locally checkable checklist line has a named test', () => {
+describe('C82 text-only proof', () => {
+  it('each locally checkable checklist line has a named test', () => {
     const names = [...readFileSync(c82Tests, 'utf8').matchAll(/\bit\(['"]([^'"]+)['"]/gu)].map(
       (match) => match[1],
     );
@@ -23,7 +23,7 @@ describe('Sol C82 text-only proof', () => {
     expect(names.some((name) => name?.includes('planted name'))).toBe(true);
   });
 
-  it('Sol proof, criterion 3: each retaken group has a reported synthetic source', () => {
+  it('each retaken group has a reported synthetic source', () => {
     const reports = files()
       .filter((name) => /report|manifest/iu.test(name))
       .map((name) => readFileSync(new URL(name, copy), 'utf8'));
@@ -40,8 +40,8 @@ describe('Sol C82 text-only proof', () => {
   });
 });
 
-describe('Sol C82 real-names proof', () => {
-  it('Sol proof, criterion 4: the kept real-names report covers every copied file with zero hits', () => {
+describe('C82 real-names proof', () => {
+  it('the kept real-names report covers every copied file with zero hits', () => {
     const copied = files().filter((name) => name !== 'COPY-RECORD.md');
     const report = files()
       .map((name) => readFileSync(new URL(name, copy), 'utf8'))

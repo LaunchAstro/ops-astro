@@ -11,7 +11,7 @@ import { run } from '../../scripts/command-parity.mjs';
 
 const root = join(import.meta.dirname, '../..');
 
-it('Sol proof, criterion 3: slashes in a string do not hide a stateful action', () => {
+it('slashes in a string do not hide a stateful action', () => {
   const files = new Map([
     [
       'screen-registry.tsx',
@@ -27,7 +27,7 @@ it('Sol proof, criterion 3: slashes in a string do not hide a stateful action', 
   );
 });
 
-it('Sol proof, criterion 4: an API command redirected past its grant fails parity', () => {
+it('an API command redirected past its grant fails parity', () => {
   const copy = mkdtempSync(join(tmpdir(), 'sol-api-1-api-'));
   try {
     for (const directory of ['apps', 'packages', 'scripts']) {
@@ -75,7 +75,7 @@ it('Sol proof, criterion 4: an API command redirected past its grant fails parit
   }
 });
 
-it('Sol proof, criterion 9: an agent before pickup can discover queue and pickup', () => {
+it('an agent before pickup can discover queue and pickup', () => {
   const commands = reachableBy(buildCatalogue([]), { kind: 'agent', grants: [] }).map(
     (one) => one.command,
   );
@@ -83,7 +83,7 @@ it('Sol proof, criterion 9: an agent before pickup can discover queue and pickup
   expect(commands).toContain('task.pickup');
 });
 
-it('Sol proof, criterion 9: an agent command has no person app entry point', () => {
+it('an agent command has no person app entry point', () => {
   const rows = buildCatalogue([
     { command: 'task.comment', route: 'agency:task-detail', file: 'screens/task/Comments.tsx' },
   ]);

@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 3: retake report accounts for every motion frame', () => {
+it('retake report accounts for every motion frame', () => {
   const report = readFileSync(
     new URL('../../docs/design-system/RETAKE-REPORT.md', import.meta.url),
     'utf8',

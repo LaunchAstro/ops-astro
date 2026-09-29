@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 
 const root = join(import.meta.dirname, '../..');
 
-it('Sol proof, criterion 4: a person-only agent route redirect fails parity', () => {
+it('a person-only agent route redirect fails parity', () => {
   const copy = mkdtempSync(join(tmpdir(), 'sol-api-1-agent-'));
   try {
     for (const directory of ['apps', 'packages', 'scripts']) {

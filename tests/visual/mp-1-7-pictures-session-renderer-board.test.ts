@@ -8,8 +8,8 @@ import { openSide } from './capture.ts';
 import { readPacket, rendererOf } from './packet.ts';
 import { builtPages, report } from './report.ts';
 
-describe('Sol proof, MP-1-7', () => {
-  it('Sol proof, criterion 3: nonexistent page pictures cannot satisfy the current-surfaces check', () => {
+describe('MP-1-7', () => {
+  it('nonexistent page pictures cannot satisfy the current-surfaces check', () => {
     const packet = readPacket();
     const shots = builtPages().flatMap((page) =>
       packet.widths.map((width) => ({
@@ -22,7 +22,7 @@ describe('Sol proof, MP-1-7', () => {
     expect(report(packet, builtPages(), shots).failed).toBeGreaterThan(0);
   });
 
-  it('Sol proof, criterion 5: supplied state initialises the app session store', async () => {
+  it('supplied state initialises the app session store', async () => {
     const addInitScript = vi.fn();
     const context = { route: vi.fn(), addInitScript };
     const browser = { newContext: vi.fn().mockResolvedValue(context) } as unknown as Browser;
@@ -61,14 +61,14 @@ describe('Sol proof, MP-1-7', () => {
     }
   });
 
-  it('Sol proof, criterion 7: headed and new-headless Chromium have distinct renderer identities', () => {
+  it('headed and new-headless Chromium have distinct renderer identities', () => {
     const pinned = readPacket().renderer;
     expect(rendererOf(pinned, { headless: false, channel: 'chromium' })).not.toEqual(
       rendererOf(pinned, { headless: true, channel: 'chromium' }),
     );
   });
 
-  it('Sol proof, criterion 9: the built board enters a pinned mockup comparison', () => {
+  it('the built board enters a pinned mockup comparison', () => {
     const catalogue = JSON.parse(readFileSync(new URL('states.json', import.meta.url), 'utf8')) as {
       states: { id: string; mockup: string | null; appPath?: string }[];
     };

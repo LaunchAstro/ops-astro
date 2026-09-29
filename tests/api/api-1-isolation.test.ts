@@ -19,7 +19,7 @@ import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from '.
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -62,7 +62,7 @@ const canonical = (value: unknown): string =>
       : field,
   );
 
-it('Sol proof, criterion 4: a refusal carrying another client record is detected', () => {
+it('a refusal carrying another client record is detected', () => {
   const refused: Heard[] = [
     { status: 403, code: 'SCOPE_NOT_GRANTED', body: { recordId: '<client2 task>' } },
   ];
@@ -468,7 +468,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     expect(await claims()).toEqual(before);
   }, 60_000);
 
-  it("Sol proof, criterion API-1 4: agent crossings use another person's live lease and held reservation", async () => {
+  it("agent crossings use another person's live lease and held reservation", async () => {
     const leases = await fixture.db.admin.execute<{ person_id: string }>(
       `select authorised_by_person_id::text as person_id
          from public.leases where business_id = $1 and id = $2 and state = 'live'`,
@@ -495,7 +495,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     expect(reservations[0]?.person_id).not.toBe(fixture.member.personId);
   });
 
-  it("Sol proof, criterion API-1 4: another person's identifiers remain detectable", () => {
+  it("another person's identifiers remain detectable", () => {
     const refused: Heard[] = [
       {
         status: 403,
@@ -523,7 +523,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     }
   });
 
-  it('Sol proof, criterion 4: isolation sees leaked client data in successful reads', async () => {
+  it('isolation sees leaked client data in successful reads', async () => {
     const row = rows.find((one) => one.command === 'task.read');
     if (row === undefined) throw new Error('task.read is missing from the catalogue');
     const leaked = vi
@@ -546,7 +546,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     }
   });
 
-  it('Sol proof, criterion 4: refusals expose no foreign business or person record', () => {
+  it('refusals expose no foreign business or person record', () => {
     const heard: Heard[] = [
       {
         status: 403,

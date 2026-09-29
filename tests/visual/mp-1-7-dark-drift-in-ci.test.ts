@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { builtPages } from './report.ts';
 
-describe('Sol proof, MP-1-7 re-review', () => {
-  it('Sol proof, criterion 2: public CI proves dark drift on a built page', () => {
+describe('MP-1-7 re-review', () => {
+  it('public CI proves dark drift on a built page', () => {
     const workflow = readFileSync(
       new URL('../../.github/workflows/ci.yml', import.meta.url),
       'utf8',
