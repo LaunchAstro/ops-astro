@@ -243,7 +243,7 @@ it. `WEB_URL` and `API_URL` are required: the harness has no default address,
 so a run cannot reach the live pair by forgetting one, and it refuses a port
 another live browser run holds (`.local/ports/<port>.lock`).
 `node tests/browser/keyboard-and-widths.mjs` reads only `SHOT_DIR` and
-`WEB_URL` of the four.
+`WEB_URL` of the four, and refuses to run without `WEB_URL`.
 
 The command drives the browser acceptance cases through Playwright against the
 running application, so start the database, the identity service, the API and

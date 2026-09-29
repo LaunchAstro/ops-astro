@@ -20,7 +20,12 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
+// No default address (T4b2, as the harness since T4b1): a pass that forgot
+// WEB_URL would measure the live demo on 5190, not the stack it meant.
+if ((process.env.WEB_URL ?? '') === '') {
+  throw new Error('keyboard and widths: set WEB_URL; there is no default address');
+}
+const WEB = process.env.WEB_URL;
 // The same gitignored directory inside the repository the rest of the browser
 // evidence goes to, so this measurement travels with a clone rather than with
 // one machine's local folder. `SHOT_DIR` still wins, and the directory is made
