@@ -23,7 +23,7 @@ import {
   DELEGATION_HEADER,
 } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
-import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import {
   initialMachine,
@@ -74,6 +74,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
   let ext1: Caller;
   let ext2: Caller;
   let credential: string;
+  let noahsGrant: string;
   const ids: Record<keyof typeof TITLES, string> = { noahs: '', hidden: '', other: '', bravo: '' };
 
   const read = async (
@@ -122,6 +123,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
         grantedByActorId: world.ada.actorId as string,
       });
       if (!issued.ok) throw new Error(`fixture: grant refused ${issued.refusal.code}`);
+      noahsGrant = issued.value;
     });
 
     // Two client logins, each shared one task.
@@ -200,8 +202,8 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
       { operationId: randomUUID(), board: null },
       { ...bearer(world.agent.token), [DELEGATION_HEADER]: credential },
     );
-    expect(agent.status).toBeGreaterThanOrEqual(400);
-    expect(agent.status).toBeLessThan(500);
+    expect(agent.status).toBe(403);
+    expect(agent.code).toBe('DELEGATION_EXCLUDES_OPERATION');
     expect(agent.body).not.toHaveProperty('withheld');
     expectNoneOf(agent, ['noahs', 'hidden', 'other', 'bravo']);
 
@@ -345,6 +347,25 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
         });
         alphaCanaries(JSON.stringify(groups));
       }
+    }
+  });
+  it('MP-5-3 withheld board lookups stay in-tenant and grant-first', async () => {
+    // A named board Noah cannot read is refused as `task.read` refuses it.
+    const unreadable = await read(world.noah, 'alpha', 'task.board', { board: ids.hidden });
+    expect(unreadable.status).toBe(403);
+    expect(unreadable.code).toBe('SCOPE_NOT_GRANTED');
+    expect(unreadable.body).not.toHaveProperty('withheld');
+    expectNoneOf(unreadable, ['hidden', 'other']);
+    // Once his last grant goes, the board refuses him before any lookup: a
+    // real board and a made-up one get the same answer.
+    await world.db.app.withBusiness(world.alpha, (tx) => revokeGrant(tx, noahsGrant));
+    for (const board of [null, ids.hidden, randomUUID()]) {
+      // eslint-disable-next-line no-await-in-loop
+      const answer = await read(world.noah, 'alpha', 'task.board', { board });
+      expect(answer.status, String(board)).toBe(403);
+      expect(answer.code).toBe('SCOPE_NOT_GRANTED');
+      expect(answer.body).not.toHaveProperty('withheld');
+      expectNoneOf(answer, ['noahs', 'hidden', 'other']);
     }
   });
 });

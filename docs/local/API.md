@@ -395,6 +395,19 @@ registered and unproducible (minimum contract 4.4, as corrected 14 September
 2026): a cross-business probe is `NOT_FOUND` to the caller and `NOT_FOUND` in
 the prober's own audit (`UNPRODUCED_CODES`, `core-records/src/register.ts`).
 
+**`task.board` answers what the caller's grants reach and counts the rest.**
+The answer carries `withheld`: how many of the board's tasks in the caller's
+business their grants do not reach, never which (B-22, the withheld count of
+14 September 2026). A business-scoped `task:read` reaches every task and
+`withheld` is 0. A member holding `task:read` only on some tasks is admitted
+too (the row's `declared-within` authority, `reads/dispatch.ts`) and gets
+those tasks, filtered inside the query by `readableScope`
+(`core-records/src/authority/grants.ts`), and the count of the others. An
+external party is never admitted this way: its share opens the shared task,
+and the board stays `NOT_FOUND` with no count. Another business's tasks are
+neither listed nor counted.
+`tests/reads/mp-5-board-isolation.test.ts` holds it, across three crossings.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off
