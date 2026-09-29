@@ -288,9 +288,14 @@ async function main(): Promise<void> {
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
 
+  // A test's stand-in set, for a loopback issuer only: a hosted issuer's
+  // tokens are checked against that provider's own published set, always.
   const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
-  if (named !== '' && !/^http:\/\/127\.0\.0\.1:\d+\//u.test(named)) {
-    console.error('api: SUPABASE_KEY_SET_URL may name a loopback key set only.');
+  const loopback = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
+  if (named !== '' && !(loopback.test(named) && loopback.test(issuer ?? ''))) {
+    console.error(
+      'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
+    );
     process.exit(1);
   }
   for (const [name, value] of [
@@ -391,8 +396,8 @@ function alertsFrom(environment: Readonly<Record<string, string | undefined>>): 
   }
 /**
  * The provider's key set, under its own address as GoTrue and a hosted project
- * publish it. `SUPABASE_KEY_SET_URL` stands in for it on loopback only (a test's
- * static set), so this setting cannot move the check to another host.
+ * publish it. `SUPABASE_KEY_SET_URL` stands in for it only where both are on
+ * loopback (a test's static set), so it cannot move a hosted check anywhere.
  */
 function keySetUrlOf(named: string, issuer: string): string {
   return named === '' ? `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json` : named;
