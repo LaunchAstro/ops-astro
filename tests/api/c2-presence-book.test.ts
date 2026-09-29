@@ -74,7 +74,8 @@ describe('C2 who else is on this page now (CS-7.1)', () => {
     const { presence } = book();
     const adaLeaves = presence.join('biz-a', TASK, ADA);
     const benLeaves = presence.join('biz-a', TASK, BEN);
-    expect(presence.held).toBe(2);
+    // One business, one topic, two seats.
+    expect(presence.held).toBe(4);
 
     benLeaves();
     expect(presence.seenBy('biz-a', TASK, 's-ada')).toEqual([]);
@@ -209,5 +210,21 @@ describe('C2 a change is announced as its business and topic, and only when it c
     leaves();
 
     expect(announced).toEqual(['biz-a task:t-1', 'biz-a task:t-1', 'biz-a task:t-1']);
+  });
+});
+
+describe('C2 isolation, hostile keys', () => {
+  it('ids shaped like a joined key or a prototype name never meet', () => {
+    const { presence } = book();
+    presence.join('a', 'b:c', ADA);
+    presence.join('a:b', 'c', BEN);
+    presence.join('a', '__proto__', staff('s-cy', 'p-cy', 'Cy'));
+    presence.join('a', 'constructor', staff('s-di', 'p-di', 'Di'));
+
+    expect(presence.seenBy('a', 'b:c', 's-ada')).toEqual([]);
+    expect(presence.seenBy('a:b', 'c', 's-ben')).toEqual([]);
+    expect(presence.seenBy('a', '__proto__', 's-cy')).toEqual([]);
+    expect(presence.mark('a', 'b:c', 's-ben', 'due')).toBe(false);
+    expect(presence.held).toBe(2 + 4 + 4);
   });
 });
