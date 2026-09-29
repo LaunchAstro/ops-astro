@@ -72,8 +72,30 @@ describe.skipIf(serverUrl === undefined)('INB-1 the alert in the inbox', () => {
     });
     // Nowhere else: the owed count and the board carry no alert.
     expect(ok(await w.call('inbox.count', {}, w.reviewerToken)).body).not.toHaveProperty('alert');
-    expect(JSON.stringify(ok(await w.call('task.board', {}, w.reviewerToken)).body)).not.toContain(
-      String(failed?.['id']),
+    expect(
+      JSON.stringify(ok(await w.call('task.board', { board: null }, w.reviewerToken)).body),
+    ).not.toContain(String(failed?.['id']));
+  }, 60_000);
+
+  it("INB-1 alert: only a readable entry carries it, and nobody else's inbox names it", async () => {
+    const p = await failedRun('alert withheld');
+    const page = ok(await w.call('task.read', { recordId: p.task.id })).body['task'] as Entry;
+    const alertId = String((page['alerts'] as Entry[])[0]?.['id']);
+    // Person to person: the writer, who handed the run back, holds no item on it.
+    expect(JSON.stringify(ok(await w.call('inbox.read', {}, w.writerToken)).body)).not.toContain(
+      alertId,
     );
+    // Trashed, the reviewer's entry is gone: it names nothing, the alert included.
+    await w.fixture.db.admin.execute(
+      `update public.records
+          set deleted_at = now(), deleted_by_actor_id = $2, trash_batch_id = gen_random_uuid()
+        where id = $1`,
+      [p.task.id, w.fixture.member.actorId],
+    );
+    const inbox = ok(await w.call('inbox.read', {}, w.reviewerToken)).body['inbox'] as Entry[];
+    const gone = inbox.find((entry) => entry['access'] === 'gone');
+    expect(gone).toBeDefined();
+    expect(gone).not.toHaveProperty('alert');
+    expect(JSON.stringify(inbox)).not.toContain(alertId);
   }, 60_000);
 });
