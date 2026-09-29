@@ -64,7 +64,7 @@ const args = process.argv.slice(2);
 const may = (scope) => (process.env.STUB_GRANTED ?? '').split(',').includes(scope + ':read');
 const fail = (why) => { process.stderr.write('gh: ' + why + '\n'); process.exit(1); };
 if (args[0] !== 'api') fail('only api is stood in');
-if (process.env.GH_TOKEN !== 't') fail('HTTP 401: Bad credentials');
+if (process.env.GH_TOKEN !== process.env.STUB_TOKEN) fail('HTTP 401: Bad credentials');
 const jq = args[args.indexOf('--jq') + 1];
 const path = args.find((a, i) => i > 0 && !a.startsWith('--') && args[i - 1] !== '--jq');
 const url = new URL(path, 'https://api.github.invalid/');
@@ -89,6 +89,8 @@ process.stdout.write(out.stdout);
 `;
 
 const HEAD = '1'.repeat(40);
+// A planted token: the job's steps must never print it, whatever they print.
+const CANARY = 'ghs_fu151CanaryTokenNeverPrinted';
 const body = (issue: number) =>
   [
     `Review checkpoint\n  head:        ${HEAD}`,
@@ -123,7 +125,8 @@ function runJob(issue: number) {
     });
   const fetched = bash(FETCH, {
     PATH: `${dir}:${process.env['PATH'] ?? ''}`,
-    GH_TOKEN: 't',
+    GH_TOKEN: CANARY,
+    STUB_TOKEN: CANARY,
     REPO: 'o/r',
     PR_NUMBER: '9',
     STUB_GRANTED: perms.join(','),
@@ -170,5 +173,11 @@ describe('FU-151 the review-evidence job reads open issues', () => {
     expect(checked.status).toBe(1);
     expect(checked.stderr).toContain(UNFILED);
     expect(checked.stderr).toContain(`follow-up #${String(issue)}`);
+  });
+
+  it.each([5, 6])('FU-151 token: neither step prints the token (follow-up #%i)', (issue) => {
+    const { fetched, checked } = runJob(issue);
+    const output = [fetched, checked].flatMap((r) => [r.stdout, r.stderr]).join('\n');
+    expect(output).not.toContain(CANARY);
   });
 });
