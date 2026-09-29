@@ -17,7 +17,7 @@ import { TAB_WIDTH, follow, layout } from './frame-support.tsx';
 
 const shellCss = readFileSync(resolve('packages/ui/src/styles/3-shell.css'), 'utf8');
 
-let undo: () => void = () => undefined;
+let undo: () => void = () => {};
 beforeEach(() => {
   undo = layout();
 });

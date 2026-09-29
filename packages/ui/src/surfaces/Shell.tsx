@@ -131,7 +131,7 @@ export function Shell(props: ShellProps): ReactElement {
 
   // One Escape closes the drawer and nothing under it.
   useEffect(() => {
-    if (!open || onToggle === undefined) return undefined;
+    if (!open || onToggle === undefined) return;
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.preventDefault();

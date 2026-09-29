@@ -28,7 +28,7 @@ const API_ORIGIN = (import.meta.env['VITE_API_ORIGIN'] as string | undefined) ??
 const storage = tabStorage();
 const sessions = new SessionStore(storage);
 
-const host = document.getElementById('app');
+const host = document.querySelector('#app');
 if (host !== null) {
   createRoot(host).render(
     <StrictMode>

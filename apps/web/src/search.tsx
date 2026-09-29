@@ -26,7 +26,7 @@ const hasWord = (query: string): boolean => /[\p{L}\p{N}]/u.test(query);
 /** ⌘K or Ctrl+K opens search wherever `enabled`, and nothing else. */
 export function useSearchKey(enabled: boolean, open: () => void): void {
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled) return;
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key.toLowerCase() !== 'k' || !(event.metaKey || event.ctrlKey)) return;
       if (event.defaultPrevented || event.altKey || event.shiftKey) return;
@@ -75,7 +75,7 @@ export function SearchPalette(props: {
     const ask = ++asked.current;
     if (!hasWord(query)) {
       setAnswer({ kind: 'idle' });
-      return undefined;
+      return;
     }
     const rest = setTimeout(() => {
       void client.read<TaskSearchResult>('task.search', { query }).then((result) => {

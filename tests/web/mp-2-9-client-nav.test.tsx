@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { open } from './mp-2-1-support.tsx';
 import { follow, layout, lit } from './frame-support.tsx';
 
-let undo: () => void = () => undefined;
+let undo: () => void = () => {};
 beforeEach(() => {
   undo = layout();
 });

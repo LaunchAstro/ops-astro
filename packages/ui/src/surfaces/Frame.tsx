@@ -53,12 +53,12 @@ export function TabRow(props: {
 
   useLayoutEffect(() => {
     const scroller = mark.holder.current;
-    if (scroller === null) return undefined;
+    if (scroller === null) return;
     scroller
       .querySelector('[aria-current="page"]')
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     survey();
-    if (typeof ResizeObserver === 'undefined') return undefined;
+    if (typeof ResizeObserver === 'undefined') return;
     const watch = new ResizeObserver(survey);
     watch.observe(scroller);
     return () => {
