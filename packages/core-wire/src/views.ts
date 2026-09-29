@@ -405,9 +405,19 @@ export interface PrivacyIncidentView {
   readonly informationKinds: readonly string[];
   /** Day 0 plus 30 days: the runbook's assessment limit. */
   readonly assessBy: string;
+  /** Still open past `assessBy`, judged on the database's clock (C81 breach drill). */
+  readonly overdue: boolean;
   readonly status: 'open' | 'closed';
   readonly recordedAt: string;
   readonly recordedByActorId: string;
+}
+
+/** The breach runbook an incident record links to: the version published most recently (C81). */
+export interface BreachRunbookLink {
+  readonly version: string;
+  readonly digest: string;
+  readonly publishedAt: string;
+  readonly body: string;
 }
 
 /**
@@ -419,4 +429,25 @@ export interface PrivacyIncidentView {
 export interface OperationsReadResult {
   readonly ok: true;
   readonly privacyIncidents: readonly PrivacyIncidentView[];
+  /** What every incident record links to; `null` until a breach runbook is published. */
+  readonly breachRunbook: BreachRunbookLink | null;
+}
+
+/** One notice the breach runbook's template drafts; nothing sends it (owner line 54). */
+export interface BreachNoticeDraft {
+  readonly to: 'oaic' | 'person';
+  readonly name: string;
+  readonly address: string;
+  readonly subject: string;
+  readonly body: string;
+}
+
+/**
+ * `privacy.draft_breach_notices`' answer (C81 breach drill): the runbook
+ * version drafted from, and the notice to the OAIC first, then one per person.
+ */
+export interface BreachNoticesResult {
+  readonly ok: true;
+  readonly runbook: { readonly version: string; readonly digest: string };
+  readonly notices: readonly BreachNoticeDraft[];
 }

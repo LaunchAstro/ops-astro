@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifteen operations that name no identifier, each with a minimal valid body.
+ * The sixteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -54,6 +54,16 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['access.read', {}],
   ['operations.read', {}],
+  [
+    'privacy.draft_breach_notices',
+    {
+      incidentId: '00000000-0000-4000-8000-000000000000',
+      oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+      people: [{ name: 'A made-up person', address: 'person@example.test' }],
+      containment: 'Nothing real happened.',
+      steps: 'Nothing to do.',
+    },
+  ],
   [
     'legal.draft_version',
     {

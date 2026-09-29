@@ -25,8 +25,10 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AccessReadResult,
+  BreachNoticesResult,
   CapabilitiesResult,
   OperationsReadResult,
   PersonListResult,
@@ -99,6 +101,11 @@ export interface ReadOperands {
   readonly 'access.read': NoOperands;
   /** What needs the operator's eye: privacy incidents first (C55). */
   readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -124,4 +131,5 @@ export type ReadResult =
   | SettingsReadResult
   | CapabilitiesResult
   | AccessReadResult
-  | OperationsReadResult;
+  | OperationsReadResult
+  | BreachNoticesResult;

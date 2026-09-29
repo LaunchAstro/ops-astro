@@ -221,6 +221,16 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
+      // A well-formed drill (C81), so a refusal is authority's and not the body's.
+      ...(declaration.name === 'privacy.draft_breach_notices'
+        ? {
+            incidentId: randomUUID(),
+            oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+            people: [{ name: 'A made-up person', address: 'person@example.test' }],
+            containment: 'Nothing real happened.',
+            steps: 'Nothing to do.',
+          }
+        : {}),
     };
   }
 

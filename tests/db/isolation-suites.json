@@ -11,6 +11,7 @@
     "tests/api/c59-factor-routes.test.ts",
     "tests/operations/c55-operations-view.test.ts",
     "tests/operations/c81-legal-documents.test.ts",
-    "tests/operations/c81-register.test.ts"
+    "tests/operations/c81-register.test.ts",
+    "tests/operations/c81-breach-drill.test.ts"
   ]
 }

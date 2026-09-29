@@ -63,6 +63,46 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
+/**
+ * The breach drill's body made real in alpha (C81): a runbook the drill can
+ * fill, published, and an incident to draft for; the recipients are the listed body's.
+ */
+async function drillReady(w: IdentWorld, caller: Caller, listed: Body): Promise<Body> {
+  const runbook = [
+    '## Template: notice to affected people',
+    '> Subject: A made-up notice',
+    '> Dear `<name>`, on `<date>`: `<plain description>`; `<kinds>`; `<containment>`; `<steps>`.',
+  ].join('\n');
+  const drafted = await w.person(caller, 'legal.draft_version', {
+    operationId: randomUUID(),
+    document: 'breach-runbook',
+    version: '77.1',
+    body: runbook,
+  });
+  const detail = drafted.body['detail'] as Record<string, unknown>;
+  for (const [name, body] of [
+    ['legal.approve_version', { versionId: detail['versionId'], digest: detail['digest'] }],
+    ['legal.publish_version', { versionId: detail['versionId'] }],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop
+    const done = await w.person(caller, name, { operationId: randomUUID(), ...body });
+    expect(done.code, name).toBe('ok');
+  }
+  const recorded = await w.person(caller, 'privacy.record_incident', {
+    operationId: randomUUID(),
+    whatHappened: 'A made-up incident to drill.',
+    foundAt: new Date(Date.now() - 60_000).toISOString(),
+    foundBy: 'The probe',
+    affected: 'Nobody; it is made up.',
+    informationKinds: ['other'],
+  });
+  expect(recorded.code, 'the drill incident').toBe('ok');
+  return {
+    ...listed,
+    incidentId: (recorded.body['detail'] as Record<string, unknown>)['incidentId'],
+  };
+}
+
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
 
@@ -389,8 +429,12 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const caller = w.h.world.ada;
       const answered: Record<string, string> = {};
       const audited: string[] = [];
-      for (const [op, body] of TARGET_FREE) {
+      for (const [op, listed] of TARGET_FREE) {
         /* eslint-disable no-await-in-loop -- one operation at a time */
+        // The breach drill's body names an incident, so its positive request
+        // needs one of alpha's, and a published runbook to draft from (C81).
+        const body =
+          op === 'privacy.draft_breach_notices' ? await drillReady(w, caller, listed) : listed;
         const before = await domainState(w.h, [bravo]);
         const positive = await w.person(caller, op, body);
         expect(positive.code, `${op}: ${JSON.stringify(positive.body)}`).toBe('ok');
@@ -428,7 +472,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       // SC2 audit, 9/9: every aimed probe left its one row at home.
       expect(audited).toStrictEqual(TARGET_FREE.map(([op]) => op));
       console.log(
-        `identifier-negatives: SC2 audit ${String(audited.length)}/9 in alpha, 0 in bravo`,
+        `identifier-negatives: SC2 audit ${String(audited.length)}/${String(TARGET_FREE.length)} in alpha, 0 in bravo`,
       );
     },
     300_000,
