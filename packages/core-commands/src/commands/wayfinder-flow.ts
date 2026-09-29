@@ -210,7 +210,11 @@ export async function setBlocking(
   const target = context.target;
   if (target === undefined) throw new Error('setBlocking: the envelope read no target');
   const blockedBy = request.blockedBy;
-  if (!Array.isArray(blockedBy) || blockedBy.length > TICKET_LIMIT || !blockedBy.every(isUuid)) {
+  if (
+    !Array.isArray(blockedBy) ||
+    blockedBy.length > TICKET_LIMIT ||
+    !blockedBy.every((id) => isUuid(id))
+  ) {
     return invalid(['blockedBy'], ['blockedBy is a list of ticket ids, empty to clear it.']);
   }
   const blockers = [...new Set((blockedBy as readonly string[]).map((id) => id.toLowerCase()))];

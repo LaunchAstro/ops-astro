@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines, max-lines-per-function -- one suite per ticket: each case is a checklist line on one shared world */
 //
 // WF-2 (roadmap #635): the wayfinder commands and read models. Charting,
 // claiming, blocking, graduating fog, resolving and closing as out of scope;

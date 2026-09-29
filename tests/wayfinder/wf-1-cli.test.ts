@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines, max-lines-per-function -- one suite per ticket: one case per command on one composed API */
 //
 // WF-1 from the command line: one case per command the ticket adds, each
 // through the generated client over the composed API (`createCli` with the

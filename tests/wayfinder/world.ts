@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines, max-lines-per-function -- one world builder whose helpers close over one database */
 //
 // A wayfinder world: the agent world (one business with a manager, an agent
 // login and a budget cap) plus a second business, and helpers that drive the

@@ -218,7 +218,7 @@ export function parseRevision(
     if (!textOk(value)) wrong.push(name);
     return value as string;
   };
-  const list = <T>(name: string, value: unknown, item: (v: unknown) => T | undefined): T[] => {
+  const list = <T>(name: string, value: unknown, item: (v: unknown) => T | null): T[] => {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.length > 100) {
       wrong.push(name);
@@ -227,7 +227,7 @@ export function parseRevision(
     const out: T[] = [];
     for (const entry of value as readonly unknown[]) {
       const parsed = item(entry);
-      if (parsed === undefined) {
+      if (parsed === null) {
         wrong.push(name);
         return [];
       }
@@ -237,15 +237,15 @@ export function parseRevision(
   };
   const destination = text('destination');
   const notes = text('notes');
-  const addFog = list('addFog', request.addFog, (v) => (textOk(v) ? v : undefined));
+  const addFog = list('addFog', request.addFog, (v) => (textOk(v) ? v : null));
   const addOutOfScope = list('addOutOfScope', request.addOutOfScope, (v) => {
-    if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined;
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
     const { text: line, ticketId } = v as { text?: unknown; ticketId?: unknown };
-    if (!textOk(line)) return undefined;
-    if (ticketId !== undefined && ticketId !== null && !isUuid(ticketId)) return undefined;
+    if (!textOk(line)) return null;
+    if (ticketId !== undefined && ticketId !== null && !isUuid(ticketId)) return null;
     return { text: line, ticketId: typeof ticketId === 'string' ? ticketId.toLowerCase() : null };
   });
-  const retire = list('retire', request.retire, (v) => (isUuid(v) ? v.toLowerCase() : undefined));
+  const retire = list('retire', request.retire, (v) => (isUuid(v) ? v.toLowerCase() : null));
   if (wrong.length > 0) return [...new Set(wrong)].toSorted();
   const empty =
     destination === undefined &&
@@ -326,8 +326,9 @@ export async function applyRevision(
     [tx.businessId, mapId],
   );
   const version = Number(numbered[0]?.next ?? 1);
-  const changed: string[] = [];
-  changed.push(...(await retireComponents(tx, mapId, version, { ids: parsed.retire })));
+  const changed: string[] = [
+    ...(await retireComponents(tx, mapId, version, { ids: parsed.retire })),
+  ];
   if (graduation !== undefined) {
     await tx.query(
       `update map_components set retired_version = $3, graduated_into = $4::uuid[]
@@ -341,9 +342,10 @@ export async function applyRevision(
     if (body === undefined) continue;
     // In order: retire the current one, then write its successor.
     // oxlint-disable-next-line no-await-in-loop
-    changed.push(...(await retireComponents(tx, mapId, version, { kind })));
+    const retired = await retireComponents(tx, mapId, version, { kind });
     // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, mapId, version, kind, body, null));
+    const written = await insertComponent(tx, mapId, version, kind, body, null);
+    changed.push(...retired, written);
   }
   for (const line of parsed.addFog) {
     // oxlint-disable-next-line no-await-in-loop
