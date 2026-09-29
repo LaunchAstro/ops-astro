@@ -21,25 +21,7 @@ import {
   type UnattendedItem,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-
-export interface InboxEntry {
-  readonly id: string;
-  readonly reason: InboxItem['reason'];
-  readonly workState: InboxItem['workState'];
-  readonly access: Exclude<InboxItem['access'], 'withheld'>;
-  readonly owed: boolean;
-  /** Open, owed and readable now: exactly what the count counts. */
-  readonly counted: boolean;
-  readonly raisedAt: string;
-  readonly closedAt: string | null;
-  readonly seenAt: string | null;
-  readonly lastDelivery: InboxItem['lastDelivery'];
-  /** The pointer, present only while the caller can read the task. */
-  readonly subjectRecordId?: string;
-  readonly factKind?: InboxItem['factKind'];
-  readonly factId?: string;
-  readonly closedByPersonId?: string | null;
-}
+import type { InboxEntry, PersonView } from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
@@ -70,14 +52,67 @@ function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): I
 const isListed = (item: InboxItem): item is InboxItem & { readonly access: InboxEntry['access'] } =>
   item.access !== 'withheld';
 
-/** The caller's own inbox, newest raised last, as `readInboxItems` orders it. */
-export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
+/** The caller's own entries, before anything is named. The count reads these. */
+async function listed(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
   return (await readInboxItems(tx, personId)).filter(isListed).map(entryOf);
+}
+
+/**
+ * The caller's own inbox, newest raised last, as `readInboxItems` orders it.
+ * A readable entry is named in the same transaction: its task's key and title,
+ * and who closed it. The item stores neither, so a renamed task reads renamed.
+ */
+export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
+  return await named(tx, await listed(tx, personId));
 }
 
 /** The owed count: the counted entries of the same read, never a second query. */
 export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
-  return (await readInbox(tx, personId)).filter((entry) => entry.counted).length;
+  return (await listed(tx, personId)).filter((entry) => entry.counted).length;
+}
+
+async function named(
+  tx: TenantQuery,
+  entries: readonly InboxEntry[],
+): Promise<readonly InboxEntry[]> {
+  const readable = entries.filter((entry) => entry.access === 'readable');
+  const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
+  const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
+  if (taskIds.length === 0) return entries;
+  const tasks = new Map(
+    (
+      await tx.query<{
+        readonly id: string;
+        readonly key: string | null;
+        readonly title: string | null;
+      }>(
+        `select id, txt_1 as key, txt_4 as title from public.records
+          where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
+        [tx.businessId, taskIds],
+      )
+    ).map((row) => [row.id, { key: row.key ?? '', title: row.title }] as const),
+  );
+  const people = new Map<string, PersonView>(
+    deciderIds.length === 0
+      ? []
+      : (
+          await tx.query<{ readonly id: string; readonly name: string }>(
+            `select id, display_name as name from public.people
+              where business_id = $1 and id = any($2::uuid[])`,
+            [tx.businessId, deciderIds],
+          )
+        ).map((row) => [row.id, { personId: row.id, name: row.name }] as const),
+  );
+  return entries.map((entry) => {
+    if (entry.access !== 'readable') return entry;
+    const task = tasks.get(entry.subjectRecordId ?? '');
+    const decider = entry.closedByPersonId ?? null;
+    return {
+      ...entry,
+      ...(task === undefined ? {} : { task }),
+      closedBy: decider === null ? null : (people.get(decider) ?? null),
+    };
+  });
 }
 
 /** An item no path reaches (INB-1e), as the operations view is shown it. */
