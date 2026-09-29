@@ -6,17 +6,15 @@
 // back with the archive it restored, is recorded against that read, on the
 // archive's own id, by `backups.record_carried_drill`: once, for the operator
 // who ran it in the business it ran in, only for the digest of the file carried
-// back and, for a pass, only with the restore challenge a restore of that
-// archive reads back. Here the challenge is the one the test's archive was
-// completed with, kept beside the file as the drill keeps it; that a real
-// restore reads it back from the restored database is
-// tests/ci/restore-drill.test.ts's carried case. The file side is
-// tests/ci/carried-archive.test.ts and tests/ci/carried-receipt.test.ts.
+// back, and a pass only through the store login the installation appointed as
+// that operator (backup-carried-attest.test.ts). Here the export and the record
+// run through that login. The file side is tests/ci/carried-archive.test.ts and
+// tests/ci/carried-receipt.test.ts.
 //
 // S0-3 (S0-3e). The shared fixture is backup-identity.fixture.ts.
 
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -30,6 +28,8 @@ import {
   backupLogin,
   retentionLogin,
   restoreLogin,
+  operatorLogin,
+  OPERATING_BUSINESS,
   addArchive,
   backupStoreHooks,
   hostReach,
@@ -66,20 +66,20 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
 });
 
 function refusedCases() {
-  it('a swapped archive, re-sealed to the backup key with its own digest, the real time, id and challenge, is refused at --record and writes nothing', async () => {
+  it('a swapped archive, re-sealed to the backup key with its own digest, the real time and id, is refused at --record and writes nothing', async () => {
     await expect(record(operator, carriedBack(receipt), await swapped())).rejects.toThrow(
       /^(?!.*(?:postgres|s0-3e-)).*$/u,
     );
     expect(await drills()).toStrictEqual([]);
   });
 
-  it('the export is a read the store logs, as the restore identity, the header and each part', async () => {
+  it("the export is a read the store logs, as the operator's own restore login, the header and each part", async () => {
     const reads = await store.admin.execute<{ action: string; actor: string; part: number | null }>(
       "select action, actor, part from backups.receipts where action = 'backup read' order by id",
     );
     expect([...reads]).toStrictEqual([
-      { action: 'backup read', actor: restoreLogin.name, part: null },
-      { action: 'backup read', actor: restoreLogin.name, part: 0 },
+      { action: 'backup read', actor: operatorLogin.name, part: null },
+      { action: 'backup read', actor: operatorLogin.name, part: 0 },
     ]);
   });
 
@@ -129,8 +129,13 @@ function concurrentCases1() {
   });
 }
 
+// REV854 criterion 13's proof, adapted to the trust model (ORCH-DECISION
+// 22:06Z): with no restore challenge, what refuses a pass that no restore
+// stands behind is that only the appointed operator's own act records one.
+// The fabricated receipt now has the exact accepted shape and names the
+// archive it exported, so the store is what refuses it.
 function concurrentCases2() {
-  it('exporting an archive without a clean-host restore cannot record a passed drill', async () => {
+  it('exporting an archive without a clean-host restore cannot record a passed drill through a login the installation did not appoint', async () => {
     const before = (await drills()).length;
     const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
     const job = await asRole(backupLogin.url, BACKUP);
@@ -169,16 +174,16 @@ function concurrentCases2() {
       business: 'made-up',
       operator,
       ranOn: 'carried archive',
-      archiveDigest: held.sha256,
     };
-    await expect(record(operator, carriedBack(fabricated))).rejects.toThrow();
+    await expect(record(operator, carriedBack(fabricated), file, restoreLogin.url)).rejects.toThrow(
+      /not the installation's appointed operator/u,
+    );
     expect(await drills()).toHaveLength(before);
   });
 }
 
 function roundTripCases1() {
-  it('the round trip: with the archive and the challenge its restore reads back, the receipt is recorded once as a carried drill, echoes none of it, and dates the last tested restore', async () => {
-    const challenge = readFileSync(`${exportedFile()}.challenge`, 'utf8');
+  it("the round trip: with the archive it restored, the appointed operator's receipt is recorded once as a carried drill, echoes none of it, and dates the last tested restore", async () => {
     const recorded = await record(operator, carriedBack(receipt));
     expect(Object.keys(recorded).toSorted()).toStrictEqual(
       ['action', 'at', 'business', 'lastTestedRestore', 'operator', 'outcome', 'ranOn'].toSorted(),
@@ -186,8 +191,7 @@ function roundTripCases1() {
     expect(recorded).toMatchObject({ outcome: 'passed', ranOn: 'carried archive', operator });
     expect(typeof recorded['lastTestedRestore']).toBe('string');
     expect(await drills()).toStrictEqual([{ outcome: 'passed', ran_on: 'carried archive' }]);
-    // A replay of the same receipt, challenge and all, never records a second drill.
-    writeFileSync(`${exportedFile()}.challenge`, challenge);
+    // A replay of the same receipt never records a second drill.
     await expect(record(operator, carriedBack(receipt))).rejects.toThrow();
     expect(await drills()).toStrictEqual([{ outcome: 'passed', ran_on: 'carried archive' }]);
   });
@@ -211,8 +215,8 @@ function roundTripCases2() {
       12,
       { fetch: 1 },
       held['sha256'],
-      'ab'.repeat(32),
       held['archiveId'],
+      OPERATING_BUSINESS,
     ];
     const call =
       'select backups.record_carried_drill($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)';

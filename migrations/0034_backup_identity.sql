@@ -3,21 +3,12 @@
 -- 0034 the backup identity (ticket S0-3, line C1; TR-SEC-8, TR-SECPIR4-3).
 --
 -- The scheduled backup reads the product's schemas and the auth server's,
--- once, as one consistent snapshot, and does nothing else here but one write.
--- pg_dump reads with row security off and fails on any table a policy would
--- filter, so the role reads past row security; what keeps it to reading is
--- that it is granted select and, on one row of one table, the one write
--- below. It owns nothing, may not log in, and holds no function privilege:
--- the product revokes execute from PUBLIC on each of its functions, and
--- nothing is granted here. TEMPORARY is already revoked from PUBLIC (0031).
---
--- That one write is the restore challenge (S0-3e, REV158K criterion 13).
--- Before each dump the job writes a fresh random value into the one row of
--- `ops.restore_challenge` (an upsert), so the dump carries it, and gives the backup store
--- only its sha256. A restore drill reads it back from the database it
--- restored, and the store takes a carried drill as passed only with it: a
--- pass needs evidence only a real restore gives. No other role reads the row;
--- the tenancy role never sees it.
+-- once, as one consistent snapshot, and does nothing else here. pg_dump reads
+-- with row security off and fails on any table a policy would filter, so the
+-- role reads past row security; what keeps it to reading is that it is granted select and nothing
+-- more. It owns nothing, may not log in, and holds no function privilege: the
+-- product revokes execute from PUBLIC on each of its functions, and nothing is
+-- granted here. TEMPORARY is already revoked from PUBLIC (0031).
 --
 -- A login is a member of it, made on the machine from the staging runbook,
 -- and dumps with `pg_dump --role=ops_astro_backup`. Role attributes are not
@@ -73,21 +64,33 @@ do $$ begin
   end if;
 end $$;
 
--- The restore challenge: one row, replaced before each dump. The backup
--- identity may insert it and update its challenge and time, and nothing else;
--- the check holds its shape. The table is made after the grants above, so the
--- backup identity's select reaches it through the default privileges; no other
--- role is granted anything on it.
-create table ops.restore_challenge (
+-- The installation's operating business (S0-3e; REV158K2, REV158S3 and
+-- REV854C criterion 4): the one business whose appointed operator exports the
+-- whole archive, runs the drill and records it (scripts/ops/operator.ts,
+-- requireOperatingOperator). It is installation state, one row, written once
+-- by the database's owner at installation (the restore runbook's install
+-- step), never by a request and never from a value the operator's environment
+-- sets. No role but the owner is granted anything on it, the backup identity's
+-- select through the default privileges aside; it is never changed or removed.
+-- It names a business and belongs to none, so it is installation state, not a
+-- business's row: its column is `operating_business`, never `business_id`.
+create table ops.operating_business (
   one boolean primary key default true check (one),
-  challenge text not null check (challenge ~ '^[0-9a-f]{64}$'),
+  operating_business uuid not null references public.businesses (id),
   written_at timestamptz not null default now()
 );
-revoke all on ops.restore_challenge from public;
-grant select, insert (challenge) on ops.restore_challenge to ops_astro_backup;
-grant update (challenge, written_at) on ops.restore_challenge to ops_astro_backup;
+revoke all on ops.operating_business from public;
+
+create function ops.operating_business_fixed() returns trigger
+  language plpgsql set search_path = pg_catalog as $$
+begin
+  raise exception 'the operating business is written once, at installation'
+    using errcode = 'insufficient_privilege';
+end $$;
+revoke execute on function ops.operating_business_fixed() from public;
+create trigger operating_business_fixed before update or delete or truncate on ops.operating_business
+  for each statement execute function ops.operating_business_fixed();
 
 comment on role ops_astro_backup is
   'Backup identity. Reads every table in one consistent snapshot, past row security; '
-  'writes only the restore challenge, one row of ops.restore_challenge; '
-  'no schema change, no function, no login of its own.';
+  'no write, no schema change, no function, no login of its own.';

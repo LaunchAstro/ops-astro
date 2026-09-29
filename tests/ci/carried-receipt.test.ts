@@ -11,9 +11,9 @@
 // `S0-3 carried archive`: the receipt round trip on the file side, and hostile
 // receipts refused.
 
-import { randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CANARY,
@@ -142,10 +142,9 @@ function keptCases1() {
 }
 
 function keptCases2() {
-  it('the restore challenge a drill read back is kept beside the archive, mode 600, and never printed or logged', async () => {
+  it('a carried drill that passed reads pending, keeps nothing beside the archive but its facts, and reaches no store', async () => {
     const { file } = await carriedFile();
     const gate = gateOf();
-    const challenge = randomBytes(32).toString('hex');
     const { drillAsOperator } = await drillModule();
     const receipt = await drillAsOperator({
       gate,
@@ -154,17 +153,14 @@ function keptCases2() {
       scope,
       drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
         await options.fetchArchive();
-        const result = { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
-        // As restoreDrill keeps it: off the record's own fields.
-        return Object.defineProperty(result, 'challenge', { value: challenge, enumerable: false });
+        return { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
       },
       reach: noStore,
     });
     expect(receipt['outcome']).toBe('pending');
-    expect(readFileSync(`${file}.challenge`, 'utf8')).toBe(`${challenge}\n`);
-    expect(statSync(`${file}.challenge`).mode & 0o777).toBe(0o600);
-    const log = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8');
-    expect(`${JSON.stringify(receipt)}${log}`).not.toContain(challenge);
-    expect((await carried()).readChallenge(file)).toBe(challenge);
+    expect(receipt['lastTestedRestore']).toBeNull();
+    expect(readdirSync(dirname(file)).toSorted()).toStrictEqual(
+      [basename(file), `${basename(file)}.json`].toSorted(),
+    );
   });
 }

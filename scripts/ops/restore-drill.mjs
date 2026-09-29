@@ -39,18 +39,19 @@
 // and its facts beside it (carried-archive.mjs), never the key; `--drill
 // --archive <file>` restores that file anywhere, checked against its facts
 // before anything opens it, and its receipt says it ran on a carried archive,
-// is kept and printed, not stored, and carries no digest; the restore
-// challenge it read back from the restored database is kept beside the
-// archive, never printed. `--record <file> --archive <file>` takes that
-// receipt back into the store on the machine, with the archive's digest
-// computed again from the file and the challenge, both as bound parameters.
+// is kept and printed, not stored, and carries no digest. `--record <file>
+// --archive <file>` takes that receipt back into the store on the machine,
+// with the archive's id and its digest computed again from the file, as bound
+// parameters.
 //
 // Every mode is the installation's appointed operator's act only
-// (REV158K criterion 4): `operations:manage` over the whole of the operating
-// business the installation's drill environment names
-// (OPS_ASTRO_OPERATING_BUSINESS). The archive is the whole database, so
-// another business's manager is refused before anything is read, and learns
-// nothing.
+// (REV158K criterion 4): `operations:manage` over the whole of the
+// installation's operating business, the one row written at installation
+// (migration 0034), which no value the caller sets replaces. The archive is
+// the whole database, so another business's manager is refused before
+// anything is read, and learns nothing. A passed drill is that operator's own
+// attestation: the store takes a pass only through the store login the
+// installation appointed as them (deploy/staging/backup-store.sql).
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -154,7 +155,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
     if (receipt.outcome === 'pending') {
       process.stderr.write(
-        'restore-drill: restored from a carried archive; it is not a passed drill until --record on the machine takes it with the archive and its restore challenge\n',
+        'restore-drill: restored from a carried archive; it is not a passed drill until you record it with --record on the machine, with the archive\n',
       );
     }
     // A drill exits 0 only on a pass, 3 while a carried restore is pending, else

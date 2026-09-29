@@ -7,36 +7,22 @@
 // drill have, psql on staging's network (scripts/ops/backup-store-reach.mjs).
 // It needs Docker: skipped where Docker is not running, never skipped in CI.
 import { spawnSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { carriedThroughPsql } from './staging-backup-reach-carried.fixture.ts';
+import {
+  OPERATOR,
+  importOps,
+  reachOn,
+  recordPassed,
+  send,
+  type DrillModule,
+  type JobModule,
+} from './staging-backup-reach-live.fixture.ts';
 import { largeArchive, overTheCap } from './staging-backup-reach-large.fixture.ts';
-
-type Reach = (
-  url: string,
-  script: string | Iterable<string> | AsyncIterable<string>,
-  onLine?: (line: string) => unknown,
-) => Promise<string>;
-type JobModule = {
-  runBackup: (o: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  expireBackups: (o: Record<string, unknown>) => Promise<Record<string, unknown>>;
-};
-type DrillModule = {
-  fetchLatest: (
-    url: string,
-    file: string,
-    reach?: Reach,
-  ) => Promise<{ takenAt: string; sha256: string; bytes: number }>;
-  recordDrill: (
-    url: string,
-    who: string,
-    record: Record<string, unknown>,
-    reach?: Reach,
-  ) => Promise<string | null>;
-};
 
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -46,37 +32,6 @@ const image =
       services: Record<string, { image?: string }>;
     }
   ).services['db']?.image ?? '';
-const importOps = async <T>(name: string): Promise<T> => {
-  const path = `../../scripts/ops/${name}`;
-  return (await import(
-    /* @vite-ignore */
-    path
-  )) as T;
-};
-const reachOn = async (network: string): Promise<Reach> =>
-  (await importOps<{ psqlOn: (n: string) => Reach }>('backup-store-reach.mjs')).psqlOn(network);
-const send = () => Promise.resolve('sent');
-
-/** A passed drill's receipt, through `reach`; answers the date of the last tested restore. */
-async function recordPassed(url: string, takenAt: string, reach: Reach) {
-  const { recordDrill } = await importOps<DrillModule>('restore-drill.mjs');
-  return await recordDrill(
-    url,
-    randomUUID(),
-    {
-      outcome: 'passed',
-      stage: null,
-      archiveTakenAt: takenAt,
-      productionMajor: 17,
-      sourceMajor: 17,
-      targetMajor: 17,
-      tables: 12,
-      timings: { fetch: 1, open: 2, start: 3, restore: 4, check: 5 },
-    },
-    reach,
-  );
-}
-
 const dockerUp = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const live = dockerUp || process.env['CI'] ? describe : describe.skip;
 const docker = (args: string[], env: NodeJS.ProcessEnv = process.env, input?: string) => {
@@ -213,6 +168,17 @@ live('S0-3 store reach, live', () => {
       expect(granted.status, granted.out).toBe(0);
       logins[role] = `postgres://${login}:${password}@backups:5432/ops_astro_staging_backups`;
     }
+    // Installation, from the restore runbook: the operating business, and the
+    // appointed operator's own store login, a member of the restore identity.
+    const password = randomBytes(12).toString('hex');
+    const installed = asAdmin(
+      `create role s03r_op login password '${password}' noinherit in role ops_astro_backup_restore;` +
+        'grant connect on database ops_astro_staging_backups to s03r_op;' +
+        "insert into backups.installation (operating_business) values ('made-up');" +
+        `insert into backups.appointed (login, person) values ('s03r_op', '${OPERATOR}');`,
+    );
+    expect(installed.status, installed.out).toBe(0);
+    logins['operator'] = `postgres://s03r_op:${password}@backups:5432/ops_astro_staging_backups`;
   });
 
   it('the job adds, the drill fetches and records, and the upkeep expires, each through psql on the network', async () => {
@@ -234,16 +200,12 @@ live('S0-3 store reach, live', () => {
     expect(added).toMatchObject({ event: 'backup run', outcome: 'recorded' });
 
     const file = join(scratch, 'fetched');
-    const fetched = await fetchLatest(logins['ops_astro_backup_restore'] ?? '', file, reach);
+    const fetched = await fetchLatest(logins['operator'] ?? '', file, reach);
     expect(openArchive(readFileSync(file), keys.privateKey)).toStrictEqual(dump);
     rmSync(file);
     expect(Number.isNaN(Date.parse(fetched.takenAt))).toBe(false);
 
-    const last = await recordPassed(
-      logins['ops_astro_backup_restore'] ?? '',
-      fetched.takenAt,
-      reach,
-    );
+    const last = await recordPassed(logins['operator'] ?? '', fetched, reach);
     expect(Number.isNaN(Date.parse(last ?? ''))).toBe(false);
 
     const upkeep = await expireBackups({
@@ -274,13 +236,14 @@ live('S0-3 store reach, live', () => {
   }, 60_000);
 
   // REV158K criteria 13 and 14 (staging-backup-reach-carried.fixture.ts).
-  it('the carried record goes through psql with its digest and challenge bound: a refused one leaves neither in the store log, and the right one passes', async () => {
+  it("the carried record goes through psql with its digest bound: a refused one leaves none in the store log, and the appointed operator's passes", async () => {
     await carriedThroughPsql({
       reach: await reachOn(names('staging')),
       logins,
       keys,
       asAdmin,
       scratch,
+      operator: OPERATOR,
       storeLog: () => docker(['logs', names('backups')]).out,
     });
   }, 180_000);
@@ -296,7 +259,7 @@ live('S0-3 store reach, live', () => {
     await overTheCap({ reach: await reachOn(names('staging')), logins, keys, asAdmin, scratch });
   }, 300_000);
 
-  it('Sol proof, criterion 14: a refused upload completion leaves no archive or challenge fingerprint in the store log', async () => {
+  it('a refused upload completion leaves no archive or challenge fingerprint in the store log', async () => {
     const archiveDigest = 'a'.repeat(64);
     const challengeDigest = 'b'.repeat(64);
     expect(

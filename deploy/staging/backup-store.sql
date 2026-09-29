@@ -74,9 +74,6 @@ create table backups.archives (
   bytes bigint not null default 0 check (bytes >= 0),
   parts integer not null default 0 check (parts >= 0),
   sha256 text not null default '',
-  -- The sha256 of the one-use restore challenge the job wrote into the
-  -- database before it took this dump (migration 0034); never the challenge.
-  challenge_sha256 text check (challenge_sha256 ~ '^[0-9a-f]{64}$'),
   complete boolean not null default false,
   check (not complete or (parts > 0 and sha256 ~ '^[0-9a-f]{64}$'))
 );
@@ -138,10 +135,10 @@ begin
 end $$;
 
 -- Completes this transaction's archive: the size the job sent must be the one
--- the store counted, and the digest is the whole ciphertext's. The third is
--- the restore challenge's sha256, when the job wrote one; an archive without
--- it can never be a passed carried drill.
-create function backups.complete_archive(bytes bigint, sha256 text, challenge_sha256 text default null)
+-- the store counted, and the digest is the whole ciphertext's. The job sends
+-- both as bound parameters, so no statement the server logs carries the
+-- digest.
+create function backups.complete_archive(bytes bigint, sha256 text)
   returns void
   language plpgsql security definer set search_path = pg_catalog as $$
 declare
@@ -151,11 +148,10 @@ begin
   if not found then
     raise exception 'no archive is open' using errcode = 'object_not_in_prerequisite_state';
   end if;
-  if $1 is distinct from writing.bytes or $2 is null or $2 !~ '^[0-9a-f]{64}$'
-    or $3 !~ '^[0-9a-f]{64}$' then
+  if $1 is distinct from writing.bytes or $2 is null or $2 !~ '^[0-9a-f]{64}$' then
     raise exception 'the archive is not the one its parts make' using errcode = 'invalid_parameter_value';
   end if;
-  update backups.archives a set complete = true, sha256 = $2, challenge_sha256 = $3
+  update backups.archives a set complete = true, sha256 = $2
   where a.id = writing.id;
   insert into backups.receipts (action, archive_id, taken_at, bytes)
   values ('backup recorded', writing.id, writing.taken_at, writing.bytes);
@@ -189,7 +185,7 @@ begin
 end $$;
 
 revoke execute on function backups.add_part(integer, bytea) from public;
-revoke execute on function backups.complete_archive(bigint, text, text) from public;
+revoke execute on function backups.complete_archive(bigint, text) from public;
 revoke execute on function backups.archive_completed() from public;
 revoke execute on function backups.archive_expired() from public;
 revoke execute on function backups.receipts_append_only() from public;
@@ -284,19 +280,86 @@ revoke execute on function backups.read_part(uuid, integer) from public;
 
 grant usage on schema backups to ops_astro_backup, ops_astro_backup_retention;
 grant execute on function backups.add_part(integer, bytea) to ops_astro_backup;
-grant execute on function backups.complete_archive(bigint, text, text) to ops_astro_backup;
+grant execute on function backups.complete_archive(bigint, text) to ops_astro_backup;
 grant select (id, taken_at), delete on backups.archives to ops_astro_backup_retention;
 grant select on backups.settings to ops_astro_backup_retention;
 grant usage on schema backups to ops_astro_backup_restore;
 grant execute on function backups.read_latest() to ops_astro_backup_restore;
 grant execute on function backups.read_part(uuid, integer) to ops_astro_backup_restore;
 
+-- The installation (S0-3e): the operating business, and the store login of
+-- each operator it appointed with the person that operator is. The store's
+-- admin writes both at installation, from the restore runbook; no identity is
+-- granted anything on either, and the operating business is never changed
+-- or removed once written.
+--
+-- The trust model (ticket S0-3, lines 13, 39, 53 and 66): a passed restore
+-- drill is the appointed operator's own attestation that they ran the real
+-- restore on a clean throwaway host. No value in a dump proves that, since
+-- the key holder can read every value in it without restoring anything. So
+-- the store takes a pass only as that operator's own act: through their own
+-- store login, for the person the installation appointed that login as, in
+-- the operating business, for an archive this same login read and whose
+-- whole digest the operator's command computed again from the bytes it
+-- restored (a bound parameter, never printed). The restore command admits
+-- the same person only after verifying their sign-in in the operating
+-- business (scripts/ops/operator.ts). The store keeps who recorded which
+-- archive, as whom and when. A login the installation did not appoint, the
+-- restore identity alone, records a failed drill and never a pass.
+create table backups.installation (
+  one boolean primary key default true check (one),
+  operating_business text not null check (operating_business <> '')
+);
+create function backups.installation_fixed() returns trigger
+  language plpgsql set search_path = pg_catalog as $$
+begin
+  raise exception 'the installation is written once' using errcode = 'insufficient_privilege';
+end $$;
+revoke execute on function backups.installation_fixed() from public;
+create trigger installation_fixed before update or delete or truncate on backups.installation
+  for each statement execute function backups.installation_fixed();
+
+create table backups.appointed (
+  login name primary key,
+  person uuid not null
+);
+
+-- Whether this login is the one the installation appointed as `person`, and
+-- `business` is the installation's operating business.
+create function backups.appointed_operator(person uuid, business text) returns boolean
+  language sql stable set search_path = pg_catalog as $$
+  select exists (select from backups.appointed p where p.login = session_user and p.person = $1)
+    and exists (select from backups.installation i where i.operating_business = $2)
+$$;
+revoke execute on function backups.appointed_operator(uuid, text) from public;
+
+-- Whether this login read the header of `archive` inside the freshness
+-- window, and that archive is complete, taken at `taken_at`, with `sha256`
+-- as its whole digest. A read is joined on the archive's own id, never a
+-- time two archives can share.
+create function backups.read_by_this_login(archive uuid, sha256 text, taken_at timestamptz)
+  returns boolean
+  language sql stable set search_path = pg_catalog as $$
+  select $1 is not null and exists (
+    select from backups.receipts r
+    where r.action = 'backup read' and r.archive_id = $1 and r.part is null
+      and r.actor = session_user
+      and r.at > now() - make_interval(days => (select restore_days from backups.settings))
+  ) and exists (
+    select from backups.archives a
+    where a.id = $1 and a.complete and a.sha256 = $2
+      and date_trunc('milliseconds', a.taken_at) = $3
+  )
+$$;
+revoke execute on function backups.read_by_this_login(uuid, text, timestamptz) from public;
+
 -- The restore drill's receipts (ticket S0-3, lines C4 to C6 and C10). The
 -- drill writes one row per run through `backups.record_drill`, as the restore
--- identity, and the row carries times, majors, counts and stage names only: no
--- record data, key, credential, fingerprint or path. The operations view reads
--- the date of the last passed drill from here (C55). `backups.restore_fresh()`
--- answers only yes or no: whether a drill passed inside the window
+-- identity, and the row carries times, majors, counts, stage names, the
+-- business, the archive's id and who recorded it only: no record data, key,
+-- credential, fingerprint or path. The operations view reads the date of the
+-- last passed drill from here (C55). `backups.restore_fresh()` answers only
+-- yes or no: whether a drill passed inside the window
 -- `backups.settings.restore_days` sets. The daily upkeep job asks it and pings
 -- the watcher's restore heartbeat only on yes, so a stale restore raises S0-2's
 -- alert.
@@ -317,9 +380,12 @@ create table backups.drills (
   -- carried archive (restore-drill.mjs --drill --archive, then --record).
   ran_on text not null default 'staging machine'
     check (ran_on in ('staging machine', 'carried archive')),
-  -- The archive a carried drill restored, by the store's own id.
+  -- The archive the drill restored, by the store's own id, and the business
+  -- it was recorded in; a pass and a carried drill always name the archive.
   archive_id uuid,
-  check ((ran_on = 'carried archive') = (archive_id is not null)),
+  business text,
+  check (ran_on = 'staging machine' or archive_id is not null),
+  check (outcome = 'failed' or (archive_id is not null and business is not null)),
   check ((outcome = 'passed') = (stage is null)),
   check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
     and target_major = production_major and tables > 0)),
@@ -330,68 +396,63 @@ create table backups.drills (
 create trigger drills_append_only before update or delete or truncate on backups.drills
   for each statement execute function backups.receipts_append_only();
 
--- It answers the date of the last passed drill, this one included.
+-- A drill on the machine. A failed one is anyone's with the restore identity;
+-- a pass (the tenth to twelfth: the business, the archive's id and its whole
+-- digest) only the appointed operator's own act, as above. It answers the
+-- date of the last passed drill, this one included.
 create function backups.record_drill(
-  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb
-) returns timestamptz
-  language sql security definer set search_path = pg_catalog as $$
-  insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
-    source_major, target_major, tables, timings, actor)
-  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user);
-  select max(at) from backups.drills where outcome = 'passed';
-$$;
-revoke execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
-  integer, integer, jsonb) from public;
-grant execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
-  integer, integer, jsonb) to ops_astro_backup_restore;
-
--- A carried drill's receipt, brought back (restore-drill.mjs --record). It
--- names its archive by the store's own id (the twelfth argument, which
--- --record takes from the carried archive's facts), and is taken only against
--- a read of that same archive the store logged for this same login inside the
--- freshness window, never a time two archives can share. The archive must be
--- complete, taken at the receipt's time, and its digest the one of the file
--- the operator carried back (the tenth, which --record computes from the file
--- itself and never prints), so a receipt cannot be made up for an archive the
--- store never handed out, nor for another archive carried in its place. A
--- pass needs more: the restore challenge (the eleventh), which the job wrote
--- into the database before it took the dump and which only a restore of that
--- dump gives back; the store holds only its sha256, so neither an export nor
--- the store's own rows can make one. Each archive is taken once per outcome,
--- so a receipt is never replayed to keep the restore fresh. The time the
--- store stamps is the time it was brought back.
-create function backups.record_carried_drill(
-  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb, text,
-  text default null, uuid default null
+  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb,
+  text default null, uuid default null, text default null
 ) returns timestamptz
   language plpgsql security definer set search_path = pg_catalog as $$
 begin
-  if $12 is null or not exists (
-    select from backups.receipts r
-    where r.action = 'backup read'
-      and r.archive_id = $12
-      and r.part is null
-      and r.actor = session_user
-      and r.at > now() - make_interval(days => (select restore_days from backups.settings))
-  ) or not exists (
-    select from backups.archives a
-    where a.id = $12 and a.complete and a.sha256 = $10
-      and date_trunc('milliseconds', a.taken_at) = $4
-      and ($1 <> 'passed' or ($11 ~ '^[0-9a-f]{64}$'
-        and a.challenge_sha256 = encode(sha256(convert_to($11, 'UTF8')), 'hex')))
-  ) then
-    raise exception 'no read of that archive, with that digest and challenge, by this login inside the window'
+  if $1 = 'passed' and not (backups.appointed_operator($3, $10)
+      and backups.read_by_this_login($11, $12, $4)) then
+    raise exception 'a pass is the appointed operator''s own act, for an archive this login read'
       using errcode = '42501';
   end if;
   insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
-    source_major, target_major, tables, timings, actor, ran_on, archive_id)
-  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user, 'carried archive', $12);
+    source_major, target_major, tables, timings, actor, archive_id, business)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user, $11, $10);
+  return (select max(at) from backups.drills where outcome = 'passed');
+end $$;
+revoke execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
+  integer, integer, jsonb, text, uuid, text) from public;
+grant execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
+  integer, integer, jsonb, text, uuid, text) to ops_astro_backup_restore;
+
+-- A carried drill's receipt, brought back (restore-drill.mjs --record). It
+-- names its archive by the store's own id (the eleventh, which --record takes
+-- from the carried archive's facts), and is taken only against a read of that
+-- same archive this same login made inside the freshness window. The archive
+-- must be complete, taken at the receipt's time, and its digest the one of
+-- the file the operator carried back (the tenth, which --record computes from
+-- the file itself and never prints), so a receipt cannot be made up for an
+-- archive the store never handed out, nor for another archive carried in its
+-- place. A pass is the appointed operator's own act, in the operating
+-- business (the twelfth), as above. Each archive is taken once per outcome,
+-- so a receipt is never replayed to keep the restore fresh. The time the
+-- store stamps is the time it was brought back.
+create function backups.record_carried_drill(
+  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb, text, uuid,
+  text default null
+) returns timestamptz
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  if not backups.read_by_this_login($11, $10, $4)
+      or ($1 = 'passed' and not backups.appointed_operator($3, $12)) then
+    raise exception 'no read of that archive, with that digest, by this login inside the window, or not the appointed operator''s own pass'
+      using errcode = '42501';
+  end if;
+  insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
+    source_major, target_major, tables, timings, actor, ran_on, archive_id, business)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user, 'carried archive', $11, $12);
   return (select max(at) from backups.drills where outcome = 'passed');
 end $$;
 revoke execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
-  integer, integer, integer, jsonb, text, text, uuid) from public;
+  integer, integer, integer, jsonb, text, uuid, text) from public;
 grant execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
-  integer, integer, integer, jsonb, text, text, uuid) to ops_astro_backup_restore;
+  integer, integer, integer, jsonb, text, uuid, text) to ops_astro_backup_restore;
 create unique index drills_carried_once on backups.drills (archive_id, outcome)
   where ran_on = 'carried archive';
 

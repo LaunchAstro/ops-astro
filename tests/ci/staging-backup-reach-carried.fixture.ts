@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The live store suite's carried case (staging-backup-reach-live.test.ts;
-// REV158K criteria 13 and 14): the carried record through real psql. The
-// digest and the challenge go as bound parameters, so a statement the server
-// refuses and logs carries neither; the challenge the job wrote makes the pass.
+// REV158K criteria 13 and 14, REV158S3): the carried record through real
+// psql. The digest goes as a bound parameter, so a statement the server
+// refuses carries none of it into the log; a pass is taken only through the
+// store login the installation appointed as the operator.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect } from 'vitest';
@@ -21,6 +22,8 @@ type Live = {
   keys: { publicKey: string; privateKey: string };
   asAdmin: (script: string) => { status: number | null; out: string };
   scratch: string;
+  /** The person the installation appointed with the store login `logins.operator`. */
+  operator: string;
   /** What the store's server has logged so far. */
   storeLog: () => string;
 };
@@ -35,7 +38,6 @@ const importOps = async <T>(name: string): Promise<T> => {
 };
 const send = (): Promise<string> => Promise.resolve('sent');
 
-/** A backup with its challenge, exported, then recorded through psql: refused, then passed. */
 /** The pending receipt a carried drill of the archive taken at `takenAt` prints. */
 function pendingReceipt(takenAt: string, operator: string): Record<string, unknown> {
   return {
@@ -58,15 +60,10 @@ function pendingReceipt(takenAt: string, operator: string): Record<string, unkno
   };
 }
 
-/** One backup by the job, its restore challenge written first: answers the challenge. */
-async function backedUp(live: Live): Promise<string> {
+/** One backup by the job, through psql. */
+async function backedUp(live: Live): Promise<void> {
   const { runBackup } = await importOps<JobModule>('backup.mjs');
-  let written = '';
   const added = await runBackup({
-    challenge: (challenge: string) => {
-      written = challenge;
-      return Promise.resolve();
-    },
     dump: () => Promise.resolve(Buffer.from(`PGDMP carried ${randomBytes(4).toString('hex')}`)),
     storeUrl: live.logins['ops_astro_backup'],
     publicKey: live.keys.publicKey,
@@ -74,39 +71,43 @@ async function backedUp(live: Live): Promise<string> {
     send,
   });
   expect(added).toMatchObject({ outcome: 'recorded' });
-  return written;
 }
 
+/**
+ * A backup exported by the restore identity alone and by the appointed
+ * operator, each recorded through psql: the first refused, with no digest in
+ * the store log; the second passed.
+ */
 export async function carriedThroughPsql(live: Live): Promise<void> {
-  const written = await backedUp(live);
+  await backedUp(live);
   const ops =
     await importOps<Record<string, (o: Record<string, unknown>) => Promise<unknown>>>(
       'restore-drill.mjs',
     );
-  const operator = randomUUID();
   const gate = {
     ok: true,
-    operator: { personId: operator, business: 'made-up' },
+    operator: { personId: live.operator, business: 'made-up' },
     records: mkdtempSync(join(live.scratch, 'records-')),
     recordSignIn: () => Promise.resolve(),
   };
-  const storeUrl = live.logins['ops_astro_backup_restore'];
-  const file = join(mkdtempSync(join(live.scratch, 'carry-')), 'archive.sealed');
-  await ops['exportArchive']?.({ gate, storeUrl, file, reach: live.reach });
-  const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, string>;
-  const receiptFile = join(live.scratch, `receipt-${randomBytes(4).toString('hex')}.json`);
-  const receipt = pendingReceipt(held['takenAt'] ?? '', operator);
-  writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);
-  const wrong = randomBytes(32).toString('hex');
-  writeFileSync(`${file}.challenge`, `${wrong}\n`);
-  const record = () =>
-    ops['recordCarried']?.({ gate, storeUrl, receiptFile, archiveFile: file, reach: live.reach });
-  await expect(record()).rejects.toThrow(/did not take the receipt/u);
+  const carriedBy = async (storeUrl: string) => {
+    const file = join(mkdtempSync(join(live.scratch, 'carry-')), 'archive.sealed');
+    await ops['exportArchive']?.({ gate, storeUrl, file, reach: live.reach });
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, string>;
+    const receiptFile = join(live.scratch, `receipt-${randomBytes(4).toString('hex')}.json`);
+    const receipt = pendingReceipt(held['takenAt'] ?? '', live.operator);
+    writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);
+    const record = () =>
+      ops['recordCarried']?.({ gate, storeUrl, receiptFile, archiveFile: file, reach: live.reach });
+    return { held, record };
+  };
+  const alone = await carriedBy(live.logins['ops_astro_backup_restore'] ?? '');
+  await expect(alone.record()).rejects.toThrow(/did not take the receipt/u);
   const logged = live.storeLog();
   expect(logged).toMatch(/ERROR/u);
-  for (const secret of [wrong, held['sha256'] ?? '', written]) expect(logged).not.toContain(secret);
-  writeFileSync(`${file}.challenge`, `${written}\n`);
-  await expect(record()).resolves.toMatchObject({ outcome: 'passed' });
+  expect(logged).not.toContain(alone.held['sha256'] ?? '');
+  const appointed = await carriedBy(live.logins['operator'] ?? '');
+  await expect(appointed.record()).resolves.toMatchObject({ outcome: 'passed' });
   expect(
     live.asAdmin(
       "select count(*) from backups.drills where ran_on = 'carried archive' and outcome = 'passed'",

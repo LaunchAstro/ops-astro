@@ -45,7 +45,6 @@ const pending = (operator: string, business: string): Record<string, unknown> =>
   business,
   operator,
   ranOn: 'carried archive',
-  archiveDigest: 'ab'.repeat(32),
 });
 
 describe('S0-3e carried receipt hygiene', () => {
@@ -132,7 +131,7 @@ function hygieneCases3() {
     expect(output).not.toContain(CANARY);
   });
 
-  it('Sol proof, criterion 14: the planted target case reaches the target validator', async () => {
+  it('the planted target case reaches the target validator', async () => {
     const operator = randomUUID();
     const file = save({ ...pending(operator, 'made-up'), target: CANARY });
     const { readCarriedReceipt } = await carried();

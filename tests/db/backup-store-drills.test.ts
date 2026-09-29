@@ -2,14 +2,13 @@
 //
 // S0-3d: the backup store's `S0-3 drill receipt`, then `S0-3 restore staleness`,
 // which reads the passed drill the receipt cases record, so the two share a
-// store and run in that order.
+// store and run in that order. A pass is recorded through the appointed
+// operator's own store login, for an archive it read (S0-3e,
+// backup-carried-attest.test.ts has why); a failed drill through the restore
+// identity alone.
 //
 // S0-3 (S0-3d). The shared fixture is backup-identity.fixture.ts.
 
-import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   serverUrl,
@@ -23,6 +22,7 @@ import {
   backupLogin,
   retentionLogin,
   restoreLogin,
+  operatorLogin,
   backupStoreHooks,
   hostReach,
   type Reach,
@@ -32,6 +32,7 @@ import {
   job,
 } from './backup-identity.fixture.ts';
 import { operator, passed, failed, call } from './backup-drill-records.fixture.ts';
+import { operatorReceiptCase, readNew } from './backup-store-drills.fixture.ts';
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
   backupStoreHooks();
@@ -87,8 +88,11 @@ function drillReceiptCases2() {
         await client.end();
       }
     }
-    const reader = await asRole(restoreLogin.url, RESTORE);
+    // The restore identity alone cannot pass at all (read-binding suite);
+    // the appointed operator's login is refused everything else here too.
+    const reader = await asRole(operatorLogin.url, RESTORE);
     try {
+      const bound = await readNew(reader);
       for (const text of [
         'select * from backups.drills',
         'update backups.drills set outcome = outcome',
@@ -99,7 +103,8 @@ function drillReceiptCases2() {
         expect(await attempt(reader, text), text).toBe('42501');
       }
       // A passed drill with a field missing is not a passed drill.
-      const [text, values] = call(passed);
+      const [text, values] = call(passed, bound);
+      expect(await attempt(reader, text, values)).toBe('ok');
       expect(await attempt(reader, text, values.with(5, null))).toBe('23514');
       expect(await attempt(reader, text, values.with(4, 18))).toBe('23514');
       // Timings are stage names and milliseconds, and nothing else. Each is
@@ -132,9 +137,9 @@ function drillReceiptCases2() {
 
 function drillReceiptCases3() {
   it('a passed drill answers its own date as the last tested restore; a failed one answers the last passed', async () => {
-    const reader = await asRole(restoreLogin.url, RESTORE);
+    const reader = await asRole(operatorLogin.url, RESTORE);
     try {
-      const first = await reader.query<{ last: string }>(...call(passed));
+      const first = await reader.query<{ last: string }>(...call(passed, await readNew(reader)));
       const last = first.rows[0]?.last ?? '';
       expect(Date.parse(last)).toBeGreaterThan(Date.now() - 60_000);
       const second = await reader.query<{ last: string }>(...call(failed));
@@ -148,73 +153,15 @@ function drillReceiptCases3() {
       actor: string;
     }>('select outcome, stage, actor from backups.drills order by id');
     expect(rows.slice(-2)).toStrictEqual([
-      { outcome: 'passed', stage: null, actor: restoreLogin.name },
-      { outcome: 'failed', stage: 'restore', actor: restoreLogin.name },
+      { outcome: 'passed', stage: null, actor: operatorLogin.name },
+      { outcome: 'failed', stage: 'restore', actor: operatorLogin.name },
     ]);
   });
 }
 
 function drillReceiptCases4() {
   it('the operator receipt has every field and no other, and carries no key, credential, path or record data', async () => {
-    const path = '../../scripts/ops/restore-drill.mjs';
-    const drillModule = (await import(/* @vite-ignore */ path)) as {
-      drillAsOperator: (options: Record<string, unknown>) => Promise<unknown>;
-      RECEIPT_FIELDS: readonly string[];
-    };
-    const records = mkdtempSync(join(tmpdir(), 's0-3d-'));
-    const canary = `canary-${randomBytes(8).toString('hex')}`;
-    try {
-      const gate = {
-        ok: true as const,
-        operator: { personId: operator, business: 'made-up' },
-        records,
-        recordSignIn: async () => {},
-      };
-      for (const outcome of [passed, failed]) {
-        // oxlint-disable-next-line no-await-in-loop
-        const receipt = (await drillModule.drillAsOperator({
-          gate,
-          storeUrl: restoreLogin.url,
-          reach: hostReach,
-          drill: async () => ({
-            event: 'restore drill',
-            at: new Date().toISOString(),
-            ...outcome,
-          }),
-        })) as Record<string, unknown>;
-        expect(Object.keys(receipt).toSorted()).toStrictEqual(
-          [...drillModule.RECEIPT_FIELDS].toSorted(),
-        );
-        expect(receipt).toMatchObject({
-          action: 'restore drill recorded',
-          outcome: outcome.outcome,
-          operator,
-          productionMajor: 17,
-          targetMajor: 17,
-          ranOn: 'staging machine',
-        });
-        expect(typeof receipt['lastTestedRestore']).toBe('string');
-        const text = JSON.stringify(receipt);
-        for (const secret of [
-          restoreLogin.url,
-          restoreLogin.name,
-          records,
-          keys.privateKey,
-          canary,
-        ]) {
-          expect(text).not.toContain(secret);
-        }
-        expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/tmp\/|sha256/u);
-      }
-      const kept = readFileSync(join(records, 'deployments.jsonl'), 'utf8').trim().split('\n');
-      expect(kept).toHaveLength(2);
-      expect(kept.map((line) => (JSON.parse(line) as { action: string }).action)).toStrictEqual([
-        'restore drill recorded',
-        'restore drill recorded',
-      ]);
-    } finally {
-      rmSync(records, { recursive: true, force: true });
-    }
+    await operatorReceiptCase();
   });
 }
 

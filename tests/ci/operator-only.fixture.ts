@@ -116,8 +116,6 @@ export const environment = (
 } => ({
   PATH: path,
   OPS_ASTRO_BUSINESS: 'alpha',
-  // The installation's operating business: the restore drill's modes are its operator's alone.
-  OPS_ASTRO_OPERATING_BUSINESS: 'alpha',
   OPS_ASTRO_DEPLOYMENTS: at.records,
   DATABASE_URL: db.appUrl,
   DATABASE_ADMIN_URL: adminUrl(),
@@ -170,6 +168,11 @@ export function operatorOnlyHooks(share: (state: OperatorOnlyState) => void): vo
     const alpha = await insertBusiness(db.app, 'alpha');
     alphaBusiness = alpha;
     const beta = await insertBusiness(db.app, 'beta');
+    // Installation: alpha is the operating business, written once by the owner
+    // (migration 0034); the restore drill's modes are its operator's alone.
+    await db.admin.execute('insert into ops.operating_business (operating_business) values ($1)', [
+      alpha,
+    ]);
     await db.app.withBusiness(alpha, async (tx) => {
       operatorPerson = await person(tx, 'Olive', subjects.operator, { scope: 'business' });
       await person(tx, 'Kit', subjects.keyless, { scope: 'business', action: 'read' });

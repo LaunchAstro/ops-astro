@@ -12,11 +12,9 @@
 // comes from the operator's own copy, and the digest is never printed or
 // logged (S0-3 criterion 14). On the other host (`--drill --archive <file>`)
 // the file is checked against that digest, read in pieces into the drill's
-// own copy, before anything is opened; a drill that restored it writes the
-// restore challenge it read back from the restored database into
-// `<file>.challenge` (mode 600), never printed. Back on the machine,
-// `--record <receipt file> --archive <file>` reads the receipt here, hashes
-// `<file>` again itself and reads the challenge, and the store checks both.
+// own copy, before anything is opened. Back on the machine,
+// `--record <receipt file> --archive <file>` reads the receipt here and hashes
+// `<file>` again itself, and the store checks it.
 //
 // Nothing a refusal says names the file, its folder or anything in it.
 
@@ -29,7 +27,6 @@ import {
   readFileSync,
   readSync,
   unlinkSync,
-  writeFileSync,
   writeSync,
 } from 'node:fs';
 import { RECEIPT_FIELDS } from './drill-receipt.mjs';
@@ -257,36 +254,3 @@ export function readCarriedReceipt(file, operator) {
   }
   return receipt;
 }
-
-const CHALLENGE = /^[0-9a-f]{64}$/u;
-
-/**
- * Keeps the restore challenge a drill read back from the database it
- * restored, beside the carried archive: `<file>.challenge`, mode 600, made
- * fresh (a link or an older one there is removed first, never written through).
- */
-export function writeChallenge(file, challenge) {
-  if (!CHALLENGE.test(challenge ?? '')) return;
-  const kept = `${file}.challenge`;
-  removeAll(kept);
-  try {
-    writeFileSync(kept, `${challenge}\n`, { mode: 0o600, flag: 'wx' });
-  } catch {
-    throw new Error('the restore challenge could not be kept beside the archive file');
-  }
-}
-
-/** The restore challenge kept beside `file`, or null when there is none of its shape. */
-export function readChallenge(file) {
-  let text;
-  try {
-    text = readOwn(`${file}.challenge`, 'challenge file');
-  } catch {
-    return null;
-  }
-  const challenge = text.trim();
-  return CHALLENGE.test(challenge) ? challenge : null;
-}
-
-/** Removes the kept challenge once the store has taken it. */
-export const forgetChallenge = (file) => removeAll(`${file}.challenge`);

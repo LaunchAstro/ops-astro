@@ -22,8 +22,8 @@ export const WORKER_ROLE = 'ops_astro_worker';
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
-  // 0034: the backup identity's restore challenge; nothing for the application.
-  ['', 'ops.restore_challenge'],
+  // 0034: the installation's operating business; nothing for the application.
+  ['', 'ops.operating_business'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],

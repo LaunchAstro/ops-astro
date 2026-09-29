@@ -24,7 +24,6 @@
 // backup-store.test.ts, backup-store-drills.test.ts and
 // backup-store-encryption.test.ts.
 
-import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import {
@@ -34,14 +33,7 @@ import {
   asRole,
   attempt,
   dropLogins,
-  hostReach,
 } from './backup-identity.fixture.ts';
-
-/** The job's upsert of the restore challenge (scripts/ops/backup.mjs). */
-const UPSERT =
-  'insert into ops.restore_challenge (challenge) values ($1) on conflict (one) do update set challenge = excluded.challenge, written_at = now()';
-/** What the refusal case's attempts reach on the challenge's table: its one write, with no value. */
-const ONE_WRITE: readonly string[] = ['insert into ops.restore_challenge default values: 23502'];
 
 let db: FreshDatabase;
 let login: { url: string; name: string };
@@ -85,6 +77,8 @@ describe.skipIf(serverUrl === undefined)('S0-3 identity scope', () => {
   identityScopeCases1();
   identityScopeCases2();
   identityScopeCases3();
+
+  identityScopeCases4();
 });
 
 function identityScopeCases1() {
@@ -210,54 +204,32 @@ function identityScopeCases3() {
     } finally {
       await client.end();
     }
-    // Its one write (REV158K criterion 13): the restore challenge's insert,
-    // reached here with no value and refused by the table. It changes no row.
-    expect(allowed).toStrictEqual(ONE_WRITE);
+    expect(allowed).toStrictEqual([]);
     expect(await contents()).toBe(before);
   });
+}
 
-  it('writes one thing: the restore challenge, one row replaced before each dump, of its one shape, that the tenancy role never reads', async () => {
-    const client = await asRole(login.url, BACKUP);
-    const [first, second] = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')];
-    try {
-      // The job's own write, as it sends it (bound), then again over it.
-      const path = '../../scripts/ops/backup.mjs';
-      const { writeRestoreChallenge } = (await import(
-        /* @vite-ignore */
-        path
-      )) as { writeRestoreChallenge: (url: string, c: string, reach: unknown) => Promise<void> };
-      await writeRestoreChallenge(login.url, first, hostReach);
-      await writeRestoreChallenge(login.url, second, hostReach);
-      for (const bad of ['', 'AB'.repeat(32), `${first}'; drop table ops.restore_challenge; --`]) {
-        // oxlint-disable-next-line no-await-in-loop
-        expect(await attempt(client, UPSERT, [bad])).toBe('23514');
-      }
-      expect(await attempt(client, 'update ops.restore_challenge set one = true')).toBe('42501');
-      expect(await attempt(client, 'delete from ops.restore_challenge')).toBe('42501');
-    } finally {
-      await client.end();
-    }
-    const rows = await db.admin.execute<{ challenge: string }>(
-      'select challenge from ops.restore_challenge',
-    );
-    expect([...rows]).toStrictEqual([{ challenge: second }]);
-    const [app] = await db.admin.execute<{ reads: boolean }>(
-      "select has_table_privilege('ops_astro_app', 'ops.restore_challenge', 'select') as reads",
-    );
-    expect(app?.reads).toBe(false);
-  });
-
-  it('Sol proof, criterion 4: the source backup identity refuses every insert and update', async () => {
+// Sol's REV158S3 criterion 4 proof. Its table, the restore challenge's, is
+// gone with the challenge (ORCH-DECISION 22:06Z), so its two writes are aimed
+// at the source's other one-row table, the installation's operating business
+// (migration 0034); its title and its assertion are Sol's.
+function identityScopeCases4() {
+  it('the source backup identity refuses every insert and update', async () => {
     const client = await asRole(login.url, BACKUP);
     try {
-      const challenge = randomBytes(32).toString('hex');
-      const insert = await attempt(client, UPSERT, [challenge]);
-      const update = await attempt(client, 'update ops.restore_challenge set challenge = $1', [
-        challenge,
-      ]);
+      const insert = await attempt(
+        client,
+        'insert into ops.operating_business (operating_business) values (gen_random_uuid())',
+      );
+      const update = await attempt(client, 'update ops.operating_business set written_at = now()');
       expect({ insert, update }).toStrictEqual({ insert: '42501', update: '42501' });
     } finally {
       await client.end();
     }
+    const [grants] = await db.admin.execute<{ writes: boolean }>(
+      `select exists (select from information_schema.role_table_grants
+         where grantee = 'ops_astro_backup' and privilege_type <> 'SELECT') as writes`,
+    );
+    expect(grants?.writes).toBe(false);
   });
 }

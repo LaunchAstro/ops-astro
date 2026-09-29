@@ -26,7 +26,6 @@ type CarriedModule = {
   readCarried: (file: string, into?: string) => Held;
   writeCarried: (file: string, fetchInto: (into: string) => Promise<Held>) => Promise<Held>;
   readCarriedReceipt: (file: string, operator: { personId: string; business: string }) => Receipt;
-  readChallenge: (file: string) => string | null;
   digestOf: (body: Buffer) => string;
 };
 
