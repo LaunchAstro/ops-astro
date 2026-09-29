@@ -188,6 +188,7 @@ export type CommandRequest =
       readonly afterId?: string | null;
       readonly beforeId?: string | null;
     } & Targeted)
+  | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
   // The purge's window is the business's setting, not an operand. The field is

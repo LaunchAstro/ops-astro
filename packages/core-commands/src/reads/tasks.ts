@@ -261,6 +261,7 @@ export async function readTaskDetail(
     capCurrency: await taskCapCurrency(tx, row.id),
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
     adHoc: row.ad_hoc === true,
+    clientAccess: false,
   };
 }
 
