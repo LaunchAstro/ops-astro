@@ -20,6 +20,7 @@ export type DrillModule = {
     url: string,
     file: string,
     reach?: Reach,
+    operator?: { personId: string; business: string },
   ) => Promise<{ archiveId: string; takenAt: string; sha256: string; bytes: number }>;
   recordDrill: (
     url: string,

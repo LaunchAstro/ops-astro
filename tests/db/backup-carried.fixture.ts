@@ -26,12 +26,26 @@ import { operator, passed } from './backup-drill-records.fixture.ts';
 export type Receipt = Record<string, unknown>;
 export type Act = (options: Record<string, unknown>) => Promise<Receipt>;
 export type DrillModule = { exportArchive: Act; recordCarried: Act };
+/** The store id of the first archive exported at each time, as a drill of it names it. */
+const exportedAt = new Map<string, string>();
 export const drillModule = async (): Promise<DrillModule> => {
   const path = '../../scripts/ops/restore-drill.mjs';
-  return (await import(
+  const module = (await import(
     /* @vite-ignore */
     path
   )) as DrillModule;
+  return {
+    ...module,
+    exportArchive: async (options) => {
+      const done = await module.exportArchive(options);
+      const facts = JSON.parse(readFileSync(`${String(options['file'])}.json`, 'utf8')) as {
+        takenAt: string;
+        archiveId: string;
+      };
+      if (!exportedAt.has(facts.takenAt)) exportedAt.set(facts.takenAt, facts.archiveId);
+      return done;
+    },
+  };
 };
 
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-3e-db-'));
@@ -77,13 +91,20 @@ export const record = async (
     reach: hostReach,
   });
 
-/** The pending receipt a carried drill prints for the archive taken at `takenAt`. */
-export const pendingReceipt = (takenAt: string): Receipt => ({
+/**
+ * The pending receipt a carried drill prints for the archive taken at
+ * `takenAt`: by default the first one exported at that time, by its store id.
+ */
+export const pendingReceipt = (
+  takenAt: string,
+  archiveId: string = exportedAt.get(takenAt) ?? '',
+): Receipt => ({
   action: 'restore drill recorded',
   ...passed,
   outcome: 'pending',
   at: new Date().toISOString(),
   archiveTakenAt: takenAt,
+  archiveId,
   lastTestedRestore: null,
   business: OPERATING_BUSINESS,
   operator,

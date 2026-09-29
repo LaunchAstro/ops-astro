@@ -12,6 +12,7 @@ import { createReadStream, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
+import { OPERATOR } from './staging-backup-reach-live.fixture.ts';
 import { expect } from 'vitest';
 
 type Reach = (
@@ -103,6 +104,7 @@ export async function largeArchive(live: Live): Promise<void> {
       url: string,
       file: string,
       reach: Reach,
+      operator: { personId: string; business: string },
     ) => Promise<{ sha256: string; bytes: number }>;
   }>('restore-drill.mjs');
   const { checkSealedFile } = await importOps<{
@@ -110,11 +112,10 @@ export async function largeArchive(live: Live): Promise<void> {
   }>('archive-seal.mjs');
   const file = join(live.scratch, 'large');
   const again = watermark();
-  const fetched = await fetchLatest(
-    live.logins['ops_astro_backup_restore'] ?? '',
-    file,
-    live.reach,
-  );
+  const fetched = await fetchLatest(live.logins['operator'] ?? '', file, live.reach, {
+    personId: OPERATOR,
+    business: 'made-up',
+  });
   const drillPeak = again.stop();
   expect(fetched.bytes).toBe(bytes);
   const whole = createHash('sha256');

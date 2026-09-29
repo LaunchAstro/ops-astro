@@ -25,11 +25,18 @@ import {
   backupLogin,
   retentionLogin,
   restoreLogin,
+  operatorLogin,
+  OPERATING_BUSINESS,
   receipts,
   archiveIds,
   backupStoreHooks,
   hostReach,
 } from './backup-identity.fixture.ts';
+import { operator } from './backup-drill-records.fixture.ts';
+
+/** The appointed operator, as the gate hands them to the drill. */
+const WHO = { personId: operator, business: OPERATING_BUSINESS };
+const LATEST = 'select * from backups.read_latest($1, $2)';
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
   backupStoreHooks();
@@ -56,12 +63,13 @@ function backupEncryptionCases1() {
     });
     expect(recorded['outcome']).toBe('recorded');
     const before = (await receipts()).length;
-    const reader = postgres(restoreLogin.url, { max: 1 });
+    const reader = postgres(operatorLogin.url, { max: 1 });
     try {
       await expect(
         reader.begin(async (tx) => {
           await tx.unsafe(`set local role ${RESTORE}`);
-          const [archive] = await tx`select sha256 from backups.read_latest()`;
+          const [archive] =
+            await tx`select sha256 from backups.read_latest(${operator}::uuid, ${OPERATING_BUSINESS})`;
           expect(archive?.['sha256']).toMatch(/^[0-9a-f]{64}$/u);
           throw new Error('rollback after access');
         }),
@@ -110,7 +118,7 @@ async function fetchedTakenAt(): Promise<string> {
   const { fetchLatest } = await drill();
   const folder = mkdtempSync(join(tmpdir(), 's0-3c-'));
   try {
-    const fetched = await fetchLatest(restoreLogin.url, join(folder, 'a'), hostReach);
+    const fetched = await fetchLatest(operatorLogin.url, join(folder, 'a'), hostReach, WHO);
     expect(statSync(join(folder, 'a')).mode & 0o777).toBe(0o600);
     return fetched.takenAt;
   } finally {
@@ -138,7 +146,7 @@ function backupEncryptionCases3() {
     const [actor] = await store.admin.execute<{ actor: string }>(
       'select actor from backups.receipts order by id desc limit 1',
     );
-    expect(actor?.actor).toBe(restoreLogin.name);
+    expect(actor?.actor).toBe(operatorLogin.name);
 
     const reader = await asRole(restoreLogin.url, RESTORE);
     try {
@@ -164,7 +172,8 @@ function backupEncryptionCases3() {
       const other = await asRole(login.url, role);
       try {
         // oxlint-disable-next-line no-await-in-loop
-        expect(await attempt(other, 'select * from backups.read_latest()')).toBe('42501');
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await attempt(other, LATEST, [operator, OPERATING_BUSINESS])).toBe('42501');
       } finally {
         // oxlint-disable-next-line no-await-in-loop
         await other.end();

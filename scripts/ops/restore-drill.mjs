@@ -39,10 +39,10 @@
 // and its facts beside it (carried-archive.mjs), never the key; `--drill
 // --archive <file>` restores that file anywhere, checked against its facts
 // before anything opens it, and its receipt says it ran on a carried archive,
-// is kept and printed, not stored, and carries no digest. `--record <file>
-// --archive <file>` takes that receipt back into the store on the machine,
-// with the archive's id and its digest computed again from the file, as bound
-// parameters.
+// is kept and printed, not stored, and carries no digest; it names the
+// store's own id for the archive. `--record <file> --archive <file>` takes
+// that receipt back into the store on the machine, only with that very
+// archive, its digest computed again from the file, as bound parameters.
 //
 // Every mode is the installation's appointed operator's act only
 // (REV158K criterion 4): `operations:manage` over the whole of the

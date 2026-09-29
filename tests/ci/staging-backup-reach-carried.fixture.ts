@@ -39,7 +39,11 @@ const importOps = async <T>(name: string): Promise<T> => {
 const send = (): Promise<string> => Promise.resolve('sent');
 
 /** The pending receipt a carried drill of the archive taken at `takenAt` prints. */
-function pendingReceipt(takenAt: string, operator: string): Record<string, unknown> {
+function pendingReceipt(
+  takenAt: string,
+  archiveId: string,
+  operator: string,
+): Record<string, unknown> {
   return {
     action: 'restore drill recorded',
     outcome: 'pending',
@@ -50,6 +54,7 @@ function pendingReceipt(takenAt: string, operator: string): Record<string, unkno
     sourceMajor: 17,
     targetMajor: 17,
     archiveTakenAt: takenAt,
+    archiveId,
     tables: 12,
     readAs: 'ops_astro_app',
     timings: { fetch: 1, open: 2, start: 3, restore: 4, check: 5 },
@@ -74,9 +79,10 @@ async function backedUp(live: Live): Promise<void> {
 }
 
 /**
- * A backup exported by the restore identity alone and by the appointed
- * operator, each recorded through psql: the first refused, with no digest in
- * the store log; the second passed.
+ * A backup exported by the appointed operator's own login and its receipt
+ * brought back through psql: through the restore identity alone it is
+ * refused, with no digest in the store log; through the appointed login it
+ * is a pass.
  */
 export async function carriedThroughPsql(live: Live): Promise<void> {
   await backedUp(live);
@@ -90,24 +96,22 @@ export async function carriedThroughPsql(live: Live): Promise<void> {
     records: mkdtempSync(join(live.scratch, 'records-')),
     recordSignIn: () => Promise.resolve(),
   };
-  const carriedBy = async (storeUrl: string) => {
-    const file = join(mkdtempSync(join(live.scratch, 'carry-')), 'archive.sealed');
-    await ops['exportArchive']?.({ gate, storeUrl, file, reach: live.reach });
-    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, string>;
-    const receiptFile = join(live.scratch, `receipt-${randomBytes(4).toString('hex')}.json`);
-    const receipt = pendingReceipt(held['takenAt'] ?? '', live.operator);
-    writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);
-    const record = () =>
-      ops['recordCarried']?.({ gate, storeUrl, receiptFile, archiveFile: file, reach: live.reach });
-    return { held, record };
-  };
-  const alone = await carriedBy(live.logins['ops_astro_backup_restore'] ?? '');
-  await expect(alone.record()).rejects.toThrow(/did not take the receipt/u);
+  const appointed = live.logins['operator'] ?? '';
+  const file = join(mkdtempSync(join(live.scratch, 'carry-')), 'archive.sealed');
+  await ops['exportArchive']?.({ gate, storeUrl: appointed, file, reach: live.reach });
+  const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, string>;
+  const receiptFile = join(live.scratch, `receipt-${randomBytes(4).toString('hex')}.json`);
+  const receipt = pendingReceipt(held['takenAt'] ?? '', held['archiveId'] ?? '', live.operator);
+  writeFileSync(receiptFile, `${JSON.stringify(receipt)}\n`);
+  const record = (storeUrl: string) =>
+    ops['recordCarried']?.({ gate, storeUrl, receiptFile, archiveFile: file, reach: live.reach });
+  await expect(record(live.logins['ops_astro_backup_restore'] ?? '')).rejects.toThrow(
+    /did not take the receipt/u,
+  );
   const logged = live.storeLog();
   expect(logged).toMatch(/ERROR/u);
-  expect(logged).not.toContain(alone.held['sha256'] ?? '');
-  const appointed = await carriedBy(live.logins['operator'] ?? '');
-  await expect(appointed.record()).resolves.toMatchObject({ outcome: 'passed' });
+  expect(logged).not.toContain(held['sha256'] ?? '');
+  await expect(record(appointed)).resolves.toMatchObject({ outcome: 'passed' });
   expect(
     live.asAdmin(
       "select count(*) from backups.drills where ran_on = 'carried archive' and outcome = 'passed'",

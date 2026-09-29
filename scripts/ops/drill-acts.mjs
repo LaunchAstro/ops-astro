@@ -8,7 +8,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { closeSync, openSync, unlinkSync, writeSync } from 'node:fs';
-import { stagingReach, value } from './backup-store-reach.mjs';
+import { bound, stagingReach, value } from './backup-store-reach.mjs';
 import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
@@ -20,14 +20,19 @@ const PART_LINE = /^(\d+)\|([0-9a-f]{64})\|((?:[0-9a-f]{2})+)$/u;
 const same = (a, b) =>
   HEX64.test(a) && HEX64.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** The store's header of the newest backup, as the restore identity (the store logs the read). */
-async function latestHeader(storeUrl, reach) {
+/**
+ * The store's header of the newest backup, as the restore identity (the store
+ * logs the read), for `operator`: the store hands it out only to the login the
+ * installation appointed as that person, in the operating business.
+ */
+async function latestHeader(storeUrl, reach, operator) {
   const line = await reach(
     storeUrl,
-    `set role ${RESTORE_ROLE};
-select json_build_object('id', id, 'takenAt', taken_at, 'bytes', bytes, 'parts', parts, 'sha256', sha256)::text
-  from backups.read_latest();
-`,
+    `set role ${RESTORE_ROLE};\n` +
+      bound(
+        "select json_build_object('id', id, 'takenAt', taken_at, 'bytes', bytes, 'parts', parts, 'sha256', sha256)::text from backups.read_latest(nullif($1, '')::uuid, nullif($2, ''))",
+        [operator?.personId ?? '', operator?.business ?? ''],
+      ),
   );
   if (line === '') throw new Error('no backup');
   const header = JSON.parse(line);
@@ -50,10 +55,11 @@ function* partsScript(header) {
  * part by part into `file` (made here, mode 600, never over a file), each
  * part checked against the digest the store took of it and the whole against
  * the digest the store recorded; nothing is held whole. On any failure the
- * file is removed.
+ * file is removed. `operator` is the gate's person and business, which the
+ * store checks against its own appointment before it hands out anything.
  */
-export async function fetchLatest(storeUrl, file, reach = stagingReach) {
-  const header = await latestHeader(storeUrl, reach);
+export async function fetchLatest(storeUrl, file, reach = stagingReach, operator = undefined) {
+  const header = await latestHeader(storeUrl, reach, operator);
   const fd = openSync(file, 'wx', 0o600);
   const whole = createHash('sha256');
   // One part's room, used for every part in turn.
@@ -94,7 +100,9 @@ export async function fetchLatest(storeUrl, file, reach = stagingReach) {
  * (carried-archive.mjs). The key is never read here.
  */
 export async function exportArchive({ gate, storeUrl, file, reach = stagingReach }) {
-  const archive = await writeCarried(file, (into) => fetchLatest(storeUrl, into, reach));
+  const archive = await writeCarried(file, (into) =>
+    fetchLatest(storeUrl, into, reach, gate.operator),
+  );
   return await recordDeployment(gate, {
     action: 'archive exported',
     archiveTakenAt: archive.takenAt,
@@ -107,7 +115,8 @@ export async function exportArchive({ gate, storeUrl, file, reach = stagingReach
  * the machine a pass goes to the store as this operator's own act, with the
  * business, the id of the archive the drill fetched and the whole digest it
  * computed of it, bound and never printed; the store takes it only through
- * the store login the installation appointed as this person.
+ * the store login the installation appointed as this person. Every receipt
+ * names the store's own id for the archive the drill fetched or was carried.
  */
 export async function drillAsOperator({
   gate,
@@ -126,8 +135,8 @@ export async function drillAsOperator({
     ...result
   } = await drill({
     fetchArchive: carried
-      ? (into) => readCarried(archiveFile, into)
-      : async (into) => (fetched = await fetchLatest(storeUrl, into, reach)),
+      ? (into) => (fetched = readCarried(archiveFile, into))
+      : async (into) => (fetched = await fetchLatest(storeUrl, into, reach, gate.operator)),
     privateKey,
     scope,
   });
@@ -136,6 +145,7 @@ export async function drillAsOperator({
     action: 'restore drill recorded',
     ...empty,
     ...result,
+    archiveId: fetched.archiveId ?? null,
     ranOn: carried ? 'carried archive' : 'staging machine',
   };
   if (carried) {
@@ -180,6 +190,14 @@ export async function recordCarried({
     throw new Error('--record needs the archive the drill restored: --archive <file>');
   }
   const { archiveId, sha256: digest } = readCarried(archiveFile);
+  // The receipt names the store's own id for the archive its drill restored:
+  // another archive carried back in its place, even one taken at the same
+  // time, is refused before the store is reached.
+  if (carried.archiveId !== archiveId) {
+    throw new Error(
+      'the receipt is of another archive than the one carried back: bring back the archive its drill restored',
+    );
+  }
   const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
   let lastTestedRestore;
   try {

@@ -30,8 +30,8 @@ export const WORKER_ROLE = 'ops_astro_worker';
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
-  // 0034: the installation's operating business; nothing for the application.
-  ['', 'ops.operating_business'],
+  // 0034: the installation's operating business; the application reads it only.
+  ['s', 'ops.operating_business'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'handback_reports operations'],

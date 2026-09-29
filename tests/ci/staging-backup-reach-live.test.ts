@@ -200,7 +200,10 @@ live('S0-3 store reach, live', () => {
     expect(added).toMatchObject({ event: 'backup run', outcome: 'recorded' });
 
     const file = join(scratch, 'fetched');
-    const fetched = await fetchLatest(logins['operator'] ?? '', file, reach);
+    const fetched = await fetchLatest(logins['operator'] ?? '', file, reach, {
+      personId: OPERATOR,
+      business: 'made-up',
+    });
     expect(openArchive(readFileSync(file), keys.privateKey)).toStrictEqual(dump);
     rmSync(file);
     expect(Number.isNaN(Date.parse(fetched.takenAt))).toBe(false);
@@ -259,9 +262,12 @@ live('S0-3 store reach, live', () => {
     await overTheCap({ reach: await reachOn(names('staging')), logins, keys, asAdmin, scratch });
   }, 300_000);
 
-  it('a refused upload completion leaves no archive or challenge fingerprint in the store log', async () => {
+  // Sol's REV158S3 criterion 14 proof, on the two-argument completion
+  // (ORCH29-SL01-TAIL): the size is one byte off, so the store refuses it as
+  // a completion, not for want of a function; the digest sent as text is
+  // still in no log line.
+  it('a refused upload completion leaves no archive fingerprint in the store log', async () => {
     const archiveDigest = 'a'.repeat(64);
-    const challengeDigest = 'b'.repeat(64);
     expect(
       asAdmin('update backups.settings set max_bytes = (select bytes from backups.stored) + 100')
         .status,
@@ -273,7 +279,7 @@ live('S0-3 store reach, live', () => {
         `set role ops_astro_backup;
 begin;
 select backups.add_part(0, decode('01', 'hex'));
-select backups.complete_archive(2, '${archiveDigest}', '${challengeDigest}');
+select backups.complete_archive(2, '${archiveDigest}');
 `,
       ),
     ).rejects.toThrow();
@@ -281,7 +287,7 @@ select backups.complete_archive(2, '${archiveDigest}', '${challengeDigest}');
     expect(seen.status).toBe(0);
     const logged = seen.out;
     expect(logged).toMatch(/ERROR|STATEMENT/u);
+    expect(logged).toMatch(/not the one its parts make/u);
     expect(logged).not.toContain(archiveDigest);
-    expect(logged).not.toContain(challengeDigest);
   });
 });

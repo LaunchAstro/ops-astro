@@ -221,6 +221,7 @@ const RECEIPT_SHAPE = {
   sourceMajor: orNull(isInteger),
   targetMajor: orNull(isInteger),
   archiveTakenAt: isTime,
+  archiveId: (v) => typeof v === 'string' && ID.test(v),
   tables: orNull(isInteger),
   readAs: (v) => v === null || v === 'ops_astro_app',
   timings: (v) =>

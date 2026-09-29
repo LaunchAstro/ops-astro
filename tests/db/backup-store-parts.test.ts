@@ -26,13 +26,18 @@ import {
   attempt,
   store,
   backupLogin,
-  restoreLogin,
+  operatorLogin,
+  OPERATING_BUSINESS,
   receipts,
   addArchive,
   backupStoreHooks,
   hostReach,
   PART,
 } from './backup-identity.fixture.ts';
+import { operator } from './backup-drill-records.fixture.ts';
+
+/** The appointed operator, as the gate hands them to the drill. */
+const WHO = { personId: operator, business: OPERATING_BUSINESS };
 
 const folder = mkdtempSync(join(tmpdir(), 's0-3p-'));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -162,7 +167,7 @@ function roundTripCases() {
 
     const file = join(folder, 'fetched');
     const { fetchLatest } = await drill();
-    const fetched = await fetchLatest(restoreLogin.url, file, hostReach);
+    const fetched = await fetchLatest(operatorLogin.url, file, hostReach, WHO);
     expect(fetched).toMatchObject({ sha256: row?.sha256, bytes: Number(row?.bytes) });
     const sealed = readFileSync(file);
     expect(sha(sealed)).toBe(row?.sha256);
@@ -176,7 +181,7 @@ function roundTripCases() {
     );
     const file = join(folder, 'changed');
     const { fetchLatest } = await drill();
-    await expect(fetchLatest(restoreLogin.url, file, hostReach)).rejects.toThrow(
+    await expect(fetchLatest(operatorLogin.url, file, hostReach, WHO)).rejects.toThrow(
       /^a part of the archive is not the one the store took$/u,
     );
     expect(existsSync(file)).toBe(false);
@@ -188,7 +193,7 @@ function refusalCases() {
     const [newest] = await store.admin.execute<{ id: string }>(
       'select id::text from backups.archives order by taken_at desc, id desc limit 1',
     );
-    const reader = await asRole(restoreLogin.url, RESTORE);
+    const reader = await asRole(operatorLogin.url, RESTORE);
     try {
       expect(await attempt(reader, `select * from backups.read_part(gen_random_uuid(), 0)`)).toBe(
         '42501',

@@ -17,13 +17,13 @@
 // exports the archive whole. The client and delegation crossings are
 // operator-only.test.ts's callers, run against every drill mode.
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createEmptyDatabase, createFreshDatabase } from '../support/fresh-database.ts';
 import { keys } from './carried-archive.fixture.ts';
-import { COMMANDS, drillKey, manager, marks, scratch } from './operator-only-commands.fixture.ts';
+import { manager, marks, scratch } from './operator-only-commands.fixture.ts';
 import {
   environment,
   operatorOnlyHooks,
@@ -32,62 +32,17 @@ import {
   subjects,
   token,
 } from './operator-only.fixture.ts';
+import {
+  type DrillCommand,
+  digestOf,
+  drillModes,
+  load,
+  plantedStore,
+  type Seal,
+  signedIn,
+} from './s0-3e-operating-business.fixture.ts';
 
-type Seal = {
-  sealArchive: (dump: Buffer, publicKey: string) => Buffer;
-  openArchive: (sealed: Buffer, privateKey: string) => Buffer;
-};
-type Run = { refused?: string; mode?: string; receipt?: Record<string, unknown> };
-type Reach = (url: string, script: unknown, onLine?: (line: string) => unknown) => Promise<string>;
-type DrillCommand = {
-  runDrillCommand: (
-    args: string[],
-    options: { environment: Record<string, string>; reach: Reach },
-  ) => Promise<Run>;
-};
-const load = async <T>(path: string): Promise<T> =>
-  (await import(
-    /* @vite-ignore */
-    path
-  )) as T;
-
-const TAKEN = '2026-09-29T02:00:00.000Z';
 let state: OperatorOnlyState;
-const digestOf = (body: Buffer): string => createHash('sha256').update(body).digest('hex');
-
-/** A store holding one sealed archive of `dump`, answering as the real one does; it counts each reach. */
-function plantedStore(body: Buffer): { reach: Reach; reached: () => number } {
-  let reached = 0;
-  const reach: Reach = (_url, _script, onLine) => {
-    reached += 1;
-    if (onLine === undefined) {
-      const header = { id: randomUUID(), takenAt: TAKEN, bytes: body.length, parts: 1 };
-      return Promise.resolve(JSON.stringify({ ...header, sha256: digestOf(body) }));
-    }
-    onLine(`0|${digestOf(body)}|${body.toString('hex')}`);
-    return Promise.resolve('');
-  };
-  return { reach, reached: () => reached };
-}
-
-/** The drill command's environment for `subject`, signed in to `business`. */
-async function signedIn(
-  subject: string,
-  business: string,
-): Promise<{ env: Record<string, string>; records: string }> {
-  const at = marks(manager(false));
-  const env = environment(at, process.env['PATH'] ?? '', {
-    OPS_ASTRO_TOKEN: await token(subject),
-    OPS_ASTRO_BUSINESS: business,
-    RESTORE_STORE_URL: 'postgres://drill:never@127.0.0.1:1/never',
-  });
-  return { env, records: at.records };
-}
-
-/** Every mode of the restore drill, as the operator-only suites run it. */
-const drillModes = Object.entries(COMMANDS).filter(([name]) =>
-  /restore drill|archive export|carried/u.test(name),
-);
 
 describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => {
   operatorOnlyHooks((shared) => {
@@ -104,8 +59,6 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
 
   operatingCases4();
   operatingCases5();
-  operatingCases6();
-  operatingCases7();
   operatingCases8();
   operatingCases9();
 });
@@ -216,71 +169,10 @@ function operatingCases4() {
   });
 }
 
-function operatingCases6() {
-  it('with no operating business written at installation, every drill mode is refused before its sign-in is looked at', async () => {
-    const signIn = await token(subjects.operator);
-    const admin = state.db.admin;
-    await admin.execute(
-      'alter table ops.operating_business disable trigger operating_business_fixed',
-    );
-    await admin.execute('delete from ops.operating_business');
-    try {
-      for (const [name, command] of drillModes) {
-        const at = marks(manager(false));
-        const env = environment(at, process.env['PATH'] ?? '', {
-          OPS_ASTRO_TOKEN: signIn,
-          // A value the operator's environment sets appoints nothing.
-          OPS_ASTRO_OPERATING_BUSINESS: 'alpha',
-          RESTORE_KEY_FILE: drillKey(),
-        });
-        const result = command(env, at);
-        expect(result.status, `${name}: ${result.out}`).toBe(1);
-        expect(result.out).toMatch(/the installation has no operating business/u);
-        expect(readdirSync(at.records)).toStrictEqual([]);
-      }
-    } finally {
-      await admin.execute('insert into ops.operating_business (operating_business) values ($1)', [
-        state.alphaBusiness,
-      ]);
-      await admin.execute(
-        'alter table ops.operating_business enable trigger operating_business_fixed',
-      );
-    }
-  });
-}
-
-function operatingCases7() {
-  it('the operating business is installation state: the tenancy role can neither read nor write it, and once written it is never changed or removed', async () => {
-    const tenancy = state.db.app;
-    for (const statement of [
-      'select operating_business from ops.operating_business',
-      'insert into ops.operating_business (operating_business) select id from public.businesses',
-      'update ops.operating_business set written_at = now()',
-    ]) {
-      // oxlint-disable-next-line no-await-in-loop -- one refusal after the other
-      await expect(
-        tenancy.withBusiness(state.alphaBusiness as never, async (tx) => await tx.query(statement)),
-        statement,
-      ).rejects.toMatchObject({ code: '42501' });
-    }
-    const admin = state.db.admin;
-    for (const statement of [
-      'update ops.operating_business set operating_business = operating_business',
-      'delete from ops.operating_business',
-      'truncate ops.operating_business',
-    ]) {
-      // oxlint-disable-next-line no-await-in-loop -- one refusal after the other
-      await expect(admin.execute(statement), statement).rejects.toMatchObject({ code: '42501' });
-    }
-    const rows = await admin.execute<{ n: number }>(
-      'select count(*)::int as n from ops.operating_business',
-    );
-    expect(rows[0]?.n).toBe(1);
-  });
-}
-
+// Sol's REV158S4 criterion 4 proof, retitled by what it proves (the repo
+// refuses a test title that cites a review); its body is Sol's.
 function operatingCases8() {
-  it('Sol proof, criterion 4: redirecting the admin URL cannot appoint another business', async () => {
+  it('redirecting the admin URL cannot appoint another business', async () => {
     const [beta] = await state.db.admin.execute<{ id: string }>(
       "select id::text from public.businesses where key = 'beta'",
     );
@@ -341,8 +233,10 @@ function operatingCases5() {
   });
 }
 
+// Sol's REV158K3 criterion 4 proof, retitled the same way, and named
+// operatingCases9 because REV158S4's patch adds operatingCases8 too.
 function operatingCases9() {
-  it('Sol proof, criterion 4: replacing the operating-business database cannot authorise another business export', async () => {
+  it('replacing the operating-business database cannot authorise another business export', async () => {
     const [beta] = await state.db.admin.execute<{ id: string }>(
       "select id::text from public.businesses where key = 'beta'",
     );

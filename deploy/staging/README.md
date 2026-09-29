@@ -81,8 +81,10 @@ operator that the restore drill is out of date.
 A drill can also run on a host with no route to the store (the runbook's
 clean-host leg), under the same gate. Every drill mode is the installation's
 operating business's act alone: the one row the installation wrote into
-`ops.operating_business` (migration 0034), which no value the caller sets
-replaces. The backup is the whole database, so another business's manager is
+`ops.operating_business` (migration 0034), read in the same transaction and
+on the same database as the grant is checked, so no value or database
+address the caller sets replaces it. The store checks the same appointment
+again before it hands out a byte (`backups.read_latest(person, business)`). The backup is the whole database, so another business's manager is
 refused and learns nothing. `restore-drill.mjs --export <file>` on the
 machine writes the newest sealed backup and its facts beside it: the store's
 id for it, its time, size and recorded digest (never the key, and no step
@@ -92,7 +94,9 @@ the key, and keeps and prints a receipt that says it ran on a carried archive
 and reads `pending` (it is not a passed drill yet); `--record <receipt>
 --archive <file>` on the machine computes the digest again from the file and
 hands it, the archive's id and the business to the store as bound parameters
-(`backups.record_carried_drill`). The store takes it once, for the operator
+(`backups.record_carried_drill`). The receipt names the store's own id for
+the archive its drill restored, and `--record` refuses it with any other
+archive, even one taken at the same time. The store takes it once, for the operator
 who ran it in the business it ran in, only for the very archive (by its id)
 it handed out to the same login, whose digest is the one it recorded, so an
 archive swapped on the way is refused.

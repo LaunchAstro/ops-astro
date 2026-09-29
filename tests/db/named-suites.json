@@ -232,6 +232,7 @@
     "tests/ci/operator-only-acts.test.ts",
     "tests/ci/operator-only-promotion.test.ts",
     "tests/ci/s0-3e-operating-business.test.ts",
+    "tests/ci/s0-3e-operating-business-installed.test.ts",
     "tests/ci/service-stop.test.ts",
     "tests/ci/service-stop-gated.test.ts",
     "tests/ci/upgrade-drill.test.ts",

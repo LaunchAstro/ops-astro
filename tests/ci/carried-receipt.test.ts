@@ -58,6 +58,8 @@ function keptCases() {
   keptCases1();
 
   keptCases2();
+
+  keptCases3();
 }
 
 function refusedCases() {
@@ -70,6 +72,7 @@ function refusedCases() {
       outcome: 'pending',
       action: 'restore drill recorded',
       at: TAKEN,
+      archiveId: randomUUID(),
       business: 'made-up',
       operator,
       ranOn: 'carried archive',
@@ -124,7 +127,12 @@ function keptCases1() {
     });
     expect(Object.keys(receipt).toSorted()).toStrictEqual([...RECEIPT_FIELDS].toSorted());
     // Off the machine it is not a passed drill: the store checks the archive when it is recorded.
-    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { sha256: string };
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as {
+      sha256: string;
+      archiveId: string;
+    };
+    // It names the store's own id for the archive it restored, never its digest.
+    expect(receipt['archiveId']).toBe(held.archiveId);
     expect(receipt).toMatchObject({
       outcome: 'pending',
       ranOn: 'carried archive',
@@ -162,5 +170,55 @@ function keptCases2() {
     expect(readdirSync(dirname(file)).toSorted()).toStrictEqual(
       [basename(file), `${basename(file)}.json`].toSorted(),
     );
+  });
+}
+
+function keptCases3() {
+  it('--record refuses a receipt of another archive than the one carried back, before the store, and writes nothing', async () => {
+    const { file } = await carriedFile();
+    // Another archive, carried back in its place: its own store id.
+    const other = await carriedFile();
+    const facts = JSON.parse(readFileSync(`${other.file}.json`, 'utf8')) as Receipt;
+    writeFileSync(
+      `${other.file}.json`,
+      `${JSON.stringify({ ...facts, archiveId: randomUUID() })}\n`,
+    );
+    const personId = randomUUID();
+    const gate = gateOf(personId);
+    const { drillAsOperator, recordCarried } = await drillModule();
+    const receipt = await drillAsOperator({
+      gate,
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope,
+      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+        await options.fetchArchive();
+        return { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
+      },
+      reach: noStore,
+    });
+    const receiptFile = saved(JSON.stringify(receipt));
+    const recording = gateOf(personId);
+    let reached = 0;
+    const reach = () => {
+      reached += 1;
+      return Promise.resolve(JSON.stringify(new Date().toISOString()));
+    };
+    await expect(
+      recordCarried({
+        gate: recording,
+        storeUrl: 'store',
+        receiptFile,
+        archiveFile: other.file,
+        reach,
+      }),
+    ).rejects.toThrow(/another archive than the one carried back/u);
+    expect(reached).toBe(0);
+    expect(readdirSync(recording.records)).toStrictEqual([]);
+    // The archive its drill restored is taken.
+    await expect(
+      recordCarried({ gate: recording, storeUrl: 'store', receiptFile, archiveFile: file, reach }),
+    ).resolves.toMatchObject({ outcome: 'passed' });
+    expect(reached).toBe(1);
   });
 }

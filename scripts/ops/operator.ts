@@ -34,6 +34,7 @@ import {
   subjectsOf,
   withSession,
   type BusinessId,
+  type TenantQuery,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
@@ -79,10 +80,30 @@ const set = (environment: Environment, name: string): boolean => (environment[na
 /** Thrown inside the check's transaction, always, so nothing it read or wrote commits. */
 class Answer extends Error {
   readonly personId: string | undefined;
-  constructor(personId: string | undefined) {
+  readonly why: string | undefined;
+  constructor(personId: string | undefined, why?: string) {
     super('operator check answered');
     this.personId = personId;
+    this.why = why;
   }
+}
+
+const NO_OPERATING_BUSINESS =
+  'the installation has no operating business: it is written once, at installation, from the restore runbook';
+const NOT_OPERATING = "this act belongs to the installation's operating business alone";
+
+/**
+ * Inside the check's own transaction, on the database the permission is
+ * checked in: why `businessId` is not the installation's operating business
+ * (migration 0034, `ops.operating_business`), or undefined when it is. Read
+ * where the grant is read, so no second database address can stand in for it.
+ */
+async function notOperating(tx: TenantQuery, businessId: string): Promise<string | undefined> {
+  const rows = await tx.query<{ operating: string }>(
+    'select operating_business::text as operating from ops.operating_business',
+  );
+  if (rows.length !== 1) return NO_OPERATING_BUSINESS;
+  return rows[0]?.operating === businessId ? undefined : NOT_OPERATING;
 }
 
 /**
@@ -95,7 +116,12 @@ async function personHolding(
   env: Readonly<Record<string, string>>,
   business: string,
   presented: VerifiedSubject,
-): Promise<{ readonly personId: string; readonly businessId: BusinessId } | undefined> {
+  operatingOnly: boolean,
+): Promise<
+  | { readonly personId: string; readonly businessId: BusinessId }
+  | { readonly why: string }
+  | undefined
+> {
   const admin = connectAsAdmin(env['DATABASE_ADMIN_URL']!, { source: 'admin' });
   const database = connect(env['DATABASE_URL']!, { source: 'runtime' });
   try {
@@ -103,6 +129,8 @@ async function personHolding(
     if (businessId === undefined) return undefined;
     try {
       await database.withBusiness(businessId, async (tx) => {
+        const outside = operatingOnly ? await notOperating(tx, businessId) : undefined;
+        if (outside !== undefined) throw new Answer(undefined, outside);
         const session = await resolveLogin(tx, presented);
         if ('refused' in session) throw new Answer(undefined);
         const scope = { kind: 'business', id: null } as const;
@@ -114,6 +142,7 @@ async function personHolding(
       });
     } catch (error) {
       if (!(error instanceof Answer)) throw error;
+      if (error.why !== undefined) return { why: error.why };
       return error.personId === undefined
         ? undefined
         : { personId: error.personId, businessId: businessId as BusinessId };
@@ -140,6 +169,11 @@ async function recordSignIn(
 
 /** The operator, or why not. Never throws on a caller's input; never prints a credential. */
 export async function requireOperator(environment: Environment = process.env): Promise<Gate> {
+  return await checkOperator(environment, false);
+}
+
+/** The operator check; with `operatingOnly`, only in the installation's operating business. */
+async function checkOperator(environment: Environment, operatingOnly: boolean): Promise<Gate> {
   const agent = NOT_A_PERSON.find((name) => set(environment, name));
   if (agent !== undefined)
     return refused(`${agent} is set: an agent or a delegation never holds ${KEY}`);
@@ -159,7 +193,6 @@ export async function requireOperator(environment: Environment = process.env): P
         'OPS_ASTRO_DEPLOYMENTS is not set: name the folder the deployment record goes to. Nothing was done.',
     };
   }
-
   // The provider's published key set, as the API checks a sign-in (S0-6b).
   const keySetUrl = keySetUrlFor(env['SUPABASE_KEY_SET_URL'] ?? '', env['GOTRUE_URL']!);
   if (keySetUrl === undefined) {
@@ -176,7 +209,8 @@ export async function requireOperator(environment: Environment = process.env): P
   }
 
   const business = env['OPS_ASTRO_BUSINESS']!;
-  const held = await personHolding(env, business, presented);
+  const held = await personHolding(env, business, presented, operatingOnly);
+  if (held !== undefined && 'why' in held) return refused(held.why);
   if (held === undefined) {
     return refused(
       `this sign-in is not a person of ${business} holding ${KEY} over the whole business`,
@@ -191,57 +225,26 @@ export async function requireOperator(environment: Environment = process.env): P
 }
 
 /**
- * The key of the installation's operating business, read as the database's
- * owner from the one row the installation wrote (migration 0034,
- * `ops.operating_business`), or undefined when none was written. Nothing the
- * caller's environment names takes its place.
- */
-async function operatingBusiness(adminUrl: string): Promise<string | undefined> {
-  const admin = connectAsAdmin(adminUrl, { source: 'admin' });
-  try {
-    const rows = await admin.execute<{ key: string }>(
-      'select b.key from ops.operating_business o join public.businesses b on b.id = o.operating_business',
-    );
-    return rows.length === 1 ? rows[0]?.key : undefined;
-  } finally {
-    await admin.close();
-  }
-}
-
-/**
  * The installation's appointed operator, or why not: a person holding
  * `operations:manage` over the whole of the installation's operating
  * business, for acts over the whole database, such as the restore drill and
  * its carried archive. The operating business is installation state, the one
- * row written at installation, read here from the installation's own
- * database; the caller supplies no part of it. Any other business is refused
- * before its sign-in is looked at, with a reason that names neither
- * business, so its manager learns nothing.
+ * row written at installation, read inside the same transaction, on the same
+ * database, as the grant is checked in, so no other database address can
+ * supply it. Any other business is refused before its login is resolved,
+ * with a reason that names neither business, so its manager learns nothing.
+ * The store holds the same appointment and checks it again before it hands
+ * out a byte (deploy/staging/backup-store.sql, `backups.read_latest`).
  */
 export async function requireOperatingOperator(
   environment: Environment = process.env,
 ): Promise<Gate> {
-  const adminUrl = environment['DATABASE_ADMIN_URL'] ?? '';
-  if (adminUrl === '') {
+  if (!set(environment, 'DATABASE_URL') || !set(environment, 'DATABASE_ADMIN_URL')) {
     return refused(
       "the installation's operating business is read from the installation's own database, and none is named",
     );
   }
-  let operating: string | undefined;
-  try {
-    operating = await operatingBusiness(adminUrl);
-  } catch {
-    return refused("the installation's operating business could not be read");
-  }
-  if (operating === undefined) {
-    return refused(
-      'the installation has no operating business: it is written once, at installation, from the restore runbook',
-    );
-  }
-  if ((environment['OPS_ASTRO_BUSINESS'] ?? '') !== operating) {
-    return refused("this act belongs to the installation's operating business alone");
-  }
-  return await requireOperator(environment);
+  return await checkOperator(environment, true);
 }
 
 /**

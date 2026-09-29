@@ -18,7 +18,9 @@
 -- delete, and not the time it was taken. `ops_astro_backup_retention` sees ids
 -- and times, never bytes, and deletes only past the window.
 -- `ops_astro_backup_restore` (the restore drill, S0-3c) takes the newest backup
--- through `backups.read_latest()` and `backups.read_part()` and nothing else,
+-- through `backups.read_latest(person, business)` and `backups.read_part()`
+-- and nothing else, and only as a login the installation appointed as that
+-- person, in the operating business (below),
 -- with the digest the store recorded when it took it; what it gets is sealed,
 -- and only the operator's private key opens it. The store writes a receipt for
 -- every add, read (the header, and each part it hands out) and delete: action,
@@ -221,13 +223,20 @@ create schema backups_audit;
 revoke all on schema backups_audit from public;
 create extension dblink schema backups_audit;
 
--- The newest complete archive's header, its read logged.
-create function backups.read_latest()
+-- The newest complete archive's header, its read logged; only for the login
+-- the installation appointed as `person`, in the operating business
+-- `business` (backups.appointed_operator, below), checked here before any
+-- byte or read is handed out, so an export or a drill is the appointed
+-- operator's own act whatever the command that asks believed.
+create function backups.read_latest(person uuid, business text)
   returns table (id uuid, taken_at timestamptz, bytes bigint, parts integer, sha256 text)
   language plpgsql security definer set search_path = pg_catalog as $$
 declare
   picked backups.archives;
 begin
+  if not backups.appointed_operator($1, $2) then
+    raise exception 'not the installation''s appointed operator' using errcode = '42501';
+  end if;
   select a.* into picked from backups.archives a
   where a.complete order by a.taken_at desc, a.id desc limit 1;
   if not found then
@@ -242,7 +251,7 @@ begin
   );
   return query select picked.id, picked.taken_at, picked.bytes, picked.parts, picked.sha256;
 end $$;
-revoke execute on function backups.read_latest() from public;
+revoke execute on function backups.read_latest(uuid, text) from public;
 
 -- One part of a complete archive, with the digest the store took of it; only
 -- of an archive whose read the store logged for this same login inside the
@@ -284,7 +293,7 @@ grant execute on function backups.complete_archive(bigint, text) to ops_astro_ba
 grant select (id, taken_at), delete on backups.archives to ops_astro_backup_retention;
 grant select on backups.settings to ops_astro_backup_retention;
 grant usage on schema backups to ops_astro_backup_restore;
-grant execute on function backups.read_latest() to ops_astro_backup_restore;
+grant execute on function backups.read_latest(uuid, text) to ops_astro_backup_restore;
 grant execute on function backups.read_part(uuid, integer) to ops_astro_backup_restore;
 
 -- The installation (S0-3e): the operating business, and the store login of
@@ -305,7 +314,8 @@ grant execute on function backups.read_part(uuid, integer) to ops_astro_backup_r
 -- the same person only after verifying their sign-in in the operating
 -- business (scripts/ops/operator.ts). The store keeps who recorded which
 -- archive, as whom and when. A login the installation did not appoint, the
--- restore identity alone, records a failed drill and never a pass.
+-- restore identity alone, reads no archive, and records a failed drill and
+-- never a pass.
 create table backups.installation (
   one boolean primary key default true check (one),
   operating_business text not null check (operating_business <> '')
