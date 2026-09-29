@@ -20,12 +20,18 @@ const scratch = (prefix: string) => {
 };
 
 /** One run of the planted fixture, with its temp folder and a neighbour's in scratch folders. */
-function run(plantLeak: boolean) {
+function run(plantLeak: boolean, plantCacheLeak = false) {
   const [temp, other] = [scratch('temp-guard-run-'), scratch('temp-guard-other-')];
   const done = spawnSync(process.execPath, [VITEST, 'run', '--config', CONFIG], {
     cwd: ROOT,
     encoding: 'utf8',
-    env: { ...process.env, TMPDIR: temp, OTHER_RUN_TMP: other, PLANT_LEAK: plantLeak ? '1' : '' },
+    env: {
+      ...process.env,
+      TMPDIR: temp,
+      OTHER_RUN_TMP: other,
+      PLANT_LEAK: plantLeak ? '1' : '',
+      PLANT_CACHE_LEAK: plantCacheLeak ? '1' : '',
+    },
   });
   return { status: done.status, out: done.stdout + done.stderr, temp, other };
 }
@@ -42,4 +48,13 @@ it('passes the same run once the leak is removed, ignoring entries it did not cr
   expect(clean.status, clean.out).toBe(0);
   expect(readdirSync(clean.temp)).toStrictEqual([]);
   expect(readdirSync(clean.other)).toHaveLength(1);
+}, 60_000);
+
+it('Sol proof, criterion 2: a test-created node-compile-cache folder fails the run', () => {
+  const leaked = run(false, true);
+  expect(leaked.status, leaked.out).not.toBe(0);
+  expect(leaked.out).toMatch(
+    /temp guard: this run left 1 entry in the temp folder: node-compile-cache/u,
+  );
+  expect(readdirSync(leaked.temp)).toStrictEqual([]);
 }, 60_000);
