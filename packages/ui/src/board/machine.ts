@@ -13,6 +13,7 @@
 
 import { nextSort } from './sort.ts';
 import { parseQuery, pressFacet } from './filters.ts';
+import { isWidth } from './widths.ts';
 import type { BoardAction, BoardContext, BoardView, MachineState } from './types.ts';
 
 export const HISTORY_CAP = 60;
@@ -133,9 +134,25 @@ export function reduceBoard<Row>(
       if (column?.sortValue === undefined) return state;
       return record(state, `sort ${column.label}`, { ...view, sort: nextSort(view.sort, column) });
     }
-    case 'resize':
-    case 'resetWidths':
-      return state;
+    case 'resize': {
+      // One step per finished drag or arrow press, and only widths the board
+      // draws and the store could keep (MP-5-6).
+      const column = context.columns.find((one) => one.key === action.key);
+      const entries = Object.entries(action.widths);
+      const known = (key: string): boolean => context.columns.some((one) => one.key === key);
+      if (
+        column === undefined ||
+        entries.length === 0 ||
+        !entries.every(([key, width]) => known(key) && isWidth(width))
+      ) {
+        return state;
+      }
+      return record(state, `resize ${column.label}`, { ...view, widths: { ...action.widths } });
+    }
+    case 'resetWidths': {
+      if (view.widths === null) return state;
+      return record(state, 'reset columns', { ...view, widths: null });
+    }
     case 'undo': {
       const step = state.history.past.at(-1);
       if (step === undefined) return state;
