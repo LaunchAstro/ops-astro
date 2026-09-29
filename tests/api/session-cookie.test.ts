@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
+import { cookieNameFor } from '../../apps/api/auth/session.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { openSession, signOut } from '../../apps/web/src/session/sign-in.ts';
@@ -85,12 +86,15 @@ async function post(
 }
 
 /** The session cookie's value out of a `Set-Cookie`, and its attributes. */
-function cookieOf(response: Response): { value: string; attributes: string[] } {
+function cookieOf(response: Response): { name: string; value: string; attributes: string[] } {
   const header = response.headers.get('set-cookie') ?? '';
   const [pair = '', ...attributes] = header.split(';').map((part) => part.trim());
   const [name, ...value] = pair.split('=');
-  expect(name).toBe(SESSION_COOKIE);
-  return { value: value.join('='), attributes: attributes.map((a) => a.toLowerCase()) };
+  return {
+    name: name ?? '',
+    value: value.join('='),
+    attributes: attributes.map((a) => a.toLowerCase()),
+  };
 }
 
 const ok = () => new Response('{"ok":true}', { status: 200 });
@@ -122,6 +126,8 @@ describe('S0-6 session cookie', () => {
     // Who the cookie is, for the tab to send back: an identifier, not the token.
     expect(JSON.parse(text)).toEqual({ ok: true, subject: 'mia' });
     const cookie = cookieOf(answer);
+    // One cookie per person, named from the subject: never the token or the email.
+    expect(cookie.name).toBe(cookieNameFor('mia'));
     expect(cookie.value).toBe(token);
     expect(cookie.attributes).toEqual(
       expect.arrayContaining(['httponly', 'secure', 'samesite=lax', 'path=/api/b/']),
@@ -142,7 +148,7 @@ describe('S0-6 session cookie', () => {
     const { api, executeRead } = build();
     const token = await bearerFor('mia');
     const answer = await post(api, BOARD, {
-      cookie: `${SESSION_COOKIE}=${token}`,
+      cookie: `${cookieNameFor('mia')}=${token}`,
       [SUBJECT_HEADER]: 'mia',
       ...SAME_ORIGIN,
     });
@@ -150,11 +156,17 @@ describe('S0-6 session cookie', () => {
     expect(executeRead.mock.calls[0]?.[2]).toEqual({ provider: 'supabase', subject: 'mia' });
   });
 
-  it('signing out clears the cookie', async () => {
+  it('signing out clears the named person’s cookie, and a sign-out naming nobody clears none', async () => {
     const { api } = build();
-    const answer = await post(api, `${SESSION_PATH}/end`, SAME_ORIGIN);
+    const unnamed = await post(api, `${SESSION_PATH}/end`, SAME_ORIGIN);
+    expect(unnamed.headers.get('set-cookie')).toBeNull();
+    const answer = await post(api, `${SESSION_PATH}/end`, {
+      [SUBJECT_HEADER]: 'mia',
+      ...SAME_ORIGIN,
+    });
     expect(answer.status).toBe(200);
     const cookie = cookieOf(answer);
+    expect(cookie.name).toBe(cookieNameFor('mia'));
     expect(cookie.value).toBe('');
     expect(cookie.attributes).toEqual(expect.arrayContaining(['max-age=0', 'path=/api/b/']));
   });
@@ -310,11 +322,18 @@ describe('S0-6 csrf', () => {
   });
 });
 
-/** A tab that signed in as `tab`, in a browser whose cookie is now `cookie`'s. */
-async function fromTab(tab: string | undefined, cookie: string, path = BOARD) {
+/**
+ * A tab that signed in as `tab`, in a browser holding `holder`'s cookie under
+ * `holder`'s name, with `inside`'s token in it (`holder`'s own unless tampered).
+ */
+async function fromTab(
+  tab: string | undefined,
+  holder: string,
+  { inside = holder, path = BOARD }: { inside?: string; path?: string } = {},
+) {
   const { api, executeRead } = build();
   const headers: Record<string, string> = {
-    cookie: `${SESSION_COOKIE}=${await bearerFor(cookie)}`,
+    cookie: `${cookieNameFor(holder)}=${await bearerFor(inside)}`,
     ...SAME_ORIGIN,
   };
   if (tab !== undefined) headers[SUBJECT_HEADER] = tab;
@@ -322,12 +341,18 @@ async function fromTab(tab: string | undefined, cookie: string, path = BOARD) {
   return { answer, executeRead };
 }
 
-describe('S0-6 isolation: one cookie, many tabs', () => {
+describe('S0-6 isolation: one cookie per person, many tabs', () => {
   it('person crossover: a tab signed in as ada reads nothing on mia’s cookie', async () => {
+    // Ada's own session is not in this browser: she is asked to sign in again.
     const other = await fromTab('ada', 'mia');
-    expect(other.answer.status).toBe(403);
-    expect(await other.answer.json()).toMatchObject({ code: 'AUTH_SESSION_MISMATCH' });
+    expect(other.answer.status).toBe(401);
+    expect(await other.answer.json()).toMatchObject({ code: 'AUTH_UNKNOWN_LOGIN' });
     expect(other.executeRead).not.toHaveBeenCalled();
+    // Mia's token under Ada's cookie name is refused as another person's.
+    const swapped = await fromTab('ada', 'ada', { inside: 'mia' });
+    expect(swapped.answer.status).toBe(403);
+    expect(await swapped.answer.json()).toMatchObject({ code: 'AUTH_SESSION_MISMATCH' });
+    expect(swapped.executeRead).not.toHaveBeenCalled();
     const own = await fromTab('ada', 'ada');
     expect(own.answer.status).toBe(200);
   });
@@ -338,19 +363,58 @@ describe('S0-6 isolation: one cookie, many tabs', () => {
       fromTab('alpha-member', 'client-contact-of-alpha'),
     ]);
     for (const { answer, executeRead } of crossed) {
-      expect(answer.status).toBe(403);
+      expect(answer.status).toBe(401);
       expect(executeRead).not.toHaveBeenCalled();
     }
   });
 
   it('business crossover: the cookie names no business; the path does, and login resolution decides', async () => {
-    const bravo = await fromTab('mia', 'mia', `/api/b/bravo${pathOf('task.board')}`);
+    const bravo = await fromTab('mia', 'mia', { path: `/api/b/bravo${pathOf('task.board')}` });
     expect(bravo.answer.status).toBe(200);
     expect(bravo.executeRead.mock.calls[0]?.[1]).toBe('business-bravo');
-    const nowhere = await fromTab('mia', 'mia', `/api/b/charlie${pathOf('task.board')}`);
+    const nowhere = await fromTab('mia', 'mia', { path: `/api/b/charlie${pathOf('task.board')}` });
     expect(nowhere.answer.status).toBe(403);
     expect(await nowhere.answer.json()).toMatchObject({ code: 'AUTH_NO_MEMBERSHIP' });
     expect(nowhere.executeRead).not.toHaveBeenCalled();
+  });
+
+  it('Sol review 2, through the real API: an old tab’s late sign-out cannot clear a new tab’s session', async () => {
+    const { api } = build();
+    // The browser's jar, applying each answer's Set-Cookie in the order it lands.
+    const jar = new Map<string, string>();
+    const land = (answer: Response) => {
+      for (const line of answer.headers.getSetCookie()) {
+        const [pair = '', ...attributes] = line.split(';');
+        const [name = '', ...value] = pair.trim().split('=');
+        if (attributes.some((a) => a.trim().toLowerCase() === 'max-age=0')) jar.delete(name);
+        else jar.set(name, value.join('='));
+      }
+    };
+    const cookie = () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+    const exchange = async (who: string) =>
+      await post(api, SESSION_PATH, {
+        authorization: `Bearer ${await bearerFor(who)}`,
+        ...SAME_ORIGIN,
+      });
+
+    land(await exchange('ada'));
+    // Ada's tab signs out; its answer is still on its way.
+    const late = await post(api, `${SESSION_PATH}/end`, {
+      cookie: cookie(),
+      [SUBJECT_HEADER]: 'ada',
+      ...SAME_ORIGIN,
+    });
+    // Mia signs in in another tab, and her answer lands first.
+    land(await exchange('mia'));
+    land(late);
+
+    expect(jar.has(cookieNameFor('ada'))).toBe(false);
+    const board = await post(api, BOARD, {
+      cookie: cookie(),
+      [SUBJECT_HEADER]: 'mia',
+      ...SAME_ORIGIN,
+    });
+    expect(board.status).toBe(200);
   });
 
   it('a tab that kept a session from before it knew its person is refused, not trusted', async () => {

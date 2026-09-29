@@ -218,10 +218,14 @@ secret that can make a token.
 
 A browser holds no token (S0-6c). It posts the token once to
 `POST /api/session`, which verifies it, answers `{ ok: true, subject }` and
-sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`;
-`/api/session/end` clears it. A cookie-carried request needs
-`x-ops-astro-csrf: 1`, no cross-site `Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403) and `x-ops-astro-subject` naming the cookie's person (else
-`AUTH_SESSION_MISMATCH` 403). A bearer, the command line's, is read first.
+sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
+one per person, named from the subject. `/api/session/end` clears only the
+cookie of the person its `x-ops-astro-subject` names, so a late sign-out ends
+nobody else's session. A cookie-carried request needs `x-ops-astro-csrf: 1`
+and no cross-site `Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads the
+cookie of the person its `x-ops-astro-subject` names; a tab naming nobody, or
+a cookie holding someone else's token, is `AUTH_SESSION_MISMATCH` 403. A
+bearer, the command line's, is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or

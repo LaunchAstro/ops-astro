@@ -19,7 +19,8 @@ import type { AddressInfo } from 'node:net';
 import { sign } from 'hono/jwt';
 import type { KeySetFetch } from '../../apps/api/auth/jwks.ts';
 import type { SupabaseVerifierOptions } from '../../apps/api/auth/supabase.ts';
-import { SESSION_COOKIE, SUBJECT_HEADER } from '../../packages/core-wire/src/index.ts';
+import { cookieNameFor } from '../../apps/api/auth/session.ts';
+import { SUBJECT_HEADER } from '../../packages/core-wire/src/index.ts';
 
 export const TEST_KID = 'test-sign-in-es256';
 
@@ -132,10 +133,10 @@ export function asBrowser(
   return (async (input: string | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     if (token !== null) {
-      headers.set('cookie', `${SESSION_COOKIE}=${token}`);
       const claims = JSON.parse(
         Buffer.from(token.split('.')[1] ?? '', 'base64url').toString() || '{}',
       ) as { sub?: string };
+      headers.set('cookie', `${cookieNameFor(claims.sub ?? '')}=${token}`);
       if (!headers.has(SUBJECT_HEADER) && claims.sub !== undefined) {
         headers.set(SUBJECT_HEADER, claims.sub);
       }

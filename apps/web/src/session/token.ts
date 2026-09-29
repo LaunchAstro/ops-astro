@@ -2,13 +2,9 @@
 //
 // The signed-in session: a business, an email, and where they are kept.
 //
-// **No token.** The credential is the `HttpOnly` cookie the API set at sign-in
-// (S0-6c, TR-SEC3-3): the browser sends it and no script in the page, an
-// injected one included, can read it. What is kept here is only what the page
-// shows and routes by, in `sessionStorage` and never `localStorage`, so a
-// reload keeps the person signed in (checklist B5) and a closed tab leaves
-// nothing behind. Whether the cookie still holds is the API's answer, not this
-// store's.
+// **No token**: the credential is the `HttpOnly` cookie the API set (S0-6c).
+// What the page shows and routes by is kept in `sessionStorage`, never
+// `localStorage`, so a reload keeps the person signed in (checklist B5).
 //
 // The storage is an interface rather than the global. That is what lets a test
 // drive the whole session without a browser, and it means this module is a
@@ -101,11 +97,7 @@ export interface Session {
   /** `alpha` or `bravo`. It becomes the path prefix, never a body field. */
   readonly businessKey: string;
   readonly email: string;
-  /**
-   * The person the API said the cookie is, sent back on every call so a tab
-   * never acts on another person's cookie. Absent only for a session kept
-   * before S0-6c, which the API refuses.
-   */
+  /** Who the API said the cookie is, sent on every call; absent, refused. */
   readonly subject?: string;
 }
 
@@ -137,10 +129,8 @@ const RETURN_KEY = 'ops-astro.return-to';
 /**
  * The grant key the read projections are keyed on.
  *
- * Person, business and session generation together: a different person is a
- * different reader, a different business a different tenancy, and a session
- * that ended and began again may hold different grants. A projection may
- * survive none of those changes.
+ * Business, person and session generation: a projection survives no change
+ * of reader, tenancy or session.
  */
 export function grantKeyOf(session: Session | null): string {
   return session === null

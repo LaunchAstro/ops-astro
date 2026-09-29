@@ -15,7 +15,11 @@
 // there is none, so choosing `bravo` with an alpha-only account does not get
 // anybody into bravo — it gets them `AUTH_NO_MEMBERSHIP`.
 
-import { CSRF_HEADER, SESSION_PATH } from '../../../../packages/core-wire/src/index.ts';
+import {
+  CSRF_HEADER,
+  SESSION_PATH,
+  SUBJECT_HEADER,
+} from '../../../../packages/core-wire/src/index.ts';
 
 export interface SignInRequest {
   readonly gotrueUrl: string;
@@ -60,10 +64,10 @@ export async function openSession(
     const landed = Promise.allSettled(signingOut);
     void (async () => {
       await landed;
-      if (latest === mine) await toApi(request, SESSION_PATH, bearer);
+      if (latest === mine) await toApi(request, SESSION_PATH, { authorization: bearer });
     })();
   }
-  const answer = await toApi(request, SESSION_PATH, bearer);
+  const answer = await toApi(request, SESSION_PATH, { authorization: bearer });
   if (answer === undefined) return { ok: false, because: 'The API did not accept the sign-in.' };
   const body: unknown = await answer.json().catch(() => undefined);
   const subject = (body as { subject?: unknown } | undefined)?.subject;
@@ -99,10 +103,11 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     : { ok: true, token };
 }
 
-/** Ask the API to clear the session cookie. The page has no other way to. */
-export async function signOut(request: ApiRoute): Promise<void> {
+/** Ask the API to clear this person's session cookie. The page cannot. */
+export async function signOut(request: ApiRoute & { readonly subject?: string }): Promise<void> {
   latest += 1;
-  const sent = toApi(request, `${SESSION_PATH}/end`);
+  const named = request.subject === undefined ? {} : { [SUBJECT_HEADER]: request.subject };
+  const sent = toApi(request, `${SESSION_PATH}/end`, named);
   signingOut.add(sent);
   await sent;
   signingOut.delete(sent);
@@ -112,10 +117,9 @@ export async function signOut(request: ApiRoute): Promise<void> {
 async function toApi(
   request: ApiRoute,
   path: string,
-  bearer?: string,
+  extra: Readonly<Record<string, string>> = {},
 ): Promise<Response | undefined> {
-  const headers: Record<string, string> = { [CSRF_HEADER]: '1' };
-  if (bearer !== undefined) headers['authorization'] = bearer;
+  const headers = { ...extra, [CSRF_HEADER]: '1' };
   try {
     const response = await request.fetch(`${request.apiOrigin}${path}`, {
       method: 'POST',

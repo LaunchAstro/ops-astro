@@ -52,8 +52,8 @@ import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
-  SESSION_COOKIE,
   SESSION_PATH,
+  SUBJECT_HEADER,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -69,6 +69,7 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import {
   bearerOf,
+  cookieNameFor,
   CROSS_SITE_FIXES,
   crossSiteSession,
   fromOwnPages,
@@ -202,6 +203,7 @@ async function admit(
   const presented = await options.verify(context.req);
   if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
   if (presented === undefined) {
+    if (otherPersonsCookie(context.req, undefined)) return refuse(context, MISMATCH());
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -210,11 +212,9 @@ async function admit(
   if (presented === 'expired') {
     return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
-  // One cookie serves every tab: a tab whose person is not the cookie's reads
-  // nothing of the cookie's person, their business or their clients.
-  if (otherPersonsCookie(context.req, presented.subject)) {
-    return refuse(context, refuseCommand('AUTH_SESSION_MISMATCH', [], MISMATCH_FIXES));
-  }
+  // A tab reads nothing on another person's cookie: not them, their business
+  // or their clients.
+  if (otherPersonsCookie(context.req, presented.subject)) return refuse(context, MISMATCH());
 
   // The key comes from the path and is resolved by the server.
   const body = readsBody ? await readObject(context) : {};
@@ -247,13 +247,16 @@ export function createApi(options: ApiOptions): Hono {
     }
     // No `Max-Age`: the cookie ends with the browser session and the token's
     // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
-    setCookie(context, SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+    setCookie(context, cookieNameFor(presented.subject), token, SESSION_COOKIE_OPTIONS);
     // The tab sends this back as `SUBJECT_HEADER`. An identifier, not a credential.
     return context.json({ ok: true, subject: presented.subject }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
-    deleteCookie(context, SESSION_COOKIE, SESSION_COOKIE_OPTIONS);
+    // Only the named person's cookie: a late answer cannot end anyone else's.
+    const subject = context.req.header(SUBJECT_HEADER);
+    if (subject !== undefined)
+      deleteCookie(context, cookieNameFor(subject), SESSION_COOKIE_OPTIONS);
     return context.json({ ok: true }, 200);
   });
 
@@ -474,6 +477,7 @@ function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
 const CROSS_SITE = (): CommandRefusal => refuseCommand('AUTH_CROSS_SITE', [], CROSS_SITE_FIXES);
+const MISMATCH = (): CommandRefusal => refuseCommand('AUTH_SESSION_MISMATCH', [], MISMATCH_FIXES);
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
 /** The largest body a surface route reads. Files go by signed link, never through the API. */
