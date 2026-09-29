@@ -106,7 +106,7 @@ async function insertSteps(
      select $1, $2, s.key, s.task_id, s.position, s.phase, s.kind,
             array(select jsonb_array_elements_text(s.depends_on)),
             case when jsonb_array_length(s.depends_on) = 0 then 'ready' else 'blocked' end
-       from jsonb_to_recordset($3::jsonb)
+       from jsonb_to_recordset($3::text::jsonb)
          as s (key text, task_id uuid, position integer, phase text, kind text, depends_on jsonb)
      returning ${STEP_COLUMNS}`,
     [

@@ -426,6 +426,21 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
         id,
       ),
   ],
+  // C41-A: an onboarding step's result is asked at its client's scope, so a
+  // holder scoped to one client writes that client's steps and no other's. A
+  // task that is no step falls back to the business, as a fabricated id does.
+  'onboarding.step_result': [
+    'recordId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, o.client_id as id
+           from public.onboarding_steps s
+           join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+          where s.business_id = $1 and s.task_id = $2`,
+        id,
+      ),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -490,7 +505,8 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  * - `target`: the revoked row's own scope. A grant is asked about at the
  *   scope it was issued on and a delegation at its purpose scope, so a manager
  *   whose `manage` covers exactly that scope reaches the handler, which then
- *   asks the full ceiling (`authority-controls.ts`).
+ *   asks the full ceiling (`authority-controls.ts`). An onboarding step's
+ *   result is asked at its client's scope.
  * - `claim`: the task the body's reservation or lease belongs to, asked at
  *   record scope as the runtime asks it under its locks.
  */

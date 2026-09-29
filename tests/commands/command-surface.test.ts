@@ -76,10 +76,11 @@ describe('the surface as a table', () => {
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks.
     // `secret` is custody's (C31): the path names the row, the grant is
-    // `custody:manage`.
+    // `custody:manage`. `record` and `onboarding` are C41-A's: the client
+    // record and the onboarding laid out on it.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation|record|onboarding)\/[a-z_]+$/u.test(
           path,
         ),
       ),

@@ -805,7 +805,7 @@ What each one does:
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
-(`packages/core-wire/src/surface.ts`, 28 writes and 7 reads) by
+(`packages/core-wire/src/surface.ts`, 38 writes and 11 reads) by
 `mountSurface` in `createApi` (`apps/api/app.ts`), once for the person prefix
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
@@ -841,7 +841,7 @@ The five support controls, with their owning functions:
 | `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
 | `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
 
-The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
+The other forty-four. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
 is served is a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), and
 its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are read off
@@ -892,6 +892,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `mandate.revoke`                   | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `graduation.promote`               | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `graduation.demote`                | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `record.create`                    | `createRecord` (`commands/record-create.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `onboarding.start`                 | `startOnboarding` (`commands/onboarding.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `onboarding.step_result`           | `recordStepResult` (`commands/onboarding.ts`)                                             | served under a live delegation on the step's task (the row's `serve`, `writeStepResult`)        |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1490,3 +1493,36 @@ covers the effect only in its currency and within its ceiling.
 | `mandate.revoke`        | `/mandate/revoke`        | `{ mandateId, expectedRevision? }`                                                              | `{ mandateId, state: 'revoked' }`; `VERSION_STALE` 409; `TRANSITION_NOT_PERMITTED` 409 when already revoked; `NOT_FOUND` 404                                                                                                                                                                                                                                                                             |
 | `graduation.promote`    | `/graduation/promote`    | `{ classId, ceiling: { amountMinor, currency }, expiresAt, expectedRevision? }`                 | `{ classId, mandateId, state: 'promoted' }`; `TRANSITION_NOT_PERMITTED` 409 unless the class is ready and held by nothing; `VERSION_STALE` 409                                                                                                                                                                                                                                                           |
 | `graduation.demote`     | `/graduation/demote`     | `{ classId, expectedRevision? }`                                                                | `{ classId, mandateId, state: 'ready' }`; `TRANSITION_NOT_PERMITTED` 409 unless promoted                                                                                                                                                                                                                                                                                                                 |
+
+## New client onboarding (C41-A)
+
+Three writes, none of them a send, a run or a spend. `record.create` makes a
+record of a type it knows; today that is `client`, with its name (the record
+type is installed on first use, `installClientType`). `onboarding.start` lays
+a template version out as tasks on that client, one per step, each titled with
+its phase, linked to the client by its party slot, and recorded with its kind
+(agent-run, needs a person, or waits on the client) and the steps it waits for
+(`onboardings`, `onboarding_steps`, migration 0037; one onboarding per client).
+The templates are versions in code (`ONBOARDING_TEMPLATES`,
+`core-records/src/onboarding/template.ts`). `onboarding.step_result` writes a
+step's result onto its own task as an internal system comment, so reading the
+task shows it; a done step opens the steps waiting on it, and a second failure
+stops the onboarding and says so on the task.
+
+Both creates are `record:write` held business-wide, and the start also asks
+`task:write` business-wide. The ticket lets an agent hold them inside its
+delegation, but a delegation is narrowed to one task, so none reaches them yet:
+both are a person's. A step result is `task:write` asked at the step's client
+(`prepare.ts`, the `target` lookup), so a holder scoped to one client writes
+that client's steps and no other's; an agent writes the step on the task it is
+delegated on.
+
+| Operation                | Route                     | Body                                                | Answer or refusals                                                                                                                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record.create`          | `/record/create`          | `{ type: 'client', fields: { name } }`              | `{ recordId, type }`; `FIELD_VALUE_INVALID` 422 naming `type` or `fields`; `SCOPE_NOT_GRANTED` 403 without `record:write`                                                                                                                                                                                                              |
+| `onboarding.start`       | `/onboarding/start`       | `{ clientId, templateKey }`                         | `{ onboardingId, templateKey, templateVersion, steps: [{ key, phase, kind, taskId, dependsOn, state }] }`; `FIELD_VALUE_INVALID` 422 naming `templateKey`; `NOT_FOUND` 404 for a client not here; `SCOPE_NOT_GRANTED` 403 without `record:write` or `task:write`; `TRANSITION_NOT_PERMITTED` 409 when the client is already onboarding |
+| `onboarding.step_result` | `/onboarding/step_result` | `{ recordId, outcome: 'done' \| 'failed', result }` | `{ step, outcome, opened, stopped }`; `FIELD_VALUE_INVALID` 422 naming `outcome` or `result`; `NOT_FOUND` 404 for a task that is no step; `SCOPE_NOT_GRANTED` 403 outside the caller's client; `TRANSITION_NOT_PERMITTED` 409 for a step still waiting, already closed, or an onboarding that stopped                                  |
+
+The agent step's run, the inbox item that parks it at its gate, the client
+email's draft and its one send path, and the first-client gate are not built
+here; `tests/onboarding/c41-a-held.test.ts` holds each by name.
