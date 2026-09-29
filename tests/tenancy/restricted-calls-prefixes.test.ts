@@ -141,6 +141,34 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     label: 'restricted calls',
     authored_by_actor_id: randomUUID(),
   },
+  // Automations (C33, 0036): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

@@ -221,7 +221,9 @@
     "tests/custody/c31-credentials.test.ts",
     "tests/connections/mp-14-7a-fleet.test.ts",
     "tests/connections/mp-14-8-signal.test.ts",
-    "tests/connections/mp-14-10a-mandates.test.ts"
+    "tests/connections/mp-14-10a-mandates.test.ts",
+    "tests/automations/c33-versions.test.ts",
+    "tests/automations/c33-occurrences.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
