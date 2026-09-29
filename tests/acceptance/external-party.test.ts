@@ -203,6 +203,14 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
       'grant.revoke': { grantId: randomUUID() },
       'delegation.revoke': { delegationId: randomUUID() },
+      // No person body either: it is the agent's (AW-01). Sent well formed,
+      // naming a lease, so the answer is authority's.
+      'model.call': {
+        leaseId: randomUUID(),
+        fence: 1,
+        operation: 'model.replay_compose',
+        fields: [],
+      },
     };
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or

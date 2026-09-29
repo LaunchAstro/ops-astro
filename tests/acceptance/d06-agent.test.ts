@@ -56,9 +56,13 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
+  'model.call',
   'task.pickup',
   'task.handback',
 ];
+
+/** A business-internal field the replay operation may take to its cloud route. */
+const PLAIN_TONE = { name: 'tone', source: 'business_internal', value: 'plain' } as const;
 
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
@@ -144,6 +148,9 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, reservationId: await reservation() } };
     }
     if (name === 'task.handback') await release();
+    // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
+    // a lease of its own rather than draining one.
+    if (name === 'model.call') await release();
     const held = await ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
@@ -196,6 +203,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential,
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
+    }
+    if (name === 'model.call') {
+      const call = { operation: 'model.replay_compose', fields: [PLAIN_TONE] };
+      return {
+        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...call },
+        credential,
+      };
     }
     const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };

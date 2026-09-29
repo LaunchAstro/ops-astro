@@ -59,6 +59,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.observe': ['leaseId', 'agent'],
   'task.receipt': ['attemptId', 'control'],
   'task.handback': ['leaseId', 'agent'],
+  'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
