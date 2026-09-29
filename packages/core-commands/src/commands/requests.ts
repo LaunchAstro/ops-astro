@@ -266,7 +266,22 @@ export type CommandRequest =
       readonly reason: unknown;
     } & Envelope)
   // Read by its own parser (`model-call.ts`), never by a person handler.
-  | ({ readonly command: 'model.call' } & Envelope);
+  | ({ readonly command: 'model.call' } & Envelope)
+  // The answers at the budget stop name the task and the run on it, like the
+  // work controls. The amount is in the currency's minor units; the runtime
+  // checks both by value, so they are `unknown` until it has.
+  | ({
+      readonly command: 'run.top_up';
+      readonly recordId: string;
+      readonly runId: string;
+      readonly amountMinor: unknown;
+      readonly currency: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'run.end_at_budget_stop';
+      readonly recordId: string;
+      readonly runId: string;
+    } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the

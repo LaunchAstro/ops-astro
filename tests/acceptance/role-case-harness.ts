@@ -279,6 +279,7 @@ export async function createHarness(part: string): Promise<Harness> {
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
+      asAgent,
       freshTask,
     }),
     approvedReservation,

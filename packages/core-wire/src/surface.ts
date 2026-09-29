@@ -112,7 +112,12 @@ export type CommandName =
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
   // the broker verifies from rows; no person grant carries it.
-  | 'model.call';
+  | 'model.call'
+  // A person's two answers to a run waiting at its approved ceiling (AW-05):
+  // a top-up under four eyes above the business's threshold, or one click
+  // that ends the work and parks the task. No agent answers either.
+  | 'run.top_up'
+  | 'run.end_at_budget_stop';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -390,6 +395,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     outcome: 'any',
   },
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
+  'run.top_up': { recordId: 'any', runId: 'any', amountMinor: 'any', currency: 'any' },
+  'run.end_at_budget_stop': { recordId: 'any', runId: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -589,6 +596,23 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['leaseId'],
     runtimeShaped: 'leaseId',
     agent: 'delegated',
+  }),
+  // The answers at the budget stop: `decide` on `billing` for a top-up and on
+  // `gate` for the end, each asked of the task the body names, like the work
+  // controls. The runtime asks the same pair of the run's own task again under
+  // its locks, and the handler refuses a run on another task. Neither writes
+  // the task record. No agent reaches either: an agent never holds decide.
+  declare('run.top_up', 'decide', {
+    collection: 'billing',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  declare('run.end_at_budget_stop', 'decide', {
+    collection: 'gate',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
   }),
 ];
 

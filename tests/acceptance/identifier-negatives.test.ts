@@ -46,6 +46,12 @@ interface Cell {
 
 const NOBODY = 'text nobody should find in an audit row';
 
+/** An AW-05 answer's body: the task and the run on it, and a top-up's amount. */
+const runOf = (recordId: string, runId: string, op: CommandName): Body =>
+  op === 'run.top_up'
+    ? { recordId, runId, amountMinor: 100, currency: 'AUD' }
+    : { recordId, runId };
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -283,6 +289,22 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           })),
         ],
       );
+      // AW-05's answers name the task and the run on it. Bravo's run is the
+      // one its pickup claimed; alpha's task is named beside it, and then
+      // bravo's task beside it.
+      const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+        'select run_id from public.reservations where id = $1',
+        [f.picked.reservationId],
+      );
+      for (const op of ['run.top_up', 'run.end_at_budget_stop'] as const) {
+        cells.push(
+          [op, pair('runId', String(bravoRun?.run_id), (id) => runOf(own.task.id, id, op))],
+          [
+            op,
+            pair('recordId', f.proposal.task.id, (id) => runOf(id, String(bravoRun?.run_id), op)),
+          ],
+        );
+      }
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, operand, ada, 'NOT_FOUND', forms);

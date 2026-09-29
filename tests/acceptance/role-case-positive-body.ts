@@ -18,6 +18,7 @@ import {
   approvedTaskId,
   ownLease,
   ownAppliedEffect,
+  stoppedRun,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
 
@@ -210,6 +211,23 @@ export function createPositiveBody(
             'executed alternative: the person prefix refuses it by design; the agent calls it ' +
             'in case (h)',
         };
+      case 'run.top_up':
+      case 'run.end_at_budget_stop': {
+        // A run the broker stopped at its approved ceiling, which the admin
+        // approved, so the admin is the plan approver who answers it. The
+        // four-eyes band is off in this world, so one top-up completes.
+        const stopped = await stoppedRun(context);
+        if (stopped === undefined) {
+          return {
+            exception:
+              'executed alternative: this harness has no agent to stop a run; the approver ' +
+              'answers one over the person route in tests/broker/aw-05-budget-answer-routes.test.ts',
+          };
+        }
+        return declaration.name === 'run.top_up'
+          ? { body: { ...stopped, amountMinor: 1_000, currency: PROPOSAL.currency } }
+          : { body: stopped };
+      }
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
