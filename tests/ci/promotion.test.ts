@@ -257,8 +257,8 @@ describe('S0-1 promotion migrates stopped app', () => {
   });
 });
 
-describe('Sol review proofs', () => {
-  it('Sol proof, criterion 4: a caller without operator authority is refused before migration', () => {
+describe('S0-1 promotion needs operator authority', () => {
+  it('a caller without operator authority is refused before migration', () => {
     const docker = fixture(
       'sol-operator-docker.json',
       JSON.stringify([{ Name: '/prod-api', State: { Running: false }, HostConfig: {} }]),

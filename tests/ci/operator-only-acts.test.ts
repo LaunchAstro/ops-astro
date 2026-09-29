@@ -64,7 +64,7 @@ function operatorOnlyCases3() {
     expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
   });
 
-  it('Sol proof, criterion 4: running API promotion refusal writes no authentication row', async () => {
+  it('running API promotion refusal writes no authentication row', async () => {
     const count = async (): Promise<number> =>
       await db.app.withBusiness(alphaBusiness, async (tx) => {
         const rows = await tx.query<{ n: number }>(
@@ -128,7 +128,7 @@ function operatorOnlyCases4() {
 }
 
 function operatorOnlyCases5() {
-  it('Sol proof, criterion 14: a saved stopped report cannot bypass a live running API', async () => {
+  it('a saved stopped report cannot bypass a live running API', async () => {
     // Carried from #109 (4ef3113) with the operator's sign-in added: the gate
     // now answers first, so the proof runs past it to the bypass it tests.
     const fake = manager(true);

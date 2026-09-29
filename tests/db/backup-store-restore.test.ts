@@ -148,7 +148,7 @@ function theBackupStoreCases6() {
 }
 
 function backupEncryptionCases1() {
-  it('Sol proof, criterion 12: a read stays logged after the reader rolls back', async () => {
+  it('a read stays logged after the reader rolls back', async () => {
     const { runBackup } = await job();
     const recorded = await runBackup({
       dump: async () => Buffer.from('PGDMP rollback proof'),

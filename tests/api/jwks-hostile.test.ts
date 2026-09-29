@@ -68,7 +68,7 @@ describe('S0-6 hostile provider', () => {
 });
 
 function hostileProviderCases1() {
-  it('Sol proof, criterion 6: malformed key rejects the whole provider set', async () => {
+  it('malformed key rejects the whole provider set', async () => {
     const refusals: KeySetRefusal[] = [];
     const source = provider(() =>
       Response.json({

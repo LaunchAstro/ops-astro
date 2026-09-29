@@ -10,7 +10,7 @@ const root = resolve(import.meta.dirname, '../..');
 const digest17 = 'b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
 const digest18 = '77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 
-test('Sol proof, criterion 6: auth-up replaces a running Postgres 18 before using the 17 digest', () => {
+test('auth-up replaces a running Postgres 18 before using the 17 digest', () => {
   const scratch = mkdtempSync(join(tmpdir(), 'sol-s0-7-auth-'));
   try {
     const scriptDir = join(scratch, 'scripts/local');

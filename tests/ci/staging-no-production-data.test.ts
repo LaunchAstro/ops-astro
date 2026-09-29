@@ -16,7 +16,7 @@ import { serverUrl, USERS_FILE, MADE_UP } from './staging-no-production-data.fix
 
 const SEED = new URL('../../scripts/local-seed.mjs', import.meta.url).pathname;
 
-it('Sol proof, criterion 4: business-to-business and person-to-person rows are not counted by seed preflight', async () => {
+it('business-to-business and person-to-person rows are not counted by seed preflight', async () => {
   const statements: string[] = [];
   const owner: OwnerQuery = {
     async execute<Row>(statement: string): Promise<readonly Row[]> {
@@ -32,7 +32,7 @@ it('Sol proof, criterion 4: business-to-business and person-to-person rows are n
   expect(crossBoundaryCounts).toEqual([]);
 });
 
-it('Sol proof, criterion 4: business-to-business and person-to-person rows are not read by yes-or-no preflight', async () => {
+it('business-to-business and person-to-person rows are not read by yes-or-no preflight', async () => {
   const statements: string[] = [];
   const owner: OwnerQuery = {
     execute<Row>(statement: string): Promise<readonly Row[]> {
@@ -49,7 +49,7 @@ it('Sol proof, criterion 4: business-to-business and person-to-person rows are n
   expect(crossBoundaryReads).toEqual([]);
 });
 
-it('Sol proof, criterion 4: marked preflight preserves business-to-business, client-to-client and person-to-person separation', async () => {
+it('marked preflight preserves business-to-business, client-to-client and person-to-person separation', async () => {
   const statements: string[] = [];
   const owner: OwnerQuery = {
     execute<Row>(statement: string): Promise<readonly Row[]> {

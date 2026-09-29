@@ -55,7 +55,7 @@ function identityScopeCases4() {
 }
 
 function identityScopeCases5() {
-  it('Sol proof, criterion 4: a same-business ungranted client and person fail the drill', async () => {
+  it('a same-business ungranted client and person fail the drill', async () => {
     const business = randomUUID();
     const owner = randomUUID();
     const ownClient = randomUUID();
@@ -125,7 +125,7 @@ function identityScopeCases5() {
 }
 
 function identityScopeCases6() {
-  it('Sol proof, criterion 4: a grant for another action or collection cannot authorise the client read', async () => {
+  it('a grant for another action or collection cannot authorise the client read', async () => {
     const business = randomUUID();
     const person = randomUUID();
     const client = randomUUID();

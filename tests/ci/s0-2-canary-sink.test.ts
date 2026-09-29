@@ -69,7 +69,7 @@ describe('S0-2 canary', () => {
 });
 
 function canaryCases5() {
-  it('Sol proof, criterion 4: an identifier-shaped planted error name never reaches the API log', async () => {
+  it('an identifier-shaped planted error name never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
       (...parts: unknown[]) => void logged.push(parts.join(' ')),

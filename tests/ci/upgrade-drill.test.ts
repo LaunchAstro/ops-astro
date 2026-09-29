@@ -151,7 +151,7 @@ function upgradeDrillCases2() {
     expect(result?.differences.find((d) => d.table === 'public.record_links')?.gone).toBe(true);
   }, 180_000);
 
-  it('Sol proof, criterion 16: a migration that erases existing decisions fails the drill', () => {
+  it('a migration that erases existing decisions fails the drill', () => {
     const planted = withPlanted('9999_planted_decision_loss.sql', 'truncate public.gate_decisions');
     const { status, result, output } = drill('0023', planted);
     expect(result, output).toBeDefined();
@@ -161,7 +161,7 @@ function upgradeDrillCases2() {
     );
   }, 180_000);
 
-  it('Sol proof, criterion 4: a planted record secret never reaches drill errors', () => {
+  it('a planted record secret never reaches drill errors', () => {
     const planted = withPlanted(
       '9999_planted_record_leak.sql',
       `do $sol$ declare leaked text;

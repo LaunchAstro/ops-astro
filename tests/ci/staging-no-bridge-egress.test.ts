@@ -7,7 +7,7 @@ type Staging = {
   networks: Record<string, { internal?: boolean }>;
 };
 
-it('Sol proof, criterion 4: every staging container has no bridge egress route', () => {
+it('every staging container has no bridge egress route', () => {
   const path = new URL('../../deploy/staging/compose.json', import.meta.url);
   const staging = JSON.parse(readFileSync(path, 'utf8')) as Staging;
   const outbound = Object.entries(staging.services).flatMap(([service, config]) =>

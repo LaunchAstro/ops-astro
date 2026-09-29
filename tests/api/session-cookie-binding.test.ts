@@ -23,7 +23,7 @@ async function tokenFor(subject: string): Promise<string> {
 }
 
 describe('S0-6 isolation at the session cookie', () => {
-  it('Sol proof, criterion 6: a tab cannot read another person’s token under its own session cookie name', async () => {
+  it('a tab cannot read another person’s token under its own session cookie name', async () => {
     const executeRead = vi.fn(() => Promise.resolve({ ok: true }));
     const api = createApi({
       database: {} as Database,

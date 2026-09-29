@@ -76,7 +76,7 @@ describe('S0-2 canary', () => {
 });
 
 function canaryCases1() {
-  it('Sol proof, criterion 4: a manufactured database error cannot log a planted code', async () => {
+  it('a manufactured database error cannot log a planted code', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
       (...parts: unknown[]) => void logged.push(parts.join(' ')),
@@ -169,7 +169,7 @@ function canaryCases2() {
 }
 
 function canaryCases3() {
-  it('Sol proof, criterion 4: a five-character planted fault code never reaches the API log', async () => {
+  it('a five-character planted fault code never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
       (...parts: unknown[]) => void logged.push(parts.join(' ')),

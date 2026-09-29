@@ -139,7 +139,7 @@ function isolationOneCookieCases1() {
 }
 
 function isolationOneCookieCases2() {
-  it('Sol review 2, through the real API: an old tab’s late sign-out cannot clear a new tab’s session', async () => {
+  it('through the real API: an old tab’s late sign-out cannot clear a new tab’s session', async () => {
     /** One browser: the old tab signs out, a new sign-in lands first, then the old answer. */
     const race = async (old: string, fresh: string) => {
       const { api } = build();

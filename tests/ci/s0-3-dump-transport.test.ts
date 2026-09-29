@@ -17,7 +17,7 @@ afterEach(() => {
   else process.env['SOL_CAPTURE_PATH'] = originalCapture;
 });
 
-it('Sol proof, criterion 12: the source dump requires encrypted transport', async () => {
+it('the source dump requires encrypted transport', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'sol-s0-3c-'));
   try {
     const capture = join(directory, 'docker.json');

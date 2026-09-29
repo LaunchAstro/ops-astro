@@ -158,7 +158,7 @@ function noProductionDataCases6() {
 }
 
 function noProductionDataCases7() {
-  it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
+  it('a backup with an allowed business key and production content is refused', async () => {
     await reset();
     const businessId = randomUUID();
     await db.admin.execute(
@@ -173,7 +173,7 @@ function noProductionDataCases7() {
     expect(signs).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 9: a marked database rejects restored person content', async () => {
+  it('a marked database rejects restored person content', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
@@ -184,7 +184,7 @@ function noProductionDataCases7() {
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 9: confirmation cannot bless a backup with allowed business keys', async () => {
+  it('confirmation cannot bless a backup with allowed business keys', async () => {
     await reset();
     const businessId = await business('alpha');
     await db.admin.execute(
@@ -196,7 +196,7 @@ function noProductionDataCases7() {
 }
 
 function noProductionDataCases8() {
-  it('Sol proof, criterion 9: confirmation cannot override a mismatched made-up mark', async () => {
+  it('confirmation cannot override a mismatched made-up mark', async () => {
     await reset();
     const originalId = await business('alpha');
     await markMadeUp(db.admin, [originalId]);
@@ -208,7 +208,7 @@ function noProductionDataCases8() {
     expect(await productionSigns(db.admin, MADE_UP, true, ['Ada Alpha'])).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 9: a marked database rejects restored private record content', async () => {
+  it('a marked database rejects restored private record content', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
@@ -224,7 +224,7 @@ function noProductionDataCases8() {
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 9: a marked task type rejects restored private record content', async () => {
+  it('a marked task type rejects restored private record content', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);

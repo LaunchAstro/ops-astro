@@ -17,7 +17,7 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: dumpSpawn,
 }));
 
-it('Sol proof, criterion 4: nightly dump includes the auth schema', async () => {
+it('nightly dump includes the auth schema', async () => {
   dumpSpawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter() });
     queueMicrotask(() => {
@@ -35,7 +35,7 @@ it('Sol proof, criterion 4: nightly dump includes the auth schema', async () => 
   expect(args).toContain('--schema=auth');
 });
 
-it('Sol proof, criterion 5: missing credentials leave a failed run in the scheduled log', () => {
+it('missing credentials leave a failed run in the scheduled log', () => {
   const root = resolve(import.meta.dirname, '../..');
   const result = spawnSync(process.execPath, ['scripts/ops/backup.mjs', 'run'], {
     cwd: root,
