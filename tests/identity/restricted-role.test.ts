@@ -22,7 +22,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const WORKER = 'ops_astro_worker';

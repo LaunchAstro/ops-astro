@@ -8,7 +8,7 @@
 // Every total here is read from SQL as text.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { handbackFootprint, retainedCodes, successorBody } from './handback-footprint.ts';
 import {
   appliedDetail,
@@ -33,7 +33,7 @@ if (serverUrl === undefined) {
   );
 }
 
-describe.skipIf(serverUrl === undefined)('RUNTIME-2: a successor is bounded exactly', () => {
+describe.skipIf(serverUrl === undefined)('a successor is bounded exactly', () => {
   /** 2^54 + 3: a valid bigint that a JavaScript number rounds to 2^54 + 4. */
   const LIMIT = '18014398509481987';
   let s: Schedules;

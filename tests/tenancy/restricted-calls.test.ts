@@ -17,7 +17,7 @@ import { readdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
-import { APPLICATION_ROLE } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   APPLICATION_CALLERS,
