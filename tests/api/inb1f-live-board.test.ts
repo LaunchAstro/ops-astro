@@ -360,7 +360,8 @@ describe.skipIf(serverUrl === undefined)(
       await expect(
         pool.withBusiness(s.business, async (tx) => {
           await tx.query(
-            `update public.inbox_items set work_state = 'cleared', closed_at = now()
+            `update public.inbox_items
+                set work_state = 'cleared', closed_at = now(), closed_by_person_id = $2
               where business_id = $1 and recipient_person_id = $2 and work_state = 'open'`,
             [s.business, reviewer.personId],
           );
