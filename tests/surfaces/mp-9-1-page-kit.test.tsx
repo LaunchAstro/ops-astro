@@ -6,6 +6,7 @@
 // isolation tests run through the API against the one preference store.
 
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DataTable,
@@ -148,7 +149,9 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
     expect(tip?.textContent).toBe('Tracked time on tasks you can see.');
     expect(term?.getAttribute('title')).toBeNull();
   });
+});
 
+describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () => {
   it('refuses a track with no total rather than drawing an empty bar', async () => {
     mounted = await mount(
       <StatRow columns={2}>
@@ -172,15 +175,17 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
     );
     expect(mounted.find('.statrow')?.className).toBe('statrow g5');
     const css = readFileSync(
-      new URL('../../packages/ui/src/styles/7-page-kit.css', import.meta.url),
+      join(process.cwd(), 'packages/ui/src/styles/7-page-kit.css'),
       'utf8',
-    ).replace(/\/\*[\s\S]*?\*\//g, '');
+    ).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
     const rule = (width: number): string =>
-      css.match(new RegExp(`@media \\(max-width: ${width}px\\) \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
-    expect(rule(1279)).toMatch(/\.statrow\.g[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/);
-    expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
-    expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
-    expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font-size: 1\.75rem/);
+      css.match(
+        new RegExp(`@media \\((?:max-width: |width <= )${width}px\\) \\{([\\s\\S]*?)\\n\\}`, 'u'),
+      )?.[1] ?? '';
+    expect(rule(1279)).toMatch(/\.statrow\.g[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/u);
+    expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
+    expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/u);
+    expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font-size: 1\.75rem/u);
   });
 });
 

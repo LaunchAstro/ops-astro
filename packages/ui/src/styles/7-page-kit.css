@@ -1,0 +1,164 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The page kit's composites: section head (DS-COMP-4), stat row (DS-COMP-6),
+   disclosure layer (DS-COMP-12), the hint and the sortable table's box. The
+   primitives they place (banner, stat, meter, table) are styled by the kit. */
+
+.sec {
+  display: grid;
+  gap: var(--s-4);
+}
+.sec__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.sec__right {
+  color: var(--text-muted);
+}
+
+.statrow {
+  display: grid;
+  border-bottom: 1px dotted var(--border-strong);
+}
+.statrow.g2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.statrow.g3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.statrow.g4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.statrow.g5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.statrow.g6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.statrow > .stat {
+  padding: var(--s-4) var(--s-5) var(--s-4) 0;
+}
+.stat__term {
+  position: relative;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.stat__tip {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  width: max-content;
+  max-width: 18rem;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  text-transform: none;
+  visibility: hidden;
+}
+.stat__term:hover .stat__tip,
+.stat__term:focus-visible .stat__tip {
+  visibility: visible;
+}
+.delta--up {
+  color: var(--success);
+}
+.delta--down {
+  color: var(--danger);
+}
+.delta--flat {
+  color: var(--text-muted);
+}
+
+.layer {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.layer__sum {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  list-style: none;
+}
+.layer__sum::-webkit-details-marker {
+  display: none;
+}
+.layer__sum:hover {
+  background: var(--surface-2);
+}
+.layer__count {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.layer__chev {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid currentcolor;
+  border-bottom: 1px solid currentcolor;
+  transform: rotate(45deg);
+}
+.layer[open] > .layer__sum .layer__chev {
+  transform: rotate(225deg);
+}
+.layer__body {
+  padding: 17px;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--info);
+}
+.hint__act {
+  margin-left: auto;
+}
+
+.tbl-box {
+  max-width: 100%;
+  overflow: auto;
+}
+
+@media (width <= 1279px) {
+  .statrow.g4,
+  .statrow.g5,
+  .statrow.g6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (width <= 900px) {
+  .statrow.g3,
+  .statrow.g4,
+  .statrow.g5,
+  .statrow.g6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .statrow.g2,
+  .statrow.g3,
+  .statrow.g4,
+  .statrow.g5,
+  .statrow.g6 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .statrow .stat__num {
+    font-size: 1.75rem;
+  }
+}
