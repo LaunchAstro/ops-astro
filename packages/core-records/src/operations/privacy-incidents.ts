@@ -34,6 +34,8 @@ export interface PrivacyIncident extends PrivacyIncidentFacts {
   readonly id: string;
   /** Day 0 plus 30 days: the runbook's assessment limit. */
   readonly assessBy: Date;
+  /** Still open past `assessBy`, judged on the database's clock (C81 breach drill). */
+  readonly overdue: boolean;
   readonly status: 'open' | 'closed';
   readonly recordedAt: Date;
   readonly recordedByActorId: string;
@@ -46,16 +48,20 @@ interface IncidentRow {
   readonly found_by: string;
   readonly affected: string;
   readonly information_kinds: readonly InformationKind[];
+  readonly overdue: boolean;
   readonly status: 'open' | 'closed';
   readonly recorded_at: Date;
   readonly recorded_by_actor: string;
 }
 
-const COLUMNS = `id, what_happened, found_at, found_by, affected, information_kinds,
-  status, recorded_at, recorded_by_actor`;
-
 /** The runbook's assessment limit: 30 calendar days from day 0. */
 const ASSESSMENT_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+// `overdue` is the database's judgement, on its own clock, of the same limit
+// as `assessBy` (720 hours is ASSESSMENT_DAYS_MS): no server clock decides it.
+const COLUMNS = `id, what_happened, found_at, found_by, affected, information_kinds,
+  status = 'open' and now() > found_at + interval '720 hours' as overdue,
+  status, recorded_at, recorded_by_actor`;
 
 const shaped = (row: IncidentRow): PrivacyIncident => ({
   id: row.id,
@@ -65,6 +71,7 @@ const shaped = (row: IncidentRow): PrivacyIncident => ({
   affected: row.affected,
   informationKinds: row.information_kinds,
   assessBy: new Date(row.found_at.getTime() + ASSESSMENT_DAYS_MS),
+  overdue: row.overdue,
   status: row.status,
   recordedAt: row.recorded_at,
   recordedByActorId: row.recorded_by_actor,
@@ -111,4 +118,17 @@ export async function readPrivacyIncidents(
     [tx.businessId, limit],
   );
   return rows.map(shaped);
+}
+
+/** One of this business's incidents by id, or `undefined` when it has none such. */
+export async function readPrivacyIncident(
+  tx: TenantQuery,
+  id: string,
+): Promise<PrivacyIncident | undefined> {
+  const rows = await tx.query<IncidentRow>(
+    `select ${COLUMNS} from public.privacy_incidents where business_id = $1 and id = $2`,
+    [tx.businessId, id],
+  );
+  const row = rows[0];
+  return row === undefined ? undefined : shaped(row);
 }

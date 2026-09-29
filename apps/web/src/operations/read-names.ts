@@ -44,6 +44,8 @@ export const READ_NAMES = [
   'access.read',
   // The operations view (C55), under `operations:read` on the server.
   'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
 ] as const;
 
 /**

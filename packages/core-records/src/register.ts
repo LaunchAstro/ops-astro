@@ -401,6 +401,19 @@ const ROWS = [
     meaning: 'A service on the overseas-services register is still to confirm',
     source: 'C81 SP-25',
   },
+  // C81: the breach drill drafts notices from the published breach runbook.
+  {
+    code: 'BREACH_RUNBOOK_UNPUBLISHED',
+    status: 409,
+    meaning: 'No breach runbook is published to draft the notices from',
+    source: 'C81 TR-SEC-11',
+  },
+  {
+    code: 'BREACH_TEMPLATE_UNFILLED',
+    status: 409,
+    meaning: 'The published breach runbook has no notice template the drill can fill',
+    source: 'C81 TR-SEC-11',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

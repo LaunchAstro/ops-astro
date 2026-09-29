@@ -1499,7 +1499,11 @@ not an audit event, not the `second_factors` row.
 `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
-first, at most 200.
+first, at most 200. The clock starts at `foundAt`, day 0, whenever the record
+was made. `overdue` is true while an incident is open past `assessBy`, judged
+on the database's clock (C81 breach drill). `breachRunbook` is what every
+incident record links to: the breach runbook published most recently, as
+`{ version, digest, publishedAt, body }`, or `null` until one is published.
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is
@@ -1511,6 +1515,24 @@ more distinct kinds from `contact`, `identity`, `financial`, `health`,
 422 naming the field alone; an undeclared one is `COMMAND_BODY_INVALID` 400.
 The answer's detail is `{ incidentId, assessBy }`. The envelope audits the act
 as a digest; the words are in `privacy_incidents` and nowhere else.
+
+`privacy.draft_breach_notices` (C81 breach drill) is a read under
+`privacy:manage`, never an agent's. It takes `{ incidentId, oaic, people,
+containment, steps }`: `oaic` a recipient, `people` 1 to 500 of them, each
+`{ name, address }` (1 to 200 and 1 to 500 characters, not blank), and
+`containment` and `steps` 1 to 4,000 characters. It fills the published breach
+runbook's "Template: notice to affected people" once for the OAIC (the runbook
+says its statement carries the same content) and once per person, and answers
+`{ ok, runbook: { version, digest }, notices }`, each notice `{ to: 'oaic' |
+'person', name, address, subject, body }`, the OAIC's first. The date is the
+day found, as the record holds it (UTC); the kinds are the incident's. It
+writes nothing beyond its one audit event, which carries no recipient, and
+sends nothing: the owner decides what is sent (owner line 54). A recipient or
+address missing is `FIELD_VALUE_INVALID` 422 naming `oaic` or `people`, another
+business's incident and a made-up one are `NOT_FOUND` 404, no published
+runbook is `BREACH_RUNBOOK_UNPUBLISHED` 409, and a runbook with no template, or
+one with a placeholder other than name, date, plain description, kinds,
+containment and steps, is `BREACH_TEMPLATE_UNFILLED` 409.
 
 Held until their parts land (each placed here as its owner's read, never a
 second list): unattended items (INB-1), security alerts (S0-2), the last tested

@@ -575,6 +575,11 @@ from a person who holds both is refused both, `DELEGATION_EXCLUDES_OPERATION`,
 because neither is in the agent's operation set. The install defaults (the
 owner and administrators) are C32's role presets.
 
+The breach drill's notices (`privacy.draft_breach_notices`, C81) are a read
+under `privacy:manage`, the incident's own key, so a holder of
+`operations:read` alone sees an incident overdue but cannot draft its notices.
+The read looks the incident up in the business's own rows and sends nothing.
+
 ## Legal documents (C81)
 
 Drafting, approving and publishing a legal document's version are each

@@ -102,7 +102,8 @@
     "C59 adds c59-second-factor (the step-up and its setting through the real preparation, the second factor required once enrolled) and c59-factor-routes (enrolment, verification and removal over in-process Hono against a loopback stand-in provider); the adapter cases in the first need no database but share its file.",
     "C55 adds c55-operations-view (the privacy incident record under privacy:manage and the operations view under operations:read over in-process Hono: records, refusals per key, three crossings and the canary)",
     "C81 adds c81-legal-documents (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)",
-    "C81 adds c81-register (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)"
+    "C81 adds c81-register (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)",
+    "C81 adds c81-breach-drill (the 30-day assessment flagged on the database clock on the operations view, the incident's link to the published breach runbook, and privacy.draft_breach_notices under privacy:manage over in-process Hono drafting the OAIC's and each person's notice at the named recipient, refusals, three crossings and the canary)"
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -293,7 +294,8 @@
     "tests/api/c59-factor-routes.test.ts",
     "tests/operations/c55-operations-view.test.ts",
     "tests/operations/c81-legal-documents.test.ts",
-    "tests/operations/c81-register.test.ts"
+    "tests/operations/c81-register.test.ts",
+    "tests/operations/c81-breach-drill.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

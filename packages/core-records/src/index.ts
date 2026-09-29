@@ -80,12 +80,19 @@ export {
 } from './authority/step-up.ts';
 export {
   INFORMATION_KINDS,
+  readPrivacyIncident,
   readPrivacyIncidents,
   recordPrivacyIncident,
   type InformationKind,
   type PrivacyIncident,
   type PrivacyIncidentFacts,
 } from './operations/privacy-incidents.ts';
+export {
+  draftBreachNotices,
+  type BreachNotice,
+  type BreachNoticeInput,
+  type NoticeRecipient,
+} from './operations/breach-notices.ts';
 export {
   LEGAL_DOCUMENTS,
   PUBLIC_LEGAL_DOCUMENTS,

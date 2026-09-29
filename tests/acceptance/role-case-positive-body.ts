@@ -45,6 +45,52 @@ async function legalVersion(
   return version;
 }
 
+/** A made-up runbook with a template the drill can fill (C81). */
+const DRILL_RUNBOOK = [
+  '# The matrix drafts a made-up runbook',
+  '',
+  '## Template: notice to affected people',
+  '',
+  '> Subject: A made-up notice',
+  '> Dear `<name>`, on `<date>` we found that `<plain description>`.',
+  '> Kinds: `<kinds>`. Done: `<containment>`. Do: `<steps>`.',
+  '',
+].join('\n');
+
+/** An incident and a published runbook, and the drill's body for them (C81). */
+async function drillBody(context: BodyContext): Promise<Record<string, unknown>> {
+  legalDrafts += 1;
+  const drafted = await context.asPerson('legal.draft_version', {
+    document: 'breach-runbook',
+    version: `${String(Math.floor(legalDrafts / 1000) + 50)}.${String(legalDrafts % 1000)}`,
+    body: DRILL_RUNBOOK,
+  });
+  if (drafted.code !== 'ok') throw new Error(`matrix: drill runbook refused ${drafted.code}`);
+  const detail = drafted.body['detail'] as Record<string, unknown>;
+  const version = { versionId: String(detail['versionId']), digest: String(detail['digest']) };
+  const approved = await context.asPerson('legal.approve_version', version);
+  if (approved.code !== 'ok') throw new Error(`matrix: drill approval refused ${approved.code}`);
+  const published = await context.asPerson('legal.publish_version', {
+    versionId: version.versionId,
+  });
+  if (published.code !== 'ok') throw new Error(`matrix: drill publish refused ${published.code}`);
+  const recorded = await context.asPerson('privacy.record_incident', {
+    whatHappened: 'The matrix records a made-up incident to drill.',
+    foundAt: new Date(Date.now() - 60_000).toISOString(),
+    foundBy: 'The matrix',
+    affected: 'Nobody; it is made up.',
+    informationKinds: ['other'],
+  });
+  if (recorded.code !== 'ok') throw new Error(`matrix: drill incident refused ${recorded.code}`);
+  return {
+    incidentId: String((recorded.body['detail'] as Record<string, unknown>)['incidentId']),
+    oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+    people: [{ name: 'A made-up person', address: 'person@example.test' }],
+    containment: 'Nothing real happened.',
+    steps: 'Nothing to do.',
+  };
+}
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
@@ -197,6 +243,11 @@ export function createPositiveBody(
             inUse: true,
           },
         };
+      // C81's breach drill: an incident of the admin's, and a runbook whose
+      // template the drill can fill, published as the admin (who holds
+      // `privacy:manage`, as the owner does).
+      case 'privacy.draft_breach_notices':
+        return { body: await drillBody(context) };
       case 'privacy.record_incident':
         return {
           body: {

@@ -85,6 +85,8 @@ export type CommandName =
   | 'access.read'
   // C55: the operations view, the one read of what needs the operator's eye.
   | 'operations.read'
+  // C81: the breach drill's notices, drafted from the published runbook.
+  | 'privacy.draft_breach_notices'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -517,6 +519,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // C55: `operations:read` (install default owner and administrators), never
   // an agent's.
   read('operations.read', 'operations'),
+  // C81's breach drill: `privacy:manage`, the incident's own key, never an
+  // agent's. It drafts notices and sends nothing, so it is a read.
+  read('privacy.draft_breach_notices', 'privacy', { action: 'manage' }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
