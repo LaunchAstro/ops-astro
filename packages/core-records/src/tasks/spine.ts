@@ -249,6 +249,36 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
+  // The three marks the derived rank reads (R70, migration 0032): whole
+  // numbers from 1 to 10, or absent, and absent is never 0. One command owns
+  // all three, so a mark changes only as `task scores changed` in the audit.
+  {
+    key: 'impact',
+    label: 'Impact',
+    valueType: 'numeric',
+    slot: 'num_3',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'confidence',
+    label: 'Confidence',
+    valueType: 'numeric',
+    slot: 'num_4',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'ease',
+    label: 'Ease',
+    valueType: 'numeric',
+    slot: 'num_5',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
   {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
@@ -271,7 +301,10 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'client',
   'client_visible',
   'completed_at',
+  'confidence',
   'delegate',
+  'ease',
+  'impact',
   'intake_state',
   'key',
   'parent',

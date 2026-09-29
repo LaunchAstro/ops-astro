@@ -168,7 +168,12 @@ export type CommandRequest =
   // definition, so the payload is the values and nothing else.
   | ({
       readonly command:
-        'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience';
+        | 'task.assign'
+        | 'task.triage'
+        | 'task.set_stage'
+        | 'task.set_party'
+        | 'task.set_audience'
+        | 'task.set_scores';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)
